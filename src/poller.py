@@ -465,8 +465,12 @@ def run(provider, max_pages=MAX_PAGES, page_size=PAGE_SIZE, live=False,
                            fetch=fetch, sleep=sleep)
     outcomes = []
     for page in pages:
+        # `workspace` is what `identity_of` just proved this credential is bound
+        # to. It travels onto every event so a reply can name the estate it came
+        # from a day later - see `events.apply`.
         outcomes.extend(inbound.ingest(page, provider, recs=recs, config=config,
-                                       post=post))
+                                       post=post,
+                                       provider_workspace=workspace))
     if advance and cursor is not None and cursor != start:
         save_checkpoint(provider, cursor, {"pages": len(pages)}, scope=scope)
     return {"provider": provider, "live": True, "cursor": cursor,

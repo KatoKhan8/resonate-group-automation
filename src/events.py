@@ -412,10 +412,28 @@ def apply(recs, event):
         return {"status": "unmatched", "why": "no contact for this event",
                 "event": event, "record_id": rec["id"]}
 
+    # THE ESTATE THE EVENT WAS READ FROM TRAVELS WITH IT.
+    #
+    # Nothing recorded it. An EmailBison credential's workspace is chosen in the
+    # vendor's UI and has moved mid-session - it answered for four different
+    # estates in three days - so a reply polled while bound to the wrong
+    # workspace was applied to this client's record with no trace of where it
+    # came from: the account paused, a positive-reply alert fired, and the reply
+    # was counted in client-facing reporting. The event log is append-only, so
+    # the false claim was not retractable and, worse, not even identifiable
+    # afterwards.
+    #
+    # `provider_workspace` does not by itself refuse anything - the refusal
+    # belongs at the poll, where `expect` now defaults to the deployment's pin.
+    # What it does is make the question answerable a day later: which estate
+    # said this. An event that cannot name its source cannot be audited, and an
+    # unauditable event about a real person is the one thing an append-only log
+    # must not contain.
     entry = record(rec, kind, contact_key=contact_key,
                    channel=event.get("channel"), at=event.get("at"),
                    provider=event.get("provider"),
-                   provider_event_id=event.get("provider_event_id"))
+                   provider_event_id=event.get("provider_event_id"),
+                   provider_workspace=event.get("provider_workspace"))
     if entry is None:
         return {"status": "duplicate", "record_id": rec["id"],
                 "why": "this provider event was already applied"}

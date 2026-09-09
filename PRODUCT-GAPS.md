@@ -2725,3 +2725,299 @@ observation used by `cadence.template_vars`. `contact["verification"]
 the second drives sendability. Section 36 exists because the empty one looked
 like the populated one.
 
+
+## 38. Eight read-only red teams attacked the build. What they found
+
+Overnight on 2026-09-09, eight independent read-only agents attacked tenancy,
+execution and duplication, personalisation, 30k scale, provider contracts, spend
+control, campaign lifecycle and architecture gaps. Every finding below was
+reproduced before being acted on, and several were in code written hours
+earlier the same night.
+
+The pattern worth naming first, because it recurred in six of the eight
+reports: **a complete, tested, documented guard with no caller at the point of
+use.** CLAUDE.md names this defect. It is the dominant one here, and it is not a
+tidiness problem - each instance reads as a guarantee in the documentation and
+is absent from the running system.
+
+### 38a. FIXED - the cap that controlled spend was read by nobody
+
+`routing.plan` computes `max_contacts_to_enrich` - 3 for tier A, 2 for B, 1 for
+C, 0 for anything not qualified - and its docstring says it "is the number that
+controls spend". Readers: a forecast, two screens, a report. Verification read
+every address on the record instead, at up to three credits each.
+
+`run.STAGES` is what made it expensive: enrich, then qualify, then personas.
+`decision-makers` can return dozens of addressed profiles for one company;
+verification paid for all of them; the selection that trims them to the cap ran
+afterwards. **Measured at 30,000 domains: roughly 252,000 credits verifying
+people the system had already decided never to write to.** On the three real
+qualified records it halves the bill.
+
+`enrich.verification_candidates` honours the cap, orders by the plan's own
+`target_titles` so the addresses bought are the ones selection would choose, and
+breaks ties on the contact key so a resumed run buys the same ones. A record
+qualification has not seen is deliberately NOT capped.
+
+### 38b. FIXED - the provider read-back was bound to nothing
+
+`executionguard` took `readback` as a plain dict and read three fields, one of
+them a timestamp the CALLER stamped. Nothing tied it to a campaign, a channel or
+a provider id, so a diff computed for campaign A satisfied the gate for campaign
+B; and nothing marked it used, so one dict authorised any number of actions.
+That is precisely the defect `Authorization` exists to prevent, one level up, in
+the module that argues a dict claiming the gates passed is not proof.
+
+`configdiff.Readback` is sealed, stamps its own timestamp after the last
+provider read, carries what it compared, and is single-use.
+
+### 38c. FIXED - four more defects inside the new gate chain
+
+| what | why it mattered |
+| --- | --- |
+| `killswitch.require` was handed a campaign ID STRING where it needs the row | `campaign_state` raised AttributeError on `.get`, `except Exception` reported that as policy, **the campaign layer never evaluated at all**, and the test asserting the gate fires was satisfied by the type error |
+| `actionledger.reserve` permitted a key already `sent` | and because `state_of` reads the latest row, it **regressed the state to `attempted`**, destroying the durable record that a real person had been contacted |
+| the pilot cap was counted outside the reservation lock | two workers each reading nine against a ceiling of ten both passed; the ledger ended the day at eleven |
+| the ledger's tenant was EmailBison's numeric estate id | two clients in one estate would share a ceiling; one client in two estates would have its ceiling split with both halves passing |
+
+The killswitch one is the exact failure CLAUDE.md warns about - a red test
+passing for the wrong reason - and the test now rejects a Python type error
+explicitly.
+
+### 38d. FIXED - the email approved side ignored approval
+
+`approved_heyreach` filters to approved steps and explains why at length.
+`approved_bison`, twenty lines below, appended every renderable email step. A
+campaign with day5 approved and day10 not produced an APPROVED_CONFIG containing
+both - and if the provider held both, the gate whose entire purpose is "the
+provider holds what was approved" reported **PASS** on two emails nobody blessed.
+
+### 38e. FIXED - a lost update under the reply path
+
+`store.transaction`'s own docstring says a bare `save()` "cannot protect a
+read-modify-write against a second process". `inbound.ingest` was doing exactly
+that: load, apply a reply, save. A concurrent pipeline run silently erased the
+reply, its pause and its event - and `refuse_evidence_loss` does not catch it,
+because it indexes verification evidence rather than events or pauses.
+
+So a positive reply that paused an account was revertible by any concurrent run,
+and every later gate would then read a record that looked contactable. `handle`
+does Slack I/O between the two mutations, so holding the lock throughout would
+trade this hazard for the one measured in 38k; instead
+`store.save(expect_digest=...)` refuses a clobber rather than performing one.
+
+### 38f. FIXED - the test suite was reading the operator's real credentials
+
+`tests/base.py` promises "no key may reach a provider from the developer's own
+environment". That held inside `ProviderTest` and nowhere else, and most modules
+here are plain `unittest.TestCase`. **Measured: 1,289 reads of the real
+`config/.env` in one full run.** Afterwards `os.environ` holds every real
+credential, and because such a module's cleanup restores the real urllib
+transport, the urlopen tripwire is disarmed at the same time.
+
+`tests/__init__.py` now points env loading at a path that cannot exist and
+clears every credential at package import. Two modules turned out to be
+depending on the real key and now set their own placeholder. The failure mode is
+a loud `MissingKey` rather than a quiet live call.
+
+### 38g. FIXED - a campaign list was one page, on the launch-gating path
+
+`mapping.bison_campaigns` read page one of a Laravel `{data, meta}` envelope
+with `per_page` 15 - the same shape and the same page size that once turned a
+225-inbox estate into fifteen. One real estate holds 25 campaigns, so any id
+past the first fifteen answered MISSING; `validate` treats MISSING as blocking;
+so the launch was correctly blocked with a **false diagnosis**, and the message
+printed says "either the id is wrong or the key belongs to another workspace".
+Somebody would hunt a typo that did not exist.
+
+It also returned `[]` for a body of the wrong shape, where `bison.sender_emails`
+refuses and `providers.mapping` raises. And it was the one EmailBison reader
+that never asserted its tenancy.
+
+### 38h. FIXED - fabricated evidence, the loaded half
+
+Section 36 replaced the `{line}` fallback. The PREFERRED branch was worse.
+`llm.traceable` accepted a claim if any stored fact appeared anywhere in it, and
+the company name is a stored fact - so every one of these passed against a
+record holding only an industry and a headcount:
+
+    "<company> raised a Series B in March and opened a Vienna office."
+    "<company> is hiring four delivery leads this quarter."
+    "<company> lost its largest retainer last month."
+
+`check_evidence` then wrote them to the record, where `template_vars` prints
+`evidence[0]` verbatim as the day-5 opener AND `claims.support_text` reads them
+as support. The model wrote the claim, certified it, and the certification was
+what the claim checker consulted. A fact may now only account for a claim it
+substantially covers, and every number in a claim must appear in some fact.
+
+### 38i. FIXED - nothing checked that the greeting named the recipient
+
+`render.emailbison_rows` writes `first_name` from the contact and `body` from
+the step independently, and `claims` cannot see a salutation - no number, no
+month, no event word. So `tests/fixtures/phase7.jsonl` held twelve
+byte-identical drafts, **eleven addressed to somebody else**, all twelve linting
+clean and all twelve reaching the push file - in the fixture that defines what a
+shippable estate looks like. `phase4` and `phase2` had the same defect, and so
+did the suite's own canonical GOOD draft.
+
+`lint.check` gains `greets_the_wrong_person`, narrow by design: it fires only
+when a body greets SOME name that is not the recipient's.
+
+### 38j. FIXED - two templates claimed a message we had not sent
+
+`comparable_proof` opened "one more note and then I will leave it" and
+`comparable_proof_short` "following on from what I mentioned". `breakup` was
+fixed for exactly this one screen below them. `due(day=21)` returns day3, day5,
+day10 and day21 in ONE batch and 21 is `run.py`'s default, so day10 arriving as
+a first touch is the default shape rather than an edge case.
+
+### 38k. STILL OPEN - JSONL cannot be the substrate for 30,000 domains
+
+Measured on a synthetic 30,000-record queue:
+
+| records | file | load | save | transaction |
+| --- | --- | --- | --- | --- |
+| 500 | 8.4 MB | 0.07s | 0.14s | 0.12s |
+| 10,000 | 168 MB | 2.71s | 4.60s | 4.30s |
+| **30,000** | **505 MB** | **8.72s** | **14.64s** | **14.09s** |
+
+`store.LOCK_TIMEOUT` is 10 seconds. **A single transaction at 30k exceeds the
+lock timeout**, so a second worker gets `QueueLocked` before the first finishes.
+Demonstrated with two processes.
+
+Cost is quadratic in batch count, because every batch rewrites the whole file.
+The planned shard sizes make it worse rather than better: 250-domain shards are
+120 rewrites (852s, 61 GB of I/O); 25-person micro-batches are 1,200 rewrites
+(2.4 hours, 606 GB); 10-lead micro-batches are 3,000 rewrites (5.9 hours,
+1.5 TB). Memory is 1.5 GB resident at load and 3.0 GB peak at save, because
+`save` parses the on-disk file a second time while the first copy is live.
+
+**This is the boundary. A streaming controller built on whole-file JSONL would
+be built on sand, and neither a longer lock timeout nor a smaller shard fixes
+it - smaller shards are strictly worse.** No streaming controller was written
+tonight for this reason; the design is recorded and the substrate has to change
+first.
+
+### 38l. STILL OPEN - no global, durable or cross-run credit cap
+
+`enrich.Budget` lives in one process's memory and `cap` defaults to `None`.
+`pilotcaps.CEILING` caps companies, contacts and sends - not credits.
+`dm_plan.max_batch_credits` is parsed from client config and used only to
+compute a display string; `dmplan.may_enrich` has zero callers. Two runs of
+`--cap 100` spend 200, and a shard controller invoking `enrich.run(cap=X)` per
+shard has an effective ceiling of 120X.
+
+Forecast and enforcement also disagree in eleven named places, of which the
+sharpest are: `costsim.DEFAULTS["found_per_company"]` 6.0 against
+`enrich.ASSUMED_PROFILES` 5; `decision-makers` charged a flat 10 against
+`costsim`'s ~8 per hit company; and the ContactOut **verifier** absent from
+`costsim.known_costs` entirely, which is about 42,000 credits at 30k.
+`scalesim` correctly calls `enrich.plan`; `costsim` is the reimplementation.
+
+Measured against costsim's own assumptions, a 30,000-domain run is **260,832
+credits forecast and 453,000 to 705,000 measured** - 1.7x to 2.7x.
+
+### 38m. STILL OPEN - a provider failure is charged, ledgered, and read as an answer
+
+`enrich.spend()` charges the budget and writes the waterfall ledger BEFORE the
+provider call. A `ProviderError` is caught and logged with no refund and no
+result marker. So four failed calls become 13 phantom credits and 13 credits of
+false ledger - and the domain is dropped on a conclusion drawn from a rate limit.
+
+Worse: `fieldplan.state_of` returns `MISSING_CONFIRMED` whenever `tried()` finds
+a ledger row, and `tried()` cannot tell a 500 from an answer. After one all-500
+run, `company_info_is_owed` is False and `already_bought` is True **forever**, so
+the firmographics that produce the ICP verdict can never be bought for that
+company. This is "missing evidence is never positive evidence" violated by
+construction.
+
+The right fix is to charge after the call, pass `actual_cost`, and give a failed
+row a distinct result - which also closes 38n. Not attempted tonight: it touches
+the single paid-call door and deserves its own change with its own validation.
+
+### 38n. STILL OPEN - `actual_cost` has never been written
+
+`waterfall.entry` accepts it and `waterfall.spend()` sums it into `reported`. No
+caller in `src/` passes it, so `reported` is structurally `None` on every record
+in the estate, and the ledger's ability to compare believed cost against billed
+cost has never been exercised. `decision-makers` is charged a flat 10 and never
+reconciled against `len(people)`, which is in hand at the call site. Blitz is the
+only provider that reports true cost and Blitz has no caller.
+
+### 38o. STILL OPEN - `stepstate`'s state machine has no enforcer
+
+Only the flat predicate `is_terminal` is consumed. `TRANSITIONS`, `allowed`,
+`check`, `apply` and `reconcile` have zero callers in `src/`. Thirteen of
+fourteen states are never written by anything; the only persisted status any
+production path writes is the bare literal `step["status"] = "pushed"`, which
+does not go through `apply`, so no transition is ever validated and no history
+entry is ever written. A table nothing enforces is worse than none, because it
+reads as a guarantee.
+
+### 38p. STILL OPEN - `RUNNING` is reachable by state mutation alone
+
+`campaigns.set_status`'s `allow=` parameter makes any source status legal, and
+six call sites pass the target itself. So `rejected -> approved` and
+`anything -> running` are permitted, against the comment saying a campaign never
+moves backwards into approval. Reachable from the web with the reviewer role:
+`completed --pause--> paused --resume--> running`. Meanwhile `orchestrator.launch`
+- the function whose docstring calls itself "the last door" - never sets
+`RUNNING` at all. So the transition into the state `killswitch` requires for
+sending and the provider write are on disjoint code paths, and the only path
+into a LIVE canonical state is mutation. Harmless today only because
+`providerwrites.SUPPORTED` is empty.
+
+### 38q. STILL OPEN - the complete list of guards with no caller
+
+Each is complete, tested and documented, and none is consulted at the point of
+use:
+
+| module or function | what it was written to do |
+| --- | --- |
+| `src/observations.py` (398 lines, 98 tests) | the licence layer that answers, BEFORE a word is written, what may be stated about a company or person and on what evidence |
+| `src/mapping.py` | prove a provider campaign id exists and is OURS - `MISMATCH` means "belongs to something else, refuse loudly" |
+| `src/stepstate.py` transitions | the step lifecycle, 14 states |
+| `src/outreachclaims.py` on the send path | the authority on claims about US - `SAME_CONTACT_PRIOR_TOUCH` is exactly 38j's defect |
+| `src/evidencerepair.py` | reconstruct verification evidence from the event log |
+| `src/fieldplan.py` | 8 of 9 public functions; only `company_info_is_owed` is called, governing 1 credit of 13 |
+| `src/blitz.py` entirely | two live-confirmed routes, 62 tests, five cost-table entries, three waterfall rungs, and `enrich.py` does not import it |
+| `launch.state == "launched"` | read by three consumers, written by none, so the relaunch guard in the launch checklist can never fire |
+| `orchestrator.complete` | no caller, so `CAMPAIGN_COMPLETED` is never emitted and no record is ever released from a finished campaign |
+| `dmplan.may_enrich` | the per-batch credit ceiling |
+| `refresh.py` | a whole staleness-driven re-buy plan |
+| `contact["personalization"]` | written only by demo builders, so `eligibility._evidence_aged_out` - the only staleness gate on the send path - can never fire |
+| `executionguard`, `providerwrites`, `configdiff` | nothing in `src/` imports them yet; they are reachable only from their own CLIs and tests |
+
+### 38r. STILL OPEN - smaller, named
+
+`claims.is_claim` still examines a sentence only when it carries a number, a
+month or an event word, and additionally skips any sentence with no second-person
+marker - so a fabricated claim phrased in the third person about the company by
+name escapes entirely. Measured hole: 32 of 40 unsupported assertions ship.
+
+`aiark._rows`, `apify.dataset_items` and (until tonight) `mapping.bison_campaigns`
+return `[]` on a body of the wrong shape, where `providers.mapping` raises. Each
+is on a decision path.
+
+No retry, backoff or 429 handling exists in `providers.request`. The only retry
+in the build, `poller.with_retry`, retries any `ProviderError` - including a 429
+- three times on a fixed backoff with no `Retry-After` read.
+
+`verification.verify(rec=None)` spends real credits and writes no ledger row.
+One production caller passes a rec, so it is latent.
+
+`validate.py` calls six paid providers through its own cost table with its own
+`--max-credits` guard and writes no waterfall row at all - a real, bounded,
+unledgered spend door.
+
+A HeyReach lead-add is **unverifiable even in principle**: no confirmed route
+reads a lead back by campaign, so `providerwrites`' mandatory read-back cannot be
+satisfied for that operation. Establishing a read-back route is a prerequisite
+to, not a part of, enabling it.
+
+HeyReach exposes `organizationUnitId` on real campaign payloads and the only
+consumer is `configdiff`. Nothing asserts it, so no HeyReach read can prove which
+org unit answered - the hole EmailBison closed with `require_workspace` after its
+credential answered for four estates in three days.
+

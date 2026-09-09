@@ -113,7 +113,7 @@ def handle(event, recs, rows=None, config=None, post=None, model=None):
 
 
 def ingest(payloads, provider, recs=None, rows=None, config=None, post=None,
-           model=None):
+           model=None, provider_workspace=None):
     """A provider payload in, a list of outcomes out. Saves once, at the end."""
     adapter = adapters.ADAPTERS.get(provider)
     if adapter is None:
@@ -130,6 +130,12 @@ def ingest(payloads, provider, recs=None, rows=None, config=None, post=None,
     # The adapter carries the reply text on the neutral event. It is read for
     # classification and never written to a record: see handle().
     neutral = adapter(payloads)
+    # Stamped here rather than inside each adapter: the estate is a property of
+    # the CREDENTIAL that did the reading, not of the payload, and an adapter is
+    # a pure translation that has never been told which key fetched its input.
+    if provider_workspace is not None:
+        for event in neutral:
+            event.setdefault("provider_workspace", provider_workspace)
     outcomes = [handle(e, recs, rows=rows, config=config, post=post, model=model)
                 for e in neutral]
     if own and any(o["applied"] and o["applied"]["status"] == "applied"
