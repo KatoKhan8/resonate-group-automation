@@ -490,14 +490,45 @@ def main(argv=None):
     p.add_argument("--reset-cursor", action="store_true",
                    help="start from the beginning. Every event is idempotent, "
                         "so this re-reads rather than re-applies")
+    p.add_argument("--expect-workspace",
+                   help="the provider estate this poll must be reading. "
+                        "Defaults to the deployment's own pin; --expect-workspace "
+                        "any waives it and says so")
     a = p.parse_args(argv)
 
     if a.reset_cursor:
         save_checkpoint(a.provider, None, {"reset_at": store.now()})
         print(f"cursor for {a.provider} cleared")
 
+    # THE PIN APPLIES HERE TOO. `run` has always taken `expect` and refused a
+    # mismatch, but this CLI never passed one, so `python -m src.poller
+    # emailbison --live` ignored `BISON_WORKSPACE_ID` entirely - while
+    # `replywatch`, the only other caller, did pin it. So the documented
+    # guarantee that the poller "refuses to poll when it does not match
+    # BISON_WORKSPACE_ID" was true of the watcher and false of the command a
+    # person actually types.
+    #
+    # It matters more than a missing flag: this path writes replies into
+    # `work/queue.jsonl`, and a reply read from the wrong estate pauses a
+    # client's account, opens a review and fires a positive-reply alert. Reading
+    # is not sending, but it is still writing.
+    expect = a.expect_workspace
+    if expect is None:
+        from . import providers as provider_env
+        from . import replywatch
+        # `expected_workspace` is a pure env reader on purpose - loading the
+        # file inside it would set the pin process-wide for every later caller -
+        # so the file is loaded here, at the edge, by the command that wants it.
+        provider_env.load_env()
+        expect = replywatch.expected_workspace(a.provider)
+    elif str(expect).strip().lower() == "any":
+        expect = None
+        print("  WARNING: polling without a workspace pin. A reply read from "
+              "another estate will be applied to this client's records.")
+
     result = run(a.provider, max_pages=a.max_pages, page_size=a.page_size,
-                 live=a.live)
+                 live=a.live, expect=expect)
+    print(f"  workspace pin {expect if expect is not None else 'NONE (waived)'}")
     print(f"{a.provider}: {'live' if result['live'] else 'DRY RUN'}")
     print(f"  cursor    {result.get('cursor')}")
     print(f"  pages     {result['pages']}")

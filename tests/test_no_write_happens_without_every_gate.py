@@ -21,7 +21,8 @@ import unittest
 from unittest import mock
 
 from src import (actionledger, approval, cadence, campaigns, clients,
-                 collision, configdiff, executionguard, killswitch, store)
+                 collision, configdiff, eligibility, executionguard,
+                 killswitch, store)
 
 from tests.base import QueueTest
 
@@ -175,6 +176,25 @@ class TheHappyPathIsAuthorized(GuardTest):
         self.assertIn("killswitch", auth.gates)
         self.assertIn("reserved", auth.gates)
 
+    def test_the_ledger_gate_is_recorded_in_the_gates_tuple(self):
+        """`gates` is what an audit reads to prove which checks ran."""
+        with self.allow_collision(), self.allow_killswitch():
+            auth = self.attempt()
+        for gate in ("tenancy", "approval", "campaign_approval", "readback",
+                     "collision", "pilot_cap", "ledger", "killswitch",
+                     "reserved"):
+            self.assertIn(gate, auth.gates, gate)
+
+    def test_the_idempotency_key_is_push_id_not_a_second_definition(self):
+        """Two definitions of one identity drift, and then the ledger and
+        `push.already_pushed` key different things with every test green."""
+        from src import push
+        with self.allow_collision(), self.allow_killswitch():
+            auth = self.attempt()
+        self.assertEqual(auth.key,
+                         push.push_id(self.rec, "dana-marsh", "day3",
+                                      "linkedin"))
+
     def test_the_ledger_recorded_the_attempt_before_the_write(self):
         with self.allow_collision(), self.allow_killswitch():
             self.attempt()
@@ -194,11 +214,38 @@ class EachGateStopsTheProviderCallEntirely(GuardTest):
     """The property that matters: `spy.calls == []`, not a handled error."""
 
     def test_killswitch_off_prevents_the_call(self):
+        """And the refusal must be the killswitch's OWN verdict.
+
+        Asserting only on `gate == "killswitch"` is what let this test pass
+        while the gate was broken: the campaign ROW was being passed as an id
+        string, `campaign_state` raised AttributeError on `.get`, and a type
+        error satisfied the assertion. So the message is checked too - the real
+        `SendingRefused` names the layer that refused and how many did, and a
+        Python type error cannot fake that.
+        """
         with self.allow_collision():
             with self.assertRaises(executionguard.NotAuthorized) as caught:
                 self.attempt()
         self.assertEqual(caught.exception.gate, "killswitch")
+        self.assertNotIn("AttributeError", caught.exception.why)
+        self.assertNotIn("object has no attribute", caught.exception.why)
+        self.assertIn("layer", caught.exception.why.lower())
         self.assertEqual(self.spy.calls, [])
+
+    def test_the_campaign_layer_is_actually_consulted(self):
+        """The gate reached `campaign_state` at all, which it never did while
+        the id string was being passed."""
+        state = killswitch.state(workspace="productive", campaign=self.campaign)
+        layers = [row.get("layer") for row in state.get("layers") or []]
+        self.assertIn("campaign", layers,
+                      "the campaign layer never evaluated")
+
+    def test_a_frozen_campaign_is_refused_by_the_killswitch(self):
+        """The property the broken gate could not have enforced."""
+        with mock.patch.object(campaigns, "is_frozen", return_value=True):
+            state = killswitch.state(workspace="productive",
+                                     campaign=self.campaign)
+        self.assertFalse(state["sending"])
 
     def test_a_cap_of_zero_prevents_the_call(self):
         # `pilotcaps.configured()` reads `daily_volume`, not a `pilot` key.
@@ -303,6 +350,38 @@ class EachGateStopsTheProviderCallEntirely(GuardTest):
         self.assertEqual(self.spy.calls, [])
 
 
+class SuppressionIsReadAsBehaviourNotAsText(GuardTest):
+    """The check was `"suppress" not in json.dumps(decided).lower()`, which
+    refuses a CLEAR verdict reading "suppression: none" and passes a real
+    suppression spelled differently."""
+
+    def decided(self, *reasons):
+        return {"verdict": "eligible" if not reasons else "blocked",
+                "reasons": list(reasons), "reason": reasons[0] if reasons else None}
+
+    def test_each_declared_suppression_reason_refuses(self):
+        for reason in executionguard.SUPPRESSION_REASONS:
+            with self.subTest(reason=reason):
+                with self.allow_collision(), self.allow_killswitch(),                      mock.patch.object(eligibility, "decide",
+                                       return_value=self.decided(reason)):
+                    with self.assertRaises(executionguard.NotAuthorized) as c:
+                        self.attempt()
+                self.assertIn(c.exception.gate, ("eligibility", "suppression"))
+                self.assertEqual(self.spy.calls, [])
+
+    def test_the_word_suppression_in_a_clear_reason_does_not_refuse(self):
+        with self.allow_collision(), self.allow_killswitch(),              mock.patch.object(eligibility, "decide", return_value={
+                 "verdict": "eligible", "reasons": [],
+                 "note": "suppression: none; collision: clear"}):
+            self.attempt()
+        self.assertEqual(len(self.spy.calls), 1)
+
+    def test_the_reasons_come_from_eligibilitys_own_constants(self):
+        """Named rather than spelled, so the two cannot drift."""
+        for reason in executionguard.SUPPRESSION_REASONS:
+            self.assertTrue(str(reason).startswith("blocked:"), reason)
+
+
 class TheCapCountsDurableRowsNotAPlanDict(GuardTest):
     """`pilotcaps.check(plan)` compares a caller's dict. Two callers each
     declaring one both passed, and together sent two. The ledger closes it."""
@@ -348,6 +427,39 @@ class TheCapCountsDurableRowsNotAPlanDict(GuardTest):
                              contact=rec["contacts"][1])
         self.assertEqual(caught.exception.gate, "pilot_cap")
         self.assertEqual(len(self.spy.calls), 1)
+
+    def test_one_tenants_actions_do_not_consume_anothers_ceiling(self):
+        """`count_on` had no workspace parameter, so every tenant counted
+        together - in a system where tenancy outranks nearly everything.
+
+        The tenant is the CLIENT SLUG. It was briefly EmailBison's numeric
+        estate id, which is the wrong namespace twice over: two clients in one
+        estate would share a ceiling, and one client worked from two estates
+        would have its ceiling split with both halves passing.
+        """
+        actionledger.reserve(
+            "other:contact:day3:linkedin", channel="linkedin",
+            workspace="another-client", campaign_id="someone-else",
+            sender_id=999, rec_id="other", contact_key="contact",
+            step_key="day3", operation="op", fingerprint="fp")
+        day = NOW.isoformat()
+        self.assertEqual(actionledger.count_on(day, channel="linkedin"), 1)
+        self.assertEqual(
+            actionledger.count_on(day, channel="linkedin",
+                                  workspace="productive"), 0)
+        self.assertEqual(
+            actionledger.count_on(day, channel="linkedin",
+                                  workspace="another-client"), 1)
+
+    def test_the_ledger_row_names_the_client_and_records_the_estate(self):
+        """Both facts are needed: the tenant for counting, the provider estate
+        as evidence of where the action was aimed."""
+        with self.allow_collision(), self.allow_killswitch():
+            auth = self.attempt()
+        row = actionledger.rows_for(auth.key)[-1]
+        self.assertEqual(row["workspace"], "productive")
+        self.assertEqual(row["provider_workspace"], WS)
+        self.assertEqual(auth.workspace, "productive")
 
     def test_the_ledger_count_is_what_the_cap_reads(self):
         self.assertEqual(actionledger.count_on(NOW.isoformat(),

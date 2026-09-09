@@ -15,8 +15,14 @@ import unittest
 from src import generate, lint, llm, store
 from tests.base import FIXTURES
 
+# "{first}" rather than a hard-coded name, which is the convention
+# `test_e2e.py` already uses. It said "Robert," while the two records here
+# belong to Ivana Saric and Rowan Blake, so the suite's canonical GOOD draft
+# addressed somebody who was not the recipient - the exact defect
+# `lint.check`'s greeting rule now catches, sitting in the fixture that defines
+# what good looks like.
 GOOD_BODY = (
-    "Robert, on 17 October Jesse asked to run the key against a realistic list of "
+    "{first}, on 17 October Jesse asked to run the key against a realistic list of "
     "companies and our reply asked whether five thousand credits would do and "
     "then pivoted to booking a call. That question was never actually answered, "
     "which is the reason this stopped rather than anything about the price.\n\n"
@@ -38,7 +44,14 @@ def diagnosis_answer(**kw):
     return json.dumps(data)
 
 
-def draft_answer(body=GOOD_BODY, subject="the question we never answered"):
+def good_body(first="Rowan"):
+    """GOOD_BODY addressed to a named recipient."""
+    return GOOD_BODY.format(first=first)
+
+
+def draft_answer(body=None, subject="the question we never answered",
+                 first="Rowan"):
+    body = good_body(first) if body is None else body
     return json.dumps({"subject": subject, "body": body})
 
 
@@ -87,7 +100,7 @@ class TestTheAcceptanceTest(GenerateTest):
         # The kept draft says "with no call attached", which is the idiom
         # section 6.2 says must not be naively matched. Lint agrees.
         self.assertIn("no call attached", stored["body"])
-        self.assertEqual(stored["body"], GOOD_BODY)
+        self.assertEqual(stored["body"], good_body("Rowan"))
         self.assertEqual(lint.check(self.rec(), "rowan-blake", stored), [])
 
     def test_the_bad_draft_never_reaches_the_record_at_all(self):
@@ -338,7 +351,11 @@ class TestOnlyTwoEmailsAreGenerated(GenerateTest):
         self.assertEqual(generate.plan(self.rec("meridian")), [])
 
     def test_an_existing_draft_is_not_regenerated(self):
-        model = llm.ScriptedModel(draft_answer(), draft_answer())
+        # `meridian`'s contact is Ivana, so the draft has to greet Ivana. With
+        # the Rowan default it failed the greeting rule and was regenerated,
+        # which is the rule working rather than a wrong count.
+        model = llm.ScriptedModel(draft_answer(first="Ivana"),
+                                  draft_answer(first="Ivana"))
         generate.run(model=model, live=True, ids=["meridian"])
         before = len(model.prompts)
         generate.run(model=llm.ScriptedModel(), live=True, ids=["meridian"])

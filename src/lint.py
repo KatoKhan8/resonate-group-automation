@@ -104,6 +104,60 @@ def email_steps(rec):
 UNSHIPPABLE = {"dropped": "record_dropped", "pushed": "record_already_pushed"}
 
 
+GREETINGS = ("hi", "hello", "hey", "dear", "good morning", "good afternoon")
+
+# Openers that address nobody in particular. Not a wrong-person problem.
+IMPERSONAL = ("there", "team", "all", "folks", "everyone")
+
+# The greeting word is matched case-insensitively and the NAME is not: a
+# capitalised token is what distinguishes "Dear Sam," from "the teams I work
+# with". Written as an inline `(?i:...)` group rather than a flag on the whole
+# pattern, because `re.IGNORECASE` would make `[A-Z]` match anything and the
+# rule would then fire on ordinary prose - which is how the first version of
+# this failed: it was fully case-sensitive, so "Hi Marin," and "Dear Sam,"
+# both matched NOTHING and two wrong-person cases passed by accident.
+GREETING_RE = re.compile(
+    r"^\s*(?:(?i:hi|hello|hey|dear|good morning|good afternoon)[\s,]+)?"
+    r"([A-Z][\w'’\-]+)\s*[,!.\n]", re.UNICODE)
+
+
+def _greeted_name(body):
+    """The name a body opens by addressing, or "" if it addresses nobody.
+
+    Reads only the first line: a name appearing later is prose, and treating it
+    as a salutation would fire on "the teams I work with that look most like
+    Brightpath".
+    """
+    first = (body or "").strip().split("\n", 1)[0]
+    found = GREETING_RE.match(first)
+    if not found:
+        return ""
+    name = found.group(1).strip()
+    return "" if name.lower() in IMPERSONAL or name.lower() in GREETINGS else name
+
+
+def _names_match(greeted, full_name):
+    """Does this salutation name this person?
+
+    Generous on form and strict on identity. A first name, a full name, a
+    hyphenated or accented spelling and a diminutive-free comparison all pass;
+    a different person does not. Case and surrounding punctuation are not
+    identity, so they are normalised away - but a name that simply is not on the
+    contact is a different human, and that is the whole point.
+    """
+    greeted = str(greeted or "").strip().lower().strip(".,!")
+    full = str(full_name or "").strip().lower()
+    if not greeted:
+        return True
+    if not full:
+        # No name recorded for the recipient, so nothing can be verified. This
+        # is not a pass: a body cannot address by name somebody the record
+        # cannot name.
+        return False
+    parts = [p for p in re.split(r"[\s\-’']+", full) if p]
+    return greeted in parts or greeted == full
+
+
 def check(rec, key, step):
     """Return the sorted, deduped failure codes for one generated email."""
     fails = set()
@@ -122,6 +176,32 @@ def check(rec, key, step):
         fails.add("recipient_missing")
     elif not sendable(contact):
         fails.add("recipient_not_sendable")
+
+    # THE GREETING MUST NAME THE PERSON IT IS ADDRESSED TO.
+    #
+    # Nothing checked this, anywhere. `render.emailbison_rows` writes
+    # `first_name` from the contact and `body` from the step independently, so a
+    # row addressed `first_name=Marin` carrying a body that opens "Ivana," goes
+    # into the push CSV as one lead. `claims.py` cannot reach it - "Ivana, you
+    # run finance across five offices" has no number, no month and no event
+    # word - so it was clean by every measure the system had.
+    #
+    # `tests/fixtures/phase7.jsonl` is the proof of how it goes wrong at scale:
+    # twelve generated steps carrying byte-identical copy, eleven of them
+    # addressed to somebody who is not the recipient, all twelve linting clean
+    # and all twelve reaching the push file. That fixture is what the push and
+    # approval tests assert against, so it is also what anybody reads to learn
+    # what good copy looks like.
+    #
+    # Deliberately narrow: it fires only when the body opens with SOME name and
+    # that name is not the recipient's. A body that opens "Hi there" or with no
+    # salutation at all is a style question, not a wrong-person question, and
+    # `MIN_WORDS`, `BANNED_PHRASES` and the hook rules already have opinions
+    # about openers.
+    if contact is not None and body.strip():
+        greeted = _greeted_name(body)
+        if greeted and not _names_match(greeted, contact.get("name")):
+            fails.add("greets_the_wrong_person")
 
     if any(d in body or d in subject for d in DASHES):
         fails.add("em_dash")

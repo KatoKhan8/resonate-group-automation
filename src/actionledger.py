@@ -51,6 +51,17 @@ SETTLED = (SENT, FAILED, ABANDONED)
 # resolves it against the provider by hand.
 BLOCKING = (ATTEMPTED, UNRESOLVED)
 
+# A key that reached a prospect is finished, and `reserve` must refuse it just
+# as firmly as one still in flight. It did not: `BLOCKING` alone was consulted,
+# `SENT` is not in it, and the "already sent" refusal lived only in the separate
+# and OPTIONAL `require_clear`. So a direct `reserve` on a sent key succeeded -
+# and because `state_of` reads the LATEST row, it also regressed the state from
+# `sent` back to `attempted`, destroying the durable record that a real person
+# had been contacted. `stepstate` already writes the rule down: terminal means
+# terminal. This is the ledger implementing it.
+TERMINAL = (SENT,)
+UNRESERVABLE = BLOCKING + TERMINAL
+
 
 class ActionRefused(RuntimeError):
     """The action may not be attempted. Raised, never returned."""
@@ -90,6 +101,11 @@ def is_blocked(key, rows=None):
     return state_of(key, rows) in BLOCKING
 
 
+def is_unreservable(key, rows=None):
+    """In flight, unresolved, or already sent. Any of the three refuses."""
+    return state_of(key, rows) in UNRESERVABLE
+
+
 def unsettled(rows=None):
     """Every key that needs reconciling before anything may be retried."""
     rows = load() if rows is None else rows
@@ -103,13 +119,21 @@ def _day(at):
     return str(at or "")[:10]
 
 
-def count_on(day, channel=None, sender_id=None, rows=None, states=None):
+def count_on(day, channel=None, sender_id=None, workspace=None, rows=None,
+             states=None):
     """How many actions this ledger says happened on one calendar day.
 
     THE DURABLE COUNT. `states` defaults to everything that either reached a
     prospect or might have - `SENT` plus the two states where provider truth is
     unknown - because a cap that only counted confirmed sends would let an
     unresolved attempt buy another attempt, which is precisely the hazard.
+
+    `workspace` SCOPES THE COUNT TO ONE TENANT - the CLIENT SLUG, not a
+    provider's numeric estate id - and omitting it counts every tenant
+    together. `reserve` has always required and stored the workspace, but
+    this had no parameter for it, so one client's actions consumed another
+    client's pilot ceiling - in a system where tenancy outranks nearly
+    everything else. Callers that mean "this client" must say so.
     """
     states = (SENT, ATTEMPTED, UNRESOLVED) if states is None else states
     rows = load() if rows is None else rows
@@ -126,20 +150,37 @@ def count_on(day, channel=None, sender_id=None, rows=None, states=None):
             continue
         if sender_id is not None and str(row.get("sender_id")) != str(sender_id):
             continue
+        if workspace is not None and str(row.get("workspace")) != str(workspace):
+            continue
         n += 1
     return n
 
 
+class CapReached(ActionRefused):
+    """The durable count for this day is already at the ceiling."""
+
+
 def reserve(key, *, channel, workspace, campaign_id, sender_id, rec_id,
             contact_key, step_key, operation, fingerprint, by="system",
+            provider_workspace=None, cap_per_day=None, cap_per_sender=None,
             timeout=None):
     """Claim the right to attempt one prospect-facing action. Written first.
 
-    Refuses when a reservation for this key is already open or unresolved,
-    which is what makes a post-timeout retry impossible without reconciling.
-    Every field is required and none is inferred: an action whose tenant,
-    campaign, sender or approved fingerprint cannot be named is an action
-    nobody can audit afterwards.
+    Refuses when a reservation for this key is already open, unresolved or
+    already sent, which is what makes a post-timeout retry impossible without
+    reconciling. Every field is required and none is inferred: an action whose
+    tenant, campaign, sender or approved fingerprint cannot be named is an
+    action nobody can audit afterwards.
+
+    THE CAPS ARE ENFORCED HERE, INSIDE THE TRANSACTION, and that placement is
+    the whole point. Counting outside the lock and reserving inside it is a
+    time-of-check-to-time-of-use window: two workers each read a count of 9
+    against a ceiling of 10, each pass, and the ledger ends the day at 11. The
+    count and the append have to be the same critical section, so the caller
+    passes the ceilings in rather than checking them first.
+
+    Both caps are scoped to `workspace`. One client's actions must never
+    consume another's ceiling.
     """
     missing = [name for name, value in (
         ("key", key), ("channel", channel), ("workspace", workspace),
@@ -157,13 +198,36 @@ def reserve(key, *, channel, workspace, campaign_id, sender_id, rec_id,
         "campaign_id": campaign_id, "sender_id": sender_id,
         "rec_id": rec_id, "contact_key": contact_key, "step_key": step_key,
         "fingerprint": fingerprint, "by": by,
+        # Which provider estate the action was aimed at. Recorded as evidence,
+        # never used as the tenant key: `workspace` above is the client slug,
+        # which is what tenancy means everywhere else in this system.
+        "provider_workspace": provider_workspace,
     }
     # The check and the append happen under one lock. Two processes racing the
     # same key is exactly what this is for, so reading first and writing after
     # would reintroduce the race it exists to close.
     with store.file_transaction(path(), timeout) as rows:
-        if is_blocked(key, rows):
+        if cap_per_day is not None:
+            used = count_on(row["at"], channel=channel, workspace=workspace,
+                            rows=rows)
+            if used + 1 > int(cap_per_day):
+                raise CapReached(
+                    f"{channel}: {used} action(s) already recorded today for "
+                    f"workspace {workspace}, and the ceiling is {cap_per_day}")
+        if cap_per_sender is not None:
+            used = count_on(row["at"], channel=channel, workspace=workspace,
+                            sender_id=sender_id, rows=rows)
+            if used + 1 > int(cap_per_sender):
+                raise CapReached(
+                    f"sender {sender_id}: {used} action(s) already recorded "
+                    f"today, and the per-sender ceiling is {cap_per_sender}")
+        if is_unreservable(key, rows):
             existing = rows_for(key, rows)[-1]
+            if existing["state"] in TERMINAL:
+                raise ActionRefused(
+                    f"{key} is {existing['state']} since {existing['at']}: a "
+                    f"second prospect-facing action for the same step is a "
+                    f"duplicate touch, not a retry")
             raise Unsettled(
                 f"{key} is {existing['state']} since {existing['at']}. Read "
                 f"the provider and settle it; do NOT retry a prospect-facing "

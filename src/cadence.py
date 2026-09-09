@@ -300,11 +300,24 @@ TEMPLATES = {
                 "into it is.\n\n"
                 "Is that roughly how it works at {company} today, or have you already "
                 "put something in place for it?"},
+    # NEITHER OF THESE MAY ASSERT A PRIOR MESSAGE. `breakup` below was fixed
+    # for exactly this and these two were missed, one screen above it. "one
+    # more note and then I will leave it" and "following on from what I
+    # mentioned" both claim we have written before. On a record with no
+    # confirmed touch - every record in a rebuilt estate, and every record
+    # whose day-1 step needs a model that does not ship - that is false on the
+    # first message a prospect ever receives.
+    #
+    # It is the default shape rather than an edge case: `due(day=21)` returns
+    # day3, day5, day10 and day21 in ONE batch and 21 is `run.py`'s default, so
+    # day10 can be a first touch. `claims.py` cannot catch it - a claim about
+    # US carries no number, month or event word - and `outreachclaims`, which
+    # is the authority on claims about us, has no consumer on the send path.
     "comparable_proof": {
         "subject": "how teams your size handle {angle_word}",
-        "body": "{first_name}, one more note and then I will leave it.\n\n"
-                "The teams I work with that look most like {company} tend to arrive at "
-                "the same place. They stop reconciling hours after the fact and start "
+        "body": "{first_name}, the teams I work with that look most like "
+                "{company} tend to arrive at the same place.\n\n"
+                "They stop reconciling hours after the fact and start "
                 "seeing project margin while the project is still running. The change "
                 "that makes the difference is not a new process for the delivery team, "
                 "it is that the finance view and the delivery view stop being two "
@@ -312,7 +325,7 @@ TEMPLATES = {
                 "Would it be useful to see what that looked like for a team your size?"},
     "comparable_proof_short": {
         "subject": "how teams your size handle {angle_word}",
-        "body": "{first_name}, following on from what I mentioned, the teams that look "
+        "body": "{first_name}, the teams that look "
                 "most like {company} usually stop reconciling hours after the fact and "
                 "start seeing project margin while the work is still running. The change "
                 "is not a new process for delivery, it is that finance and delivery stop "

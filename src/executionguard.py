@@ -53,6 +53,17 @@ READBACK_TTL_SECONDS = 15 * 60
 
 CHANNELS = ("linkedin", "email")
 
+# The eligibility reasons that mean somebody must not be contacted. Named from
+# `eligibility`'s own constants so the two cannot drift apart.
+SUPPRESSION_REASONS = (
+    eligibility.BLOCKED_SUPPRESSED,
+    eligibility.BLOCKED_CLIENT_SUPPRESSED,
+    eligibility.BLOCKED_ACCOUNT_SUPPRESSED,
+    eligibility.BLOCKED_UNSUBSCRIBED,
+    eligibility.BLOCKED_CONTACT_STOPPED,
+    eligibility.BLOCKED_REPLIED,
+)
+
 
 class NotAuthorized(RuntimeError):
     """A gate refused. The write must not happen.
@@ -226,9 +237,21 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     decided = eligibility.decide(rec, contact, step_key, channel=channel)
     _require("eligibility", decided.get("verdict") == "eligible",
              f"eligibility says {decided.get('verdict')}: "
-             f"{decided.get('reason')}")
-    _require("suppression", "suppress" not in json.dumps(decided).lower(),
-             "a suppression reason is present on the eligibility verdict")
+             f"{decided.get('reasons') or decided.get('reason')}")
+    # BEHAVIOUR, NOT A SUBSTRING. This was
+    #     "suppress" not in json.dumps(decided).lower()
+    # which refuses on any reason containing the word - including a CLEAR one
+    # such as "suppression: none" - and passes a suppression whose reason
+    # happens to be spelled differently. Asserting on serialised text is the
+    # habit CLAUDE.md names, and a check that misfires is a check somebody
+    # deletes. The declared reasons are the contract.
+    reasons = decided.get("reasons")
+    reasons = reasons if isinstance(reasons, (list, tuple)) else [
+        decided.get("reason")]
+    named = {str(r) for r in reasons if r}
+    _require("suppression", not (named & set(SUPPRESSION_REASONS)),
+             f"a suppression reason is present: "
+             f"{sorted(named & set(SUPPRESSION_REASONS))}")
     problems = lint.check_step(rec, contact["key"], step)
     _require("copy", not problems, f"lint refuses the copy: {sorted(problems)}")
     text = step.get("note") or step.get("body") or ""
@@ -256,15 +279,30 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     sender_id = _sender_for(campaign, channel)
     _require("sender", sender_id not in (None, ""),
              f"the canonical campaign names no {channel} sender")
+    # THE LEDGER'S TENANT IS THE CLIENT, NOT THE PROVIDER'S WORKSPACE NUMBER.
+    #
+    # `workspace` here is EmailBison's numeric estate id, which is what
+    # `require_workspace` and `collision` need. It is the wrong key for a cap:
+    # two clients worked from one EmailBison workspace would share a ceiling,
+    # and one client worked from two workspaces would have its ceiling split
+    # with both halves passing. Everywhere else in this system the tenant is the
+    # client slug - `repo` filters on it, `senderidentity` raises
+    # `CrossWorkspaceSender` on it, `killswitch` is asked about it - so the
+    # ledger uses it too, and records the provider estate separately as
+    # evidence of where the action was aimed.
+    tenant = campaign.get("client")
+    _require("tenancy", bool(tenant),
+             "the canonical campaign names no client, so the action cannot be "
+             "attributed to a tenant")
     today = (now or _utcnow()).isoformat()
-    already = actionledger.count_on(today, channel=channel)
+    already = actionledger.count_on(today, channel=channel, workspace=tenant)
     plan_key = "linkedin_per_day" if channel == "linkedin" else "email_per_day"
     try:
         pilotcaps.require({plan_key: already + 1}, config)
     except Exception as e:
         raise NotAuthorized("pilot_cap", str(e)) from None
     per_sender = actionledger.count_on(today, channel=channel,
-                                       sender_id=sender_id)
+                                       sender_id=sender_id, workspace=tenant)
     try:
         pilotcaps.require({"per_sender_per_day": per_sender + 1}, config)
     except Exception as e:
@@ -277,13 +315,30 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
         actionledger.require_clear(key)
     except actionledger.ActionRefused as e:
         raise NotAuthorized("ledger", str(e)) from None
+    # `gates` is what an audit reads to prove which checks ran, so a gate that
+    # runs and does not say so is a gate nobody can demonstrate afterwards.
+    gates.append("ledger")
 
     # 7. KILLSWITCH, last word ----------------------------------------------
+    # THE CAMPAIGN ROW, NOT ITS ID. `killswitch.campaign_state` reads
+    # `campaign.get("status")` and asks `campaigns.is_frozen(campaign)`, so a
+    # string arrived as an AttributeError - which `except Exception` then
+    # reported as a one-line type error. Three things were wrong with that and
+    # only the third is obvious: the campaign layer never evaluated, so a frozen
+    # or not-yet-running campaign was never consulted by the gate this docstring
+    # calls the last word; the `SendingRefused` verdict, which names every layer
+    # and which to fix first, was flattened away; and the test asserting the
+    # gate fires was satisfied by the type error, so it passed for the wrong
+    # reason.
+    #
+    # `SendingRefused` is caught by name and its message preserved. Anything
+    # else is a bug in the killswitch itself and must not be laundered into a
+    # refusal that reads like policy.
     try:
         killswitch.require(workspace=campaign.get("client"),
-                           campaign=campaign.get("campaign_id"),
-                           rec=rec, contact=contact, step_key=step_key)
-    except Exception as e:
+                           campaign=campaign, rec=rec, contact=contact,
+                           step_key=step_key)
+    except killswitch.SendingRefused as e:
         raise NotAuthorized("killswitch", str(e)) from None
     gates.append("killswitch")
 
@@ -296,18 +351,29 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
         # this path leaking `actionledger.Unsettled` while every other gate
         # raises something else.
         try:
+            # The ceilings go WITH the reservation, not before it. The two
+            # `count_on` calls above are for the refusal message and for an
+            # early exit; the binding check is the one `reserve` performs
+            # inside its own transaction, because counting outside the lock and
+            # appending inside it lets two workers both pass at the ceiling.
+            limits = pilotcaps.effective(config)
+            plan_key = ("linkedin_per_day" if channel == "linkedin"
+                        else "email_per_day")
             actionledger.reserve(
-                key, channel=channel, workspace=workspace,
+                key, channel=channel, workspace=tenant,
+                provider_workspace=workspace,
                 campaign_id=campaign.get("campaign_id"), sender_id=sender_id,
                 rec_id=rec.get("id"), contact_key=contact["key"],
                 step_key=step_key, operation=operation,
-                fingerprint=fingerprint, by=by)
+                fingerprint=fingerprint, by=by,
+                cap_per_day=limits[plan_key]["limit"],
+                cap_per_sender=limits["per_sender_per_day"]["limit"])
         except actionledger.ActionRefused as e:
             raise NotAuthorized("ledger", str(e)) from None
         gates.append("reserved")
 
     return Authorization(
-        key=key, operation=operation, channel=channel, workspace=workspace,
+        key=key, operation=operation, channel=channel, workspace=tenant,
         campaign_id=campaign.get("campaign_id"), sender_id=sender_id,
         rec_id=rec.get("id"), contact_key=contact["key"], step_key=step_key,
         fingerprint=fingerprint, gates=tuple(gates), at=store.now())
@@ -333,7 +399,14 @@ def _sender_for(campaign, channel):
 
 
 def _key(rec, contact, step_key, channel):
-    return f"{rec.get('id')}:{contact.get('key')}:{step_key}:{channel}"
+    """The idempotency key, from `push.push_id` rather than reimplemented.
+
+    Both produced the same string, which is exactly the problem: two
+    definitions of one identity drift silently, and then the ledger and
+    `push.already_pushed` key different things while every test still passes.
+    """
+    from . import push
+    return push.push_id(rec, contact.get("key"), step_key, channel)
 
 
 def dry_run(**kw):

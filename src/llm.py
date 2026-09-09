@@ -223,12 +223,51 @@ def fact_strings(rec):
     return out
 
 
+# A fact shorter than this share of the claim does not make the claim
+# traceable. See `traceable`.
+TRACEABLE_COVERAGE = 0.5
+
+
 def traceable(claim, facts):
-    """A claim is traceable if it appears in, or is contained by, a known fact."""
+    """A claim is traceable if a known fact actually accounts for it.
+
+    THE HOLE THIS CLOSES, WHICH WAS WIDE. This used to be
+
+        any(needle in fact or fact in needle for fact in facts)
+
+    and the second direction is the problem: the company name is itself a
+    stored fact, so ANY invented sentence that mentioned the company was
+    "traceable". Every one of these passed against a record holding only an
+    industry and a headcount -
+
+        "Brightpath raised a Series B in March and opened a Vienna office."
+        "Brightpath is hiring four delivery leads this quarter."
+        "Brightpath lost its largest retainer last month."
+
+    - and `check_evidence` therefore accepted them onto the record, where
+    `cadence.template_vars` prints `evidence[0]` verbatim as the day-5 email's
+    first line AND `claims.support_text` reads them as support, so the model
+    wrote the claim, certified it, and the certification was what the claim
+    checker consulted.
+
+    Two rules now. A fact may only account for a claim it substantially covers,
+    so a nine-character company name cannot license a sixty-character
+    invention. And every number in the claim must appear in some fact, because
+    a figure nobody recorded is the most quotable thing a model can invent.
+    """
     needle = str(claim).strip().lower()
     if not needle:
         return False
-    return any(needle in fact or fact in needle for fact in facts)
+    facts = [str(f).strip().lower() for f in facts if str(f).strip()]
+    for number in set(re.findall(r"\d+", needle)):
+        if not any(number in fact for fact in facts):
+            return False
+    for fact in facts:
+        if needle in fact:
+            return True
+        if fact in needle and len(fact) >= TRACEABLE_COVERAGE * len(needle):
+            return True
+    return False
 
 
 def check_hook(hook, rec):
