@@ -108,6 +108,23 @@ class GuardTest(QueueTest):
             "provider_delays": [["HOUR", 0]],
             "provider_status_expected": "PAUSED",
         })
+        self.approve_campaign()
+
+    def approve_campaign(self):
+        """Record a campaign-level approval, shaped as the orchestrator does.
+
+        Step approval covers the words; campaign approval covers the sender,
+        the provider binding, the limits and the lead set. Both are required,
+        and every gate downstream of it is unreachable without it - which is
+        how the fixture found out it was missing.
+        """
+        current = campaigns.fingerprint(self.campaign, store.load(),
+                                        self.config)
+        self.campaign["approval"] = {"action": "approve", "by": "operator",
+                                     "at": store.now(),
+                                     "fingerprint": current}
+        self.campaign["fingerprint"] = current
+        self.campaign["status"] = campaigns.APPROVED
 
     def readback(self, verdict=configdiff.PASS, verified_at=FRESH,
                  failures=()):
@@ -137,6 +154,17 @@ class GuardTest(QueueTest):
     def allow_killswitch(self):
         return mock.patch.object(killswitch, "require", return_value=True)
 
+    def refused_at(self, gate, **over):
+        with self.allow_collision(), self.allow_killswitch():
+            with self.assertRaises(executionguard.NotAuthorized) as caught:
+                self.attempt(**over)
+        self.assertEqual(caught.exception.gate, gate,
+                         f"expected gate {gate!r}, got "
+                         f"{caught.exception.gate!r}: {caught.exception.why}")
+        self.assertEqual(self.spy.calls, [], "a provider call was made anyway")
+        return caught.exception
+
+
 
 class TheHappyPathIsAuthorized(GuardTest):
     def test_a_fully_gated_action_authorizes_and_writes_once(self):
@@ -164,16 +192,6 @@ class TheHappyPathIsAuthorized(GuardTest):
 
 class EachGateStopsTheProviderCallEntirely(GuardTest):
     """The property that matters: `spy.calls == []`, not a handled error."""
-
-    def refused_at(self, gate, **over):
-        with self.allow_collision(), self.allow_killswitch():
-            with self.assertRaises(executionguard.NotAuthorized) as caught:
-                self.attempt(**over)
-        self.assertEqual(caught.exception.gate, gate,
-                         f"expected gate {gate!r}, got "
-                         f"{caught.exception.gate!r}: {caught.exception.why}")
-        self.assertEqual(self.spy.calls, [], "a provider call was made anyway")
-        return caught.exception
 
     def test_killswitch_off_prevents_the_call(self):
         with self.allow_collision():
@@ -252,13 +270,17 @@ class EachGateStopsTheProviderCallEntirely(GuardTest):
                 self.attempt()
         self.assertEqual(self.spy.calls, [])
 
-    def test_two_senders_on_the_campaign_prevents_the_call(self):
+    def test_adding_a_sender_after_approval_prevents_the_call(self):
+        """Phase 6: swapping the sender must invalidate the approval, and it
+        does so BEFORE the sender-count gate is even reached."""
         self.campaign["senders"]["linkedin"].append({"id": 129531})
-        with self.allow_collision(), self.allow_killswitch():
-            with self.assertRaises(executionguard.NotAuthorized) as caught:
-                self.attempt()
-        self.assertEqual(caught.exception.gate, "sender")
-        self.assertEqual(self.spy.calls, [])
+        self.refused_at("campaign_approval")
+
+    def test_two_senders_are_refused_even_when_both_were_approved(self):
+        """The sender gate itself, isolated by approving the change."""
+        self.campaign["senders"]["linkedin"].append({"id": 129531})
+        self.approve_campaign()
+        self.refused_at("sender")
 
     def test_no_sender_on_the_campaign_prevents_the_call(self):
         self.campaign["senders"]["linkedin"] = []
@@ -317,6 +339,10 @@ class TheCapCountsDurableRowsNotAPlanDict(GuardTest):
                                       "fingerprint": approval.fingerprint(
                                           second_step)})}
             rec = store.get("rec-1")
+            # Adding a contact changes the campaign's lead set, so the campaign
+            # approval has to be renewed or `campaign_approval` refuses first
+            # and the cap is never reached.
+            self.approve_campaign()
             with self.assertRaises(executionguard.NotAuthorized) as caught:
                 self.attempt(config=config, rec=rec,
                              contact=rec["contacts"][1])
@@ -371,6 +397,84 @@ class AnUnsettledAttemptBlocksEveryRetry(GuardTest):
                                 actionledger.FAILED, why="provider 400")
             self.attempt()
         self.assertEqual(len(self.spy.calls), 2)
+
+
+class ChangingAnythingMaterialInvalidatesApproval(GuardTest):
+    """Phase 6. `approval.fingerprint(step)` covers the WORDS and nothing else.
+
+    Sender, provider campaign, list, tenant, limits and the lead set all change
+    what reaches a prospect and none of them touch it. `campaigns.material()`
+    covers exactly those, so the campaign-level approval is what catches them.
+    """
+
+    def changing(self, **fields):
+        for name, value in fields.items():
+            self.campaign[name] = value
+        self.refused_at("campaign_approval")
+
+    def test_changing_the_provider_campaign_blocks(self):
+        self.changing(heyreach_campaign_id=594060)
+
+    def test_changing_the_provider_list_blocks(self):
+        """Re-pointing at a big production list must not keep an approval."""
+        self.changing(heyreach_list_id=605355)
+
+    def test_changing_the_tenant_blocks(self):
+        self.changing(org_unit=999999)
+
+    def test_changing_the_limits_blocks(self):
+        self.changing(daily_volume={"email": 0, "linkedin": 50})
+
+    def test_changing_the_provider_delay_blocks(self):
+        self.changing(provider_delays=[["DAY", 3]])
+
+    def test_changing_the_expected_status_blocks(self):
+        self.changing(provider_status_expected="IN_PROGRESS")
+
+    def test_changing_the_record_set_blocks(self):
+        self.changing(record_ids=["rec-1", "rec-2"])
+
+    def test_changing_the_angle_blocks(self):
+        """The angle selects the words, so this moves both fingerprints."""
+        with store.transaction() as rows:
+            for row in rows:
+                if row["id"] == "rec-1":
+                    row["contacts"][0]["angle"] = "delivery"
+        self.rec = store.get("rec-1")
+        self.contact = self.rec["contacts"][0]
+        with self.allow_collision(), self.allow_killswitch():
+            with self.assertRaises(executionguard.NotAuthorized) as caught:
+                self.attempt()
+        self.assertIn(caught.exception.gate, ("approval", "campaign_approval"))
+        self.assertEqual(self.spy.calls, [])
+
+    def test_changing_the_lead_identity_blocks(self):
+        with store.transaction() as rows:
+            for row in rows:
+                if row["id"] == "rec-1":
+                    row["contacts"][0]["linkedin"] = "someone-else"
+        self.rec = store.get("rec-1")
+        self.contact = self.rec["contacts"][0]
+        self.refused_at("campaign_approval")
+
+    def test_a_campaign_never_approved_at_all_blocks(self):
+        self.campaign["approval"] = None
+        self.refused_at("campaign_approval")
+
+    def test_a_rejected_campaign_blocks(self):
+        self.campaign["approval"] = dict(self.campaign["approval"],
+                                        action="reject")
+        self.refused_at("campaign_approval")
+
+    def test_a_volatile_counter_does_not_invalidate_approval(self):
+        """The other half: a field that cannot change what a prospect receives
+        must NOT move the fingerprint, or every read would revoke consent."""
+        before = campaigns.fingerprint(self.campaign, store.load(), self.config)
+        self.campaign["log"] = [{"at": store.now(), "note": "read"}]
+        self.campaign["events"] = [{"type": "looked_at"}]
+        self.campaign["started_at"] = store.now()
+        after = campaigns.fingerprint(self.campaign, store.load(), self.config)
+        self.assertEqual(before, after)
 
 
 class TheDryRunReservesNothing(GuardTest):

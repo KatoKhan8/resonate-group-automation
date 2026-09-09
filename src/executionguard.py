@@ -188,6 +188,25 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
              "approval no longer applies")
     gates.append("approval")
 
+    # 2b. CAMPAIGN APPROVAL --------------------------------------------------
+    #
+    # Step approval covers the WORDS. It does not cover which sender sends
+    # them, which provider campaign and list they go through, which tenant owns
+    # that campaign, what the limits are, or which leads are in scope - all of
+    # which change what reaches a prospect and none of which touch
+    # `approval.fingerprint(step)`.
+    #
+    # `campaigns.material()` already assembles exactly those facts, and
+    # `approval_is_current` compares the recorded approval against a fresh
+    # digest of them. So "approve, then swap the sender" is refused here, and
+    # so is re-pointing the campaign at a different list.
+    _require("campaign_approval",
+             campaigns.approval_is_current(campaign, recs, config),
+             "the campaign carries no current approval: its senders, limits, "
+             "provider binding, tenant or lead set differ from what was "
+             "approved, or it was never approved as a campaign at all")
+    gates.append("campaign_approval")
+
     # 3. READBACK ------------------------------------------------------------
     _require("readback", isinstance(readback, dict),
              "no provider read-back was supplied; a write may not proceed on "

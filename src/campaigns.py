@@ -193,6 +193,11 @@ def _contact_material(rec, contact):
         "linkedin": (contact.get("linkedin") or "").lower(),
         "sendable": bool(contact.get("sendable")),
         "persona": contact.get("persona"),
+        # The angle selects which words get rendered, so it already moves the
+        # step text digest. Named here anyway because it is a decision somebody
+        # approved, and a field that only matters transitively is a field that
+        # stops mattering the day the template changes.
+        "angle": contact.get("angle"),
     }
 
 
@@ -266,6 +271,18 @@ def material(campaign, recs=None, config=None):
         "daily_volume": campaign.get("daily_volume") or {},
         "bison_campaign_id": campaign.get("bison_campaign_id"),
         "heyreach_campaign_id": campaign.get("heyreach_campaign_id"),
+        # The rest of the provider binding. Without these the fingerprint moved
+        # when the campaign id changed but NOT when the list, the tenant, the
+        # node delay or the expected status did - so a campaign could be
+        # re-pointed at a different list, or a different LinkedIn organisation,
+        # while still carrying a current approval. `configdiff` compares every
+        # one of them against provider truth, which is exactly why each has to
+        # be part of what was approved.
+        "heyreach_list_id": campaign.get("heyreach_list_id"),
+        "org_unit": campaign.get("org_unit"),
+        "workspace": campaign.get("workspace"),
+        "provider_delays": campaign.get("provider_delays"),
+        "provider_status_expected": campaign.get("provider_status_expected"),
         "cadence_version": campaign.get("cadence_version"),
         "config": sending_config(config),
     }
