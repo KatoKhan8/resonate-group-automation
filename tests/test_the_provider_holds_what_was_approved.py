@@ -24,8 +24,8 @@ from unittest import mock
 
 from src import configdiff
 
-APPROVED_NOTE = ("hi Brooke, i work with Design Services teams on utilisation. "
-                 "curious how Nineyards handles it at your size. happy to connect.")
+APPROVED_NOTE = ("hi Dana, i work with Design Services teams on utilisation. "
+                 "curious how Brightpath handles it at your size. happy to connect.")
 PLACEHOLDER = "Hey, would love to connect!"
 
 
@@ -33,12 +33,12 @@ def approved(**over):
     """A normalised APPROVED_CONFIG for a one-lead LinkedIn canary."""
     row = {
         "campaign_id": "594061",
-        "campaign_name": "PRODUCTIVE - CANARY - 2026-09-09",
+        "campaign_name": "CLIENT - CANARY - 2026-09-09",
         "status": "PAUSED",
         "org_unit": "118832",
         "sender_ids": frozenset({"116968"}),
         "list_id": "926076",
-        "lead_set": frozenset({"brookebaron"}),
+        "lead_set": frozenset({"danamarsh"}),
         "lead_count": 1,
         "actions": ("CONNECTION_REQUEST", "END"),
         "note": APPROVED_NOTE,
@@ -163,7 +163,7 @@ class CrossChannelAndTenancyFail(unittest.TestCase):
         self.assertIn("org_unit: mismatch", result["failures"])
 
     def test_a_different_list_fails(self):
-        """Re-using the 50,563-lead list would look like this."""
+        """Re-using the client's big production list would look like this."""
         result = run(p=provider(list_id="605355"))
         self.assertEqual(result["verdict"], configdiff.FAIL)
 

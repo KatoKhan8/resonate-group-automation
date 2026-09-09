@@ -136,8 +136,8 @@ def approved_heyreach(campaign, recs=None, config=None):
             # ONLY APPROVED STEPS ARE IN THE APPROVED CONFIG.
             #
             # Without this, every contact on a named record counted as
-            # approved. `nineyards-ie` carries two selected champions and only
-            # one of them has an approval, so the approved lead set silently
+            # approved. The first record this ran against carried two selected
+            # champions and one approval, so the approved lead set silently
             # became two people and the approved note became ambiguous - the
             # diff would then have refused for the wrong reason, or worse,
             # passed a campaign containing somebody nobody blessed.
