@@ -1,0 +1,13 @@
+[
+  {
+    "call": "key-info",
+    "note": "free: 0 records. Hand written from the capability matrix; no live call has been made. allowed_apis is the authoritative per-key capability list.",
+    "match": {"method": "GET", "url_contains": "/v2/account/key-info"},
+    "status": 200,
+    "response": {"allowed_apis": ["domain-to-linkedin", "linkedin-to-domain",
+                                  "company", "employee-finder", "email"],
+                 "max_requests_per_seconds": 10,
+                 "plan": "fixture",
+                 "records_remaining": 5000}
+  }
+]

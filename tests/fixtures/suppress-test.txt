@@ -1,0 +1,3 @@
+# Fictional suppression list, for tests only. The real one is config/suppress.txt.
+blocked.test
+alsoblocked.example

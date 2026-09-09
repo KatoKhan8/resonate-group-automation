@@ -1,0 +1,237 @@
+[
+  {
+    "call": "email-verifier-catchall",
+    "note": "a catch-all address. ContactOut alone cannot clear it.",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=luka.peric%40lumen.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "accept_all",
+        "email": "luka.peric@lumen.test",
+        "score": 58
+      }
+    }
+  },
+  {
+    "call": "email-verifier-valid",
+    "note": "a definitively valid address",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=tomislav.baric%40meridian.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "valid",
+        "email": "tomislav.baric@meridian.test",
+        "score": 96
+      }
+    }
+  },
+  {
+    "call": "email-verifier-invalid",
+    "note": "a definitively dead address",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=gone%40retired.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "invalid",
+        "email": "gone@retired.test"
+      }
+    }
+  },
+  {
+    "call": "reoon-not-safe",
+    "note": "the catch-all does NOT clear. Only is_safe_to_send true clears an address.",
+    "match": {
+      "method": "GET",
+      "url_contains": "email=luka.peric%40lumen.test"
+    },
+    "status": 200,
+    "response": {
+      "email": "luka.peric@lumen.test",
+      "status": "risky",
+      "is_catch_all": true,
+      "is_deliverable": true,
+      "is_safe_to_send": false,
+      "overall_score": 41,
+      "mx_records": [
+        "mx.example.net"
+      ]
+    }
+  },
+  {
+    "call": "people-count-parked",
+    "note": "a parked domain: nobody works there under this domain",
+    "match": {
+      "method": "POST",
+      "url_contains": "/people/count",
+      "body_contains": "parked.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status_code": 200,
+        "total_results": 0,
+        "estimated_personal_emails": 0,
+        "estimated_work_emails": 0,
+        "estimated_phones": 0
+      }
+    }
+  },
+  {
+    "call": "decision-makers-parked",
+    "note": "section 9, trap 4: the rebrand case returns nobody",
+    "match": {
+      "method": "GET",
+      "url_contains": "people/decision-makers?domain=parked.test"
+    },
+    "status": 200,
+    "response": {
+      "status_code": 200,
+      "metadata": {
+        "page": 1,
+        "page_size": 25,
+        "total_results": 0
+      },
+      "profiles": {}
+    }
+  },
+  {
+    "call": "company-info-parked",
+    "note": "trap 4: company-information-from-domain finds the rebrand that decision-makers missed",
+    "match": {
+      "method": "POST",
+      "url_contains": "/domain/enrich",
+      "body_contains": "parked.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "company": {
+          "name": "Halcyon",
+          "domain": "parked.test",
+          "email_domain": "halcyon.test",
+          "employees": 18,
+          "founded": 2016,
+          "industry": "Software Development",
+          "offices": [
+            "Taipei TW"
+          ],
+          "specialties": [],
+          "tech_stack": []
+        }
+      }
+    }
+  },
+  {
+    "call": "decision-makers-collision",
+    "note": "section 9, trap 1: a company of the same name in another country",
+    "match": {
+      "method": "GET",
+      "url_contains": "people/decision-makers?domain=collision.test"
+    },
+    "status": 200,
+    "response": {
+      "status_code": 200,
+      "metadata": {
+        "page": 1,
+        "page_size": 25,
+        "total_results": 3
+      },
+      "profiles": {
+        "https://www.linkedin.com/in/mirna-zoric": {
+          "full_name": "Mirna Zorić",
+          "title": "Operations Manager",
+          "company": {
+            "name": "Samename",
+            "domain": "collision.test"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/mirna-zoric",
+          "contact_info": {
+            "work_email": [
+              "mirna.zoric@collision.test"
+            ]
+          },
+          "location": "Zagreb, Croatia",
+          "seniority": "manager",
+          "current": true
+        },
+        "https://www.linkedin.com/in/luc-marchand": {
+          "full_name": "Luc Marchand",
+          "title": "Owner",
+          "company": {
+            "name": "Samename",
+            "domain": "samename.example"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/luc-marchand",
+          "contact_info": {
+            "work_email": [
+              "marchand@samename.example"
+            ]
+          },
+          "location": "Nice, France",
+          "seniority": "owner / founder",
+          "current": true
+        },
+        "https://www.linkedin.com/in/pablo-estrada": {
+          "full_name": "Pablo Estrada",
+          "title": "Plant Manager",
+          "company": {
+            "name": "Samename Industrial"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/pablo-estrada",
+          "location": "Lima, Peru",
+          "seniority": "manager",
+          "current": true
+        }
+      }
+    }
+  },
+  {
+    "call": "email-verifier-collision",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=mirna.zoric%40collision.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "valid",
+        "email": "mirna.zoric@collision.test"
+      }
+    }
+  },
+  {
+    "call": "people-count-any",
+    "note": "generic free count for any other domain",
+    "match": {
+      "method": "POST",
+      "url_contains": "/people/count",
+      "body_contains": "domain"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status_code": 200,
+        "total_results": 26,
+        "estimated_personal_emails": 9,
+        "estimated_work_emails": 21,
+        "estimated_phones": 7
+      }
+    }
+  }
+]

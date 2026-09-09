@@ -1,0 +1,15 @@
+# Resonate Outbound OS has zero third-party dependencies.
+#
+# Every import in src/ is from the Python standard library: http.server for
+# the web application, urllib for provider calls, a hand-written PDF writer,
+# a hand-written DNS client, and json/csv for state. There is no framework,
+# no ORM, no template engine and no build step.
+#
+# This file is therefore empty of packages on purpose, and it is not
+# redundant: build platforms detect a Python application by finding a
+# requirements.txt, a pyproject.toml or a Pipfile. Without one, the build
+# does not identify the runtime and fails before it starts.
+#
+# If a dependency is ever added, it is pinned here exactly, and the claim
+# above stops being true - DEPLOYMENT-PLAN.md 1 says why that claim is the
+# deployment's biggest advantage.

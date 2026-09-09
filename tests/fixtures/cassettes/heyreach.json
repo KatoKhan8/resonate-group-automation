@@ -1,0 +1,9 @@
+[
+  {
+    "call": "CheckApiKey",
+    "note": "the documented health check",
+    "match": {"method": "GET", "url_contains": "/auth/CheckApiKey"},
+    "status": 200,
+    "response": {"status": "OK"}
+  }
+]

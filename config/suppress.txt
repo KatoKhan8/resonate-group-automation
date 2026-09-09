@@ -1,0 +1,24 @@
+# Live / paying accounts and current customers. Never cold-sequenced.
+# One domain per line. ingest.py drops any record matching these.
+#
+# THIS FILE IS TRACKED, AND THE REAL ROSTER IS NOT IN IT.
+#
+# Who is paying us is confidential, and a tracked file reaches every clone,
+# every fork and every backup of this repository. So the real list lives in
+#
+#     config/suppress.local.txt
+#
+# which is gitignored. `ingest.load_suppress()` merges that file over this
+# one, so behaviour on an operator's machine is the union of both and nothing
+# below has to be edited to add a customer.
+#
+# On a fresh clone the local file does not exist yet. That is a real state,
+# not a harmless one: an empty roster suppresses nothing while looking exactly
+# like a roster that happens to match nothing. `ingest.suppress_sources()`
+# reports which files actually loaded, so the two can be told apart before a
+# batch is imported rather than afterwards.
+#
+# The entries below are reserved-TLD examples. They demonstrate the format and
+# match nothing real.
+example-customer.test
+another-customer.test

@@ -1,0 +1,14 @@
+[
+  {
+    "call": "verify-power-safe",
+    "note": "power mode on an accept_all address. Only is_safe_to_send true clears it.",
+    "match": {"method": "GET", "url_contains": "/verify"},
+    "status": 200,
+    "response": {"email": "ivana.saric@meridian.test", "status": "safe",
+                 "is_catch_all": true, "is_deliverable": true, "is_safe_to_send": true,
+                 "overall_score": 92, "mx_records": ["aspmx.l.google.com"],
+                 "mx_accepts_mail": true, "is_disposable": false, "is_role_account": false,
+                 "smtp_provider": "google", "verification_time": "4.1s",
+                 "debug_log": "a long transcript that must never leave the module"}
+  }
+]

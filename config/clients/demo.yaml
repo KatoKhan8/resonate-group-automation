@@ -1,0 +1,109 @@
+# A wholly fictional client, used by the end-to-end campaign test.
+#
+# Nothing here describes a real company, a real person, a real market or a real
+# Slack workspace. Every domain is .test, every Slack id is a placeholder, and
+# the ids are shaped like Slack ids only so the permission checks exercise the
+# same code path a real one would. tests/test_fixture_hygiene.py keeps it that
+# way.
+#
+# It lives in config/ rather than tests/fixtures/ because clients.load() reads
+# from config/clients, and the end-to-end test is worth running against the
+# real loader rather than a stub of it.
+
+name: Demo Client
+domain: demo.test
+booking_link: https://demo.test/book
+
+sender:
+  mode: client_rep
+  name: Demo Sender
+  title: Head of Demo
+  email: demo.sender@demo.test
+
+market:
+  must: a services business that tracks time
+  size_min_employees: 10
+  geos: [United Kingdom, Ireland]
+  exclude_geos: [Antarctica]
+  flag_dont_drop: true
+
+personas:
+  champion:
+    titles: [Operations Manager, Head of Operations, Finance Manager]
+    cap_per_domain: 2
+    angles:
+      ops: utilisation, capacity planning, one system not five
+      finance: margin per project, month end reconciliation
+  economic_buyer:
+    titles: [CEO, Managing Director, Founder]
+    cap_per_domain: 1
+    start_offset_days: 5
+    angles:
+      founder: profitability visible on Monday not two weeks late
+
+cadence: demo_default
+
+tone:
+  email: plain, direct, no em dashes, no buzzwords
+  linkedin: casual, lowercase, human
+
+slack:
+  enabled: true
+  approvals_channel: C0DEMOAPPROV
+  positive_replies_channel: C0DEMOPOSITI
+  operational_alerts_channel: C0DEMOALERTS
+  allowed_approvers: [U0DEMOADMIN1]
+  allowed_reviewer_groups: [S0DEMOREVIEW]
+  notify:
+    campaign_ready: true
+    positive_reply: true
+    credit_cap_reached: true
+    batch_complete: true
+    provider_failure: true
+    large_held_count: true
+  thresholds:
+    held_count_threshold: 2
+    provider_failure_threshold: 2
+
+research:
+  recent_signals:
+    enabled: true
+    max_people_per_company: 2
+    max_posts_per_person: 3
+    max_sources_per_company: 10
+    min_relevance_score: 0.65
+    freshness:
+      high_days: 30
+      medium_days: 90
+      maximum_days: 365
+  apify:
+    enabled: true
+    max_runs_per_batch: 5
+    max_items_per_run: 20
+    max_pages_per_domain: 5
+
+# ------------------------------------------------- email security (MX)
+#
+# Some gateways quarantine cold mail so reliably that sending into them costs
+# sender reputation and buys nothing. Naming one here stops the EMAIL channel
+# for contacts whose ADDRESS domain sits behind it - the contact stays in the
+# campaign and LinkedIn is untouched.
+#
+# Google Workspace and Microsoft 365 are recognised and deliberately NOT
+# blocked: they are where most of the addressable market reads its mail.
+email_security:
+  mx_filter:
+    enabled: true
+
+    # Only names this build can identify from an MX hostname with no
+    # ambiguity: barracuda, proofpoint, mimecast, cisco, forcepoint,
+    # trendmicro, spamtitan, hornetsecurity, symantec, sophos.
+    blocked_providers: [barracuda, proofpoint, mimecast]
+
+    # What to do when the MX belongs to nobody we recognise. `allow` lets
+    # normal verification decide; `block` is available but will refuse a lot
+    # of perfectly ordinary self-hosted mail.
+    unknown_provider_policy: allow
+
+    # MX changes rarely. One lookup per domain per week is plenty.
+    cache_days: 7

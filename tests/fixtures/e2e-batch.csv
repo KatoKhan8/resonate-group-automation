@@ -1,0 +1,13 @@
+company,domain,lane,client,context,signal
+Clearwater,clean.test,domains,productive,,
+Harborview,catchall-safe.test,domains,productive,,
+Stonebridge,catchall-unsafe.test,domains,productive,,
+Deadletter,deadletter.test,domains,productive,,
+Northwind,fallback.test,domains,productive,,
+Samename,collision.test,domains,productive,,
+Kestrel,parked.test,domains,productive,,
+Blocked Co,blocked.test,domains,productive,,
+Clearwater Again,https://www.Clean.test/about,domains,productive,,
+No Domain Co,,domains,productive,,
+Redwood,redwood.test,revive,productive,"ACCOUNT NOTES - Redwood, quiet since 12 Mar 2025. 04 Feb 2025 - trial key issued with a 50 credit limit. 12 Mar 2025 - Frank Merrow asked to run it against a realistic list of accounts and the reply proposed a call instead. The question was never answered.",
+Skyline,skyline.test,cold,productive,,"Mira Kovacs said publicly that Skyline tried three outbound agencies before building the function in house"

@@ -1,0 +1,20 @@
+[
+  {
+    "call": "users",
+    "note": "which workspace this credential is bound to. The only route that says so; /me, /user, /account and /workspaces/current are all 404. Workspace 99 is fictional on purpose - a fixture must exercise the identity read without naming a real client.",
+    "match": {"method": "GET", "url_contains": "/users"},
+    "status": 200,
+    "response": {"data": {"id": 1, "name": "Fixture Operator",
+                          "email": "operator@example.test",
+                          "workspace": {"id": 99,
+                                        "name": "Fixture Workspace"}}}
+  },
+  {
+    "call": "campaigns",
+    "note": "read only list, the health check. Creates nothing.",
+    "match": {"method": "GET", "url_contains": "/campaigns"},
+    "status": 200,
+    "response": {"data": [{"id": 42, "name": "Productive UK Q3"},
+                          {"id": 43, "name": "ContactOut revive"}]}
+  }
+]

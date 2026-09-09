@@ -1,0 +1,8 @@
+# Live / paying accounts and current customers. Never cold-sequenced.
+# One domain per line. prep.py drops any record matching these.
+#
+# The real roster is NOT tracked. It lives in config/suppress.local.txt on the
+# operator's machine (gitignored). The entries below are reserved-TLD examples
+# and match nothing real.
+example-customer.test
+another-customer.test

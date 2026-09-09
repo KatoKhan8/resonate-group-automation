@@ -1,0 +1,182 @@
+[
+  {
+    "call": "tools/list",
+    "note": "free, the health check",
+    "match": {
+      "method": "POST",
+      "body_contains": "\"tools/list\""
+    },
+    "status": 200,
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "tools": [
+          {
+            "name": "people_search"
+          },
+          {
+            "name": "company_search"
+          },
+          {
+            "name": "email_finder"
+          },
+          {
+            "name": "email_finder_results"
+          },
+          {
+            "name": "industry_search"
+          },
+          {
+            "name": "location_search"
+          },
+          {
+            "name": "technology_search"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "call": "industry_search",
+    "note": "strict enum lookup, must precede any industry filter",
+    "match": {
+      "method": "POST",
+      "body_contains": "\"industry_search\""
+    },
+    "status": 200,
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"results\": [{\"name\": \"Advertising Services\"}, {\"name\": \"Marketing Services\"}]}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "call": "location_search",
+    "match": {
+      "method": "POST",
+      "body_contains": "\"location_search\""
+    },
+    "status": 200,
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"results\": [{\"name\": \"Zagreb, Croatia\"}]}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "call": "people_search",
+    "match": {
+      "method": "POST",
+      "body_contains": "\"people_search\""
+    },
+    "status": 200,
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"content\": [{\"fullName\": \"Tomislav Barić\", \"title\": \"Head of SEO\", \"company\": {\"name\": \"Meridian\"}, \"linkedin\": \"https://www.linkedin.com/in/tomislav-baric\", \"email\": null, \"location\": \"Zagreb, Croatia\", \"summary\": \"a long profile summary that must be trimmed away\"}], \"totalElements\": 1, \"totalPages\": 1}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "call": "people_search-400-no-sources",
+    "note": "what the API returns when keywordSources is missing. Never reachable through this module: the guard defaults it.",
+    "match": {
+      "method": "POST",
+      "body_contains": "\"__no_sources__\""
+    },
+    "status": 400,
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "error": {
+        "code": 400,
+        "message": "sources is required"
+      }
+    }
+  },
+  {
+    "call": "email_finder",
+    "note": "async: returns a trackId",
+    "match": {
+      "method": "POST",
+      "body_contains": "\"email_finder\"",
+      "not_body_contains": "email_finder_results"
+    },
+    "status": 200,
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"trackId\": \"trk_8f31\", \"state\": \"PENDING\"}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "call": "email_finder_results-pending",
+    "note": "first poll, still working",
+    "match": {
+      "method": "POST",
+      "body_contains": "\"email_finder_results\""
+    },
+    "status": 200,
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"trackId\": \"trk_8f31\", \"state\": \"PENDING\", \"content\": []}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "call": "email_finder_results-ready",
+    "note": "second poll, done. Same match as the pending one: the player plays them in order.",
+    "match": {
+      "method": "POST",
+      "body_contains": "\"email_finder_results\""
+    },
+    "status": 200,
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"trackId\": \"trk_8f31\", \"state\": \"DONE\", \"content\": [{\"fullName\": \"Tomislav Barić\", \"title\": \"Head of SEO\", \"company\": {\"name\": \"Meridian\"}, \"email\": \"tomislav.baric@meridian.test\", \"linkedin\": \"https://www.linkedin.com/in/tomislav-baric\", \"location\": \"Zagreb, Croatia\", \"raw_smtp\": \"250 OK long transcript\"}]}"
+          }
+        ]
+      }
+    }
+  }
+]

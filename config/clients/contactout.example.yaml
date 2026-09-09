@@ -1,0 +1,185 @@
+# TEMPLATE, NOT A CONFIG.
+#
+# Copy this to config/clients/contactout.yaml, fill in the real values and
+# delete the `example: true` line at the bottom. The runtime refuses to load a
+# file that still carries that line, so a placeholder can never become live
+# targeting policy by accident.
+#
+# Every value below is invented. Nothing here reflects any real ICP, price,
+# persona or geography. Replace all of it.
+
+name: ContactOut EXAMPLE
+domain: example.com
+
+# Where a reply is meant to end up if a draft ever offers a next step.
+booking_link: https://example.com/replace-me
+
+sender:
+  # client_rep: this engine writes no signature and the sending inbox adds it.
+  # Change only if the sending setup is different.
+  mode: client_rep
+  # FILL IN: who the email comes from, as the recipient sees it.
+  name: REPLACE ME
+  title: REPLACE ME
+  email: replace-me@example.com
+
+market:
+  # FILL IN: the one sentence that decides whether a company is in market.
+  # This is the sentence a human would use to reject a domain on sight.
+  must: REPLACE ME, for example "a services business that tracks time"
+
+  # FILL IN: the smallest company worth contacting, by headcount.
+  size_min_employees: 0
+
+  # FILL IN: the countries or regions in scope. Names, not codes: the engine
+  # maps common names onto the country codes providers return.
+  geos: [Example Country A, Example Country B]
+
+  # FILL IN: geographies to keep out, whatever else matches.
+  exclude_geos: [Example Excluded Country]
+
+  # true  = a company outside the geos is flagged for a human look, not dropped
+  # false = it is dropped automatically, with the reason on the record
+  # Leave true unless you are certain. A wrong drop is invisible; a wrong flag
+  # costs one glance.
+  flag_dont_drop: true
+
+personas:
+  # FILL IN one block per persona. The names are yours: `champion` and
+  # `economic_buyer` are only the names the worked example in BUILD-SPEC uses.
+  champion:
+    # FILL IN: the titles that mean this persona. Matching is case insensitive
+    # and tolerant of word order, but it does not guess synonyms.
+    titles: [Example Title One, Example Title Two]
+
+    # FILL IN: how many of this persona to contact per domain. This number is
+    # money. Two champions plus one buyer over 500 domains is about 1,500
+    # search credits; no caps is 5,000 to 6,000.
+    cap_per_domain: 1
+
+    # FILL IN: the angles available to this persona, as key: the client's own
+    # words for it. The words are used verbatim in template emails, so write
+    # them the way the client would say them.
+    angles:
+      example_angle: REPLACE ME with the client's own words for this angle
+
+  economic_buyer:
+    titles: [Example Buyer Title]
+    cap_per_domain: 1
+
+    # Days this persona's sequence starts behind the champion's, so the two
+    # tracks at one company do not arrive together.
+    start_offset_days: 0
+    angles:
+      example_buyer_angle: REPLACE ME
+
+# FILL IN: which cadence this client runs. Only the default is implemented.
+cadence: default
+
+# The day 3 LinkedIn connection note.
+#   template = deterministic, costs nothing, cannot wander      (default)
+#   llm      = written per contact, costs a model call each
+linkedin_connection_note:
+  mode: template
+
+tone:
+  # FILL IN: how the client's email should read. These words reach the drafting
+  # prompt directly.
+  email: REPLACE ME, for example "polished, professional, no em dashes, no buzzwords"
+  linkedin: REPLACE ME, for example "casual, lowercase, human"
+
+# Remove this line in the real config. While it is here the runtime refuses to
+# use this file, so an unedited template cannot start a campaign.
+# ---------------------------------------------------------------- Slack
+#
+# Off unless this block says otherwise. A client that has never been told about
+# Slack posts nothing: there is no default channel and no default approver, so
+# an omitted line means "nobody", never "everybody".
+#
+# Channel ids, not names: a renamed channel must not silently redirect a
+# client's private alerts somewhere else.
+slack:
+  enabled: false
+
+  approvals_channel: C000000000
+  positive_replies_channel: C000000001
+  operational_alerts_channel: C000000002
+
+  # Slack user ids that may approve or reject a campaign. An empty list
+  # permits nobody, which is the safe failure.
+  allowed_approvers: [U000000000]
+
+  # Groups that may review drafts but cannot launch.
+  allowed_reviewer_groups: [S000000000]
+
+  notify:
+    campaign_ready: true
+    positive_reply: true
+    credit_cap_reached: true
+    batch_complete: false
+    provider_failure: true
+
+  # Below these, nothing is posted: an alert channel nobody reads is worse
+  # than no alert channel.
+  thresholds:
+    held_count_threshold: 10
+    provider_failure_threshold: 3
+
+# ------------------------------------------------------- research
+#
+# Off unless this block says otherwise. An existing client must never start
+# scraping because a new version shipped.
+research:
+  recent_signals:
+    enabled: false
+
+    # Person-level research happens ONLY for contacts that survived persona
+    # selection. ContactOut typically returns six people and personas pick two;
+    # researching before selection wastes two thirds of every call.
+    max_people_per_company: 2
+    max_posts_per_person: 3
+    max_sources_per_company: 10
+
+    # Ages in days. Evidence with no date is UNKNOWN, never assumed recent.
+    freshness:
+      high_days: 30
+      medium_days: 90
+      maximum_days: 365
+
+    # Below this, a signal is too weak to write a sentence from and the
+    # message falls back to a verified company fact plus persona pain.
+    min_relevance_score: 0.65
+
+  apify:
+    enabled: false
+    max_runs_per_batch: 25
+    max_items_per_run: 50
+    max_pages_per_domain: 10
+
+# ------------------------------------------------- email security (MX)
+#
+# Some gateways quarantine cold mail so reliably that sending into them costs
+# sender reputation and buys nothing. Naming one here stops the EMAIL channel
+# for contacts whose ADDRESS domain sits behind it - the contact stays in the
+# campaign and LinkedIn is untouched.
+#
+# Google Workspace and Microsoft 365 are recognised and deliberately NOT
+# blocked: they are where most of the addressable market reads its mail.
+email_security:
+  mx_filter:
+    enabled: true
+
+    # Only names this build can identify from an MX hostname with no
+    # ambiguity: barracuda, proofpoint, mimecast, cisco, forcepoint,
+    # trendmicro, spamtitan, hornetsecurity, symantec, sophos.
+    blocked_providers: [barracuda, proofpoint, mimecast]
+
+    # What to do when the MX belongs to nobody we recognise. `allow` lets
+    # normal verification decide; `block` is available but will refuse a lot
+    # of perfectly ordinary self-hosted mail.
+    unknown_provider_policy: allow
+
+    # MX changes rarely. One lookup per domain per week is plenty.
+    cache_days: 7
+
+example: true

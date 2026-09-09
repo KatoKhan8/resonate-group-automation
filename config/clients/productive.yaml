@@ -1,0 +1,160 @@
+# BUILD-SPEC section 4. Nothing parses this yet: Phase 1 only checks that the
+# file exists before it will ingest a batch for this client.
+name: Productive
+domain: productive.test
+booking_link: https://productive.test/get-started/
+sender:
+  mode: client_rep          # engine writes no signature, sending inbox adds it
+market:
+  must: services business that tracks time
+  size_min_employees: 20
+  geos: [United Kingdom, Ireland, Netherlands, Germany, France, Nordics,
+         Australia, United States]
+  exclude_geos: [India, Pakistan, United Arab Emirates]
+  flag_dont_drop: true      # out-of-geo gets flagged for human call, not dropped
+# The same list again, under the key the scorer reads.
+#
+# `market.geos` above reaches `personas.icp_flags`, which writes a flag onto
+# the record. It never reaches `icp.score`, which looks only at
+# `config["icp"]["markets"]` - so with no `icp:` block the geography dimension
+# was skipped for every company and Productive's stated markets counted for
+# nothing in the verdict. This is a transcription of the line above, not a new
+# policy: country names match `segment["country"]` exactly and "Nordics"
+# matches the region, so nothing is widened. Belgium does not become a target
+# by way of Benelux, nor Austria by way of DACH.
+#
+# Deliberately absent: `thresholds.min_employees`. `size_min_employees: 20`
+# above is a real number, but setting it here makes "under twenty" a decisive
+# negative worth -25, which rejects the company outright - and `flag_dont_drop`
+# on the line above says Productive wants those flagged for a human instead.
+# Weights, penalties and the tier thresholds are likewise left at the module
+# defaults, because no evidence in this repository says Productive has ever
+# reviewed them.
+icp:
+  markets: [United Kingdom, Ireland, Netherlands, Germany, France, Nordics,
+            Australia, United States]
+# Public-evidence research. Bounded here rather than by `--cap`, because Apify
+# bills in compute units and `COSTS["apify-research"]` is zero - the credit cap
+# cannot see this spend at all. These four numbers are the only ceiling there
+# is, so they are set deliberately low: at most ten runs in a batch, five pages
+# of one domain, twenty items, and `research.run` refuses a run for a record
+# that already has the structured evidence it would go looking for.
+research:
+  apify:
+    enabled: true
+    max_runs_per_batch: 10
+    max_items_per_run: 20
+    max_pages_per_domain: 5
+personas:
+  champion:
+    # Delivery, production and studio leadership added 2026-09-09 on an
+    # operator decision. At a 20-100 person agency these roles own the thing
+    # Productive sells to: who is booked on what, whether a project is burning
+    # its budget, and where the next hire has to go. They are not founder copy
+    # and they are not finance copy.
+    #
+    # Added as a family rather than as named people: the titles below are how
+    # the role is spelled, and the `routing.strategies` block at the foot of
+    # this file puts each one in the persona family whose angle it should get.
+    # A title outside both lists still fails closed - `personas.classify`
+    # returns None and the contact is set aside as "not a persona for this
+    # client", which is what happened to all four of these before today.
+    titles: [Operations Manager, Operations Director, Project Manager,
+             Finance Manager, Head of Finance, Head of Operations,
+             Head of Production, Production Director,
+             Design Studio Manager, Studio Manager,
+             Project Director, Design Director]
+    cap_per_domain: 2
+    angles:
+      finance: margin per project, month end reconciliation, multi entity billing
+      delivery: live budget burn, scope creep, resourcing visibility
+      # Renamed from `ops`. `personas.default_angle` matches an angle key
+      # against the ROUTING FAMILY a title belongs to, and the families are
+      # named `operations`, `finance`, `delivery`, `resource_management` and
+      # `founder`. `ops` matched none of them, so under the operations_led
+      # strategy a champion could only ever receive an angle when the family
+      # came back `finance` - every operations lead and every studio manager
+      # got None and was held on `domains_contact_no_angle`. Same words, a key
+      # that lines up with the thing it is matched against.
+      operations: utilisation, capacity planning, one system not five
+      resource_management: who is booked on what next week, and where the next hire goes
+  economic_buyer:
+    # The spelled-out forms of the abbreviations already on this line.
+    # `personas.title_score` needs an exact match, a containment, or every
+    # word over three characters shared, and none of those join "COO" to
+    # "Chief Operating Officer" - so a real COO who writes the title out
+    # in full was excluded as "not a persona for this client" while a
+    # "President & COO" at the same seniority was kept. Same role, and
+    # not a widening of who Productive sells to.
+    titles: [CFO, Chief Financial Officer, COO, Chief Operating Officer,
+             CEO, Chief Executive Officer, Owner, Founder,
+             Managing Director, Direktor]
+    cap_per_domain: 1
+    start_offset_days: 5    # buyer track starts behind champion track
+    angles:
+      founder: profitability visible on Monday not two weeks late
+      # An operations lead is not a founder. `personas.default_angle` matches
+      # an angle key to the routing family the title belongs to, so a COO gets
+      # this one and a CEO gets `founder`. Without it a COO inherited founder
+      # copy because the persona defined only that angle.
+      #
+      # There is deliberately no `finance` angle here. A CFO is eligible as an
+      # economic buyer and has no angle that fits, so `default_angle` returns
+      # None, lint raises `domains_contact_no_angle` and the contact is held -
+      # which is the wanted answer. Add one only when there is something true
+      # to say to a finance lead.
+      operations: utilisation and capacity across live projects
+# The short topic a subject line may name. `angles` above is the argument a
+# message makes and is too long for a subject: lint fails at 60 characters,
+# "how teams your size handle " is 27, and the founder phrase is 50. Widening
+# the lint rule to fit it is forbidden, so the wording gives instead - these
+# are the same words, shortened, never a new claim.
+#
+# Top level rather than inside a persona on purpose. /settings/personas
+# rewrites a persona as titles, cap and angles, so a label kept in there would
+# be dropped the first time somebody edited that persona in the product.
+angle_labels:
+  finance: project margin at month end
+  delivery: budget burn and resourcing
+  # Kept after the `ops` -> `operations` rename above, because a contact
+  # selected before it still carries `angle: ops` and must still get a
+  # readable subject rather than the fallback.
+  ops: utilisation and capacity
+  operations: utilisation and capacity
+  resource_management: who is booked next week
+  founder: profitability on Monday
+cadence: productive_default
+tone:
+  email: polished, professional, no em dashes, no buzzwords, no fluff openers
+  linkedin: casual, lowercase, human
+
+# Which persona family each title belongs to, for this client only.
+#
+# `personas.classify` decides WHETHER a contact is a persona, from the title
+# lists above. This decides WHICH ANGLE they get, by naming the family whose
+# key matches one of the persona's angles. The two are separate on purpose: a
+# title can be a legitimate Productive persona and still have nothing true to
+# say to it, and that case must end in a hold rather than in borrowed copy.
+#
+# Overriding a persona replaces its list rather than extending it, so every
+# default kept is restated here.
+routing:
+  strategies:
+    operations_led:
+      personas:
+        operations: [COO, Chief Operating Officer, Operations Director,
+                     Head of Operations, Head of Delivery, Operations Manager,
+                     Head of Production, Production Director]
+        # Project and design leadership own delivery at this size, and the
+        # delivery angle - budget burn, scope creep, resourcing visibility - is
+        # what they answer for.
+        delivery: [Project Director, Design Director, Project Manager,
+                   Delivery Director]
+        finance: [Finance Director, Head of Finance, Financial Controller,
+                  Finance Manager]
+        resource_management: [Head of Resource Management, Resource Manager,
+                              Resourcing Manager, Head of Resourcing,
+                              Traffic Manager, Studio Manager,
+                              Design Studio Manager]
+        founder: [Founder, CEO, Chief Executive Officer, Managing Director]
+      priority: [operations, delivery, resource_management, finance, founder]

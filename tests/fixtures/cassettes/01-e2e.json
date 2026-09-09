@@ -1,0 +1,757 @@
+[
+  {
+    "call": "e2e-count-clean",
+    "match": {
+      "method": "POST",
+      "url_contains": "/people/count",
+      "body_contains": "clean.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "total_results": 40,
+        "estimated_phones": 12
+      }
+    }
+  },
+  {
+    "call": "e2e-dm-clean",
+    "note": "three champions and one buyer: the champion cap must bite",
+    "match": {
+      "method": "GET",
+      "url_contains": "people/decision-makers?domain=clean.test"
+    },
+    "status": 200,
+    "response": {
+      "status_code": 200,
+      "metadata": {
+        "page": 1,
+        "page_size": 25,
+        "total_results": 4
+      },
+      "profiles": {
+        "https://www.linkedin.com/in/cuk-simic": {
+          "full_name": "Ćuk Šimić",
+          "title": "Head of Finance",
+          "company": {
+            "name": "Clearwater",
+            "domain": "clean.test"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/cuk-simic",
+          "contact_info": {
+            "work_email": [
+              "cuk.simic@clean.test"
+            ]
+          },
+          "location": "London, United Kingdom",
+          "seniority": "head",
+          "current": true
+        },
+        "https://www.linkedin.com/in/ana-novak": {
+          "full_name": "Ana Novak",
+          "title": "Operations Manager",
+          "company": {
+            "name": "Clearwater",
+            "domain": "clean.test"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/ana-novak",
+          "contact_info": {
+            "work_email": [
+              "ana.novak@clean.test"
+            ]
+          },
+          "location": "London, United Kingdom",
+          "seniority": "manager",
+          "current": true
+        },
+        "https://www.linkedin.com/in/petra-jelic": {
+          "full_name": "Petra Jelić",
+          "title": "Project Manager",
+          "company": {
+            "name": "Clearwater",
+            "domain": "clean.test"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/petra-jelic",
+          "contact_info": {
+            "work_email": [
+              "petra.jelic@clean.test"
+            ]
+          },
+          "location": "London, United Kingdom",
+          "seniority": "manager",
+          "current": true
+        },
+        "https://www.linkedin.com/in/liang-wei": {
+          "full_name": "梁伟",
+          "title": "Managing Director",
+          "company": {
+            "name": "Clearwater",
+            "domain": "clean.test"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/liang-wei",
+          "contact_info": {
+            "work_email": [
+              "md@clean.test"
+            ]
+          },
+          "location": "London, United Kingdom",
+          "seniority": "owner / founder",
+          "current": true
+        }
+      }
+    }
+  },
+  {
+    "call": "e2e-verify-clean-1",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=cuk.simic%40clean.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "valid"
+      }
+    }
+  },
+  {
+    "call": "e2e-verify-clean-2",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=ana.novak%40clean.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "valid"
+      }
+    }
+  },
+  {
+    "call": "e2e-verify-clean-3",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=petra.jelic%40clean.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "valid"
+      }
+    }
+  },
+  {
+    "call": "e2e-verify-clean-4",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=md%40clean.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "valid"
+      }
+    }
+  },
+  {
+    "call": "e2e-count-safe",
+    "match": {
+      "method": "POST",
+      "url_contains": "/people/count",
+      "body_contains": "catchall-safe.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "total_results": 22,
+        "estimated_phones": 5
+      }
+    }
+  },
+  {
+    "call": "e2e-dm-safe",
+    "match": {
+      "method": "GET",
+      "url_contains": "people/decision-makers?domain=catchall-safe.test"
+    },
+    "status": 200,
+    "response": {
+      "status_code": 200,
+      "metadata": {
+        "page": 1,
+        "page_size": 25,
+        "total_results": 1
+      },
+      "profiles": {
+        "https://www.linkedin.com/in/iris-hallow": {
+          "full_name": "Iris Hallow",
+          "title": "Head of Operations",
+          "company": {
+            "name": "Harborview",
+            "domain": "catchall-safe.test"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/iris-hallow",
+          "contact_info": {
+            "work_email": [
+              "iris.hallow@catchall-safe.test"
+            ]
+          },
+          "location": "Dublin, Ireland",
+          "seniority": "head",
+          "current": true
+        }
+      }
+    }
+  },
+  {
+    "call": "e2e-verify-safe",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=iris.hallow%40catchall-safe.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "accept_all"
+      }
+    }
+  },
+  {
+    "call": "e2e-reoon-safe",
+    "note": "the catch-all clears: only is_safe_to_send true does that",
+    "match": {
+      "method": "GET",
+      "url_contains": "email=iris.hallow%40catchall-safe.test"
+    },
+    "status": 200,
+    "response": {
+      "is_catch_all": true,
+      "is_deliverable": true,
+      "is_safe_to_send": true,
+      "overall_score": 94,
+      "status": "safe",
+      "mx_records": [
+        "mx.example.net"
+      ]
+    }
+  },
+  {
+    "call": "e2e-count-unsafe",
+    "match": {
+      "method": "POST",
+      "url_contains": "/people/count",
+      "body_contains": "catchall-unsafe.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "total_results": 31,
+        "estimated_phones": 8
+      }
+    }
+  },
+  {
+    "call": "e2e-dm-unsafe",
+    "match": {
+      "method": "GET",
+      "url_contains": "people/decision-makers?domain=catchall-unsafe.test"
+    },
+    "status": 200,
+    "response": {
+      "status_code": 200,
+      "metadata": {
+        "page": 1,
+        "page_size": 25,
+        "total_results": 1
+      },
+      "profiles": {
+        "https://www.linkedin.com/in/otto-lindqvist": {
+          "full_name": "Otto Lindqvist",
+          "title": "Operations Director",
+          "company": {
+            "name": "Stonebridge",
+            "domain": "catchall-unsafe.test"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/otto-lindqvist",
+          "contact_info": {
+            "work_email": [
+              "otto.lindqvist@catchall-unsafe.test"
+            ]
+          },
+          "location": "Stockholm, Sweden",
+          "seniority": "director",
+          "current": true
+        }
+      }
+    }
+  },
+  {
+    "call": "e2e-verify-unsafe",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=otto.lindqvist%40catchall-unsafe.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "accept_all"
+      }
+    }
+  },
+  {
+    "call": "e2e-reoon-unsafe",
+    "note": "the catch-all does not clear, so the record is held, not sent",
+    "match": {
+      "method": "GET",
+      "url_contains": "email=otto.lindqvist%40catchall-unsafe.test"
+    },
+    "status": 200,
+    "response": {
+      "is_catch_all": true,
+      "is_deliverable": true,
+      "is_safe_to_send": false,
+      "overall_score": 38,
+      "status": "risky",
+      "mx_records": [
+        "mx.example.net"
+      ]
+    }
+  },
+  {
+    "call": "e2e-count-invalid",
+    "match": {
+      "method": "POST",
+      "url_contains": "/people/count",
+      "body_contains": "deadletter.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "total_results": 9,
+        "estimated_phones": 1
+      }
+    }
+  },
+  {
+    "call": "e2e-dm-invalid",
+    "match": {
+      "method": "GET",
+      "url_contains": "people/decision-makers?domain=deadletter.test"
+    },
+    "status": 200,
+    "response": {
+      "status_code": 200,
+      "metadata": {
+        "page": 1,
+        "page_size": 25,
+        "total_results": 1
+      },
+      "profiles": {
+        "https://www.linkedin.com/in/hugo-bramley": {
+          "full_name": "Hugo Bramley",
+          "title": "Finance Manager",
+          "company": {
+            "name": "Deadletter",
+            "domain": "deadletter.test"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/hugo-bramley",
+          "contact_info": {
+            "work_email": [
+              "hugo.bramley@deadletter.test"
+            ]
+          },
+          "location": "Manchester, United Kingdom",
+          "seniority": "manager",
+          "current": true
+        }
+      }
+    }
+  },
+  {
+    "call": "e2e-verify-invalid",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=hugo.bramley%40deadletter.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "invalid"
+      }
+    }
+  },
+  {
+    "call": "e2e-count-fallback",
+    "match": {
+      "method": "POST",
+      "url_contains": "/people/count",
+      "body_contains": "fallback.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "total_results": 14,
+        "estimated_phones": 3
+      }
+    }
+  },
+  {
+    "call": "e2e-dm-fallback",
+    "note": "ContactOut has nobody: the AI Ark fallback is the only way in",
+    "match": {
+      "method": "GET",
+      "url_contains": "people/decision-makers?domain=fallback.test"
+    },
+    "status": 200,
+    "response": {
+      "status_code": 200,
+      "metadata": {
+        "page": 1,
+        "page_size": 25,
+        "total_results": 0
+      },
+      "profiles": {}
+    }
+  },
+  {
+    "call": "e2e-companyinfo-fallback",
+    "match": {
+      "method": "POST",
+      "url_contains": "/domain/enrich",
+      "body_contains": "fallback.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "company": {
+          "name": "Northwind",
+          "domain": "fallback.test",
+          "employees": 34,
+          "industry": "Software Development",
+          "offices": [
+            "Amsterdam NL"
+          ],
+          "specialties": [],
+          "tech_stack": []
+        }
+      }
+    }
+  },
+  {
+    "call": "e2e-aiark-fallback",
+    "match": {
+      "method": "POST",
+      "body_contains": "fallback.test"
+    },
+    "status": 200,
+    "response": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"content\": [{\"fullName\": \"Sanne de Vries\", \"title\": \"Head of Operations\", \"company\": {\"name\": \"Northwind\"}, \"linkedin\": \"https://www.linkedin.com/in/sanne-de-vries\", \"email\": \"sanne.devries@fallback.test\", \"location\": \"Amsterdam, Netherlands\"}], \"totalElements\": 1}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "call": "e2e-verify-fallback",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=sanne.devries%40fallback.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "valid"
+      }
+    }
+  },
+  {
+    "call": "e2e-count-revive",
+    "match": {
+      "method": "POST",
+      "url_contains": "/people/count",
+      "body_contains": "redwood.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "total_results": 60,
+        "estimated_phones": 20
+      }
+    }
+  },
+  {
+    "call": "e2e-dm-revive",
+    "match": {
+      "method": "GET",
+      "url_contains": "people/decision-makers?domain=redwood.test"
+    },
+    "status": 200,
+    "response": {
+      "status_code": 200,
+      "metadata": {
+        "page": 1,
+        "page_size": 25,
+        "total_results": 1
+      },
+      "profiles": {
+        "https://www.linkedin.com/in/frank-merrow": {
+          "full_name": "Frank Merrow",
+          "title": "Chief Revenue Officer",
+          "company": {
+            "name": "Redwood",
+            "domain": "redwood.test"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/frank-merrow",
+          "contact_info": {
+            "work_email": [
+              "frank.merrow@redwood.test"
+            ]
+          },
+          "location": "Leeds, United Kingdom",
+          "seniority": "cxo",
+          "current": true
+        }
+      }
+    }
+  },
+  {
+    "call": "e2e-verify-revive",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=frank.merrow%40redwood.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "valid"
+      }
+    }
+  },
+  {
+    "call": "e2e-count-cold",
+    "match": {
+      "method": "POST",
+      "url_contains": "/people/count",
+      "body_contains": "skyline.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "total_results": 18,
+        "estimated_phones": 4
+      }
+    }
+  },
+  {
+    "call": "e2e-dm-cold",
+    "match": {
+      "method": "GET",
+      "url_contains": "people/decision-makers?domain=skyline.test"
+    },
+    "status": 200,
+    "response": {
+      "status_code": 200,
+      "metadata": {
+        "page": 1,
+        "page_size": 25,
+        "total_results": 1
+      },
+      "profiles": {
+        "https://www.linkedin.com/in/mira-kovacs": {
+          "full_name": "Mira Kovacs",
+          "title": "Founder",
+          "company": {
+            "name": "Skyline",
+            "domain": "skyline.test"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/mira-kovacs",
+          "contact_info": {
+            "work_email": [
+              "mira.kovacs@skyline.test"
+            ]
+          },
+          "location": "Berlin, Germany",
+          "seniority": "owner / founder",
+          "current": true
+        }
+      }
+    }
+  },
+  {
+    "call": "e2e-verify-cold",
+    "match": {
+      "method": "GET",
+      "url_contains": "email/verify?email=mira.kovacs%40skyline.test"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "valid"
+      }
+    }
+  },
+  {
+    "call": "e2e-reoon-cuk.simic",
+    "note": "the second independent confirmation. ContactOut said valid; Deliverable refuses until its response contract has been read once, so Reoon is what closes the pair.",
+    "match": {
+      "method": "GET",
+      "url_contains": "email=cuk.simic%40clean.test"
+    },
+    "status": 200,
+    "response": {
+      "email": "cuk.simic@clean.test",
+      "status": "safe",
+      "is_catch_all": false,
+      "is_deliverable": true,
+      "is_safe_to_send": true,
+      "overall_score": 92,
+      "mx_records": [
+        "mx.example.test"
+      ]
+    }
+  },
+  {
+    "call": "e2e-reoon-ana.novak",
+    "note": "the second independent confirmation. ContactOut said valid; Deliverable refuses until its response contract has been read once, so Reoon is what closes the pair.",
+    "match": {
+      "method": "GET",
+      "url_contains": "email=ana.novak%40clean.test"
+    },
+    "status": 200,
+    "response": {
+      "email": "ana.novak@clean.test",
+      "status": "safe",
+      "is_catch_all": false,
+      "is_deliverable": true,
+      "is_safe_to_send": true,
+      "overall_score": 92,
+      "mx_records": [
+        "mx.example.test"
+      ]
+    }
+  },
+  {
+    "call": "e2e-reoon-petra.jelic",
+    "note": "the second independent confirmation. ContactOut said valid; Deliverable refuses until its response contract has been read once, so Reoon is what closes the pair.",
+    "match": {
+      "method": "GET",
+      "url_contains": "email=petra.jelic%40clean.test"
+    },
+    "status": 200,
+    "response": {
+      "email": "petra.jelic@clean.test",
+      "status": "safe",
+      "is_catch_all": false,
+      "is_deliverable": true,
+      "is_safe_to_send": true,
+      "overall_score": 92,
+      "mx_records": [
+        "mx.example.test"
+      ]
+    }
+  },
+  {
+    "call": "e2e-reoon-md",
+    "note": "the second independent confirmation. ContactOut said valid; Deliverable refuses until its response contract has been read once, so Reoon is what closes the pair.",
+    "match": {
+      "method": "GET",
+      "url_contains": "email=md%40clean.test"
+    },
+    "status": 200,
+    "response": {
+      "email": "md@clean.test",
+      "status": "safe",
+      "is_catch_all": false,
+      "is_deliverable": true,
+      "is_safe_to_send": true,
+      "overall_score": 92,
+      "mx_records": [
+        "mx.example.test"
+      ]
+    }
+  },
+  {
+    "call": "e2e-reoon-sanne.devries",
+    "note": "the second independent confirmation. ContactOut said valid; Deliverable refuses until its response contract has been read once, so Reoon is what closes the pair.",
+    "match": {
+      "method": "GET",
+      "url_contains": "email=sanne.devries%40fallback.test"
+    },
+    "status": 200,
+    "response": {
+      "email": "sanne.devries@fallback.test",
+      "status": "safe",
+      "is_catch_all": false,
+      "is_deliverable": true,
+      "is_safe_to_send": true,
+      "overall_score": 92,
+      "mx_records": [
+        "mx.example.test"
+      ]
+    }
+  },
+  {
+    "call": "e2e-reoon-frank.merrow",
+    "note": "the second independent confirmation. ContactOut said valid; Deliverable refuses until its response contract has been read once, so Reoon is what closes the pair.",
+    "match": {
+      "method": "GET",
+      "url_contains": "email=frank.merrow%40redwood.test"
+    },
+    "status": 200,
+    "response": {
+      "email": "frank.merrow@redwood.test",
+      "status": "safe",
+      "is_catch_all": false,
+      "is_deliverable": true,
+      "is_safe_to_send": true,
+      "overall_score": 92,
+      "mx_records": [
+        "mx.example.test"
+      ]
+    }
+  },
+  {
+    "call": "e2e-reoon-mira.kovacs",
+    "note": "the second independent confirmation. ContactOut said valid; Deliverable refuses until its response contract has been read once, so Reoon is what closes the pair.",
+    "match": {
+      "method": "GET",
+      "url_contains": "email=mira.kovacs%40skyline.test"
+    },
+    "status": 200,
+    "response": {
+      "email": "mira.kovacs@skyline.test",
+      "status": "safe",
+      "is_catch_all": false,
+      "is_deliverable": true,
+      "is_safe_to_send": true,
+      "overall_score": 92,
+      "mx_records": [
+        "mx.example.test"
+      ]
+    }
+  }
+]

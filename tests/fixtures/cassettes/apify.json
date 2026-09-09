@@ -1,0 +1,36 @@
+[
+  {
+    "call": "users-me",
+    "note": "account metadata, read only. Starts no actor and costs nothing.",
+    "match": {"method": "GET", "url_contains": "/users/me"},
+    "status": 200,
+    "response": {"data": {"username": "test-account", "plan": {"id": "FREE"}}}
+  },
+  {
+    "call": "actor-run-start",
+    "note": "only reached with explicit live permission, never in the suite by default",
+    "match": {"method": "POST", "url_contains": "/runs"},
+    "status": 201,
+    "response": {"data": {"id": "run-test-1", "status": "RUNNING",
+                          "defaultDatasetId": "ds-test-1"}}
+  },
+  {
+    "call": "actor-run-status",
+    "match": {"method": "GET", "url_contains": "/actor-runs/"},
+    "status": 200,
+    "response": {"data": {"id": "run-test-1", "status": "SUCCEEDED",
+                          "defaultDatasetId": "ds-test-1"}}
+  },
+  {
+    "call": "dataset-items",
+    "match": {"method": "GET", "url_contains": "/datasets/"},
+    "status": 200,
+    "response": [
+      {"url": "https://clean.test/careers", "title": "Careers",
+       "text": "We are hiring two delivery managers in Leeds this quarter.",
+       "crawledAt": "2026-08-26T09:00:00+00:00"},
+      {"url": "https://clean.test/about", "title": "About",
+       "text": "Founded in 2014, forty people across two offices."}
+    ]
+  }
+]

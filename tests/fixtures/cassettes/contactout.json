@@ -1,0 +1,219 @@
+[
+  {
+    "call": "stats",
+    "note": "free usage stats, the health check. Envelope and field names verified live 2026-08-25; values here are fabricated.",
+    "match": {
+      "method": "GET",
+      "url_contains": "/stats"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status_code": 200,
+        "period": {
+          "start": "2026-08-01",
+          "end": "2026-08-31"
+        },
+        "usage": {
+          "count": 1,
+          "quota": 1000,
+          "phone_count": 0,
+          "phone_quota": 100,
+          "search_count": 2,
+          "search_quota": 5000
+        },
+        "is_prepaid": true
+      }
+    }
+  },
+  {
+    "call": "decision-makers",
+    "note": "hand written, shaped after an eight person company. Carries noise fields on purpose: the trim must drop them.",
+    "match": {
+      "method": "GET",
+      "url_contains": "/people/decision-makers"
+    },
+    "status": 200,
+    "response": {
+      "status_code": 200,
+      "metadata": {
+        "page": 1,
+        "page_size": 25,
+        "total_results": 2
+      },
+      "profiles": {
+        "https://www.linkedin.com/in/ivana-saric": {
+          "full_name": "Ivana Saric",
+          "title": "Head of Finance And Administration",
+          "company": {
+            "name": "Meridian",
+            "domain": "meridian.test"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/ivana-saric",
+          "contact_info": {
+            "work_email": [
+              "ivana.saric@meridian.test"
+            ],
+            "email": [
+              "i.saric@example.com"
+            ],
+            "phone": [
+              "+385000000000"
+            ]
+          },
+          "location": "Zagreb, Croatia",
+          "seniority": "head",
+          "current": true,
+          "experience": [
+            {
+              "title": "Head of Finance",
+              "company_name": "Meridian"
+            }
+          ],
+          "skills": [
+            "accounting"
+          ],
+          "profile_picture_url": "https://media.example.com/x.jpg"
+        },
+        "https://www.linkedin.com/in/damir-vukovic": {
+          "full_name": "Damir Vuković",
+          "title": "Direktor",
+          "company": {
+            "name": "Meridian",
+            "domain": "meridian.test"
+          },
+          "linkedin_url": "https://www.linkedin.com/in/damir-vukovic",
+          "location": "Zagreb, Croatia",
+          "seniority": "owner / founder",
+          "current": true,
+          "experience": [
+            {
+              "title": "Direktor",
+              "company_name": "Meridian"
+            }
+          ],
+          "skills": [
+            "digital marketing"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "call": "people-search",
+    "note": "output_fields is always sent, so the source trims too",
+    "match": {
+      "method": "POST",
+      "url_contains": "/people/search"
+    },
+    "status": 200,
+    "response": {
+      "status_code": 200,
+      "metadata": {
+        "page": 1,
+        "page_size": 25,
+        "total_results": 1
+      },
+      "profiles": {
+        "https://www.linkedin.com/in/unknown-0": {
+          "full_name": "Lea Perišić",
+          "title": "Account Manager",
+          "company": {
+            "name": "Meridian",
+            "domain": "meridian.test"
+          },
+          "li_vanity": "https://www.linkedin.com/in/lea-perisic",
+          "location": "Rijeka, Croatia",
+          "industry": "Advertising Services",
+          "headline": "Account Manager at Meridian"
+        }
+      },
+      "page": 1,
+      "total": 1
+    }
+  },
+  {
+    "call": "people-count",
+    "note": "free: ContactOut does not consume credits for a count. Field names total_results/estimated_phones verified live; every value here is fabricated.",
+    "match": {
+      "method": "POST",
+      "url_contains": "/people/count"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status_code": 200,
+        "total_results": 230222,
+        "estimated_personal_emails": 60000,
+        "estimated_work_emails": 150000,
+        "estimated_phones": 125588
+      }
+    }
+  },
+  {
+    "call": "email-verifier-accept-all",
+    "note": "a catch-all domain. Section 9, trap 2: never trust one verifier on this",
+    "match": {
+      "method": "GET",
+      "url_contains": "/email/verify"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "status": "accept_all",
+        "email": "ivana.saric@meridian.test",
+        "score": 62,
+        "mx_found": true,
+        "debug": {
+          "smtp_transcript": "250 OK ... long transcript ..."
+        }
+      }
+    }
+  },
+  {
+    "call": "company-information-from-domain",
+    "note": "catches rebrands (trap 4) and the real mail domain (trap 3)",
+    "match": {
+      "method": "POST",
+      "url_contains": "/domain/enrich"
+    },
+    "status": 200,
+    "response": {
+      "status": 200,
+      "data": {
+        "company": {
+          "name": "Meridian",
+          "domain": "meridian.test",
+          "email_domain": "meridian-mail.test",
+          "employees": 26,
+          "revenue": "$3.6M",
+          "founded": 2010,
+          "industry": "Advertising Services",
+          "offices": [
+            "Zagreb HR",
+            "Varazdin HR",
+            "Rijeka HR",
+            "Beograd RS",
+            "Ljubljana SI"
+          ],
+          "specialties": [
+            "SEO",
+            "Google Ads",
+            "Email marketing"
+          ],
+          "tech_stack": [
+            "Google Analytics",
+            "Hotjar",
+            "MailChimp"
+          ],
+          "description": "A very long marketing description that must never reach an LLM context.",
+          "logo": "https://media.example.com/logo.png",
+          "followers": 3400
+        }
+      }
+    }
+  }
+]

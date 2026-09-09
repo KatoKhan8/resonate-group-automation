@@ -1,0 +1,61 @@
+# Secrets. Never tracked, in any form.
+.env
+.env.*
+!.env.example
+config/.env
+config/.env.*
+!config/.env.example
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# The real, confidential suppression roster. The tracked template is
+# config/suppress.txt; this overlay is the live customer list.
+config/suppress.local.txt
+prototype/config/suppress.local.txt
+
+# Runtime and client state. queue.jsonl, campaigns.jsonl and everything that
+# travels with them are real client data, not source.
+work/
+out/
+prototype/work/
+prototype/out/
+prototype/batches/
+
+# Provider response dumps and local scratch.
+logs/
+tmp/
+cache/
+scratchpad/
+*.log
+dumps/
+*.dump
+
+# Local backups.
+*.bak
+*.orig
+*.rej
+backup/
+backups/
+
+# Python.
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Node, if it ever appears.
+node_modules/
+
+# Editor / OS noise.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

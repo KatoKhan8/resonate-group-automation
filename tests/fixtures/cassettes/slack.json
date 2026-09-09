@@ -1,0 +1,16 @@
+[
+  {
+    "call": "auth-test",
+    "note": "Identifies the token and posts nothing. Free and read-only, which is why the health check may make it without SLACK_LIVE - that flag arms posting, and needing it to prove a token was the wrong way round. No credential appears in this fixture: the response is what Slack says about the token, never the token.",
+    "match": {"method": "POST", "url_contains": "/api/auth.test"},
+    "status": 200,
+    "response": {
+      "ok": true,
+      "team": "resonate-test",
+      "team_id": "T00TESTTEAM",
+      "user": "resonate-bot",
+      "user_id": "U00TESTBOT",
+      "url": "https://resonate-test.slack.test/"
+    }
+  }
+]
