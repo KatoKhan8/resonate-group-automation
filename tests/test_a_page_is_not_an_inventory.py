@@ -19,6 +19,7 @@ per-sender allocation.
 So `bison.sender_emails` reads `meta` first, walks every page, and refuses to
 return a list shorter than `meta.total` says exists.
 """
+import os
 import unittest
 
 from src import providers
@@ -63,6 +64,31 @@ def paged(count, per_page=15):
     return [rows[i:i + per_page] for i in range(0, len(rows), per_page)]
 
 
+def fake_key():
+    """A placeholder credential for the duration of one test.
+
+    These tests stub the transport, so no call leaves the machine - but they
+    used to reach `providers.key()` with nothing set, which read the operator's
+    real `config/.env`. The suite-wide firewall in `tests/__init__.py` now makes
+    that a loud `MissingKey` instead of a silent real credential, so a test that
+    needs a key has to say so.
+    """
+    import contextlib
+
+    @contextlib.contextmanager
+    def _fake():
+        before = os.environ.get("BISON_KEY")
+        os.environ["BISON_KEY"] = "test-key-not-real"
+        try:
+            yield
+        finally:
+            if before is None:
+                os.environ.pop("BISON_KEY", None)
+            else:
+                os.environ["BISON_KEY"] = before
+    return _fake()
+
+
 class EveryPageIsRead(unittest.TestCase):
     def setUp(self):
         self._real = providers._transport if hasattr(providers, "_transport") else None
@@ -71,6 +97,9 @@ class EveryPageIsRead(unittest.TestCase):
         w = Wire(pages, **kw)
         providers.set_transport(w)
         self.addCleanup(providers.reset_transport)
+        keyed = fake_key()
+        keyed.__enter__()
+        self.addCleanup(keyed.__exit__, None, None, None)
         return w
 
     def test_fifteen_pages_of_fifteen_is_two_hundred_and_twenty_five(self):
@@ -112,6 +141,9 @@ class AShortReadIsRefused(unittest.TestCase):
     def wire(self, w):
         providers.set_transport(w)
         self.addCleanup(providers.reset_transport)
+        keyed = fake_key()
+        keyed.__enter__()
+        self.addCleanup(keyed.__exit__, None, None, None)
         return w
 
     def test_a_total_larger_than_what_arrived_raises(self):

@@ -191,6 +191,20 @@ def approved_heyreach(campaign, recs=None, config=None):
             "after the lead enters this campaign")
     delays = tuple((str(unit), int(value)) for unit, value in declared)
 
+    # THE ONE-LEAD CAP IS THE THING THAT MAKES AN UNVERIFIABLE LEAD SET
+    # TOLERABLE, so it has to be a check rather than a paragraph. HeyReach
+    # publishes no route for a campaign's lead identities, and this module's
+    # own rule 3 says a one-lead campaign is therefore proven by `lead_count`
+    # plus a verified `list_id`. That reasoning holds for exactly one lead and
+    # collapses at two: with `lead_set` unverifiable, a second approved contact
+    # would diff PASS against the FIRST contact's lead already in the campaign.
+    if len(leads) != 1:
+        raise DiffRefused(
+            f"this campaign has {len(leads)} approved LinkedIn leads. HeyReach "
+            f"publishes no route for a campaign's lead identities, so only a "
+            f"ONE-lead campaign can be proven - `lead_count` plus a verified "
+            f"list is the lead set at one and not at two")
+
     senders = _ids((campaign.get("senders") or {}).get("linkedin"))
     return {
         "campaign_id": str(cid),
@@ -304,6 +318,17 @@ def approved_bison(campaign, recs=None, config=None):
                     continue
                 step = cadence.expand_step(rec, contact, spec, config)
                 if not step:
+                    continue
+                # ONLY APPROVED STEPS, exactly as `approved_heyreach` does.
+                # Without this the approved side included every renderable
+                # email step whether or not anybody had blessed it, so a
+                # campaign with day5 approved and day10 unapproved produced an
+                # APPROVED_CONFIG containing both - and if the provider held
+                # both, this reported PASS. The gate whose whole purpose is
+                # "the provider holds what was approved" would have positively
+                # certified two emails nobody approved.
+                if not approval.is_approved(rec, contact["key"], spec["key"],
+                                            step):
                     continue
                 actions.append(spec["key"])
                 subjects.append(_norm_text(step.get("subject")))
@@ -458,11 +483,62 @@ def _show(value):
     return value
 
 
+class Readback:
+    """A provider comparison, bound to what it compared and usable once.
+
+    THE HOLE THIS CLOSES. `executionguard` used to take `readback` as a plain
+    dict and inspect three things: the verdict, the failures and a
+    `verified_at` the CALLER stamped. Nothing tied it to a campaign, a channel
+    or a provider id, and nothing marked it used. So a diff computed for
+    campaign A satisfied the gate for campaign B, and one dict authorised any
+    number of actions - which is precisely the defect `Authorization` exists to
+    prevent, reproduced one level up. A dict claiming a provider was verified is
+    not proof that it was.
+
+    So the timestamp is stamped HERE, immediately after the last provider read,
+    rather than by whoever happens to call this; the identity of what was
+    compared travels with the verdict; and `spend()` makes it single-use.
+    """
+
+    __slots__ = ("diff", "approved", "provider", "campaign_id", "channel",
+                 "provider_campaign_id", "verified_at", "_spent")
+
+    def __init__(self, **fields):
+        for name in self.__slots__:
+            if name != "_spent":
+                setattr(self, name, fields.get(name))
+        self._spent = False
+
+    @property
+    def verdict(self):
+        return (self.diff or {}).get("verdict")
+
+    @property
+    def failures(self):
+        return (self.diff or {}).get("failures") or []
+
+    def spend(self):
+        if self._spent:
+            raise DiffRefused(
+                f"this read-back for {self.campaign_id} has already authorised "
+                f"an action; re-read the provider rather than reusing one")
+        self._spent = True
+        return self
+
+    def __repr__(self):
+        return f"<Readback {self.campaign_id} {self.channel} {self.verdict}>"
+
+
 def compare_heyreach(campaign, recs=None, config=None):
     """`(diff, approved, provider)` for one LinkedIn campaign."""
     approved = approved_heyreach(campaign, recs, config)
     provider = provider_heyreach(approved["campaign_id"])
-    return diff(approved, provider, REQUIRED_HEYREACH), approved, provider
+    found = diff(approved, provider, REQUIRED_HEYREACH)
+    # Stamped here, after the last provider read, so freshness means what it says.
+    return Readback(diff=found, approved=approved, provider=provider,
+                    campaign_id=campaign.get("campaign_id"), channel="linkedin",
+                    provider_campaign_id=approved["campaign_id"],
+                    verified_at=store.now())
 
 
 def compare_bison(campaign, recs=None, config=None, expect_workspace=None):
@@ -470,7 +546,11 @@ def compare_bison(campaign, recs=None, config=None, expect_workspace=None):
     approved = approved_bison(campaign, recs, config)
     provider = provider_bison(approved["campaign_id"],
                               expect_workspace=expect_workspace)
-    return diff(approved, provider, REQUIRED_BISON), approved, provider
+    found = diff(approved, provider, REQUIRED_BISON)
+    return Readback(diff=found, approved=approved, provider=provider,
+                    campaign_id=campaign.get("campaign_id"), channel="email",
+                    provider_campaign_id=approved["campaign_id"],
+                    verified_at=store.now())
 
 
 def report(result, approved=None, provider=None):

@@ -119,6 +119,12 @@ def ingest(payloads, provider, recs=None, rows=None, config=None, post=None,
     if adapter is None:
         raise ValueError(f"no adapter for provider {provider!r}")
     own = recs is None
+    # The digest of the queue as it was read. `handle` does network I/O - a
+    # Slack post for an unmatched reply, another for a positive one - between
+    # applying the event and saving, so this path cannot hold the queue lock
+    # throughout and must not clobber whatever else wrote in the meantime.
+    # `store.save(expect_digest=...)` turns that into a refusal.
+    base = store.digest() if own else None
     recs = store.load() if own else recs
 
     # The adapter carries the reply text on the neutral event. It is read for
@@ -128,7 +134,7 @@ def ingest(payloads, provider, recs=None, rows=None, config=None, post=None,
                 for e in neutral]
     if own and any(o["applied"] and o["applied"]["status"] == "applied"
                    for o in outcomes):
-        store.save(recs)
+        store.save(recs, expect_digest=base)
     return outcomes
 
 

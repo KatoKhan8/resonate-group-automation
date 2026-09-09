@@ -219,15 +219,38 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     gates.append("campaign_approval")
 
     # 3. READBACK ------------------------------------------------------------
-    _require("readback", isinstance(readback, dict),
-             "no provider read-back was supplied; a write may not proceed on "
-             "the assumption that the provider holds what was approved")
-    verdict = (readback.get("diff") or {}).get("verdict")
-    _require("readback", verdict == configdiff.PASS,
-             f"the provider configuration diff is {verdict!r}, not "
-             f"{configdiff.PASS}: "
-             f"{'; '.join((readback.get('diff') or {}).get('failures') or [])}")
-    _require("readback", readback_is_fresh(readback.get("verified_at"), now),
+    # A SEALED, BOUND, SINGLE-USE READ-BACK - not a dict.
+    #
+    # This took a plain dict and read three things from it: the verdict, the
+    # failures and a `verified_at` the CALLER stamped. Nothing tied it to a
+    # campaign, a channel or a provider id, so a diff computed for campaign A
+    # satisfied the gate for campaign B; and nothing marked it used, so one
+    # dict authorised any number of actions. That is exactly the defect
+    # `Authorization` exists to prevent, one level up, and in the same module
+    # that argues a dict claiming the gates passed is not proof they did.
+    _require("readback", isinstance(readback, configdiff.Readback),
+             "no sealed provider read-back was supplied. Obtain one from "
+             "configdiff.compare_heyreach/compare_bison, which stamps its own "
+             "timestamp after the last provider read; a dict asserting a "
+             "provider was verified is not proof that it was")
+    _require("readback", readback.channel == channel,
+             f"the read-back is for {readback.channel}, not {channel}")
+    _require("readback", str(readback.campaign_id) ==
+             str(campaign.get("campaign_id")),
+             f"the read-back is for campaign {readback.campaign_id!r}, not "
+             f"{campaign.get('campaign_id')!r}")
+    expected_provider = (campaign.get("heyreach_campaign_id")
+                         if channel == "linkedin"
+                         else campaign.get("bison_campaign_id"))
+    _require("readback",
+             str(readback.provider_campaign_id) == str(expected_provider),
+             f"the read-back verified provider campaign "
+             f"{readback.provider_campaign_id!r}, and this campaign names "
+             f"{expected_provider!r}")
+    _require("readback", readback.verdict == configdiff.PASS,
+             f"the provider configuration diff is {readback.verdict!r}, not "
+             f"{configdiff.PASS}: {'; '.join(readback.failures)}")
+    _require("readback", readback_is_fresh(readback.verified_at, now),
              f"the read-back is older than {READBACK_TTL_SECONDS}s; a vendor "
              f"UI edit can land between verifying a configuration and acting "
              f"on it, and has")
@@ -279,6 +302,32 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     sender_id = _sender_for(campaign, channel)
     _require("sender", sender_id not in (None, ""),
              f"the canonical campaign names no {channel} sender")
+    # SENDER OWNERSHIP AND HEALTH. The docstring above has always listed
+    # "sender health" as part of gate 4 and the code never checked it: this
+    # module imported no sender module at all, so `_sender_for` asserting that
+    # exactly one id was named was the whole of it. An id typo, or a seat
+    # belonging to another client's estate, passed - and provider agreement is
+    # no defence, because the read-back compares the sender set against what
+    # the PROVIDER campaign holds, so a wrongly-assigned seat that was also
+    # assigned by hand in the vendor UI matches perfectly.
+    #
+    # `senderidentity.require_sender` already raises `CrossWorkspaceSender`,
+    # and `senderinventory` already derives readiness from provider truth.
+    # Both simply had no caller here.
+    from . import senderidentity
+    try:
+        senderidentity.require_sender(campaign.get("client"), sender_id)
+    except senderidentity.CrossWorkspaceSender as e:
+        raise NotAuthorized("sender", str(e)) from None
+    except Exception:
+        # A sender this system has never inventoried cannot be vouched for.
+        # Refusing is the only safe reading: the alternative is sending under
+        # an identity nobody can attribute.
+        raise NotAuthorized(
+            "sender",
+            f"{channel} sender {sender_id!r} is not in this client's sender "
+            f"roster, so its ownership and health cannot be established") from None
+    gates.append("sender")
     # THE LEDGER'S TENANT IS THE CLIENT, NOT THE PROVIDER'S WORKSPACE NUMBER.
     #
     # `workspace` here is EmailBison's numeric estate id, which is what

@@ -362,10 +362,57 @@ def refuse_evidence_loss(old_recs, new_recs):
     return True
 
 
-def save(recs, timeout=None):
-    """Atomic whole-file write, under the lock. A crash leaves the old queue."""
+class QueueChanged(RuntimeError):
+    """The queue moved under a read-modify-write. Nothing was written.
+
+    Raised rather than clobbering. `transaction()` is the right answer for
+    anything that can hold the lock throughout; this exists for the callers
+    that cannot, because they do network I/O between reading and writing.
+    """
+
+
+def digest(path=None):
+    """A cheap fingerprint of the queue as it is on disk right now.
+
+    Content rather than mtime: a same-second write is exactly the case that
+    matters, and a filesystem timestamp is too coarse to see it.
+    """
+    import hashlib
+    path = path or queue_path()
+    if not os.path.exists(path):
+        return "absent"
+    with open(path, "rb") as handle:
+        return hashlib.sha256(handle.read()).hexdigest()[:32]
+
+
+def save(recs, timeout=None, expect_digest=None):
+    """Atomic whole-file write, under the lock. A crash leaves the old queue.
+
+    `expect_digest` MAKES THIS SAFE FOR A READ-MODIFY-WRITE, and without it
+    this function is not.
+
+    The lock is held only for the write. `transaction()`'s docstring already
+    says why that is not enough - it "cannot protect a read-modify-write against
+    a second process" - and the most important caller in the system was doing
+    exactly that: `inbound.ingest` loads the queue, applies a reply, and saves.
+    A pipeline run loading and saving across the same window silently erased the
+    reply, its pause and its event, and `refuse_evidence_loss` does not catch it
+    because it indexes verification evidence rather than events or pauses. A
+    positive reply that paused an account was revertible by any concurrent run,
+    and every later gate would then read a record that looked contactable.
+
+    So a caller that cannot hold the lock throughout passes the digest it read,
+    and a change since then is a refusal rather than a clobber. Callers that can
+    hold the lock should use `transaction()` instead and not need this.
+    """
     with lock(timeout):
-        refuse_evidence_loss(read_jsonl(queue_path()), recs)
+        on_disk = read_jsonl(queue_path())
+        if expect_digest is not None and digest() != expect_digest:
+            raise QueueChanged(
+                "the queue changed while this work was in progress, so writing "
+                "it back would discard whatever changed. Nothing was written; "
+                "reload and re-apply.")
+        refuse_evidence_loss(on_disk, recs)
         _write(recs)
 
 

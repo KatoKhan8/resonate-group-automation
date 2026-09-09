@@ -142,6 +142,56 @@ def usable_contacts(rec):
     return [c for c in rec.get("contacts") or [] if c.get("email")]
 
 
+def verification_candidates(rec):
+    """The contacts verification may be BOUGHT for, in priority order.
+
+    THE CAP ALREADY EXISTED AND NOTHING READ IT. `routing.plan` computes
+    `max_contacts_to_enrich` per company - 3 for tier A, 2 for B, 1 for C, 0 for
+    anything not qualified - and its docstring says in as many words that this
+    "is the number that controls spend". It is stored on every record under
+    `qualification.persona_plan`. Its readers were `dmplan`, `explorer`,
+    `qualify` and `report`: a forecast, two screens and a report. Verification
+    read `usable_contacts(rec)` - every address on the record - at up to three
+    credits each.
+
+    That is the largest single waste in the system. `decision-makers` can return
+    dozens of addressed profiles for one company, and `personas.select` - which
+    would have trimmed them to the cap - runs AFTER enrichment in
+    `run.STAGES`, so the credits are gone before the selection that makes them
+    pointless. Measured at 30,000 domains it is roughly a quarter of a million
+    credits verifying people the system has already decided never to write to.
+
+    ORDER MATTERS, because a cap without an order buys an arbitrary subset.
+    Candidates are sorted by where their title appears in the plan's own
+    `target_titles`, which is the same ordered list `personas.select` uses, so
+    the addresses bought are the ones selection would have chosen. Ties fall
+    back to the contact key, so the choice is reproducible after a restart
+    rather than dependent on dict order.
+
+    A record with no `persona_plan` is NOT capped, and that is deliberate: the
+    cap is a decision made by qualification, and inventing one here for a record
+    qualification has not seen would be guessing at a spend limit rather than
+    honouring one. Those records are reported, not silently uncapped.
+    """
+    candidates = usable_contacts(rec)
+    plan = ((rec.get("qualification") or {}).get("persona_plan") or {})
+    if "max_contacts_to_enrich" not in plan:
+        return candidates
+    cap = plan.get("max_contacts_to_enrich") or 0
+    titles = [str(t).strip().lower() for t in plan.get("target_titles") or []]
+
+    def rank(contact):
+        title = str(contact.get("title") or "").strip().lower()
+        for i, wanted in enumerate(titles):
+            if wanted and wanted in title:
+                return (0, i, str(contact.get("key") or ""))
+        # No declared title matched. Last, but still a candidate: the cap is
+        # about how many, not about who qualifies.
+        return (1, 0, str(contact.get("key") or ""))
+
+    return sorted(candidates, key=rank)[:max(0, int(cap))]
+
+
 def unverified(rec):
     return [c for c in usable_contacts(rec) if not c.get("verdict")]
 
@@ -653,7 +703,21 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
     # policy still needs. src/verification.py owns every decision here, and it
     # is the only module that may conclude an address is sendable.
     policy = verification.policy_for(config)
+    candidates = verification_candidates(rec)
+    # Visible, not silent. A saving nobody can see is indistinguishable from a
+    # contact that was quietly forgotten, and the next person to read the record
+    # would wonder why an address on it has no verdict.
+    chosen = {c.get("key") for c in candidates}
     for c in usable_contacts(rec):
+        if c.get("key") in chosen:
+            continue
+        events.record(rec, events.PROVIDER_CALL_SKIPPED,
+                      contact_key=c.get("key"), provider="verification",
+                      operation="verify",
+                      reason=f"over the persona cap of "
+                             f"{len(candidates)} contact(s) for this company; "
+                             f"selection would not have chosen this address")
+    for c in candidates:
         if c.get("key") in mx_blocked:
             events.record(rec, events.PROVIDER_CALL_SKIPPED,
                           contact_key=c.get("key"), provider="verification",

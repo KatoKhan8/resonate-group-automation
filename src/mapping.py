@@ -46,16 +46,70 @@ def _result(state, provider, detail, external_id=None, name=None):
 
 # ---------------------------------------------------------------- EmailBison
 
-def bison_campaigns(fetch=None):
-    """Every campaign this key can see. Read-only: GET /api/campaigns."""
+MAX_CAMPAIGN_PAGES = 100
+
+
+def bison_campaigns(fetch=None, expect_workspace=None, max_pages=None):
+    """EVERY campaign this key can see. Read-only: GET /api/campaigns.
+
+    "Every" is the whole point, and it used to read page one.
+
+    `/campaigns` returns the Laravel `{data, links, meta}` envelope with
+    `meta.per_page` of 15 - the same envelope, and the same page size, that
+    caused a 225-inbox estate to be reported as fifteen inboxes. One real estate
+    here holds 25 campaigns, which cannot fit on a page. So a campaign id past
+    the first fifteen read as MISSING, and `validate` treats MISSING as
+    `blocked_by`: the launch was correctly blocked and the diagnosis was false,
+    sending somebody to hunt a typo that did not exist.
+
+    It also returned `[]` for a body of the wrong shape, where
+    `bison.sender_emails` refuses and `providers.mapping` raises. A silent empty
+    here means "no campaign of that id exists", which is a claim about the
+    provider rather than about our ability to read it.
+
+    And it was the one EmailBison reader that never asserted its tenancy, while
+    `collision`, `configdiff` and `senderinventory` all do - on the check whose
+    own MISSING message says "or the key belongs to another workspace".
+    """
     if fetch is not None:
         return fetch()
     from .providers import request
-    status, data = request("GET", f"{bison.base()}/campaigns", bison.headers())
-    if not (200 <= int(status or 0) < 300):
-        raise ProviderError(f"emailbison campaigns: {status}")
-    rows = (data or {}).get("data") if isinstance(data, dict) else None
-    return rows if isinstance(rows, list) else []
+    if expect_workspace is not None:
+        bison.require_workspace(expect_workspace)
+    rows, page, limit = [], 1, max_pages or MAX_CAMPAIGN_PAGES
+    while page <= limit:
+        status, data = request("GET", f"{bison.base()}/campaigns?page={page}",
+                               bison.headers())
+        if not (200 <= int(status or 0) < 300):
+            raise ProviderError(f"emailbison campaigns: {status}")
+        if not isinstance(data, dict):
+            raise ProviderError(
+                "emailbison campaigns: unexpected response shape; refusing to "
+                "read that as an empty campaign list")
+        chunk = (data or {}).get("data")
+        if not isinstance(chunk, list):
+            raise ProviderError(
+                "emailbison campaigns: no `data` array. A body we cannot read "
+                "is not a provider with no campaigns")
+        rows.extend(chunk)
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+        total = meta.get("total")
+        last = meta.get("last_page")
+        if total is not None and len(rows) >= int(total):
+            return rows
+        if last is not None and page >= int(last):
+            if total is not None and len(rows) != int(total):
+                raise ProviderError(
+                    f"emailbison campaigns: read {len(rows)} of "
+                    f"{total}. A short read of a campaign list makes a real "
+                    f"campaign look missing, which reads as a wrong id")
+            return rows
+        if not chunk:
+            return rows
+        page += 1
+    raise ProviderError(
+        f"emailbison campaigns: more than {limit} pages; refusing to conclude "
+        f"anything from a partial read")
 
 
 def check_bison(campaign_id, expected_name=None, fetch=None):

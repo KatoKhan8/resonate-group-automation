@@ -128,9 +128,20 @@ class GuardTest(QueueTest):
         self.campaign["status"] = campaigns.APPROVED
 
     def readback(self, verdict=configdiff.PASS, verified_at=FRESH,
-                 failures=()):
-        return {"diff": {"verdict": verdict, "failures": list(failures)},
-                "verified_at": verified_at}
+                 failures=(), campaign_id="canary", channel="linkedin",
+                 provider_campaign_id=594061):
+        """A sealed read-back, bound to what it compared.
+
+        A dict will not do: the gate requires `configdiff.Readback` precisely
+        because a dict asserting that a provider was verified is not proof that
+        it was, and one dict used to authorise any number of actions for any
+        campaign.
+        """
+        return configdiff.Readback(
+            diff={"verdict": verdict, "failures": list(failures)},
+            approved={}, provider={}, campaign_id=campaign_id,
+            channel=channel, provider_campaign_id=provider_campaign_id,
+            verified_at=verified_at)
 
     def authorize(self, **over):
         kw = dict(operation="linkedin_connection_request", channel="linkedin",
@@ -155,8 +166,15 @@ class GuardTest(QueueTest):
     def allow_killswitch(self):
         return mock.patch.object(killswitch, "require", return_value=True)
 
+    def allow_sender(self):
+        """The fixture's seat is not in a real roster, so ownership is stubbed.
+        `AnUnrosteredSenderIsRefused` covers the gate itself."""
+        from src import senderidentity
+        return mock.patch.object(senderidentity, "require_sender",
+                                 return_value=True)
+
     def refused_at(self, gate, **over):
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), self.allow_sender():
             with self.assertRaises(executionguard.NotAuthorized) as caught:
                 self.attempt(**over)
         self.assertEqual(caught.exception.gate, gate,
@@ -169,7 +187,8 @@ class GuardTest(QueueTest):
 
 class TheHappyPathIsAuthorized(GuardTest):
     def test_a_fully_gated_action_authorizes_and_writes_once(self):
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             auth = self.attempt()
         self.assertEqual(len(self.spy.calls), 1)
         self.assertEqual(auth.key, "rec-1:dana-marsh:day3:linkedin")
@@ -178,7 +197,8 @@ class TheHappyPathIsAuthorized(GuardTest):
 
     def test_the_ledger_gate_is_recorded_in_the_gates_tuple(self):
         """`gates` is what an audit reads to prove which checks ran."""
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             auth = self.attempt()
         for gate in ("tenancy", "approval", "campaign_approval", "readback",
                      "collision", "pilot_cap", "ledger", "killswitch",
@@ -189,20 +209,23 @@ class TheHappyPathIsAuthorized(GuardTest):
         """Two definitions of one identity drift, and then the ledger and
         `push.already_pushed` key different things with every test green."""
         from src import push
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             auth = self.attempt()
         self.assertEqual(auth.key,
                          push.push_id(self.rec, "dana-marsh", "day3",
                                       "linkedin"))
 
     def test_the_ledger_recorded_the_attempt_before_the_write(self):
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             self.attempt()
         self.assertEqual(actionledger.state_of("rec-1:dana-marsh:day3:linkedin"),
                          actionledger.ATTEMPTED)
 
     def test_one_authorization_cannot_be_spent_twice(self):
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             auth = self.authorize()
             self.spy.write(auth, note=NOTE)
             with self.assertRaises(executionguard.NotAuthorized):
@@ -223,7 +246,7 @@ class EachGateStopsTheProviderCallEntirely(GuardTest):
         `SendingRefused` names the layer that refused and how many did, and a
         Python type error cannot fake that.
         """
-        with self.allow_collision():
+        with self.allow_collision(), self.allow_sender():
             with self.assertRaises(executionguard.NotAuthorized) as caught:
                 self.attempt()
         self.assertEqual(caught.exception.gate, "killswitch")
@@ -292,7 +315,7 @@ class EachGateStopsTheProviderCallEntirely(GuardTest):
 
     def test_collision_appearing_after_staging_prevents_the_call(self):
         """The check is re-read at authorization time, not trusted from before."""
-        with self.allow_killswitch(), mock.patch.object(
+        with self.allow_killswitch(), self.allow_sender(), mock.patch.object(
                 collision, "check_linkedin_profile",
                 return_value=(collision.TOUCHED, {"note": "already talking"})):
             with self.assertRaises(executionguard.NotAuthorized) as caught:
@@ -301,7 +324,7 @@ class EachGateStopsTheProviderCallEntirely(GuardTest):
         self.assertEqual(self.spy.calls, [])
 
     def test_a_reply_making_them_in_sequence_prevents_the_call(self):
-        with self.allow_killswitch(), mock.patch.object(
+        with self.allow_killswitch(), self.allow_sender(), mock.patch.object(
                 collision, "check_linkedin_profile",
                 return_value=(collision.IN_SEQUENCE, {"note": "they replied"})):
             with self.assertRaises(executionguard.NotAuthorized):
@@ -310,7 +333,7 @@ class EachGateStopsTheProviderCallEntirely(GuardTest):
 
     def test_an_unresolvable_collision_prevents_the_call(self):
         """UNKNOWN is never CLEAR."""
-        with self.allow_killswitch(), mock.patch.object(
+        with self.allow_killswitch(), self.allow_sender(), mock.patch.object(
                 collision, "check_linkedin_profile",
                 side_effect=collision.CollisionUnknown("too broad")):
             with self.assertRaises(collision.CollisionUnknown):
@@ -331,19 +354,22 @@ class EachGateStopsTheProviderCallEntirely(GuardTest):
 
     def test_no_sender_on_the_campaign_prevents_the_call(self):
         self.campaign["senders"]["linkedin"] = []
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             with self.assertRaises(executionguard.NotAuthorized):
                 self.attempt()
         self.assertEqual(self.spy.calls, [])
 
     def test_an_unknown_step_prevents_the_call(self):
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             with self.assertRaises(executionguard.NotAuthorized):
                 self.attempt(step_key="day99")
         self.assertEqual(self.spy.calls, [])
 
     def test_a_bad_channel_prevents_the_call(self):
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             with self.assertRaises(executionguard.NotAuthorized) as caught:
                 self.attempt(channel="carrier_pigeon")
         self.assertEqual(caught.exception.gate, "channel")
@@ -362,7 +388,9 @@ class SuppressionIsReadAsBehaviourNotAsText(GuardTest):
     def test_each_declared_suppression_reason_refuses(self):
         for reason in executionguard.SUPPRESSION_REASONS:
             with self.subTest(reason=reason):
-                with self.allow_collision(), self.allow_killswitch(),                      mock.patch.object(eligibility, "decide",
+                with self.allow_collision(), self.allow_killswitch(), \
+                     self.allow_sender(), \
+                     mock.patch.object(eligibility, "decide",
                                        return_value=self.decided(reason)):
                     with self.assertRaises(executionguard.NotAuthorized) as c:
                         self.attempt()
@@ -370,7 +398,9 @@ class SuppressionIsReadAsBehaviourNotAsText(GuardTest):
                 self.assertEqual(self.spy.calls, [])
 
     def test_the_word_suppression_in_a_clear_reason_does_not_refuse(self):
-        with self.allow_collision(), self.allow_killswitch(),              mock.patch.object(eligibility, "decide", return_value={
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender(), \
+             mock.patch.object(eligibility, "decide", return_value={
                  "verdict": "eligible", "reasons": [],
                  "note": "suppression: none; collision: clear"}):
             self.attempt()
@@ -388,7 +418,8 @@ class TheCapCountsDurableRowsNotAPlanDict(GuardTest):
 
     def test_a_second_action_the_same_day_is_refused_by_the_cap(self):
         config = dict(self.config, daily_volume={"linkedin": 1, "email": 0})
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             self.attempt(config=config)
             self.assertEqual(len(self.spy.calls), 1)
             actionledger.settle("rec-1:dana-marsh:day3:linkedin",
@@ -454,7 +485,8 @@ class TheCapCountsDurableRowsNotAPlanDict(GuardTest):
     def test_the_ledger_row_names_the_client_and_records_the_estate(self):
         """Both facts are needed: the tenant for counting, the provider estate
         as evidence of where the action was aimed."""
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             auth = self.attempt()
         row = actionledger.rows_for(auth.key)[-1]
         self.assertEqual(row["workspace"], "productive")
@@ -464,7 +496,8 @@ class TheCapCountsDurableRowsNotAPlanDict(GuardTest):
     def test_the_ledger_count_is_what_the_cap_reads(self):
         self.assertEqual(actionledger.count_on(NOW.isoformat(),
                                               channel="linkedin"), 0)
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             self.attempt()
         self.assertEqual(actionledger.count_on(NOW.isoformat(),
                                               channel="linkedin"), 1)
@@ -474,7 +507,8 @@ class AnUnsettledAttemptBlocksEveryRetry(GuardTest):
     """Never retry a prospect-facing write because the client saw no response."""
 
     def test_a_second_authorization_for_the_same_key_is_refused(self):
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             self.attempt()
             with self.assertRaises(executionguard.NotAuthorized) as caught:
                 self.attempt()
@@ -482,7 +516,8 @@ class AnUnsettledAttemptBlocksEveryRetry(GuardTest):
         self.assertEqual(len(self.spy.calls), 1)
 
     def test_an_already_sent_key_is_refused_as_a_duplicate(self):
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             self.attempt()
             actionledger.settle("rec-1:dana-marsh:day3:linkedin",
                                 actionledger.SENT)
@@ -491,7 +526,8 @@ class AnUnsettledAttemptBlocksEveryRetry(GuardTest):
         self.assertEqual(len(self.spy.calls), 1)
 
     def test_an_unresolved_key_is_blocked_forever_not_retried(self):
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             self.attempt()
             actionledger.settle("rec-1:dana-marsh:day3:linkedin",
                                 actionledger.UNRESOLVED,
@@ -503,7 +539,8 @@ class AnUnsettledAttemptBlocksEveryRetry(GuardTest):
 
     def test_a_failed_attempt_may_be_retried(self):
         """FAILED means the provider refused before acting. That is safe."""
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             self.attempt()
             actionledger.settle("rec-1:dana-marsh:day3:linkedin",
                                 actionledger.FAILED, why="provider 400")
@@ -554,7 +591,8 @@ class ChangingAnythingMaterialInvalidatesApproval(GuardTest):
                     row["contacts"][0]["angle"] = "delivery"
         self.rec = store.get("rec-1")
         self.contact = self.rec["contacts"][0]
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             with self.assertRaises(executionguard.NotAuthorized) as caught:
                 self.attempt()
         self.assertIn(caught.exception.gate, ("approval", "campaign_approval"))
@@ -591,7 +629,8 @@ class ChangingAnythingMaterialInvalidatesApproval(GuardTest):
 
 class TheDryRunReservesNothing(GuardTest):
     def test_dry_run_passes_the_gates_without_reserving(self):
-        with self.allow_collision(), self.allow_killswitch():
+        with self.allow_collision(), self.allow_killswitch(), \
+             self.allow_sender():
             auth = executionguard.dry_run(
                 operation="linkedin_connection_request", channel="linkedin",
                 campaign=self.campaign, rec=self.rec, contact=self.contact,
