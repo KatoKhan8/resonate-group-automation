@@ -72,7 +72,13 @@ STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    # otherwise write into the real `work/` - which is how
                    # this pair was found.
                    "TAG_OUTBOX", "AGENCY_DNC", "SIGNALS", "GTM",
-                   "DISCOVERY", "CLIENT_REVIEW")
+                   "DISCOVERY", "CLIENT_REVIEW",
+                   # The prospect-facing action ledger. Of everything in this
+                   # tuple it is the one a test must never write into the real
+                   # `work/`: a stray reservation there would count against a
+                   # live pilot cap, and a stray `sent` row would make a real
+                   # person look already-contacted.
+                   "ACTION_LEDGER")
 
 
 def use_directory(path):
