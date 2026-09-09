@@ -761,8 +761,48 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
     return done
 
 
+class NoBudget(RuntimeError):
+    """A live run was asked for with no credit ceiling. Nothing was spent."""
+
+
+def require_cap(live, cap):
+    """Refuse a live run from a command line that named no ceiling.
+
+    `Budget(None)` means unlimited and `--cap` had no default, so `--live` with
+    no `--cap` was an unbounded spend over whatever the queue happened to hold.
+    At thirty thousand domains that is on the order of 420,000 credits at policy
+    defaults, and nothing in the process could stop it: the pilot ceilings cap
+    companies, contacts and sends rather than credits, and
+    `dm_plan.max_batch_credits` is parsed from client config and used only to
+    compute a display string.
+
+    CLAUDE.md's rule is "Cap before you fan out". This refuses rather than
+    picking a number, because a default ceiling would be a guess about somebody
+    else's budget and a guess that is too high is indistinguishable from none.
+    `--cap 0` is accepted and means what it says: plan everything, spend
+    nothing.
+
+    Enforced at the CLI rather than inside `run()` so that a library caller -
+    including every test that exercises enrichment logic rather than budget
+    policy - keeps the explicit semantics it already has.
+    """
+    if live and cap is None:
+        raise NoBudget(
+            "a live run needs an explicit --cap. Unlimited is not a ceiling, "
+            "and this walks the whole queue: at thirty thousand domains an "
+            "uncapped run is hundreds of thousands of credits. Pass --cap 0 to "
+            "plan without spending.")
+    return True
+
+
 def run(live=False, cap=None, limit=None, ids=None, states=("queued", "enriched")):
-    """Walk the queue. Dry by default: nothing is called and nothing is written."""
+    """Walk the queue. Dry by default: nothing is called and nothing is written.
+
+    `cap=None` means UNLIMITED here, deliberately, because a caller writing
+    that in code is making a choice. The refusal lives at the CLI - see
+    `require_cap` - because that is where an operator's omission turns into an
+    unbounded spend.
+    """
     recs = store.load()
     budget = Budget(cap)
     # The scrape ceiling the client config has always declared and nothing
@@ -843,6 +883,11 @@ def main(argv=None):
     p.add_argument("--id", action="append", dest="ids")
     a = p.parse_args(argv)
 
+    try:
+        require_cap(a.live, a.cap)
+    except NoBudget as e:
+        print(f"REFUSED: {e}")
+        return 2
     result = run(live=a.live, cap=a.cap, limit=a.limit, ids=a.ids)
     head = "ENRICHED" if a.live else "DRY RUN, nothing called"
     print(f"{head}: {len(result['records'])} record(s)")

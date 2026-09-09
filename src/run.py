@@ -262,7 +262,11 @@ def stage_push(recs, day, live, notes):
 
 def run(source=None, client=None, lane=None, model=None, day=21, spend=False,
         live=False, cap=None, limit=None, stages=STAGES, ids=None):
-    """Walk the batch. Dry by default: no credits, no model, nothing sent."""
+    """Walk the batch. Dry by default: no credits, no model, nothing sent.
+
+    `cap=None` means unlimited, deliberately, for a caller writing it in code.
+    The refusal lives in `main()` - see `enrich.require_cap`.
+    """
     if live:
         raise push.LiveSendNotEnabled(
             "live is not available in this build: phase 7 prepares payloads only.")
@@ -324,6 +328,14 @@ def main(argv=None):
 
     if a.live:
         print("REFUSED: this build cannot send. Phase 7 prepares payloads only.")
+        return 2
+
+    # `--spend` with no `--cap` was an unbounded spend over a whole batch. See
+    # `enrich.require_cap` for the number that makes this matter.
+    try:
+        enrich.require_cap(a.spend, a.cap)
+    except enrich.NoBudget as e:
+        print(f"REFUSED: {e}")
         return 2
 
     report = run(source=a.source, client=a.client, lane=a.lane, day=a.day,
