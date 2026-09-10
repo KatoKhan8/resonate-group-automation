@@ -4,13 +4,22 @@ The 250-domain dry run, what it measured, and the four defects it exposed.
 
 ---
 
-## HEAD / TREE
+## HEAD / TREE / VALIDATION
 
 ```
-HEAD    74d7d32
-commits 8 this session on top of 4e5e70c
-tree    clean except two untracked batch inputs (deliberately not committed)
+HEAD    f0996be
+commits 12 this session on top of 4e5e70c
+tree    clean; the batch inputs are now gitignored rather than untracked
+
+full suite      7,029 tests   OK   (definitive, settled tree)
+offline harness 7,029 tests   OK   "nothing reached off this machine"
+hygiene/secrets 64 tests      OK
+mutations       26            each caught by the intended test
 ```
+
+The two suites were run with a gap between them, which is what CLAUDE.md
+prescribes and what I failed to do yesterday - that omission produced the one
+"failure" in the previous report.
 
 ---
 
@@ -384,3 +393,63 @@ worst at, and the one genuinely relational question - "which contacts share
 an identity" - is already a single batch pass in `dedupe.find`. Revisit if
 concurrent writers appear, which is a process-topology decision rather than a
 storage one.
+
+
+---
+
+# Final state
+
+## The funnel now, across all 300 records
+
+```
+qualified companies      9
+people found            25
+2/2 verified sendable    5
+linkedin present        25
+```
+
+Nine qualified companies where yesterday morning there were none, produced
+without loosening a single ICP rule. The two the 250-cohort qualified after
+its enrichment pass had already run were picked up by one further pass - 4
+records, 51 credits, 57.7 seconds, and the run printed its own stage timings
+for the first time.
+
+## Top blockers on the critical path
+
+1. **`providerwrites.perform` has no production caller.** The Authorization
+   machinery is a door with no traffic; `push.py` does not go through it.
+   Largest architectural debt remaining, and the reason 3a below was possible.
+2. **`heyreach.pause` is implemented and not declared supported** - it has
+   never succeeded against the provider. Until it does, this system can start
+   nothing it can stop, and `stoppability` correctly caps LinkedIn at one.
+3. **Research throughput** caps yield: 10 runs per batch, serial, 55s each.
+4. **`claims` is still absent** from the `render.py` CSV path, from approval,
+   and from generation. Three more places the guard is not wired.
+5. **Person enrichment is a second pass**, so a company that qualifies during
+   a run gets contacts only on the next one.
+
+## Top remaining attack surfaces
+
+1. An unmatched inbound reply stops nothing at all (PRODUCT-GAPS 41).
+2. `cadence.status_for` reads only the record-level pause, so a planning view
+   can show a replied contact's step as eligible.
+3. The HeyReach webhook branch trusts `eventType` without a direction check;
+   unreached today because the poller produces only conversation pages.
+4. `claims` self-certification: the model's own `hook` is read back as
+   support, guarded only by a one-token overlap check.
+5. Four pieces of fixture copy asserted unsupported facts until tonight -
+   which suggests the sixth is somewhere nobody has looked yet.
+
+## What became autonomous tonight
+
+- A dry run that genuinely costs nothing, verified against provider counters.
+- A spend ceiling that survives a restart, and a cost claim that names its own
+  evidence class and refuses to resolve what it cannot.
+- LinkedIn copy checked to the same standard as email, on the routine path.
+- A re-run that provably buys nothing again.
+
+## What still requires the operator
+
+Unchanged and unblocked by anything I can do: press unpause on 594061, or
+grant this environment permission to perform live provider writes. Everything
+around that boundary is ready.
