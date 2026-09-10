@@ -90,6 +90,67 @@ class TheFiveVerdicts(unittest.TestCase):
         self.assertIn("cannot be confirmed or refuted", row["why"])
 
 
+class ACounterThatLagsIsNotAMismatch(unittest.TestCase):
+    """Measured, and the measurement is the whole reason this exists.
+
+    Pass 3 on 2026-09-10 expected 22 ContactOut credits. Read twenty minutes
+    later all three counters were unchanged, and this module said
+    COST_UNRECONCILED - correctly, because it refused to choose between "these
+    do not meter" and "the counters lag". Read again eight hours later the
+    SAME window showed count +4, phone_count +3, search_count +25 and the
+    verdict became RECONCILED.
+
+    The second disjunct was true. So a disagreement read minutes after a run
+    is evidence of impatience rather than of a mismatch, and reporting it as
+    the latter is how somebody spends a morning debugging a provider that was
+    working the whole time.
+    """
+
+    def calls(self):
+        return [rec(call("contactout", "decision-makers", 10),
+                    call("contactout", "decision-makers", 10),
+                    call("contactout", "email-verifier", 1),
+                    call("contactout", "email-verifier", 1))]
+
+    def test_read_too_soon_it_is_pending_not_a_finding(self):
+        out = costs.reconcile(snap(), snap(), self.calls(), measured_after=1200)
+        row = verdict(out, "contactout")
+        self.assertEqual(row["status"], costs.PENDING_SETTLEMENT)
+        self.assertIn("Too early to be a finding", row["why"])
+        self.assertNotIn("contactout", out["unreconciled"])
+
+    def test_read_after_the_window_it_is_a_finding(self):
+        out = costs.reconcile(snap(), snap(), self.calls(),
+                              measured_after=costs.SETTLING_SECONDS + 1)
+        self.assertEqual(verdict(out, "contactout")["status"],
+                         costs.COST_UNRECONCILED)
+
+    def test_the_settled_reading_reconciles(self):
+        """The real numbers, eight hours on."""
+        out = costs.reconcile(snap(count=566, search=77, phone=462),
+                              snap(count=570, search=102, phone=465),
+                              self.calls(), measured_after=28800)
+        self.assertEqual(verdict(out, "contactout")["status"], costs.RECONCILED)
+
+    def test_an_unstated_age_does_not_silently_become_pending(self):
+        """A caller that says nothing gets a finding, not a shrug.
+
+        Defaulting to PENDING would make every run inconclusive by omission,
+        which is a quieter way of never reconciling anything.
+        """
+        out = costs.reconcile(snap(), snap(), self.calls())
+        self.assertEqual(verdict(out, "contactout")["status"],
+                         costs.COST_UNRECONCILED)
+
+    def test_pending_never_hides_a_provider_that_moved_unexpectedly(self):
+        """Settling explains a counter that has not moved YET. It explains
+        nothing about one that moved when nothing was expected."""
+        out = costs.reconcile(snap(usd=1.0), snap(usd=1.66), [rec()],
+                              measured_after=60)
+        self.assertEqual(verdict(out, "apify")["status"],
+                         costs.COST_UNRECONCILED)
+
+
 class ItRefusesToInvent(unittest.TestCase):
 
     def test_an_unread_counter_is_not_zero(self):

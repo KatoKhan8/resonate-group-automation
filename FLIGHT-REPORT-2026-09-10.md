@@ -100,12 +100,22 @@ ESTIMATED_ONLY     deliverable, reoon — no counter this system can read
 **Apify, measured**: $4.03 → $6.47 across the day, ≈ $2.44 for 22 research
 runs (~$0.10 each, at ~70s median).
 
-**ContactOut, measured**: `count` 566, `search_count` 77, `phone_count` 462 —
-**unchanged all day**, across every snapshot. The internal ledger expected 22
-credits in pass 3 alone. Both facts are real; they disagree; the disagreement
-is reported as a disagreement rather than resolved in whichever direction
-suits. That is the whole reason the module exists, after I claimed "zero
-credits spent" from one counter on 2026-09-09.
+**ContactOut — CORRECTED LATER THE SAME DAY.** Read twenty minutes after
+pass 3, all three counters were unchanged against 22 expected credits, and
+this section originally said "unchanged all day". Read again eight hours
+later, the same window showed `count` 566→570, `search_count` 77→102,
+`phone_count` 462→465, and the verdict moved from COST_UNRECONCILED to
+**RECONCILED**.
+
+**The counters lag.** The module had said "either these operations do not
+meter against the buckets this system can read, OR the counters lag", and
+refused to choose. The second disjunct was the true one, and the refusal is
+what made the later correction cheap instead of embarrassing.
+
+`costs.py` now carries `PENDING_SETTLEMENT` for exactly this: a disagreement
+read minutes after a run is evidence of impatience, not of a mismatch. The
+window is stated as bounds rather than as a number pretending to be exact -
+not settled at 20 minutes, settled by 8 hours, nothing observed in between.
 
 ---
 

@@ -20,6 +20,8 @@ system was able to say so.
     UNPRICED           the calls were ledgered, the price table says zero,
                        and the provider's counter says otherwise
     COST_UNRECONCILED  expected and observed disagree with no such excuse
+    PENDING_SETTLEMENT the same disagreement, read too soon after the run to
+                       mean anything
     ESTIMATED_ONLY     no authoritative counter exists for this provider
 
 `COST_UNRECONCILED` is the point of the module. It is not an error state and
@@ -51,6 +53,29 @@ ESTIMATED_ONLY = "ESTIMATED_ONLY"
 # than credits, so ten correctly-ledgered calls expect nothing and cost
 # $0.66.
 UNPRICED = "UNPRICED"
+# A disagreement read too early to be one.
+#
+# MEASURED, and the measurement is why this exists. Pass 3 on 2026-09-10
+# expected 22 ContactOut credits. Snapshotted twenty minutes later, all three
+# counters were unchanged and this module said COST_UNRECONCILED - correctly,
+# because it refused to choose between "these do not meter" and "the counters
+# lag". Snapshotted again eight hours later the same window read count +4,
+# phone_count +3, search_count +25, and the verdict became RECONCILED. The
+# second disjunct was the true one.
+#
+# So an unreconciled reading taken minutes after a run is not evidence of a
+# mismatch, it is evidence of impatience, and reporting it as the former is
+# how somebody ends up debugging a provider that was working.
+PENDING_SETTLEMENT = "PENDING_SETTLEMENT"
+
+# How long a counter is given to catch up before a disagreement counts.
+#
+# UNDER-DETERMINED, deliberately, and stated as bounds rather than as a
+# number pretending to be exact: not settled at 20 minutes, settled by 8
+# hours, and nothing observed in between. One hour is inside that gap and on
+# the cautious side of it. If a run's reading is younger than this, a
+# disagreement is reported as PENDING rather than as a finding.
+SETTLING_SECONDS = 3600
 
 # Which providers expose a counter this system can read, and in what unit.
 #
@@ -123,8 +148,14 @@ def observed(before, after):
     return out
 
 
-def _verdict(provider, expected, deltas, calls=0):
-    """One provider's reconciliation, with the sentence behind it."""
+def _verdict(provider, expected, deltas, calls=0, measured_after=None):
+    """One provider's reconciliation, with the sentence behind it.
+
+    `measured_after` is how many seconds passed between the run's last
+    ledgered call and the after-reading. `None` means nobody said, which is
+    treated as long enough - a caller that does not supply it gets the old
+    behaviour rather than a silent PENDING on every run.
+    """
     if provider not in AUTHORITATIVE:
         return ESTIMATED_ONLY, (
             f"{provider} exposes no counter this system can read, so "
@@ -148,6 +179,14 @@ def _verdict(provider, expected, deltas, calls=0):
             f"The units are not converted, so this is agreement in direction "
             f"and magnitude rather than an audited equality")
     if expected > 0 and moved == 0:
+        if measured_after is not None and measured_after < SETTLING_SECONDS:
+            return PENDING_SETTLEMENT, (
+                f"{expected} credit(s) expected and no counter moved "
+                f"({_fmt(deltas)}), but the reading was taken "
+                f"{int(measured_after)}s after the last call and this "
+                f"provider has been observed taking hours to settle. Too "
+                f"early to be a finding. Re-read after "
+                f"{SETTLING_SECONDS}s before concluding anything")
         return COST_UNRECONCILED, (
             f"{expected} credit(s) expected and NO counter moved "
             f"({_fmt(deltas)}). Either these operations do not meter against "
@@ -172,7 +211,7 @@ def _fmt(deltas):
                      for k, v in sorted((deltas or {}).items()))
 
 
-def reconcile(before, after, records, since=None):
+def reconcile(before, after, records, since=None, measured_after=None):
     """The whole run: expected, observed, and a verdict per provider."""
     expected = expected_by_provider(records, since=since)
     deltas = observed(before, after)
@@ -184,7 +223,8 @@ def reconcile(before, after, records, since=None):
         calls = (expected.get(provider) or {}).get("calls", 0)
         if not calls and provider not in deltas:
             continue
-        status, why = _verdict(provider, want, deltas.get(provider), calls)
+        status, why = _verdict(provider, want, deltas.get(provider), calls,
+                               measured_after=measured_after)
         rows.append({"provider": provider, "calls": calls,
                      "expected": want, "observed": deltas.get(provider),
                      "status": status, "why": why,
@@ -194,6 +234,8 @@ def reconcile(before, after, records, since=None):
         "unreconciled": [r["provider"] for r in rows
                          if r["status"] == COST_UNRECONCILED],
         "unpriced": [r["provider"] for r in rows if r["status"] == UNPRICED],
+        "pending": [r["provider"] for r in rows
+                    if r["status"] == PENDING_SETTLEMENT],
         "estimated_only": [r["provider"] for r in rows
                            if r["status"] == ESTIMATED_ONLY],
         # Deliberately NOT a total. Credits and dollars do not add up, and a
@@ -207,8 +249,8 @@ def reconcile(before, after, records, since=None):
 # Worst first. An operator reads the top of the report, so the top has to be
 # the thing that needs a decision - not whichever provider sorts first
 # alphabetically, which put a FREE_CONFIRMED line above an unreconciled one.
-SEVERITY = (COST_UNRECONCILED, UNPRICED, ESTIMATED_ONLY, RECONCILED,
-            FREE_CONFIRMED)
+SEVERITY = (COST_UNRECONCILED, UNPRICED, PENDING_SETTLEMENT, ESTIMATED_ONLY,
+            RECONCILED, FREE_CONFIRMED)
 
 
 def report(result):
@@ -226,6 +268,9 @@ def report(result):
         lines.append("")
         lines.append(f"UNRECONCILED: {', '.join(result['unreconciled'])} - "
                      f"these must not be reported as spent or as free")
+    if result.get("pending"):
+        lines.append(f"PENDING: {', '.join(result['pending'])} - read too soon "
+                     f"after the run to conclude anything; re-read later")
     if result.get("unpriced"):
         lines.append(f"UNPRICED: {', '.join(result['unpriced'])} - real money "
                      f"the internal price table records as zero, so no cap "
