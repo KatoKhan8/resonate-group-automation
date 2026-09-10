@@ -279,10 +279,18 @@ class TestStateIsSufficient(RunnerTest):
         It is not resume state, which is what this invariant is about - losing
         it costs a DNS lookup, not correctness - and the sibling test above
         asserts that everything needed to resume is still in the queue.
+
+        `spend-ledger.jsonl` joins it for the opposite reason: losing it costs
+        CORRECTNESS, because a client's committed spend would read as zero and
+        a run could spend its ceiling twice. It is deliberately not in the
+        queue - a per-record field cannot answer "what has this client spent
+        today across every run" - and it is `SPEND_LEDGER` in
+        `store.STATE_OVERRIDES`, so an isolated run moves it with everything
+        else. Both registries caught its absence the night it was added.
         """
         run.run(spend=True, model=scripted())
         work = os.path.dirname(self.queue)
-        allowed = {"queue.jsonl", "mx-cache.json"}
+        allowed = {"queue.jsonl", "mx-cache.json", "spend-ledger.jsonl"}
         self.assertEqual(set(os.listdir(work)) - allowed, set(),
                          "an unregistered second state file was created")
 

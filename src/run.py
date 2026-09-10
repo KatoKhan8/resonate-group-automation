@@ -413,6 +413,18 @@ def main(argv=None):
         if stage in report:
             detail = ", ".join(f"{k}={v}" for k, v in report[stage].items())
             print(f"  {stage:<10} {detail}")
+    # PRINTED, not merely computed. The timings were added to the report and
+    # nothing rendered them, so the first run that needed them was
+    # reconstructed from log timestamps and Apify's own history - which is the
+    # exact defect this repository keeps producing, committed by the person
+    # who had just written a commit message about it.
+    seconds = report.get("seconds") or {}
+    if seconds:
+        stages = ", ".join(f"{k}={v}s" for k, v in sorted(seconds.items())
+                           if k != "per_record")
+        print(f"  seconds    {stages}")
+        print(f"             per_record={seconds.get('per_record')}s "
+              f"total={round(sum(v for k, v in seconds.items() if k != 'per_record'), 1)}s")
     print(f"  states     {report['states']}")
     for failure in report["failures"]:
         print(f"  FAILED     {failure['id']} in {failure['stage']}: {failure['why']}")
