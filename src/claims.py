@@ -66,13 +66,13 @@ def sentences(text):
 #
 # `is_claim` recognised two things: a number and an event word. The sentence
 # that actually went out to a real person was "you are running utilisation at
-# Nineyards" - no number, no event, and a flat assertion about how somebody
+# the canary's company" - no number, no event, and a flat assertion about how somebody
 # else's company operates, made on no evidence at all. It was not a claim as
 # far as this module was concerned.
 #
 # These are second-person VERBS, not possessives. "your size" and "your team"
 # appear in perfectly honest copy - the approved canary note says "curious how
-# Nineyards handles it at your size" - and matching those would refuse the
+# the canary's company handles it at your size" - and matching those would refuse the
 # very sentences this system is trying to write. What is being caught is the
 # form "you ARE X", "you HAVE X", "you RUN X": telling somebody a fact about
 # their own business.
@@ -190,7 +190,7 @@ def check_sentence(sentence, support):
 
     # A STATEMENT ABOUT HOW THEY OPERATE NEEDS SOMETHING BEHIND IT.
     #
-    # "you are running utilisation at Nineyards" carries no figure and no
+    # "you are running utilisation at <their company>" carries no figure and no
     # event word, so every check below passed it and it went to a real person.
     #
     # STRICTER than the event-word branch, deliberately. The event branch

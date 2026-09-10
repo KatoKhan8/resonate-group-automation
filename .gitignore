@@ -59,3 +59,14 @@ node_modules/
 Thumbs.db
 .idea/
 .vscode/
+
+# The client's own prospect universe. "SAFE INPUT" in the pack's README means
+# domains only - no names, addresses or profiles - but it is still a list of
+# real companies somebody paid for, and 24,710 of them is the whole target
+# market. The pilot subsets are nested inside it.
+#
+# Ignored rather than merely left untracked, so a `git add` that means to
+# catch a report cannot catch these instead. That nearly happened on
+# 2026-09-10.
+batches/productive-*.csv
+batches/*_SAFE_INPUT.zip

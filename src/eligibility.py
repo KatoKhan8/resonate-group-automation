@@ -628,7 +628,7 @@ def _linkedin_checks(rec, contact, step, step_key, config):
     #
     # `_email_checks` runs `lint.check` and then `claims.verify`. This branch
     # ran neither. The fabrication that prompted all of this - a note telling a
-    # real person "you are running utilisation at Nineyards", about a company
+    # real person "you are running utilisation at <their company>", about a company
     # that had never said so - was a LINKEDIN NOTE, and the only code that
     # would have caught it is `executionguard`, which the routine
     # `push.py` -> `eligibility.decide` path does not go through.

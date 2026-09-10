@@ -7,7 +7,7 @@ the note was non-empty, the dependency status, evidence age and approval, and
 let the WORDS through unexamined.
 
 The note that started all of this told a real person "you are running
-utilisation at Nineyards", about a company that had never said anything of the
+utilisation at <their company>", about a company that had never said anything of the
 kind. It was a LinkedIn note. The only code in the repository that would have
 refused it is `executionguard`, and the routine path -
 `push.heyreach_rows` -> `verify_before_payload` -> `eligibility.decide` - does
