@@ -103,10 +103,18 @@ OPENINGS = {
                    "teams never get to.",
     "hiring": "Saw you are hiring a Head of Resource Management to improve "
               "utilisation across the delivery team.",
-    "no_signal": "You run delivery across several teams at once, which is "
-                 "usually the point where month-end stops being a formality.",
-    "irrelevant": "You run delivery across several teams at once, which is "
-                  "usually the point where month-end stops being a formality.",
+    # THESE TWO ARE THE NO-EVIDENCE CASES AND MUST NOT ASSERT ANYTHING.
+    # They read "You run delivery across several teams at once" - a flat
+    # statement about how somebody else's company works, on records that by
+    # their own names carry no signal at all. `claims` caught it the day the
+    # second-person rule was added, which is the whole point of that rule.
+    # The rewrite says the same thing about teams in general and asks.
+    "no_signal": "Month-end tends to stop being a formality once delivery "
+                 "runs across several teams at once. Curious whether that is "
+                 "familiar.",
+    "irrelevant": "Month-end tends to stop being a formality once delivery "
+                  "runs across several teams at once. Curious whether that is "
+                  "familiar.",
 }
 
 PERSONA_WORDS = {"champion": "operations leads", "economic_buyer": "founders"}

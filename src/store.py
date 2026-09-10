@@ -78,7 +78,13 @@ STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    # `work/`: a stray reservation there would count against a
                    # live pilot cap, and a stray `sent` row would make a real
                    # person look already-contacted.
-                   "ACTION_LEDGER")
+                   "ACTION_LEDGER",
+                   # The durable spend ledger, for the same reason one line
+                   # up: a stray row there consumes a real client's budget
+                   # ceiling, and a missing one lets a run spend twice. This
+                   # was omitted when the ledger was added and
+                   # `test_invariants` caught it the same night.
+                   "SPEND_LEDGER")
 
 
 def use_directory(path):

@@ -30,6 +30,8 @@ about their company.
 """
 import re
 
+from . import evidence
+
 # A sentence containing one of these is making a checkable assertion about the
 # prospect rather than a general statement.
 CLAIM_MARKERS = (
@@ -60,6 +62,60 @@ def sentences(text):
     return [p.strip() for p in parts if p.strip()]
 
 
+# A DECLARATIVE STATEMENT ABOUT WHAT THE PROSPECT DOES.
+#
+# `is_claim` recognised two things: a number and an event word. The sentence
+# that actually went out to a real person was "you are running utilisation at
+# Nineyards" - no number, no event, and a flat assertion about how somebody
+# else's company operates, made on no evidence at all. It was not a claim as
+# far as this module was concerned.
+#
+# These are second-person VERBS, not possessives. "your size" and "your team"
+# appear in perfectly honest copy - the approved canary note says "curious how
+# Nineyards handles it at your size" - and matching those would refuse the
+# very sentences this system is trying to write. What is being caught is the
+# form "you ARE X", "you HAVE X", "you RUN X": telling somebody a fact about
+# their own business.
+#
+# Questions are still exempt by the rule below, so "are you running
+# utilisation?" is a question and stays one.
+# Constructions that suppose rather than state. A sentence carrying one of
+# these is not telling the prospect a fact about themselves, whatever verb
+# follows.
+#
+# The day-21 template is the reason this exists: "if {angle_phrase} is not
+# something you are looking at right now, that is a fair answer in itself."
+# Conditional, negated, and asserting nothing - the comment above it in
+# `cadence.py` says as much - and a first version of the rule below refused
+# it, which would have blocked the whole demo cadence. A guard that stops
+# honest copy gets deleted rather than fixed.
+HEDGES = ("if ", "unless ", "whether ", "in case ", "should you ",
+          "suppose ", "assuming ", "not something", "maybe ", "perhaps ")
+
+SECOND_PERSON_ASSERTIONS = (
+    "you are ", "you're ", "you have ", "you've ", "you run ", "you use ",
+    "you manage ", "you rely ", "you operate ", "you track ", "you bill ",
+    "you struggle", "you need ", "you must be ", "your team is ",
+    "your team has ", "your agency is ", "your studio is ",
+)
+
+
+def asserts_about_them(low):
+    """Is this a flat statement about how the prospect OPERATES?
+
+    Both halves are required, and the second half is what keeps this usable.
+    "you are welcome to book a slot" is a second-person assertion and asserts
+    nothing about their business; "you are running utilisation" says something
+    about how they work that somebody could check. Only the second kind needs
+    evidence, and demanding it of the first would refuse ordinary politeness.
+    """
+    if any(hedge in low for hedge in HEDGES):
+        return False
+    if not any(marker in low for marker in SECOND_PERSON_ASSERTIONS):
+        return False
+    return [t for t in evidence.OPERATIONAL_TERMS if t in low]
+
+
 def is_claim(sentence):
     """Does this sentence assert something checkable about the prospect?"""
     low = sentence.lower()
@@ -74,6 +130,7 @@ def is_claim(sentence):
     if "?" in sentence and not NUMBER.search(low):
         return False                     # a question asserts nothing
     return bool(NUMBER.search(low) or MONTH.search(low)
+                or asserts_about_them(low)
                 or any(w in low for w in EVENT_WORDS))
 
 
@@ -83,7 +140,18 @@ def support_text(rec, contact=None, chosen=()):
     facts = rec.get("company_facts") or {}
     for key, value in facts.items():
         if isinstance(value, (list, tuple)):
-            parts.extend(str(v) for v in value)
+            # THE FIELD NAME AS WELL AS THE VALUES. A populated `offices` list
+            # holding five city names is knowledge that this company has
+            # offices, and dropping the key meant the word "office" appeared
+            # nowhere in support - so "you run finance across five offices",
+            # which the record fully supports, read as a fabrication.
+            #
+            # Only when it is POPULATED. An empty list is not evidence that we
+            # know anything about the field, and appending the key regardless
+            # would make every absent fact quietly assertable.
+            if value:
+                parts.append(str(key))
+                parts.extend(str(v) for v in value)
         elif value not in (None, "", {}):
             parts.append(f"{key} {value}")
     parts.append(str(rec.get("company") or ""))
@@ -120,21 +188,44 @@ def check_sentence(sentence, support):
         if len(cleaned) >= 2 and cleaned not in support:
             return False, f"the figure {cleaned} appears in no stored fact"
 
+    # A STATEMENT ABOUT HOW THEY OPERATE NEEDS SOMETHING BEHIND IT.
+    #
+    # "you are running utilisation at Nineyards" carries no figure and no
+    # event word, so every check below passed it and it went to a real person.
+    #
+    # STRICTER than the event-word branch, deliberately. The event branch
+    # allows a paraphrase, because "you opened a Vienna office" against
+    # evidence saying exactly that should pass on its content words. That
+    # allowance is too generous here: a short second-person sentence is mostly
+    # the recipient's own name and company, both of which are always in
+    # support, so coverage passes on words that carry no claim at all. The
+    # operational term IS the assertion, so it is what has to be supported.
+    for term in (asserts_about_them(low) or []):
+        if term not in support:
+            return False, (f"'{term}' is asserted about them and nothing "
+                           f"stored supports it")
+
     events_named = [w for w in EVENT_WORDS if w in low]
     for word in events_named:
-        if word not in support:
-            # The event word itself is nowhere in what we know. That is allowed
-            # only when the sentence is a paraphrase of something we do know -
-            # so most of its content words must already appear in support.
-            # "Congratulations on your Series B" has nothing behind it and is
-            # refused; "you opened a Vienna office" against stored evidence
-            # saying exactly that is not.
-            content = _tokens(low) - _tokens(" ".join(CLAIM_MARKERS))
-            missing = [t for t in content if t not in support]
-            if not content or len(missing) * 2 > len(content):
-                return False, (f"'{word}' is asserted but nothing stored "
-                               "mentions it")
+        if word not in support and not _is_paraphrase(low, support):
+            return False, (f"'{word}' is asserted but nothing stored "
+                           "mentions it")
     return True, None
+
+
+def _is_paraphrase(low, support):
+    """Is most of this sentence's substance already in what we know?
+
+    The test the event-word branch has always used, named so the operational
+    branch can hold to it too. "Congratulations on your Series B" has nothing
+    behind it and fails; "you opened a Vienna office" against stored evidence
+    saying exactly that passes.
+    """
+    content = _tokens(low) - _tokens(" ".join(CLAIM_MARKERS))
+    if not content:
+        return False
+    missing = [t for t in content if t not in support]
+    return len(missing) * 2 <= len(content)
 
 
 def check(text, rec, contact=None, chosen=()):

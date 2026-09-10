@@ -29,12 +29,23 @@ from tests.base import (FIXTURES, ProviderTest, approve_everything,
 BATCH = os.path.join(FIXTURES, "e2e-batch.csv")
 SUPPRESS = os.path.join(FIXTURES, "e2e-suppress.txt")
 
+# ASSERTS NOTHING ABOUT THEM, and that is what makes it good.
+#
+# This used to open "you are running the finance side of a team spread across
+# several offices". `clearwater` has no `offices` fact - the one in the
+# cassettes belongs to a different company - so the sentence was a statement
+# about somebody else's business on no evidence, sitting in a constant named
+# GOOD_BODY. The claim rule added on 2026-09-10 caught it, along with two
+# hooks in `demo.py` that did the same thing.
+#
+# The rewrite generalises and asks, which is the same fix applied to the
+# canary note and to the day-21 template before it.
 GOOD_BODY = (
-    "{first}, you are running the finance side of a team spread across several "
-    "offices, which is the point at which month end stops being an afternoon and "
-    "starts being a week of chasing. The part I would ask about is how long it "
-    "takes you to know which client work actually made money, because most teams "
-    "at that size can answer revenue quickly and margin slowly.\n\n"
+    "{first}, month end tends to stop being an afternoon and start being a "
+    "week of chasing once finance is spread across more than one place. The "
+    "part I would ask about is how long it takes to know which client work "
+    "actually made money, because most teams can answer revenue quickly and "
+    "margin slowly.\n\n"
     "Is that roughly the shape of it, or have you already put something in place?")
 
 BAD_BODY = "[FIRST NAME], I wanted to reach out about your audit—screenshot attached below."

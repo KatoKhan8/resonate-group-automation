@@ -220,6 +220,25 @@ class Decision(dict):
         return self.get("verdict") == ELIGIBLE
 
 
+def _claim_detail(unsupported):
+    """WHICH claim, not merely that there was one.
+
+    `blocked:unsupported_claim` on its own sends whoever reads it hunting
+    through a generated body for a sentence the checker already identified.
+    Twice tonight that cost several minutes; the checker knew the answer both
+    times.
+    """
+    out = []
+    for problem in (unsupported or [])[:2]:
+        if isinstance(problem, dict):
+            why = str(problem.get("why") or "").strip()
+            sentence = str(problem.get("sentence") or "").strip()[:90]
+            out.append(f"claim:{why} :: {sentence}" if why else f"claim:{sentence}")
+        else:
+            out.append(f"claim:{str(problem)[:110]}")
+    return out
+
+
 def _decide(verdict, reasons, **extra):
     reasons = [r for r in (reasons or []) if r]
     decision = Decision({"verdict": verdict, "reasons": reasons,
@@ -585,7 +604,7 @@ def _email_checks(rec, contact, step, step_key, config):
     unsupported = claims.verify(step, rec, contact,
                                 _chosen_evidence(rec, contact))
     if unsupported:
-        return BLOCKED, [BLOCKED_UNSUPPORTED_CLAIM]
+        return BLOCKED, [BLOCKED_UNSUPPORTED_CLAIM] + _claim_detail(unsupported)
 
     if _evidence_aged_out(rec, contact):
         return HELD, [HELD_EVIDENCE_AGED_OUT]
@@ -603,6 +622,29 @@ def _linkedin_checks(rec, contact, step, step_key, config):
         return HELD, [HELD_APPROVAL_MISSING]
     if step.get("status") == "waiting":
         return HELD, [HELD_AWAITING_DEPENDENCY]
+
+    # THE SAME TWO CHECKS THE EMAIL BRANCH HAS, ON THE CHANNEL THE DEFECT
+    # ACTUALLY HAPPENED ON.
+    #
+    # `_email_checks` runs `lint.check` and then `claims.verify`. This branch
+    # ran neither. The fabrication that prompted all of this - a note telling a
+    # real person "you are running utilisation at Nineyards", about a company
+    # that had never said so - was a LINKEDIN NOTE, and the only code that
+    # would have caught it is `executionguard`, which the routine
+    # `push.py` -> `eligibility.decide` path does not go through.
+    #
+    # So the guard existed, was correct, was documented, and was wired to one
+    # of the two channels. That is the same shape as the collision check that
+    # was hardened on email and left open on LinkedIn.
+    failures = lint.check_linkedin(rec, contact.get("key"), step)
+    if failures:
+        return BLOCKED, [BLOCKED_LINT] + [f"blocked:lint:{f}" for f in failures]
+
+    unsupported = claims.verify(step, rec, contact,
+                                _chosen_evidence(rec, contact))
+    if unsupported:
+        return BLOCKED, [BLOCKED_UNSUPPORTED_CLAIM] + _claim_detail(unsupported) + _claim_detail(unsupported)
+
     if _evidence_aged_out(rec, contact):
         return HELD, [HELD_EVIDENCE_AGED_OUT]
     if not approval.is_approved(rec, contact.get("key"), step_key, step):
