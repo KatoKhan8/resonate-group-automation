@@ -3219,96 +3219,77 @@ the path is unreached today - but it is the one place on the inbound path
 where the direction allowlist is not applied.
 
 
-## 42. Five of the twelve ICP dimensions have never scored, for anybody
+## 42. Two ICP dimensions cannot be scored from a company's own website
 
-Measured across the whole 50-domain Productive cohort on 2026-09-10, after the
-evidence-contract and research-ordering fixes were in place and eleven records
-had actually been researched.
+**This section said five, and was wrong.** It was measured while the second
+research pass was still running - eleven records researched, and the qualify
+stage had not re-scored most of them. Generalising from that to "the ICP model
+asks the wrong witness" was an overreach from partial data, and the corrected
+numbers say something narrower and more useful.
 
-| dimension | records scored |
-|---|---|
-| employee_count | 40/50 |
-| agency_fit | 18/50 |
-| service_not_product | 18/50 |
-| geography | 17/50 |
-| distributed_teams | 13/50 |
-| project_delivery | 2/50 |
-| delivery_complexity | 1/50 |
-| **resource_planning_need** | **0/50** |
-| **profitability_need** | **0/50** |
-| **utilization_need** | **0/50** |
-| **time_tracking_need** | **0/50** |
-| **operational_complexity** | **0/50** |
+Measured over the 50-domain Productive cohort on 2026-09-10, after research
+had run for 15 records and every verdict had been recomputed:
 
-The five that never score are five of the six in `icp.NEED_SIGNALS` - the
-prose-driven dimensions, and precisely the ones company research exists to
-feed.
+| dimension | scored | before research ran |
+|---|---|---|
+| employee_count | 40/50 | 40 |
+| agency_fit | 20/50 | 18 |
+| service_not_product | 20/50 | 18 |
+| geography | 17/50 | 17 |
+| distributed_teams | 13/50 | 13 |
+| delivery_complexity | 6/50 | 1 |
+| project_delivery | 4/50 | 2 |
+| resource_planning_need | 2/50 | **0** |
+| profitability_need | 1/50 | **0** |
+| operational_complexity | 1/50 | **0** |
+| **utilization_need** | **0/50** | 0 |
+| **time_tracking_need** | **0/50** | 0 |
 
-### It is not a matching bug. It is the evidence source.
+Research works. Four of the six prose-driven dimensions started scoring the
+moment it actually ran, and the per-record maximum went from 6 to 8 - enough
+for HIGH confidence, which this file previously called unreachable and which
+`digitalthirdcoast.com` now holds at 8 dimensions and a score of 73.
 
-The obvious suspicion is that the phrase matching is broken. It is not: over
-13,200 words of retrieved company text, `segments._hits` finds
-`delivery_complexity` on 4 of 11 researched records, `operational_complexity`
-on 1 and `resource_planning_need` on 1 - "account manager", "studio",
-"retainer", "bookings". The matcher works.
+### The two that remain, and why they are different
 
-What it finds nothing of is the pain:
+    utilization_need     0/15 researched   "utilisation", "billable", "bench"
+    time_tracking_need   0/15 researched   "timesheets", "logged hours"
 
-    profitability_need   0/11    "margin", "budget overrun", "cost control"
-    time_tracking_need   0/11    "timesheets", "logged hours"
-    utilization_need     0/11    "utilisation", "billable", "bench"
+These are the two dimensions that name the operational pain directly, and a
+company's own marketing website does not advertise the problem a vendor wants
+to sell it. It advertises services and clients. No agency writes "our
+utilisation is a mess" on its homepage. The matcher is fine - over 13,200
+words it finds "account manager", "studio", "retainer", "bookings" - it finds
+nothing of these because there is nothing of these to find.
 
-**A company's own marketing website does not advertise the operational problem
-a vendor wants to sell it.** It advertises services and clients. No agency
-writes "our utilisation is a mess" on its homepage, and an ICP model that
-scores `utilization_need` from a homepage crawl is asking a question the
-source cannot answer - however good the crawler, the filter or the scoring.
+So the honest statement is not that the ICP model is unscoreable. It is that
+**ten of twelve dimensions are scoreable from firmographics plus the company's
+own words, and two are not scoreable from that source at all.** Their cost is
+bounded: they count as `missing`, which nudges every company toward LOW, and
+`_confidence` needs 6 of 12 for MEDIUM. Companies still reach MEDIUM and HIGH.
 
-This is a different failure from the ones above it. Sections 39-41 were things
-computed correctly and never consumed. This is a question asked of the wrong
-witness.
-
-### What that costs, exactly
-
-`_confidence` gives MEDIUM only when at least 6 of 12 dimensions scored. With
-five permanently at zero and `delivery_complexity` near it, the practical
-ceiling is seven, and the observed range is 3-6. So MEDIUM is reachable but
-narrow, HIGH (needs 7 scored and at most 3 missing) is effectively out of
-reach, and LOW forces `review` whatever the score.
-
-That is why the cohort produced zero campaign-ready, and it is not a bug
-anybody could have found by reading the code.
-
-### What would actually fix it, and what must not
+### What would close the last two, and what must not
 
 **Not** lowering the threshold, and **not** widening the phrase lists until
-something matches. Both would manufacture confidence the evidence does not
-support, which is the one thing this system exists to refuse.
+something matches. Both manufacture confidence the evidence does not support.
 
-The fix is a source that can answer the question:
-
-  - **Job postings** are the strongest available signal and the cheapest.
-    An agency hiring a Resource Manager, a Traffic Manager or a Studio
-    Manager is stating the resourcing problem out loud, in public, with a
-    date on it. Nothing in this build reads them.
+  - **Job postings** are the strongest available signal and the cheapest. An
+    agency hiring a Resource Manager, a Traffic Manager or a Studio Manager
+    states the resourcing problem in public with a date on it. Nothing in this
+    build reads them.
+  - **Headcount trajectory** is a better proxy for resourcing pressure than any
+    phrase: a studio that went from 20 to 45 people in a year has a scheduling
+    problem whether or not it says so.
   - **Tech stack, but not the stack we currently get.** `company_facts.stack`
-    is populated for 14 of the 50 and read by no ICP dimension at all - there
-    is not one occurrence of "stack" in `icp.py` or `segments.py`. That is a
-    real disconnection, and it is worth less than it first looks: the field
-    holds WEB infrastructure - Google Analytics, Cloudflare, Yoast, Typekit -
-    not business systems. It cannot answer `time_tracking_need`, because
-    nobody's website reveals whether they run Harvest or Float. A vendor
-    feed that covers business tooling would; this one does not, and saying
-    otherwise would be exactly the wishful reading this section is about.
-    (The one flicker of signal is "Microsoft Excel" appearing in a stack,
-    which is arguably how a 40-person studio does resource planning. One
-    record is not a dimension.)
-  - **Headcount trajectory** is a better proxy for `resource_planning_need`
-    than any phrase: a studio that went from 20 to 45 people in a year has a
-    scheduling problem whether or not it says so.
+    is populated for 14 of the 50 and read by no ICP dimension at all - not one
+    occurrence of "stack" in `icp.py` or `segments.py`. That IS a real
+    disconnection, and it is worth less than it looks: the field holds WEB
+    infrastructure - Google Analytics, Cloudflare, Yoast, Typekit - not
+    business systems, so it cannot say whether a company runs Harvest or Float.
 
-Until one of those exists, the honest position is that Productive's ICP is
-scoreable on firmographics and self-description, and not on operational pain.
-The model should probably say so - a dimension that has never scored for
-anybody is not a strict dimension, it is an absent one, and it currently drags
-every company toward LOW by counting as "missing".
+### The lesson underneath the correction
+
+Both drafts of this section were written from real measurements. The first was
+taken while the thing being measured was still changing, which is a way of
+being precisely wrong. A number from a run that has not finished is not a
+finding; it is a progress bar.
