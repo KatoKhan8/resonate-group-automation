@@ -572,20 +572,26 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
         # holds money committed rather than money contemplated, and a planning
         # run that consumed a real ceiling would be a spend control that
         # punishes people for checking first.
-        if not live:
-            return True
-        # Checked AFTER the in-memory cap so the cheap refusal stays cheap,
-        # and recorded only once both have allowed it.
-        from . import spendledger
-        try:
-            spendledger.check(rec.get("client"), config, cost,
-                              provider=provider)
-        except spendledger.BudgetExceeded as e:
-            log.append(f"{rec['id']}: {e}")
-            events.record(rec, events.PROVIDER_CALL_SKIPPED, provider=provider,
-                          operation=call, reason=f"durable budget: {e}"[:200])
-            return False
-        spendledger.record(rec.get("client"), provider, call, cost)
+        #
+        # Gated around the LEDGER ONLY, not around the rest of this closure. A
+        # first version returned early here, which also skipped `done.append`
+        # below - and `done` is what a dry run reports as "what this would
+        # do". Five tests in `test_icp_spend_gate` said so: a planning run
+        # stopped listing even `people-count`, which costs nothing.
+        if live:
+            # Checked AFTER the in-memory cap so the cheap refusal stays
+            # cheap, and recorded only once both have allowed it.
+            from . import spendledger
+            try:
+                spendledger.check(rec.get("client"), config, cost,
+                                  provider=provider)
+            except spendledger.BudgetExceeded as e:
+                log.append(f"{rec['id']}: {e}")
+                events.record(rec, events.PROVIDER_CALL_SKIPPED,
+                              provider=provider, operation=call,
+                              reason=f"durable budget: {e}"[:200])
+                return False
+            spendledger.record(rec.get("client"), provider, call, cost)
         done.append({"call": call, "why": why, "cost": cost, "provider": provider,
                      "reason_code": reason_code})
         if cost:

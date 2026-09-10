@@ -22,13 +22,18 @@ from tests.base import FIXTURES, ProviderTest, qualify_everything
 BATCH = os.path.join(FIXTURES, "preprod-batch.csv")
 SUPPRESS = os.path.join(FIXTURES, "preprod-suppress.txt")
 
-BODY = ("{first}, you are running the finance side of a team working across "
-        "several offices, which is the point at which month end stops being an "
-        "afternoon and starts being a week of chasing. The question I would put "
-        "to you is how long it takes to know which client work actually made "
-        "money, because most teams that size can answer revenue quickly and "
-        "margin slowly.\n\nIs that roughly the shape of it, or have you already "
-        "put something in place?")
+# ASSERTS NOTHING ABOUT THEM. This opened "you are running the finance side of
+# a team working across several offices" - a statement about somebody else's
+# company on a record that carries no `offices` fact. `test_e2e.py` had a
+# near-identical copy under a constant named GOOD_BODY, and `demo.py` had two
+# more; the claim rule added on 2026-09-10 found all four. Rewritten to
+# generalise and ask, which is what the real canary note does.
+BODY = ("{first}, month end stops being an afternoon and starts being a week "
+        "of chasing once finance runs across more than one place. The question "
+        "I would put to you is how long it takes to know which client work "
+        "actually made money, because most teams can answer revenue quickly "
+        "and margin slowly.\n\nIs that roughly the shape of it, or have you "
+        "already put something in place?")
 
 
 class FakeModel:
@@ -392,9 +397,27 @@ class TestTheWholeRunIsAccountedFor(PreProduction):
             self.assertNotIn("AddLeads", call["url"])
         self.assertTrue(self.cassette.calls)          # providers were exercised
 
-    def test_the_queue_is_the_only_state_written(self):
+    def test_the_queue_is_the_only_record_state_written(self):
+        """RECORD state, which is the invariant. The spend ledger is not that.
+
+        This asserted the queue was the only file at all. `spend-ledger.jsonl`
+        now sits beside it because a client's committed spend cannot live on a
+        record: the question it answers is "what has this client spent today
+        across every run", and no per-record field can hold that.
+
+        It is registered in `store.STATE_OVERRIDES`, so an isolated run moves
+        it, and it holds no record state - only provider, call, cost and day.
+        The invariant being protected here is that nothing needed to RESUME a
+        record lives outside the queue, and that still holds.
+        """
         work = os.path.dirname(self.queue)
-        self.assertEqual(sorted(os.listdir(work)), ["queue.jsonl"])
+        self.assertEqual(sorted(os.listdir(work)),
+                         ["queue.jsonl", "spend-ledger.jsonl"])
+        from src import spendledger
+        for row in spendledger.load():
+            self.assertEqual(set(row) - {"at", "day", "client", "provider",
+                                         "call", "expected_cost", "run_id"},
+                             set(), "the spend ledger grew a record field")
 
 
 if __name__ == "__main__":
