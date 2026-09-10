@@ -19,7 +19,7 @@ import argparse
 import json
 import re
 
-from . import geo
+from . import evidence, geo
 
 UNKNOWN = "UNKNOWN"
 
@@ -323,8 +323,24 @@ def text_of(rec):
              str(facts.get("tagline") or "")]
     parts.extend(str(s) for s in (facts.get("specialties") or []))
     parts.extend(str(s) for s in (facts.get("services") or []))
+    # DECISION-QUALITY ONLY. This appended every research fact unconditionally,
+    # and on 2026-09-10 that meant 2,488 words of a Hungarian agency's privacy
+    # and cookie policies were part of the text a vertical classifier read.
+    # Boilerplate is not neutral input here: it is long, it is in the same
+    # language as the company's real copy, and it dilutes every ratio this
+    # module computes.
+    #
+    # Checked here as well as at ingest because the two answer different
+    # questions. `research.run` decides what to STORE, and cannot reach
+    # evidence stored before it existed; this decides what may CLASSIFY, and
+    # is the guarantee that survives a new producer being added later.
     for item in (rec.get("research") or []):
-        parts.append(str(item.get("fact") or ""))
+        fact = str(item.get("fact") or "")
+        if evidence.boilerplate(fact):
+            continue
+        if item.get("quality") == evidence.UNUSABLE:
+            continue
+        parts.append(fact)
     return " ".join(parts).lower()
 
 

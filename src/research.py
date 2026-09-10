@@ -14,7 +14,7 @@ blocked on.
 """
 import argparse
 
-from . import clients, events, store
+from . import clients, events, evidence as ev, store
 from .providers import ProviderError, apify
 
 # Why public evidence is genuinely required. A scrape with any other reason is
@@ -85,8 +85,16 @@ def existing_evidence(rec):
     return list(rec.get("research") or [])
 
 
-def why(rec):
+def why(rec, verdict=None):
     """The reason public evidence is needed, or None when it is not.
+
+    `verdict` lets a caller supply a freshly computed ICP verdict that has NOT
+    been written to the record. The ICP branch below is gated on `icp_status`,
+    which the qualify stage writes AFTER the stage research runs in - so on a
+    first pass the status is None and the need can never be stated. Computing
+    a verdict is free; persisting one mid-enrichment is not neutral, because
+    it can hold the record and stop verification. So the caller computes,
+    passes it here, and lets the qualify stage own what gets stored.
 
     Structured data wins. This only fires when a step downstream has nothing to
     work with, which is the only honest reason to go and read someone's website.
@@ -112,18 +120,19 @@ def why(rec):
     # qualified one needs nothing further. "Structured data wins" above still
     # holds for the hook and the angle - this asks a different question, about
     # evidence the structured sources do not carry at all.
-    status = ((rec.get("qualification") or {}).get("verdict") or {}).get(
+    status = (verdict or
+              (rec.get("qualification") or {}).get("verdict") or {}).get(
         "icp_status")
     if status in ("review", "unknown") and icp_prose_missing(rec):
         return NEED_ICP_EVIDENCE
     return None
 
 
-def plan(rec, config=None):
+def plan(rec, config=None, verdict=None):
     """What a run would do for this record, or why it will not happen."""
     config = config or {}
     conf = apify.settings(config)
-    reason = why(rec)
+    reason = why(rec, verdict=verdict)
     if not reason:
         return {"record": rec["id"], "planned": False,
                 "why_not": "structured evidence is sufficient"}
@@ -134,7 +143,8 @@ def plan(rec, config=None):
     return {"record": rec["id"], "planned": True, "reason": reason, **planned}
 
 
-def run(rec, config=None, live=False, spend=None, scrape_budget=None):
+def run(rec, config=None, live=False, spend=None, scrape_budget=None,
+        verdict=None):
     """Gather public evidence. Returns what was retained, never the raw dataset.
 
     `live` is a second gate on top of the client's own `enabled`: a plan is
@@ -153,7 +163,7 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None):
     being invisible, and silence is the failure this guards against.
     """
     config = config or {}
-    proposal = plan(rec, config)
+    proposal = plan(rec, config, verdict=verdict)
     if not proposal.get("planned"):
         events.record(rec, events.PROVIDER_CALL_SKIPPED, provider="apify",
                       operation="research", reason=proposal.get("why_not"))
@@ -246,11 +256,41 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None):
         store.log(rec, "research", f"apify failed: {e}")
         return []
 
+    # The client's OWN configured vocabulary, which is what `relevance` is
+    # documented to score against - "not from a model's opinion". At this
+    # point in the pipeline there is no contact and therefore no single
+    # angle, so every configured angle counts: research is company-level and
+    # a page about resourcing is relevant to this client whichever persona
+    # eventually reads it.
+    angle_words = sorted({w for label in (config.get("angle_labels") or {}).values()
+                          for w in str(label).split() if len(w) > 3})
     evidence = apify.evidence_from_items(items, rec["domain"], proposal["actor"],
-                                         sources_by_url, conf)
+                                         sources_by_url, conf,
+                                         record_id=rec["id"],
+                                         angle_words=angle_words)
     for entry in evidence:
-        entry["record_id"] = rec["id"]
         entry["retrieved_at"] = entry.get("retrieved_at") or store.now()
+
+    # BOILERPLATE NEVER BECOMES DECISION EVIDENCE. `evidence.quality` already
+    # answers UNUSABLE for it; dropping it here as well means it is not stored
+    # either, so it cannot reach `segments.text_of` - which appends every
+    # research fact to the text the vertical classifier reads, and did append
+    # 2,488 words of a Hungarian agency's privacy and cookie policies.
+    #
+    # Dropped rather than stored-and-ignored because a consumer that forgets
+    # to filter is the defect this whole change is about, and because keeping
+    # it would mean paying to store what nothing may read. The event below
+    # records that it was retrieved and refused, which is the audit trail.
+    usable, refused = [], []
+    for entry in evidence:
+        why = ev.boilerplate(entry.get("fact"))
+        (refused if why else usable).append((entry, why))
+    for entry, why in refused:
+        events.record(rec, events.EVIDENCE_REFUSED, provider="apify",
+                      operation=entry.get("field") or "company_website",
+                      reason=f"{entry.get('source_url')}: {why}")
+        store.log(rec, "research", f"refused {entry.get('source_url')}: {why}")
+    evidence = [entry for entry, _ in usable]
     rec.setdefault("research", []).extend(evidence)
     events.record(rec, events.SCRAPE_COMPLETED, provider="apify",
                   operation=proposal["actor"], reason=proposal["reason"],

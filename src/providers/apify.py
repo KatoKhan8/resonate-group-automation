@@ -311,8 +311,27 @@ def clean_text(value, limit):
     return text[:limit]
 
 
-def evidence_from_items(items, domain, actor, sources_by_url=None, conf=None):
-    """Dataset rows to bounded, attributed evidence. Raw payloads stay behind."""
+def evidence_from_items(items, domain, actor, sources_by_url=None, conf=None,
+                        record_id=None, angle_words=None, persona=None):
+    """Dataset rows to bounded, attributed evidence. Raw payloads stay behind.
+
+    GOES THROUGH `evidence.make`, and must. This used to hand-build a nine-key
+    dict, which meant the only research path in the build produced a different
+    record shape from every other producer: no `quality`, no `freshness_score`,
+    no `relevance_score`, no `evidence_id`. `icp.confidence_components` reads
+    the first two and scored 0.0 for both - "0 usable piece(s) of evidence",
+    about evidence that had been retrieved perfectly well - and `claims`
+    licenses a sentence by `evidence_id`, so nothing written from a scraped
+    page could ever be cited.
+
+    Two producers of one record shape, one of which the consumers were written
+    against. The fix is not to teach the consumers a second shape.
+
+    `record_id` is required for `evidence_id` to be stable and attributable;
+    it used to be stamped on by `research.run` AFTER construction, by which
+    time the id had already been computed without it.
+    """
+    from .. import evidence as ev
     conf = conf or settings()
     sources_by_url = sources_by_url or {}
     out, seen = [], set()
@@ -345,18 +364,24 @@ def evidence_from_items(items, domain, actor, sources_by_url=None, conf=None):
                           conf["max_text_chars_per_page"])
         if not body:
             continue
-        out.append({
-            "source_type": "apify",
-            "provider": "apify",
-            "source_url": url,
-            "actor": actor,
-            "retrieved_at": item.get("crawledAt") or None,
-            "field": sources_by_url.get(url, "company_website"),
-            "title": clean_text(item.get("title")
-                                or (item.get("metadata") or {}).get("title"),
-                                200) or None,
-            "fact": body,
-        })
+        # A crawled page carries no publication date worth trusting, so
+        # `published_at` stays None and `freshness` answers UNKNOWN. That is
+        # the honest answer and it costs something: `quality` demands a higher
+        # relevance score before calling UNKNOWN-dated evidence STRONG. Better
+        # than inventing a date from `crawledAt`, which is when WE looked.
+        made = ev.make(body, url, "apify", "apify", record_id,
+                       published_at=None, subject=ev.COMPANY,
+                       persona=persona, angle_words=angle_words,
+                       retrieved_at=item.get("crawledAt") or None)
+        # Provenance the canonical shape has no field for, kept because an
+        # audit needs to know which actor and which requested source produced
+        # this, and because `title` is how a person recognises the page.
+        made["actor"] = actor
+        made["field"] = sources_by_url.get(url, "company_website")
+        made["title"] = clean_text(item.get("title")
+                                   or (item.get("metadata") or {}).get("title"),
+                                   200) or None
+        out.append(made)
         if len(out) >= conf["max_pages_per_domain"]:
             break
     return out

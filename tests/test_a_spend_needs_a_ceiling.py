@@ -91,3 +91,45 @@ class TheCliRefusesRatherThanRunning(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AZeroCapMustStartNothingThatCostsMoney(unittest.TestCase):
+    """`--cap 0` bounded credits and not compute units.
+
+    `COSTS["apify-research"]` is 0 because Apify bills in compute units, which
+    this system is never told the size of - not because an actor run is free.
+    Zero is affordable at every cap by arithmetic, so a run capped at zero
+    still started actors: measured at roughly 33 seconds per record, while the
+    spend audit reported clean because the number it watches is always 0.
+
+    The earlier diagnosis of that slowness blamed DNS. Measurement disproved
+    it. This is the guard for the thing measurement actually found.
+    """
+
+    def test_an_unpriced_call_is_refused_at_a_cap_of_zero(self):
+        budget = enrich.Budget(0)
+        self.assertFalse(budget.affordable(0, call="apify-research"))
+
+    def test_a_priced_free_call_is_still_allowed_at_zero(self):
+        """people-count is genuinely free, and zero must not stop it."""
+        budget = enrich.Budget(0)
+        self.assertTrue(budget.affordable(0, call="people-count"))
+
+    def test_a_positive_cap_still_permits_research(self):
+        """Only zero is special.
+
+        Refusing unpriced calls under every cap would make each capped run
+        silently skip research, which is a different bug in the same place.
+        """
+        budget = enrich.Budget(100)
+        self.assertTrue(budget.affordable(0, call="apify-research"))
+
+    def test_no_cap_at_all_still_permits_research(self):
+        self.assertTrue(enrich.Budget(None).affordable(0,
+                                                       call="apify-research"))
+
+    def test_the_refusal_is_recorded_rather_than_silent(self):
+        budget = enrich.Budget(0)
+        self.assertFalse(budget.charge(0, "rec-1:apify-research",
+                                       call="apify-research"))
+        self.assertIn("rec-1:apify-research", budget.refused)

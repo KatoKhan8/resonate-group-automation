@@ -188,12 +188,17 @@ SCRAPE_FAILED = "scrape_failed"
 
 EVIDENCE_ADDED = "evidence_added"
 
+# Retrieved, and refused before it could influence anything. Recorded because
+# the alternative is evidence that was paid for and then silently vanished,
+# which is indistinguishable from a scrape that returned nothing.
+EVIDENCE_REFUSED = "evidence_refused"
+
 PROVIDER_EVENTS = (PROVIDER_CALL_PLANNED, PROVIDER_CALL_STARTED,
                    PROVIDER_CALL_COMPLETED, PROVIDER_CALL_FAILED,
                    PROVIDER_CALL_SKIPPED, PROVIDER_CREDIT_ESTIMATED,
                    PROVIDER_CREDIT_SPENT)
 RESEARCH_EVENTS = (SCRAPE_PLANNED, SCRAPE_STARTED, SCRAPE_COMPLETED,
-                   SCRAPE_FAILED, EVIDENCE_ADDED)
+                   SCRAPE_FAILED, EVIDENCE_ADDED, EVIDENCE_REFUSED)
 
 INTERNAL = (CAMPAIGN_EVENTS + SLACK_EVENTS + MX_EVENTS +
             (REPLY_CLASSIFIED, POSITIVE_REPLY_DETECTED, MEETING_MARKED,

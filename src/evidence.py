@@ -178,6 +178,119 @@ NOISE_TERMS = (
 )
 
 
+# ------------------------------------------------------------- boilerplate
+
+# Text a website shows everybody. Distinct from NOISE_TERMS above, which is
+# SOCIAL noise - a LinkedIn post being cheerful about nothing. This is the
+# other kind: page furniture that is on every site in the world and therefore
+# says nothing about any company.
+#
+# It needs its own concept because it fails a different test. Social noise is
+# a real utterance by a real person that happens to be empty; boilerplate was
+# never an utterance about this company at all. Collapsing them would mean a
+# cookie banner could be argued up by a relevance score, and on 2026-09-10
+# the only research this build had ever performed returned a Hungarian
+# agency's cookie policy, privacy policy and navigation menu - which
+# `segments.text_of` then fed to the vertical classifier.
+BOILERPLATE_TERMS = (
+    # cookie and consent
+    "cookie", "cookies", "consent", "gdpr", "we use cookies",
+    "accept all", "reject all", "manage preferences", "privacy preferences",
+    # legal furniture
+    "privacy policy", "terms of service", "terms and conditions",
+    "all rights reserved", "legal notice", "imprint", "impressum",
+    "adatvedelmi", "adatvédelmi", "datenschutz",
+    # navigation and chrome
+    "skip to content", "skip to main", "toggle navigation", "main menu",
+    "back to top", "read more", "learn more", "sign in", "log in",
+    "subscribe to our newsletter", "follow us on",
+    # error and challenge pages
+    "page not found", "404", "403 forbidden", "500 internal",
+    "are you a robot", "enable javascript", "checking your browser",
+    "access denied", "rate limited", "just a moment",
+    "enter the password", "password below", "this site is protected",
+    "coming soon", "under construction", "site is currently unavailable",
+)
+
+# How much of a page has to be furniture before the page IS furniture. A real
+# services page that happens to carry a cookie line in its footer must survive
+# - the filter exists to remove evidence that is ONLY boilerplate, not to
+# punish a legitimate page for having a footer.
+# Below this many words, once furniture is stripped, nothing is being claimed.
+MIN_CLAIM_WORDS = 12
+
+# Consent and legal-notice vocabulary, as STEMS and across the languages this
+# client's list actually contains. Separate from BOILERPLATE_TERMS because it
+# is used differently: those are exact phrases to strip, these are counted.
+LEGAL_STEMS = (
+    "cookie", "süti", "sütik", "consent", "gdpr", "privacy", "datenschutz",
+    "adatvéd", "adatkez", "adatfeldolgoz", "irányelv", "hozzájárul",
+    "személyes adat", "personal data", "processing", "rights reserved",
+    "terms of", "third part", "opt-out", "opt out", "legitimate interest",
+)
+
+# Occurrences of those stems per 100 words, above which the page is a legal
+# document rather than a page about a company.
+#
+# CALIBRATED, NOT CHOSEN. Measured over the research this build has actually
+# retrieved: real company copy runs 0.5-1.5 per 100 words, and the two policy
+# documents in the corpus run 10.3 and 13.2. Four is the midpoint of a wide
+# gap rather than a line drawn close to either side.
+LEGAL_DENSITY = 4.0
+
+# ...but never on a handful of words. A 29-word French retail description with
+# two matches scores 6.9 purely because it is short, and rejecting it would be
+# exactly the over-filtering that loses legitimate evidence. A real policy
+# document has the vocabulary dozens of times.
+LEGAL_MIN_OCCURRENCES = 5
+
+
+def boilerplate(fact):
+    """Is this text page furniture rather than a claim about a company?
+
+    Returns the reason it is, or "" if it is not. A reason rather than a bool
+    because a refusal nobody can read is a refusal nobody can argue with, and
+    this one silently removes evidence somebody paid to retrieve.
+
+    The test is WHAT IS LEFT once the furniture is removed. Counting matches
+    instead would condemn a real services page for having a footer, and a
+    first attempt at this did exactly that: a 39-word description of an
+    agency's delivery team was rejected for one cookie line. Removing the
+    known phrases and asking whether a claim remains is the same question
+    without that failure mode.
+    """
+    text = (fact or "").strip().lower()
+    if not text:
+        return "empty"
+    hits = [t for t in BOILERPLATE_TERMS if t in text]
+    # NO FURNITURE, NO VERDICT. A short text with none of these phrases is
+    # simply a short text, and `quality`'s own four-word floor governs it.
+    # A first version applied a twelve-word floor unconditionally and refused
+    # "Acme opened a Vienna delivery office" - six words, and precisely the
+    # specific, checkable claim this system exists to find. The length only
+    # means something once the furniture has been taken out.
+    if not hits:
+        return ""
+    stripped = text
+    for term in hits:
+        stripped = stripped.replace(term, " ")
+    remaining = stripped.split()
+    if len(remaining) < MIN_CLAIM_WORDS:
+        return (f"{len(remaining)} word(s) left after removing site "
+                f"boilerplate ({', '.join(hits[:3])})")
+    # And a LONG legal document, which the test above cannot see. A share of
+    # the text is the wrong measure there and a first attempt used it: a
+    # 1,471-word privacy policy contains the phrase "privacy policy" once, so
+    # its share is negligible and it sails through. What distinguishes it is
+    # that consent vocabulary runs all the way down the page.
+    occurrences = sum(text.count(stem) for stem in LEGAL_STEMS)
+    density = 100.0 * occurrences / float(len(text.split()))
+    if occurrences >= LEGAL_MIN_OCCURRENCES and density >= LEGAL_DENSITY:
+        return (f"a legal or consent document: {occurrences} consent terms "
+                f"in {len(text.split())} words ({density:.1f} per 100)")
+    return ""
+
+
 def _terms_of(text):
     return set(re.findall(r"[a-z][a-z\-]{2,}", (text or "").lower()))
 
@@ -258,6 +371,12 @@ def quality(relevance_score, freshness_bucket, fact="", min_relevance=MIN_RELEVA
     """
     text = (fact or "").strip()
     if not text or len(text.split()) < 4:
+        return UNUSABLE
+    # Before relevance is consulted at all. Boilerplate is not low-quality
+    # evidence about a company, it is not evidence about a company, so a high
+    # relevance score must not be able to argue it back in - and it could:
+    # "read more about our services" matches an angle word.
+    if boilerplate(text):
         return UNUSABLE
     if any(n in text.lower() for n in NOISE_TERMS) and relevance_score < 0.5:
         return UNUSABLE

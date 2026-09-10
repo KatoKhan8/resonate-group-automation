@@ -103,6 +103,13 @@ FALLBACK_REASONS = (CONTACTOUT_NO_PEOPLE, CONTACTOUT_MISSING_COMPANY_DATA,
 TERMINAL = ("pushed", "dropped")
 
 
+# Calls this system CANNOT price, because the provider bills them in a unit
+# it does not report back. `COSTS["apify-research"]` is 0 for that reason - not
+# because an actor run is free. It is billed in Apify compute units, which is
+# real money the credit cap cannot see.
+UNPRICED = ("apify-research",)
+
+
 class Budget:
     """The cap. Refuses the call rather than going over."""
 
@@ -111,11 +118,23 @@ class Budget:
         self.spent = 0
         self.refused = []
 
-    def affordable(self, cost):
+    def affordable(self, cost, call=None):
+        # A CAP OF ZERO MEANS START NOTHING THAT COSTS MONEY. An unpriced call
+        # costs 0 by arithmetic and is affordable at every cap including zero,
+        # so `--cap 0` - which an operator reads as "spend nothing" - would
+        # still start a billable Apify actor. It did: a run capped at zero
+        # spent roughly 33 seconds per record in compute units, and the cap
+        # reported clean because it was watching a number that is always 0.
+        #
+        # Only zero is treated this way. A positive cap is a statement about
+        # credits, and refusing an unpriced call under it would make every
+        # capped run silently skip research.
+        if self.cap == 0 and call in UNPRICED:
+            return False
         return self.cap is None or self.spent + cost <= self.cap
 
-    def charge(self, cost, what):
-        if not self.affordable(cost):
+    def charge(self, cost, what, call=None):
+        if not self.affordable(cost, call=call):
             self.refused.append(what)
             return False
         self.spent += cost
@@ -534,7 +553,7 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
         events.record(rec, events.PROVIDER_CALL_PLANNED, provider=provider,
                       operation=call, reason=reason_code or why[:80],
                       estimated_cost=cost)
-        if not budget.charge(cost, f"{rec['id']}:{call}"):
+        if not budget.charge(cost, f"{rec['id']}:{call}", call=call):
             log.append(f"{rec['id']}: cap reached, skipped {call}")
             events.record(rec, events.PROVIDER_CALL_SKIPPED, provider=provider,
                           operation=call, reason="cost cap reached")
@@ -653,9 +672,44 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
     # 4b. Public evidence, last and only on a stated need. Structured data
     # from ContactOut and AI Ark is always preferred; this runs when a step
     # downstream has nothing to work with.
-    if config and research.why(rec):
+    #
+    # A FREE VERDICT FIRST, BECAUSE ONE OF THE NEEDS CANNOT BE STATED WITHOUT
+    # ONE. `research.why` returns NEED_ICP_EVIDENCE only when `icp_status` is
+    # "review" or "unknown", and the status is written by the qualify stage,
+    # which runs AFTER this one - so on a first pass the status is None, the
+    # need was never stated, and no scrape for it ever happened. Measured on
+    # the 50-domain pilot: 30 records for which `why` returns NEED_ICP_EVIDENCE
+    # today, and zero scrape events on any of them.
+    #
+    # Six of the twelve ICP dimensions match phrases against prose that
+    # structured providers do not return at all, so those companies could not
+    # score them however good they were, and LOW confidence forces `review`
+    # whatever the score. That is how a pilot returns zero campaign-ready with
+    # nothing visibly broken.
+    #
+    # `qualify.company` spends nothing, which is what makes asking it here
+    # legitimate rather than a stage running twice: it is the cheap question
+    # that decides whether to ask the expensive one. The qualify stage runs it
+    # again afterwards and will see a changed fact fingerprint if research
+    # added anything, so the verdict that survives is the one computed with
+    # the evidence rather than this one.
+    # COMPUTED, NOT STORED. `store_result=False` matters: writing a verdict
+    # here would be a second stage doing qualify's job, and it can hold the
+    # record - which stopped verification running at all when this was first
+    # written that way. The qualify stage owns what is persisted; this only
+    # needs to know whether the verdict is open enough to be worth reading
+    # the company's website for.
+    verdict = None
+    if config and not research.why(rec):
+        from . import qualify
+        try:
+            verdict = (qualify.company(rec, config,
+                                       store_result=False) or {}).get("verdict")
+        except Exception as e:                   # a verdict is not this stage's job
+            store.log(rec, "enrich", f"pre-research verdict failed: {e}")
+    if config and research.why(rec, verdict=verdict):
         research.run(rec, config, live=live and apify.settings(config)["enabled"],
-                     spend=spend, scrape_budget=scrape_budget)
+                     spend=spend, scrape_budget=scrape_budget, verdict=verdict)
 
     # 4c. MX screening, BEFORE any verifier credit is spent.
     #
