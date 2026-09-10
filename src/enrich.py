@@ -558,6 +558,34 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
             events.record(rec, events.PROVIDER_CALL_SKIPPED, provider=provider,
                           operation=call, reason="cost cap reached")
             return False
+        # THE CEILING THAT SURVIVES THE RUN. `budget` above is in memory and
+        # dies with the process, so `--cap 260` bounds THIS invocation and
+        # nothing remembers the last one. Three passes at 260 over one cohort
+        # on 2026-09-10 were each individually inside budget and nothing in
+        # the system could state the total.
+        #
+        # ONLY WHEN THE CALL IS ACTUALLY GOING TO HAPPEN. `spend()` is
+        # evaluated BEFORE the `if live:` that performs the call, so a dry run
+        # reaches here for every call it is planning. The in-memory budget is
+        # charged anyway and should be - that is what makes a dry run able to
+        # say what it WOULD cost. The durable ledger must not be, because it
+        # holds money committed rather than money contemplated, and a planning
+        # run that consumed a real ceiling would be a spend control that
+        # punishes people for checking first.
+        if not live:
+            return True
+        # Checked AFTER the in-memory cap so the cheap refusal stays cheap,
+        # and recorded only once both have allowed it.
+        from . import spendledger
+        try:
+            spendledger.check(rec.get("client"), config, cost,
+                              provider=provider)
+        except spendledger.BudgetExceeded as e:
+            log.append(f"{rec['id']}: {e}")
+            events.record(rec, events.PROVIDER_CALL_SKIPPED, provider=provider,
+                          operation=call, reason=f"durable budget: {e}"[:200])
+            return False
+        spendledger.record(rec.get("client"), provider, call, cost)
         done.append({"call": call, "why": why, "cost": cost, "provider": provider,
                      "reason_code": reason_code})
         if cost:
