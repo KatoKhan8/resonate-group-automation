@@ -43,11 +43,43 @@ def conversation(slug, first="Ada", last="Lovelace", company="Acme",
     }
 
 
-def inbox(rows, total=None):
-    """Stub the one read route, returning `(items, totalCount)`."""
-    return mock.patch.object(
-        collision.heyreach, "conversations",
-        return_value=(rows, total if total is not None else len(rows)))
+WORKSPACE = "productive"
+OUR_SEAT = 116968
+
+
+def inbox(rows, total=None, seats=(OUR_SEAT,)):
+    """Stub the one read route AND this client's roster, together.
+
+    Together on purpose. Stubbing only the inbox let these tests read the real
+    `senders.jsonl`, which happens to contain seat 116968 - so they passed for
+    a reason that had nothing to do with what they were asserting, and would
+    have gone green against an empty roster on somebody else's machine.
+    """
+    import contextlib
+    from src import senderidentity
+
+    rows_out = [{"kind": senderidentity.LINKEDIN_ACCOUNT,
+                 "workspace": WORKSPACE, "provider_account_id": str(x),
+                 "active": True, "health": "ok"} for x in seats]
+
+    class Stubs(contextlib.ExitStack):
+        """`as stub` still hands back the inbox mock, so the tests that assert
+        WHAT WAS SENT keep working."""
+
+        def __enter__(self):
+            super().__enter__()
+            self.conversations = self.enter_context(mock.patch.object(
+                collision.heyreach, "conversations",
+                return_value=(rows,
+                              total if total is not None else len(rows))))
+            self.enter_context(mock.patch.object(
+                senderidentity, "linkedin_accounts", return_value=rows_out))
+            return self.conversations
+
+    return Stubs()
+
+
+
 
 
 class TheSlugIsTheIdentity(unittest.TestCase):
@@ -70,14 +102,14 @@ class TheSlugIsTheIdentity(unittest.TestCase):
 
     def test_a_profileless_url_is_refused_rather_than_cleared(self):
         with self.assertRaises(collision.CollisionUnknown):
-            collision.check_linkedin_profile("")
+            collision.check_linkedin_profile("", expect_workspace=WORKSPACE)
 
 
 class APriorConversationIsFound(unittest.TestCase):
     def test_a_matching_slug_with_messages_is_touched(self):
         with inbox([conversation("ada-lovelace")]):
             verdict, detail = collision.check_linkedin_profile(
-                "https://www.linkedin.com/in/ada-lovelace", "Ada Lovelace")
+                "https://www.linkedin.com/in/ada-lovelace", "Ada Lovelace", expect_workspace=WORKSPACE)
         self.assertEqual(verdict, collision.TOUCHED)
         self.assertEqual(detail["our_seat"], 116968)
         self.assertEqual(detail["slug"], "ada-lovelace")
@@ -86,14 +118,14 @@ class APriorConversationIsFound(unittest.TestCase):
         """A person who answered must never receive a cold opener."""
         with inbox([conversation("ada-lovelace", sender="CORRESPONDENT")]):
             verdict, detail = collision.check_linkedin_profile(
-                "linkedin.com/in/ada-lovelace", "Ada")
+                "linkedin.com/in/ada-lovelace", "Ada", expect_workspace=WORKSPACE)
         self.assertEqual(verdict, collision.IN_SEQUENCE)
         self.assertTrue(detail["they_replied"])
 
     def test_a_conversation_with_no_messages_is_still_not_clear(self):
         with inbox([conversation("ada-lovelace", messages=0)]):
             verdict, _ = collision.check_linkedin_profile(
-                "linkedin.com/in/ada-lovelace", "Ada")
+                "linkedin.com/in/ada-lovelace", "Ada", expect_workspace=WORKSPACE)
         self.assertEqual(verdict, collision.TOUCHED)
 
     def test_the_url_form_does_not_change_the_answer(self):
@@ -102,7 +134,7 @@ class APriorConversationIsFound(unittest.TestCase):
             "uk.linkedin.com/in/ada-lovelace/?trk=x")
         with inbox([stored]):
             verdict, _ = collision.check_linkedin_profile(
-                "https://www.linkedin.com/in/ada-lovelace", "Ada")
+                "https://www.linkedin.com/in/ada-lovelace", "Ada", expect_workspace=WORKSPACE)
         self.assertEqual(verdict, collision.TOUCHED)
 
 
@@ -114,7 +146,7 @@ class SomebodyElseWithTheSameFirstNameIsNotThem(unittest.TestCase):
                   for i in range(12)]
         with inbox(others):
             verdict, detail = collision.check_linkedin_profile(
-                "https://www.linkedin.com/in/danamarsh", "Dana Marsh")
+                "https://www.linkedin.com/in/danamarsh", "Dana Marsh", expect_workspace=WORKSPACE)
         self.assertEqual(verdict, collision.CLEAR)
         self.assertEqual(detail["conversations_for_that_name"], 12)
 
@@ -124,7 +156,7 @@ class SomebodyElseWithTheSameFirstNameIsNotThem(unittest.TestCase):
         fragile negative."""
         with inbox([]) as stub:
             collision.check_linkedin_profile(
-                "linkedin.com/in/dalemorgan", "Dale Morgan")
+                "linkedin.com/in/dalemorgan", "Dale Morgan", expect_workspace=WORKSPACE)
         sent = stub.call_args.kwargs["filters"]["searchString"]
         self.assertEqual(sent, "Dale")
 
@@ -132,7 +164,7 @@ class SomebodyElseWithTheSameFirstNameIsNotThem(unittest.TestCase):
         """A verdict that does not say what it looked at is unreadable later."""
         with inbox([conversation("someone-else", first="Dana")]):
             _, detail = collision.check_linkedin_profile(
-                "linkedin.com/in/danamarsh", "Dana Marsh")
+                "linkedin.com/in/danamarsh", "Dana Marsh", expect_workspace=WORKSPACE)
         self.assertEqual(detail["searched_as"], "Dana")
         self.assertEqual(detail["conversations_for_that_name"], 1)
 
@@ -141,13 +173,20 @@ class AnUnusableAnswerIsRefused(unittest.TestCase):
     def test_a_name_matching_too_many_conversations_raises(self):
         with inbox([conversation("x")], total=collision.BROAD_NAME_MATCH + 1):
             with self.assertRaises(collision.CollisionUnknown):
-                collision.check_linkedin_profile("linkedin.com/in/x", "John")
+                collision.check_linkedin_profile("linkedin.com/in/x", "John", expect_workspace=WORKSPACE)
 
     def test_a_non_list_response_is_not_read_as_no_contact(self):
-        with mock.patch.object(collision.heyreach, "conversations",
-                               return_value=(None, 0)):
+        """Through the roster stub, so the refusal is for the stated reason.
+
+        Patching only the inbox let this read the real `senders.jsonl`; on a
+        machine with an empty roster it would still have raised, for a
+        completely different reason, and passed.
+        """
+        with inbox([]) as stub:
+            stub.return_value = (None, 0)
             with self.assertRaises(collision.CollisionUnknown):
-                collision.check_linkedin_profile("linkedin.com/in/x", "Ada")
+                collision.check_linkedin_profile("linkedin.com/in/x", "Ada",
+                                                 expect_workspace=WORKSPACE)
 
     def test_an_empty_name_is_refused(self):
         with self.assertRaises(collision.CollisionUnknown):
@@ -157,7 +196,7 @@ class AnUnusableAnswerIsRefused(unittest.TestCase):
         with mock.patch.object(collision.heyreach, "conversations",
                                side_effect=RuntimeError("502")):
             with self.assertRaises(RuntimeError):
-                collision.check_linkedin_profile("linkedin.com/in/x", "Ada")
+                collision.check_linkedin_profile("linkedin.com/in/x", "Ada", expect_workspace=WORKSPACE)
 
 
 class TheCompanyQuestionCannotBeAsked(unittest.TestCase):
@@ -189,3 +228,72 @@ class OnlyProvenFilterKeysAreSent(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheInboxIsScopedToThisClientsSeats(unittest.TestCase):
+    """The gap this closes, and it is the same one that already happened.
+
+    On 2026-09-09 the EMAIL collision check answered CLEAR against another
+    client's empty estate, and `check_address` was hardened to require and
+    verify a workspace. This side kept the original unscoped signature - on
+    the channel the campaigns actually run on.
+
+    Scoping cannot be done in the query: `POST /inbox/GetConversationsV2`
+    accepts no organisation parameter, and `organizationUnitId` appears
+    nowhere in the request. So it is done on the ANSWER - a conversation is
+    evidence about this client only if it sits on a seat this client owns.
+    """
+
+    def test_a_workspace_is_required(self):
+        """The default must not be "whatever the key can see"."""
+        with inbox([]):
+            with self.assertRaises(collision.CollisionUnknown):
+                collision.check_linkedin_profile(
+                    "linkedin.com/in/ada-lovelace", "Ada")
+
+    def test_another_tenants_conversation_does_not_create_a_collision(self):
+        """A seat we do not own is not evidence about our prospect."""
+        with inbox([conversation("ada-lovelace", seat=999999)],
+                   seats=(OUR_SEAT,)):
+            verdict, detail = collision.check_linkedin_profile(
+                "linkedin.com/in/ada-lovelace", "Ada",
+                expect_workspace=WORKSPACE)
+        self.assertEqual(verdict, collision.CLEAR)
+        self.assertEqual(detail["other_tenants_conversations_ignored"], 1)
+
+    def test_our_own_seat_still_creates_one(self):
+        with inbox([conversation("ada-lovelace", seat=OUR_SEAT)]):
+            verdict, _ = collision.check_linkedin_profile(
+                "linkedin.com/in/ada-lovelace", "Ada",
+                expect_workspace=WORKSPACE)
+        self.assertEqual(verdict, collision.TOUCHED)
+
+    def test_an_empty_roster_refuses_rather_than_answering_clear(self):
+        """Fail closed. An unscoped CLEAR is not a statement about anybody.
+
+        This is the exact shape of the original incident: a check that could
+        not see the estate reported that nobody had been contacted.
+        """
+        with inbox([conversation("ada-lovelace", seat=999999)], seats=()):
+            with self.assertRaises(collision.CollisionUnknown):
+                collision.check_linkedin_profile(
+                    "linkedin.com/in/ada-lovelace", "Ada",
+                    expect_workspace=WORKSPACE)
+
+    def test_a_clear_answer_names_the_estate_it_is_about(self):
+        with inbox([]):
+            _, detail = collision.check_linkedin_profile(
+                "linkedin.com/in/ada-lovelace", "Ada",
+                expect_workspace=WORKSPACE)
+        self.assertEqual(detail["workspace"], WORKSPACE)
+        self.assertEqual(detail["seats_searched"], 1)
+
+    def test_foreign_conversations_are_not_counted_as_coverage(self):
+        """They must not inflate "we looked at 40 conversations" either."""
+        rows = [conversation("someone-else", seat=999999) for _ in range(40)]
+        with inbox(rows, seats=(OUR_SEAT,)):
+            _, detail = collision.check_linkedin_profile(
+                "linkedin.com/in/ada-lovelace", "Ada",
+                expect_workspace=WORKSPACE)
+        self.assertEqual(detail["conversations_for_that_name"], 0)
+        self.assertEqual(detail["other_tenants_conversations_ignored"], 40)

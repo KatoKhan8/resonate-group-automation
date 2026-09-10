@@ -297,7 +297,29 @@ def linkedin_touches_of(row):
     }
 
 
-def check_linkedin_profile(url, name=None):
+def our_linkedin_seats(workspace):
+    """The provider seat ids this client owns, from canonical state.
+
+    HeyReach's inbox route takes no organisation scope - `organizationUnitId`
+    is readable on a campaign and is not a parameter anywhere - so the estate
+    a conversation search covers is whatever the API key can see. The tenant
+    boundary therefore cannot come from the query; it has to come from the
+    answer, and this is the only canonical statement of which seats are ours.
+    """
+    from . import senderidentity
+
+    seats = {str(a.get("provider_account_id"))
+             for a in senderidentity.linkedin_accounts(workspace)
+             if a.get("provider_account_id")}
+    if not seats:
+        raise CollisionUnknown(
+            f"{workspace!r} has no inventoried LinkedIn seats, so a "
+            f"conversation in this inbox cannot be attributed to this client. "
+            f"Refusing to read an unscoped inbox as no prior contact.")
+    return seats
+
+
+def check_linkedin_profile(url, name=None, expect_workspace=REQUIRED):
     """`(verdict, detail)` for one LinkedIn profile, from our own inbox.
 
     The domain-side check cannot answer this. A live campaign is HeyReach-fed, so
@@ -308,7 +330,26 @@ def check_linkedin_profile(url, name=None):
     matched locally on the profile slug - the same shape as the EmailBison
     side, and for the same reason: the broad search is the provider's job and
     the identity match is ours.
+
+    `expect_workspace` IS REQUIRED, and was not. This function is the LinkedIn
+    half of the check whose EMAIL half answered CLEAR against another client's
+    empty estate on 2026-09-09. That incident hardened `check_address`, which
+    now takes `expect_workspace=REQUIRED` and verifies the credential binding
+    before reading. This side kept the original signature - no workspace, no
+    verification - on the channel the campaigns actually run on.
+
+    Scoping cannot be done in the query, because the inbox route accepts no
+    organisation parameter. So it is done on the answer: a conversation is
+    evidence about THIS client only if it sits on a seat in THIS client's
+    canonical roster. A conversation on a seat we do not own is another
+    tenant's and must not inform this verdict in either direction - it must
+    not create a false collision, and it must not be counted as coverage.
     """
+    if expect_workspace is REQUIRED:
+        raise CollisionUnknown(
+            "check_linkedin_profile needs the workspace whose inbox this is. "
+            "An unscoped CLEAR is not a statement about any client.")
+    seats = our_linkedin_seats(expect_workspace)
     slug = profile_slug(url)
     if not slug:
         raise CollisionUnknown(f"{url!r} is not a LinkedIn profile to check")
@@ -321,7 +362,16 @@ def check_linkedin_profile(url, name=None):
     # the precision. Broad in the query, exact in the comparison - the same
     # division of labour as stripping the TLD on the EmailBison side.
     term = str(name or "").strip().split()[0] if str(name or "").strip()         else slug.replace("-", " ")
-    rows = conversations_named(term)
+    everything = conversations_named(term)
+    # OURS ONLY. Dropped before any verdict is derived, so a foreign
+    # conversation can neither raise a collision nor be counted as having
+    # been looked at.
+    rows, foreign = [], 0
+    for row in everything:
+        if str(linkedin_touches_of(row).get("our_seat")) in seats:
+            rows.append(row)
+        else:
+            foreign += 1
     for row in rows:
         found = linkedin_touches_of(row)
         if found["slug"] != slug:
@@ -333,7 +383,10 @@ def check_linkedin_profile(url, name=None):
         return TOUCHED, dict(found, note="a conversation exists with no "
                                          "message counted")
     return CLEAR, {"profile_url": url, "slug": slug, "searched_as": term,
+                   "workspace": expect_workspace,
                    "conversations_for_that_name": len(rows),
+                   "other_tenants_conversations_ignored": foreign,
+                   "seats_searched": len(seats),
                    "note": "no conversation with this profile in our inbox"}
 
 

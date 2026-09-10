@@ -312,7 +312,8 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     # the check that answered CLEAR against the wrong estate once already.
     if channel == "linkedin":
         verdict_, detail = collision.check_linkedin_profile(
-            contact.get("linkedin"), contact.get("name"))
+            contact.get("linkedin"), contact.get("name"),
+            expect_workspace=campaign.get("client"))
     else:
         verdict_, detail = collision.check_address(
             contact.get("email"), expect_workspace=workspace)
