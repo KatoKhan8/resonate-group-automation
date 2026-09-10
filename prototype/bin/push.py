@@ -16,8 +16,19 @@ which is where the product's own "nothing can send" claim stopped looking:
 no code path to either provider", and this was one, needing only an API key
 in the environment and a flag.
 
-The dry run still works and still shows what would go where. To actually
-send, build the guarded path in `src/push.py`; do not lift the refusal below.
+THE TRANSPORT IS GONE, not merely refused. `refuse_live()` was the only thing
+between an API key in the environment and real connection requests, and it was
+three hand-placed calls in front of two live `requests.post` bodies - fully
+formed, correct, and one deleted line from sending. A refusal a person can
+delete is not the same as a capability that does not exist, and this file
+cannot be brought under the execution guard because it imports nothing from
+`src/`: no eligibility, no approval fingerprint, no killswitch, no pilot cap,
+no ledger, no readback.
+
+The dry run still works and still shows what would go where, which is the only
+thing this file was still useful for. To actually send, build the guarded path
+through `src/executionguard.py` and `src/providerwrites.py`. Do not restore the
+POSTs below, and do not lift the refusals.
 
 Dry run by default. `--live` is refused.
 
@@ -74,21 +85,6 @@ def push_heyreach(campaign_id, sender_account, live):
     if not live:
         return set()
     refuse_live()
-    import requests
-    pairs = [{
-        "linkedInAccountId": int(sender_account),
-        "lead": {"profileUrl": r["linkedin_url"], "firstName": r["first_name"],
-                 "lastName": r["last_name"], "companyName": r["company"],
-                 "position": r["title"],
-                 "customUserFields": [{"name": "hook", "value": r["note"]}]},
-    } for r in rs]
-    resp = requests.post(f"{HR_BASE}/campaign/AddLeadsToCampaignV2",
-                         headers={"X-API-KEY": os.environ["HEYREACH_KEY"],
-                                  "Content-Type": "application/json"},
-                         json={"campaignId": int(campaign_id), "accountLeadPairs": pairs},
-                         timeout=60)
-    print(resp.status_code, resp.text[:400])
-    return {r["record_id"] for r in rs} if resp.ok else set()
 
 
 def mark_pushed(ids):
@@ -141,24 +137,6 @@ def main():
         sys.exit("--live needs --campaign")
 
     refuse_live()
-    import requests
-    key = os.environ["BISON_KEY"]
-    payload = {"leads": [{
-        "email": r["email"], "first_name": r["first_name"], "last_name": r["last_name"],
-        "company_name": r["company"],
-        "custom_variables": {"subject": r["subject"], "body": r["body"],
-                             "title": r["title"], "record_id": r["record_id"]},
-    } for r in rs]}
-
-    resp = requests.post(f"{BASE}/campaigns/{a.campaign}/leads",
-                         headers={"Authorization": f"Bearer {key}"},
-                         json=payload, timeout=60)
-    print(resp.status_code, resp.text[:400])
-    ids = {r["record_id"] for r in rs} if resp.ok else set()
-    if a.to == "both":
-        ids |= push_heyreach(a.heyreach_campaign, a.sender_account, True)
-    if ids:
-        mark_pushed(ids)
 
 
 if __name__ == "__main__":

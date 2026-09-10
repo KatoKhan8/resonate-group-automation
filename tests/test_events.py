@@ -336,3 +336,76 @@ class TestPipelineEventsAreEmitted(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AmbiguousIdentityRefusesForBothIdentifiers(unittest.TestCase):
+    """A reply nobody can attribute must not be attributed to somebody.
+
+    THE ASYMMETRY THIS PINS. `match_contact` gathered LinkedIn candidates and
+    refused when there were two, under a comment saying picking one "would
+    attribute somebody's reply to the wrong person" - and the email branch
+    three lines above returned on its first hit. So the rule held for one
+    identifier and not the other.
+
+    A shared inbox is where that bites: two people at one company both listed
+    against info@ or sales@. The account-level hold means nothing ships either
+    way, so this is not a send bug; it is a wrong-person bug, and it surfaces
+    the day an operator lifts the account hold and the individual block is on
+    the colleague rather than on whoever wrote.
+    """
+
+    def rec(self, *contacts):
+        return {"id": "acme", "domain": "acme.test", "contacts": list(contacts)}
+
+    def contact(self, key, email=None, linkedin=None):
+        return {"key": key, "email": email, "linkedin": linkedin}
+
+    def test_one_email_match_is_an_answer(self):
+        rec = self.rec(self.contact("a", email="ana@acme.test"),
+                       self.contact("b", email="bo@acme.test"))
+        self.assertEqual(
+            events.match_contact(rec, {"email": "ana@acme.test"}), "a")
+
+    def test_a_shared_inbox_on_two_contacts_refuses(self):
+        rec = self.rec(self.contact("a", email="info@acme.test"),
+                       self.contact("b", email="info@acme.test"))
+        self.assertIsNone(
+            events.match_contact(rec, {"email": "info@acme.test"}),
+            "a reply to a shared inbox was attributed to whichever contact "
+            "happened to be listed first")
+
+    def test_it_is_case_insensitive_before_it_is_ambiguous(self):
+        rec = self.rec(self.contact("a", email="Info@Acme.test"),
+                       self.contact("b", email="info@acme.test"))
+        self.assertIsNone(
+            events.match_contact(rec, {"email": "INFO@acme.test"}))
+
+    def test_two_identifiers_pointing_at_different_people_refuses(self):
+        """The new failure mode the fix introduces, and it is the right one."""
+        rec = self.rec(
+            self.contact("a", email="ana@acme.test"),
+            self.contact("b", linkedin="https://www.linkedin.com/in/bo"))
+        self.assertIsNone(events.match_contact(
+            rec, {"email": "ana@acme.test",
+                  "linkedin": "https://www.linkedin.com/in/bo"}))
+
+    def test_both_identifiers_on_the_same_person_still_resolves(self):
+        rec = self.rec(self.contact("a", email="ana@acme.test",
+                                    linkedin="https://www.linkedin.com/in/ana"))
+        self.assertEqual(events.match_contact(
+            rec, {"email": "ana@acme.test",
+                  "linkedin": "https://www.linkedin.com/in/ana"}), "a")
+
+    def test_an_explicit_contact_key_still_wins(self):
+        rec = self.rec(self.contact("a", email="info@acme.test"),
+                       self.contact("b", email="info@acme.test"))
+        self.assertEqual(
+            events.match_contact(rec, {"contact_key": "b",
+                                         "email": "info@acme.test"}), "b")
+
+    def test_the_linkedin_side_still_refuses_ambiguity(self):
+        rec = self.rec(
+            self.contact("a", linkedin="https://www.linkedin.com/in/ana"),
+            self.contact("b", linkedin="https://www.linkedin.com/in/ana"))
+        self.assertIsNone(events.match_contact(
+            rec, {"linkedin": "https://www.linkedin.com/in/ana"}))

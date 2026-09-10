@@ -40,12 +40,30 @@ MAX_PAGES = 10
 MAX_ITEMS = 50
 MAX_TEXT_CHARS = 12000
 MAX_REDIRECTS = 3
-RUN_TIMEOUT = 120
-# Six seconds, not three, so that covering the full run timeout takes twenty
-# polls rather than forty. `tests/test_invariants.py` caps the attempt count at
-# twenty and it is right to: the ceiling is what stops a bounded wait becoming
-# an unbounded one, and deriving attempts from the timeout quietly escaped it.
-POLL_INTERVAL = 6.0
+# MEASURED, on this account's own run history rather than chosen.
+#
+# Across 29 completed runs of this actor on 2026-09-10: 21 SUCCEEDED with a
+# minimum of 34s, a median of 70s and a MAXIMUM OF 110s - and 8 TIMED-OUT, all
+# at exactly 120s, because 120 was the ceiling. The ceiling sat ten seconds
+# above the slowest run that had ever finished, so a crawl only slightly slower
+# than typical died on it.
+#
+# That is not a small waste. Apify bills a killed run for the compute it used:
+# the eight timeouts cost $0.081 each and returned no evidence at all, roughly
+# $0.65 of $1.69 total spend, a 28% waste rate. And the record then still
+# states the same unmet need, so the next run scrapes it again.
+#
+# 180 sits well clear of the observed maximum. It is not generous - it is the
+# distribution's tail plus room, and a run that genuinely hangs is still
+# stopped by Apify itself, because this value is sent as the actor's own
+# `timeout` and not merely used for local polling.
+RUN_TIMEOUT = 180
+# Nine seconds, so covering the full run timeout still takes TWENTY polls.
+# `tests/test_invariants.py` caps the attempt count at twenty and is right to:
+# the ceiling is what stops a bounded wait becoming an unbounded one, and
+# deriving attempts from the timeout quietly escaped it. Widening the window
+# must not widen the number of polls.
+POLL_INTERVAL = 9.0
 # Poll for as long as the run is allowed to take, rather than for a third of
 # it. This was 10 attempts at 3 seconds - thirty seconds - while `plan()` told
 # the operator the run was "bounded by 120s". A real crawl of five pages takes

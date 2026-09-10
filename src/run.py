@@ -69,7 +69,18 @@ def needs(rec, stage):
 
 # ------------------------------------------------------------ the stages
 
-def stage_enrich(recs, spend, cap, notes):
+# How many records may be enriched before what they cost is written down.
+#
+# CHOSEN FROM A MEASURED LOSS. A 50-record run was interrupted after ten
+# minutes on 2026-09-10. `store.save` ran once, after every per-record stage,
+# so nothing had been persisted: zero records changed, and Apify's own counter
+# showed $0.386 of compute had been spent to produce it. A rerun would have
+# spent it again. Five keeps the worst case to a handful of records while
+# staying far cheaper than a provider call.
+CHECKPOINT_EVERY = 5
+
+
+def stage_enrich(recs, spend, cap, notes, checkpoint=None):
     budget = enrich.Budget(cap)
     # The client's own config, and the scrape ceiling that goes with it.
     #
@@ -128,6 +139,10 @@ def stage_enrich(recs, spend, cap, notes):
             touched += 1
         except Exception as e:                       # one record, not the batch
             mark(rec, "enrich", "failed", f"{type(e).__name__}: {e}")
+        # AFTER the except, so a record that failed mid-waterfall still has
+        # whatever it did buy written down. That is the expensive case.
+        if checkpoint:
+            checkpoint()
     if spend and len(mx_cache) != mx_cache_at_start:
         mx.save_cache(mx_cache)
     return {"records": touched, "spent": budget.spent,
@@ -135,7 +150,7 @@ def stage_enrich(recs, spend, cap, notes):
             "mx_resolved": len(mx_cache) - mx_cache_at_start}
 
 
-def stage_qualify(recs, notes):
+def stage_qualify(recs, notes, checkpoint=None):
     """The verdict, before anything spends a person credit on it.
 
     `qualify.company` spends nothing, and `qualify.needs_work` compares a
@@ -171,6 +186,8 @@ def stage_qualify(recs, notes):
             touched += 1
         except Exception as e:                   # one record, not the batch
             mark(rec, "qualify", "failed", f"{type(e).__name__}: {e}")
+        if checkpoint:
+            checkpoint()
     return {"records": touched}
 
 
@@ -294,10 +311,23 @@ def run(source=None, client=None, lane=None, model=None, day=21, spend=False,
     if limit:
         targets = targets[:limit]
 
+    # WRITE DOWN WHAT WAS BOUGHT, BEFORE THE STAGE ENDS. `targets` holds
+    # references into `recs`, so saving mid-stage persists exactly the work
+    # done so far. Without this an interruption discards every provider call
+    # the run has already paid for - measured once, at $0.386 of Apify compute
+    # for zero durable records.
+    done = {"n": 0}
+
+    def checkpoint():
+        done["n"] += 1
+        if done["n"] % CHECKPOINT_EVERY == 0:
+            store.save(recs)
+
     if "enrich" in stages:
-        report["enrich"] = stage_enrich(targets, spend, cap, notes)
+        report["enrich"] = stage_enrich(targets, spend, cap, notes,
+                                        checkpoint=checkpoint)
     if "qualify" in stages:
-        report["qualify"] = stage_qualify(targets, notes)
+        report["qualify"] = stage_qualify(targets, notes, checkpoint=checkpoint)
     if "personas" in stages:
         report["personas"] = stage_personas(targets, notes)
     if "generate" in stages:

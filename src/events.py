@@ -384,8 +384,20 @@ def match_contact(rec, event):
     profile = linkedin.canonical(event.get("linkedin"))
     matches = []
     for contact in rec.get("contacts") or []:
+        # BOTH IDENTIFIERS COLLECT. The email branch used to `return` on its
+        # first hit while the LinkedIn branch below gathered candidates and
+        # refused on ambiguity - so the rule stated in the comment under them
+        # was enforced for one identifier and not the other.
+        #
+        # It matters where a shared inbox is a contact's address. Two people at
+        # one company both listed against info@ or sales@ meant a reply landed
+        # on whichever happened to be first in the list, and `contact["paused"]`
+        # and BLOCKED_REPLIED went to somebody who had not written. The account
+        # hold covers it today, so nothing ships either way; the day an
+        # operator lifts that hold, the person who actually replied is the one
+        # no longer individually blocked.
         if address and (contact.get("email") or "").lower() == address:
-            return contact.get("key")
+            matches.append(contact.get("key"))
         if profile and linkedin.canonical(contact.get("linkedin")) == profile:
             matches.append(contact.get("key"))
     # One match is an answer. Two is bad data, and picking one would attribute
