@@ -124,6 +124,43 @@ class TestApifyIsLastAndOptional(WaterfallTest):
         because the client had not enabled apify at all - the assertion was
         true for a reason that had nothing to do with structured evidence.
         The client now opts in, so the condition has to be established here.
+
+        AND "ENOUGH" HAS TO MEAN ENOUGH FOR EVERY CONSUMER. Setting industry
+        and specialties satisfies the hook and the angle, and says nothing to
+        the six ICP dimensions that match against PROSE - which is a question
+        structured providers do not answer at all, and the reason
+        NEED_ICP_EVIDENCE is a separate branch of `research.why`. Once that
+        branch became reachable (it never fired before 2026-09-10, because the
+        verdict it reads is written by a later stage) this test failed, and it
+        was right to: the fixture was not actually sufficient.
+
+        So the description now carries an operational phrase, which is what
+        genuine sufficiency looks like.
+        """
+        with store.transaction() as recs:
+            for rec in recs:
+                rec["company_facts"] = dict(
+                    rec.get("company_facts") or {},
+                    industry="Advertising", specialties=["SEO"],
+                    description="Our delivery team of account managers runs "
+                                "resource planning across concurrent client "
+                                "projects, tracking utilisation and billable "
+                                "time against project margin.")
+        self.enrich()
+        self.assertNotIn("apify", self.urls())
+
+    def test_apify_does_run_when_only_the_prose_dimensions_are_missing(self):
+        """The other half, and the behaviour that made the above fail.
+
+        Rich firmographics and no operational prose is the ordinary case - it
+        is what ContactOut returns for almost every company - and it leaves
+        six of twelve ICP dimensions unscoreable. Reading the company's own
+        site is the only way to answer them, so research SHOULD fire here even
+        though the hook and the angle are both satisfied.
+
+        Measured on the real 50-domain cohort: 30 records in exactly this
+        state, and zero scrapes on any of them, because the branch could not
+        be reached.
         """
         with store.transaction() as recs:
             for rec in recs:
@@ -131,7 +168,7 @@ class TestApifyIsLastAndOptional(WaterfallTest):
                                             industry="Advertising",
                                             specialties=["SEO"])
         self.enrich()
-        self.assertNotIn("apify", self.urls())
+        self.assertIn("apify", self.urls())
 
     def test_apify_is_not_planned_without_a_stated_need(self):
         rec = store.get("meridian")
