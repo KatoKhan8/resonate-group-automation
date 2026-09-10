@@ -130,18 +130,39 @@ class StoredEvidenceStillWins(unittest.TestCase):
         self.assertEqual([r["id"] for r in rows if r.get("evidence")], [])
 
 
-class TheClaimCheckerStillCannotSeeThisClass(unittest.TestCase):
-    """Recorded, not fixed: the guard that should have caught it, and why it
-    did not. `is_claim` gates on a number, a month or an event word, so an
-    asserting sentence with none of those is never examined at all."""
+class TheClaimCheckerCanNowSeeThisClass(unittest.TestCase):
+    """CLOSED 2026-09-10. This class used to assert the opposite.
 
-    def test_an_asserting_sentence_without_a_number_is_not_even_checked(self):
+    It recorded a gap: `is_claim` gated on a number, a month or an event
+    word, so an asserting sentence with none of those was never examined -
+    and the sentence that actually went out to a real person had none of
+    them. The old test ended "if this now fails, claims got stricter -
+    update this test, it is a record of a gap". It did, and this is that
+    update.
+
+    `claims.asserts_about_them` now catches a second-person operational
+    assertion, and holds it to the strict standard: the operational term it
+    leans on must appear in what the record actually knows.
+    """
+
+    def test_an_asserting_sentence_without_a_number_is_now_caught(self):
         rec = record(contacts=[contact()])
         found = claims.check("You are running utilisation at Acme Studio",
                             rec, contact())
         problems = found.get("problems") if isinstance(found, dict) else found
-        self.assertFalse(problems, "if this now fails, claims got stricter - "
-                                   "update this test, it is a record of a gap")
+        self.assertTrue(problems,
+                        "the sentence that went out is unexamined again")
+
+    def test_a_non_asserting_opener_is_still_allowed(self):
+        """The direction that keeps the fix usable. The replacement copy says
+        what WE do and asks a question; if this ever fails, the guard has
+        started refusing the very sentence it was written to permit."""
+        rec = record(contacts=[contact()])
+        found = claims.check(
+            "i work with Design Services teams on utilisation. curious how "
+            "Acme Studio handles it at your size.", rec, contact())
+        problems = found.get("problems") if isinstance(found, dict) else found
+        self.assertFalse(problems, problems)
 
 
 if __name__ == "__main__":

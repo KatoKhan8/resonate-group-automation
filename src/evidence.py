@@ -30,6 +30,7 @@ Collapsing them into one number hides which one was the problem.
 Nothing here calls a provider, and nothing here invents a date.
 """
 import datetime
+import functools
 import hashlib
 import re
 
@@ -248,9 +249,28 @@ LEGAL_MIN_OCCURRENCES = 5
 def boilerplate(fact):
     """Is this text page furniture rather than a claim about a company?
 
-    Returns the reason it is, or "" if it is not. A reason rather than a bool
-    because a refusal nobody can read is a refusal nobody can argue with, and
-    this one silently removes evidence somebody paid to retrieve.
+    Thin wrapper so callers may pass None, and so the memo below only ever
+    sees a string - an unhashable argument would turn the cache into a
+    TypeError at the worst possible moment.
+    """
+    return _boilerplate(fact or "")
+
+
+@functools.lru_cache(maxsize=4096)
+def _boilerplate(text):
+    """The verdict for one exact string. See `boilerplate` for the reasoning.
+
+    MEMOISED because it is pure and it is asked the same question repeatedly.
+    `segments.text_of` runs it over every research item, and `text_of` is
+    called many times per record during scoring - so one company's five facts
+    were re-analysed on every call, at ~215us each. Bounded rather than
+    unbounded: a run sees far more distinct facts than fit in memory, and a
+    cache that grows with the corpus is a leak dressed as an optimisation.
+
+    Returns the reason it is furniture, or "" if it is not. A reason rather
+    than a bool because a refusal nobody can read is a refusal nobody can
+    argue with, and this one silently removes evidence somebody paid to
+    retrieve.
 
     The test is WHAT IS LEFT once the furniture is removed. Counting matches
     instead would condemn a real services page for having a footer, and a
@@ -259,7 +279,7 @@ def boilerplate(fact):
     known phrases and asking whether a claim remains is the same question
     without that failure mode.
     """
-    text = (fact or "").strip().lower()
+    text = text.strip().lower()
     if not text:
         return "empty"
     hits = [t for t in BOILERPLATE_TERMS if t in text]
