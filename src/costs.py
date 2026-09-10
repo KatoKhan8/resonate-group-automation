@@ -278,6 +278,41 @@ def report(result):
     return "\n".join(lines)
 
 
+def _age(before, after, since=None):
+    """Seconds between the last ledgered call and the after-reading.
+
+    Returns None when either end is unreadable, which `reconcile` treats as
+    "long enough" - an unknown age must not silently make every run pending.
+    """
+    import datetime
+
+    stamp = (after or {}).get("at")
+    if not stamp:
+        return None
+    try:
+        read_at = datetime.datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return None
+    from . import store
+    latest = None
+    for rec in store.load():
+        for row in (rec.get("waterfall") or []):
+            at = str((row or {}).get("at") or "")
+            if since and at < since:
+                continue
+            if at and (latest is None or at > latest):
+                latest = at
+    if not latest:
+        return None
+    try:
+        last_call = datetime.datetime.fromisoformat(latest)
+    except ValueError:
+        return None
+    if last_call.tzinfo is None:
+        last_call = last_call.replace(tzinfo=read_at.tzinfo)
+    return max(0.0, (read_at - last_call).total_seconds())
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="python -m src.costs")
     p.add_argument("--before", required=True, help="snapshot JSON before the run")
@@ -293,7 +328,12 @@ def main(argv=None):
     for snap in (before, after):
         if "apify_usd_month_to_date" in snap:
             snap["apify"] = {"usd": snap["apify_usd_month_to_date"]}
-    result = reconcile(before, after, store.load(), since=a.since)
+    # HOW OLD THE READING IS, derived rather than asked for. `reconcile`
+    # takes `measured_after` and this entry point did not supply it, so every
+    # CLI run reported a lagging counter as a mismatch - the same
+    # computed-but-never-consumed shape the module was written to catch.
+    result = reconcile(before, after, store.load(), since=a.since,
+                       measured_after=_age(before, after, a.since))
     print(json.dumps(result, indent=1) if a.json else report(result))
     return 0
 
