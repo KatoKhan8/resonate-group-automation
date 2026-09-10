@@ -72,10 +72,17 @@ class NotAuthorized(RuntimeError):
     that the intended gate fired rather than merely that something did.
     """
 
-    def __init__(self, gate, why):
+    def __init__(self, gate, why, passed=()):
         super().__init__(f"{gate}: {why}")
         self.gate = gate
         self.why = why
+        # WHICH GATES DID PASS. A bare "refused at sender" cannot be triaged: it
+        # does not say whether tenancy and approval were satisfied and the seat
+        # is genuinely wrong, or whether the refusal came so early that nothing
+        # downstream was evaluated at all. The canary spent a cycle on exactly
+        # that ambiguity, so the trace is part of the refusal rather than
+        # something a caller reconstructs by re-running with prints.
+        self.passed = tuple(passed)
 
 
 class Authorization:
@@ -166,6 +173,13 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     evidence can be satisfied by a caller who simply calls it twice, and
     because the read-back must be demonstrably recent rather than incidental.
     """
+    gates = []
+
+    def _require(gate, ok, why):
+        """`_require` with this attempt's trace attached to any refusal."""
+        if not ok:
+            raise NotAuthorized(gate, why, gates)
+
     _require("channel", channel in CHANNELS, f"{channel!r} is not a channel")
     _require("operation", bool(operation), "an operation must be named")
     _require("campaign", bool(campaign), "no canonical campaign row")
@@ -175,7 +189,6 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     step = cadence.expand_step(rec, contact, _spec_for(step_key), config)
     _require("copy", bool(step), f"{step_key} does not render for this contact")
 
-    gates = []
 
     # 1. TENANCY -------------------------------------------------------------
     if channel == "email":
@@ -183,7 +196,7 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
         try:
             bison.require_workspace(workspace)
         except Exception as e:
-            raise NotAuthorized("tenancy", str(e)) from None
+            raise NotAuthorized("tenancy", str(e), gates) from None
     else:
         _require("tenancy", str(campaign.get("org_unit") or "") != "",
                  "the canonical campaign names no org_unit, so the LinkedIn "
@@ -314,19 +327,32 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     # `senderidentity.require_sender` already raises `CrossWorkspaceSender`,
     # and `senderinventory` already derives readiness from provider truth.
     # Both simply had no caller here.
+    # THE PROVIDER SEAT, NOT AN INTERNAL HUMAN ID. The first version of this
+    # called `senderidentity.require_sender(client, sender_id)`, which looks up
+    # a HUMAN sender - and the id a campaign carries is a `provider_account_id`.
+    # Every inventoried seat has `sender_id: None` on purpose, because neither
+    # provider knows who owns an inbox, so that lookup could never succeed and
+    # the gate refused a correctly-configured canary.
+    #
+    # What ownership means here is: this provider seat is in THIS client's
+    # canonical roster, rebuilt from provider truth, and it is active and
+    # healthy. `senderinventory` derives the health; `senderidentity` scopes the
+    # roster to one workspace and has no unscoped variant, which is what makes
+    # this a tenancy check as well as a health one.
     from . import senderidentity
-    try:
-        senderidentity.require_sender(campaign.get("client"), sender_id)
-    except senderidentity.CrossWorkspaceSender as e:
-        raise NotAuthorized("sender", str(e)) from None
-    except Exception:
-        # A sender this system has never inventoried cannot be vouched for.
-        # Refusing is the only safe reading: the alternative is sending under
-        # an identity nobody can attribute.
-        raise NotAuthorized(
-            "sender",
-            f"{channel} sender {sender_id!r} is not in this client's sender "
-            f"roster, so its ownership and health cannot be established") from None
+    roster = [r for r in senderidentity.accounts_for(campaign.get("client"),
+                                                     channel)
+              if str(r.get("provider_account_id")) == str(sender_id)]
+    _require("sender", roster,
+             f"{channel} seat {sender_id!r} is not in {campaign.get('client')!r}"
+             f"'s canonical sender roster, so its ownership cannot be "
+             f"established. A seat nobody inventoried is a seat nobody can "
+             f"attribute a message to")
+    seat = roster[0]
+    _require("sender", seat.get("active"),
+             f"{channel} seat {sender_id!r} is inventoried but not active")
+    _require("sender", seat.get("health") in (None, "ok"),
+             f"{channel} seat {sender_id!r} health is {seat.get('health')!r}")
     gates.append("sender")
     # THE LEDGER'S TENANT IS THE CLIENT, NOT THE PROVIDER'S WORKSPACE NUMBER.
     #
@@ -349,13 +375,13 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     try:
         pilotcaps.require({plan_key: already + 1}, config)
     except Exception as e:
-        raise NotAuthorized("pilot_cap", str(e)) from None
+        raise NotAuthorized("pilot_cap", str(e), gates) from None
     per_sender = actionledger.count_on(today, channel=channel,
                                        sender_id=sender_id, workspace=tenant)
     try:
         pilotcaps.require({"per_sender_per_day": per_sender + 1}, config)
     except Exception as e:
-        raise NotAuthorized("pilot_cap", str(e)) from None
+        raise NotAuthorized("pilot_cap", str(e), gates) from None
     gates.append("pilot_cap")
 
     # 6. LEDGER RESERVATION -------------------------------------------------
@@ -363,7 +389,7 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     try:
         actionledger.require_clear(key)
     except actionledger.ActionRefused as e:
-        raise NotAuthorized("ledger", str(e)) from None
+        raise NotAuthorized("ledger", str(e), gates) from None
     # `gates` is what an audit reads to prove which checks ran, so a gate that
     # runs and does not say so is a gate nobody can demonstrate afterwards.
     gates.append("ledger")
@@ -388,7 +414,7 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
                            campaign=campaign, rec=rec, contact=contact,
                            step_key=step_key)
     except killswitch.SendingRefused as e:
-        raise NotAuthorized("killswitch", str(e)) from None
+        raise NotAuthorized("killswitch", str(e), gates) from None
     gates.append("killswitch")
 
     if reserve:
@@ -418,7 +444,7 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
                 cap_per_day=limits[plan_key]["limit"],
                 cap_per_sender=limits["per_sender_per_day"]["limit"])
         except actionledger.ActionRefused as e:
-            raise NotAuthorized("ledger", str(e)) from None
+            raise NotAuthorized("ledger", str(e), gates) from None
         gates.append("reserved")
 
     return Authorization(
@@ -485,16 +511,24 @@ def main(argv=None):
     if not contact:
         print(f"no contact {a.contact!r}")
         return 2
-    diff, _approved, _provider = (
+    # `compare_*` returns a sealed `Readback` that stamps its own time. It used
+    # to return a 3-tuple and this unpacked it, which broke the moment the seal
+    # landed - found by running the command rather than by a test, because
+    # nothing covers this CLI.
+    readback = (
         configdiff.compare_heyreach(campaign) if a.channel == "linkedin"
         else configdiff.compare_bison(campaign, expect_workspace=a.workspace))
     try:
         auth = dry_run(operation=f"{a.channel}_first_touch", channel=a.channel,
                        campaign=campaign, rec=rec, contact=contact,
                        step_key=a.step, workspace=a.workspace,
-                       readback={"diff": diff, "verified_at": store.now()})
+                       readback=readback)
     except NotAuthorized as e:
-        print(f"REFUSED at gate {e.gate}: {e.why}")
+        for gate in e.passed:
+            print(f"  PASS  {gate}")
+        print(f"  STOP  {e.gate}: {e.why}")
+        print(f"REFUSED at gate {e.gate} "
+              f"({len(e.passed)} gate(s) passed first)")
         return 1
     print("AUTHORIZED (dry run, nothing reserved)")
     print(json.dumps(auth.as_dict(), indent=1, default=str))

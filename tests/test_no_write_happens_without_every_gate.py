@@ -115,6 +115,19 @@ class GuardTest(QueueTest):
             "provider_delays": [["HOUR", 0]],
             "provider_status_expected": "PAUSED",
         })
+        # The seat, inventoried in THIS test's isolated sender state.
+        # `senderidentity.path()` derives from the queue directory, so
+        # `QueueTest` scopes it automatically. Inventoried rather than mocked:
+        # the sender gate checks the provider seat is in the client's canonical
+        # roster and is active and healthy, and a mocked roster proves none of
+        # that.
+        from src import senderidentity
+        with senderidentity.transaction() as rows:
+            rows.append(senderidentity.new_linkedin_account(
+                "productive", "li-116968", None,
+                "https://www.linkedin.com/in/mina-ruzicic-b4422438a",
+                provider="heyreach", provider_account_id="116968",
+                active=True, daily_limit=40, health="ok"))
         self.approve_campaign()
 
     def approve_campaign(self):
@@ -173,11 +186,15 @@ class GuardTest(QueueTest):
         return mock.patch.object(killswitch, "require", return_value=True)
 
     def allow_sender(self):
-        """The fixture's seat is not in a real roster, so ownership is stubbed.
-        `AnUnrosteredSenderIsRefused` covers the gate itself."""
-        from src import senderidentity
-        return mock.patch.object(senderidentity, "require_sender",
-                                 return_value=True)
+        """A no-op: the seat is genuinely inventoried in setUp.
+
+        This used to stub `senderidentity.require_sender`, which was the wrong
+        function - the gate looks up a PROVIDER seat, not a human sender id -
+        and stubbing it hid that. Kept as a context manager so the call sites
+        read the same, and so a future seat-level test can override it.
+        """
+        import contextlib
+        return contextlib.nullcontext()
 
     def refused_at(self, gate, **over):
         with self.allow_collision(), self.allow_killswitch(), self.allow_sender():
@@ -661,3 +678,60 @@ class TheWriteLayerRefusesAnythingButAnAuthorization(GuardTest):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheSenderGateChecksTheProviderSeat(GuardTest):
+    """The gate's subject is the PROVIDER seat, not an internal human id.
+
+    THE DEFECT THIS PINS. The first version called
+    `senderidentity.require_sender(client, sender_id)`. That function resolves a
+    HUMAN sender id, and the id a campaign carries is a `provider_account_id`.
+    Worse, every inventoried LinkedIn seat has `sender_id: None` on purpose -
+    PRODUCT-GAPS 33d, neither provider exposes who owns an inbox - so the lookup
+    could never succeed for any seat, and the gate refused the correctly
+    configured canary with a message claiming its ownership was unestablished.
+
+    That is the shape of failure this repository keeps producing: a check that
+    computes the wrong thing and refuses, which reads as safety and is actually
+    a guard that has stopped guarding, because it now says no to everything and
+    so distinguishes nothing.
+    """
+
+    def seat(self, **over):
+        from src import senderidentity
+        row = dict(kind=senderidentity.LINKEDIN_ACCOUNT, workspace="productive",
+                   account_id="li-116968", sender_id=None, provider="heyreach",
+                   provider_account_id="116968",
+                   profile_url="https://www.linkedin.com/in/mina-ruzicic",
+                   active=True, daily_limit=40, health="ok")
+        row.update(over)
+        with senderidentity.transaction() as rows:
+            rows[:] = [r for r in rows
+                       if r.get("kind") != senderidentity.LINKEDIN_ACCOUNT]
+            rows.append(row)
+
+    def test_a_seat_with_no_human_owner_still_passes(self):
+        # The canary's exact shape. `sender_id: None` is canonical, not missing
+        # data, so it must not be read as an unattributable sender.
+        self.seat(sender_id=None)
+        with self.allow_collision(), self.allow_killswitch():
+            self.assertIn("sender", self.attempt().gates)
+
+    def test_a_seat_nobody_inventoried_is_refused(self):
+        self.seat(provider_account_id="999999")
+        self.assertIn("roster", self.refused_at("sender").why)
+
+    def test_a_deactivated_seat_is_refused(self):
+        self.seat(active=False)
+        self.assertIn("not active", self.refused_at("sender").why)
+
+    def test_an_unhealthy_seat_is_refused(self):
+        self.seat(health="disconnected")
+        self.assertIn("disconnected", self.refused_at("sender").why)
+
+    def test_another_client_seat_does_not_satisfy_this_client(self):
+        # The tenancy half. A seat with the right provider id in the WRONG
+        # workspace must not vouch for this client's send, or one tenant's
+        # roster licenses another's outreach.
+        self.seat(workspace="mediaboard")
+        self.assertIn("roster", self.refused_at("sender").why)
