@@ -1,57 +1,76 @@
 # Resume checkpoint
 
-## Read this first: both canaries are resolved, and LinkedIn is the one to run
+## Read this first: the night built brakes, and found what they are attached to
 
-EmailBison Productive tenancy is **GREEN** as of 2026-09-09. Verified in a
-fresh process with the environment scrubbed: `BISON_KEY` is the consumed
-variable, `require_workspace(10)` passes, `require_workspace(29)` raises, the
-inventory walks to **225 unique Productive inboxes** across 86 Productive-branded
-domains with no Bluewave leakage, and the binding was re-asserted after the
-sweep. `work/senders.jsonl` rebuilt: **202 READY, 23 DEGRADED, 3,030 sends/day**.
-No EmailBison UI action is outstanding.
+**Eight read-only red teams attacked the build overnight. Ten of their findings
+are fixed, and the open ones are named with numbers in PRODUCT-GAPS 38.**
 
-**The recommendation is the LinkedIn connection request to Dana Marsh, and
-the reason is that the email lane cannot produce a first message.**
+The single most important one: **the test suite was reading the operator's real
+`config/.env` 1,289 times per run and attempting 83 real provider calls** -
+including `GET /users` and `GET /campaigns` against the client's own live
+EmailBison instance. `tests/base.py` promised no key could reach a provider from
+a developer's environment; that held inside `ProviderTest` and nowhere else, and
+most test modules do not inherit it. A plain `python -m unittest discover` was
+reading live tenancy state with the operator's credential. `tests/__init__.py`
+now installs a credential firewall at package import: verified zero wire
+attempts afterwards.
 
-| | EMAIL CANARY | LINKEDIN CANARY |
-| --- | --- | --- |
-| prospect | Dana Marsh, Head of Production, Ninefields | same |
-| account ICP | qualified 53.0, tier C, confidence medium | same |
-| persona / angle | champion / operations | champion / operations |
-| address / profile | `dana@ninefields.test` | `danamarsh` |
-| verification | 2/2, contactout + reoon, sendable | n/a |
-| MX | `known_allowed`, microsoft, eligible | n/a |
-| prior contact, person | **CLEAR** (EmailBison ws 10) | **CLEAR** (12 conversations scanned) |
-| prior contact, account | **TOUCHED** - a colleague got 9 emails on campaigns 328 and 352, both ended, 0 replies | company-level **UNANSWERABLE** (PRODUCT-GAPS 35b) |
-| first step | day1 email | day3 connection request |
-| **is the first step renderable** | **NO - day1 is LLM-generated and no model ships** | **YES** |
-| copy | day5 onward render CLEAN; day1 and day15 cannot | 125 chars, lint CLEAN, claims CLEAN |
-| sender | 202 ready inboxes, 3,030/day | seat 116968 Mina Ruzicic, READY, 40 requests left |
-| vehicle | exists and is proven | **must be created in the HeyReach UI** (no create route in this build) |
-| blocking | the first message does not exist | one UI action |
+**The canary did not move, and cannot tonight.** Campaign 594061 is PAUSED with
+the correct note, the correct single sender and one lead, and the config differ
+PASSES. Executing it needs campaign ACTIVATION, which has no route in this build
+and which the overnight authorisation explicitly excluded. It is one manual
+unpause away and nothing else.
 
-**Why LinkedIn wins.** The email cadence opens with day1, which is generated
-and needs a model this repository does not ship. Starting at day5 instead means
-the first thing a prospect receives is a mid-sequence follow-up. The LinkedIn
-note is the cadence's own first step, it renders, and it asserts nothing.
+**A new gate now blocks it that did not exist before**, and this is deliberate:
+`campaigns.approval_is_current` is required, and the canary campaign row carries
+a step-level approval but no campaign-level one. Approval now covers the sender,
+the provider binding, the limits and the lead set, so approving those is a
+separate act from approving the words. The operator's approval was recorded for
+the words; the campaign row needs one too.
 
-**What the day-5 email would have said until today.** `you are running
-utilisation at Ninefields` - a fabricated claim about how somebody runs their
-agency, and the only email text this system could ever have sent, because the
-evidence branch it prefers has never once had anything to read. Both guards
-passed it. Fixed and pinned; PRODUCT-GAPS 36.
+## What the brakes are
 
-**The other thing real execution surfaced.** The new HeyReach-side
-prior-contact check found seat 208242 already four messages deep with Austin
-Ball and with Anthony Andreatos - the latter **five days ago**. Those were the
-primary contacts at the other two qualified accounts. PRODUCT-GAPS 35.
+Six independent refusals stand between this build and a prospect:
+`push.run(live=True)` raises, `tagsync.send` refuses unconditionally,
+`heyreach._read` rejects anything off its read allowlist, `killswitch.require`
+refuses because the global layer says this build cannot send, `providerwrites`
+has an empty allowlist, and no add-lead or activate route exists.
 
-**Three candidates at ninefields.test, all clear on both channels:** Dana Marsh,
-Dale Morgan, and Russell Garnaut (capped out, not blocking).
+New tonight, and all of it tested against fixtures rather than a provider:
 
-Written for a session with no memory of how any of this came to be. Read this
-first, then PRODUCT-GAPS.md and HUMAN-ACTIONS-REQUIRED.md, which are the two
-that stop a claim being made in front of a client.
+  * `executionguard.authorize` - every gate in a fixed order, returning a typed
+    single-use `Authorization` that a write layer cannot be invoked without. 50
+    tests, each asserting the strong property: with a gate failing, the provider
+    spy records NO call at all.
+  * `actionledger` - a reservation written before a prospect-facing action and
+    settled after. An unsettled or unresolved key blocks every retry, because
+    retrying to find out whether the provider acted is how somebody gets
+    contacted twice. Caps are enforced INSIDE the reservation transaction.
+  * `configdiff.Readback` - sealed, bound to what it compared, single-use.
+  * `providerwrites` - the whole write machine, with nothing to drive.
+
+## The money finding
+
+`routing.plan` computes `max_contacts_to_enrich` and its docstring says it "is
+the number that controls spend". Nothing that spends read it. Verification bought
+for every address on the record. **Measured at 30,000 domains: roughly a quarter
+of a million credits verifying people the system had already decided never to
+write to.** Fixed; it halves verification on the real cohort.
+
+And `--spend` with no `--cap` was unbounded - order 420,000 credits over a 30k
+queue. Both CLIs now refuse.
+
+## The boundary that stops 30k, and it is not a feature gap
+
+A 30,000-record queue is a **505 MB whole-file JSONL rewrite taking 14.6
+seconds against a 10-second lock timeout**. A single transaction exceeds the
+timeout, so a second worker cannot write at all. Cost is quadratic in batch
+count, so the planned shard sizes make it worse: 10-lead micro-batches would be
+5.9 hours and 1.5 TB of I/O.
+
+**No streaming controller was written, on purpose.** Building one on this
+substrate would be building on sand. The design is recorded in PRODUCT-GAPS 38k;
+the substrate has to change first.
 
 ## Where the tree is
 

@@ -93,6 +93,40 @@ blocks a pilot that involves sending, and `LIVE-VALIDATION-PLAN.md` stage
 | Slack interactions endpoint | NEEDS LIVE CONTRACT VALIDATION | New. `/slack/interactions` verifies, deduplicates and applies over real HTTP in tests. No request from Slack has ever reached it, and a human must paste the URL into the app and set `SLACK_SIGNING_SECRET` |
 | Revival | READY | Verdicts only. Nothing is sent, drafted or queued, and a READY account goes through every gate a first approach goes through |
 
+## 4z. The autonomous execution layer, as of 2026-09-10
+
+Built overnight, and every row here is deliberately classified below what the
+code might suggest, because the distinction this document exists to make is
+between a thing that works and a thing that has worked against a real
+counterpart.
+
+| capability | classification | what that means here |
+| --- | --- | --- |
+| provider configuration differ (`configdiff`) | **READ-ONLY VALIDATED** | run live against a real HeyReach campaign; caught a vendor placeholder note that every other check passed. The EmailBison half has never been run against a real campaign and one of its fields cannot pass (see below) |
+| execution guard (`executionguard`) | **FIXTURE ONLY** | 50 tests, every gate proven to stop a provider call entirely. It has authorised exactly one action, in a dry run |
+| action ledger (`actionledger`) | **FIXTURE ONLY** | reserve-before/settle-after, tenant-scoped caps enforced inside the reservation transaction. No row has ever been settled by a real write |
+| guarded write layer (`providerwrites`) | **NOT VALIDATED, SEALED** | `SUPPORTED = ()`. Every operation refuses, and a test asserts the allowlist is empty so enabling one is a visible diff |
+| approval fingerprint | **READY** | covers senders, provider binding, limits, lead set, tenant and angle; 13 tests, one per material field, plus one proving a volatile counter does NOT invalidate consent |
+| persona spend cap | **READY** | `max_contacts_to_enrich` is now read by the code that spends. Halves verification on the real cohort |
+| budget floor | **READY** | a live run with no `--cap` is refused at both CLIs |
+| credential firewall in tests | **READY** | the suite read the operator's real `config/.env` 1,289 times per run and attempted 83 real provider calls, including to the client's live EmailBison instance. Now zero |
+| reply provenance | **READY** | every reply event names the estate it was read from |
+| streaming controller | **NOT BUILT** | deliberately. See PRODUCT-GAPS 38k: a 30,000-record queue is a 505 MB whole-file rewrite taking 14.6s against a 10s lock timeout, so a controller on this substrate would be built on sand |
+
+**What still cannot happen, and it is not a flag.** There is no route that adds
+a lead, and none that activates a campaign. `push.run(live=True)` raises,
+`tagsync.send` refuses unconditionally, `heyreach._read` rejects anything off
+its read allowlist, and `killswitch.require` refuses because the global layer
+says this build cannot send. Six independent refusals, and the write layer's
+allowlist is empty behind all of them.
+
+**The honest summary of the night's work:** the brakes are now real, tested and
+non-optional, and they are attached to a pedal that is not connected to
+anything. That is the correct order to build it in, and it means every one of
+those gates will run for the first time in anger on the day a route opens.
+
+---
+
 ## 5. Reporting
 
 | capability | class | why |
