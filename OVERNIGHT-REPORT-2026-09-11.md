@@ -258,3 +258,129 @@ Authorization machinery is a door with no traffic. Wiring `push.py` through it
 is the single largest architectural debt left.
 **P2** — `claims` is still not called on the `render.py` CSV path, on approval,
 or at generation. Three more places the same guard is absent.
+
+
+---
+
+# Addendum
+
+## Scaling audit — the quadratic term was already gone
+
+Searched for the traps the addendum names. The result is short because the
+work was already done: `push.collect` computes `paused_set` once with a
+comment reading "Once, not once per record: this is the quadratic term
+otherwise", and `cadence.build` takes it as a parameter for the same reason.
+`eligibility.decide` defaults `recs=[rec]` rather than the whole queue. The
+`store.load()` calls that remain are CLI entry points and report modules,
+which is where they belong.
+
+What is left, measured:
+
+    clients.load() per record in push.collect   0.83 ms   -> 20.5 s at 24,710
+    evidence.boilerplate per research item      215 us    -> 21 s at 24,710
+    serial research                             55 s each -> 240 HOURS
+
+**Optimising anything other than research concurrency is noise at this
+scale.** The boilerplate call was memoised anyway because it was pure and
+repeated - `segments.text_of` fell from 542.5us to 54.6us per record - but
+that is a ten-times improvement on a term worth twenty seconds against one
+worth ten days.
+
+## 24,710 preflight — validated, not processed
+
+No enrichment, no provider calls, no spend:
+
+    rows 24710   non-empty 24710   unique 24710   duplicates 0
+    malformed 0  columns ['domain']  distinct TLDs 218
+    domain length min 4, p50 15, max 36
+    5,000-file nesting claim   VERIFIED (subset, checked rather than trusted)
+
+## Credit efficiency
+
+    credits / input domain          0.6
+    credits / qualified account    20.8
+    credits / person found          7.5
+    credits / verified email       37.4
+    credits / campaign ready        n/a  (nothing has reached it)
+
+    company-information-from-domain  145   78%
+    decision-makers                   40   22%
+    aiark-people-search                2
+    apify-research                     0   (unpriced: $0.858 of real compute)
+
+Expected credits only; observed is a separate question and `costs.py` keeps
+it separate. The company lookup dominates and is unavoidable - the free tier
+qualifies nobody, proven by a zero-cap pass that scored zero of twelve ICP
+dimensions across 200 domains.
+
+---
+
+# PROSPEX reference audit
+
+Reviewed `asiifdev/business-leads-ai-automation` (MIT) as a source of
+patterns. **It is a Google-Maps scraper plus an LLM copy generator with a
+dashboard.** There is no sending, no email verification, no suppression, no
+cadence and no reply handling; the entire outreach surface is a
+copy-to-clipboard button. So it offers nothing to port for send-safety, and
+most of its value here is as a counter-example.
+
+### Adapted
+
+**1. Progress needs a denominator known before the work starts.** Their fix
+for progress sitting at 0% derives a percentage from the *plan* - query x
+area combinations, capped by `maxResults` - never from the discovered count.
+That is the transferable idea, and its corollary is the important half: if
+you do not have a denominator, do not show a percent. Recorded for the
+progress work; their storage model (a mutable scalar column, no event log,
+progress running backwards on a retry) is explicitly not adopted, because
+our ledger already holds confirmed events.
+
+**2. Their broken idempotency is worth a test we do not have.** They enqueue
+with no `jobId`, so two POSTs start two concurrent jobs on one campaign;
+retries re-scrape and rely on `skipDuplicates`, which can never fire because
+the migration creates **no unique index on the leads table at all**. Textbook
+computed-correctly-consumed-by-nothing. We have reserve/settle and crash
+tests, but no test asserting that *re-running a completed stage produces zero
+new ledger rows* - which matters, because I re-ran the 250 cohort three times
+tonight. Queued as the next implementation.
+
+**3. Rates should carry their own denominator.** Their `conversionRate` is a
+pre-formatted string over "every lead ever scraped", so it silently falls as
+they scrape more and no consumer can re-base it. Our scorecard rule of
+numerator/denominator is the right one and this is a concrete example of the
+failure it prevents.
+
+### Worth knowing, not adopted
+
+Their secret handling has one good idea - a `"v1:"` version prefix on
+encrypted values so a format change can migrate in place - with a fail-open
+flaw: an unprefixed value is returned verbatim. And API keys stored as
+`sha256` plus a display prefix, returned in plaintext exactly once, is a
+sound shape if we ever expose one.
+
+### What NOT to copy, explicitly
+
+- **Silent synthetic data on provider failure.** When a scrape throws, they
+  fabricate leads with invented names, addresses and plausible phone numbers
+  and insert them unflagged into the same table, exportable to vCard. A
+  fabricated record indistinguishable from a real one is the single worst
+  thing in that repository, and it is the exact class our LIVE-READINESS
+  vocabulary exists to forbid.
+- **Silent mock LLM content** on API error, documented as the intended dev
+  path.
+- **Tenancy fail-open.** A missing workspace claim resolves to
+  `"default-workspace"`, and their campaign update and delete endpoints pass
+  no workspace at all.
+- A health endpoint that pings only the database and would report `ok` with a
+  dead worker.
+- A live SQLite database committed to the repository.
+
+### Database question, answered
+
+No migration is needed. At 24,710 domains the binding constraint is 240
+hours of serial research, not query patterns over JSONL. The append-only
+ledgers (action, spend) are exactly the shape a relational store would be
+worst at, and the one genuinely relational question - "which contacts share
+an identity" - is already a single batch pass in `dedupe.find`. Revisit if
+concurrent writers appear, which is a process-topology decision rather than a
+storage one.
