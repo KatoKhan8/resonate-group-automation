@@ -3152,3 +3152,68 @@ per provider, and only ContactOut had a pre-run snapshot. Until the snapshot
 is taken automatically at the start of a run and written to the ledger, every
 Apify figure will be UNKNOWN by construction - which is honest but useless,
 and the honesty is not a substitute for the measurement.
+
+
+## 41. A reply nobody can match to a contact stops nothing at all
+
+The authoritative rule is that a reply on either channel stops future cadence
+for the same lead on BOTH channels. Traced end to end on 2026-09-10, that rule
+holds: `accountpolicy.apply_reply` is the single writer of `contact["paused"]`,
+`rec["paused"]` and `rec["review"]`; `eligibility._replied` and
+`eligibility._paused` read it with NO channel filter; and both `push.py` and
+`executionguard.authorize` sit on the only path to a provider write.
+`tests/test_lifecycle_attacks.py` proves it in both directions.
+
+**The gap is upstream of all of that: attribution.**
+
+`events.match_record` is exact and fails closed - record id, then lowercased
+email, then canonical LinkedIn URL, with `None` on any ambiguity. When it
+returns `None`, `events.apply` reports `unmatched` and **writes nothing**.
+`inbound.handle` then fires a Slack notification that is explicitly
+best-effort and cannot raise, and returns.
+
+So a reply this system cannot attribute produces a Slack message that is
+permitted to fail silently, and outreach continues on both channels for
+everyone at that account. Fail-closed for ATTRIBUTION; fail-open for STOPPING.
+The cases are ordinary rather than exotic: a reply from a personal address, a
+forwarded reply, a shared inbox not listed against any contact, an address two
+clients' records both carry.
+
+There is no durable queue, retry or blocking state for unmatched inbound. I
+looked for one.
+
+### What would close it, and why it is not done yet
+
+The honest fix is not "match harder" - guessing an identity is worse than
+admitting there is none. It is to make an unmatched reply hold the ACCOUNT it
+plausibly came from: if the sender's email domain matches a record's domain,
+somebody at that company replied, even if we cannot say who, and the
+account-level HOLD semantics already exist for exactly that shape of fact.
+
+That is a behaviour change with a real cost - it can hold an account on a
+bounce from a shared domain, or on an out-of-office from an unrelated person -
+so it wants its own design pass and its own attack tests rather than being
+bolted on beside a cost fix. It is the highest-value item left on the reply
+path.
+
+### Two smaller findings on the same path
+
+**FIXED 2026-09-10.** `events.match_contact` refused ambiguity for the
+LinkedIn identifier and not for the email one, so two contacts sharing an
+`info@` address meant a reply was attributed to whichever was listed first.
+Now both identifiers collect candidates and any ambiguity returns `None`.
+
+**OPEN, low.** `cadence.status_for` stamps the timeline's `step["status"]`
+from the RECORD-level pause only. It never reads `contact["paused"]`,
+`contact["stopped"]` or `contact["unsubscribed"]`, so a planning view can
+label a replied contact's step `eligible`. Nothing ships - `push.
+verify_before_payload` and the execution guard both re-check - but the plan a
+human reads is wrong until the last gate, which is the kind of disagreement
+that erodes trust in the screen.
+
+**OPEN, unreached.** `adapters` trusts a HeyReach webhook payload's
+`eventType` without calling `heyreach.direction()`, so our own outbound would
+be readable as a prospect reply. The poller only produces conversation-shaped
+pages and unsigned webhooks are deliberately not trusted as a transport, so
+the path is unreached today - but it is the one place on the inbound path
+where the direction allowlist is not applied.
