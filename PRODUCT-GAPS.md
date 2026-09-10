@@ -3021,3 +3021,134 @@ consumer is `configdiff`. Nothing asserts it, so no HeyReach read can prove whic
 org unit answered - the hole EmailBison closed with `require_workspace` after its
 credential answered for four estates in three days.
 
+
+
+## 39. Why the 50-domain pilot produced zero campaign-ready, measured
+
+Decision 3 of the HOLD_FOR_FIXES continuation asked for the quantitative
+reason and a classification per hold. Read from the stored verdicts on
+2026-09-10, not reasoned about.
+
+**Every one of the 50 has `icp_confidence: low`, and that is the binding
+constraint** - `_verdict` forces `review` for any LOW-confidence company
+whatever it scored, so no record could become qualified regardless of fit.
+Which branch of `_confidence` produced LOW, for each record:
+
+| Records | Cause | Classification |
+|---|---|---|
+| 34 | `segment.vertical == UNKNOWN`, which returns LOW before anything else is considered | MISSING DATA |
+| 14 | vertical known, but only 3-5 of 12 dimensions scored; `len(missing) >= 6` needs `scored >= 6` for MEDIUM | MISSING DATA |
+| 2 | contradictory evidence demoted the band | EXPECTED - a human should see these |
+
+Independently of confidence, **19 of 50 were rejected on headcount**: 23 of
+the cohort are in the `1_9` band and the ICP charges -25 for "below the 10
+needed to feel this problem". That is an **EXPECTED BUSINESS FILTER** and it
+is correct. Productive sells utilisation tracking to Design Services teams;
+a four-person shop does not have the problem the product solves. A cohort
+of 50 domains drawn from an agency list is mostly very small agencies, and
+a pipeline that qualified them would be the broken one.
+
+So the headline number is not one failure. It is a correct business filter
+removing roughly half the cohort, and missing data preventing a verdict on
+the rest.
+
+### The part that IS a defect: research cannot lift confidence
+
+One record of the 50 got as far as research. It gained
+nothing from it, for three separate reasons, and the first two are bugs:
+
+1. **`confidence_components` reads fields the Apify path never writes.** It
+   scores `source_quality` from `item["quality"]` and `recency` from
+   `item["freshness_score"]`. The stored items do not have those keys at
+   all - not null, absent - so both components scored 0.0 with the reason
+   "0 usable piece(s) of evidence" and "nothing dated to judge recency by",
+   about five pieces of evidence that were successfully retrieved.
+   `evidence.make` populates both. `apify.evidence_from_items`
+   (src/providers/apify.py:348) does not call it: it hand-builds a nine-key
+   dict - `source_type, provider, source_url, actor, retrieved_at, field,
+   title, fact` - and so emits no `quality`, no `freshness_score`, no
+   `published_at`, no `relevance_score` and no `evidence_id`. Two producers
+   of the same record shape, one of which the consumer was written against.
+
+   This is the defect class named at the top of CLAUDE.md, in mirror image:
+   not a field computed correctly that nothing reads, but a consumer reading
+   a field nothing produces. Both look like a working system.
+
+2. **`source_diversity` can never exceed 0 on the only research path this
+   build has.** It counts `{provider} | {source_type}` distinctly, and the
+   Apify path sets both to `"apify"`, so `distinct == 1` and the score is
+   0.0 by construction. One provider not corroborating itself is correct;
+   the consequence is that diversity is dead weight until a second research
+   provider exists.
+
+3. **The scraped content did not answer what the dimensions ask.** The five
+   facts retrieved were the site's cookie policy, its privacy policy and
+   its navigation menu. That is a **PROVIDER LIMITATION**, not a bug: a
+   homepage scrape does not establish a delivery model or a utilisation
+   problem, and no amount of scoring fixes evidence that is page furniture.
+
+**Fixing 1 and 2 would not have changed this pilot's outcome**, and saying
+otherwise would be the convenient reading. Only one of fifty records
+reached research at all - the other 49 were held before it, by design,
+because company-first means no research spend without an ICP verdict - and
+that one record's evidence was boilerplate. The bugs are real and must be
+fixed on their own merits. They are not the reason the pilot returned zero.
+
+### What this does not license
+
+Nothing here justifies lowering the headcount floor, widening the vertical
+classifier's signal requirement, or letting LOW confidence qualify. The
+cohort genuinely is mostly too small, and a verdict on absent evidence is
+what `unknown` is for. The fix for 34 records that cannot be classified is
+better company-level evidence before the verdict, not a verdict that needs
+less evidence.
+
+
+## 40. What the 50-domain pilot actually cost, per bucket, measured
+
+Decision 2 required that a cost claim name its own evidence class, after I
+claimed "zero credits spent" from ContactOut's `count` alone - which was not
+sufficient evidence, because ContactOut meters three buckets independently
+and `count` is only the email one.
+
+### MEASURED_PROVIDER_ACTUAL - ContactOut
+
+Read from `GET /stats` before and after, all three buckets:
+
+| Bucket | Before | After | Delta | Quota |
+|---|---|---|---|---|
+| `count` (email) | 566 | 566 | **0** | 39,215 |
+| `search_count` | 77 | 77 | **0** | 119,127 |
+| `phone_count` | 462 | 462 | **0** | 4,370 |
+
+Zero on every metered bucket, which agrees with the run's own invariants:
+no person-level call, no verifier call, no contact enriched. This is a
+measured actual, and it is the claim the earlier one should have been.
+
+### UNKNOWN - Apify
+
+Apify bills compute units, not credits, and `COSTS["apify-research"]` is 0,
+which is why `--cap` could not bound it. Month-to-date usage reads
+**$4.03** (`/users/me/usage/monthly`, `totalUsageCreditsUsdBeforeVolume-
+Discount`, 2026-09-10).
+
+**That is a month-to-date total, not this pilot's cost.** No pre-run Apify
+snapshot was taken, so the delta attributable to the 50-domain run is
+UNKNOWN and must not be reported as anything else. One actor run is known
+to have happened during it; its share of the $4.03 is not established.
+
+This reading is recorded here as the baseline for the next run, which is
+what makes the next reconciliation possible.
+
+### FREE_CONFIRMED
+
+DNS/MX resolution is not a metered provider. The run-scoped MX cache change
+is a latency fix, not a cost one, and was never claimed otherwise.
+
+### The reconciliation gap this leaves
+
+A cost reconciliation needs PRE-RUN SNAPSHOT -> RUN -> POST-RUN SNAPSHOT
+per provider, and only ContactOut had a pre-run snapshot. Until the snapshot
+is taken automatically at the start of a run and written to the ledger, every
+Apify figure will be UNKNOWN by construction - which is honest but useless,
+and the honesty is not a substitute for the measurement.

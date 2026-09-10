@@ -16,6 +16,7 @@ never wired to a real transport, so `spy.calls == []` is a stronger claim than
 any assertion about return values: it says the code never got as far as trying.
 """
 import datetime
+import json
 import os
 import unittest
 from unittest import mock
@@ -733,5 +734,95 @@ class TheSenderGateChecksTheProviderSeat(GuardTest):
         # The tenancy half. A seat with the right provider id in the WRONG
         # workspace must not vouch for this client's send, or one tenant's
         # roster licenses another's outreach.
-        self.seat(workspace="mediaboard")
+        self.seat(workspace="other-client")
         self.assertIn("roster", self.refused_at("sender").why)
+
+
+class AChannelNobodyCanStopIsCappedAtTheCanary(GuardTest):
+    """The killswitch refuses to START. Nothing here can END.
+
+    Neither provider exposes a pause verb, so once a campaign is running in a
+    vendor UI this system cannot halt it. At one person that is survivable and
+    stated: the exposure while a human reaches the UI is one invitation. At
+    fifty it is a killswitch this system claims and does not have.
+
+    A daily volume cap does not notice the difference - fifty people reached
+    one a day never exceeds a daily ceiling - so the limit has to be
+    cumulative, which is why it is a separate gate rather than a smaller
+    number in `pilotcaps`.
+    """
+
+    def reached(self, *contact_keys, channel="linkedin"):
+        """Put prior exposure in the ledger, the way a real send would."""
+        from src import actionledger
+        self.ledger(*[{"key": f"k-{key}", "state": actionledger.SENT,
+                       "channel": channel, "workspace": "productive",
+                       "contact_key": key, "at": store.now()}
+                      for key in contact_keys])
+
+    def ledger(self, *rows):
+        """Append to the durable ledger. It is append-only JSONL, so a test
+        writes it the way `reserve` does rather than through a transaction."""
+        from src import actionledger
+        with open(actionledger.path(), "a", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps(row) + '\n')
+
+    def test_the_first_person_on_an_unstoppable_channel_is_allowed(self):
+        with self.allow_collision(), self.allow_killswitch():
+            self.assertIn("stoppability", self.attempt().gates)
+
+    def test_a_second_person_is_refused_while_no_pause_route_exists(self):
+        self.reached("someone-else")
+        e = self.refused_at("stoppability")
+        self.assertIn("heyreach.pause", e.why)
+        # The refusal must say what would lift it, or it reads as a dead end.
+        self.assertIn("HUMAN-ACTIONS-REQUIRED 5f", e.why)
+
+    def test_the_same_person_again_is_not_a_second_person(self):
+        # Step two of a cadence to the one canary contact is still one person
+        # exposed. Counting rows rather than contacts would refuse it.
+        self.reached("dana-marsh")
+        with self.allow_collision(), self.allow_killswitch():
+            self.assertIn("stoppability", self.attempt().gates)
+
+    def test_another_channel_does_not_consume_this_one(self):
+        # Email and LinkedIn are stoppable, or not, independently.
+        self.reached("someone-else", channel="email")
+        with self.allow_collision(), self.allow_killswitch():
+            self.assertIn("stoppability", self.attempt().gates)
+
+    def test_another_tenant_does_not_consume_this_one(self):
+        from src import actionledger
+        self.ledger({"key": "k-other", "state": actionledger.SENT,
+                     "channel": "linkedin", "workspace": "other-client",
+                     "contact_key": "somebody", "at": store.now()})
+        with self.allow_collision(), self.allow_killswitch():
+            self.assertIn("stoppability", self.attempt().gates)
+
+    def test_the_cap_lifts_itself_when_a_pause_route_is_established(self):
+        """No edit to the guard should be needed the day pause is supported.
+
+        This is what makes the gate a statement about the provider rather than
+        a number somebody picked: it reads `providerwrites.is_supported`, so
+        establishing the route lifts it.
+        """
+        from src import providerwrites
+        self.reached("someone-else")
+        with mock.patch.object(providerwrites, "SUPPORTED",
+                               ("heyreach.pause",)):
+            with self.allow_collision(), self.allow_killswitch():
+                self.assertIn("stoppability", self.attempt().gates)
+
+    def test_an_unresolved_attempt_counts_as_exposure(self):
+        """The direction that under-counts exposure is the wrong one.
+
+        A row whose provider truth is unknown may well have reached somebody.
+        Reading it as "did not" would let an unresolved attempt buy a second
+        person on a channel nobody can stop.
+        """
+        from src import actionledger
+        self.ledger({"key": "k-unknown", "state": actionledger.UNRESOLVED,
+                     "channel": "linkedin", "workspace": "productive",
+                     "contact_key": "someone-else", "at": store.now()})
+        self.assertIn("heyreach.pause", self.refused_at("stoppability").why)

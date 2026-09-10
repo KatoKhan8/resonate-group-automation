@@ -44,7 +44,7 @@ import sys
 
 from . import (actionledger, approval, cadence, campaigns, claims, clients,
                collision, configdiff, eligibility, fatigue, killswitch, lint,
-               pilotcaps, store)
+               pilotcaps, providerwrites, store)
 
 # How long a provider read-back stays good. A vendor UI edit can land between
 # verifying a configuration and acting on it, and 594061's own note was changed
@@ -52,6 +52,15 @@ from . import (actionledger, approval, cadence, campaigns, claims, clients,
 READBACK_TTL_SECONDS = 15 * 60
 
 CHANNELS = ("linkedin", "email")
+
+# The pause operation each channel would need before this system could stop an
+# outreach campaign it had started. Neither exists: see
+# `providerwrites.OPERATIONS`, where both are declared with the reason.
+PAUSE_OPERATION = {"linkedin": "heyreach.pause", "email": "bison.pause"}
+
+# How many distinct people a channel may reach while nothing can stop it.
+# One - the canary. See HUMAN-ACTIONS-REQUIRED 5f.
+UNSTOPPABLE_CHANNEL_CAP = 1
 
 # The eligibility reasons that mean somebody must not be contacted. Named from
 # `eligibility`'s own constants so the two cannot drift apart.
@@ -383,6 +392,37 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     except Exception as e:
         raise NotAuthorized("pilot_cap", str(e), gates) from None
     gates.append("pilot_cap")
+
+    # 5b. A CHANNEL NOBODY CAN STOP IS CAPPED AT THE CANARY -----------------
+    # The killswitch refuses to START an action. It cannot END a campaign that
+    # is already running, because neither provider exposes a pause verb - so
+    # for a running campaign the killswitch is a control this system claims and
+    # does not have.
+    #
+    # At one person that gap is survivable and honest: the exposure while a
+    # human reaches the vendor UI is one invitation. At fifty it is not, and
+    # nothing in a daily volume cap notices the difference, because fifty
+    # people reached one a day never exceeds a daily ceiling. So the limit is
+    # cumulative and it is the number the operator can actually stand behind.
+    #
+    # This unlocks itself. The moment a pause route is established and read
+    # back, `providerwrites.is_supported` answers True and the cap lifts with
+    # no edit here - which is what makes it a statement about the provider
+    # rather than a number somebody chose.
+    pause_op = PAUSE_OPERATION[channel]
+    if not providerwrites.is_supported(pause_op):
+        reached = actionledger.contacts_reached(channel=channel,
+                                                workspace=tenant)
+        _require(
+            "stoppability",
+            len(reached | {contact["key"]}) <= UNSTOPPABLE_CHANNEL_CAP,
+            f"{pause_op} is not supported in this build, so a running "
+            f"{channel} campaign cannot be stopped from here. "
+            f"{len(reached)} {channel} contact(s) have already been reached "
+            f"for {tenant!r} and the cap while no stop exists is "
+            f"{UNSTOPPABLE_CHANNEL_CAP}. Establish a pause route, or agree "
+            f"and record an out-of-band stop - HUMAN-ACTIONS-REQUIRED 5f")
+    gates.append("stoppability")
 
     # 6. LEDGER RESERVATION -------------------------------------------------
     key = _key(rec, contact, step_key, channel)

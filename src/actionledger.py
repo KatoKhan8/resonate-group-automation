@@ -156,6 +156,36 @@ def count_on(day, channel=None, sender_id=None, workspace=None, rows=None,
     return n
 
 
+def contacts_reached(channel=None, workspace=None, rows=None, states=None):
+    """The distinct people this ledger says were reached, over all time.
+
+    `count_on` answers a DAILY question, which is the right shape for a volume
+    cap and the wrong one for cumulative exposure: a channel that has reached
+    fifty people one a day for fifty days has never exceeded a daily ceiling.
+    The stoppability rule needs the cumulative number, so it needs this.
+
+    Distinct CONTACTS rather than rows, because two steps to one person is one
+    person exposed. Same default `states` as `count_on` and for the same
+    reason: an unresolved attempt may well have reached somebody, and reading
+    it as "did not" is the direction that under-counts exposure.
+    """
+    states = (SENT, ATTEMPTED, UNRESOLVED) if states is None else states
+    rows = load() if rows is None else rows
+    latest = {}
+    for row in rows:
+        latest[row.get("key")] = row
+    out = set()
+    for row in latest.values():
+        if row.get("state") not in states:
+            continue
+        if channel is not None and row.get("channel") != channel:
+            continue
+        if workspace is not None and str(row.get("workspace")) != str(workspace):
+            continue
+        out.add(row.get("contact_key"))
+    return out
+
+
 class CapReached(ActionRefused):
     """The durable count for this day is already at the ceiling."""
 

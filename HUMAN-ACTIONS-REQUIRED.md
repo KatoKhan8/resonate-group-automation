@@ -484,6 +484,95 @@ may a catch-all domain be approached at all.
 
 ---
 
+## 5e. Press unpause on campaign 594061 - the canary's only remaining step
+
+**What** In the HeyReach UI, unpause `PRODUCTIVE - CANARY - 2026-09-09`
+(campaign 594061). That is the whole execution. Nothing else is waiting on
+anything.
+
+**Why it is a human action and not a missing feature** `heyreach.activate`
+has no documented route. Neither does `create_campaign`, `set_sequence`,
+`assign_sender` or `pause`. This is recorded per-operation in
+`providerwrites.OPERATIONS` with the reason for each, and `SUPPORTED` is
+empty, so the write layer refuses every one of them by name rather than by
+a flag. Activation is a vendor-UI action for this provider, and building a
+route by guessing at an undocumented verb is the one thing that must not
+happen on a prospect-facing path.
+
+**What the system has established** Running the execution guard against
+live provider truth on 2026-09-10, 13 of 14 gates pass:
+
+    PASS tenancy  approval  campaign_approval  readback  eligibility
+    PASS suppression  copy  claims  fatigue  collision  sender
+    PASS pilot_cap  ledger
+    STOP killswitch - global: live sending is refused in code
+
+The killswitch is the only stop, and its global layer is derived from
+`push.py` raising rather than read from a flag, so it is not something to
+turn off. It is also not what is holding the canary back: the write layer
+refuses independently, and the execution path is the UI.
+
+**Blast radius, exactly** One LinkedIn connection request, from seat 116968,
+to the single lead already staged on campaign 594061, carrying the approved
+connection note and no other text.
+
+The prospect and the note are deliberately NOT reproduced here: this file is
+tracked and published, and `test_fixture_hygiene` refuses a real person or
+client name in any tracked file. Read both back from the provider instead -
+`python -m src.providers.heyreach --sequence 594061` prints the note that is
+actually configured, which is the copy that matters rather than a
+transcription of it. It was verified against the approved fingerprint on
+2026-09-10 and matched.
+
+The campaign holds one lead and the approved configuration caps it at one,
+so a second person cannot be reached by this campaign even by accident. The
+seat's existing conversations were scanned and there is no prior invitation
+to this person.
+
+**THE RISK TO ACCEPT BEFORE PRESSING IT.** Once a HeyReach campaign is
+running, nothing in this system can stop it. `heyreach.pause` has no route
+either, so the killswitch cannot reach a running campaign - it can refuse
+to start something, and it cannot end something already started. For this
+canary that is bounded: one lead, one invitation, and pressing pause again
+in the same UI is the stop. It is stated here because it is the honest
+precondition, not because the canary is dangerous.
+
+**Do not reply through this system.** No auto-reply exists and none is
+authorised. A reply is a human's.
+
+---
+
+## 5f. The promotion ladder is gated on a stop, not on the canary's result
+
+**What** 1 -> 3 -> 5 -> 10 -> 20 -> 50 cannot proceed on LinkedIn on the
+strength of a good canary alone.
+
+**Why** The pause asymmetry above does not scale with the ladder. At one
+lead, "press pause in the UI" is a real stop and the exposure while
+reaching for it is one person. At fifty, the killswitch is decorative: the
+system would be running an outreach campaign it cannot halt, and the only
+brake is a human in a vendor UI who may be asleep or on a plane. That is a
+different risk from the one the canary carries, and it arrives at the step
+where volume starts mattering rather than at fifty.
+
+**Exact action, one of:**
+
+1. Establish a HeyReach pause verb, read a successful response back, and
+   add `heyreach.pause` to `SUPPORTED` - after which the killswitch reaches
+   running campaigns and the ladder is a normal promotion decision; or
+2. Agree an out-of-band stop and write it down: who can reach the HeyReach
+   UI within what time, on which days. A named person with access is a
+   real control. An unstated assumption that somebody is watching is not; or
+3. Run the ladder on EmailBison instead, where the same gap exists
+   (`bison.pause` is equally unrouted) - so this is not a way around the
+   problem, only a note that switching channel does not solve it.
+
+Until one of those is true, LinkedIn promotion stops at the canary. This is
+a real blocker on a safety property, not architecture perfection: the
+system would be asserting a killswitch it does not have.
+
+---
+
 ## 6. Provide a Slack bot token and channel
 
 **What** A bot token, an ops channel, and a signing secret.
