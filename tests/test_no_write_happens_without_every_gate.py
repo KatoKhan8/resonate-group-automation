@@ -29,9 +29,15 @@ from tests.base import QueueTest
 NOTE = ("hi Dana, i work with Design Services teams on utilisation. "
         "curious how Brightpath handles it at your size. happy to connect.")
 WS = 10
-NOW = datetime.datetime(2026, 9, 9, 12, 0, 0, tzinfo=datetime.timezone.utc)
-FRESH = "2026-09-09T11:59:00+00:00"
-STALE = "2026-09-09T11:30:00+00:00"
+# DERIVED FROM THE CLOCK, NOT PINNED TO A DATE.
+#
+# These were hard-coded to 2026-09-09. `actionledger.reserve` stamps
+# `store.now()`, and `count_on` compares calendar days - so every cap assertion
+# passed on the day it was written and failed the next morning. A test that
+# depends on today's date is a test that reports a defect it has not found.
+NOW = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+FRESH = (NOW - datetime.timedelta(minutes=1)).isoformat()
+STALE = (NOW - datetime.timedelta(minutes=30)).isoformat()
 
 
 class Provider:

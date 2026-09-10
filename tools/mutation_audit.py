@@ -3446,8 +3446,8 @@ MUTATIONS = [
 
     ("enrich: one record's failure discards the whole batch",
      'src/enrich.py',
-     '            try:\n                if scrape_budget.cap is None:\n                    scrape_budget.cap = apify.settings(\n                        config)["max_runs_per_batch"]\n                done = enrich_record(rec, budget, live=True, log=notes,\n                                     config=config,\n                                     scrape_budget=scrape_budget)\n            except Exception as e:',
-     '            if scrape_budget.cap is None:\n                scrape_budget.cap = apify.settings(\n                    config)["max_runs_per_batch"]\n            done = enrich_record(rec, budget, live=True, log=notes,\n                                 config=config,\n                                 scrape_budget=scrape_budget)\n            if False:\n              e = None\n              raise',
+     '            try:\n                if scrape_budget.cap is None:\n                    scrape_budget.cap = apify.settings(\n                        config)["max_runs_per_batch"]\n                done = enrich_record(rec, budget, live=True, log=notes,\n                                     config=config,\n                                     scrape_budget=scrape_budget,\n                                     mx_cache=mx_cache)\n            except Exception as e:',
+     '            if scrape_budget.cap is None:\n                scrape_budget.cap = apify.settings(\n                    config)["max_runs_per_batch"]\n            done = enrich_record(rec, budget, live=True, log=notes,\n                                 config=config,\n                                 scrape_budget=scrape_budget,\n                                 mx_cache=mx_cache)\n            if False:\n              e = None\n              raise',
      'tests.test_enrich_batch'),
 
     ('enrich: a contained failure is not reported',
