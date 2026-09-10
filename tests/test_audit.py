@@ -259,12 +259,40 @@ class TestNoSendPathAnywhere(unittest.TestCase):
         for route in heyreach.READ_ROUTES:
             self.assertNotIn("AddLeads", route)
         source = inspect.getsource(heyreach)
-        # Exactly one place issues a POST, and it checks the allowlist first.
+        # TWO places issue a POST, and each checks its OWN allowlist first.
+        #
+        # This asserted exactly one until 2026-09-10, when `_write` was added
+        # for `/campaign/Pause`. Counting call sites was always a proxy for
+        # the real rule - that no POST is issued without an allowlist check -
+        # so the count is now a named expectation and the rule is checked
+        # directly against each function.
         posts = [line for line in source.splitlines()
                  if 'request("POST"' in line]
-        self.assertEqual(len(posts), 1, posts)
+        self.assertEqual(len(posts), 2, posts)
         read_fn = inspect.getsource(heyreach._read)
         self.assertLess(read_fn.index("READ_ROUTES"), read_fn.index('request("POST"'))
+        write_fn = inspect.getsource(heyreach._write)
+        self.assertLess(write_fn.index("WRITE_ROUTES"),
+                        write_fn.index('request("POST"'))
+
+    def test_heyreach_writes_only_to_the_route_that_stops_things(self):
+        """The write allowlist is one route, and it is the STOP.
+
+        Resume and StartCampaign demonstrably exist on this vendor's API - a
+        probe with an empty body answers 400 for both, and 404 for names that
+        do not exist. They are deliberately absent here. A system that can
+        start an outreach campaign and cannot stop one has acquired the
+        ability to create exposure without the ability to end it, which is
+        worse than being able to do neither.
+        """
+        from src.providers import heyreach
+
+        self.assertEqual(set(heyreach.WRITE_ROUTES), {"/campaign/Pause"})
+        for forbidden in ("/campaign/Resume", "/campaign/StartCampaign",
+                          "/campaign/AddLeadsToCampaignV2",
+                          "/campaign/Create", "/campaign/UpdateSequence"):
+            with self.assertRaises(Exception, msg=forbidden):
+                heyreach._write(forbidden, {"campaignId": 1})
 
     def test_the_send_route_is_reachable_from_no_code_path(self):
         import inspect

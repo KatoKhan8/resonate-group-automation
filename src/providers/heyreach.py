@@ -657,6 +657,81 @@ def refuse_unsupported_sequence(sequence, rows=None, campaign_id=None):
     return hazards
 
 
+# ------------------------------------------------------------------- writes
+
+# The ONE route this module may write to, and it is the one that STOPS things.
+#
+# ESTABLISHED BY PROBE, not by documentation. HeyReach's own campaign-API post
+# documents Create/UpdateSettings/UpdateSequence/UpdateAccounts/UpdateSchedule
+# and does not mention pausing at all; third-party write-ups name a path but
+# cite each other. So on 2026-09-10 each candidate was sent an EMPTY body -
+# no campaignId, nothing to act on - and the status separated them:
+#
+#   /campaign/Pause           400   exists, refused a malformed request
+#   /campaign/Resume          400   exists
+#   /campaign/StartCampaign   400   exists
+#   /campaign/PauseCampaign   404   does not exist
+#   /campaign/ResumeCampaign  404   does not exist
+#
+# WHY PAUSE AND NOTHING ELSE, when Resume and StartCampaign demonstrably exist.
+# Because a system that can start an outreach campaign and cannot stop one is
+# strictly worse than a system that can do neither: it acquires the ability to
+# create exposure without acquiring the ability to end it, and the killswitch
+# becomes a control this build claims and does not have. `executionguard`'s
+# `stoppability` gate encodes exactly that and caps an unstoppable channel at
+# one contact. Pause is what lifts it. Resume comes after, or not at all.
+#
+# Pausing is also the safest possible first write to this vendor: it is not
+# prospect-facing, it is idempotent, and its worst case is that an outreach
+# campaign stops.
+WRITE_ROUTES = ("/campaign/Pause",)
+
+
+def _write(path, params):
+    """A POST that changes something. Refuses any route not on the allowlist.
+
+    Deliberately a separate function from `_read` rather than a flag on it.
+    One allowlist with a boolean would mean a single wrong argument turns a
+    read into a write, and `_read` is called from a dozen places.
+    """
+    if path not in WRITE_ROUTES:
+        raise ProviderError(
+            f"heyreach: {path} is not a write route. This module writes only "
+            f"to {', '.join(WRITE_ROUTES)}. Adding a route here is a decision "
+            f"about what this system may do to real campaigns.")
+    qs = urllib.parse.urlencode(params or {})
+    status, data = request("POST", f"{BASE}{path}?{qs}", headers(), {})
+    if not ok(status):
+        # THE STATUS AND THE BODY, both. `f"heyreach {path}: {status}"` was
+        # what this said, and when the first real write failed it was
+        # impossible to tell a 403 (this account's plan does not include the
+        # campaign API, which is in beta) from a 400 (the argument is in the
+        # wrong place) without calling again. A write path whose failures
+        # cannot be diagnosed without repeating the write is a write path that
+        # invites repeating the write.
+        raise ProviderError(
+            f"heyreach {path}: HTTP {status} - {str(data)[:200]}")
+    return data if isinstance(data, dict) else {"status": status}
+
+
+def pause_campaign(campaign_id):
+    """Stop a running campaign. Returns the raw provider response.
+
+    NOT prospect-facing: nothing is sent, and leads already in progress keep
+    their state. This is the transport only - `providerwrites.perform` owns
+    the reservation, the read-back and the classification.
+    """
+    return _write("/campaign/Pause", {"campaignId": int(campaign_id)})
+
+
+def campaign_status(campaign_id):
+    """The campaign's status as the provider currently reports it.
+
+    The read-back for `pause_campaign`, kept beside it so the pair is obvious.
+    """
+    return (campaign_by_id(campaign_id) or {}).get("status")
+
+
 def _read(path, body):
     """A POST that reads. Refuses any route not on the allowlist."""
     if path not in READ_ROUTES_ALL:

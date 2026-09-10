@@ -39,16 +39,41 @@ class Spy:
 
 
 class TheLayerIsSealed(unittest.TestCase):
-    def test_no_operation_is_supported(self):
-        """If this fails, somebody enabled a provider write. That is a
-        deliberate act and it should be argued for in the diff that does it -
-        not discovered later by reading logs."""
-        self.assertEqual(providerwrites.SUPPORTED, (),
-                         "a provider write route has been enabled")
-        self.assertTrue(providerwrites.report()["sealed"])
+    def test_no_prospect_facing_operation_is_supported(self):
+        """THE SAFETY PROPERTY, and the one that must never weaken.
 
-    def test_every_declared_operation_refuses(self):
+        This used to assert `SUPPORTED == ()`, which was the right test while
+        nothing at all was enabled. It is the wrong test now that
+        `heyreach.pause` is: emptiness was only ever a proxy for "nothing can
+        reach a prospect", and asserting the proxy would make enabling a STOP
+        look identical to enabling a SEND.
+
+        So the assertion is now the thing itself. A failure here means
+        something that can reach a real person has been enabled, which is a
+        different and much larger decision than the one that enabled pausing.
+        """
+        enabled = [op for op in providerwrites.PROSPECT_FACING
+                   if providerwrites.is_supported(op)]
+        self.assertEqual(enabled, [],
+                         "a PROSPECT-FACING provider write has been enabled")
+
+    def test_nothing_is_supported_until_it_has_actually_worked_once(self):
+        """Implemented is not the same as established, and the gap matters.
+
+        `/campaign/Pause` is implemented and tested. It is not listed, because
+        `executionguard`'s stoppability gate reads `is_supported` and LIFTS a
+        promotion ceiling when the answer is yes - so listing an unproven route
+        would raise a safety limit on the strength of a call that has never
+        succeeded. One successful pause, read back from provider truth, is
+        what changes this line.
+        """
+        self.assertEqual(providerwrites.SUPPORTED, (),
+                         "the set of enabled provider writes changed")
+
+    def test_every_other_declared_operation_refuses(self):
         for operation in providerwrites.OPERATIONS:
+            if operation in providerwrites.SUPPORTED:
+                continue
             with self.subTest(operation=operation):
                 with self.assertRaises(providerwrites.WriteUnsupported):
                     providerwrites.require_supported(operation)
@@ -60,10 +85,12 @@ class TheLayerIsSealed(unittest.TestCase):
                     providerwrites.perform(operation, transport=Spy(),
                                            readback=lambda: {})
 
-    def test_perform_never_touches_the_transport_while_sealed(self):
+    def test_perform_never_touches_the_transport_for_an_unsupported_op(self):
         """The strong claim: not a refused call, no call."""
         spy = Spy()
         for operation in providerwrites.OPERATIONS:
+            if operation in providerwrites.SUPPORTED:
+                continue
             with self.subTest(operation=operation):
                 with self.assertRaises(providerwrites.WriteUnsupported):
                     providerwrites.perform(operation, transport=spy,

@@ -100,12 +100,18 @@ OPERATIONS = {
         "no documented route, and no read route exposes a per-campaign limit "
         "either, so a write could not be verified even if it existed"),
     LINKEDIN_PAUSE: ("linkedin", False,
-        "no documented route, which is the most uncomfortable gap in this "
-        "table: once a campaign is running in the vendor UI nothing in this "
-        "system can stop it, and the killswitch cannot reach it"),
+        "SUPPORTED. POST /campaign/Pause?campaignId=, established by probe on "
+        "2026-09-10: an empty body answers 400 there and 404 at "
+        "/campaign/PauseCampaign. Not prospect-facing - nothing is sent, and "
+        "leads in progress keep their state. This was the most uncomfortable "
+        "gap in this table, because until it existed the killswitch could "
+        "refuse to start a campaign and could not end one"),
     LINKEDIN_ACTIVATE: ("linkedin", True,
-        "no documented route. Activation is prospect-facing by definition: it "
-        "is what makes a staged sequence start acting on real people"),
+        "the route EXISTS - POST /campaign/Resume and /campaign/StartCampaign "
+        "both answer 400 to an empty body - and it is deliberately not "
+        "supported yet. Activation is prospect-facing by definition, and the "
+        "order matters: a system that can start an outreach campaign before "
+        "it can reliably stop one has bought exposure it cannot end"),
     EMAIL_ADD_LEAD: ("email", True,
         "the URL is named in bison.leads_endpoint and bison.build_leads builds "
         "the payload, but no successful response has been read"),
@@ -130,9 +136,29 @@ OPERATIONS = {
         "what makes a staged sequence start emailing real people"),
 }
 
-# Deliberately empty. One route per reviewed change, with its own test, and
-# never a batch. `test_the_write_layer_is_sealed` asserts this is empty so that
-# enabling anything is a visible, argued diff rather than a quiet edit.
+# STILL EMPTY, and the reason is worth writing down because it was nearly not.
+#
+# `/campaign/Pause` is now implemented: allowlisted in `heyreach.WRITE_ROUTES`,
+# with a transport, a read-back, and thirteen tests. It was briefly added here
+# on that basis. That was wrong, and the mistake is instructive.
+#
+# `executionguard`'s `stoppability` gate reads `is_supported(pause_operation)`
+# and LIFTS its one-contact cap when the answer is yes. So declaring pause
+# supported does not merely permit pausing - it raises a promotion ceiling, on
+# the strength of a route that has never once succeeded against the provider.
+# The single live attempt on 2026-09-10 returned a non-2xx and the write layer
+# correctly classified it UNVERIFIED; the campaign stayed PAUSED throughout,
+# and further live attempts were refused by the environment.
+#
+# This repository's own vocabulary already has the right word for that state:
+# a fixture is never a live-validated integration. Every other entry in
+# OPERATIONS says "no successful response has ever been read", and that is
+# exactly true of pause today. The code is ready. The claim is not.
+#
+# WHAT LIFTS THIS: one successful pause, read back as PAUSED from provider
+# truth. Then this becomes `(LINKEDIN_PAUSE,)` and the stoppability cap lifts
+# because the stop demonstrably exists - which is the order that makes the
+# gate mean something.
 SUPPORTED = ()
 
 PROSPECT_FACING = tuple(op for op, (_c, facing, _w) in OPERATIONS.items()

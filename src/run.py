@@ -21,6 +21,7 @@ Two separate explicit gates, neither of them on by default:
   python -m src.run --spend --cap 200
 """
 import argparse
+import time
 
 from . import (cadence, clients, enrich, events, generate, ingest, lint, llm, mx,
                personas, push, qualify, render, research, store)
@@ -323,22 +324,47 @@ def run(source=None, client=None, lane=None, model=None, day=21, spend=False,
         if done["n"] % CHECKPOINT_EVERY == 0:
             store.save(recs)
 
+    # HOW LONG EACH STAGE ACTUALLY TOOK. Not an optimisation aid so much as a
+    # correction aid: this repository has twice diagnosed a slow run by
+    # reasoning about it and been wrong both times - DNS was blamed for a
+    # 9m40s enrichment that turned out to be Apify, and the Apify timeout was
+    # assumed generous when it sat ten seconds above the slowest run that had
+    # ever succeeded. A number the run reports about itself is cheaper than a
+    # forensic reconstruction from log timestamps, which is what the
+    # alternative has been.
+    timings = {}
+
+    def timed(name, fn):
+        start = time.time()
+        try:
+            return fn()
+        finally:
+            timings[name] = round(time.time() - start, 1)
+
     if "enrich" in stages:
-        report["enrich"] = stage_enrich(targets, spend, cap, notes,
-                                        checkpoint=checkpoint)
+        report["enrich"] = timed("enrich", lambda: stage_enrich(
+            targets, spend, cap, notes, checkpoint=checkpoint))
     if "qualify" in stages:
-        report["qualify"] = stage_qualify(targets, notes, checkpoint=checkpoint)
+        report["qualify"] = timed("qualify", lambda: stage_qualify(
+            targets, notes, checkpoint=checkpoint))
     if "personas" in stages:
-        report["personas"] = stage_personas(targets, notes)
+        report["personas"] = timed("personas",
+                                   lambda: stage_personas(targets, notes))
     if "generate" in stages:
-        report["generate"] = stage_generate(targets, model, spend, notes)
+        report["generate"] = timed(
+            "generate", lambda: stage_generate(targets, model, spend, notes))
 
     store.save(recs)                      # one write, after the per-record stages
 
     if "render" in stages:
-        report["render"] = stage_render(targets, notes)
+        report["render"] = timed("render", lambda: stage_render(targets, notes))
     if "push" in stages:
-        report["push"] = stage_push(targets, day, live, notes)
+        report["push"] = timed("push",
+                               lambda: stage_push(targets, day, live, notes))
+
+    report["seconds"] = dict(timings)
+    report["seconds"]["per_record"] = (
+        round(sum(timings.values()) / len(targets), 2) if targets else 0)
 
     report["states"] = store.stats(store.load())["states"]
     report["failures"] = [
