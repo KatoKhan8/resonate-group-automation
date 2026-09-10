@@ -189,6 +189,42 @@ lead, carrying copy verified against the approved fingerprint today.
 
 ---
 
+## Validation
+
+    full suite      6,980 tests, 1 failure - mine, fixed, re-run green
+    offline harness 6,981 tests, 1 error - the documented intermittent
+    mutations       32 run across 9 guards, each caught by its intended test
+    HEAD            0c7695b
+
+The offline error is `test_production_auth` failing to bind loopback, which
+CLAUDE.md records as the known consequence of running `discover` and
+`tests.offline` back to back without a gap. I ran them back to back. Diagnosed
+rather than dismissed: it passes alone, as a class, and as a whole module.
+
+One pre-existing integrity warning the suite raises and a human has to
+decide: `report-drafts.jsonl` holds 4,944 rows created by
+`tests/test_report_editor.py` with no store isolation, every one authored by
+a reserved-TLD fixture address. Nothing read from that file is evidence about
+a client. Clearing it is a destructive write to client state and is not mine
+to make.
+
+### The mutations, by guard
+
+    sender gate            4   human-id lookup, unscoped roster, health, active
+    stoppability           4   tenant, channel, never-applies, self-exclusion
+    evidence contract      8   quality, freshness, entity, stale, empty,
+                               malformed, boilerplate, foreign company
+    verdict ordering       4   not consulted, not threaded, persisted, zero cap
+    checkpoint             3   removed, interval widened, never saves
+    crash window           3   sent reservable, unresolved unblocking,
+                               unresolved not counted as exposure
+    linkedin tenancy       3   foreign counted, workspace optional, empty roster
+    cost reconciliation    4   unread-as-zero, unmoved-as-reconciled,
+                               negative clamped, unpriced collapsed
+    contactout-first       1   ordering fix reverted
+
+---
+
 ## What still needs a person
 
 1. **Press unpause on 594061**, or tell me the environment may perform live
