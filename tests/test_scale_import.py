@@ -876,9 +876,10 @@ class TheScrapeCeilingIsNotThreadedThrough(QueueTest):
         original = enrich.enrich_record
 
         def spy(rec, budget, live=False, log=None, config=None,
-                scrape_budget=None):
+                scrape_budget=None, mx_cache=None):
             seen["config"] = config
             seen["scrape_budget"] = scrape_budget
+            seen["mx_cache"] = mx_cache
             return []
 
         rec = store.new_record("acme", "domains", "productive", "Acme",
@@ -896,6 +897,12 @@ class TheScrapeCeilingIsNotThreadedThrough(QueueTest):
         # before a verification credit was spent.
         self.assertIsNotNone(seen["scrape_budget"],
                              "the scrape ceiling is not threaded through")
+        # The MX cache is threaded for the same reason and was missing for
+        # longer: `enrich_record` loaded one per record and could never persist
+        # it, so every run re-resolved every domain from scratch.
+        self.assertIsNotNone(seen["mx_cache"],
+                             "the MX cache is not threaded through, so every "
+                             "record resolves its own domains again")
         self.assertEqual(seen["scrape_budget"].cap,
                          apify.settings(clients.load("productive"))
                          ["max_runs_per_batch"])

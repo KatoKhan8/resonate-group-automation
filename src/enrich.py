@@ -499,7 +499,7 @@ def outcome(rec, refused=False, state=None):
 
 
 def enrich_record(rec, budget, live=False, log=None, config=None,
-                  scrape_budget=None):
+                  scrape_budget=None, mx_cache=None):
     """Walk one record through the waterfall. Returns the ops actually done.
 
     The order is ContactOut first, every time: a stored result beats a call, a
@@ -674,7 +674,27 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
         # ones: `mx.apply_to_record` walks `personalization.selected_contacts`,
         # and personas have not necessarily run by the time enrichment does.
         # Screening the wrong set would silently screen nothing.
-        cache = mx.load_cache()
+        # ONE CACHE FOR THE WHOLE RUN, not one per record.
+        #
+        # This read `mx.load_cache()` here - inside the per-record function -
+        # and then called `for_domain(cache=cache, save=False)`. Passing a cache
+        # makes `own_cache` False inside `for_domain`, and the persist is gated
+        # on `own_cache and save`, so BOTH conditions blocked it: the cache was
+        # loaded fresh for every record, mutated in memory, and thrown away.
+        # Nothing was ever written to `mx-cache.json`, so every run redid every
+        # DNS lookup from scratch.
+        #
+        # Measured: an unscoped run over 100 records spent 9m40s almost entirely
+        # in serial UDP DNS and never reached the records it was asked about.
+        # At 24,710 domains that is the difference between minutes and hours.
+        #
+        # The caller now owns the cache for the whole run and saves it once, so
+        # a domain resolves at most once per run and not at all on the next run
+        # while its entry is fresh. Freshness is unchanged - `mx._fresh` still
+        # applies the client's `cache_days` - and a DNS failure is still not
+        # cached, because a resolver that was down for a second must not hold a
+        # channel for a week.
+        cache = mx.load_cache() if mx_cache is None else mx_cache
         for c in usable_contacts(rec):
             domain = mx.email_domain(c.get("email"))
             if not domain:
@@ -809,6 +829,11 @@ def run(live=False, cap=None, limit=None, ids=None, states=("queued", "enriched"
     # enforced. Batch-scoped, like the credit budget, because that is the
     # scope the number is written in.
     scrape_budget = research.RunBudget(None)
+    # One MX cache for the whole run, loaded once and saved once. See the long
+    # comment in `enrich_record`: this was loaded per record and never written,
+    # so every run re-resolved every domain from scratch.
+    mx_cache = mx.load_cache()
+    mx_cache_at_start = len(mx_cache)
     notes = []
     targets = [r for r in recs
                if (ids is None or r["id"] in ids)
@@ -848,7 +873,8 @@ def run(live=False, cap=None, limit=None, ids=None, states=("queued", "enriched"
                         config)["max_runs_per_batch"]
                 done = enrich_record(rec, budget, live=True, log=notes,
                                      config=config,
-                                     scrape_budget=scrape_budget)
+                                     scrape_budget=scrape_budget,
+                                     mx_cache=mx_cache)
             except Exception as e:
                 why = f"{type(e).__name__}: {str(e)[:160]}"
                 notes.append(f"{rec['id']}: enrichment failed, {why}")
@@ -870,8 +896,16 @@ def run(live=False, cap=None, limit=None, ids=None, states=("queued", "enriched"
 
     if live:
         store.save(recs)
+        # Persisted once, after the walk. Saving per record would rewrite the
+        # whole file per domain, which is the shape of problem this fix exists
+        # to remove rather than relocate.
+        if len(mx_cache) != mx_cache_at_start:
+            mx.save_cache(mx_cache)
     return {"live": live, "records": report, "spent": budget.spent,
-            "cap": cap, "refused": budget.refused, "notes": notes}
+            "cap": cap, "refused": budget.refused, "notes": notes,
+            "mx_cache": {"at_start": mx_cache_at_start,
+                         "at_end": len(mx_cache),
+                         "resolved_this_run": len(mx_cache) - mx_cache_at_start}}
 
 
 def main(argv=None):

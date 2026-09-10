@@ -22,7 +22,7 @@ Two separate explicit gates, neither of them on by default:
 """
 import argparse
 
-from . import (cadence, clients, enrich, events, generate, ingest, lint, llm,
+from . import (cadence, clients, enrich, events, generate, ingest, lint, llm, mx,
                personas, push, qualify, render, research, store)
 from .providers import apify
 
@@ -81,6 +81,11 @@ def stage_enrich(recs, spend, cap, notes):
     # unenforced because `research.run` only consults a budget it is handed.
     # Every other per-record stage already loads the config this way.
     scrape_budget = research.RunBudget(None)
+    # One MX cache for the whole stage, saved once. `enrich_record` used to load
+    # it per record and could never persist it, so every run re-resolved every
+    # domain. See the comment there.
+    mx_cache = mx.load_cache()
+    mx_cache_at_start = len(mx_cache)
     touched, configs = 0, {}
     for rec in recs:
         if not needs(rec, "enrich"):
@@ -100,7 +105,8 @@ def stage_enrich(recs, spend, cap, notes):
             if spend:
                 enrich.enrich_record(rec, budget, live=True, log=notes,
                                      config=config,
-                                     scrape_budget=scrape_budget)
+                                     scrape_budget=scrape_budget,
+                                     mx_cache=mx_cache)
             else:
                 planned = enrich.plan(rec, config)
                 for op in planned:
@@ -122,7 +128,11 @@ def stage_enrich(recs, spend, cap, notes):
             touched += 1
         except Exception as e:                       # one record, not the batch
             mark(rec, "enrich", "failed", f"{type(e).__name__}: {e}")
-    return {"records": touched, "spent": budget.spent, "refused": budget.refused}
+    if spend and len(mx_cache) != mx_cache_at_start:
+        mx.save_cache(mx_cache)
+    return {"records": touched, "spent": budget.spent,
+            "refused": budget.refused,
+            "mx_resolved": len(mx_cache) - mx_cache_at_start}
 
 
 def stage_qualify(recs, notes):

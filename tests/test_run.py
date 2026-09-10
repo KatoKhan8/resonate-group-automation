@@ -269,9 +269,22 @@ class TestStateIsSufficient(RunnerTest):
         self.assertIn("log", raw)
 
     def test_no_second_state_file_is_created(self):
+        """No UNREGISTERED file. `mx-cache.json` is a registered derived cache.
+
+        It appears here only because the run now persists it: `enrich_record`
+        used to load one per record and could never write it, so every run
+        re-resolved every domain. It is `MX_CACHE` in `store.STATE_OVERRIDES`,
+        written through the same production guard as every other state file.
+
+        It is not resume state, which is what this invariant is about - losing
+        it costs a DNS lookup, not correctness - and the sibling test above
+        asserts that everything needed to resume is still in the queue.
+        """
         run.run(spend=True, model=scripted())
         work = os.path.dirname(self.queue)
-        self.assertEqual(sorted(os.listdir(work)), ["queue.jsonl"])
+        allowed = {"queue.jsonl", "mx-cache.json"}
+        self.assertEqual(set(os.listdir(work)) - allowed, set(),
+                         "an unregistered second state file was created")
 
 
 if __name__ == "__main__":
