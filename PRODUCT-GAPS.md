@@ -3217,3 +3217,98 @@ be readable as a prospect reply. The poller only produces conversation-shaped
 pages and unsigned webhooks are deliberately not trusted as a transport, so
 the path is unreached today - but it is the one place on the inbound path
 where the direction allowlist is not applied.
+
+
+## 42. Five of the twelve ICP dimensions have never scored, for anybody
+
+Measured across the whole 50-domain Productive cohort on 2026-09-10, after the
+evidence-contract and research-ordering fixes were in place and eleven records
+had actually been researched.
+
+| dimension | records scored |
+|---|---|
+| employee_count | 40/50 |
+| agency_fit | 18/50 |
+| service_not_product | 18/50 |
+| geography | 17/50 |
+| distributed_teams | 13/50 |
+| project_delivery | 2/50 |
+| delivery_complexity | 1/50 |
+| **resource_planning_need** | **0/50** |
+| **profitability_need** | **0/50** |
+| **utilization_need** | **0/50** |
+| **time_tracking_need** | **0/50** |
+| **operational_complexity** | **0/50** |
+
+The five that never score are five of the six in `icp.NEED_SIGNALS` - the
+prose-driven dimensions, and precisely the ones company research exists to
+feed.
+
+### It is not a matching bug. It is the evidence source.
+
+The obvious suspicion is that the phrase matching is broken. It is not: over
+13,200 words of retrieved company text, `segments._hits` finds
+`delivery_complexity` on 4 of 11 researched records, `operational_complexity`
+on 1 and `resource_planning_need` on 1 - "account manager", "studio",
+"retainer", "bookings". The matcher works.
+
+What it finds nothing of is the pain:
+
+    profitability_need   0/11    "margin", "budget overrun", "cost control"
+    time_tracking_need   0/11    "timesheets", "logged hours"
+    utilization_need     0/11    "utilisation", "billable", "bench"
+
+**A company's own marketing website does not advertise the operational problem
+a vendor wants to sell it.** It advertises services and clients. No agency
+writes "our utilisation is a mess" on its homepage, and an ICP model that
+scores `utilization_need` from a homepage crawl is asking a question the
+source cannot answer - however good the crawler, the filter or the scoring.
+
+This is a different failure from the ones above it. Sections 39-41 were things
+computed correctly and never consumed. This is a question asked of the wrong
+witness.
+
+### What that costs, exactly
+
+`_confidence` gives MEDIUM only when at least 6 of 12 dimensions scored. With
+five permanently at zero and `delivery_complexity` near it, the practical
+ceiling is seven, and the observed range is 3-6. So MEDIUM is reachable but
+narrow, HIGH (needs 7 scored and at most 3 missing) is effectively out of
+reach, and LOW forces `review` whatever the score.
+
+That is why the cohort produced zero campaign-ready, and it is not a bug
+anybody could have found by reading the code.
+
+### What would actually fix it, and what must not
+
+**Not** lowering the threshold, and **not** widening the phrase lists until
+something matches. Both would manufacture confidence the evidence does not
+support, which is the one thing this system exists to refuse.
+
+The fix is a source that can answer the question:
+
+  - **Job postings** are the strongest available signal and the cheapest.
+    An agency hiring a Resource Manager, a Traffic Manager or a Studio
+    Manager is stating the resourcing problem out loud, in public, with a
+    date on it. Nothing in this build reads them.
+  - **Tech stack, but not the stack we currently get.** `company_facts.stack`
+    is populated for 14 of the 50 and read by no ICP dimension at all - there
+    is not one occurrence of "stack" in `icp.py` or `segments.py`. That is a
+    real disconnection, and it is worth less than it first looks: the field
+    holds WEB infrastructure - Google Analytics, Cloudflare, Yoast, Typekit -
+    not business systems. It cannot answer `time_tracking_need`, because
+    nobody's website reveals whether they run Harvest or Float. A vendor
+    feed that covers business tooling would; this one does not, and saying
+    otherwise would be exactly the wishful reading this section is about.
+    (The one flicker of signal is "Microsoft Excel" appearing in a stack,
+    which is arguably how a 40-person studio does resource planning. One
+    record is not a dimension.)
+  - **Headcount trajectory** is a better proxy for `resource_planning_need`
+    than any phrase: a studio that went from 20 to 45 people in a year has a
+    scheduling problem whether or not it says so.
+
+Until one of those exists, the honest position is that Productive's ICP is
+scoreable on firmographics and self-description, and not on operational pain.
+The model should probably say so - a dimension that has never scored for
+anybody is not a strict dimension, it is an absent one, and it currently drags
+every company toward LOW by counting as "missing".
