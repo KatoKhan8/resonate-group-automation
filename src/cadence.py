@@ -29,6 +29,7 @@ Every template email is expanded here and then linted as a finished email.
 Nothing that fails lint is push eligible, whatever produced it.
 """
 import argparse
+import re
 
 from . import approval, clients, events, lint, stepstate, store
 
@@ -460,10 +461,57 @@ def angle_word(angle, clause, config):
     return FALLBACK_ANGLE_WORD
 
 
+class CompanyNameUnusable(CadenceError):
+    """The only name we hold for this company is its domain."""
+
+
+def company_name(rec):
+    """What to call this company in a message a person will read.
+
+    `rec["company"]` IS OFTEN THE DOMAIN. It is whatever the input file said,
+    and on 2026-09-11 three of the five fully verified contacts in the live
+    estate held a bare hostname there while `company_facts["name"]` on the same
+    record held the real name - an initialism in one case and a two-word name in
+    another. Every template interpolates `{company}` two or three times, so the
+    first thing those prospects would have read is their own hostname, which is
+    the most obvious possible signal that nobody looked.
+
+    So the provider's name wins, the input column is the fallback, and a value
+    that is still domain-shaped raises rather than shipping. Raising is the
+    conservative direction: `expand_step` already treats a `CadenceError` as a
+    step that cannot be rendered, so the step is held and a person sees why,
+    instead of a prospect seeing a URL.
+    """
+    HOSTNAME = re.compile(r"\.[a-z]{2,}$", re.I)
+    facts = rec.get("company_facts") or {}
+    domain = str(rec.get("domain") or "").strip().lower()
+    for candidate in (facts.get("name"), rec.get("company")):
+        name = str(candidate or "").strip()
+        if not name:
+            continue
+        # LOOKING LIKE A HOSTNAME IS THE TEST, not resembling the domain.
+        #
+        # A first version rejected any name whose letters matched the domain's
+        # first label. That refused a correct one-word company name at the
+        # matching domain - and it did so on the one contact in the live estate
+        # that is ready to send, so it would have held the canary and every
+        # ordinary record with it. Most companies are named after their domain
+        # or the other way round. The defect is a value carrying a TLD, not a
+        # value agreeing with the domain.
+        if name.lower() == domain or HOSTNAME.search(name.split()[-1]):
+            continue
+        return name
+    raise CompanyNameUnusable(
+        f"the only company name on {rec.get('id')!r} is domain-shaped "
+        f"({rec.get('company')!r}); refusing to address a prospect by their "
+        f"own hostname. Set company_facts.name from a provider lookup")
+
+
 def template_vars(rec, contact, config):
     angle, phrase = angle_words(contact, config)
     first = (contact.get("name") or "").split()[0] if contact.get("name") else "there"
     facts = rec.get("company_facts") or {}
+    company = company_name(rec)
     evidence = (rec.get("evidence") or {}).get(lint.contact_key(contact)) or []
     # The fallback asserts nothing about the prospect.
     #
@@ -485,11 +533,11 @@ def template_vars(rec, contact, config):
     # people wrote the message.
     line = evidence[0] if evidence else (
         f"I work with {facts.get('industry') or 'services'} teams on "
-        f"{phrase.split(',')[0]}, and I do not know how {rec.get('company')} "
+        f"{phrase.split(',')[0]}, and I do not know how {company} "
         f"handles it")
     return {
         "first_name": first,
-        "company": rec.get("company") or "your team",
+        "company": company,
         "angle": angle,
         "angle_word": angle_word(angle, phrase.split(",")[0].strip(), config),
         "angle_phrase": phrase.split(",")[0].strip(),
