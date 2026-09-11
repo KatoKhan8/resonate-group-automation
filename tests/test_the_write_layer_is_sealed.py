@@ -15,6 +15,7 @@ the alarm that should sound.
 The transport is always a spy. No test here needs a provider, and none may have
 one.
 """
+import contextlib
 import unittest
 from unittest import mock
 
@@ -155,8 +156,24 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
 
     OP = providerwrites.LINKEDIN_ADD_LEAD
 
+    @contextlib.contextmanager
     def enabled(self):
-        return mock.patch.object(providerwrites, "SUPPORTED", (self.OP,))
+        """The route on, and the door's freshness re-check stubbed out.
+
+        `perform` now calls `executionguard.revalidate`, which re-reads the
+        record from disk and re-runs the stops - the fix for a write going
+        through after a prospect had unsubscribed. It needs a whole approved
+        estate, and these tests are about what the write layer does with a
+        provider RESPONSE, which is a different question.
+
+        Stubbing it here is safe precisely because it is asserted elsewhere:
+        `test_a_stop_beats_an_authorization` pins that `perform` consults it
+        before the transport, by call order, so this stub cannot hide the call
+        being deleted.
+        """
+        with mock.patch.object(providerwrites, "SUPPORTED", (self.OP,)),              mock.patch.object(executionguard, "revalidate",
+                               lambda *a, **kw: True):
+            yield
 
     def test_a_prospect_facing_write_refuses_without_an_authorization(self):
         spy = Spy()
@@ -264,8 +281,24 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
             operation="linkedin_connection_request", fingerprint="abc123",
             provider_workspace=10)
 
+    @contextlib.contextmanager
     def enabled(self):
-        return mock.patch.object(providerwrites, "SUPPORTED", (self.OP,))
+        """The route on, and the door's freshness re-check stubbed out.
+
+        `perform` now calls `executionguard.revalidate`, which re-reads the
+        record from disk and re-runs the stops - the fix for a write going
+        through after a prospect had unsubscribed. It needs a whole approved
+        estate, and these tests are about what the write layer does with a
+        provider RESPONSE, which is a different question.
+
+        Stubbing it here is safe precisely because it is asserted elsewhere:
+        `test_a_stop_beats_an_authorization` pins that `perform` consults it
+        before the transport, by call order, so this stub cannot hide the call
+        being deleted.
+        """
+        with mock.patch.object(providerwrites, "SUPPORTED", (self.OP,)),              mock.patch.object(executionguard, "revalidate",
+                               lambda *a, **kw: True):
+            yield
 
     def test_a_transport_exception_leaves_the_key_unresolved(self):
         """A timeout says nothing about whether the provider acted."""

@@ -277,6 +277,23 @@ def perform(operation, *, authorization=None, tenant=None, campaign=None,
             "read cannot be classified, and an unclassified write is one "
             "nobody can safely retry or abandon")
 
+    # 2b. THE STOPS, AGAIN, AGAINST DISK.
+    #
+    # Everything above this line asks whether the TOKEN is good: genuine,
+    # unspent, right channel, reserved. None of it asks whether the PERSON
+    # still wants to hear from us, and that is a different question with a
+    # different answer - `authorize` asked it against whatever record the
+    # caller was holding, which may have been loaded before the reply arrived.
+    #
+    # On 2026-09-11 that gap was demonstrated end to end: an unsubscribe was
+    # persisted after the mint, `eligibility.decide` answered
+    # `blocked:unsubscribed`, and this function called the transport anyway and
+    # settled the ledger to `sent`.
+    #
+    # A refusal here costs nothing. A sent message cannot be recalled.
+    if facing:
+        executionguard.revalidate(authorization)
+
     # 3. Perform, then READ BACK BEFORE DECIDING ANYTHING.
     try:
         response = transport(payload)

@@ -51,6 +51,19 @@ from . import (actionledger, approval, cadence, campaigns, claims, clients,
 # by hand mid-session, so this is a real window rather than a theoretical one.
 READBACK_TTL_SECONDS = 15 * 60
 
+# HOW LONG AN AUTHORIZATION MEANS ANYTHING.
+#
+# `Authorization.at` was stamped at mint time and read by nothing - a grep for
+# a reader returned no hits - so a token minted at any point in the past was as
+# good as one minted a second ago. The read-back TTL above bounds the PROVIDER
+# read; this bounds the RECORD, and they are different questions: a reply
+# changes the person, not the campaign.
+#
+# Sixty seconds because this is the gap between the last gate and the
+# transport in one process, not a human review window. Anything longer is a
+# window in which somebody can ask to be left alone and still be written to.
+AUTHORIZATION_TTL_SECONDS = 60
+
 CHANNELS = ("linkedin", "email")
 
 # The pause operation each channel would need before this system could stop an
@@ -493,6 +506,88 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
         campaign_id=campaign.get("campaign_id"), sender_id=sender_id,
         rec_id=rec.get("id"), contact_key=contact["key"], step_key=step_key,
         fingerprint=fingerprint, gates=tuple(gates), at=store.now())
+
+
+def revalidate(authorization, config=None, now=None):
+    """Re-run the stops against DISK, immediately before a provider write.
+
+    THE HOLE THIS CLOSES. `authorize` ran every gate and handed back a token,
+    and `providerwrites.perform` then checked that the token was genuine,
+    unspent, for the right channel and backed by a reservation - and called the
+    transport. Between those two moments nothing asked the one question a
+    prospect would care about: do they still want to hear from us.
+
+    Demonstrated on 2026-09-11. Mint an Authorization; persist a real
+    unsubscribe through `accountpolicy.apply_reply`, so that
+    `eligibility.decide` answers `blocked:unsubscribed`; then call `perform`
+    with the token the worker was already holding. The transport was called,
+    the read-back classified `accepted`, and the ledger settled `sent`. No gate
+    fired.
+
+    Two causes, one answer:
+
+      * `perform` revalidated nothing, so a stop landing after the mint was
+        invisible to it.
+      * `authorize` is handed the caller's own dicts, so a worker holding a
+        record it loaded before the reply authorizes cleanly even when the
+        reply is already on disk. Re-reading here is what makes the gates see
+        it, and it is why the module docstring's "RE-READ now" is true of gate
+        4 only for collision.
+
+    It re-reads rather than accepting a record, deliberately. A caller that
+    could hand one over could hand over the stale one, and that is the bug.
+    """
+    from . import campaigns, eligibility, killswitch
+
+    if not isinstance(authorization, Authorization):
+        raise NotAuthorized("revalidate",
+                            "an object that is not an Authorization cannot be "
+                            "revalidated", ())
+    gates = tuple(authorization.gates or ())
+
+    if not readback_is_fresh(authorization.at, now,
+                             ttl=AUTHORIZATION_TTL_SECONDS):
+        raise NotAuthorized(
+            "authorization_age",
+            f"this authorization was minted at {authorization.at!r} and is "
+            f"older than {AUTHORIZATION_TTL_SECONDS}s. Re-authorize rather "
+            f"than write: a reply or a suppression can land in that gap, and "
+            f"every gate that would have seen it ran before it", gates)
+
+    rec = store.get(authorization.rec_id)
+    if rec is None:
+        raise NotAuthorized(
+            "revalidate",
+            f"record {authorization.rec_id!r} is no longer in the queue", gates)
+    contact = next((c for c in rec.get("contacts") or []
+                    if c.get("key") == authorization.contact_key), None)
+    if contact is None:
+        raise NotAuthorized(
+            "revalidate",
+            f"contact {authorization.contact_key!r} is no longer on record "
+            f"{authorization.rec_id!r}", gates)
+
+    decided = eligibility.decide(rec, contact, authorization.step_key,
+                                 channel=authorization.channel, config=config)
+    if decided.get("verdict") != "eligible":
+        raise NotAuthorized(
+            "revalidate",
+            f"the record changed after this was authorized: eligibility now "
+            f"says {decided.get('verdict')} "
+            f"({decided.get('reasons') or decided.get('reason')}). Nothing "
+            f"was written", gates)
+
+    # The killswitch is the final word at authorize time and stays the final
+    # word here. It is the control an operator reaches for when they want
+    # everything to stop, so it is asked again rather than remembered.
+    campaign = campaigns.require(authorization.campaign_id)
+    try:
+        killswitch.require(workspace=authorization.workspace,
+                           campaign=campaign, rec=rec, contact=contact,
+                           step_key=authorization.step_key)
+    except killswitch.SendingRefused as e:
+        raise NotAuthorized("killswitch", str(e), gates) from None
+    return True
 
 
 def _spec_for(step_key):
