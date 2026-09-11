@@ -532,6 +532,18 @@ def unfreeze(campaign, by="unknown", why="", role=roles.ADMIN):
 
 
 def pause(campaign, why="paused", by="unknown", role=roles.ADMIN):
+    """Canonical state only. THE PROVIDER IS NOT TOLD.
+
+    Named here because the function reads like a stop and is not one. It writes
+    `campaign["pause"]`, sets the status and notes an event, so this system will
+    plan no further steps - and a campaign already running at the vendor keeps
+    running. `providerwrites.SUPPORTED` is empty and both `heyreach.pause` and
+    `bison.pause` refuse by name, so there is no leg of this that could reach
+    out even if one were added here.
+
+    `api.pause_campaign` records that distinction in the audit row rather than
+    letting a reader infer a stop that did not happen.
+    """
     roles.require(role, roles.PAUSE_CAMPAIGN, by)
     campaign["pause"] = {"since": store.now(), "reason": why, "by": by}
     campaigns.set_status(campaign, campaigns.PAUSED, why,

@@ -3147,12 +3147,26 @@ class ActionRefused(RuntimeError):
 
 
 def pause_campaign(repo, campaign_id, why="", by="unknown"):
-    """Stop a campaign. `orchestrator.pause` does it; this only finds it.
+    """Stop THIS SYSTEM planning further steps for a campaign.
 
-    Pausing is the safe direction, which is why `campaign.pause` is granted
+    IT DOES NOT REACH THE PROVIDER, and the audit row now says so. This used to
+    record `before={"status": "running"}` and `after={"status": "paused"}` - a
+    hardcoded "running" nobody had checked, beside an affirmative statement that
+    outreach had stopped. `orchestrator.pause` writes canonical state and makes
+    no provider call of any kind: `providerwrites.SUPPORTED` is empty, so
+    `heyreach.pause` and `bison.pause` both refuse by name.
+
+    The gap is not theoretical. A campaign already running at the provider keeps
+    running after this returns, and an operator reading "paused" in the audit
+    trail would reasonably believe otherwise - which is the worst place in the
+    system for a claim to be wrong, because it is the control somebody reaches
+    for when they want something to stop.
+
+    Pausing is still the safe direction, and `campaign.pause` is still granted
     from reviewer upward while launching is granted to nobody: the person who
-    can see something is wrong should be able to stop it without finding
-    somebody more senior first.
+    can see something is wrong should be able to stop this system without
+    finding somebody more senior first. What they cannot do from here is stop
+    the vendor, and HUMAN-ACTIONS-REQUIRED 5e records the out-of-band step.
     """
     repo.require(ws.CAMPAIGN_PAUSE)
     from .. import orchestrator, roles
@@ -3162,6 +3176,10 @@ def pause_campaign(repo, campaign_id, why="", by="unknown"):
         return None
     if (campaign.get("pause") or {}).get("since"):
         raise ActionRefused("this campaign is already paused")
+    # READ THE STATUS IT ACTUALLY HAD. The audit row asserted "running"
+    # regardless, so a draft or an approved-but-unlaunched campaign recorded a
+    # transition that never happened.
+    was = campaign.get("status")
     try:
         orchestrator.pause(campaign, why=(why or "").strip()[:200]
                            or f"paused by {by}", by=by, role=roles.ADMIN)
@@ -3169,9 +3187,18 @@ def pause_campaign(repo, campaign_id, why="", by="unknown"):
         raise ActionRefused(f"{type(e).__name__}: {e}")
     repo.save_campaign(campaign)
     repo.audit("campaign.paused", "campaign", campaign_id,
-               before={"status": "running"},
-               after={"status": campaign.get("status")},
-               reason=campaign["pause"]["reason"])
+               before={"status": was},
+               # WHAT THIS DID NOT DO, recorded beside what it did. A reader of
+               # this row is deciding whether outreach has stopped, and the
+               # honest answer is that this system will plan nothing further
+               # while the provider is untouched.
+               after={"status": campaign.get("status"),
+                      "provider_stopped": False},
+               reason=(campaign["pause"]["reason"]
+                       + "; this system will plan no further steps. The "
+                         "provider was not asked to stop: no pause route is "
+                         "supported, so a campaign already running there "
+                         "continues until somebody pauses it in the vendor UI"))
     return campaign
 
 
