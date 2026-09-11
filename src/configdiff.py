@@ -26,13 +26,19 @@ FOUR RULES, AND THEY ARE THE WHOLE DESIGN.
    and fails. A checklist of fields somebody thought of cannot catch the field
    they did not.
 
-3. `UNVERIFIABLE` is a FAILURE for any required field, not a warning. HeyReach
-   exposes no route for a campaign's lead identities and no campaign limit
-   field, so those are structurally unverifiable there - and a campaign whose
-   lead set cannot be read is a campaign that cannot be proven to hold one
-   person. The honest consequence is that HeyReach staging is capped at one
-   lead until those routes are allowlisted, where `totalUsers == 1` plus a
-   verified list id IS the lead set. `REQUIRED` per channel says so explicitly.
+3. `UNVERIFIABLE` is a FAILURE for any required field, not a warning. On
+   HeyReach that now applies to the campaign limit alone: no read route exposes
+   a per-campaign daily limit, so `daily_limit` is structurally unverifiable and
+   is omitted from `REQUIRED_HEYREACH`.
+
+   THE LEAD SET IS NO LONGER AMONG THEM, and the correction matters because the
+   old claim was load-bearing. This rule used to read "HeyReach exposes no route
+   for a campaign's lead identities", and every staging argument rested on it:
+   `lead_set` came back `UNVERIFIABLE` and a campaign was proven by
+   `lead_count` plus a verified list id. `/campaign/GetLeadsFromCampaign`
+   returns a profile URL and a `linkedInUserProfileId` per lead - the
+   identities were readable the whole time this module said they were not. The
+   diff now asserts WHO the provider holds rather than how many.
 
 4. Nothing here writes, to state or to a provider. It reads canonical state and
    read-only provider routes. A differ that could edit either side to make them
@@ -42,7 +48,7 @@ import json
 import sys
 
 from . import campaigns as campaigns_state
-from . import approval, cadence, clients, store
+from . import approval, cadence, clients, collision, store
 from .providers import bison, heyreach, ok, request
 
 # ------------------------------------------------------------------ verdicts
@@ -64,8 +70,13 @@ FAIL = "FAIL"
 # observed for a while before it is made blocking.
 REQUIRED_HEYREACH = (
     "campaign_id", "campaign_name", "status", "org_unit", "sender_ids",
-    "list_id", "lead_count", "actions", "note", "delays", "linkedin_only",
-    "bison_handoff",
+    # `lead_set` IS REQUIRED NOW. It used to be omitted because this module
+    # believed the identities were unreadable, so a campaign could pass on a
+    # count alone - "the provider holds one lead" rather than "the provider
+    # holds this person". `/campaign/GetLeadsFromCampaign` answers the stronger
+    # question, so the diff asks it.
+    "list_id", "lead_set", "lead_count", "actions", "note", "delays",
+    "linkedin_only", "bison_handoff",
 )
 
 REQUIRED_BISON = (
@@ -191,19 +202,26 @@ def approved_heyreach(campaign, recs=None, config=None):
             "after the lead enters this campaign")
     delays = tuple((str(unit), int(value)) for unit, value in declared)
 
-    # THE ONE-LEAD CAP IS THE THING THAT MAKES AN UNVERIFIABLE LEAD SET
-    # TOLERABLE, so it has to be a check rather than a paragraph. HeyReach
-    # publishes no route for a campaign's lead identities, and this module's
-    # own rule 3 says a one-lead campaign is therefore proven by `lead_count`
-    # plus a verified `list_id`. That reasoning holds for exactly one lead and
-    # collapses at two: with `lead_set` unverifiable, a second approved contact
-    # would diff PASS against the FIRST contact's lead already in the campaign.
+    # ONE LEAD, AND THE REASON HAS CHANGED. This refusal used to say a two-lead
+    # campaign could not be PROVEN, because the lead identities were unreadable
+    # - and that is no longer true: `_provider_leads` enumerates them, `lead_set`
+    # is required, and a two-lead campaign would now diff on exactly who is in
+    # it. Keeping the refusal on a false reason is the habit this module was
+    # written to break.
+    #
+    # It stays because of what cannot be STOPPED rather than what cannot be
+    # proven. `executionguard`'s stoppability gate caps an unstoppable channel at
+    # one contact while `providerwrites.is_supported("heyreach.pause")` is False,
+    # and a staged campaign larger than that ceiling is a campaign whose leads
+    # could not all be recalled. When a pause is established and read back, that
+    # gate lifts by itself and this bound should be raised deliberately with it -
+    # not silently, and not here first.
     if len(leads) != 1:
         raise DiffRefused(
-            f"this campaign has {len(leads)} approved LinkedIn leads. HeyReach "
-            f"publishes no route for a campaign's lead identities, so only a "
-            f"ONE-lead campaign can be proven - `lead_count` plus a verified "
-            f"list is the lead set at one and not at two")
+            f"this campaign has {len(leads)} approved LinkedIn leads. While no "
+            f"pause route is established the stoppability ceiling is one "
+            f"contact per unstoppable channel, so a campaign staged beyond it "
+            f"holds people this system could not recall")
 
     senders = _ids((campaign.get("senders") or {}).get("linkedin"))
     return {
@@ -224,6 +242,56 @@ def approved_heyreach(campaign, recs=None, config=None):
     }
 
 
+# How many pages of leads this module will enumerate before it stops claiming
+# to know the whole set. A campaign this system approved holds a handful of
+# people; one holding thousands is not a campaign it staged, and half a lead set
+# is more dangerous than none because it would diff PASS against a subset.
+MAX_LEAD_PAGES = 5
+
+
+def _provider_leads(campaign_id):
+    """The lead identities the provider actually holds, and how many.
+
+    THE PREMISE THIS REPLACES WAS FALSE, and it was load-bearing. Rule 3 of the
+    module docstring said "HeyReach exposes no route for a campaign's lead
+    identities", so `lead_set` came back `UNVERIFIABLE` and the whole staging
+    argument rested on `lead_count` plus a verified list id.
+    `/campaign/GetLeadsFromCampaign` returns a profile URL and a
+    `linkedInUserProfileId` per lead. The identities are readable, and were the
+    entire time this module said otherwise.
+
+    `lead_count` now comes from that route's `totalCount` rather than from
+    `progressStats.totalUsers`, because `progressStats` is a residual that
+    absorbs bucket error - three live campaigns report `totalUsersInProgress`
+    as -7, -5 and -6, and on the canary it counts a lead that has done nothing.
+
+    Slugs, to compare against what the approved side states: `approved_heyreach`
+    builds its set from `collision.profile_slug`, so the provider side has to
+    speak the same identifier. A lead whose profile URL yields no slug leaves
+    the set unverifiable rather than silently shrinking it - a subset that
+    diffed PASS would be the worst possible answer here.
+    """
+    from .providers import heyreach
+
+    rows, total = [], None
+    for page in range(MAX_LEAD_PAGES):
+        found, total = heyreach.campaign_leads(campaign_id,
+                                              offset=page * heyreach.MAX_PAGE)
+        rows.extend(found)
+        if total is None or len(rows) >= int(total or 0) or not found:
+            break
+    count = int(total) if total is not None else len(rows)
+    if count > len(rows):
+        return {"lead_set": UNVERIFIABLE, "lead_count": count}
+    slugs = set()
+    for row in rows:
+        slug = collision.profile_slug(row.get("profile_url"))
+        if not slug:
+            return {"lead_set": UNVERIFIABLE, "lead_count": count}
+        slugs.add(slug)
+    return {"lead_set": frozenset(slugs), "lead_count": count}
+
+
 LINKEDIN_STEP = {"key": "day3", "day": 3, "channel": "linkedin",
                  "template": "linkedin_intro"}
 
@@ -233,12 +301,17 @@ LINKEDIN_STEP = {"key": "day3", "day": 3, "channel": "linkedin",
 def provider_heyreach(campaign_id):
     """What HeyReach actually holds. Read-only routes only.
 
-    Two fields come back `UNVERIFIABLE` because no allowlisted route exposes
-    them: the lead IDENTITIES (only a count is published, in `progressStats`)
-    and any per-campaign daily limit (no such field exists on the campaign
-    object). They are reported as unverifiable rather than guessed, and
-    `REQUIRED_HEYREACH` deliberately omits `lead_set` and `daily_limit` so a
-    ONE-lead campaign can still pass on `lead_count` - see the module docstring.
+    ONE field comes back `UNVERIFIABLE` because no allowlisted route exposes it:
+    a per-campaign daily limit, which is not on the campaign object at all. It is
+    reported as unverifiable rather than guessed, and `REQUIRED_HEYREACH` omits
+    it so a campaign is not failed for a field the vendor does not publish.
+
+    It used to be two. The lead IDENTITIES were the other, on the stated premise
+    that only a count was published - and `/campaign/GetLeadsFromCampaign`
+    returns a profile URL and a `linkedInUserProfileId` per lead. `_provider_leads`
+    reads them, and `lead_count` comes from that route's `totalCount` rather than
+    from `progressStats`, which is a residual that goes negative on live
+    campaigns.
     """
     row = heyreach.campaign_by_id(campaign_id)
     if not row:
@@ -278,8 +351,7 @@ def provider_heyreach(campaign_id):
         "org_unit": str(row.get("organizationUnitId") or ""),
         "sender_ids": _ids(row.get("campaignAccountIds")),
         "list_id": str(row.get("linkedInUserListId") or ""),
-        "lead_set": UNVERIFIABLE,
-        "lead_count": int(stats.get("totalUsers") or 0) if stats else UNVERIFIABLE,
+        **_provider_leads(row.get("id")),
         "actions": tuple(order),
         "note": _norm_text(notes[0]) if notes else "",
         "delays": delays,
@@ -583,16 +655,21 @@ def main(argv=None):
         print(f"no canonical campaign {a.campaign!r}")
         return 2
     try:
-        if a.channel == "linkedin":
-            result, approved, provider = compare_heyreach(campaign)
-        else:
-            result, approved, provider = compare_bison(
-                campaign, expect_workspace=a.workspace)
+        # A SEALED `Readback`, NOT A THREE-TUPLE. This unpacked one until now and
+        # raised `TypeError: cannot unpack non-iterable Readback object` every
+        # time it ran - on the command an operator uses to verify a provider
+        # configuration before a canary. `executionguard.main` was fixed for
+        # exactly this and carries the note; this CLI was missed because nothing
+        # covered it, so `test_configdiff_cli` now does.
+        readback = (compare_heyreach(campaign) if a.channel == "linkedin"
+                    else compare_bison(campaign,
+                                       expect_workspace=a.workspace))
     except DiffRefused as e:
         print(f"REFUSED: {e}")
         return 2
+    result = readback.diff
     print(json.dumps(result, indent=1, default=_show) if a.json
-          else report(result, approved, provider))
+          else report(result, readback.approved, readback.provider))
     return 0 if result["verdict"] == PASS else 1
 
 

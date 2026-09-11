@@ -52,9 +52,15 @@ def approved(**over):
 
 
 def provider(**over):
-    """The provider side, shaped as `provider_heyreach` returns it."""
+    """The provider side, shaped as `provider_heyreach` returns it.
+
+    `lead_set` used to be hardcoded UNVERIFIABLE here, because the module said
+    HeyReach published no route for a campaign's lead identities.
+    `/campaign/GetLeadsFromCampaign` returns a profile URL per lead, so the
+    provider reports the set and this fixture reports it too. `daily_limit`
+    stays unverifiable: that one genuinely has no read route.
+    """
     row = dict(approved())
-    row["lead_set"] = configdiff.UNVERIFIABLE
     row["daily_limit"] = configdiff.UNVERIFIABLE
     row["delays"] = (("DAY", 3),)
     row.update(over)
@@ -184,16 +190,29 @@ class UnverifiableIsAFailureNotAWarning(unittest.TestCase):
         self.assertEqual(result["verdict"], configdiff.FAIL)
         self.assertIn("note: unverifiable", result["failures"])
 
-    def test_the_two_structurally_unverifiable_heyreach_fields_do_not_fail(self):
-        """Deliberate, and documented: HeyReach publishes no route for a
-        campaign's lead identities and no per-campaign limit field. So a
-        ONE-lead campaign is proven by `lead_count` plus a verified `list_id`,
-        and both are required. Neither `lead_set` nor `daily_limit` is."""
-        self.assertNotIn("lead_set", configdiff.REQUIRED_HEYREACH)
+    def test_the_one_structurally_unverifiable_heyreach_field_does_not_fail(self):
+        """It used to be two. HeyReach publishes no per-campaign limit field, so
+        `daily_limit` is genuinely unverifiable and is not required.
+
+        `lead_set` WAS the other one, on the premise that the lead identities
+        were unreadable - and `/campaign/GetLeadsFromCampaign` returns a profile
+        URL and a `linkedInUserProfileId` per lead. It is now read, required,
+        and asserted, which is the difference between proving the provider holds
+        ONE lead and proving it holds THIS PERSON.
+        """
         self.assertNotIn("daily_limit", configdiff.REQUIRED_HEYREACH)
+        self.assertIn("lead_set", configdiff.REQUIRED_HEYREACH)
         self.assertIn("lead_count", configdiff.REQUIRED_HEYREACH)
         self.assertIn("list_id", configdiff.REQUIRED_HEYREACH)
         self.assertEqual(run()["verdict"], configdiff.PASS)
+
+    def test_a_lead_set_that_cannot_be_read_still_fails(self):
+        """When the provider cannot be enumerated - too many leads to page, or a
+        lead with no readable profile - the field goes back to UNVERIFIABLE, and
+        because it is required that is a FAIL rather than a shrug."""
+        result = run(p=provider(lead_set=configdiff.UNVERIFIABLE))
+        self.assertEqual(result["verdict"], configdiff.FAIL)
+        self.assertIn("lead_set: unverifiable", result["failures"])
 
     def test_emailbison_requires_the_fields_heyreach_cannot_verify(self):
         """The asymmetry is real: EmailBison publishes limits and both sets."""
