@@ -49,7 +49,7 @@ import json
 import os
 import sys
 
-from . import store
+from . import events, linkedin, store
 from .providers import heyreach
 
 # Every observation, append-only, beside the queue - the same argument the
@@ -141,6 +141,124 @@ def reached(campaign_id):
     return {lead for lead, state in seen.items() if state in heyreach.REACHED}
 
 
+class Ambiguous(RuntimeError):
+    """One provider lead matched more than one contact. Nobody may guess."""
+
+
+def match_lead(lead, recs):
+    """(record, contact) for the human this provider lead is, or None.
+
+    Matched on `linkedin.canonical`, because it is the only identifier that
+    survives the round trip: HeyReach returns `customFields: []` on every
+    conversation, so the record id and contact key this system sends are
+    write-only decoration and cannot be read back.
+
+    Refuses to guess. Two contacts behind one profile raises rather than
+    picking the first - a wrong person is the one outcome this whole module
+    exists to prevent, and "probably them" is how that happens.
+    """
+    key = linkedin.key(lead.get("profile_url"))
+    if not key:
+        return None
+    found = [(rec, contact)
+             for rec in recs
+             for contact in (rec.get("contacts") or [])
+             if contact.get("linkedin")
+             and linkedin.key(contact["linkedin"]) == key]
+    if len(found) > 1:
+        raise Ambiguous(
+            f"provider lead {lead.get('provider_lead_id')!r} matches "
+            f"{len(found)} contacts: "
+            + ", ".join(f"{r.get('id')}/{c.get('key')}" for r, c in found)
+            + ". Reconcile the duplicate before recording a touch")
+    return found[0] if found else None
+
+
+def _linkedin_step(rec, contact_key):
+    """The one LinkedIn step this contact has, or None if it is not one.
+
+    Only used to date the touch onto a cadence day so
+    `eligibility._separation` can see it. When it cannot be determined the
+    touch is still recorded - a touch nobody can place on a day is worth far
+    more than no touch at all, and `fatigue` reads the event either way.
+    """
+    steps = ((rec.get("cadence") or {}).get(contact_key) or {})
+    linkedin_steps = [(key, step) for key, step in steps.items()
+                      if (step or {}).get("channel") == "linkedin"]
+    return linkedin_steps[0] if len(linkedin_steps) == 1 else (None, {})
+
+
+def confirm_touches(campaign_id, recs=None, live=False):
+    """Record the canonical confirmed touch for a lead the PROVIDER reached.
+
+    THE OTHER HALF OF THE DUPLICATION LAW. `providerwrites.perform` records a
+    touch when THIS system writes to the provider. The canary is the opposite
+    case: an operator staged the lead and unpaused the campaign by hand, so
+    `eligibility` answers `blocked:campaign_already_launched` and HeyReach
+    sends the connection request on its own schedule. Resonate OS is not the
+    executor there - it can only observe.
+
+    Without this, the moment that invitation goes out the provider knows and
+    nothing here does: `funnel` reports zero confirmed actions for ever,
+    `touch` sees nothing, and the duplication law has no touch to refuse a
+    second action against. That is this repository's named recurring defect -
+    a thing computed correctly that nothing downstream reads - sitting on the
+    single most safety-relevant fact the provider publishes.
+
+    Idempotent by construction. The event carries a `provider_event_id` of
+    (provider, campaign, lead, state), and `events.record` returns None for a
+    duplicate, so polling every minute for a week records one touch per real
+    transition. The provider's OWN timestamp dates the event, never now(): a
+    reconciliation run days later must not claim the invitation went out
+    today.
+
+    Dry by default. `live=True` writes.
+    """
+    recs = store.load() if recs is None else recs
+    leads, _total = heyreach.campaign_leads(campaign_id)
+    recorded, unmatched, already = [], [], []
+    for lead in leads:
+        if lead.get("state") not in heyreach.REACHED:
+            continue
+        found = match_lead(lead, recs)
+        if found is None:
+            # Reported, never guessed. A lead the provider reached that this
+            # system cannot place is a reconciliation question for a person.
+            unmatched.append(lead.get("provider_lead_id"))
+            continue
+        rec, contact = found
+        step_key, step = _linkedin_step(rec, contact.get("key"))
+        entry = {
+            "rec_id": rec.get("id"), "contact_key": contact.get("key"),
+            "provider_lead_id": lead.get("provider_lead_id"),
+            "state": lead.get("state"), "at": lead.get("at"),
+            "step": step_key,
+        }
+        (recorded if live else already).append(entry)
+        if not live:
+            continue
+        with store.transaction() as rows:
+            live_rec = store.get(rec.get("id"), rows)
+            if live_rec is None:
+                continue
+            written = events.record(
+                live_rec, events.PUSH_MARKED,
+                contact_key=contact.get("key"), channel="linkedin",
+                at=lead.get("at") or store.now(),
+                provider="heyreach",
+                provider_event_id=(f"heyreach:{campaign_id}:"
+                                   f"{lead.get('provider_lead_id')}:"
+                                   f"{lead.get('state')}"),
+                step=step_key, day=(step or {}).get("day"),
+                sender_id=lead.get("sender_id"),
+                campaign_id=str(campaign_id))
+            if written is None:
+                recorded.pop()
+                already.append(entry)
+    return {"live": live, "recorded": recorded, "already": already,
+            "unmatched": unmatched}
+
+
 def reconcile(campaign_id):
     """What the provider did, beside what this system recorded doing.
 
@@ -183,7 +301,27 @@ def main(argv=None):
     p.add_argument("--history", action="store_true",
                    help="print what has been recorded, without reading the "
                         "provider")
+    p.add_argument("--confirm", action="store_true",
+                   help="record a canonical confirmed touch for every lead "
+                        "the provider has reached. Dry unless --live")
+    p.add_argument("--live", action="store_true",
+                   help="with --confirm, actually write the touches")
     a = p.parse_args(argv)
+
+    if a.confirm:
+        out = confirm_touches(a.campaign, live=a.live)
+        if a.json:
+            print(json.dumps(out, indent=1))
+            return 0
+        print(f"campaign {a.campaign}: "
+              f"{len(out['recorded'])} touch(es) recorded, "
+              f"{len(out['already'])} already known, "
+              f"{len(out['unmatched'])} unmatched"
+              + ("" if out["live"] else "   (DRY - pass --live to write)"))
+        for lead_id in out["unmatched"]:
+            print(f"  UNMATCHED lead {lead_id}: the provider reached somebody "
+                  f"this system cannot place. Reconcile by hand.")
+        return 0
 
     if a.history:
         rows = history(a.campaign)
