@@ -27,8 +27,8 @@ nothing usable is `dropped`, with the reason on it. Nothing is ever deleted.
 """
 import argparse
 
-from . import clients, events, identity, lint, mx, research, store
-from . import verification
+from . import clients, dedupe, events, identity, linkedin, lint, mx, research
+from . import store, verification
 from .providers import ProviderError, aiark, apify, contactout
 
 # What a call costs, in credits, for the cap. decision-makers charges per
@@ -312,11 +312,51 @@ def same_company(person, rec, facts=None):
 FILLABLE = ("title", "linkedin", "name")
 
 
-def markers(contact):
-    """Every handle this person is known by, lowercased."""
-    return {str(value).strip().lower()
-            for value in (contact.get("email"), contact.get("linkedin"),
-                          contact.get("name")) if value}
+# The handles that ARE identity, in the order they decide. An address or a
+# canonical profile URL identifies one person. A name does not: two people
+# share one and one person has three. `referral.py` states that rule in its
+# own module docstring for the same reason, and this module used to disagree
+# with it - which is the bug `test_a_name_is_not_an_identity` reproduces.
+STRONG = ("email", "linkedin")
+
+
+def handle(field, value):
+    """One comparable form of a handle, or None if there is not one.
+
+    Normalised rather than lowercased. The estate stores a profile as a bare
+    vanity slug - `jannovak`, not a URL, in every one of the 25 that carry a
+    profile today - and a provider returns a full URL, so raw comparison
+    reads those as two people. Separating one person is not the
+    safe direction here: it mints a second contact, and a fresh dict carries
+    `verdict: None`, which throws away a verification somebody paid for.
+    """
+    if field == "email":
+        return dedupe.normalise_email(value)
+    if field == "linkedin":
+        return linkedin.canonical(value)
+    return str(value or "").strip().lower() or None
+
+
+def disagree(contact, person):
+    """Do these two carry DIFFERENT values for a handle they BOTH have?
+
+    The check that makes a shared name stop being an identity. If one record
+    has an address or a profile and the other has a different one, they are
+    two people whatever they are called.
+
+    Note what this deliberately does NOT do: a name match against a contact
+    carrying no strong handle at all still stands. That is the case the name
+    index exists for - somebody known only by name who later arrives with an
+    address - and refusing it would bring back the double-minting this
+    function's docstring describes. The guard removes matches contradicted by
+    evidence, not matches with no evidence either way.
+    """
+    for field in STRONG:
+        ours = handle(field, contact.get(field))
+        theirs = handle(field, person.get(field))
+        if ours and theirs and ours != theirs:
+            return True
+    return False
 
 
 def merge_contacts(rec, people, source):
@@ -336,17 +376,43 @@ def merge_contacts(rec, people, source):
     spend. Filling in an existing contact cannot do that.
     """
     facts = rec.get("company_facts") or {}
-    index = {}
+    # Two indexes, not one, because a strong handle and a name are not the
+    # same kind of evidence and must not be consulted as though they were.
+    # One dict keyed by `markers()` made them interchangeable, and because it
+    # was iterated as a SET the winner was undefined: the same payload could
+    # merge on the address in one run and on the name in the next.
+    strong_index, name_index = {}, {}
+
+    def remember(contact):
+        for field in STRONG:
+            found = handle(field, contact.get(field))
+            if found:
+                strong_index.setdefault(found, contact)
+        name = handle("name", contact.get("name"))
+        if name:
+            name_index.setdefault(name, contact)
+
+    def match(person):
+        """The contact this payload is about, or None to mint a new one."""
+        for field in STRONG:
+            found = handle(field, person.get(field))
+            if found and found in strong_index:
+                return strong_index[found]
+        name = handle("name", person.get("name"))
+        candidate = name_index.get(name) if name else None
+        if candidate is not None and not disagree(candidate, person):
+            return candidate
+        return None
+
     for contact in rec.get("contacts") or []:
-        for marker in markers(contact):
-            index.setdefault(marker, contact)
+        remember(contact)
     added, excluded = [], []
     for p in people:
         if not same_company(p, rec, facts):
             excluded.append({"name": p.get("name"), "title": p.get("title"),
                              "why": "company name collision: not this domain"})
             continue
-        hit = next((index[m] for m in markers(p) if m in index), None)
+        hit = match(p)
         if hit is not None:
             for field in FILLABLE:
                 if not hit.get(field) and p.get(field):
@@ -354,8 +420,7 @@ def merge_contacts(rec, people, source):
             if not hit.get("email") and p.get("email"):
                 hit["email"] = p["email"]
                 hit["email_source"] = source
-            for marker in markers(hit):
-                index.setdefault(marker, hit)
+            remember(hit)
             continue
         fresh = {"name": p.get("name"), "title": p.get("title"),
                  "linkedin": p.get("linkedin"), "email": p.get("email"),
@@ -363,8 +428,7 @@ def merge_contacts(rec, people, source):
                  "verdict": None, "reoon": None, "sendable": False,
                  "primary": False}
         added.append(fresh)
-        for marker in markers(fresh):
-            index.setdefault(marker, fresh)
+        remember(fresh)
 
     # Keys before anybody can write an event about these people.
     #

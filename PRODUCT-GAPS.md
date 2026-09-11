@@ -3299,10 +3299,10 @@ finding; it is a progress bar.
 The referral promotion weld is fixed and regression-tested (§31 of the
 current mission: every real finding gets a regression test). Looking for the
 same SHAPE elsewhere - an identifier for person A written onto the record of
-person B - found two more. Both were found by reading, neither is reproduced
-against live data yet, and they are recorded here rather than fixed silently.
+person B - found two more. Both were found by reading. The first was then
+reproduced and fixed; the second is latent and is recorded rather than fixed.
 
-### A shared name merges two people, and welds a profile onto a mailbox
+### A shared name merged two people - FIXED 2026-09-11
 
 `enrich.markers()` returns every handle a contact is known by - email,
 LinkedIn **and name** - and `merge_contacts` indexes contacts by all three.
@@ -3328,14 +3328,60 @@ Two aggravating details:
     not - two people share one and one person has three." Two modules, one
     question, two answers.
 
-The fix is not to drop the name from `markers()`: the name index exists
-because a person known only by name who later arrives with an address was
-being minted twice, and re-minting destroys paid verification evidence. The
-fix is that a NAME-only match must not stand when the two records disagree
-on a strong identifier they both carry - which is a conflict check, not a
-weaker index. Bounded by the ICP: at agencies of 10-100 people two identical
-full names are uncommon, which is why this has not been seen, not a reason
-it cannot happen.
+### What it actually did, reproduced
+
+The damaging shape is not the one above. Both `merge_contacts` call sites run
+only when `usable_contacts(rec)` is empty - no contact here has an address -
+so the contact being merged into is somebody known by name and profile, and
+it is the ADDRESS that gets welded on:
+
+    on the record   Jan Novak, /in/jan-novak, no address
+    provider says   Jan Novak, j.novak2@acme.test, /in/jan-novak-studio
+
+    after merge     /in/jan-novak  +  j.novak2@acme.test
+                    added: []   excluded: []
+
+`usable_contacts` then returns that row, so verification buys a check on the
+second person's address and a valid answer marks it sendable: the email goes
+to one human and the connection request to another. The second person is not
+added, not excluded, and no reason is recorded - a real decision maker
+deleted with no trace. A contact added from a referral arrives as exactly
+this shape, so the two paths chain.
+
+### The fix, and what it deliberately still allows
+
+Not dropping the name: the name index exists because a person known only by
+name who later arrives with an address was being minted twice, and re-minting
+destroys paid verification evidence. Three changes instead:
+
+  - Two indexes rather than one, consulted in a stated order - address, then
+    profile, then name. The old single index was iterated as a SET, so the
+    winner was undefined and the same payload could merge on the name in one
+    run and the address in the next.
+  - A name-only match yields when the two records hold DIFFERENT values for a
+    handle they both carry. It still stands when one side carries no strong
+    handle at all: that is the case the name index exists for, and the guard
+    removes matches contradicted by evidence, not matches with no evidence
+    either way.
+  - Handles are normalised before comparison, via `dedupe.normalise_email`
+    and `linkedin.canonical`. This is not tidiness. Every one of the 25
+    profiles in the estate is stored as a bare vanity slug and every provider
+    returns a full URL, so a raw comparison would read one person as two and
+    mint the duplicate that discards their verification. A mutation sweep
+    caught that the first version of the tests never asserted it.
+
+Not seen in live data: the 300-record estate has zero records with two
+contacts sharing a name, which bounds the exposure and is not a reason it
+could not happen. `tests/test_a_name_is_not_an_identity.py` holds the
+reproduction; seven mutations, all caught.
+
+### One thing left alone, upstream of the merge
+
+`same_company` compares the incoming email's domain to the record's raw, so
+`someone@acme.test.` - a valid FQDN form that `dedupe.normalise_email` treats
+as the same mailbox - is excluded as a "company name collision". Excluding a
+real person is the safe direction and this is not the weld, so it is recorded
+here rather than changed in a diff about identity.
 
 ### A legacy `/pub/` URL collapses distinct members onto one slug
 
