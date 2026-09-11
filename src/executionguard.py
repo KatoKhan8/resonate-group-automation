@@ -216,6 +216,27 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     # 1. TENANCY -------------------------------------------------------------
     if channel == "email":
         from .providers import bison
+        # NAMED FIRST, THEN ASSERTED. `bison.require_workspace` returns None
+        # for an unpinned read WITHOUT calling the binding route, and that is
+        # correct for a read - but this is gate 1 of an authorization, where
+        # unpinned means nobody said whose estate this is. Passing None made
+        # this branch append "tenancy" to the audit trace having asserted
+        # nothing, while the LinkedIn branch beside it requires an org_unit.
+        #
+        # The same None then travels to gate 4, where
+        # `collision.check_address(expect_workspace=None)` reads prior contact
+        # from whatever estate the credential was last bound to in the vendor
+        # UI - which has moved four times in three days. An empty foreign
+        # estate answers CLEAR, and the trace says tenancy PASS, collision
+        # PASS. That is the 2026-09-09 false clear, reachable through the
+        # front door.
+        #
+        # No client context is no provider authorization. See PRODUCT-GOAL.md.
+        _require("tenancy", str(workspace or "").strip() != "",
+                 "no EmailBison workspace was named. Every route ignores a "
+                 "workspace parameter, so an unpinned read cannot say whose "
+                 "estate it answered for, and an unpinned write cannot say "
+                 "whose estate it changed")
         try:
             bison.require_workspace(workspace)
         except Exception as e:
@@ -317,7 +338,17 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     found = claims.check(text, rec, contact)
     bad = found.get("problems") if isinstance(found, dict) else found
     _require("claims", not bad, f"claims refuses the copy: {bad}")
-    state = fatigue.check(rec, contact["key"], config=config)
+    # `at` IS THE PROPOSED ACTION TIME, AND WITHOUT IT HALF THIS GATE IS OFF.
+    # `fatigue.contact_check` gates `contact.min_hours_between_touches` behind
+    # `if at and ...`, so calling it without one left the wall-clock spacing
+    # rule unreachable from the one place that authorizes a real send.
+    # Measured on 2026-09-11: a second step one minute after a confirmed touch
+    # answered `ok` without `at`, and `block - only 0h since the last touch;
+    # the limit is 24h` with it. Nothing else enforced the gap - the guard
+    # passes no `day` to `eligibility.decide`, so `_separation` compares
+    # cadence day numbers and day1/day3/day7 can all be authorized in seconds.
+    state = fatigue.check(rec, contact["key"], at=(now or _utcnow()).isoformat(),
+                          config=config)
     _require("fatigue", state.get("state") == "ok",
              f"fatigue says {state.get('state')}")
     gates.extend(["eligibility", "suppression", "copy", "claims", "fatigue"])

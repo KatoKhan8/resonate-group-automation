@@ -156,9 +156,24 @@ def support_text(rec, contact=None, chosen=()):
             parts.append(f"{key} {value}")
     parts.append(str(rec.get("company") or ""))
     parts.append(str(rec.get("domain") or ""))
-    parts.append(str(rec.get("hook") or ""))
-    diagnosis = rec.get("diagnosis") or {}
-    parts.extend(str(v) for v in diagnosis.values() if v)
+    # NOT `rec["hook"]`. A hook is generated prose - `generate.hook` writes it
+    # from a model - so reading it back as support let the generator certify
+    # its own output and then be believed. Measured on 2026-09-11: the claim
+    # "You are rebuilding utilisation reporting by hand" was REFUSED against a
+    # record holding an industry and a headcount, and PASSED once an invented
+    # hook saying so was stored on the same record.
+    #
+    # NOR `rec["diagnosis"]`, which went the same way and for the same reason:
+    # `generate.diagnose` writes it from `llm.ask(model, "diagnose", ...)`, and
+    # `what_changed` and `last_position` are free text that no schema
+    # constrains. Measured on 2026-09-11: "Your utilisation dropped after the
+    # Vienna office opened" was REFUSED on a clean record and PASSED once a
+    # diagnosis saying so was stored. `rec["context"]` is the operator-written
+    # version of the same story and is still support.
+    #
+    # `research`, `company_facts` and `chosen` stay: those come from providers
+    # and from research. The line between them is not how trustworthy the text
+    # reads, it is who wrote it.
     if contact:
         # NOT `persona` AND NOT `angle`. Those two are OUR vocabulary - the
         # routing family we filed this person under and the thing we decided to
@@ -180,10 +195,13 @@ def support_text(rec, contact=None, chosen=()):
         parts.append(str(entry.get("published_at") or ""))
     for entry in rec.get("research") or []:
         parts.append(str(entry.get("fact") or ""))
-    cited = rec.get("evidence") or {}
-    if isinstance(cited, dict):
-        for lines in cited.values():
-            parts.extend(str(line) for line in (lines or []))
+    # AND NOT `rec["evidence"]`. That is `generate.persona_angle`'s output -
+    # the model's own sentences, which `cadence.template_vars` then prints as
+    # the first line of the day-5 email. Reading them back as support closed
+    # the loop a third time: the model wrote the line, `check_evidence`
+    # certified it, the prospect read it, and this function then treated it as
+    # the reason it was allowed to be said. `chosen` above is the
+    # research-derived parameter and is what legitimately licenses copy.
     return " ".join(parts).lower()
 
 
@@ -195,9 +213,18 @@ def check_sentence(sentence, support, identity=frozenset()):
     """Is this claim supported? Returns (ok, why_not)."""
     low = sentence.lower()
 
+    # A FIGURE IS A WHOLE TOKEN, NOT A SUBSTRING. `cleaned not in support` ran
+    # against one joined blob, so a founding year licensed its own digits and
+    # a headcount BAND licensed its endpoints: with "founded 2014" and
+    # "employee_range 11-50" stored, 20, 01, 14, 11 and 50 were all "stored
+    # facts". Measured across the 300 real records - a mean of 8.3 of the 90
+    # two-digit numbers passed per record, and "You lost 50 billable hours
+    # last month" passed on 67 of them.
+    stored = set(NUMBER.findall(support))
+    stored |= {n.strip(".,") for n in stored}
     for number in NUMBER.findall(low):
         cleaned = number.strip(".,")
-        if len(cleaned) >= 2 and cleaned not in support:
+        if len(cleaned) >= 2 and cleaned not in stored:
             return False, f"the figure {cleaned} appears in no stored fact"
 
     # A STATEMENT ABOUT HOW THEY OPERATE NEEDS SOMETHING BEHIND IT.

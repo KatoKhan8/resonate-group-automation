@@ -222,6 +222,42 @@ def require_supported(operation):
     return True
 
 
+def _record_confirmed_touch(authorization):
+    """Write the canonical confirmed touch for an action the provider took.
+
+    THE DUPLICATION LAW HAD NO DURABLE HALF. `touch.CONFIRMING_EVENTS` maps
+    `events.PUSH_MARKED` to SENT, and `push.mark_pushed` was its only writer -
+    but `push.run(live=True)` raises, so no live send could ever reach it. A
+    real send therefore settled the ledger and left `push.already_pushed`,
+    `eligibility._separation` and `fatigue.contact_check` with nothing to see.
+    The ledger key is per STEP (`rec:contact:step:channel`), so it refuses a
+    repeat of the same step and nothing else: a different step to the same
+    person passed every check.
+
+    `push.mark_pushed` is called rather than reimplemented. Two writers of one
+    canonical fact is how the live path and the dry path come to disagree, and
+    this module exists because that disagreement is expensive.
+
+    `events.record` is already idempotent on the event id, and the id is
+    derived from the action key, so recording twice appends once. That is what
+    makes this safe to call again during reconciliation.
+    """
+    from . import push
+
+    with store.transaction() as recs:
+        rec = store.get(authorization.rec_id, recs)
+        if rec is None:
+            raise WriteUnverified(
+                f"the provider acted on {authorization.rec_id!r} and that "
+                f"record is no longer in the queue, so the touch cannot be "
+                f"recorded. Reconcile by hand before anything else runs")
+        step = push.stored_step(rec, authorization.contact_key,
+                               authorization.step_key)
+        push.mark_pushed(rec, authorization.contact_key,
+                         authorization.step_key, authorization.key,
+                         at=store.now(), day=step.get("day"))
+
+
 def perform(operation, *, authorization=None, tenant=None, campaign=None,
             payload=None, transport=None, readback=None, expected=None,
             by="system"):
@@ -320,6 +356,31 @@ def perform(operation, *, authorization=None, tenant=None, campaign=None,
             f"retry") from None
 
     verdict = _classify(observed, expected)
+
+    # THE TOUCH IS WRITTEN BEFORE THE LEDGER SETTLES, and the order is the
+    # whole safety argument. Dying between these two writes must fail closed:
+    #
+    #   touch first  -> touch recorded, ledger still ATTEMPTED. The next
+    #                   attempt is refused by fatigue and by the reservation.
+    #   ledger first -> ledger SENT, no touch. Person-level rules see nothing,
+    #                   which is precisely the defect being closed here.
+    #
+    # A touch recorded for an action that did not happen costs one refusal. A
+    # missing touch costs a second message to a real person.
+    if facing and verdict == ACCEPTED:
+        try:
+            _record_confirmed_touch(authorization)
+        except Exception as e:
+            actionledger.settle(
+                key, actionledger.UNRESOLVED,
+                why=f"touch not recorded: {type(e).__name__}",
+                provider_response=_trim(response), readback=_trim(observed))
+            raise WriteUnverified(
+                f"{operation} reached the provider and was accepted, but the "
+                f"confirmed touch could not be recorded ({type(e).__name__}). "
+                f"The action is NOT safe to retry - reconcile it by hand"
+            ) from None
+
     if key:
         actionledger.settle(
             key,
@@ -338,6 +399,14 @@ def perform(operation, *, authorization=None, tenant=None, campaign=None,
 def _classify(observed, expected):
     """Did the provider end up in the state we asked for?"""
     if expected is None:
+        return UNKNOWN
+    # AN EMPTY EXPECTATION VERIFIES NOTHING. `{}` used to fall through to the
+    # dict branch, whose loop then had nothing to check, and returned ACCEPTED
+    # - so a caller that forgot to say what it wanted got a read-back that
+    # agreed with it and a ledger row settled to SENT. Asking for nothing is
+    # not the same as getting what you asked for. `0` and `False` stay real
+    # expectations; only an empty container is the absence of one.
+    if isinstance(expected, (dict, list, tuple, set, str)) and not expected:
         return UNKNOWN
     if isinstance(expected, dict) and isinstance(observed, dict):
         for name, want in expected.items():

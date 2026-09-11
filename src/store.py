@@ -84,7 +84,11 @@ STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    # ceiling, and a missing one lets a run spend twice. This
                    # was omitted when the ledger was added and
                    # `test_invariants` caught it the same night.
-                   "SPEND_LEDGER")
+                   "SPEND_LEDGER",
+                   # What the PROVIDER did to a staged lead, as distinct from
+                   # what this system did. A stray row here would claim a real
+                   # prospect had been contacted, so it moves with the rest.
+                   "LEAD_OBSERVATIONS")
 
 
 def use_directory(path):
@@ -176,10 +180,24 @@ def transaction(timeout=None):
     Use this for anything that loads the queue, changes it and saves it back.
     A bare save() takes the lock too, but only for the write itself, which
     cannot protect a read-modify-write against a second process.
+
+    THE GUARDS RUN HERE TOO, and they did not. This called `_write` directly,
+    so `refuse_evidence_loss` and `refuse_history_loss` - which `save` runs on
+    every write - were absent from the path `qualify`, `approve`,
+    `repo.save_records`, `run.stage_push` and `providerwrites` all take. The
+    guard whose own docstring says it "moves to the boundary every writer
+    already crosses" was missing from one of those boundaries.
+
+    Holding the lock is supposed to make a stale write impossible here, which
+    is exactly why the check belongs: if the lock is ever wrong - and it has
+    been - this is the difference between a refused write and an erased reply.
     """
     with lock(timeout):
         recs = load()
         yield recs
+        on_disk = read_jsonl(queue_path())
+        refuse_evidence_loss(on_disk, recs)
+        refuse_history_loss(on_disk, recs)
         _write(recs)
 
 
@@ -375,12 +393,22 @@ CONTACT_STOPS = ("paused", "stopped", "unsubscribed", "suppressed")
 
 
 def _history_index(recs):
-    """Per record: how many events it holds, and which stops are set.
+    """Per record: WHICH events it holds, and which stops are set.
 
-    Counted rather than diffed field by field, for the same reason
-    `_evidence_index` counts: the failure being guarded is a record being
-    replaced WHOLESALE by an older copy of itself, and a count sees that
-    without firing on a legitimate append.
+    A COUNT WAS NOT ENOUGH, and the gap was the ordinary case rather than an
+    exotic one. The rule below fires only when the new snapshot holds FEWER
+    events - but a stale worker is a worker doing work, and it appends events
+    of its own (`draft_generated`, `verification_result`, `push_prepared`) to
+    the copy it loaded. One append against one lost reply is a tie, and a tie
+    passed. Reproduced on 2026-09-11: a confirmed touch and a reply were both
+    erased by a snapshot with an equal event count, after which
+    `push.already_pushed` answered False and the sequence continued.
+
+    So events are identified, not counted. `events.record` already mints a
+    stable `id` for every event and refuses to append a duplicate, so the ids
+    are the natural identity - on the real queue, 5,194 events carry one and
+    none is duplicated. Events without an id are still counted, so a record
+    written before ids existed keeps the protection it had.
     """
     index = {}
     for rec in recs or []:
@@ -394,7 +422,13 @@ def _history_index(recs):
             for flag in CONTACT_STOPS:
                 if contact.get(flag):
                     stops.add(f"{contact.get('key')} {flag}")
-        index[rec.get("id")] = (len(rec.get("events") or []), stops)
+        named, unnamed = set(), 0
+        for entry in rec.get("events") or []:
+            if isinstance(entry, dict) and entry.get("id"):
+                named.add(entry["id"])
+            else:
+                unnamed += 1
+        index[rec.get("id")] = (named, unnamed, stops)
     return index
 
 
@@ -432,13 +466,18 @@ def refuse_history_loss(old_recs, new_recs):
     """
     before, after = _history_index(old_recs), _history_index(new_recs)
     lost = {}
-    for rid, (events_before, stops_before) in before.items():
+    for rid, (named_before, unnamed_before, stops_before) in before.items():
         if rid not in after:
             continue                      # removal is a different rule
-        events_after, stops_after = after[rid]
+        named_after, unnamed_after, stops_after = after[rid]
         why = []
-        if events_after < events_before:
-            why.append(f"{events_before - events_after} event(s) dropped")
+        dropped = named_before - named_after
+        if dropped:
+            why.append(f"{len(dropped)} event(s) dropped: "
+                       + ", ".join(sorted(dropped)[:3]))
+        if unnamed_after < unnamed_before:
+            why.append(f"{unnamed_before - unnamed_after} unidentified "
+                       f"event(s) dropped")
         gone = sorted(stops_before - stops_after)
         if gone:
             why.append("stop lifted: " + ", ".join(gone))

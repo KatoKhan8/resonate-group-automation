@@ -53,7 +53,7 @@ def _non_secret_names():
         # in the example so a platform's secret store can be populated before
         # the migration rather than during it.
         "DATABASE_POOL_SIZE", "REDIS_URL", "WORKER_CONCURRENCY",
-        "REPORT_STORAGE_URL", "LLM_MODEL",
+        "REPORT_STORAGE_URL",
         # Deliverable's contract overrides. Only set if the provider changes
         # something; the adapter's defaults are already correct.
         "DELIVERABLE_RESULT_SHAPE", "DELIVERABLE_BASE", "DELIVERABLE_VERIFY",

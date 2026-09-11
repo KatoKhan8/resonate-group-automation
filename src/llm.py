@@ -17,7 +17,9 @@ from the record, and `evidence` must be traceable to `company_facts` or the
 contact. `check_evidence` enforces that before anything is stored.
 """
 import json
+import os
 import re
+import time
 
 MAX_ATTEMPTS = 3
 
@@ -101,6 +103,138 @@ class ScriptedModel:
             raise ModelError("scripted model ran out of answers")
         answer = self.answers.pop(0)
         return answer if isinstance(answer, str) else json.dumps(answer)
+
+
+class OpenAICompatibleModel:
+    """A real endpoint behind the same `complete(prompt) -> str` seam.
+
+    PROVIDER-NEUTRAL ON PURPOSE. It speaks the `/chat/completions` shape, which
+    OpenRouter, OpenAI itself and most local servers all implement, so the
+    choice of vendor is three environment variables rather than a code change:
+
+        LLM_BASE_URL   the endpoint, e.g. an OpenRouter or local base
+        LLM_API_KEY    the credential for that endpoint
+        LLM_MODEL      the model id, in whatever form the endpoint expects
+
+    Unset means UNCONFIGURED, and `configured()` says so rather than this
+    class half-working. `generate.run` still defaults to `NoModel`, so nothing
+    calls a model because a key happens to exist in the environment - a caller
+    has to pass one, which keeps "a credential is present" and "this run may
+    spend money" as two separate decisions.
+
+    Everything goes through `providers.request`, the single HTTP seam in this
+    repository. That is what lets `tests/offline.py` prove no test reaches a
+    model, and what makes the credential subject to `providers.redact` on the
+    way into any error message.
+
+    Failure is loud. A non-2xx, a body of the wrong shape, or an empty
+    completion raises `ModelError` rather than returning "" - an empty string
+    would be parsed as invalid JSON, retried three times, and reported as a
+    schema failure, which sends the reader to the wrong problem entirely.
+    """
+
+    name = "openai-compatible"
+
+    # Every field of the response that is worth keeping, and nothing else. The
+    # raw payload carries the prompt back and is not stored anywhere.
+    USAGE_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens")
+
+    def __init__(self, key=None, model=None, base=None, timeout=None,
+                 referer=None):
+        from . import providers
+
+        env = providers.load_env()
+        self._key = key or os.environ.get("LLM_API_KEY") or env.get("LLM_API_KEY")
+        self.model = (model or os.environ.get("LLM_MODEL")
+                      or env.get("LLM_MODEL") or "")
+        self.base = (base or os.environ.get("LLM_BASE_URL")
+                     or env.get("LLM_BASE_URL") or "").rstrip("/")
+        self.timeout = timeout or providers.TIMEOUT
+        self.referer = referer
+        self.calls = []
+
+    def configured(self):
+        """All three, or nothing. A key with no endpoint is not a model."""
+        return bool(self._key and self.base and self.model)
+
+    def why_not(self):
+        missing = [name for name, value in (("LLM_BASE_URL", self.base),
+                                            ("LLM_API_KEY", self._key),
+                                            ("LLM_MODEL", self.model))
+                   if not value]
+        return ("no model is configured: " + ", ".join(missing) + " unset"
+                if missing else "")
+
+    def _headers(self):
+        headers = {"Authorization": f"Bearer {self._key}",
+                   "Content-Type": "application/json"}
+        if self.referer:
+            # OpenRouter attributes usage with these two. Optional everywhere
+            # else, and harmless where it is ignored.
+            headers["HTTP-Referer"] = self.referer
+            headers["X-Title"] = "Resonate OS"
+        return headers
+
+    def complete(self, prompt, temperature=0):
+        from . import providers
+
+        if not self.configured():
+            raise ModelError(self.why_not())
+        started = time.monotonic()
+        try:
+            status, data = providers.request(
+                "POST", f"{self.base}/chat/completions", self._headers(),
+                {"model": self.model, "temperature": temperature,
+                 "messages": [{"role": "user", "content": prompt}]},
+                timeout=self.timeout)
+        except Exception as e:                       # noqa: BLE001
+            # `redact` because an HTTP library quotes the request back in its
+            # message, Authorization header and all.
+            raise ModelError(
+                f"{type(e).__name__}: {providers.redact(str(e))[:200]}") from None
+        elapsed = time.monotonic() - started
+
+        if not providers.ok(status):
+            raise ModelError(
+                f"model endpoint answered {status}: "
+                f"{providers.redact(str(data))[:200]}")
+        if not isinstance(data, dict):
+            raise ModelError(
+                f"model endpoint answered {status} with a body that is not an "
+                f"object, so there is no completion to read")
+        choices = data.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise ModelError(
+                "the response carries no `choices`, so nothing was completed")
+        text = ((choices[0] or {}).get("message") or {}).get("content")
+        if not isinstance(text, str) or not text.strip():
+            raise ModelError(
+                "the response carries an empty completion. Refusing rather "
+                "than returning '', which would be retried as a schema error "
+                "and reported as the wrong fault")
+
+        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+        self.calls.append({
+            "model": data.get("model") or self.model,
+            "seconds": round(elapsed, 3),
+            "chars": len(text),
+            **{k: usage.get(k) for k in self.USAGE_FIELDS if k in usage},
+            # OpenRouter reports a real charge here. Absent elsewhere, and
+            # absent is UNKNOWN rather than zero.
+            **({"cost": usage["cost"]} if "cost" in usage else {}),
+        })
+        return text
+
+
+def from_env():
+    """The configured model, or `NoModel` if nothing is configured.
+
+    A helper rather than a default: `generate.run` still falls back to
+    `NoModel`, so a credential sitting in the environment never silently turns
+    a dry run into a paid one.
+    """
+    model = OpenAICompatibleModel()
+    return model if model.configured() else NoModel()
 
 
 # ---------------------------------------------------------------- schemas
@@ -204,7 +338,23 @@ def validate(step, data):
 # ------------------------------------------------------- fact provenance
 
 def fact_strings(rec):
-    """Every value on the record a claim may legitimately be traced to."""
+    """Every value on the record a claim may legitimately be traced to.
+
+    `hook` is NOT one of them, and was. It is written by `generate.hook` from
+    model output, so leaving it here let a retry launder the invention the
+    first attempt made: with the first hook stored, `check_hook` accepted
+    "<Company> opened a Vienna office" - refused against a fresh record -
+    because the record now "held" it. The generator cannot be its own source.
+
+    `diagnosis` is NOT one either, for the identical reason: `generate.diagnose`
+    writes it from `llm.ask(model, "diagnose", ...)`, and two of its fields
+    (`what_changed`, `last_position`) are free text no schema constrains. It
+    was measured flipping the same claim from refused to accepted. `context`
+    is the operator-supplied version of that story and stays.
+
+    `signal`, `context` and `sizing` stay: ingest columns and a ContactOut
+    people-count. The test is who wrote the value, not how it reads.
+    """
     out = set()
 
     def walk(value):
@@ -218,17 +368,51 @@ def fact_strings(rec):
             out.add(str(value).strip().lower())
 
     for field in ("company", "domain", "context", "signal", "company_facts",
-                  "contacts", "diagnosis", "hook", "sizing"):
+                  "contacts", "sizing"):
         walk(rec.get(field))
+    # THE KEY IS HALF THE FACT. Walking `company_facts` took the values and
+    # dropped the names, so the pool held "48" and never "employees 48" - and
+    # `claims.support_text` has always emitted `f"{key} {value}"`. Two pools
+    # disagreeing about the same record is the defect this module keeps
+    # rediscovering. Measured on 2026-09-11, with a real model wired: the only
+    # hook it produced was "<Company> has offices in London and Bristol",
+    # which is TRUE and was REFUSED, because "offices" was nowhere in the
+    # pool. A gate that refuses what the record actually holds is an outage,
+    # and it was refusing while looser paths passed fabrications.
+    #
+    # Emitted as one string per fact, key first, so the words stay adjacent
+    # and `traceable` can see the phrasing rather than a bag of tokens.
+    for key, value in (rec.get("company_facts") or {}).items():
+        if isinstance(value, (list, tuple)):
+            value = " ".join(str(v) for v in value if v not in (None, ""))
+        if value not in (None, "", True, False, [], {}):
+            out.add(f"{key} {value}".strip().lower())
+    # Desk research, which `claims.support_text` has always counted as support
+    # and this never saw. The whole entry is not a fact - the source URL, the
+    # provider name and the persona tag are bookkeeping, and walking them in
+    # would license words like "news" and "operations" - so take the claim the
+    # entry actually makes, the same field `support_text` reads.
+    for entry in rec.get("research") or []:
+        if isinstance(entry, dict):
+            walk(entry.get("fact"))
     return out
 
 
-# A fact shorter than this share of the claim does not make the claim
-# traceable. See `traceable`.
-TRACEABLE_COVERAGE = 0.5
+def identity_of(rec, contact=None):
+    """Who this is, as words that prove nothing about what they did.
+
+    `claims.identity_tokens` already decides this - the company, its domain,
+    the industry we filed it under, the person's name and title - and it is
+    imported rather than restated. The last time this module and `claims`
+    each had their own idea of one thing, they disagreed for a month and a
+    model-written hook was the evidence a claim was checked against.
+    """
+    from . import claims
+
+    return claims.identity_tokens(rec, contact)
 
 
-def traceable(claim, facts):
+def traceable(claim, facts, identity=frozenset()):
     """A claim is traceable if a known fact actually accounts for it.
 
     THE HOLE THIS CLOSES, WHICH WAS WIDE. This used to be
@@ -250,10 +434,12 @@ def traceable(claim, facts):
     wrote the claim, certified it, and the certification was what the claim
     checker consulted.
 
-    Two rules now. A fact may only account for a claim it substantially covers,
-    so a nine-character company name cannot license a sixty-character
-    invention. And every number in the claim must appear in some fact, because
-    a figure nobody recorded is the most quotable thing a model can invent.
+    Two rules. One fact must account for the claim's wording - every adjacent
+    pair of its content words has to be adjacent in that same fact - so naming
+    the company buys no room for what follows it and a scraped page cannot be
+    mined for vocabulary. And every number must appear in some fact too,
+    because a figure nobody recorded is the most quotable thing a model can
+    invent.
     """
     needle = str(claim).strip().lower()
     if not needle:
@@ -264,23 +450,109 @@ def traceable(claim, facts):
             return False
     for fact in facts:
         if needle in fact:
-            return True
-        if fact in needle and len(fact) >= TRACEABLE_COVERAGE * len(needle):
+            return True          # said verbatim by something we hold
+    # EVERY WORD, NOT ENOUGH CHARACTERS.
+    #
+    # The rule here used to be `fact in needle and len(fact) >= 0.5 *
+    # len(needle)`, which measures the wrong thing: a fact licenses an
+    # invention up to its own length, so the longer a company's name the more
+    # room it buys. Measured on 2026-09-11 - a twenty-character company name
+    # made "<Company> raised a Series B" traceable at thirty-eight characters,
+    # while the true evidence "48 employees" was REJECTED for being short.
+    # Wrong in both directions at once.
+    #
+    # This fixes the first direction. "48 employees" is still refused, for a
+    # SECOND and separate reason: `fact_strings` walks `company_facts` values
+    # and drops the keys, so the pool holds "48" and never "employees 48" the
+    # way `support_text` does. No claim in the real corpus needs it - 219 of
+    # 219 stored claims are traceable without it - so it is recorded rather
+    # than fixed here.
+    #
+    # So the question is whether the facts account for what the claim SAYS.
+    # Every content word has to appear somewhere in them. The company name is
+    # itself a fact, so naming the company still costs nothing - and `raised`,
+    # `series` or `vienna` are then the words that have to be earned.
+    # ADJACENCY, BECAUSE A BAG OF WORDS CAN BE REASSEMBLED.
+    #
+    # The first version of this rule asked whether every content word appeared
+    # anywhere in the facts JOINED TOGETHER. That closed the length loophole
+    # and opened a worse one: `fact_strings` now carries scraped research, and
+    # the largest single fact on the real queue is 12,000 characters of website
+    # copy. Any sentence built from words that page happens to contain was
+    # "traceable". Measured on 2026-09-11 against a real record, all three of
+    # these PASSED, and the middle one is printed verbatim as the first line
+    # the prospect reads:
+    #
+    #     "<Company> has been hiring project managers across the design team"
+    #     "<Company> is hiring for project management and production roles"
+    #
+    # So a fact has to account for the claim's PHRASING, not merely donate
+    # vocabulary to it. Every adjacent pair of content words in the claim must
+    # be adjacent in ONE fact. Scavenging across a page cannot satisfy that,
+    # and neither can stitching two unrelated facts together.
+    #
+    # The cost of this is nil on real evidence: of 219 stored claims on the
+    # real queue, 219 pass by the verbatim branch above and NONE needed the
+    # word-level branch at all.
+    # WHO THEY ARE IS FREE; WHAT THEY DID IS NOT. `identity` is the company,
+    # its domain, the industry we filed it under and the person's own name -
+    # words that are in the pool by construction and so prove nothing. They
+    # are exempt from the adjacency test, because the company name and the
+    # fact about the company are two different facts and always will be:
+    # requiring one fact to carry both refuses "<Company> has offices in
+    # London and Bristol" against a record that holds exactly that.
+    #
+    # Everything else has to be accounted for by ONE fact, in that fact's own
+    # phrasing - every word present, and every adjacent pair still adjacent.
+    words = re.findall(r"[a-z][a-z\-]{3,}", needle)
+    if not words:
+        return False
+    said = [w for w in words if w not in identity]
+    if not said:
+        return True                  # nothing claimed beyond who they are
+    pairs = [(a, b) for a, b in zip(words, words[1:])
+             if a not in identity and b not in identity]
+    for fact in facts:
+        spoken = re.findall(r"[a-z][a-z\-]{3,}", fact)
+        if not all(word in spoken for word in said):
+            continue
+        if all(pair in set(zip(spoken, spoken[1:])) for pair in pairs):
             return True
     return False
 
 
 def check_hook(hook, rec):
-    """Specific means checkable against this record, not merely well written."""
-    words = {w for w in re.findall(r"[a-z0-9]{5,}", str(hook).lower())}
-    if not words:
+    """Specific means checkable against this record, not merely well written.
+
+    THE SAME RULE AS `check_evidence`, AND IT WAS NOT. This asked whether ANY
+    single five-letter word of the hook appeared anywhere in the record's
+    facts - and the company name is always one of those facts, so every hook
+    that mentioned the company was "checkable". Measured on 2026-09-11, all
+    three of these were ACCEPTED against a record holding an industry and a
+    headcount and nothing else:
+
+        "<Company> raised a Series B and opened a Vienna office."
+        "<Company> lost its largest retainer last month."
+        "The design agency has stopped tracking time entirely."
+
+    `traceable`'s own docstring describes this defect, names that same Series B
+    example, and says it was closed. It was closed for `check_evidence` and
+    left here - one function over, on the path that writes `rec["hook"]`.
+
+    That mattered because the certification became evidence. `generate.hook`
+    stores the hook on the record and `claims.support_text` read it back, so a
+    claim the checker refused became a claim it allowed once an invented hook
+    was on the record. A measured BLOCK -> PASS flip, caused by the generator
+    certifying its own output. `support_text` no longer reads the hook either;
+    both halves of that loop are now cut.
+    """
+    if not re.findall(r"[a-z0-9]{5,}", str(hook).lower()):
         raise SchemaError("hook has nothing specific in it")
-    facts = fact_strings(rec)
-    haystack = " ".join(facts)
-    if not any(w in haystack for w in words):
+    if not traceable(hook, fact_strings(rec), identity_of(rec)):
         raise SchemaError(
-            "hook is not checkable against the record: nothing in it appears in "
-            "the signal or the company facts. It must be one specific fact about them.")
+            "hook is not traceable to this record: no stored fact substantially "
+            "accounts for it. Naming the company is not a fact about them - it "
+            "must be one specific thing the record already holds.")
     return hook
 
 

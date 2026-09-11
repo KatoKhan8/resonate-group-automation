@@ -56,6 +56,12 @@ ALLOWED = {
     ("src/providers/blitz.py", "POST"),
     ("src/providers/deliverable.py", "DYNAMIC"),
     ("src/providers/heyreach.py", "POST"),
+    # A completion is a POST that changes nothing at the other end: it creates
+    # no campaign, touches no lead, and is not prospect-facing, so it does not
+    # belong under `providerwrites`. It is declared here rather than waved
+    # through because it is still egress that SPENDS MONEY, and the point of
+    # this list is that somebody chose each row on purpose.
+    ("src/llm.py", "POST"),
 }
 
 # Calls that name a verb. `request("POST", ...)` is this repo's own transport;

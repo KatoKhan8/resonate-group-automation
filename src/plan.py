@@ -220,11 +220,24 @@ def execution_plan(campaign, recs=None, config=None, days=None):
     # suppression list for the whole batch, not one of each per record.
     paused_set = cadence.paused_domains(recs)
     suppressed = ingest.load_suppress()
+    # THE THIRD HOIST. `campaigns.approval_is_current` rebuilds the campaign's
+    # whole approval material, and `material()` rebuilds the cadence for every
+    # record in the campaign - so asking it per contact per step made this loop
+    # quadratic. Measured 2026-09-11: 5.03 x K^2 `cadence.build` calls, K^2.27
+    # overall, 40.3s for a 160-record campaign. Hoisted: K^0.99 and 0.24s.
+    #
+    # It is a fact about (campaign, recs, config), all fixed for this loop, not
+    # an authorization. `executionguard` recomputes it at send time
+    # (`executionguard.py:250`), so a stale answer here can hold a step and can
+    # never release one.
+    approval_current = (campaigns.approval_is_current(campaign, recs, config)
+                        if campaign is not None else None)
     rows = []
     for rec in _records(campaign, recs):
         rows.extend(eligibility.for_record(rec, campaign, recs, config,
                                            suppressed=suppressed,
-                                           paused_set=paused_set))
+                                           paused_set=paused_set,
+                                           approval_current=approval_current))
     summary = eligibility.summarise(rows)
 
     validation = campaigns.validate(campaign.get("campaign_id"), recs, config,

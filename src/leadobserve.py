@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+"""What the provider did to a staged lead, recorded when it changes.
+
+## Why this exists
+
+Nothing in this system could record that a LinkedIn invitation went out.
+`touch.CONFIRMING_EVENTS` is writable only by a send path that raises or by a
+webhook HeyReach does not expose, so a canary's first touch was unrecordable by
+construction - the funnel would report zero confirmed actions for ever while a
+real person sat in a live campaign.
+
+`heyreach.campaign_leads` answers it per lead. This is the durable half: read
+provider truth, compare it to the last thing recorded, and append a row ONLY
+when the state actually moved.
+
+## Rules
+
+**A transition is provider truth or it does not exist.** Nothing here derives a
+state from elapsed time, from campaign status, or from a counter.
+`progressStats` is never consulted: it is a residual that counts a lead which
+has done nothing and goes negative on live campaigns.
+
+**Campaign ACTIVE is not a send.** The canary campaign moved to `IN_PROGRESS`
+the moment an operator unpaused it, while its one lead still read
+`Pending / None / lastActionTime null`. Anything that treated the campaign
+status as the action would have reported a message nobody received.
+
+**Exactly once.** A row is appended only when `state` differs from the last row
+for that lead, so polling every minute for a week leaves one row per real
+change. That is what makes "transition the logical action to OBSERVING exactly
+once" enforceable rather than aspirational.
+
+**UNKNOWN is recorded, not resolved.** An unrecognised provider value becomes
+`heyreach.LIFECYCLE_UNKNOWN` upstream and is stored with the raw words beside
+it, so a vocabulary change shows up as a row a person can read rather than as a
+silently neighbouring state.
+
+## What it is not
+
+It is not the action ledger. The ledger records what THIS SYSTEM did and is the
+authority on duplicate suppression; this records what the PROVIDER did, which
+for a hand-staged canary is the only record there is. They are reconciled by
+`reconcile()`, which states plainly when one has a row the other does not -
+today that is the normal case, because the canary was staged by a person in the
+vendor UI and no reservation was ever written.
+"""
+import argparse
+import json
+import os
+import sys
+
+from . import store
+from .providers import heyreach
+
+# Every observation, append-only, beside the queue - the same argument the
+# spend ledger makes: the records and what happened to them move together.
+FILE = "lead-observations.jsonl"
+
+
+def path():
+    return os.path.abspath(os.environ.get("LEAD_OBSERVATIONS")
+                           or os.path.join(os.path.dirname(store.queue_path()),
+                                           FILE))
+
+
+def load():
+    try:
+        return store.read_jsonl(path())
+    except FileNotFoundError:
+        return []
+
+
+def last_for(campaign_id, lead_id, rows=None):
+    """The most recent recorded state for one lead, or None."""
+    found = None
+    for row in (load() if rows is None else rows):
+        if (str(row.get("campaign_id")) == str(campaign_id)
+                and str(row.get("provider_lead_id")) == str(lead_id)):
+            found = row
+    return found
+
+
+def observe(campaign_id, now=None):
+    """Read the provider and append a row for every lead that moved.
+
+    Returns the rows appended, which is empty on a quiet poll - and an empty
+    list is the ordinary answer. A poller that wrote something every tick would
+    make a week of nothing look like a week of activity.
+    """
+    leads, total = heyreach.campaign_leads(campaign_id)
+    stats = heyreach.campaign_stats(campaign_id)
+    campaign = heyreach.campaign_by_id(campaign_id) or {}
+    rows = load()
+    appended = []
+    for lead in leads:
+        previous = last_for(campaign_id, lead.get("provider_lead_id"), rows)
+        if previous is not None and previous.get("state") == lead.get("state"):
+            continue
+        appended.append({
+            "at": now or store.now(),
+            "campaign_id": str(campaign_id),
+            "campaign_status": campaign.get("status"),
+            "provider_lead_id": lead.get("provider_lead_id"),
+            "provider_profile_id": lead.get("provider_profile_id"),
+            "sender_id": lead.get("sender_id"),
+            "state": lead.get("state"),
+            "was": (previous or {}).get("state"),
+            # The provider's own words and its own timestamp. `at` above is
+            # when this system looked; `provider_at` is when the provider says
+            # it happened, and conflating them would date every action to
+            # whenever a poll happened to run.
+            "provider_at": lead.get("at"),
+            "raw": lead.get("raw"),
+            "error_code": lead.get("error_code"),
+            "why": lead.get("why"),
+            "lead_count": total,
+            "campaign_stats": stats,
+        })
+    if appended:
+        with store.file_transaction(path()) as existing:
+            existing.extend(appended)
+    return appended
+
+
+def history(campaign_id=None):
+    rows = load()
+    if campaign_id is None:
+        return rows
+    return [r for r in rows if str(r.get("campaign_id")) == str(campaign_id)]
+
+
+def reached(campaign_id):
+    """Leads the provider says have actually been contacted.
+
+    `heyreach.REACHED` deliberately excludes FAILED: a failed lead may already
+    have been accepted, and 28 of 851 sampled leads were exactly that.
+    """
+    seen = {}
+    for row in history(campaign_id):
+        seen[row.get("provider_lead_id")] = row.get("state")
+    return {lead for lead, state in seen.items() if state in heyreach.REACHED}
+
+
+def reconcile(campaign_id):
+    """What the provider did, beside what this system recorded doing.
+
+    For a hand-staged canary the honest answer is that the ledger is empty and
+    the provider acted anyway, because a person staged the lead in the vendor
+    UI. That is a difference worth stating rather than smoothing over: it is
+    the reason `funnel.provider_staged` reads 0 while a real prospect sits in a
+    live campaign.
+    """
+    from . import actionledger
+
+    ledger = {row.get("key") for row in actionledger.load()
+              if str(row.get("campaign_id")) == str(campaign_id)}
+    seen = reached(campaign_id)
+    rows = history(campaign_id)
+    if not rows:
+        note = "nothing observed yet; this campaign has never been read"
+    elif seen and not ledger:
+        note = ("the provider has acted on leads this system never reserved: "
+                "the campaign was staged by hand in the vendor UI, so there is "
+                "no ledger row to reconcile against")
+    elif seen and ledger:
+        note = "both sides have rows; compare them lead by lead"
+    else:
+        note = ("observed, and the provider has not contacted anybody yet. "
+                "The leads are enrolled and waiting on the provider's own "
+                "schedule")
+    return {"campaign_id": str(campaign_id),
+            "provider_reached": sorted(str(x) for x in seen),
+            "ledger_keys": sorted(ledger),
+            "observations": len(rows),
+            "note": note}
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="python -m src.leadobserve",
+                                description=__doc__)
+    p.add_argument("--campaign", required=True, help="provider campaign id")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--history", action="store_true",
+                   help="print what has been recorded, without reading the "
+                        "provider")
+    a = p.parse_args(argv)
+
+    if a.history:
+        rows = history(a.campaign)
+    else:
+        rows = observe(a.campaign)
+    if a.json:
+        print(json.dumps(rows, indent=1))
+        return 0
+    if not rows:
+        print(f"campaign {a.campaign}: no change since the last observation")
+        return 0
+    for row in rows:
+        print(f"{row['at']}  lead {row['provider_lead_id']}  "
+              f"{row.get('was') or '-'} -> {row['state']}"
+              + (f"  ({row['error_code']})" if row.get("error_code") else ""))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

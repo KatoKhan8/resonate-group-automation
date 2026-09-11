@@ -12,6 +12,7 @@ Blocking is a policy decision here, not a severity. A finding blocks when
 proceeding would do something this system exists to prevent; everything else
 warns, because a reviewer blocked on untidiness learns to override blocks.
 """
+import datetime
 import unittest
 
 from src import cadencegraph as cg, campaignqa, events
@@ -165,10 +166,19 @@ class WhatBlocks(QATest):
                             for why in self.blocking(self.review(graph))))
 
     def test_a_contact_already_past_a_pacing_limit(self):
+        """THE WEEK IS THE WEEK BEFORE NOW, so the fixture has to be recent.
+
+        These were three fixed dates in August. `fatigue` measured its window
+        from the most recent touch rather than from the proposed action, so
+        three touches a day apart were "three touches this week" however long
+        ago they happened - and this test went on passing while saying nothing
+        about pacing. Dates relative to now keep it asserting what it claims.
+        """
         rec = self.record()
-        for day, at in enumerate(("2026-08-01T09:00:00+00:00",
-                                  "2026-08-02T09:00:00+00:00",
-                                  "2026-08-03T09:00:00+00:00"), start=1):
+        base = datetime.datetime.now(datetime.timezone.utc)
+        for day, at in enumerate(
+                [(base - datetime.timedelta(days=n)).isoformat()
+                 for n in (3, 2, 1)], start=1):
             events.record(rec, events.PUSH_MARKED, contact_key="john",
                           channel="email", day=day, at=at, sender_id="anna")
         blocking = self.blocking(self.review(self.full(), rec=rec))

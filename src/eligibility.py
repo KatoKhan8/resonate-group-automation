@@ -379,8 +379,23 @@ def _selected(rec, contact, campaign=None):
     return None
 
 
-def _campaign(campaign, recs, config):
-    """The campaign's own state. None when there is no campaign in play."""
+def _campaign(campaign, recs, config, approval_current=None):
+    """The campaign's own state. None when there is no campaign in play.
+
+    `approval_current` IS THE SAME ANSWER, COMPUTED ONCE FOR A BATCH.
+    `campaigns.approval_is_current` rebuilds the campaign's whole approval
+    material, and `material()` rebuilds the cadence for EVERY record in the
+    campaign - so asking it once per contact per step made a batch quadratic.
+    Measured on 2026-09-11 over a synthetic campaign: `cadence.build` was
+    called 5.03 x K^2 times (510 at K=10, 8,040 at K=40), and per-record cost
+    grew from 8.6ms at K=10 to 252ms at K=160, fitting K^2.27.
+
+    It is safe to hoist because it is a FACT about (campaign, recs, config),
+    all three of which are fixed for the life of a batch loop, and `decide` is
+    read-only. It is not an authorization: `executionguard` computes this gate
+    freshly at send time on its own path, so a stale batch answer can hold a
+    step but can never release one.
+    """
     if campaign is None:
         return None
     given = campaign.get("approval") or {}
@@ -413,7 +428,9 @@ def _campaign(campaign, recs, config):
         return BLOCKED_CAMPAIGN_LAUNCHED
     if not given:
         return HELD_CAMPAIGN_UNAPPROVED
-    if not campaigns.approval_is_current(campaign, recs, config):
+    current = (campaigns.approval_is_current(campaign, recs, config)
+               if approval_current is None else approval_current)
+    if not current:
         return HELD_CAMPAIGN_STALE
     return None
 
@@ -521,7 +538,8 @@ def _separation(rec, contact, step, min_days):
 
 def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
            config=None, day=None, timeline=None, suppressed=None,
-           min_separation_days=DEFAULT_MIN_SEPARATION_DAYS, step=None):
+           min_separation_days=DEFAULT_MIN_SEPARATION_DAYS, step=None,
+           approval_current=None):
     """May this one step go out right now? The only authority on the question.
 
     `step` is the exact content about to be sent. Pass it: a caller that has a
@@ -574,7 +592,7 @@ def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
             return _decide(BLOCKED if reason.startswith("blocked") else HELD,
                            [reason], step=step_key, channel=channel)
 
-    campaign_reason = _campaign(campaign, given_recs, config)
+    campaign_reason = _campaign(campaign, given_recs, config, approval_current)
     if campaign_reason:
         return _decide(BLOCKED if campaign_reason.startswith("blocked") else HELD,
                        [campaign_reason], step=step_key, channel=channel)
@@ -723,13 +741,18 @@ def _chosen_evidence(rec, contact):
 # ------------------------------------------------------------------ batching
 
 def for_record(rec, campaign=None, recs=None, config=None, day=None,
-               suppressed=None, paused_set=None):
+               suppressed=None, paused_set=None, approval_current=None):
     """Every step of every contact on one record, decided.
 
     `paused_set` and `suppressed` are the two things a caller looping over a
     whole batch must hoist. Without them this rescans every record and rereads
     the suppression file once per record, which is quadratic and was measured
     at fifteen seconds for 5,000 domains before it was removed elsewhere.
+
+    `approval_current` IS THE THIRD, and it was the expensive one. See
+    `_campaign`: it was measured at 5.03 x K^2 `cadence.build` calls across a
+    batch. Hoisted here per record, and a batch caller should hoist it once
+    for the whole loop and pass it in.
     """
     if config is None:
         try:
@@ -739,6 +762,10 @@ def for_record(rec, campaign=None, recs=None, config=None, day=None,
     recs = [rec] if recs is None else recs
     if paused_set is None:
         paused_set = cadence.paused_domains(recs)
+    # Asked ONCE for this record rather than once per contact per step. A
+    # caller looping a batch should pass it in and pay for it once overall.
+    if approval_current is None and campaign is not None:
+        approval_current = campaigns.approval_is_current(campaign, recs, config)
     timeline = cadence.build(rec, config, recs=recs, paused_set=paused_set,
                              campaign=campaign).get("contacts") or {}
     suppressed = ingest.load_suppress() if suppressed is None else suppressed
@@ -750,7 +777,8 @@ def for_record(rec, campaign=None, recs=None, config=None, day=None,
                 "step": step_key,
                 "decision": decide(rec, contact, step_key, campaign=campaign,
                                    recs=recs, config=config, day=day,
-                                   timeline=timeline, suppressed=suppressed),
+                                   timeline=timeline, suppressed=suppressed,
+                                   approval_current=approval_current),
             })
     return out
 

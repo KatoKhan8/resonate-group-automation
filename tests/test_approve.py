@@ -2,6 +2,7 @@
 
 Lint clean is a precondition for approval, never a substitute for it.
 """
+import contextlib
 import os
 import shutil
 import tempfile
@@ -9,6 +10,26 @@ import unittest
 
 from src import approval, approve, cadence, clients, lint, push, store
 from tests.base import FIXTURES
+
+
+@contextlib.contextmanager
+def degraded_fixture():
+    """Construct a record that was never fully verified.
+
+    NOT a write under test. `store.transaction()` now runs the same loss
+    guards as `save` - `refuse_evidence_loss` and `refuse_history_loss` - so
+    the path that used to let a fixture delete paid verification evidence
+    correctly refuses. These tests need a HALF-confirmed contact, and they
+    were building one by degrading a fully-confirmed one, which is exactly
+    the write the guard exists to stop.
+
+    Writing the state directly keeps the fixture honest about what it is: a
+    starting condition, not an operation the product performs.
+    """
+    recs = store.load()
+    yield recs
+    store._write(recs)
+
 
 PARA = chr(10) * 2
 
@@ -397,7 +418,7 @@ class TestTheRecordLevelState(ApproveTest):
 
     def test_a_record_with_nothing_approvable_is_not_called_approved(self):
         """Vacuous truth is the trap: all() over an empty list is True."""
-        with store.transaction() as recs:
+        with degraded_fixture() as recs:
             rec = store.get("meridian", recs)
             rec["contacts"] = []
             rec["cadence"] = {}

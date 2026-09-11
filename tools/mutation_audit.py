@@ -2024,8 +2024,8 @@ MUTATIONS = [
 
     ('campaign wiring: eligibility.py: the campaign check judges a one-record world again',
      'src/eligibility.py',
-     'campaign_reason = _campaign(campaign, given_recs, config)',
-     'campaign_reason = _campaign(campaign, recs, config)',
+     'campaign_reason = _campaign(campaign, given_recs, config, approval_current)',
+     'campaign_reason = _campaign(campaign, recs, config, approval_current)',
      'tests.test_campaign_cadence_wiring'),
 
     ('campaign sweep: approve: what a human is asked to approve reverts to the constant',

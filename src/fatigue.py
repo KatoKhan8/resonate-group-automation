@@ -38,7 +38,7 @@ it.
 """
 import datetime
 
-from . import account
+from . import account, store
 
 # Sensible-but-arbitrary starting points. Every one of them is overridable,
 # and `limits()` reports whether the value in force was configured or fell
@@ -139,6 +139,24 @@ def _within_week(touches, of):
     return kept
 
 
+# The week is measured from the PROPOSED action, never from the last one.
+#
+# `_within_week(confirmed, at or last["at"])` anchored the window to the most
+# recent historical touch whenever no `at` was supplied - and `_hours_between`
+# returns an ABSOLUTE difference, so the window was seven days either side of
+# that anchor rather than a trailing week. Three touches a year ago stayed
+# "3 touches in the last week" for ever, and the count never decayed.
+#
+# Measured on 2026-09-11: three touches, all over a year old, answered
+# `block {recent: 3}` with no `at` and `ok {recent: 0}` with `at` = now.
+#
+# So an absent `at` means now, not "whenever we last acted". This does let
+# some long-dormant records through that were blocked before - which is the
+# rule doing what it always claimed to do, not a cap being loosened.
+def _window_origin(at, touches):
+    return at or store.now()
+
+
 def contact_check(rec, contact_key, at=None, config=None):
     """Whether one more touch to this person is within policy.
 
@@ -162,7 +180,7 @@ def contact_check(rec, contact_key, at=None, config=None):
                          f"only {gap:.0f}h since the last touch; the limit is "
                          f"{minimum}h"))
 
-    recent = _within_week(confirmed, at or last.get("at"))
+    recent = _within_week(confirmed, _window_origin(at, confirmed))
     weekly = rules["contact.max_touches_per_week"]["value"]
     if len(recent) >= weekly:
         findings.append((BLOCK,
@@ -213,8 +231,7 @@ def account_check(rec, at=None, config=None, contact_key=None):
                          f"configured limit"))
 
     confirmed = graph["confirmed_touches"]
-    recent = _within_week(confirmed, at or (confirmed[-1]["at"]
-                                            if confirmed else None))
+    recent = _within_week(confirmed, _window_origin(at, confirmed))
     weekly = rules["account.max_touches_per_week"]["value"]
     if len(recent) >= weekly:
         findings.append((BLOCK,

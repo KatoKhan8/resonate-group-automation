@@ -150,7 +150,13 @@ VARIABLES = (
     ("APIFY_TOKEN", LIVE, "providers",
      "research actors. Bounded, SSRF-guarded, and not run in this build"),
     ("LLM_API_KEY", LIVE, "providers",
-     "draft generation. No live model call is made in this build"),
+     "draft generation, through any OpenAI-compatible endpoint"),
+    ("LLM_BASE_URL", LIVE, "providers",
+     "the OpenAI-compatible endpoint to call. Set it to point at OpenRouter, "
+     "a local server, or anything else speaking that shape; unset means no "
+     "model is configured and generation refuses"),
+    ("LLM_MODEL", LIVE, "providers",
+     "the model id to ask for, in whatever form the endpoint expects"),
 
     ("SLACK_BOT_TOKEN", LIVE, "slack",
      "a token alone never enables posting; SLACK_LIVE must also be set"),

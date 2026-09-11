@@ -46,7 +46,7 @@ it refuses to answer at all.
 import argparse
 import json
 
-from . import store
+from . import linkedin, store
 from .providers import bison, heyreach, request, ok
 
 LEADS_PATH = "/leads"
@@ -211,26 +211,30 @@ def touches_of(row):
 
 
 def profile_slug(url):
-    """The stable part of a LinkedIn profile URL: `/in/<slug>`.
+    """The stable part of a LinkedIn profile URL, via the canonical form.
 
-    Matching is done on this rather than on the whole URL because the same
-    profile is written `linkedin.com/in/x`, `www.linkedin.com/in/x/`,
-    `uk.linkedin.com/in/x?trk=...` and with an encoded name, and two of those
-    forms are already in this repository's own state.
+    THIS IS `linkedin.key`, and it used to be a second implementation of it.
+    The two disagreed exactly where it mattered: this one split on `?` but not
+    `#`, and never percent-decoded, while `linkedin.canonical` does both. The
+    docstring here already named the problem - "the same profile is written
+    ... and with an encoded name" - and then did not handle that case.
+
+    Measured on 2026-09-11 against a real conversation in the client's own
+    inbox, on the client's own seat, where the prospect had REPLIED:
+
+        .../in/jan-novak          -> in_sequence   (found)
+        .../in/jan-novak/         -> in_sequence   (found)
+        .../in/jan-novak#about    -> CLEAR         (missed)
+        .../in/jan%2Dnovak        -> CLEAR         (missed)
+
+    A miss here is a false CLEAR on the wrong-person gate, which is how
+    somebody who already answered gets written to again. Two spellings of one
+    identity is the defect; one function is the fix.
+
+    Empty string, never None, because callers treat "" as "unanswerable" and
+    raise rather than compare two blanks and call them equal.
     """
-    text = str(url or "").strip().lower().split("?")[0].rstrip("/")
-    if not text:
-        return ""
-    if "/in/" in text:
-        text = text.rsplit("/in/", 1)[-1]
-    elif "linkedin.com" in text or text.endswith("/in"):
-        # A LinkedIn URL carrying no profile. Falling through here used to
-        # return `https:` - the first path segment of the bare host - and a
-        # garbage slug is worse than no slug, because two of them compare
-        # equal and clear each other.
-        return ""
-    slug = text.strip("/").split("/")[0]
-    return "" if (":" in slug or "." in slug) else slug
+    return linkedin.key(url) or ""
 
 
 def conversations_named(name, max_pages=10, page_size=100):

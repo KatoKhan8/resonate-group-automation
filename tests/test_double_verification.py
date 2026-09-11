@@ -9,10 +9,31 @@ or a payload builder that trusts what it was handed.
 
 Everything is decided offline from normalised evidence. No provider is called.
 """
+import contextlib
 import unittest
 
 from src import eligibility, lint, push, store, verification as v
 from tests.base import FIXTURES, ProviderTest
+
+
+@contextlib.contextmanager
+def degraded_fixture():
+    """Construct a record that was never fully verified.
+
+    NOT a write under test. `store.transaction()` now runs the same loss
+    guards as `save` - `refuse_evidence_loss` and `refuse_history_loss` - so
+    the path that used to let a fixture delete paid verification evidence
+    correctly refuses. These tests need a HALF-confirmed contact, and they
+    were building one by degrading a fully-confirmed one, which is exactly
+    the write the guard exists to stop.
+
+    Writing the state directly keeps the fixture honest about what it is: a
+    starting condition, not an operation the product performs.
+    """
+    recs = store.load()
+    yield recs
+    store._write(recs)
+
 
 EMAIL = "someone@example.test"
 
@@ -434,7 +455,7 @@ class TestTheReasonCodeReachesTheCaller(ProviderTest):
     def test_a_half_confirmed_contact_reports_the_shortfall_code(self):
         from src import cadence, clients
         config = clients.load("productive")
-        with store.transaction() as recs:
+        with degraded_fixture() as recs:
             rec = store.get("meridian", recs)
             person = rec["contacts"][0]
             evidence = [ev("contactout", v.S_VALID)]
@@ -527,7 +548,7 @@ class TestTheLaunchChecklist(ProviderTest):
         self.assertTrue(ok, detail)
 
     def test_an_under_confirmed_recipient_fails_the_check(self):
-        with store.transaction() as recs:
+        with degraded_fixture() as recs:
             rec = store.get("meridian", recs)
             person = rec["contacts"][0]
             evidence = [v.result("contactout", v.S_VALID, person["email"])]
@@ -541,7 +562,7 @@ class TestTheLaunchChecklist(ProviderTest):
     def test_the_failure_names_the_shortfall_not_a_bad_address(self):
         """"Not sendable" sends a reviewer looking for a broken address. The
         truth is usually that the address is fine and one call is missing."""
-        with store.transaction() as recs:
+        with degraded_fixture() as recs:
             rec = store.get("meridian", recs)
             person = rec["contacts"][0]
             evidence = [v.result("contactout", v.S_VALID, person["email"])]

@@ -303,6 +303,46 @@ class EachGateStopsTheProviderCallEntirely(GuardTest):
         self.campaign["org_unit"] = ""
         self.refused_at("tenancy")
 
+    def test_an_unnamed_email_workspace_is_refused_at_tenancy(self):
+        """NO CLIENT CONTEXT IS NO PROVIDER AUTHORIZATION.
+
+        The email branch called `bison.require_workspace(workspace)`, which
+        returns None for an unpinned read WITHOUT calling the binding route -
+        correct for a read, and no assertion at all for gate 1. So `None`
+        appended "tenancy" to the trace having proved nothing, while the
+        LinkedIn branch beside it required an org_unit.
+
+        The same `None` then reached gate 4, where
+        `collision.check_address(expect_workspace=None)` reads prior contact
+        from whatever estate the credential was last bound to. An empty
+        foreign estate answers CLEAR and the trace reads tenancy PASS,
+        collision PASS - the 2026-09-09 false clear through the front door.
+        """
+        for unnamed in (None, "", "   "):
+            with self.subTest(workspace=repr(unnamed)):
+                with self.assertRaises(executionguard.NotAuthorized) as caught:
+                    self.authorize(channel="email", workspace=unnamed,
+                                   operation="email_send")
+                self.assertEqual(caught.exception.gate, "tenancy")
+
+    def test_a_named_email_workspace_gets_past_the_naming_check(self):
+        """A gate that refuses every email is an outage, not a gate.
+
+        The binding route is stubbed because THIS test is about the naming
+        check, not about whether the credential really is bound where it
+        claims - `test_the_credential_is_the_tenancy_boundary` owns that, and
+        an unstubbed call here would refuse for a network reason and look
+        like the guard working.
+        """
+        from src.providers import bison
+        with mock.patch.object(bison, "require_workspace",
+                               lambda expected: expected):
+            with self.assertRaises(executionguard.NotAuthorized) as caught:
+                self.authorize(channel="email", workspace=WS,
+                               operation="email_send")
+        self.assertNotEqual(caught.exception.gate, "tenancy",
+                            "a named workspace was still refused at tenancy")
+
     def test_a_stale_approval_prevents_the_call(self):
         """Change the words after approval; the fingerprint moves."""
         with store.transaction() as rows:

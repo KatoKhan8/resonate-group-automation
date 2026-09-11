@@ -459,7 +459,12 @@ class ContactFatigue(AccountTest):
                            ("mark", "2026-08-02T09:00:00+00:00"),
                            ("petar", "2026-08-03T09:00:00+00:00")):
             self.touch(rec, JOHN, sender, "email", 1, at=at)
-        verdict = fatigue.contact_check(rec, JOHN)
+        # SAY WHICH MOMENT. The week is measured from the proposed action, and
+        # this used to be measured from the last touch instead - so a fixture
+        # dated August warned for ever, however long ago August was. Stating
+        # `at` is what the sibling tests do and what the guard now receives.
+        verdict = fatigue.contact_check(rec, JOHN,
+                                        at="2026-08-04T09:00:00+00:00")
         self.assertIn("different people",
                       " ".join(f["why"] for f in verdict["findings"]))
 

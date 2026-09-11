@@ -19,7 +19,7 @@ import contextlib
 import unittest
 from unittest import mock
 
-from src import actionledger, executionguard, providerwrites
+from src import actionledger, executionguard, providerwrites, store
 
 from tests.base import QueueTest
 
@@ -243,9 +243,14 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         self.assertEqual(spy.calls, [])
 
     def test_one_authorization_cannot_drive_two_writes(self):
+        store.save([dict(store.new_record("rec", "cold", "productive",
+                                          "Kestrel Wharf Studio",
+                                          "kestrelwharf.test"),
+                         contacts=[{"key": "contact", "name": "Dana"}])])
         auth = executionguard.Authorization(
             key="rec:contact:day3:linkedin", channel="linkedin",
-            operation="linkedin_connection_request")
+            operation="linkedin_connection_request",
+            rec_id="rec", contact_key="contact", step_key="day3")
         actionledger.reserve(
             auth.key, channel="linkedin", workspace="productive",
             campaign_id="canary", sender_id=116968, rec_id="rec",
@@ -271,9 +276,21 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
 
     def setUp(self):
         super().setUp()
+        # A REAL AUTHORIZATION NAMES ITS RECORD. This one named only a key,
+        # which no `executionguard.authorize` could ever produce - `reserve`
+        # below already requires rec_id, contact_key and step_key, and the
+        # object claiming the gates passed was missing all three. `perform`
+        # now records the canonical confirmed touch on that record after the
+        # read-back accepts, so a partial authorization no longer half-works:
+        # it fails closed, which is the point.
+        store.save([dict(store.new_record("rec-1", "cold", "productive",
+                                          "Kestrel Wharf Studio",
+                                          "kestrelwharf.test"),
+                         contacts=[{"key": "dana", "name": "Dana Oyelaran"}])])
         self.auth = executionguard.Authorization(
             key="rec-1:dana:day3:linkedin", channel="linkedin",
-            operation="linkedin_connection_request")
+            operation="linkedin_connection_request",
+            rec_id="rec-1", contact_key="dana", step_key="day3")
         actionledger.reserve(
             self.auth.key, channel="linkedin", workspace="productive",
             campaign_id="canary", sender_id=116968, rec_id="rec-1",
