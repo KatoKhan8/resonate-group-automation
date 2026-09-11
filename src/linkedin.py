@@ -97,10 +97,27 @@ def canonical(url):
         return None
 
     # Everything after the vanity segment is a sub-page: /detail/contact-info.
-    vanity = vanity.split("/")[0]
-    vanity = _clean_vanity(vanity)
+    #
+    # EXCEPT under /pub/, where it is part of who this is. A legacy public URL
+    # is `/pub/jan-novak/1a/2b3/4c5`, and that trailing triplet is exactly what
+    # distinguishes two members who share a vanity segment. Dropping it mapped
+    # both of them - and anybody at `/in/jan-novak`, who may be a third person
+    # - onto one identity, which is the wrong match this module opens by
+    # refusing to make: "A near-miss is an unmatched event, which is safe; a
+    # wrong match pauses somebody else's campaign."
+    #
+    # So a /pub/ URL that carries those segments keeps them and stays its own
+    # identity. A bare /pub/vanity has nothing to disambiguate and keeps its
+    # existing reading as the /in/ form of the same vanity.
+    rest = [segment for segment in vanity.split("/")[1:] if segment.strip("/")]
+    vanity = _clean_vanity(vanity.split("/")[0])
     if not vanity:
         return None
+    if lowered.startswith("/pub/") and rest:
+        tail = [_clean_vanity(segment) for segment in rest]
+        if not all(tail):
+            return None
+        return "https://www.linkedin.com/pub/" + "/".join([vanity] + tail)
     return f"https://www.linkedin.com/in/{vanity}"
 
 
@@ -126,10 +143,26 @@ def same_profile(left, right):
     return bool(a) and a == b
 
 
+PROFILE_ROOTS = tuple("https://www.linkedin.com" + prefix
+                      for prefix in PROFILE_PREFIXES)
+
+
 def key(url):
-    """The short form used as a lookup key: the vanity segment alone."""
+    """The short form used as a lookup key: everything that identifies them.
+
+    The vanity segment for an `/in/` profile. For a legacy `/pub/` one it is
+    the vanity PLUS the segments that tell two members sharing that vanity
+    apart, because those are now kept - a `rsplit` on the last slash would
+    have returned the final segment on its own and put two people one
+    character apart.
+    """
     full = canonical(url)
-    return full.rsplit("/", 1)[-1] if full else None
+    if not full:
+        return None
+    for root in PROFILE_ROOTS:
+        if full.startswith(root):
+            return full[len(root):]
+    return None
 
 
 def index(records):

@@ -3383,7 +3383,7 @@ as the same mailbox - is excluded as a "company name collision". Excluding a
 real person is the safe direction and this is not the weld, so it is recorded
 here rather than changed in a diff about identity.
 
-### A legacy `/pub/` URL collapses distinct members onto one slug
+### A legacy `/pub/` URL collapsed distinct members - FIXED 2026-09-11
 
 `linkedin.canonical()` accepts `/in/` and `/pub/` and keeps only the first
 path segment. A legacy public URL is `/pub/jan-novak/1a/2b3/4c5`, where the
@@ -3396,8 +3396,17 @@ is an unmatched event, which is safe; a wrong match pauses somebody else's
 campaign." Dropping the identifying segments turns near-misses into wrong
 matches.
 
-LATENT, not active: `work/queue.jsonl` holds zero `/pub/` URLs, and the only
-test of that prefix uses a bare `/pub/jan-novak` with no trailing segments.
-The cheap correct answer is to refuse a `/pub/` URL that carries them -
-unmatched is the safe outcome this module already prefers - rather than to
-assert an equivalence the URL does not support.
+LATENT when found: `work/queue.jsonl` holds zero `/pub/` URLs, and the only
+existing test of that prefix used a bare `/pub/jan-novak` with no trailing
+segments. Fixed anyway, because identity is the wrong place to keep a
+known-false equivalence, not because it had fired.
+
+A `/pub/` URL carrying those segments now keeps them and is its own
+identity; a bare `/pub/vanity` has nothing to disambiguate and keeps its
+existing reading as the `/in/` form. Refusing the URL outright was the other
+option and would have lost a real profile for no gain - unmatched is safe,
+but so is matched-correctly. `key()` moved with it: it returned the text
+after the last slash, which for a legacy URL is the final segment alone, so
+two members one character apart shared a lookup key. Five mutations, all
+caught, including one that kept only the first of the three segments - two
+members can share the leading pair.
