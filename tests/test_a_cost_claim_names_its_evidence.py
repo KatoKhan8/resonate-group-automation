@@ -25,9 +25,12 @@ def call(provider, name, cost):
     return {"provider": provider, "call": name, "expected_cost": cost}
 
 
-def snap(count=100, search=10, phone=5, usd=1.0):
+def snap(count=100, search=10, phone=5, usd=1.0,
+         quota=1000, search_quota=2000, phone_quota=300):
     return {"contactout": {"count": count, "search_count": search,
-                           "phone_count": phone},
+                           "phone_count": phone, "quota": quota,
+                           "search_quota": search_quota,
+                           "phone_quota": phone_quota},
             "apify": {"usd": usd}}
 
 
@@ -149,6 +152,60 @@ class ACounterThatLagsIsNotAMismatch(unittest.TestCase):
                               measured_after=60)
         self.assertEqual(verdict(out, "apify")["status"],
                          costs.COST_UNRECONCILED)
+
+
+class AFallingAllowanceIsConsumption(unittest.TestCase):
+    """The field that actually answers the question, and the sign it counts in.
+
+    MEASURED, and it cost a day. `count`, `search_count` and `phone_count` are
+    usage within a period and do NOT increment for every billable operation.
+    Twelve hours after a run that expected 243 credits all three were
+    unchanged, and this module reported COST_UNRECONCILED - while `quota` had
+    fallen 38, `search_quota` 216 and `phone_quota` 34, right beside them in
+    the same response.
+
+    "One counter is not a total" was the original lesson. This is the same
+    lesson one level deeper: the right counter is not always the one named
+    after the thing you are counting.
+    """
+
+    def calls(self, cost=243):
+        return [rec(call("contactout", "company-information-from-domain", cost))]
+
+    def test_a_quota_that_fell_is_read_as_spend(self):
+        got = costs.observed(snap(quota=1000), snap(quota=962))["contactout"]
+        self.assertEqual(got["quota"], 38)
+
+    def test_the_real_case_reconciles(self):
+        """The exact numbers from 2026-09-11."""
+        before = snap(count=570, search=102, phone=465,
+                      quota=39215, search_quota=119127, phone_quota=4370)
+        after = snap(count=570, search=102, phone=465,
+                     quota=39177, search_quota=118911, phone_quota=4336)
+        out = costs.reconcile(before, after, self.calls(), measured_after=43000)
+        self.assertEqual(verdict(out, "contactout")["status"], costs.RECONCILED)
+
+    def test_unchanged_counters_alone_no_longer_read_as_a_mismatch(self):
+        """The regression this closes, stated as the thing that was wrong."""
+        before = snap(count=570, quota=39215)
+        after = snap(count=570, quota=39177)
+        row = verdict(costs.reconcile(before, after, self.calls()), "contactout")
+        self.assertNotEqual(row["status"], costs.COST_UNRECONCILED)
+
+    def test_an_allowance_that_ROSE_is_reported_as_it_reads(self):
+        """A top-up or a plan change is a fact about the provider, not spend.
+
+        Reported negative rather than clamped, for the same reason a counter
+        that went down is: clamping is how "they extended our quota" becomes
+        "we spent nothing".
+        """
+        got = costs.observed(snap(quota=1000), snap(quota=1500))["contactout"]
+        self.assertEqual(got["quota"], -500)
+
+    def test_a_quota_nobody_read_is_still_not_zero(self):
+        before = {"contactout": {"count": 100}}
+        after = {"contactout": {"count": 100}}
+        self.assertIsNone(costs.observed(before, after)["contactout"]["quota"])
 
 
 class ItRefusesToInvent(unittest.TestCase):

@@ -84,9 +84,26 @@ SETTLING_SECONDS = 3600
 # Adding them would produce a number with no meaning, so they are reconciled
 # separately and reported separately.
 AUTHORITATIVE = {
-    "contactout": ("count", "search_count", "phone_count"),
+    "contactout": ("count", "search_count", "phone_count",
+                   "quota", "search_quota", "phone_quota"),
     "apify": ("usd",),
 }
+
+# Fields that count DOWN. A remaining allowance falling by 38 is 38 consumed,
+# so its delta has to be negated before it means anything.
+#
+# THIS IS THE FIELD THAT ACTUALLY ANSWERS THE QUESTION. `count`,
+# `search_count` and `phone_count` are usage within a period and do NOT
+# increment for every billable operation - on 2026-09-11, twelve hours after
+# a run that expected 243 credits, all three were unchanged while `quota` had
+# fallen 38, `search_quota` 216 and `phone_quota` 34. This module reported
+# COST_UNRECONCILED for a whole day because it was reading three counters
+# while the answer sat in three fields beside them.
+#
+# "One counter is not a total" was the original lesson. This is the same
+# lesson one level deeper: the right counter is not always the one named after
+# the thing you are counting.
+REMAINING = frozenset(("quota", "search_quota", "phone_quota"))
 
 # Providers with no readable counter. Named rather than inferred, so that a
 # provider nobody has thought about lands here loudly instead of silently
@@ -142,6 +159,9 @@ def observed(before, after):
             start, end = b.get(name), a.get(name)
             if start is None or end is None:
                 deltas[name] = None          # not read is not zero
+            elif name in REMAINING:
+                # Consumed = how much the allowance fell.
+                deltas[name] = round(start - end, 6)
             else:
                 deltas[name] = round(end - start, 6)
         out[provider] = deltas
