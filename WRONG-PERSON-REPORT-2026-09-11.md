@@ -247,6 +247,40 @@ flag.
 
 ---
 
+## 4b. Is the staged canary still the right one, derived today
+
+The selection was made on 2026-09-09. Rather than trust it, it was re-derived
+from current state by running `eligibility.decide` over every fully verified
+contact in the estate, for the LinkedIn day-3 step:
+
+```
+contact 1 (the staged canary)   eligible   reasons []
+contact 2                       held       held:draft_not_approved
+contact 3                       held       held:draft_not_approved
+contact 4                       held       held:draft_not_approved
+contact 5                       held       held:draft_not_approved
+```
+
+The ranking is not a judgement call today: the field of eligible candidates
+has exactly one member, and it is the contact already staged on campaign
+594061. The other four are held for one reason, and it is the same reason as
+§5g - no model, so no cadence, so no draft, so nothing approved. Their
+verification is complete and their gates are otherwise clear.
+
+The selection is deliberately NOT persisted as a set of CANARY_* fields.
+Everything it would record already has one canonical home: the campaign holds
+the record and the approval fingerprint, the provider holds the lead, and the
+verdict above is derived on demand from the state that decides it. A stored
+copy would be a second representation of a fact that is already canonical,
+and this project's rule is to prefer the canonical one - a remembered choice
+is exactly the thing that goes stale while the state it was drawn from moves.
+
+Identifiers are omitted here on purpose. This file is tracked, and
+`test_fixture_hygiene` refuses a real prospect's name or domain in tracked
+source - the domain in question is on its forbidden list.
+
+---
+
 ## 5. Where the funnel stands
 
 ```
