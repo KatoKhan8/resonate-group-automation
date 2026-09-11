@@ -3383,6 +3383,36 @@ as the same mailbox - is excluded as a "company name collision". Excluding a
 real person is the safe direction and this is not the weld, so it is recorded
 here rather than changed in a diff about identity.
 
+### A company name is an identity in one branch, and that is deliberate
+
+Looked for the account-level version of the same question - can a fact or a
+person belonging to company B land on company A - and `enrich.same_company`
+is where it lives. Its first line says "Domain is the identity" and its
+second branch then accepts a person carrying no address on a lowercase
+company-NAME match, which is the trap the first line names.
+
+Audited rather than assumed. Across all 300 records: 25 contacts, every one
+on-domain, none admitted by the name branch, and the guard has excluded 40
+people as "company name collision: not this domain". It works, and it has
+never needed the weak branch.
+
+NOT TIGHTENED, and the reason matters more than the finding. Both callers
+search BY DOMAIN - `decision_makers(rec["domain"])` and
+`people_search(companyDomain=...)` - so the payload is already scoped before
+this function sees it, and the name branch is a second opinion on that
+scoping rather than the only thing between two firms with one name. Removing
+it would reject every profile-only person a domain-scoped search returns,
+which is the population the LinkedIn lane runs on. Per the current mission's
+rule on benchmark cheating, a rule change needs evidence that the rule was
+wrong, and tightening for yield reasons is the same offence in the other
+direction.
+
+What changed is the claim, not the behaviour: the docstring now says which
+branch decides and states the caller contract - a name match is licensed by
+the caller's domain scoping, so a caller that searches any other way must
+add its own domain check. Two tests pin both branches so the next reader
+learns it from the tests rather than from an incident.
+
 ### A legacy `/pub/` URL collapsed distinct members - FIXED 2026-09-11
 
 `linkedin.canonical()` accepts `/in/` and `/pub/` and keeps only the first

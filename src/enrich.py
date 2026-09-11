@@ -292,7 +292,28 @@ def plan(rec, config=None):
 
 def same_company(person, rec, facts=None):
     """Section 9, trap 1: an owner in Nice at an unrelated company of the same
-    name must not be merged into this record. Domain is the identity."""
+    name must not be merged into this record.
+
+    Domain is the identity WHEN THERE IS ONE. That is the first branch and it
+    is the one that decides in practice - all 25 contacts in the estate today
+    came through it, and it has excluded 40 people as "not this domain".
+
+    The second branch is weaker than the sentence above, and saying so is the
+    point of this paragraph: a person carrying no address is accepted on a
+    lowercase company-NAME match, which is the very trap the first line names.
+    It is not tightened, for a reason rather than by neglect. Both callers
+    search BY DOMAIN - `decision_makers(rec["domain"])` and
+    `people_search(companyDomain=...)` - so the payload is already scoped to
+    this company before this function sees it, and this branch is a second
+    opinion on that scoping rather than the only thing standing between two
+    firms with one name. Removing it would reject every profile-only person a
+    domain-scoped search returns, which is exactly the population the LinkedIn
+    lane runs on.
+
+    So: a name match here is licensed by the caller's domain scoping, not by
+    the name. A caller that searches any other way may not use this function
+    without adding a domain check of its own.
+    """
     domain = (rec.get("domain") or "").lower()
     mail_domain = ((facts or rec.get("company_facts") or {}).get("email_domain") or "").lower()
     email = (person.get("email") or "").lower()

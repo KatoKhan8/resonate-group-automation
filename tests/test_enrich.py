@@ -146,6 +146,30 @@ class TestSection9Traps(EnrichTest):
         rec = {"domain": "meridian.test", "company": "Meridian", "company_facts": {}}
         self.assertFalse(enrich.same_company({"name": "Nobody"}, rec))
 
+    def test_trap_1_an_address_outranks_a_matching_company_name(self):
+        """The branch that decides. A payload can claim any company string it
+        likes; if it also carries an address, the address answers."""
+        rec = {"domain": "meridian.test", "company": "Meridian",
+               "company_facts": {}}
+        self.assertFalse(enrich.same_company(
+            {"company": "Meridian", "email": "a@elsewhere.test"}, rec))
+
+    def test_trap_1_a_name_match_with_no_address_is_accepted_on_purpose(self):
+        """Pinning what the second branch actually does, because the docstring
+        used to claim more than it delivered.
+
+        A person with no address rides on a lowercase company-name match. That
+        is licensed by the CALLER - both search by domain, so the payload is
+        already scoped - and not by the name. If this ever returns False, the
+        LinkedIn lane loses every profile-only person a domain-scoped search
+        returns; if a caller that does not scope by domain starts using it,
+        this is the line that lets two firms with one name merge.
+        """
+        rec = {"domain": "meridian.test", "company": "Meridian",
+               "company_facts": {}}
+        self.assertTrue(enrich.same_company({"company": "meridian"}, rec))
+        self.assertFalse(enrich.same_company({"company": "Meridian Labs"}, rec))
+
     def test_trap_2_accept_all_is_never_sendable_on_its_own(self):
         enrich.run(live=True, ids=["lumen"])
         contact = self.rec("lumen")["contacts"][0]
