@@ -3293,3 +3293,65 @@ Both drafts of this section were written from real measurements. The first was
 taken while the thing being measured was still changing, which is a way of
 being precisely wrong. A number from a run that has not finished is not a
 finding; it is a progress bar.
+
+## 43. Two more places where one person's identifier lands on another
+
+The referral promotion weld is fixed and regression-tested (§31 of the
+current mission: every real finding gets a regression test). Looking for the
+same SHAPE elsewhere - an identifier for person A written onto the record of
+person B - found two more. Both were found by reading, neither is reproduced
+against live data yet, and they are recorded here rather than fixed silently.
+
+### A shared name merges two people, and welds a profile onto a mailbox
+
+`enrich.markers()` returns every handle a contact is known by - email,
+LinkedIn **and name** - and `merge_contacts` indexes contacts by all three.
+So a provider payload naming somebody with the same full name as an existing
+contact is treated as that contact, and `FILLABLE = ("title", "linkedin",
+"name")` then fills in the blanks.
+
+The damaging case is an existing contact who has an address but no profile.
+The incoming person shares the name, carries a different address and a
+profile of their own. The address is correctly refused - the field is
+already set - but the PROFILE is written, because that field is empty. The
+contact now holds one person's mailbox and another person's LinkedIn, which
+is exactly the referral bug in a different module, reached without anybody
+replying to anything.
+
+Two aggravating details:
+
+  - `markers()` returns a SET, so which marker matches first is not defined.
+    The same payload can merge on the name in one run and the address in the
+    next, so the bug is not reliably reproducible from the input alone.
+  - `referral.py` already states the rule this breaks, in its own module
+    docstring: "An address or a canonical profile URL is identity. A name is
+    not - two people share one and one person has three." Two modules, one
+    question, two answers.
+
+The fix is not to drop the name from `markers()`: the name index exists
+because a person known only by name who later arrives with an address was
+being minted twice, and re-minting destroys paid verification evidence. The
+fix is that a NAME-only match must not stand when the two records disagree
+on a strong identifier they both carry - which is a conflict check, not a
+weaker index. Bounded by the ICP: at agencies of 10-100 people two identical
+full names are uncommon, which is why this has not been seen, not a reason
+it cannot happen.
+
+### A legacy `/pub/` URL collapses distinct members onto one slug
+
+`linkedin.canonical()` accepts `/in/` and `/pub/` and keeps only the first
+path segment. A legacy public URL is `/pub/jan-novak/1a/2b3/4c5`, where the
+trailing triplet is what distinguishes two members who share a vanity
+segment - so two different people both canonicalise to
+`https://www.linkedin.com/in/jan-novak`, which may belong to a third.
+
+That module is explicit that this is the expensive direction: "A near-miss
+is an unmatched event, which is safe; a wrong match pauses somebody else's
+campaign." Dropping the identifying segments turns near-misses into wrong
+matches.
+
+LATENT, not active: `work/queue.jsonl` holds zero `/pub/` URLs, and the only
+test of that prefix uses a bare `/pub/jan-novak` with no trailing segments.
+The cheap correct answer is to refuse a `/pub/` URL that carries them -
+unmatched is the safe outcome this module already prefers - rather than to
+assert an equivalence the URL does not support.

@@ -25,8 +25,7 @@ gateway found."
 import unittest
 from unittest import mock
 
-from src import dmplan, enrich
-from src.providers import ProviderError
+from src import dmplan, enrich, providers
 from tests.base import QueueTest
 
 
@@ -115,8 +114,9 @@ class TheWaterfallReportsTheFailure(QueueTest):
         # `people_count` answers with a dict, not an int.
         with mock.patch.object(contactout, "people_count",
                                return_value={"profiles": 40}), \
-             mock.patch.object(contactout, "decision_makers",
-                               side_effect=ProviderError("timed out")), \
+             mock.patch.object(
+                 contactout, "decision_makers",
+                 side_effect=providers.ProviderError("timed out")), \
              mock.patch.object(enrich, "outcome", spy):
             enrich.enrich_record(rec, enrich.Budget(1000), live=True, log=[],
                                  config={})

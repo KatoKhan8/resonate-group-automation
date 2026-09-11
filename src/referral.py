@@ -111,6 +111,31 @@ def evidence(text):
             "names": names[:5], "reader": VERSION}
 
 
+def names_in(entry):
+    """The names a mention recorded, whichever shape it arrived in.
+
+    `promotable` is handed two different things by two real callers: the dict
+    `evidence()` just built, which has `names` as a list, and the persisted
+    `REFERRAL_MENTIONED` event, which stores them as `named` - one string,
+    comma-joined for the six places that display it.
+
+    Reading only `names` therefore found nothing on the path that matters,
+    and a referred contact silently arrived with no name at all. Reading only
+    `named` would mean re-splitting display text in every caller, which is
+    where the wrong-person bug's second half lived.
+
+    The split is exact rather than best-effort: `NAME` captures one or two
+    capitalised words and cannot match a comma, so joining and splitting that
+    list round-trips. `test_a_referral_is_one_person` asserts that property
+    rather than assuming it.
+    """
+    listed = (entry or {}).get("names")
+    if listed:
+        return [n for n in listed if n]
+    joined = (entry or {}).get("named") or ""
+    return [n.strip() for n in joined.split(",") if n.strip()]
+
+
 def _contacts(rec):
     for contact in (rec or {}).get("contacts") or []:
         yield contact
@@ -172,12 +197,30 @@ NOT_A_CANDIDATE = "not_a_candidate"
 ALREADY_HERE = "already_here"
 SUPPRESSED = "suppressed"
 READY = "ready"
-
+# More than one person is named and nothing says which identifier is whose.
+#
+# `evidence()` returns emails, profiles and names as three INDEPENDENT lists
+# scraped from free text - it says so: "No interpretation." Taking `emails[0]`
+# and `profiles[0]` therefore welds the first address to the first profile,
+# and on 2026-09-11 that was reproduced end to end: a reply reading "speak to
+# Dana Reed, dana.reed@acme.test ... you could also try Tomas Brabec:
+# linkedin.com/in/tomas-brabec" promoted as READY with Dana's mailbox and
+# Tomas's profile on one contact. Tomas would have received a connection
+# request addressed to Dana.
+#
+# A reply signature is enough to trigger it: two identifiers in the body is
+# the ordinary case, not an exotic one.
+#
+# It reuses the resolution status of the same name rather than declaring a
+# second one, because it is the same statement - this does not identify one
+# person - made at a later step. Two labels, one word.
 PROMOTION_LABEL = {
     NOT_A_CANDIDATE: "there is no address or profile to add",
     ALREADY_HERE: "somebody on this account already has that identifier",
     SUPPRESSED: "that person has asked not to be contacted",
     READY: "this person can be added to the account",
+    AMBIGUOUS: "this reply names more than one person and nothing says which "
+               "address or profile belongs to which of them",
 }
 
 
@@ -195,12 +238,35 @@ def promotable(rec, entry, history=None, agency=None):
     """
     emails = [e for e in (entry or {}).get("emails") or [] if e]
     profiles = [p for p in (entry or {}).get("profiles") or [] if p]
+    names = names_in(entry)
     if not emails and not profiles:
         return {"status": NOT_A_CANDIDATE, "why": PROMOTION_LABEL[NOT_A_CANDIDATE],
-                "email": None, "linkedin": None, "hygiene": None}
+                "email": None, "linkedin": None, "name": None, "hygiene": None}
+
+    # ONE IDENTIFIER, OR NONE OF THEM. `evidence()` gathers emails, profiles
+    # and names as three independent lists and says so - "No interpretation."
+    # Nothing in it records which address belongs to which person, so pairing
+    # `emails[0]` with `profiles[0]` is a guess, and the guess reaches a real
+    # human: the profile becomes a connection request and the name becomes the
+    # greeting on it.
+    #
+    # So a reply carrying more than one candidate identifier is refused rather
+    # than resolved. A person deciding from the reply text can add the right
+    # contact directly; this path cannot know, and a path that cannot know must
+    # not choose.
+    if len(emails) + len(profiles) > 1:
+        return {"status": AMBIGUOUS, "why": PROMOTION_LABEL[AMBIGUOUS],
+                "email": None, "linkedin": None, "name": None,
+                "hygiene": None, "candidates": {"emails": emails,
+                                                "profiles": profiles,
+                                                "names": names}}
 
     email, profile = (emails[0] if emails else None,
                       profiles[0] if profiles else None)
+    # And the NAME is only safe when there is exactly one of it. The caller
+    # used to take the first of a comma-joined list, which is the same guess in
+    # a different field - a greeting addressed to whoever was mentioned first.
+    name = names[0] if len(names) == 1 else None
 
     for contact in _contacts(rec):
         if ((email and dedupe.normalise_email(contact.get("email")) == email)
@@ -208,8 +274,8 @@ def promotable(rec, entry, history=None, agency=None):
                     and linkedin.canonical(contact.get("linkedin")) == profile)):
             return {"status": ALREADY_HERE,
                     "why": PROMOTION_LABEL[ALREADY_HERE],
-                    "email": email, "linkedin": profile, "hygiene": None,
-                    "contact": contact.get("key")}
+                    "email": email, "linkedin": profile, "name": name,
+                    "hygiene": None, "contact": contact.get("key")}
 
     verdict = None
     if history is not None or agency is not None:
@@ -222,10 +288,12 @@ def promotable(rec, entry, history=None, agency=None):
             agency=agency)
         if verdict["action"] == hygiene.SUPPRESS:
             return {"status": SUPPRESSED, "why": verdict["why"],
-                    "email": email, "linkedin": profile, "hygiene": verdict}
+                    "email": email, "linkedin": profile, "name": name,
+                    "hygiene": verdict}
 
     return {"status": READY, "why": PROMOTION_LABEL[READY],
-            "email": email, "linkedin": profile, "hygiene": verdict}
+            "email": email, "linkedin": profile, "name": name,
+            "hygiene": verdict}
 
 
 def read(rec, text, referrer=None):

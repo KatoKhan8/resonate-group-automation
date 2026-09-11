@@ -122,6 +122,7 @@ class WhatCanBeAdded(PromotionTest):
     def test_every_refusal_says_why_in_a_sentence(self):
         self.assertEqual(sorted(referral.PROMOTION_LABEL),
                          sorted([referral.ALREADY_HERE,
+                                 referral.AMBIGUOUS,
                                  referral.NOT_A_CANDIDATE,
                                  referral.READY, referral.SUPPRESSED]))
         for status, sentence in referral.PROMOTION_LABEL.items():

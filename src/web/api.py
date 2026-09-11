@@ -6261,6 +6261,12 @@ def referred_people(repo, rec, contact_key):
             "linkedin": answer["linkedin"],
             "promotable": answer["status"] == referral.READY,
             "why": answer["why"],
+            # What the reply contained, when it contained more than one
+            # person and `promotable` therefore refused to pair them up.
+            # Without this the refusal is a dead end: `email` and `linkedin`
+            # are both None in that case, so the screen would name the
+            # objection and show neither of the identifiers it is about.
+            "candidates": answer.get("candidates") or {},
             "hygiene": answer.get("hygiene"),
             "existing": answer.get("contact"),
         })
@@ -6302,7 +6308,12 @@ def add_referred_contact(repo, record_id, contact_key, event_id,
         raise ActionRefused(answer["why"])
 
     person = {
-        "name": (entry.get("named") or "").split(",")[0].strip() or None,
+        # THE NAME `promotable` VOUCHED FOR, not the first of a comma-joined
+        # list. `named` holds every name the reply mentioned; taking the first
+        # of them and pairing it with whichever identifier came first is the
+        # same guess the promotion check now refuses to make, one field over -
+        # and the name is what appears in the greeting.
+        "name": answer.get("name"),
         "email": answer["email"],
         "linkedin": answer["linkedin"],
         # Not selected. Somebody chooses who a campaign opens with, and

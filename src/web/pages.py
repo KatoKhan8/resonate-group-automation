@@ -7497,7 +7497,22 @@ def _referred_panel(data, csrf):
     rows = ""
     for entry in data.get("referred") or []:
         who = entry.get("named") or entry.get("email") or "somebody"
-        identifier = entry.get("email") or entry.get("linkedin") or ""
+        # EVERY IDENTIFIER THE REPLY CARRIED, which is one or several and
+        # never a choice between them. This used to read `email or linkedin`,
+        # so a row with both showed the address and silently hid the profile -
+        # and a reply naming two people could put one person's mailbox and
+        # another's profile on one contact with nothing on screen to reveal
+        # it. `promotable` now refuses to pair them, which leaves a promotable
+        # row with exactly one identifier and puts all the others here, on the
+        # refused row - where `email` and `linkedin` are both None by
+        # construction. Without them the operator reads "this reply names more
+        # than one person" beside a blank cell and has nowhere to go: this
+        # page does not render the reply body. Listing them is not pairing
+        # them; they are shown as what was said, for a person to resolve.
+        listed = entry.get("candidates") or {}
+        several = (listed.get("emails") or []) + (listed.get("profiles") or [])
+        identifier = (", ".join(several) if several
+                      else entry.get("email") or entry.get("linkedin") or "")
         if entry["promotable"] and csrf:
             action = (
                 '<form method="post" action="/replies/referral/add">'
