@@ -79,6 +79,40 @@ class ARateNeverCrossesUnits(unittest.TestCase):
         self.assertIsNone(got["per"])
 
 
+class AStageClaimsOnlyWhatItsSourceKnows(unittest.TestCase):
+    """A stage describes its own source, or it is a number that means
+    something other than what it says.
+
+    `provider_staged` counted action-ledger rows and described itself as "the
+    provider holds the lead". Those are two claims, and on 2026-09-11 they
+    disagreed out loud: HeyReach campaign 594061 held one real staged lead and
+    this read 0, because a person put it there through the vendor UI. The
+    count was right. The sentence beside it was not, and the sentence is what
+    an operator reads.
+    """
+
+    LEDGER_BACKED = ("provider_staged", "live")
+
+    def test_a_ledger_stage_does_not_claim_provider_truth(self):
+        """Phrased as the defect rather than as one accepted wording: any
+        rewrite is fine as long as it does not promise what the provider
+        holds, which this source cannot answer for."""
+        for name, _of, _unit, eligible, truth in funnel.STAGES:
+            if name not in self.LEDGER_BACKED:
+                continue
+            self.assertIn("ledger", truth, name)
+            self.assertNotIn("the provider holds", eligible.lower(),
+                             f"{name} claims provider truth from the ledger")
+
+    def test_the_ledger_stages_still_name_the_ledger(self):
+        """The pair has to stay a pair: a description that says "this system"
+        over a source that is not the ledger would be the same defect
+        reversed."""
+        for name in self.LEDGER_BACKED:
+            found = next(s for s in funnel.STAGES if s[0] == name)
+            self.assertEqual(found[2], funnel.ACTIONS, name)
+
+
 class MissingIsNotZero(unittest.TestCase):
 
     def test_an_unbuilt_stage_reports_missing(self):

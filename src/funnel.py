@@ -76,12 +76,26 @@ STAGES = (
      "every gate passed, not merely verification", "eligibility.decide"),
     ("approved", "campaign_ready", PEOPLE,
      "a human approved this exact copy", "approval fingerprint"),
-    ("provider_staged", "approved", ACTIONS, "the provider holds the lead",
-     "action ledger"),
+    # "THIS SYSTEM staged it", not "the provider holds it". Those are two
+    # different claims and today they disagree: HeyReach campaign 594061 holds
+    # one real staged lead, and this reads 0, because the lead was put there by
+    # a person in the vendor UI. It is correct - the ledger records what this
+    # system did, and this system did not do that - and the old wording
+    # promised provider truth from a source that cannot answer for it.
+    #
+    # Worth knowing which way it errs: every staging today happens outside this
+    # system, because `AddLeadsToCampaignV2` is deliberately unimplemented and
+    # `providerwrites.SUPPORTED` is empty. So this stage under-reports, which
+    # is the safe direction for a count of prospect-facing actions, and it will
+    # keep reading 0 until a supported staging write exists. The same is true
+    # one row down for `live`.
+    ("provider_staged", "approved", ACTIONS,
+     "this system staged the lead with the provider", "action ledger"),
     ("readback_verified", "provider_staged", ACTIONS,
      "provider truth matched approved material", "configdiff"),
     ("live", "readback_verified", ACTIONS,
-     "a prospect-facing action was confirmed", "action ledger state SENT"),
+     "this system confirmed a prospect-facing action",
+     "action ledger state SENT"),
     ("replied", "live", ACTIONS, "an authoritative inbound event",
      "rec.events"),
     ("positive", "replied", ACTIONS, "a reply classified positive",
