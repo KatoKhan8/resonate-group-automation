@@ -110,10 +110,39 @@ SUPPRESSED = "SUPPRESSED"
 DROPPED = "DROPPED"
 READY = "READY"
 OTHER = "OTHER"
+# Low confidence because nothing was GATHERED, not because the evidence was
+# weighed and found wanting.
+#
+# MEASURED, and it is the difference between two opposite fixes. Of 75
+# LOW_CONFIDENCE records in the 250 cohort, 74 had never been researched at
+# all - `max_runs_per_batch` is 10, so 183 of 200 domains never got a scrape.
+# The one that WAS researched classified successfully. So this bucket is a
+# throughput ceiling, recoverable by spending, and reporting it as
+# LOW_CONFIDENCE invites somebody to go looking for a scoring bug that is not
+# there.
+RESEARCH_NOT_RUN = "RESEARCH_NOT_RUN"
+# We asked and the provider had nothing. Distinct from a budget limit, because
+# spending more buys the same empty answer.
+#
+# MEASURED: all 28 such records in the 250 cohort have `headcount_signal = 0` -
+# ContactOut knows zero people at the domain - and the company lookup RAN and
+# returned nothing. Reporting that as a software question sends somebody to
+# read code about a domain the vendor has never heard of.
+NO_PROVIDER_COVERAGE = "NO_PROVIDER_COVERAGE"
 
-# Attrition that is the system being right. Counting these as losses is how a
-# funnel report turns into an argument for loosening the ICP.
+# FOUR outcomes, because the fixes are four different things and a report that
+# conflates them points at the wrong one. Good: the rule worked. Bounded: we
+# chose not to spend, recoverable by spending. Provider: we spent and the
+# vendor had nothing, recoverable only by a different source. Software:
+# somebody has to read code.
 GOOD = frozenset((ICP_REJECT, SUPPRESSED, READY))
+BOUNDED = frozenset((RESEARCH_NOT_RUN,))
+PROVIDER = frozenset((NO_PROVIDER_COVERAGE,))
+# A verdict of `review` is the model saying a person should decide. That is a
+# QUEUE, not a defect and not a loss - but it is also the state most likely to
+# become a graveyard, so it gets its own line rather than being folded into
+# "working".
+NEEDS_HUMAN = frozenset((ICP_REVIEW,))
 
 
 def _verdict(rec):
@@ -283,7 +312,11 @@ def attrition(recs=None):
         per_record[rec.get("id")] = reason
     return {"counts": dict(out), "per_record": per_record,
             "good": {k: v for k, v in out.items() if k in GOOD},
-            "software": {k: v for k, v in out.items() if k not in GOOD}}
+            "bounded": {k: v for k, v in out.items() if k in BOUNDED},
+            "provider": {k: v for k, v in out.items() if k in PROVIDER},
+            "needs_human": {k: v for k, v in out.items() if k in NEEDS_HUMAN},
+            "software": {k: v for k, v in out.items()
+                         if k not in GOOD | BOUNDED | PROVIDER | NEEDS_HUMAN}}
 
 
 def _reason(rec):
@@ -300,12 +333,21 @@ def _reason(rec):
     if rec.get("state") == "dropped" and status != "rejected":
         return DROPPED
     if not _has_company_data(rec):
+        # Did we ask? `headcount_signal` is written by the free probe, so a 0
+        # there means the vendor was asked and knows nobody at this domain.
+        facts = rec.get("company_facts") or {}
+        if facts.get("headcount_signal") == 0:
+            return NO_PROVIDER_COVERAGE
         return NO_COMPANY_DATA
     if status == "rejected":
         return ICP_REJECT
     if _dimensions(rec) == 0:
         return MISSING_EVIDENCE
     if verdict.get("icp_confidence") == "low" and status in ("unknown", None):
+        # WHY it is low decides who fixes it. Nothing gathered is a budget
+        # answer; gathered and still low is a model or a parser answer.
+        if not rec.get("research"):
+            return RESEARCH_NOT_RUN
         return LOW_CONFIDENCE
     if status == "review":
         return ICP_REVIEW
@@ -344,12 +386,24 @@ def report(measured, attrited=None):
         lines += ["", "ATTRITION  (dominant reason per record)"]
         for reason, n in sorted(attrited["counts"].items(),
                                 key=lambda kv: -kv[1]):
-            tag = "good" if reason in GOOD else "SOFTWARE?"
+            tag = ("good" if reason in GOOD else
+                   "bounded" if reason in BOUNDED else
+                   "provider" if reason in PROVIDER else
+                   "human queue" if reason in NEEDS_HUMAN else "SOFTWARE?")
             lines.append(f"  {reason:<28}{n:>6}   {tag}")
         good = sum(attrited["good"].values())
+        bounded = sum(attrited.get("bounded", {}).values())
         soft = sum(attrited["software"].values())
-        lines += ["", f"  the system working: {good}   "
-                      f"needing explanation: {soft}"]
+        provider = sum(attrited.get("provider", {}).values())
+        lines += ["",
+                  f"  the system working:      {good}",
+                  f"  bounded by budget:       {bounded}  "
+                  f"(recoverable by spending)",
+                  f"  no provider coverage:    {provider}  "
+                  f"(recoverable only by another source)",
+                  f"  waiting on a human:      "
+                  f"{sum(attrited.get('needs_human', {}).values())}",
+                  f"  needing explanation:     {soft}"]
     return "\n".join(lines)
 
 

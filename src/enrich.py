@@ -473,7 +473,10 @@ def person_level_pending(rec):
     return not allowed and state != dmplan.REJECTED
 
 
-def outcome(rec, refused=False, state=None):
+PROVIDER_FAILED = "a provider call failed, so absence was never established"
+
+
+def outcome(rec, refused=False, state=None, failed=False):
     """The state this record has earned. Hold rather than guess.
 
     `refused` says the budget turned down at least one call for this record.
@@ -488,6 +491,16 @@ def outcome(rec, refused=False, state=None):
     A refusal therefore returns the record to the state it arrived in, which
     is already in the retry set, and says so. No new state machine: `queued`
     and `enriched` are where the runner looks anyway.
+
+    `failed` is the same argument about a different cause, and it was missing.
+    A PROVIDER TIMEOUT also manufactures absence. On 2026-09-11 `e-2.at` - an
+    87-person Creative/Branding agency in DACH, qualified, tier C, score 49,
+    medium confidence - was permanently dropped with "no contact found at this
+    domain" after `decision-makers` raised a TimeoutError. Nothing had been
+    established about that domain at all; a socket gave up.
+
+    `mx.py` states the general rule: "A temporary resolver failure must never
+    read as no gateway found." This is that rule, one provider over.
     """
     contacts = rec.get("contacts") or []
     if any(c.get("sendable") for c in contacts):
@@ -508,6 +521,13 @@ def outcome(rec, refused=False, state=None):
             # Waiting on a verdict or on a human. Not a finding, and not
             # terminal: the record goes back where the runner looks.
             return rec.get("state") or "queued", ICP_DEFERRED
+    if failed and not contacts:
+        # A provider that did not answer also manufactures absence. Placed
+        # AFTER the rejection branch on purpose: an ICP rejection is a
+        # decision, and a coincidental timeout must not rescue a company the
+        # model has already ruled out. My first version had these the other way
+        # round and a test said so.
+        return rec.get("state") or "queued", PROVIDER_FAILED
     if not contacts:
         return "dropped", "no contact found at this domain"
     unresolved = [c for c in contacts
@@ -528,6 +548,9 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
     """
     done = []
     log = log if log is not None else []
+    # Whether any provider call failed on this pass. Read by `outcome`, which
+    # must not conclude "nobody is there" from a call that never answered.
+    failures = []
     # The budget is shared across the batch, so "was anything refused" has to
     # be asked as a difference rather than as a state.
     # Deferred: `fieldplan` imports this module for its reason vocabulary,
@@ -622,6 +645,7 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
                 store.log(rec, "enrich", f"people-count: {count.get('profiles')} profiles (free)")
             except ProviderError as e:
                 store.log(rec, "enrich", f"people-count failed: {e}")
+                failures.append("people-count")
 
     # Section 5.1: the free count exists to stop a credit being spent on a
     # domain nobody works at. A parked domain goes straight to the rebrand check.
@@ -649,6 +673,7 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
                               f"decision-makers: {len(added)} kept, {len(excluded)} excluded")
                 except ProviderError as e:
                     store.log(rec, "enrich", f"decision-makers failed: {e}")
+                    failures.append("decision-makers")
 
         # 3. Nobody found: a parked domain or a rebrand (trap 4).
         why_company_info = ("people-count found nobody at this domain: checking for a rebrand"
@@ -679,6 +704,7 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
                     store.log(rec, "enrich", note)
                 except ProviderError as e:
                     store.log(rec, "enrich", f"company-info failed: {e}")
+                    failures.append("company-info")
 
         # 4. AI Ark, only on a stated ContactOut miss, never in parallel.
         fallback_reason = (DOMAIN_UNSTAFFED if unstaffed else CONTACTOUT_NO_PEOPLE)
@@ -702,6 +728,7 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
                     store.log(rec, "enrich", f"ai ark: {len(added)} kept")
                 except ProviderError as e:
                     store.log(rec, "enrich", f"ai ark failed: {e}")
+                    failures.append("ai ark")
 
     # 4b. Public evidence, last and only on a stated need. Structured data
     # from ContactOut and AI Ark is always preferred; this runs when a step
@@ -859,7 +886,8 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
                 break
 
     refused = len(budget.refused) > refusals_before
-    state, reason = outcome(rec, refused=refused, state=icp_state(rec))
+    state, reason = outcome(rec, refused=refused, state=icp_state(rec),
+                            failed=bool(failures))
     rec["state"] = state
     if state == "dropped":
         rec["drop_reason"] = reason
