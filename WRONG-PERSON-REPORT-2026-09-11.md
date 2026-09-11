@@ -17,7 +17,8 @@ tree            clean
 
 full suite      7,100 tests   OK   (definitive, settled tree)
 offline harness 7,100 tests   OK   "nothing reached off this machine"
-mutations       26            each caught by the intended test
+mutations       22            each caught by the intended test
+                              (9 referral + 7 enrich + 5 linkedin + 1 funnel)
 
 execution guard 14 of 15 gates PASS against live provider truth
                 only killswitch stops, by construction
