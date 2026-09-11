@@ -307,10 +307,20 @@ class TwoCampaignsMayNameOneProviderCampaign(CampaignTest):
 # -------------------------- 5. a record in two campaigns loses its stops
 
 class ARecordInTwoCampaignsLosesItsStopButton(CampaignTest):
-    """THE WORST OF THESE. `campaigns.by_record` maps a record claimed by two
-    live campaigns to None, and None means "no campaign", not "ambiguous". The
-    freeze, the pause, the rejection and the approval all live on the campaign
-    object, so a record in two campaigns is a record with none of them."""
+    """THE WORST OF THESE, AND NOW CLOSED.
+
+    `campaigns.by_record` mapped a record claimed by two live campaigns to
+    `None`, and `None` means "no campaign", not "ambiguous". The freeze, the
+    pause, the rejection and the approval all live on the campaign object, so
+    a record in two campaigns was a record with none of them - duplicating an
+    intent did not merely duplicate, it detached the stop button on the
+    original.
+
+    It answers `campaigns.AMBIGUOUS` now, and `eligibility._campaign` blocks
+    on it before asking anything else. These tests asserted the defect when
+    they were written; they assert the fix now, and the attack they describe
+    is unchanged.
+    """
 
     def setUp(self):
         super().setUp()
@@ -361,11 +371,10 @@ class ARecordInTwoCampaignsLosesItsStopButton(CampaignTest):
         self.shadow_campaign()
 
         resolved, decision = self.verdict()
-        self.assertIsNone(resolved,
-                          "a record in two campaigns resolves to no campaign")
-        self.assertEqual(decision["verdict"], eligibility.ELIGIBLE)
-        self.assertNotIn(eligibility.BLOCKED_CAMPAIGN_FROZEN,
-                         decision["reasons"] or [])
+        self.assertTrue(resolved.get("ambiguous"),
+                        "a record in two campaigns must resolve to AMBIGUOUS")
+        self.assertEqual(decision["reasons"],
+                         [eligibility.BLOCKED_RECORD_IN_TWO_CAMPAIGNS])
 
     def test_the_same_lift_happens_for_a_paused_campaign(self):
         self.campaign["status"] = campaigns.PAUSED
@@ -376,22 +385,32 @@ class ARecordInTwoCampaignsLosesItsStopButton(CampaignTest):
 
         self.shadow_campaign()
         resolved, decision = self.verdict()
-        self.assertIsNone(resolved)
-        self.assertEqual(decision["verdict"], eligibility.ELIGIBLE)
+        self.assertTrue(resolved.get("ambiguous"))
+        self.assertEqual(decision["reasons"],
+                         [eligibility.BLOCKED_RECORD_IN_TWO_CAMPAIGNS])
 
     def test_a_terminal_campaign_needs_no_duplicate_to_lose_its_stops(self):
-        """THE SAME HOLE, WITHOUT A DUPLICATE. `by_record` skips every campaign
-        in a terminal status, so a REJECTED campaign claims none of its
-        records - and a record with no campaign is a record with no campaign
-        gate. `eligibility.BLOCKED_CAMPAIGN_REJECTED` exists and cannot be
-        reached this way."""
+        """THE SAME HOLE, WITHOUT A DUPLICATE - AND NOW CLOSED.
+
+        `by_record` skipped every campaign in a terminal status, so a REJECTED
+        campaign claimed none of its records and a record with no campaign is
+        a record with no campaign gate. Rejecting a campaign therefore made
+        its records MORE sendable than an approved campaign's, with no
+        approval required at all, and `BLOCKED_CAMPAIGN_REJECTED` could not be
+        reached this way.
+
+        Only COMPLETED releases its records now: a campaign that ran to its
+        end is done with them, which is what that behaviour was written for.
+        """
         self.campaign["approval"] = {"action": "reject", "by": "U0DEMOADMIN1"}
         self.campaign["status"] = campaigns.REJECTED
         campaigns.save([self.campaign])
 
         resolved, decision = self.verdict()
-        self.assertIsNone(resolved, "a rejected campaign claims no records")
-        self.assertEqual(decision["verdict"], eligibility.ELIGIBLE)
+        self.assertEqual(resolved["campaign_id"], "camp-1",
+                         "a rejected campaign must keep claiming its records")
+        self.assertEqual(decision["reasons"],
+                         [eligibility.BLOCKED_CAMPAIGN_REJECTED])
 
     def test_the_rejection_is_seen_only_when_the_campaign_is_handed_over(self):
         """The gate itself works. It is the RESOLUTION that loses it, which is
@@ -406,20 +425,34 @@ class ARecordInTwoCampaignsLosesItsStopButton(CampaignTest):
         self.assertEqual(decision["reasons"],
                          [eligibility.BLOCKED_CAMPAIGN_REJECTED])
 
-    def test_a_rejected_campaigns_records_are_still_collected_for_a_push(self):
-        """End of the chain: `push.collect` is what builds the batch, and it
-        resolves the campaign exactly as above."""
+    def test_the_last_gate_refuses_a_rejected_campaigns_step(self):
+        """End of the chain, at the gate that is actually one.
+
+        `push.collect` builds a batch and reads `step["status"]` from
+        `cadence.build`; it is not a gate and does not consult `eligibility`.
+        `verify_before_payload` is the gate, and it delegates. What decides
+        the outcome is therefore whether the rejected campaign is CARRIED to
+        it - and before this fix `by_record` answered None, so it was not,
+        `_campaign(None)` returned no reason, and the step passed.
+        """
         self.campaign["approval"] = {"action": "reject", "by": "U0DEMOADMIN1"}
         self.campaign["status"] = campaigns.REJECTED
         campaigns.save([self.campaign])
         ready, _skipped = push.collect(store.load(), day=21, client=CLIENT,
                                        campaign_rows=campaigns.load())
-        self.assertTrue(ready, "a rejected campaign's steps are still ready")
-        self.assertTrue(all(item["campaign"] is None for item in ready))
+        self.assertTrue(ready, "nothing to gate, so the test proves nothing")
+        item = ready[0]
+        self.assertEqual((item["campaign"] or {}).get("status"),
+                         campaigns.REJECTED,
+                         "the rejected campaign was not carried to the gate")
+        with self.assertRaises(AssertionError) as caught:
+            push.verify_before_payload(item, campaign=item["campaign"],
+                                       recs=store.load(), config=self.config)
+        self.assertIn(eligibility.BLOCKED_CAMPAIGN_REJECTED,
+                      str(caught.exception))
 
-    @unittest.expectedFailure
     def test_a_rejected_campaign_stops_its_records(self):
-        """DESIRED, NOT PRESENT. Rejecting a campaign should stop the records
+        """Rejecting a campaign stops its records
         it names, not release them to the default cadence."""
         self.campaign["approval"] = {"action": "reject", "by": "U0DEMOADMIN1"}
         self.campaign["status"] = campaigns.REJECTED
@@ -427,9 +460,8 @@ class ARecordInTwoCampaignsLosesItsStopButton(CampaignTest):
         _resolved, decision = self.verdict()
         self.assertTrue(str(decision["verdict"]).startswith("blocked"))
 
-    @unittest.expectedFailure
     def test_an_ambiguous_membership_blocks_rather_than_defaults(self):
-        """DESIRED, NOT PRESENT. Ambiguity on a safety path must fail closed.
+        """Ambiguity on a safety path fails closed.
         Two campaigns claiming one record should stop that record, not free
         it."""
         campaigns.freeze(self.campaign, "somebody replied", by="U0DEMOADMIN1")

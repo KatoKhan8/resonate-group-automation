@@ -76,6 +76,7 @@ BLOCKED_NOT_SELECTED = "blocked:not_selected_for_campaign"
 BLOCKED_CAMPAIGN_REJECTED = "blocked:campaign_rejected"
 BLOCKED_CAMPAIGN_LAUNCHED = "blocked:campaign_already_launched"
 BLOCKED_CAMPAIGN_FROZEN = "blocked:campaign_frozen"
+BLOCKED_RECORD_IN_TWO_CAMPAIGNS = "blocked:record_in_two_campaigns"
 BLOCKED_CAMPAIGN_STOPPED = "blocked:campaign_stopped"
 
 HELD_VERIFICATION_UNKNOWN = "held:verification_unknown"
@@ -161,6 +162,9 @@ HUMAN = {
     BLOCKED_CAMPAIGN_LAUNCHED:
         "the campaign already launched, so this would be a second send",
     BLOCKED_CAMPAIGN_FROZEN: "the campaign is frozen",
+    BLOCKED_RECORD_IN_TWO_CAMPAIGNS: (
+        "this record is claimed by two live campaigns, so which "
+        "sequence it is in cannot be answered"),
     BLOCKED_CAMPAIGN_STOPPED:
         "the campaign is not running: it has been paused, or it has "
         "finished",
@@ -398,6 +402,14 @@ def _campaign(campaign, recs, config, approval_current=None):
     """
     if campaign is None:
         return None
+    # BEFORE EVERY OTHER QUESTION, because none of them can be answered.
+    # `campaigns.by_record` used to answer `None` here, and `None` returns
+    # above as "no campaign in play" - so a record in two live campaigns had
+    # its freeze, its pause, its rejection, its launch state and its approval
+    # staleness all stop applying at once. Duplicating an intent detached the
+    # stop button on the original.
+    if campaign.get("ambiguous"):
+        return BLOCKED_RECORD_IN_TWO_CAMPAIGNS
     given = campaign.get("approval") or {}
     # Checked before anything else about the campaign: a freeze outranks
     # approval, staleness and launch state, because it is the stop button.

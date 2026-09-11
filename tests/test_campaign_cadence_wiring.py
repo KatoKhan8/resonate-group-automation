@@ -280,19 +280,32 @@ class ARecordFindsItsCampaign(FourStepCampaign):
         done = dict(self.campaign, status=campaigns.COMPLETED)
         self.assertEqual(campaigns.by_record([done]), {})
 
-    def test_a_record_in_two_live_campaigns_resolves_to_nothing(self):
-        """Ambiguity is not a licence to guess an arm. Falling back to the
-        default is what happens today and is the conservative answer."""
+    def test_a_record_in_two_live_campaigns_resolves_to_ambiguous(self):
+        """Ambiguity is not a licence to guess an arm - and it is not a
+        licence to forget the campaign either.
+
+        This asserted `None`, and falling back to the default was called the
+        conservative answer. It is the opposite: `None` means NO CAMPAIGN to
+        `eligibility._campaign`, which returns immediately, so the freeze,
+        the pause, the rejection, the launch state and the approval staleness
+        check all stopped applying. Duplicating an intent detached the stop
+        button on the original. The refusal to guess an arm is unchanged; the
+        ambiguity is now a value that blocks rather than an absence that
+        permits.
+        """
         other = dict(self.campaign, campaign_id="camp-2")
         index = campaigns.by_record([self.campaign, other])
-        self.assertIsNone(index.get(self.recs[0]["id"]))
+        self.assertTrue(index.get(self.recs[0]["id"], {}).get("ambiguous"))
+        self.assertIsNone(
+            index[self.recs[0]["id"]].get("campaign_id"),
+            "the ambiguous marker must not name one of the campaigns")
 
     def test_a_third_campaign_does_not_undo_the_ambiguity(self):
         third = dict(self.campaign, campaign_id="camp-3")
         index = campaigns.by_record([self.campaign,
                                      dict(self.campaign, campaign_id="camp-2"),
                                      third])
-        self.assertIsNone(index.get(self.recs[0]["id"]))
+        self.assertTrue(index.get(self.recs[0]["id"], {}).get("ambiguous"))
 
     def test_a_record_in_no_campaign_is_absent(self):
         self.assertNotIn("nobody", campaigns.by_record([self.campaign]))

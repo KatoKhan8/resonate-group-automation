@@ -316,6 +316,13 @@ def is_approved(campaign, recs=None, config=None):
 TERMINAL_STATUSES = (COMPLETED, REJECTED, FAILED)
 
 
+# A record claimed by two live campaigns. Not a campaign, and deliberately
+# not `None`: an absence permits, and this has to block. `record_ids` is empty
+# so anything that walks it finds nothing to act on.
+AMBIGUOUS = {"campaign_id": None, "ambiguous": True, "record_ids": [],
+             "status": "ambiguous"}
+
+
 def by_record(rows=None):
     """{record_id: campaign} for the campaigns still capable of sending.
 
@@ -325,22 +332,35 @@ def by_record(rows=None):
     campaign at one call site out of thirty-five: most callers had nothing
     to pass.
 
-    A record in two live campaigns maps to `None` rather than to one of
-    them. Which sequence it is in is genuinely ambiguous, and guessing
-    would put a contact in a cadence arm nobody chose; `None` falls back
-    to the default, which is what happens today.
+    A record in two live campaigns maps to `AMBIGUOUS`, and that used to be
+    `None`. The reasoning for `None` was that guessing an arm would put a
+    contact in a cadence nobody chose - which is right - but `None` does not
+    mean "ambiguous" to anything downstream. It means NO CAMPAIGN, and
+    `eligibility._campaign` returns immediately for a campaign of `None`, so
+    the freeze, the pause, the rejection, the launch state and the approval
+    staleness check all stopped applying at once. Measured on 2026-09-11:
 
-    A finished campaign does not claim its records, so a record whose only
-    campaign is completed runs the default rather than inheriting a
-    sequence that has stopped.
+        a frozen campaign alone           -> blocked:campaign_frozen
+        the same record in two campaigns  -> eligible
+
+    So duplicating a campaign intent did not merely duplicate - it detached
+    the stop button on the original. The ambiguity is real and is now carried
+    as a value that blocks rather than as an absence that permits.
+
+    A COMPLETED campaign still does not claim its records: it ran to its end,
+    and its records running the default afterwards is the intended behaviour.
+    REJECTED and FAILED are different - they mean this campaign was stopped -
+    and releasing their records to the default cadence made a rejected
+    campaign's records MORE sendable than an approved one's, with no approval
+    required at all. They keep their records, and `_campaign` blocks on them.
     """
     rows = load() if rows is None else rows
     index = {}
     for campaign in rows:
-        if campaign.get("status") in TERMINAL_STATUSES:
+        if campaign.get("status") == COMPLETED:
             continue
         for rid in campaign.get("record_ids") or []:
-            index[rid] = campaign if rid not in index else None
+            index[rid] = campaign if rid not in index else AMBIGUOUS
     return index
 
 

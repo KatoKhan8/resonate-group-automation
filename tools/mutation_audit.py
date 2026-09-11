@@ -1980,21 +1980,21 @@ MUTATIONS = [
     # verified by hand when it was written; this is where they
     # keep protecting anything.
 
-    ('campaign wiring: campaigns.py: the index forgets terminal campaigns',
+    ('campaign wiring: campaigns.py: the index forgets a stopped campaign',
      'src/campaigns.py',
+     'if campaign.get("status") == COMPLETED:\n            continue',
      'if campaign.get("status") in TERMINAL_STATUSES:\n            continue',
-     'if False:\n            continue',
-     'tests.test_campaign_cadence_wiring'),
+     'tests.test_a_campaign_intent_creates_one_campaign'),
 
     ('campaign wiring: campaigns.py: ambiguity picks the first campaign instead of nothing',
      'src/campaigns.py',
-     'index[rid] = campaign if rid not in index else None',
+     'index[rid] = campaign if rid not in index else AMBIGUOUS',
      'index[rid] = index.get(rid) or campaign',
      'tests.test_campaign_cadence_wiring'),
 
     ('campaign wiring: campaigns.py: ambiguity picks the last campaign instead of nothing',
      'src/campaigns.py',
-     'index[rid] = campaign if rid not in index else None',
+     'index[rid] = campaign if rid not in index else AMBIGUOUS',
      'index[rid] = campaign',
      'tests.test_campaign_cadence_wiring'),
 
