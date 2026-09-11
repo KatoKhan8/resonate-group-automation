@@ -530,15 +530,59 @@ seat's existing conversations were scanned and there is no prior invitation
 to this person.
 
 **THE RISK TO ACCEPT BEFORE PRESSING IT.** Once a HeyReach campaign is
-running, nothing in this system can stop it. `heyreach.pause` has no route
-either, so the killswitch cannot reach a running campaign - it can refuse
-to start something, and it cannot end something already started. For this
-canary that is bounded: one lead, one invitation, and pressing pause again
+running, do not rely on this system to stop it. The killswitch can refuse to
+start something; it cannot be trusted to end something already started.
+
+CORRECTED 2026-09-11. This paragraph used to say `heyreach.pause` has no
+route. It has one now - `/campaign/Pause`, allowlisted in
+`heyreach.WRITE_ROUTES`, with a transport, a read-back and thirteen tests -
+and the conclusion above is unchanged anyway, because a route is not a
+capability. The single live attempt on 2026-09-10 returned a non-2xx and was
+correctly classified UNVERIFIED; the campaign stayed PAUSED throughout.
+`providerwrites.SUPPORTED` is therefore still empty, and `providerwrites.py`
+records why at length: declaring pause supported would also lift the
+`stoppability` gate's one-contact promotion cap, on the strength of a stop
+that has never once worked. A fixture is never a live-validated integration.
+What lifts it is one successful pause read back as PAUSED from provider
+truth - not this code existing.
+
+For this canary that is bounded: one lead, one invitation, and pressing pause
+again
 in the same UI is the stop. It is stated here because it is the honest
 precondition, not because the canary is dangerous.
 
 **Do not reply through this system.** No auto-reply exists and none is
 authorised. A reply is a human's.
+
+**RECONCILED AGAINST PROVIDER TRUTH 2026-09-11.** Every expectation in this
+section was re-read from HeyReach rather than from local state, because a
+staged campaign that has drifted is exactly the thing a person must not
+discover after pressing a button:
+
+    status          PAUSED                              as expected
+    name            PRODUCTIVE - CANARY - 2026-09-09    as expected
+    seat            campaignAccountIds [116968]         as expected
+    org unit        118832                              as expected
+    leads staged    totalUsers 1                        as expected, cap 1
+    finished        0     failed 0                      nothing has run
+    excluded        0     manually stopped 0
+    in progress     1                                   the lead, unactioned
+    conversations   0 for this campaign                 nothing was opened
+    copy            renders from what we send           re-read from /sequence
+
+No difference on any line.
+
+One thing the counters do say and the prose did not: `startedAt` is
+`2026-09-09T18:07:51Z`, sixty-five seconds after `creationTime`. The campaign
+was started once and paused again, and it actioned nothing in that window.
+
+**How solid "nothing was sent" is.** It is an inference from four agreeing
+signals, not one authoritative field, and this vendor has no field to ask:
+`heyreach.CONNECTION_STATUS_AVAILABLE` is False because invitation state is
+not exposed anywhere in the API. The conversation count is the strongest of
+the four and it was falsified before being trusted - the same filter returns
+14 to 26 conversations for FINISHED campaigns on this same seat, and 0 for
+DRAFT ones, so 0 here is an answer rather than an unrecognised filter key.
 
 ---
 
@@ -570,6 +614,38 @@ where volume starts mattering rather than at fifty.
 Until one of those is true, LinkedIn promotion stops at the canary. This is
 a real blocker on a safety property, not architecture perfection: the
 system would be asserting a killswitch it does not have.
+
+---
+
+## 5g. No model is configured, so no cadence copy can be written
+
+**What** An `LLM_API_KEY` and `LLM_MODEL` in `config/.env`, and a decision
+about which provider they name.
+
+**Why it blocks the funnel now.** Four of the five fully verified, sendable
+contacts this estate holds have no cadence, and none can be given one.
+`generate.run()` defaults to `llm.NoModel`, which refuses by design so that
+nothing calls a model by accident; the only other implementation is
+`ScriptedModel`, which returns canned answers for tests. `--live` therefore
+has nothing to be live with. `LLM_API_KEY` is declared in `config.py` and
+read by no code path that builds a model.
+
+**Why the adapter is not simply written.** It is about twenty lines. With no
+credential it cannot be run once against the real contract, and this
+repository's rule for that situation is explicit: existence is not function,
+and a fixture is never a live-validated integration. An adapter nobody can
+exercise is a module that looks like a capability and is not one - the same
+mistake `providerwrites.SUPPORTED` exists to refuse. So the credential comes
+first, then the adapter, then one real generation read back and linted.
+
+**What is NOT blocked by this.** Nothing prospect-facing. Copy that already
+exists stays as it is, the approved canary note is unaffected, and every
+lint, claim and approval gate applies to generated copy exactly as before.
+Generation writes drafts; drafts send nothing.
+
+**Risk of providing it** Low and bounded by spend, not by safety: drafts are
+reviewed before anything is approved, and `lint.py` and `claims.py` refuse a
+draft that asserts what the record cannot support.
 
 ---
 
