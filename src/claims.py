@@ -160,7 +160,19 @@ def support_text(rec, contact=None, chosen=()):
     diagnosis = rec.get("diagnosis") or {}
     parts.extend(str(v) for v in diagnosis.values() if v)
     if contact:
-        for key in ("name", "title", "persona", "angle", "location"):
+        # NOT `persona` AND NOT `angle`. Those two are OUR vocabulary - the
+        # routing family we filed this person under and the thing we decided to
+        # sell them - and neither is a fact about them. Counting them as
+        # support made the gate's answer depend on our own sales choice: on
+        # 2026-09-11 the sentence "You run delivery for the studio." was
+        # REFUSED for a contact whose angle was `operations` and PASSED,
+        # unchanged, for one whose angle was `delivery`. One of the five
+        # verified contacts in this estate carries `angle: delivery`, so that
+        # was live rather than theoretical.
+        #
+        # `title` stays, and the distinction is the point: a title is a fact a
+        # provider returned about this person, and an angle is a word we chose.
+        for key in ("name", "title", "location"):
             if contact.get(key):
                 parts.append(str(contact[key]))
     for entry in chosen or []:
@@ -179,7 +191,7 @@ def _tokens(text):
     return set(re.findall(r"[a-z][a-z\-]{3,}", (text or "").lower()))
 
 
-def check_sentence(sentence, support):
+def check_sentence(sentence, support, identity=frozenset()):
     """Is this claim supported? Returns (ok, why_not)."""
     low = sentence.lower()
 
@@ -207,21 +219,46 @@ def check_sentence(sentence, support):
 
     events_named = [w for w in EVENT_WORDS if w in low]
     for word in events_named:
-        if word not in support and not _is_paraphrase(low, support):
+        if word not in support and not _is_paraphrase(low, support,
+                                                        identity):
             return False, (f"'{word}' is asserted but nothing stored "
                            "mentions it")
     return True, None
 
 
-def _is_paraphrase(low, support):
+def identity_tokens(rec, contact=None):
+    """The words that are in support no matter what, so prove nothing.
+
+    Who this is and where they work: the company, its domain, the industry and
+    size we filed it under, and the person's own name and title. Every one of
+    them is in `support_text` by construction, which is why they cannot be
+    allowed to count as coverage - see `_is_paraphrase`.
+    """
+    facts = rec.get("company_facts") or {}
+    parts = [rec.get("company"), rec.get("domain"),
+             facts.get("industry"), facts.get("name"),
+             (contact or {}).get("name"), (contact or {}).get("title")]
+    return _tokens(" ".join(str(p) for p in parts if p))
+
+
+def _is_paraphrase(low, support, identity=frozenset()):
     """Is most of this sentence's substance already in what we know?
 
     The test the event-word branch has always used, named so the operational
     branch can hold to it too. "Congratulations on your Series B" has nothing
     behind it and fails; "you opened a Vienna office" against stored evidence
     saying exactly that passes.
+
+    `identity` is what the sentence may not buy coverage with. The recipient's
+    own name, their company, its domain and the industry and size we recorded
+    are in support by construction, so padding a fabrication with them drops
+    the missing-token ratio without adding a single supported assertion. That
+    defeated this module's own headline example: "Congratulations on the Series
+    B." is refused, and "Congratulations, <their name> of <their company> in
+    <their industry> with <their headcount> employees, on the Series B."
+    passed, on 2026-09-11, with nothing behind the Series B either time.
     """
-    content = _tokens(low) - _tokens(" ".join(CLAIM_MARKERS))
+    content = _tokens(low) - _tokens(" ".join(CLAIM_MARKERS)) - set(identity)
     if not content:
         return False
     missing = [t for t in content if t not in support]
@@ -231,11 +268,12 @@ def _is_paraphrase(low, support):
 def check(text, rec, contact=None, chosen=()):
     """Every unsupported claim in this text. Empty means it may ship."""
     support = support_text(rec, contact, chosen)
+    identity = identity_tokens(rec, contact)
     problems = []
     for sentence in sentences(text):
         if not is_claim(sentence):
             continue
-        ok, why = check_sentence(sentence, support)
+        ok, why = check_sentence(sentence, support, identity)
         if not ok:
             problems.append({"sentence": sentence[:160], "why": why})
     return problems
