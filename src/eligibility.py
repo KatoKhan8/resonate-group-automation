@@ -48,6 +48,13 @@ VERDICTS = (ELIGIBLE, HELD, BLOCKED, SKIPPED)
 # Stable reason codes. Renaming one breaks reporting, so these are vocabulary.
 BLOCKED_SUPPRESSED = "blocked:suppressed"
 BLOCKED_CLIENT_SUPPRESSED = "blocked:client_suppressed"
+# Somebody told RESONATE, not a client, never to contact them again.
+# `src/agencydnc.py` holds the whole mechanism - a one-way hash per identifier,
+# a closed reason vocabulary, and a lookup that answers yes and nothing else -
+# and until now its only callers were the web layer and referral promotion.
+# Nothing on the SEND path asked it, so the strongest suppression this agency
+# has was the one no send consulted.
+BLOCKED_AGENCY_DNC = "blocked:agency_dnc"
 BLOCKED_DROPPED = "blocked:record_dropped"
 BLOCKED_COMPANY_PAUSED = "blocked:company_paused"
 BLOCKED_CONTACT_PAUSED = "blocked:contact_paused"
@@ -114,6 +121,12 @@ HUMAN = {
         "this domain is on the global suppression list",
     BLOCKED_CLIENT_SUPPRESSED:
         "this client's own suppression list names this domain",
+    # Deliberately says nothing about who asked or when. `agencydnc` exists so
+    # that answering this question cannot leak another client's prospect, and a
+    # sentence here that said "they replied to somebody else" would undo the
+    # whole privacy model in the one place a person reads.
+    BLOCKED_AGENCY_DNC:
+        "this person asked Resonate not to contact them, so no client may",
     BLOCKED_DROPPED: "this record was dropped from the batch",
     BLOCKED_COMPANY_PAUSED:
         "somebody at this company replied, which pauses both channels for the "
@@ -252,13 +265,29 @@ def _decide(verdict, reasons, **extra):
 # Each returns a reason code or None. Ordered inside decide() from cheapest and
 # most final to most expensive.
 
-def _suppressed(rec, config, suppressed=None):
+def _suppressed(rec, config, suppressed=None, contact=None, agency=None):
+    """Every do-not-contact instruction, most binding first.
+
+    THE AGENCY LIST IS CHECKED HERE, and it was checked nowhere on this path
+    before. `agencydnc` is the list somebody joins by telling Resonate directly,
+    so it has to hold whichever workspace next imports them - and a person on it
+    reached `held:draft_not_approved`, an APPROVAL gate, which means approving
+    the copy would have sent to them. Reproduced on 2026-09-11.
+
+    Read from disk on every call, like the client list one line up. A cached
+    suppression is a suppression that arrived after the cache.
+    """
     domain = (rec.get("domain") or "").lower()
     suppressed = ingest.load_suppress() if suppressed is None else suppressed
     if domain and domain in suppressed:
         return BLOCKED_SUPPRESSED
     if (rec.get("drop_reason") or "").startswith("suppress"):
         return BLOCKED_CLIENT_SUPPRESSED
+    if contact is not None:
+        from . import agencydnc
+
+        if agencydnc.lookup(contact, index=agency):
+            return BLOCKED_AGENCY_DNC
     return None
 
 
@@ -529,7 +558,7 @@ def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
     channel = channel or content.get("channel") or planned.get("channel")
 
     # Cheapest and most final first: nothing later can undo these.
-    for reason in (_suppressed(rec, config, suppressed),
+    for reason in (_suppressed(rec, config, suppressed, contact=contact),
                    _record_state(rec),
                    _replied(rec, contact),
                    _paused(rec, contact, config),
