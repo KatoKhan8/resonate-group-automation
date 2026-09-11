@@ -11,16 +11,20 @@ provider truth.
 ## HEAD / TREE / VALIDATION
 
 ```
-commits         5 this session on top of bc957b4
+HEAD            5a383b9
+commits         6 this session on top of bc957b4
 tree            clean
 
-full suite      7,098 tests   OK   (settled tree, verdict captured)
-offline harness 7,074 tests   OK   "nothing reached off this machine"
-mutations       21            each caught by the intended test
+full suite      7,100 tests   OK   (definitive, settled tree)
+offline harness 7,100 tests   OK   "nothing reached off this machine"
+mutations       26            each caught by the intended test
 
 execution guard 14 of 15 gates PASS against live provider truth
                 only killswitch stops, by construction
 ```
+
+The two harnesses were run with a gap between them, which is what CLAUDE.md
+prescribes, and they agree on the same 7,100.
 
 A note on the suite verdict, because it nearly was not one. The first full run
 on this tree was piped through `tail -20`, and the trailing stdout of the demo
