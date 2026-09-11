@@ -593,6 +593,36 @@ class TestScrapingIsBounded(unittest.TestCase):
         self.assertNotIn('item.get("html")', source)
 
 
+class TestHistoryIsNotRewritable(unittest.TestCase):
+    """`store.save`'s history guard has one escape hatch, for test cleanup.
+
+    A test that adds an event to a shared estate has to take it back out, and
+    that is a caller who knows it is rewriting history. Production has no such
+    caller: nothing in `src/` clears a pause or removes an event, which is what
+    lets the guard be strict. This is the assertion that keeps it that way -
+    without it the hatch is just a hole, and the defect it was opened beside is
+    a reply-stop that silently stopped stopping.
+    """
+
+    def test_no_source_module_allows_history_loss(self):
+        """Every module except the one that declares the parameter."""
+        for path in source_files():
+            if os.path.basename(path) == "store.py":
+                continue
+            self.assertNotIn("allow_history_loss", read(path),
+                             os.path.relpath(path, ROOT))
+
+    def test_the_flag_still_exists_to_be_forbidden(self):
+        """So this class fails loudly if the parameter is renamed, rather than
+        passing for ever against a word nothing uses."""
+        import inspect
+
+        from src import store
+
+        self.assertIn("allow_history_loss",
+                      inspect.signature(store.save).parameters)
+
+
 class TestNoLeftoverDevelopmentArtefacts(unittest.TestCase):
     def test_no_fixme_or_hack_in_the_source(self):
         for path in source_files():

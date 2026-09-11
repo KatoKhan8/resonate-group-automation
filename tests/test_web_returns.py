@@ -59,7 +59,10 @@ class ReturnsView(WebTest):
         for rec in recs:
             rec["events"] = [e for e in (rec.get("events") or [])
                              if e.get("type") != events.OUT_OF_OFFICE_RECORDED]
-        store.save(recs)
+        # Taking back this class's own writes to a shared estate, which is the
+        # only sanctioned use of the flag - `store.save` says why, and
+        # `test_invariants` forbids any `src/` module from reaching for it.
+        store.save(recs, allow_history_loss=True)
 
     def tearDown(self):
         self.clear_absences()

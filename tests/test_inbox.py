@@ -139,7 +139,9 @@ class TheInbox(WebTest):
                 if rec["id"] == target["id"]:
                     rec["events"] = [e for e in rec["events"]
                                      if e.get("at") != stamp]
-            store.save(recs)
+            # Undoing this test's own writes to a shared estate. The only
+            # legitimate use of the flag; see `store.save`.
+            store.save(recs, allow_history_loss=True)
 
     def test_the_attention_list_is_a_subset_that_needs_somebody(self):
         found = self.inbox()
@@ -174,7 +176,7 @@ class TheInbox(WebTest):
                     rec["events"] = [
                         e for e in rec["events"]
                         if e.get("at") != "2026-09-01T09:00:00+00:00"]
-            store.save(recs)
+            store.save(recs, allow_history_loss=True)
 
     def test_the_page_shows_the_grouping(self):
         session = self.signin("ops@productive.test")

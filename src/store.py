@@ -368,6 +368,93 @@ def refuse_evidence_loss(old_recs, new_recs):
     return True
 
 
+# Every field that says this person must not be contacted. Written by
+# `accountpolicy` when a reply is honoured, and cleared by nothing in this
+# repository - which is what lets the guard below be strict.
+CONTACT_STOPS = ("paused", "stopped", "unsubscribed", "suppressed")
+
+
+def _history_index(recs):
+    """Per record: how many events it holds, and which stops are set.
+
+    Counted rather than diffed field by field, for the same reason
+    `_evidence_index` counts: the failure being guarded is a record being
+    replaced WHOLESALE by an older copy of itself, and a count sees that
+    without firing on a legitimate append.
+    """
+    index = {}
+    for rec in recs or []:
+        stops = set()
+        if rec.get("paused"):
+            stops.add("account paused")
+        if rec.get("suppression"):
+            stops.add("account suppressed")
+        for contact in ((rec.get("contacts") or [])
+                        + (rec.get("excluded") or [])):
+            for flag in CONTACT_STOPS:
+                if contact.get(flag):
+                    stops.add(f"{contact.get('key')} {flag}")
+        index[rec.get("id")] = (len(rec.get("events") or []), stops)
+    return index
+
+
+class HistoryLost(RuntimeError):
+    """This write would forget a reply, or lift a stop nobody lifted."""
+
+
+def refuse_history_loss(old_recs, new_recs):
+    """Refuse a write that drops an event or clears a do-not-contact flag.
+
+    THE DEFECT THIS CLOSES WAS ALREADY WRITTEN DOWN, in `save`'s own docstring,
+    and the remedy it prescribed was caller-side: pass `expect_digest`. One
+    caller does. The three that hold a whole-queue snapshot across minutes of
+    provider I/O - `run.checkpoint`, `run`'s final save and `enrich.run` - do
+    not, and they are exactly the callers the docstring warns about.
+
+    Reproduced on 2026-09-11 with nothing crashing. A prospect replied "please
+    remove us from your list"; the reply was persisted correctly and
+    `eligibility.decide` answered `blocked:contact_paused`. A concurrent run
+    then checkpointed the snapshot it had loaded before the reply, and the
+    events and the pause were gone. `eligibility` answered
+    `held:draft_not_approved` - an approval gate, not a stop - so approving
+    that copy would have sent the next step to somebody who asked to be
+    removed. `refuse_evidence_loss` had nothing to object to, because the
+    verification evidence was present in both copies.
+
+    So the guard moves to the boundary every writer already crosses, rather
+    than resting on a discipline that demonstrably was not followed. It also
+    covers the next caller, which is the part a call-site fix cannot do.
+
+    Strict, with no opt-out, because nothing in this repository clears any of
+    these: `accountpolicy` sets them and `resume_campaign` lifts a CAMPAIGN
+    pause in the campaign file instead. If a deliberate lift is ever wanted, it
+    should have to argue with this function rather than slip past it.
+    """
+    before, after = _history_index(old_recs), _history_index(new_recs)
+    lost = {}
+    for rid, (events_before, stops_before) in before.items():
+        if rid not in after:
+            continue                      # removal is a different rule
+        events_after, stops_after = after[rid]
+        why = []
+        if events_after < events_before:
+            why.append(f"{events_before - events_after} event(s) dropped")
+        gone = sorted(stops_before - stops_after)
+        if gone:
+            why.append("stop lifted: " + ", ".join(gone))
+        if why:
+            lost[rid] = why
+    if lost:
+        raise HistoryLost(
+            "this write would forget what happened or lift a stop nobody "
+            "lifted: "
+            + "; ".join(f"{rid}: {', '.join(why)}"
+                        for rid, why in sorted(lost.items()))
+            + ". Reload and re-apply rather than writing a stale snapshot "
+              "back over it.")
+    return True
+
+
 class QueueChanged(RuntimeError):
     """The queue moved under a read-modify-write. Nothing was written.
 
@@ -391,7 +478,7 @@ def digest(path=None):
         return hashlib.sha256(handle.read()).hexdigest()[:32]
 
 
-def save(recs, timeout=None, expect_digest=None):
+def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
     """Atomic whole-file write, under the lock. A crash leaves the old queue.
 
     `expect_digest` MAKES THIS SAFE FOR A READ-MODIFY-WRITE, and without it
@@ -419,6 +506,15 @@ def save(recs, timeout=None, expect_digest=None):
                 "it back would discard whatever changed. Nothing was written; "
                 "reload and re-apply.")
         refuse_evidence_loss(on_disk, recs)
+        # `allow_history_loss` IS FOR TEST CLEANUP AND NOTHING ELSE. A test
+        # that adds an event to a shared estate has to take it back out again,
+        # and that is a legitimate rewrite of history by a caller who knows it
+        # is doing so. Nothing in `src/` may pass it, and
+        # `tests/test_invariants.py` fails the build if anything does - an
+        # escape hatch nobody is allowed to reach for in production is a
+        # different thing from a guard with a hole in it.
+        if not allow_history_loss:
+            refuse_history_loss(on_disk, recs)
         _write(recs)
 
 
