@@ -11,12 +11,12 @@ provider truth.
 ## HEAD / TREE / VALIDATION
 
 ```
-HEAD            5a383b9
-commits         6 this session on top of bc957b4
+HEAD            361f413
+commits         10 this session on top of bc957b4
 tree            clean
 
-full suite      7,100 tests   OK   (definitive, settled tree)
-offline harness 7,100 tests   OK   "nothing reached off this machine"
+full suite      7,102 tests   OK   (definitive, settled tree)
+offline harness 7,102 tests   OK   "nothing reached off this machine"
 mutations       22            each caught by the intended test
                               (9 referral + 7 enrich + 5 linkedin + 1 funnel)
 
