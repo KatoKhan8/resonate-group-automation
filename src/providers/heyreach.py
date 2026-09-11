@@ -160,7 +160,15 @@ READ_ROUTES = ("/campaign/GetAll", "/inbox/GetConversationsV2")
 # module used to say sender accounts were unavailable because
 # `/linkedinaccount/GetAll` answers 404 - true, and it was the wrong route
 # name rather than an absent capability.
-READ_ROUTES_ALL = READ_ROUTES + ("/lead/GetLead", "/li_account/GetAll")
+# The two routes that answer what the provider DID, added here rather than to
+# `READ_ROUTES` above for the same reason `/li_account/GetAll` is: that tuple is
+# pinned by an exact-set assertion in `tests/test_audit.py` and is about the two
+# routes the inbound event contract rests on. These are lifecycle reads, which
+# is a different question. Both are POSTs that read, both are free, and both
+# were confirmed live on 2026-09-11.
+READ_ROUTES_ALL = READ_ROUTES + ("/lead/GetLead", "/li_account/GetAll",
+                                 "/campaign/GetLeadsFromCampaign",
+                                 "/stats/GetOverallStats")
 
 # Read-only GETs. Separate from the POST allowlist above because these take
 # their argument in the query string, not a body.
@@ -730,6 +738,174 @@ def campaign_status(campaign_id):
     The read-back for `pause_campaign`, kept beside it so the pair is obvious.
     """
     return (campaign_by_id(campaign_id) or {}).get("status")
+
+
+# ------------------------------------------------- what the provider DID
+#
+# THE LIFECYCLE IS READABLE, ON ROUTES THIS MODULE NEVER TRIED.
+#
+# `CONNECTION_STATUS_AVAILABLE = False` above stays, and stays true: it is a
+# statement about `/inbox/GetConversationsV2`, re-verified, and that route
+# genuinely carries no invitation state. What was wrong was reading it as a
+# statement about the PROVIDER. `/campaign/GetLeadsFromCampaign` returns, per
+# lead, `leadCampaignStatus`, `leadConnectionStatus`, `leadMessageStatus`,
+# `lastActionTime`, `failedTime`, `errorCode` and `linkedInUserProfileId`.
+#
+# This is what makes a first touch recordable at all. `touch.CONFIRMING_EVENTS`
+# can only be written by a send path that raises or by a webhook this vendor
+# does not expose, so before these routes a canary's invitation could never be
+# proven to have happened.
+#
+# `progressStats` CANNOT answer it and is never mapped to a lifecycle state
+# here. Two live proofs: campaign 594061 reports `totalUsersInProgress: 1,
+# totalUsersPending: 0` while that same lead's own row reads `Pending / None /
+# lastActionTime null` - nothing sent, already counted - and campaigns
+# 470039/470038/470010 report `totalUsersInProgress` of -7, -5 and -6. It is a
+# residual that absorbs bucket error, not a count.
+
+LEADS_ROUTE = "/campaign/GetLeadsFromCampaign"
+STATS_ROUTE = "/stats/GetOverallStats"
+
+REQUEST_PENDING = "request_pending"
+REQUEST_SENT = "request_sent"
+ACCEPTED = "accepted"
+REPLIED = "replied"
+FAILED = "failed"
+ENDED_NO_ACTION = "ended_no_action"
+LIFECYCLE_UNKNOWN = "unknown"
+
+LIFECYCLE = (REQUEST_PENDING, REQUEST_SENT, ACCEPTED, REPLIED, FAILED,
+             ENDED_NO_ACTION, LIFECYCLE_UNKNOWN)
+
+# States in which a prospect has demonstrably been reached. Named here so no
+# caller decides it locally, and FAILED is deliberately absent: a failed lead
+# may already have been accepted and messaged.
+REACHED = (REQUEST_SENT, ACCEPTED, REPLIED)
+
+# ALLOWLISTS, not translation tables - the same polarity argument as
+# `direction()`. Established over 851 real leads across 11 campaigns.
+#
+# A value this system has never seen becomes UNKNOWN and is recorded, never
+# folded into a neighbouring state. That is not hypothetical: 594061's sequence
+# carries `toBeWithdrawnAfterDays: 21`, so withdrawal is a scheduled event in
+# this campaign, and no `Withdrawn` value appears in those 851 leads. If one
+# ever does it must not read as still-pending.
+CONNECTION_STATES = ("none", "connectionsent", "connectionaccepted")
+MESSAGE_STATES = ("none", "messagesent", "messagereply")
+CAMPAIGN_STATES = ("pending", "insequence", "finished", "failed")
+
+
+def _state_word(value):
+    return str(value if value is not None
+               else "None").strip().lower().replace(" ", "")
+
+
+def lead_state(row):
+    """One lead's lifecycle state, with the provider's own words kept.
+
+    THE THREE FIELDS ARE INDEPENDENT, NOT A STATE MACHINE. Thirteen distinct
+    combinations were observed over 851 leads, including 27 at
+    `(Failed, ConnectionAccepted, MessageSent)` and one at
+    `(Failed, None, MessageSent)`.
+
+    So `Failed` DOES NOT MEAN NOTHING REACHED THE PROSPECT, and that is the
+    most dangerous thing to get wrong here: code reading `Failed` as "safe to
+    retry" would send a second invitation to somebody who already had one, and
+    in 27 of those cases had already accepted it. Failure is therefore consulted
+    LAST, and only when nothing more final is present:
+
+        replied          they answered
+        accepted         the invitation was accepted
+        request_sent     the invitation went out
+        failed           the step failed and none of the above happened
+        ended_no_action  the sequence finished having sent nothing
+        request_pending  enrolled, nothing done yet
+
+    `ended_no_action` is read from the fields rather than inferred: 165 of 252
+    observed `Finished` leads carry `leadConnectionStatus: None`, so "finished"
+    plainly does not mean "contacted", and calling that pending would promise an
+    action that is never coming.
+
+    `errorCode` is an OPEN set - 15 distinct values in 851 leads, a long tail of
+    singletons, one carrying a vendor typo - so it is carried verbatim and never
+    interpreted here.
+    """
+    raw = {"leadCampaignStatus": row.get("leadCampaignStatus"),
+           "leadConnectionStatus": row.get("leadConnectionStatus"),
+           "leadMessageStatus": row.get("leadMessageStatus")}
+    campaign = _state_word(row.get("leadCampaignStatus"))
+    connection = _state_word(row.get("leadConnectionStatus"))
+    message = _state_word(row.get("leadMessageStatus"))
+    answer = {"raw": raw, "error_code": row.get("errorCode"),
+              "at": row.get("lastActionTime") or row.get("failedTime")}
+
+    unseen = [name for name, word, allowed in (
+        ("leadCampaignStatus", campaign, CAMPAIGN_STATES),
+        ("leadConnectionStatus", connection, CONNECTION_STATES),
+        ("leadMessageStatus", message, MESSAGE_STATES))
+        if word not in allowed]
+    if unseen:
+        return dict(answer, state=LIFECYCLE_UNKNOWN,
+                    why="the provider used a value this system has never "
+                        "seen: " + ", ".join(unseen))
+    if message == "messagereply":
+        return dict(answer, state=REPLIED, why=None)
+    if connection == "connectionaccepted":
+        return dict(answer, state=ACCEPTED, why=None)
+    if connection == "connectionsent":
+        return dict(answer, state=REQUEST_SENT, why=None)
+    if campaign == "failed":
+        return dict(answer, state=FAILED, why=None)
+    if campaign == "finished":
+        return dict(answer, state=ENDED_NO_ACTION,
+                    why="the sequence finished with no connection request "
+                        "recorded against this lead")
+    return dict(answer, state=REQUEST_PENDING, why=None)
+
+
+def campaign_leads(campaign_id, offset=0, limit=MAX_PAGE):
+    """One page of a campaign's leads, each with its lifecycle state.
+
+    This route honours NO filters - a status, a sender or a nonsense key is
+    accepted and ignored, returning the unfiltered total - so a caller must page
+    and must scope by campaign id. Its `totalCount` also disagrees with
+    `progressStats.totalUsers` on large campaigns (50,563 against 35,157 on
+    one); this is the route that enumerates actual rows.
+    """
+    data = _read(LEADS_ROUTE, {"campaignId": int(campaign_id),
+                               "offset": int(offset),
+                               "limit": min(int(limit), MAX_PAGE)})
+    out = []
+    for row in _collection(data, LEADS_ROUTE):
+        profile = row.get("linkedInUserProfile") or {}
+        out.append({"provider_lead_id": row.get("id"),
+                    "profile_url": profile.get("profileUrl"),
+                    "provider_profile_id": row.get("linkedInUserProfileId"),
+                    "sender_id": row.get("linkedInSenderId"),
+                    "created_at": row.get("creationTime"),
+                    **lead_state(row)})
+    return out, data.get("totalCount")
+
+
+def campaign_stats(campaign_id):
+    """The campaign's own counters, as an independent cross-check per lead.
+
+    Trimmed to the four that describe prospect-facing actions. A 200 with no
+    `overallStats` object raises rather than reading as zero - the same argument
+    `_collection` makes: a zero here is the claim that nothing was sent, and
+    that claim has to come from the provider rather than from a missing key.
+    """
+    data = _read(STATS_ROUTE, {"campaignIds": [int(campaign_id)],
+                               "accountIds": [], "timeFrom": None,
+                               "timeTo": None})
+    stats = data.get("overallStats")
+    if not isinstance(stats, dict):
+        raise ProviderError(
+            f"heyreach {STATS_ROUTE}: no overallStats object in the response, "
+            f"so a zero here would be a guess rather than a count")
+    return {k: stats.get(k) for k in
+            ("connectionsSent", "connectionsAccepted", "totalMessageReplies",
+             "uniqueLeadsContacted")}
 
 
 def _read(path, body):
