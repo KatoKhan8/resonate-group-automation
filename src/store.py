@@ -293,8 +293,30 @@ class Snapshot(list):
     def __init__(self, rows, key="id"):
         super().__init__(rows)
         self.key = key
-        self.baseline = {row[key]: _frozen(row) for row in rows
-                         if isinstance(row, dict) and key in row}
+        self.rebase()
+
+    def rebase(self):
+        """The baseline becomes what these rows are now. Called after a write.
+
+        A BATCH CHECKPOINTS MANY TIMES AND THE BASELINE HAS TO MOVE WITH IT.
+        Without this the baseline stays at the opening read for the whole run,
+        so every checkpoint re-asserts every field the caller has EVER
+        touched, not the ones it has touched since the last one. Reproduced:
+        the caller writes `state: enriched` at one checkpoint, another process
+        then runs `drop(rid, "competitor - do not contact")`, and at the next
+        checkpoint the caller wins `state` again on the strength of an edit it
+        already persisted - landing the row as `state: enriched` with
+        `drop_reason` still set. `validate` returns no problems, `run.TERMINAL`
+        stops excluding it, and the record is worked again. That is the drop
+        reversion this class exists to prevent, re-entering through the field
+        the enrich stage always writes, with a window of the whole batch
+        instead of one interval.
+
+        So after a successful write the caller's rows ARE the baseline: they
+        are what it just put on disk for every field it owns.
+        """
+        self.baseline = {row[self.key]: _frozen(row) for row in self
+                         if isinstance(row, dict) and self.key in row}
 
     def _base_row(self, rec):
         """The row as it was read, or None if this caller introduced it."""
@@ -340,9 +362,20 @@ class Snapshot(list):
         caller added - present here with no baseline - go on the end, which is
         where an append would have put them.
         """
+        # A ROW WITH NO KEY CANNOT BE MERGED, SO IT IS REFUSED RATHER THAN
+        # SKIPPED. The comprehension below can only match rows it can address;
+        # one without the key silently matched nothing, was written nowhere,
+        # and raised nothing - the caller held two rows and one reached the
+        # disk. That is the failure mode this whole class exists to remove,
+        # so it fails closed here instead.
+        keyless = [row for row in self
+                   if not (isinstance(row, dict) and self.key in row)]
+        if keyless:
+            raise ValueError(
+                f"{len(keyless)} row(s) carry no {self.key!r} and cannot be "
+                f"merged onto what is on disk. Nothing was written.")
         edits = {row[self.key]: row for row in self
-                 if isinstance(row, dict) and self.key in row
-                 and not self.unchanged(row)}
+                 if not self.unchanged(row)}
         out = []
         for row in on_disk:
             if not (isinstance(row, dict) and self.key in row):
@@ -695,8 +728,9 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
                 "the queue changed while this work was in progress, so writing "
                 "it back would discard whatever changed. Nothing was written; "
                 "reload and re-apply.")
-        if isinstance(recs, Snapshot):
-            recs = recs.merge_onto(on_disk)
+        snapshot = recs if isinstance(recs, Snapshot) else None
+        if snapshot is not None:
+            recs = snapshot.merge_onto(on_disk)
         refuse_evidence_loss(on_disk, recs)
         # `allow_history_loss` IS FOR TEST CLEANUP AND NOTHING ELSE. A test
         # that adds an event to a shared estate has to take it back out again,
@@ -708,6 +742,11 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         if not allow_history_loss:
             refuse_history_loss(on_disk, recs)
         _write(recs)
+        # Only after the write, and only if it happened: a refused checkpoint
+        # must leave the caller still holding unpersisted edits, or the next
+        # one would treat them as already on disk and stop re-asserting them.
+        if snapshot is not None:
+            snapshot.rebase()
 
 
 def new_record(id, lane, client, company, domain, context="", signal=""):

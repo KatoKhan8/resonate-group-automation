@@ -117,9 +117,12 @@ def save(rows, timeout=None):
     from somewhere else.
     """
     with store.lock(timeout, for_path=path()):
-        if isinstance(rows, store.Snapshot):
-            rows = rows.merge_onto(store.read_jsonl(path()))
+        snapshot = rows if isinstance(rows, store.Snapshot) else None
+        if snapshot is not None:
+            rows = snapshot.merge_onto(store.read_jsonl(path()))
         store.write_jsonl(path(), rows)
+        if snapshot is not None:
+            snapshot.rebase()      # after the write, never before it
 
 
 def transaction(timeout=None):

@@ -119,6 +119,86 @@ class WhatArrivedDuringTheBatch(QueueTest):
             "erased by the batch snapshot; only evidence is guarded")
 
 
+class ABatchCheckpointsMoreThanOnce(QueueTest):
+    """The merge above is right for ONE checkpoint. A batch fires many.
+
+    The snapshot's baseline is what tells an edit this caller made from a
+    stale copy of somebody else's. If it stays at the opening read, then at
+    every later checkpoint the caller re-asserts every field it has ever
+    touched rather than the ones it has touched since - and `state` is the
+    field the enrich stage always writes. So the drop reversion the merge was
+    built to stop comes back through the second checkpoint, with a window of
+    the whole batch instead of one interval.
+
+    The baseline therefore moves to what was just written, and only when the
+    write actually happened.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._pinned = {k: os.environ.pop(k, None)
+                        for k in ("CAMPAIGNS", "ACTION_LEDGER")}
+        store.append([a_record("r0"), a_record("r1", "two.example")])
+
+    def tearDown(self):
+        for key, value in self._pinned.items():
+            if value is not None:
+                os.environ[key] = value
+        super().tearDown()
+
+    def test_a_drop_after_the_first_checkpoint_is_not_reverted_by_the_second(self):
+        held = store.load()                       # the batch loads once
+        store.get("r1", held)["state"] = "enriched"
+        store.save(held)                          # checkpoint 1
+        self.assertEqual(store.get("r1")["state"], "enriched")
+
+        store.drop("r1", "competitor - do not contact")    # another process
+
+        store.get("r0", held)["state"] = "enriched"        # more batch work
+        store.save(held)                          # checkpoint 2
+
+        row = store.get("r1")
+        self.assertEqual(row["state"], "dropped",
+                         "checkpoint 2 re-asserted an edit it had already "
+                         "persisted, and reverted the drop")
+        self.assertEqual(row["drop_reason"], "competitor - do not contact")
+        self.assertEqual(store.get("r0")["state"], "enriched",
+                         "the batch's own later work was lost")
+
+    def test_a_refused_checkpoint_leaves_the_edit_pending(self):
+        """The other half of the ordering: rebasing before the write would
+        make a refused checkpoint look persisted, and the retry would stop
+        re-asserting it."""
+        held = store.load()
+        store.get("r0", held)["state"] = "enriched"
+
+        real = store._write
+
+        def refuse(recs):
+            raise store.QueueLocked("another process has the queue")
+
+        store._write = refuse
+        try:
+            with self.assertRaises(store.QueueLocked):
+                store.save(held)
+        finally:
+            store._write = real
+
+        store.save(held)                          # the next checkpoint retries
+        self.assertEqual(store.get("r0")["state"], "enriched",
+                         "a refused write rebased anyway, so the retry "
+                         "thought the edit was already on disk")
+
+    def test_a_row_with_no_id_is_refused_rather_than_vanishing(self):
+        """A row the merge cannot address was written nowhere and raised
+        nothing, which is the failure mode this whole class exists to remove."""
+        held = store.load()
+        held.append({"company": "no id here"})
+        with self.assertRaises(ValueError):
+            store.save(held)
+        self.assertEqual(len(store.load()), 2, "the file was written anyway")
+
+
 class ACheckpointRefusalIsNotABatchFailure(QueueTest):
     """One refused write must cost the records it covers, not the batch.
 
