@@ -11,6 +11,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from src import generate, lint, llm, store
 from tests.base import FIXTURES
@@ -397,3 +398,76 @@ class TestSizingIsFree(GenerateTest):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheRunnerActuallyBuildsAModel(unittest.TestCase):
+    """`--spend` promised the model and never built one.
+
+    `run.main` called `run(...)` with no `model=`, so `model` was None all the
+    way into `stage_generate`, which does:
+
+        if not spend or model is None:
+            planned = generate.plan(rec); mark("planned"); continue
+
+    The generate stage could therefore never run live from the command line -
+    the only way an operator starts it. A real `--spend` run against the
+    Productive estate reported `generate records=0` having called nothing,
+    while `run.py`'s own docstring said `--spend` means "enrich and generate
+    may call providers and the model".
+
+    Asserted on what `main` passes rather than on the source text, because
+    what broke was an argument that was not passed.
+    """
+
+    def setUp(self):
+        from src import run
+        self.run = run
+        self.seen = {}
+        real = run.run
+
+        def spy(*a, **kw):
+            self.seen.update(kw)
+            return {"notes": [], "seconds": {}, "states": {}, "failures": [],
+                    "spend": kw.get("spend")}
+
+        run.run = spy
+        self.addCleanup(setattr, run, "run", real)
+
+    def test_a_spending_run_that_generates_gets_a_configured_model(self):
+        with mock.patch.dict(os.environ, {"LLM_API_KEY": "k",
+                                          "LLM_MODEL": "m",
+                                          "LLM_BASE_URL": "https://x.test"}):
+            self.run.main(["--spend", "--cap", "10", "--stage", "generate"])
+        model = self.seen.get("model")
+        self.assertIsNotNone(model, "run() was called with no model again")
+        self.assertTrue(model.configured())
+
+    def test_it_refuses_rather_than_quietly_planning(self):
+        """A run that silently plans instead of generating produces what looks
+        like a finished batch with no copy in it."""
+        with mock.patch.dict(os.environ, {"LLM_API_KEY": "", "LLM_MODEL": "",
+                                          "LLM_BASE_URL": ""}):
+            from src import providers
+            with mock.patch.object(providers, "load_env", return_value={}):
+                code = self.run.main(["--spend", "--cap", "10",
+                                      "--stage", "generate"])
+        self.assertEqual(code, 2)
+        self.assertEqual(self.seen, {}, "it ran the batch anyway")
+
+    def test_a_run_without_the_generate_stage_needs_no_model(self):
+        """The enrich stage spends credits and calls no model, so requiring
+        one there would refuse a legitimate run."""
+        from src import providers
+        with mock.patch.object(providers, "load_env", return_value={}):
+            with mock.patch.dict(os.environ, {"LLM_API_KEY": "", "LLM_MODEL": "",
+                                              "LLM_BASE_URL": ""}):
+                self.run.main(["--spend", "--cap", "10", "--stage", "enrich"])
+        self.assertIsNone(self.seen.get("model"))
+
+    def test_a_dry_run_needs_no_model(self):
+        from src import providers
+        with mock.patch.object(providers, "load_env", return_value={}):
+            with mock.patch.dict(os.environ, {"LLM_API_KEY": "", "LLM_MODEL": "",
+                                              "LLM_BASE_URL": ""}):
+                self.run.main(["--stage", "generate"])
+        self.assertIsNone(self.seen.get("model"))

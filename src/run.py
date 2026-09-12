@@ -419,6 +419,9 @@ def main(argv=None):
     p.add_argument("--stage", action="append", dest="stages", choices=list(STAGES))
     p.add_argument("--spend", action="store_true",
                    help="allow provider and model calls, and spend credits")
+    p.add_argument("--model",
+                   help="override LLM_MODEL for this run; the endpoint and key "
+                        "always come from the environment")
     p.add_argument("--live", action="store_true",
                    help="explicit gate; this build refuses and explains why")
     a = p.parse_args(argv)
@@ -435,8 +438,30 @@ def main(argv=None):
         print(f"REFUSED: {e}")
         return 2
 
+    # THE MODEL THE `--spend` FLAG ALREADY PROMISED. This function never
+    # built one, so `run(model=None)` reached `stage_generate`, which does
+    # `if not spend or model is None: ... mark("planned"); continue`. The
+    # generate stage could therefore never run live from the command line -
+    # the only way an operator starts it - and a `--spend` run reported
+    # `generate records=0` having called nothing. This module's own docstring
+    # says `--spend` means "enrich and generate may call providers and the
+    # model"; half of that was true.
+    #
+    # Refused rather than silently downgraded when nothing is configured. A
+    # run that quietly plans instead of generating is a run whose output looks
+    # like a finished batch with no copy in it, which is the shape of failure
+    # this repository keeps finding.
+    model = None
+    if a.spend and (not a.stages or "generate" in a.stages):
+        model = llm.OpenAICompatibleModel(model=a.model)
+        if not model.configured():
+            print(f"REFUSED: --spend includes the generate stage and "
+                  f"{model.why_not()}. Configure the model, or run without "
+                  f"the generate stage.")
+            return 2
+
     report = run(source=a.source, client=a.client, lane=a.lane, day=a.day,
-                 spend=a.spend, cap=a.cap, limit=a.limit,
+                 spend=a.spend, cap=a.cap, limit=a.limit, model=model,
                  stages=tuple(a.stages) if a.stages else STAGES, ids=a.ids)
 
     print("DRY RUN" if not a.spend else "LIVE ENRICHMENT (credits spent)")
