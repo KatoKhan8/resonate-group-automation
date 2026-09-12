@@ -16,9 +16,21 @@ will forget, and the author of the guards forgot within the hour. So the guards
 are not something a writer calls; they are the only way to obtain the thing a
 writer requires. `authorize()` runs all of them and returns an `Authorization`.
 A write layer takes an `Authorization` and cannot be invoked without one, and
-one cannot be constructed except by passing every gate - `Authorization` has no
-public constructor path that skips them, and a test asserts the write layer
-refuses anything that is not one.
+a test asserts the write layer refuses anything that is not one.
+
+WHAT THAT DOES NOT YET MEAN, stated here because this paragraph used to claim
+the opposite. `Authorization.__init__(**fields)` is public and ungated, so the
+type proves SHAPE and not provenance: any caller in this repository can build
+one with `gates=()` and `providerwrites.perform` will accept it, after which
+only `revalidate` runs - eligibility and the killswitch - and tenancy,
+approval, readback, collision, fatigue, caps, stoppability and the sender
+roster are all skipped. The compensating control is the ledger: `perform`
+requires the key to be in `ATTEMPTED`, which takes a real `reserve`. It is not
+reachable from a prospect-facing write today, because `providerwrites.
+SUPPORTED` is empty and the global killswitch reports sending off, and it is
+recorded in PRODUCT-GAPS.md as the thing to close before either changes. A
+false claim in a docstring on a safety path is worse than a named gap: it is
+the reason nobody looks.
 
 ORDER MATTERS, AND IT IS FIXED.
 

@@ -2989,6 +2989,38 @@ use:
 | `contact["personalization"]` | written only by demo builders, so `eligibility._evidence_aged_out` - the only staleness gate on the send path - can never fire |
 | `executionguard`, `providerwrites`, `configdiff` | nothing in `src/` imports them yet; they are reachable only from their own CLIs and tests |
 
+### 38u. STILL OPEN - an `Authorization` proves shape, not provenance
+
+`src/executionguard.py` said, in its own module docstring, that an
+`Authorization` "cannot be constructed except by passing every gate" and "has
+no public constructor path that skips them". `Authorization.__init__(**fields)`
+is public and ungated, so that was false. Any caller in this repository can
+build one with `gates=()`; `providerwrites.perform` accepts it on an
+`isinstance` check, and from there only `revalidate` runs - eligibility and the
+killswitch. Skipped: tenancy, campaign approval (so a swapped sender, list or
+limit is invisible), the readback, person and account collision, fatigue, pilot
+caps, stoppability, and the sender roster and health.
+
+The compensating control is the ledger. `perform` requires the key to be in
+`ATTEMPTED`, which takes a real `reserve` - which is also exactly what a
+crashed attempt leaves behind, so it is a narrow one.
+
+Not reachable from a prospect-facing write today: `providerwrites.SUPPORTED`
+is empty and `killswitch.global_state()` reports sending off, so `authorize`
+dies at the killswitch gate and `revalidate` refuses. It arms the day either
+changes.
+
+The fix is the one this repository already uses for
+`store.save(allow_history_loss=...)`: an issuing token that only `authorize()`
+holds, plus a test-only escape hatch that `tests/test_invariants.py` forbids
+any `src/` module from reaching for. Eleven test sites construct an
+`Authorization` directly, several of them deliberately forging one to prove
+the write layer refuses it, so they move onto that hatch rather than losing
+the ability to forge.
+
+The docstring now says what is true instead. A false claim on a safety path is
+worse than a named gap, because it is the reason nobody looks.
+
 ### 38s. FIXED - a batch erased what arrived while it was running
 
 `run.run` loaded the whole queue once, walked 500 records across minutes of
