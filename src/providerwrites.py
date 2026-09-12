@@ -113,26 +113,37 @@ OPERATIONS = {
         "order matters: a system that can start an outreach campaign before "
         "it can reliably stop one has bought exposure it cannot end"),
     EMAIL_ADD_LEAD: ("email", True,
-        "THE NAMED ROUTE DOES NOT ACCEPT THIS. POST /api/campaigns/{id}/leads "
-        "answered 405 on 2026-09-12: 'Supported methods: GET, HEAD, DELETE'. "
-        "So `bison.leads_endpoint` names a URL that cannot be posted to, and "
-        "`bison.build_leads` builds a payload with nowhere to send it. POST "
-        "/api/leads DOES create a lead (201, requires first_name and email) "
-        "but takes no campaign_id, and no route was found that puts a lead "
-        "into a campaign: /lead-lists accepts a list but ignored an inline "
-        "leads array (leads_processed 0), and no import or upload route "
-        "exists. On this API, campaign population is a human action in the "
-        "vendor UI"),
+        "SUPPORTED, AND IT IS A TWO-STEP. An earlier entry here claimed "
+        "campaign population was a human action in the vendor UI. That was "
+        "WRONG: it probed guessed paths and read its own failure to guess as "
+        "provider absence. POST /api/campaigns/{id}/leads is indeed a 405, "
+        "but that is the READ route - the write is POST "
+        "/api/campaigns/{id}/leads/attach-leads with {'lead_ids': [...]}, "
+        "which answered 200 on 2026-09-12 and put both leads in the campaign "
+        "with lead_campaign_data status `in_sequence` on readback. So a lead "
+        "is CREATED by POST /api/leads and then ATTACHED. The provider is "
+        "idempotent on the attach in its own words - 'Existing leads were not "
+        "added' - and `bison.attach_leads` reads membership before and after "
+        "rather than trusting either that sentence or the status code. "
+        "Prospect-facing because attaching to a RUNNING campaign is acted on "
+        "immediately. Note for the caller: the attach payload carries only "
+        "ids, never words. The copy reaches the prospect through the lead's "
+        "custom_variables and the sequence, so the payload that must be bound "
+        "to the approval is the lead-create one"),
     EMAIL_CREATE_CAMPAIGN: ("email", False,
-        "ROUTE ESTABLISHED, NOT YET DECLARED. POST /api/campaigns answered 201 "
-        "on 2026-09-12 and returned a DRAFT campaign (id 427), which DELETE "
-        "/api/campaigns/{id} then removed. So this verb exists and was proven "
-        "against the live estate. It stays unsupported because a campaign this "
-        "system creates cannot be populated - see EMAIL_ADD_LEAD - so creating "
-        "one would produce an empty campaign nobody can fill"),
+        "SUPPORTED. POST /api/campaigns answered 201 on 2026-09-12 and "
+        "returned a DRAFT campaign, which DELETE /api/campaigns/{id} then "
+        "removed. A campaign is created in `draft` and sends nothing until it "
+        "is resumed, so this is not prospect-facing. It was held back on the "
+        "belief that a campaign created here could never be populated; that "
+        "belief was false - see EMAIL_ADD_LEAD"),
     EMAIL_SET_SEQUENCE: ("email", False,
-        "GET /campaigns/{id}/sequence-steps reads them; no write verb is "
-        "established"),
+        "SUPPORTED. POST /api/campaigns/{id}/sequence-steps answered 201 on "
+        "2026-09-12. The body is the part worth writing down, because the "
+        "obvious one fails: a flat step is refused, and the provider requires "
+        "`title` AND a NESTED `sequence_steps` array - an empty body answers "
+        "422 naming both. Not prospect-facing on its own: a sequence on a "
+        "draft campaign sends nothing until that campaign is resumed"),
     EMAIL_ASSIGN_SENDER: ("email", False,
         "no documented route. /campaigns/{id}/sender-emails reads the set and "
         "pages properly, so a write would be verifiable"),
@@ -140,19 +151,25 @@ OPERATIONS = {
         "the three limit fields are readable on the campaign object; no write "
         "verb is established"),
     EMAIL_PAUSE: ("email", False,
-        "NO PER-LEAD STOP THAT WORKS BEFORE THE FIRST EMAIL. Probed on "
-        "2026-09-12: of twenty candidate per-lead verbs (pause, stop, disable, "
-        "deactivate, archive, block, skip, finish, remove-from-campaign, "
-        "exclude, opt-out, hold, cancel, suspend, end and more) exactly one "
-        "route exists - PATCH /api/leads/{id}/unsubscribe. Invoked against a "
-        "lead this system created, it answered 422: 'This lead has not been "
-        "sent any emails yet'. It is post-hoc suppression of somebody who has "
-        "already received mail, not a way to prevent a first one, and it is "
-        "irreversible - /resubscribe and /subscribe both 404. DELETE "
-        "/api/campaigns/{id}/leads exists but its scope is unproven and the "
-        "client's live campaign holds 21,143 leads, so it was not tested "
-        "there. Campaign status is readable, so a campaign-level pause would "
-        "be verifiable if a route for it were found"),
+        "SUPPORTED, AT CAMPAIGN GRANULARITY - READ THE SECOND HALF. PATCH "
+        "/api/campaigns/{id}/pause answered 200 on 2026-09-12 and the "
+        "campaign read back as `paused`. `bison.pause_campaign` performs that "
+        "readback and raises unless the provider itself says `paused`, so a "
+        "local row can never claim PAUSED while EmailBison is still sending. "
+        "Resume is symmetric and refuses an incomplete campaign in the "
+        "provider's own words. "
+        "THE LIMIT: there is no per-lead stop that works before the first "
+        "email. Of twenty candidate per-lead verbs exactly one route exists, "
+        "PATCH /api/leads/{id}/unsubscribe, and against a lead this system "
+        "created AND ATTACHED to a campaign it still answered 422 - 'This "
+        "lead has not been sent any emails yet'. It is post-hoc suppression "
+        "of somebody who has already received mail, not a way to prevent a "
+        "first one, and it is irreversible: /resubscribe and /subscribe both "
+        "404. So stopping ONE person before their first email means pausing "
+        "the whole campaign they are in. That is a genuine stop and a blunt "
+        "one, and it is the reason campaign SHARD SIZE is a safety parameter "
+        "here rather than a performance one: the smallest campaign that can "
+        "be paused is the smallest group that can be stopped"),
     EMAIL_ACTIVATE: ("email", True,
         "no documented route. Prospect-facing by definition: activation is "
         "what makes a staged sequence start emailing real people"),
@@ -188,7 +205,8 @@ OPERATIONS = {
 # successful response has ever been read, and each stays refused by name. A
 # fixture is never a live-validated integration, and one live-validated verb
 # does not validate its neighbours.
-SUPPORTED = (LINKEDIN_PAUSE,)
+SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_CREATE_CAMPAIGN,
+             EMAIL_SET_SEQUENCE)
 
 PROSPECT_FACING = tuple(op for op, (_c, facing, _w) in OPERATIONS.items()
                         if facing)
@@ -342,9 +360,51 @@ def record_staged(campaign_id, operation, payload, observed):
     return entry
 
 
+def _require_approved_words(operation, authorization, step, payload):
+    """The words that were approved must be the words that are transported.
+
+    `authorization.fingerprint` records what `approval.is_approved` blessed.
+    Nothing compared it to what was actually sent, so the two could differ:
+    with a token minted for approved copy, a payload carrying "BUY MY THING,
+    unapproved text" was transported and settled as `sent`. Approval gated the
+    rendered step and a different string reached the prospect.
+
+    Two things are checked, because either alone is bypassable:
+
+      1. the step handed to this function fingerprints to the approved value -
+         so the caller cannot approve one step and declare another;
+      2. every non-empty line of that step's copy literally appears in the
+         serialised payload - so the caller cannot present the approved step
+         and transport something else.
+
+    Only prospect-facing writes reach here. A staging write sends no words.
+    """
+    from . import approval
+
+    if not isinstance(step, dict):
+        raise WriteRefused(
+            f"{operation} is prospect-facing and was given no `step`, so the "
+            f"words being sent cannot be compared to the words that were "
+            f"approved. Pass the same step `authorize` was given")
+    actual = approval.fingerprint(step)
+    if actual != authorization.fingerprint:
+        raise WriteRefused(
+            f"{operation}: this step fingerprints to {actual!r} and the "
+            f"authorization approved {authorization.fingerprint!r}. The copy "
+            f"changed after it was approved")
+    body = json.dumps(payload, default=str, ensure_ascii=False)
+    for field in ("subject", "body", "note"):
+        text = str(step.get(field) or "").strip()
+        if text and text not in body:
+            raise WriteRefused(
+                f"{operation}: the approved {field} does not appear in the "
+                f"payload being transported. The approved words and the sent "
+                f"words must be the same words")
+
+
 def perform(operation, *, authorization=None, tenant=None, campaign=None,
             payload=None, transport=None, readback=None, expected=None,
-            by="system"):
+            step=None, by="system"):
     """The single door. Refuses, in this order, before any transport is touched.
 
     `transport` and `readback` are injected so the contract can be developed
@@ -370,6 +430,22 @@ def perform(operation, *, authorization=None, tenant=None, campaign=None,
             raise WriteRefused(
                 f"the authorization is for {authorization.channel} and "
                 f"{operation} writes to {channel}")
+        # THE CHANNEL IS NOT THE ACTION.
+        #
+        # Until this check existed, the only question asked was which channel
+        # the token was for - so an authorization minted for `add_lead` would
+        # drive `activate`, because both are linkedin and both are facing. One
+        # approval to add a lead was therefore an approval to start the
+        # campaign, which is the precise escalation the gate ladder exists to
+        # prevent. Every gate in `authorize` is evaluated for a NAMED
+        # operation, and a token is only proof of the action it names.
+        if authorization.operation != operation:
+            raise WriteRefused(
+                f"the authorization is for {authorization.operation!r} and "
+                f"this is {operation!r}. Every gate was evaluated against the "
+                f"operation the token names; it is not proof for a different "
+                f"one, even on the same channel")
+        _require_approved_words(operation, authorization, step, payload)
         authorization.spend()
         key = authorization.key
         # A RESERVATION MUST ALREADY EXIST. `executionguard.authorize` writes

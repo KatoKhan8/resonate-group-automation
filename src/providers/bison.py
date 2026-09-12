@@ -15,7 +15,8 @@ cadence continues after step one.
 import argparse
 import os
 
-from . import ProviderError, key, ok, query, request, result, failed
+from . import (ProviderError, key, mapping, ok, query, request, result,
+               failed)
 
 DEFAULT_BASE = "https://send.resonategroup.co/api"
 
@@ -295,8 +296,161 @@ def build_leads(rows):
 
 
 def leads_endpoint(campaign_id):
-    """The URL phase 7 will POST to. Named here so it is reviewable."""
+    """Where a campaign's membership is READ.
+
+    This is not where leads are added. `POST` here answers 405 "Supported
+    methods: GET, HEAD, DELETE" - measured 2026-09-12. Adding is a two-step on
+    this API: create the lead, then attach it. See `attach_leads`.
+    """
     return f"{base()}/campaigns/{campaign_id}/leads"
+
+
+ATTACH_PATH = "/campaigns/{campaign_id}/leads/attach-leads"
+
+
+def _json_headers():
+    return dict(headers(), **{"Content-Type": "application/json"})
+
+
+def _message(data):
+    """The provider's own error sentence, for an exception a human will read."""
+    body = data.get("data") if isinstance(data, dict) else None
+    if isinstance(body, dict) and body.get("message"):
+        return str(body["message"])[:200]
+    if isinstance(data, dict) and data.get("message"):
+        return str(data["message"])[:200]
+    return str(data)[:200]
+
+
+def create_lead(fields):
+    """Create one lead in the workspace and return the provider's own row.
+
+    `email` and `first_name` are required by the provider. Returns the stored
+    row rather than the id alone, because a caller has to be able to see what
+    was actually stored: unknown keys are accepted and dropped silently here,
+    so a 201 on its own proves nothing about any individual field.
+    """
+    if not isinstance(fields, dict) or not fields.get("email"):
+        raise ProviderError("emailbison create_lead: an email is required")
+    status, data = request("POST", f"{base()}/leads", _json_headers(), fields)
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison create_lead: POST /leads -> {status} {_message(data)}")
+    row = mapping(data, "create_lead").get("data") or {}
+    if not row.get("id"):
+        raise ProviderError(
+            "emailbison create_lead: the provider returned no id; refusing to "
+            "report a lead that cannot be addressed")
+    return row
+
+
+def campaign_lead_ids(campaign_id, per_page=200):
+    """Which lead ids the PROVIDER says are in this campaign.
+
+    Membership read from the provider rather than from anything we remember
+    writing. Used to confirm an attach and to make one idempotent.
+    """
+    url = query(leads_endpoint(campaign_id), {"per_page": per_page})
+    status, data = request("GET", url, headers())
+    if not ok(status):
+        raise ProviderError(f"emailbison campaign_lead_ids: GET -> {status}")
+    rows = mapping(data, "campaign_lead_ids").get("data")
+    if not isinstance(rows, list):
+        raise ProviderError(
+            "emailbison campaign_lead_ids: the campaign lead list is not a "
+            "list; refusing to read an unknown shape as empty membership")
+    return [r.get("id") for r in rows if isinstance(r, dict) and r.get("id")]
+
+
+def attach_leads(campaign_id, lead_ids):
+    """Put existing leads into a campaign, and prove they arrived.
+
+    The verb the email lane was missing. `POST /api/campaigns/{id}/leads` is a
+    405; this is the route that works, measured against a campaign and leads
+    this system created on 2026-09-12.
+
+    Idempotent on both sides. The provider itself refuses to double-add
+    ("Existing leads were not added"), and this reads membership first, so a
+    repeat costs one GET and writes nothing.
+
+    Returns {"attached", "already", "members"}, where `members` is the
+    provider's own membership AFTER the write. A caller asking whether a lead
+    is in a campaign reads `members`, never the status code: this raises when
+    the readback lacks what was asked for, so a silent partial attach cannot
+    be reported as success.
+    """
+    wanted = [i for i in (lead_ids or []) if i is not None]
+    if not wanted:
+        raise ProviderError("emailbison attach_leads: no lead ids given")
+    before = set(campaign_lead_ids(campaign_id))
+    missing = [i for i in wanted if i not in before]
+    if not missing:
+        return {"attached": [], "already": list(wanted),
+                "members": sorted(before)}
+    status, data = request(
+        "POST", base() + ATTACH_PATH.format(campaign_id=campaign_id),
+        _json_headers(), {"lead_ids": missing})
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison attach_leads: POST attach-leads -> {status} "
+            f"{_message(data)}")
+    after = set(campaign_lead_ids(campaign_id))
+    absent = [i for i in wanted if i not in after]
+    if absent:
+        raise ProviderError(
+            f"emailbison attach_leads: the provider answered {status} but "
+            f"{len(absent)} of {len(wanted)} leads are not in campaign "
+            f"{campaign_id} on readback: {absent[:5]}")
+    return {"attached": missing, "already": [i for i in wanted if i in before],
+            "members": sorted(after)}
+
+
+def set_sequence(campaign_id, title, steps):
+    """Write the campaign's sequence. Requires `title` AND `sequence_steps`.
+
+    Measured 2026-09-12: an empty body answers 422 naming both as required,
+    and `title` plus a NESTED `sequence_steps` array answers 201. A flat
+    single step is rejected - the steps have to be nested.
+    """
+    if not steps:
+        raise ProviderError("emailbison set_sequence: no steps given")
+    status, data = request(
+        "POST", f"{base()}/campaigns/{campaign_id}/sequence-steps",
+        _json_headers(), {"title": title, "sequence_steps": list(steps)})
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison set_sequence: POST -> {status} {_message(data)}")
+    return mapping(data, "set_sequence").get("data") or {}
+
+
+def campaign(campaign_id):
+    """One campaign as the provider states it, including `status`."""
+    status, data = request("GET", f"{base()}/campaigns/{campaign_id}",
+                           headers())
+    if not ok(status):
+        raise ProviderError(f"emailbison campaign: GET -> {status}")
+    return mapping(data, "campaign").get("data") or {}
+
+
+def pause_campaign(campaign_id):
+    """Stop a campaign, and confirm from the provider that it stopped.
+
+    `PATCH /api/campaigns/{id}/pause` -> 200, status `paused`, measured
+    2026-09-12. The readback is the point: this returns the provider's own
+    status string and raises when that status is not `paused`, so a local
+    record can never say PAUSED while EmailBison is still sending.
+    """
+    status, data = request("PATCH", f"{base()}/campaigns/{campaign_id}/pause",
+                           _json_headers(), {})
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison pause_campaign: PATCH -> {status} {_message(data)}")
+    state = str(campaign(campaign_id).get("status") or "").lower()
+    if state != "paused":
+        raise ProviderError(
+            f"emailbison pause_campaign: the provider answered {status} but "
+            f"campaign {campaign_id} reads back as {state!r}, not 'paused'")
+    return {"campaign_id": campaign_id, "status": state}
 
 
 # --------------------------------------------------------- inbound events
