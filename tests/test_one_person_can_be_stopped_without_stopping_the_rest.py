@@ -170,5 +170,79 @@ class StoppingOnePerson(QueueTest):
         self.assertEqual(stops[0]["status"], "stopped")
 
 
+class TheSweepCatchesEveryStopReason(QueueTest):
+    """A reply comes through `inbound`. Nothing else did.
+
+    A suppression, an agency DNC, an account stop and an unsubscribe read
+    from a file all change canonical state and told the provider nothing.
+    The sweep asks the question the other way round - of the people actually
+    staged at the provider, who is now ineligible for a do-not-contact
+    reason - so a stop reason added later is covered without editing it.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.bison = FakeBison()
+        self._real = leadstop.bison
+        leadstop.bison = self.bison
+        self.addCleanup(setattr, leadstop, "bison", self._real)
+        row = campaigns.new_campaign("camp-stop", "productive", "Sweep test")
+        row["record_ids"] = ["rec-subject", "rec-bystander"]
+        row["bison_campaign_id"] = 77
+        campaigns.save([row])
+
+    @staticmethod
+    def _record(rid, email, lead_id, **extra):
+        rec = {"id": rid, "client": "productive", "domain": "example.com",
+               "company": "Example", "state": "ready",
+               "contacts": [{"key": f"{rid}-c1", "email": email,
+                             "first_name": "Test", "last_name": "Person",
+                             "sendable": True, "bison_lead_id": lead_id}]}
+        rec.update(extra)
+        return rec
+
+    def test_an_unsubscribed_person_is_stopped_at_the_provider(self):
+        subject = self._record("rec-subject", "subject@resonategroup.co", 11)
+        subject["contacts"][0]["unsubscribed"] = True
+        store.save([subject,
+                    self._record("rec-bystander", "b@resonategroup.co", 12)])
+        report = leadstop.sweep(live=True)
+        self.assertEqual(report["checked"], 2)
+        self.assertEqual([r["contact"] for r in report["stopped"]],
+                         ["rec-subject-c1"])
+        self.assertEqual(self.bison.members[77][11], "stopped")
+        self.assertEqual(self.bison.members[77][12], "in_sequence",
+                         "the sweep stopped somebody it had no reason to")
+
+    def test_a_dry_sweep_writes_nothing(self):
+        subject = self._record("rec-subject", "subject@resonategroup.co", 11)
+        subject["contacts"][0]["unsubscribed"] = True
+        store.save([subject])
+        leadstop.sweep(live=False)
+        self.assertEqual(self.bison.writes, 0)
+        self.assertEqual(self.bison.members[77][11], "in_sequence")
+
+    def test_an_unstaged_contact_is_never_checked(self):
+        """Nobody at the provider, nothing to stop."""
+        rec = self._record("rec-subject", "subject@resonategroup.co", 11)
+        rec["contacts"][0].pop("bison_lead_id")
+        rec["contacts"][0]["unsubscribed"] = True
+        store.save([rec])
+        report = leadstop.sweep(live=True)
+        self.assertEqual(report["checked"], 0)
+        self.assertEqual(self.bison.writes, 0)
+
+    def test_running_it_twice_writes_once(self):
+        subject = self._record("rec-subject", "subject@resonategroup.co", 11)
+        subject["contacts"][0]["unsubscribed"] = True
+        store.save([subject])
+        leadstop.sweep(live=True)
+        before = self.bison.writes
+        second = leadstop.sweep(live=True)
+        self.assertEqual(self.bison.writes, before,
+                         "the second sweep wrote again")
+        self.assertEqual(len(second["already"]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

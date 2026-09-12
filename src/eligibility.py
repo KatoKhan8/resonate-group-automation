@@ -322,6 +322,26 @@ def _paused(rec, contact, config=None):
     return None
 
 
+def must_not_contact(rec, contact, config=None, suppressed=None):
+    """The person-level reasons this person hears nothing further.
+
+    Public because `decide` is not the only caller that needs it and must not
+    become a second implementation of it. `decide` answers about a STEP - it
+    needs a timeline, a step key and content, and answers `skipped:no_such_step`
+    for a person with no planned step. Whether somebody has unsubscribed is a
+    fact about the person, true whether or not anything is scheduled for them,
+    and `leadstop.sweep` asks exactly that question of everybody this system
+    has staged at a provider.
+
+    Returns reasons in the order `decide` evaluates them, most final first,
+    with `None` for each check that did not fire.
+    """
+    return (_suppressed(rec, config, suppressed, contact=contact),
+            _record_state(rec),
+            _replied(rec, contact),
+            _paused(rec, contact, config))
+
+
 def _replied(rec, contact):
     """What this person's own reply did to their own sequence.
 
@@ -588,10 +608,8 @@ def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
     channel = channel or content.get("channel") or planned.get("channel")
 
     # Cheapest and most final first: nothing later can undo these.
-    for reason in (_suppressed(rec, config, suppressed, contact=contact),
-                   _record_state(rec),
-                   _replied(rec, contact),
-                   _paused(rec, contact, config),
+    for reason in (*must_not_contact(rec, contact, config=config,
+                                     suppressed=suppressed),
                    _identity(rec, contact),
                    _selected(rec, contact, campaign),
                    _already_pushed(rec, contact.get("key"), step_key),

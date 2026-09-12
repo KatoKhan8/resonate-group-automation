@@ -120,6 +120,67 @@ def stop_contact(rec, contact, why, *, campaign=None, rows=None, live=False,
     return report
 
 
+def sweep(recs=None, rows=None, live=False, by="system"):
+    """Stop everybody at the provider who must not be contacted any more.
+
+    A reply arrives through `inbound` and stops that person there. Nothing
+    else does: a suppression, an agency DNC, an account stop, a client's
+    do-not-contact list and an unsubscribe read from a file all change
+    canonical state and tell the provider nothing. Hooking each of those
+    writers separately would mean finding all of them and never missing a
+    future one.
+
+    So this asks the question the other way round: of the people this system
+    has actually STAGED at the provider, which are now ineligible for a reason
+    that means "do not contact"? It re-derives that from `eligibility` rather
+    than from a flag somebody remembered to set, so a stop reason added later
+    is covered without editing this.
+
+    Idempotent and safe to re-run: `stop_contact` reads provider truth first
+    and writes nothing for somebody already stopped. Dry run by default.
+    """
+    from . import eligibility, executionguard
+
+    recs = store.load() if recs is None else recs
+    rows = campaigns.load() if rows is None else rows
+    report = {"checked": 0, "stopped": [], "already": [], "failed": [],
+              "live": bool(live)}
+    for rec in recs:
+        campaign = _campaign_of(rec, rows)
+        for contact in rec.get("contacts") or []:
+            if not contact.get("bison_lead_id"):
+                continue
+            report["checked"] += 1
+            why = _must_stop(rec, contact, eligibility, executionguard)
+            if not why:
+                continue
+            try:
+                out = stop_contact(rec, contact, why, campaign=campaign,
+                                   rows=rows, live=live, by=by)
+            except (StopRefused, StopUnverified, ProviderError) as e:
+                report["failed"].append(
+                    {"record": rec.get("id"), "contact": contact.get("key"),
+                     "why": why, "error": f"{type(e).__name__}: {e}"[:200]})
+                continue
+            entry = {"record": rec.get("id"), "contact": contact.get("key"),
+                     "why": why, "status": out.get("status_after")}
+            report["already" if out.get("already") else "stopped"].append(entry)
+    return report
+
+
+def _must_stop(rec, contact, eligibility, executionguard):
+    """The reason this person must receive nothing further, or None.
+
+    Only reasons that mean DO NOT CONTACT. A step held for approval, blocked
+    on lint or waiting on a delay is not a stop - those are people we have not
+    written to yet, and detaching them would throw away the staging.
+    """
+    for reason in eligibility.must_not_contact(rec, contact):
+        if reason in executionguard.SUPPRESSION_REASONS:
+            return reason
+    return None
+
+
 def _campaign_of(rec, rows=None):
     for campaign in campaigns.load() if rows is None else rows:
         if rec.get("id") in (campaign.get("record_ids") or []):
@@ -145,11 +206,23 @@ def _record(rec, contact, report):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("record")
-    parser.add_argument("contact")
+    parser.add_argument("record", nargs="?")
+    parser.add_argument("contact", nargs="?")
     parser.add_argument("--why", default="operator")
     parser.add_argument("--live", action="store_true")
+    parser.add_argument("--sweep", action="store_true",
+                        help="stop everybody staged who must not be contacted")
     args = parser.parse_args(argv)
+
+    if args.sweep:
+        report = sweep(live=args.live)
+        print(f"  checked {report['checked']} staged contact(s): "
+              f"{len(report['stopped'])} stopped, "
+              f"{len(report['already'])} already, "
+              f"{len(report['failed'])} failed")
+        for row in report["failed"]:
+            print(f"    FAILED {row['record']}/{row['contact']}: {row['error']}")
+        return 1 if report["failed"] else 0
 
     recs = store.load()
     rec = next((r for r in recs if r.get("id") == args.record), None)
