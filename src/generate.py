@@ -141,23 +141,53 @@ def plan(rec, client=None):
     # contact whose evidence says verified must not be skipped merely because
     # nobody copied a boolean onto it.
     sendable = [c for c in rec.get("contacts") or [] if lint.sendable(c)]
-    if not sendable:
-        return ops                      # nothing is drafted for an unverified address
+    # THE LINKEDIN LANE WAS GATED ON EMAIL VERIFICATION, AND IT IS A DIFFERENT
+    # CHANNEL. The early return below said "nothing is drafted for an
+    # unverified address", which is exactly right for an email draft and wrong
+    # for everything else in this function: the connection note twenty lines
+    # down needs a LinkedIn profile and no address at all, and it sat inside
+    # the same gate.
+    #
+    # Measured on the Productive cohort 2026-09-12: of the contacts on
+    # qualified companies, ALL carry a usable LinkedIn profile and fewer than
+    # a third are email-sendable - the rest are catch-all domains reoon will
+    # not clear, or MX gateways the client's own policy closes. Every one of
+    # those people was reachable on LinkedIn and got no copy written for them,
+    # so `campaign_ready` stood at 1 of 24 while the channel that could
+    # actually reach 24 of them was never drafted for.
+    #
+    # `channels.linkedin_verdict` is the authority and is asked rather than
+    # re-implemented: it refuses an unsubscribed or suppressed person, a
+    # duplicate, a missing profile, and a URL that is a company page or a
+    # search link. What it does not require is an email, because LinkedIn does
+    # not.
+    from . import channels
+    on_linkedin = [c for c in rec.get("contacts") or ()
+                   if channels.linkedin_verdict(rec, c, client)[0]]
+    keys = {id(c) for c in sendable}
+    workable = sendable + [c for c in on_linkedin if id(c) not in keys]
+    if not workable:
+        return ops
     if rec.get("lane") == "revive" and not (rec.get("diagnosis") or {}).get("died_because"):
         ops.append({"step": "diagnose", "why": "revive record with no diagnosis"})
     if rec.get("lane") == "cold" and not rec.get("hook"):
         ops.append({"step": "hook", "why": "cold record with no hook"})
-    for c in sendable:
+    for c in workable:
         if rec.get("lane") == "domains" and not c.get("angle"):
             ops.append({"step": "persona_angle", "why": f"{c['name']} has no angle",
                         "contact": c.get("name")})
-        if note_mode(rec, client) == "llm" and c.get("linkedin"):
+        if note_mode(rec, client) == "llm" and c in on_linkedin:
             stored_note = (rec.get("cadence") or {}).get(
                 lint.contact_key(c), {}).get("day3") or {}
             if not (stored_note.get("generated") and stored_note.get("note")):
                 ops.append({"step": "linkedin_note",
                             "why": f"{c['name']} has no written connection note",
                             "contact": c.get("name"), "day": "day3"})
+        # EMAIL DRAFTS STAY BEHIND EMAIL VERIFICATION. CLAUDE.md: no email is
+        # generated for an unverified address, and that rule is untouched -
+        # only the LinkedIn note moved out from behind it.
+        if c not in sendable:
+            continue
         for day in GENERATED_DAYS:
             step = (rec.get("cadence") or {}).get(lint.contact_key(c), {}).get(day)
             if not (step or {}).get("body"):
