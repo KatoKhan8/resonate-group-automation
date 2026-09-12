@@ -212,7 +212,9 @@ def confirm_touches(campaign_id, recs=None, live=False):
     reconciliation run days later must not claim the invitation went out
     today.
 
-    Dry by default. `live=True` writes.
+    Dry by default; `live=True` writes. Either way `recorded` is the touch
+    this found, `already` is a touch the record already carried, and
+    `unmatched` is a lead the provider reached that nothing here can place.
     """
     recs = store.load() if recs is None else recs
     leads, _total = heyreach.campaign_leads(campaign_id)
@@ -234,7 +236,10 @@ def confirm_touches(campaign_id, recs=None, live=False):
             "state": lead.get("state"), "at": lead.get("at"),
             "step": step_key,
         }
-        (recorded if live else already).append(entry)
+        # `recorded` means "this is the touch", dry or live. The first version
+        # filed a dry-run entry under `already`, which reads as "we knew that"
+        # - the opposite of what a dry run is telling you.
+        recorded.append(entry)
         if not live:
             continue
         with store.transaction() as rows:

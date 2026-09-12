@@ -126,9 +126,19 @@ class ItIsDryUntilItIsNot(ProviderTouchTest):
                          "a dry run wrote a confirmed touch")
 
     def test_dry_still_reports_what_it_would_do(self):
+        """`recorded` is the touch, dry or live.
+
+        This asserted `already`, which is what the first version reported for
+        a dry run - and "already" reads as "we knew that", the opposite of
+        what a dry run is telling you. An observer reading the dry output
+        could not tell a pending discovery from a no-op.
+        """
         with self.provider(lead()):
             out = leadobserve.confirm_touches(CAMPAIGN)
-        self.assertEqual(len(out["already"]), 1)
+        self.assertEqual(len(out["recorded"]), 1)
+        self.assertEqual(out["already"], [])
+        self.assertFalse(out["live"])
+        self.assertEqual(self.confirmed(), [], "a dry run wrote a touch")
 
 
 class ExactlyOnce(ProviderTouchTest):
