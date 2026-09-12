@@ -364,7 +364,36 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
             contact.get("email"), expect_workspace=workspace)
     _require("collision", verdict_ == collision.CLEAR,
              f"{channel} collision is {verdict_}: {detail.get('note') or detail}")
-    gates.append("collision")
+
+    # THE ACCOUNT, NOT ONLY THE PERSON - AND ALWAYS THE EMAIL ESTATE.
+    #
+    # The two checks above are per-person and per-channel, and this gate ran
+    # one OR the other. `collision.check_account` - the only function that
+    # answers "has anybody at this company heard from us" - had no caller on
+    # any send path at all. So a LinkedIn send never consulted the email
+    # estate, which is precisely what ACCOUNT-OUTREACH.md says the unit of
+    # outreach is.
+    #
+    # Measured on 2026-09-12 against the live pilot account: nine cold emails
+    # to a colleague on the same record, across two campaigns, since April,
+    # zero replies - and suppression, collision and fatigue all answered that
+    # the account was cold, because none of them could see the other channel.
+    #
+    # The email estate is read whatever channel is sending, because that is
+    # where this client's history lives. `account_policy` keeps the
+    # distinctions rather than refusing every touched account: a finished
+    # campaign with no reply is history and passes, somebody mid-sequence or
+    # somebody who answered does not.
+    estate = clients.provider_workspace(config, "emailbison")
+    _require("account_collision", estate is not None,
+             "this client names no EmailBison workspace in its configuration, "
+             "so the account's own history cannot be read. An estate nobody "
+             "named is an estate nobody can prove is this client's")
+    account = collision.check_account(rec.get("domain"), expect_workspace=estate)
+    account_decision, account_why = collision.account_policy(account)
+    _require("account_collision", account_decision == collision.ALLOW,
+             f"the account says {account_decision}: {account_why}")
+    gates.extend(["collision", "account_collision"])
 
     # 5. CAP, against the durable ledger ------------------------------------
     sender_id = _sender_for(campaign, channel)

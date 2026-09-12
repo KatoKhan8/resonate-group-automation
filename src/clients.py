@@ -189,6 +189,38 @@ def overrides_for(client, rows=None):
     return workspaces.policy(matches[0].get("slug"), rows)
 
 
+def provider_workspace(config, provider):
+    """The provider estate THIS client is bound to, or None.
+
+    THE CANONICAL BINDING, AND IT DID NOT EXIST. A provider estate was named
+    by a `--workspace` argument or by the process-global `BISON_WORKSPACE_ID`,
+    so nothing tied an estate to a client: any caller could name any estate
+    for any client, and a second client would silently inherit the first
+    one's. PRODUCT-GOAL.md puts it as `provider workspaces are client
+    bindings beneath the Resonate client identity` - this is where that lives.
+
+    Reads `providers.<provider>.workspace` from the client's own config.
+    Returns None when unbound, and every caller must treat None as HOLD
+    rather than as permission: an estate nobody named is an estate nobody can
+    prove is this client's.
+
+    Deliberately NOT defaulted to the env var. `replywatch.expected_workspace`
+    reads `BISON_WORKSPACE_ID` for a single-tenant poller, and reusing it here
+    would reintroduce exactly the cross-client default this function exists to
+    remove.
+    """
+    block = (config or {}).get("providers")
+    if not isinstance(block, dict):
+        return None
+    entry = block.get(provider)
+    if isinstance(entry, dict):
+        value = entry.get("workspace")
+    else:
+        value = entry
+    value = str(value).strip() if value is not None else ""
+    return value or None
+
+
 def load(client, workspace=None, rows=None):
     """Load a client config, refusing anything that is still a template.
 

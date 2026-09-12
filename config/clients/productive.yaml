@@ -158,3 +158,16 @@ routing:
                               Design Studio Manager]
         founder: [Founder, CEO, Chief Executive Officer, Managing Director]
       priority: [operations, delivery, resource_management, finance, founder]
+
+# Which provider estate this client's data lives in. CONFIGURATION, not engine
+# logic: the engine reads it through `clients.provider_workspace` and refuses
+# when it is absent, so a second client can never inherit these by default.
+#
+# emailbison.workspace is the id `bison.bound_workspace()` reports for this
+# credential; heyreach.org_unit is the organizationUnitId every campaign of
+# this client carries. Both were read from the providers rather than assumed.
+providers:
+  emailbison:
+    workspace: 10
+  heyreach:
+    org_unit: 118832

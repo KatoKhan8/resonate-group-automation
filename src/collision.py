@@ -66,6 +66,12 @@ REQUIRED = object()
 # profile match to have seen the right one and refuse instead.
 BROAD_NAME_MATCH = 300
 
+# What an account-level answer means for a step about to go out. The verdicts
+# above say what the estate HOLDS; these say what may be DONE about it.
+ALLOW = "allow"          # nothing at this account argues against the step
+HOLD = "hold"            # a person should look before this goes
+STOP = "stop"            # the account is answered or in play; do not add to it
+
 TOUCHED = "touched"
 IN_SEQUENCE = "in_sequence"
 CLEAR = "clear"
@@ -462,6 +468,64 @@ def check_account(domain, expect_workspace=REQUIRED):
                     else TOUCHED if sent else CLEAR),
         "checked_at": store.now(),
     }
+
+
+def account_policy(account):
+    """ALLOW / HOLD / STOP for one account-level answer, and why.
+
+    THE ACCOUNT IS THE UNIT OF OUTREACH AND THE SEND GATE COULD NOT SEE IT.
+    `executionguard` ran `check_linkedin_profile` OR `check_address` - person
+    level, one channel - and `check_account` had no caller on any send path.
+    Measured on 2026-09-12 against the live pilot account: nine cold emails to
+    a colleague on the same record, across two campaigns, since April, zero
+    replies, and every gate answered that the account was cold.
+
+    A BLANKET REFUSAL ON `TOUCHED` WOULD BE THE WRONG FIX. Most of a worked
+    estate has been touched, and refusing all of it stops the product rather
+    than protecting anybody. So the distinctions the provider already draws
+    are kept:
+
+      somebody is mid-sequence      -> STOP. A second channel now is the
+                                       collision this module exists to stop.
+      somebody replied or is marked -> STOP. The account is answered. Whoever
+      interested                       is having that conversation owns it.
+      an address there bounced      -> HOLD. The data is suspect; a person
+                                       should look before we spend more on it.
+      emailed before, all finished, -> ALLOW. A campaign that ran its course
+      nobody replied                   months ago is history, not a live
+                                       conflict. It is still REPORTED, so
+                                       "cold outreach" is never claimed about
+                                       an account that has heard from us.
+      nothing at all                -> ALLOW.
+      unanswerable                  -> HOLD. Missing evidence is not positive
+                                       evidence; an estate we could not read
+                                       cannot certify that nobody is in it.
+
+    Returns (decision, why). The `why` is the sentence an operator reads, so
+    it names the account fact rather than the rule number.
+    """
+    if not isinstance(account, dict) or account.get("verdict") == UNKNOWN:
+        return HOLD, ("the provider estate could not be read for this "
+                      "account, so nobody can say whether somebody there is "
+                      "already in a sequence")
+    people = [p for p in (account.get("people") or []) if isinstance(p, dict)]
+    if account.get("anyone_in_sequence"):
+        return STOP, "somebody at this account is mid-sequence right now"
+    answered = [p for p in people
+                if int(p.get("replies") or 0) > 0
+                or any(c.get("interested") for c in (p.get("campaigns") or []))]
+    if answered:
+        return STOP, (f"{len(answered)} person(s) at this account have already "
+                      f"replied or been marked interested; the account is "
+                      f"answered and whoever is having that conversation "
+                      f"owns it")
+    if account.get("any_bounce"):
+        return HOLD, "an address at this account bounced; the data is suspect"
+    sent = int(account.get("emails_sent_total") or 0)
+    if sent:
+        return ALLOW, (f"{sent} email(s) were sent to this account in finished "
+                       f"campaigns with no reply; history, not a live conflict")
+    return ALLOW, "no prior contact at this account"
 
 
 def main(argv=None):

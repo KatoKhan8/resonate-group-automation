@@ -15,6 +15,7 @@ The spy is the whole method. `Provider` records every call it receives and is
 never wired to a real transport, so `spy.calls == []` is a stronger claim than
 any assertion about return values: it says the code never got as far as trying.
 """
+import contextlib
 import datetime
 import json
 import os
@@ -179,9 +180,23 @@ class GuardTest(QueueTest):
 
     # Every gate below needs collision and killswitch neutralised or the test
     # would pass for the wrong reason. Each test re-enables the one it targets.
+    @contextlib.contextmanager
     def allow_collision(self):
-        return mock.patch.object(collision, "check_linkedin_profile",
-                                 return_value=(collision.CLEAR, {}))
+        """Both levels. The account check is a live EmailBison read.
+
+        Gate 4 now asks `collision.check_account` as well, because the
+        person-level checks are per-channel and the account is the unit of
+        outreach - a LinkedIn send never consulted the email estate, and a
+        real account with nine prior emails read as cold. Leaving it
+        unstubbed makes every test here fail on a missing provider key
+        instead of on the gate it targets.
+        """
+        with mock.patch.object(collision, "check_linkedin_profile",
+                               return_value=(collision.CLEAR, {})),              mock.patch.object(collision, "check_account",
+                               return_value={"verdict": collision.CLEAR,
+                                             "people": [],
+                                             "emails_sent_total": 0}):
+            yield
 
     def allow_killswitch(self):
         return mock.patch.object(killswitch, "require", return_value=True)
@@ -194,7 +209,6 @@ class GuardTest(QueueTest):
         and stubbing it hid that. Kept as a context manager so the call sites
         read the same, and so a future seat-level test can override it.
         """
-        import contextlib
         return contextlib.nullcontext()
 
     def refused_at(self, gate, **over):
@@ -207,6 +221,77 @@ class GuardTest(QueueTest):
         self.assertEqual(self.spy.calls, [], "a provider call was made anyway")
         return caught.exception
 
+
+
+class TheAccountIsAskedToo(GuardTest):
+    """Gate 4 asks the ACCOUNT, not only the person.
+
+    The person-level checks are per-channel and this gate ran one OR the
+    other, so a LinkedIn send never consulted the email estate.
+    `collision.check_account` had no caller on any send path. Measured on
+    2026-09-12 against the live pilot account: nine cold emails to a
+    colleague on the same record, no replies, and every gate said cold.
+    """
+
+    def account(self, **over):
+        row = {"verdict": collision.CLEAR, "people": [],
+               "emails_sent_total": 0, "anyone_in_sequence": False,
+               "any_bounce": False}
+        row.update(over)
+        return row
+
+    def asked(self, account):
+        """Authorize with the person-level check clear and THIS account."""
+        with mock.patch.object(collision, "check_linkedin_profile",
+                               return_value=(collision.CLEAR, {})),              mock.patch.object(collision, "check_account",
+                               return_value=account),              self.allow_killswitch(), self.allow_sender():
+            return self.authorize()
+
+    def test_a_clear_account_authorizes(self):
+        """A gate that refuses every account is an outage."""
+        auth = self.asked(self.account())
+        self.assertIn("account_collision", auth.gates)
+
+    def test_somebody_mid_sequence_at_the_account_refuses(self):
+        with self.assertRaises(executionguard.NotAuthorized) as caught:
+            self.asked(self.account(verdict=collision.IN_SEQUENCE,
+                                    anyone_in_sequence=True,
+                                    emails_sent_total=2))
+        self.assertEqual(caught.exception.gate, "account_collision")
+        self.assertEqual(self.spy.calls, [])
+
+    def test_somebody_who_replied_at_the_account_refuses(self):
+        with self.assertRaises(executionguard.NotAuthorized) as caught:
+            self.asked(self.account(
+                verdict=collision.TOUCHED, emails_sent_total=4,
+                people=[{"replies": 1, "campaigns": []}]))
+        self.assertEqual(caught.exception.gate, "account_collision")
+
+    def test_an_unreadable_estate_refuses(self):
+        with self.assertRaises(executionguard.NotAuthorized) as caught:
+            self.asked(self.account(verdict=collision.UNKNOWN))
+        self.assertEqual(caught.exception.gate, "account_collision")
+
+    def test_a_finished_campaign_with_no_reply_still_authorizes(self):
+        """The live case. History is not a live conflict - and refusing every
+        touched account would stop the product rather than protect anybody."""
+        auth = self.asked(self.account(
+            verdict=collision.TOUCHED, emails_sent_total=9,
+            people=[{"replies": 0,
+                     "campaigns": [{"status": "stopped"},
+                                   {"status": "sequence_finished"}]}]))
+        self.assertIn("account_collision", auth.gates)
+
+    def test_a_client_with_no_email_estate_refuses(self):
+        """No client context is no provider authorization. An estate nobody
+        named is an estate nobody can prove is this client's."""
+        with mock.patch.object(clients, "provider_workspace",
+                               lambda config, provider: None):
+            with mock.patch.object(collision, "check_linkedin_profile",
+                                   return_value=(collision.CLEAR, {})),                  self.allow_killswitch(), self.allow_sender():
+                with self.assertRaises(executionguard.NotAuthorized) as caught:
+                    self.authorize()
+        self.assertEqual(caught.exception.gate, "account_collision")
 
 
 class TheHappyPathIsAuthorized(GuardTest):
