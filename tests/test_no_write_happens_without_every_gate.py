@@ -915,6 +915,24 @@ class AChannelNobodyCanStopIsCappedAtTheCanary(GuardTest):
     number in `pilotcaps`.
     """
 
+    def setUp(self):
+        """THIS CLASS IS ABOUT A CHANNEL WITH NO STOP, so it says so.
+
+        LinkedIn HAS a proven stop since 2026-09-12 - a live
+        `POST /campaign/Pause` returned 200 and read back PAUSED - so
+        `providerwrites.SUPPORTED` names it and the cap no longer applies to
+        that channel. The gate's behaviour when a channel cannot be stopped is
+        still the thing under test here, and email is still such a channel, so
+        the condition is stated explicitly rather than inherited from whatever
+        `SUPPORTED` happens to hold. `TheCapLiftsWhenTheStopIsProven` asserts
+        the other half.
+        """
+        super().setUp()
+        from src import providerwrites
+        patch = mock.patch.object(providerwrites, "SUPPORTED", ())
+        patch.start()
+        self.addCleanup(patch.stop)
+
     def reached(self, *contact_keys, channel="linkedin"):
         """Put prior exposure in the ledger, the way a real send would."""
         from src import actionledger
@@ -964,11 +982,12 @@ class AChannelNobodyCanStopIsCappedAtTheCanary(GuardTest):
             self.assertIn("stoppability", self.attempt().gates)
 
     def test_the_cap_lifts_itself_when_a_pause_route_is_established(self):
-        """No edit to the guard should be needed the day pause is supported.
+        """No edit to the guard was needed the day pause became supported.
 
         This is what makes the gate a statement about the provider rather than
         a number somebody picked: it reads `providerwrites.is_supported`, so
-        establishing the route lifts it.
+        establishing the route lifted it. That happened on 2026-09-12 and the
+        guard was not touched.
         """
         from src import providerwrites
         self.reached("someone-else")
@@ -976,6 +995,16 @@ class AChannelNobodyCanStopIsCappedAtTheCanary(GuardTest):
                                ("heyreach.pause",)):
             with self.allow_collision(), self.allow_killswitch():
                 self.assertIn("stoppability", self.attempt().gates)
+
+    def test_and_it_has_lifted_for_linkedin_in_the_real_declaration(self):
+        """Not a hypothetical any more: with the module's own SUPPORTED, a
+        second person on LinkedIn is no longer refused by this gate."""
+        import importlib
+        from src import providerwrites
+        importlib.reload(providerwrites)          # drop this class's patch
+        self.reached("someone-else")
+        with self.allow_collision(), self.allow_killswitch():
+            self.assertIn("stoppability", self.attempt().gates)
 
     def test_an_unresolved_attempt_counts_as_exposure(self):
         """The direction that under-counts exposure is the wrong one.

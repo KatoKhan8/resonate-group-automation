@@ -67,17 +67,29 @@ class ThePauseIsPerformable(QueueTest):
             payload={"campaignId": 594061}, transport=spy.transport,
             readback=spy.readback, expected=expected)
 
-    def test_it_is_implemented_but_not_yet_declared_supported(self):
-        """The distinction this whole file turns on.
+    def test_it_is_implemented_and_now_declared_supported(self):
+        """The distinction this whole file turns on, and it has moved once.
 
-        The transport, the allowlist and the read-back all exist. `SUPPORTED`
-        stays empty until one live pause has actually succeeded, because
-        `executionguard` lifts a promotion ceiling on `is_supported` and a
-        ceiling must not move on the strength of an untried call.
+        The transport, the allowlist and the read-back all existed for two
+        days while `SUPPORTED` stayed empty, because `executionguard` lifts a
+        promotion ceiling on `is_supported` and a ceiling must not move on the
+        strength of an untried call. The 2026-09-10 attempt returned a non-2xx
+        and was classified UNVERIFIED, so it stayed empty.
+
+        On 2026-09-12 a live pause of HeyReach 594061 returned 200 and read
+        back PAUSED. What changed is a successful response, not an argument
+        about the same code.
         """
-        self.assertFalse(providerwrites.is_supported("heyreach.pause"))
+        self.assertTrue(providerwrites.is_supported("heyreach.pause"))
         self.assertTrue(callable(heyreach.pause_campaign))
         self.assertIn("/campaign/Pause", heyreach.WRITE_ROUTES)
+
+    def test_and_nothing_else_came_with_it(self):
+        """A live-validated verb validates itself and nothing adjacent."""
+        for operation in providerwrites.OPERATIONS:
+            if operation == "heyreach.pause":
+                continue
+            self.assertFalse(providerwrites.is_supported(operation), operation)
 
     def test_it_performs_and_is_confirmed_by_the_read_back(self):
         spy = Spy(status="PAUSED")
@@ -155,27 +167,38 @@ class TheCapLiftsWhenTheStopIsProven(unittest.TestCase):
     `executionguard` caps a channel at one contact while its pause operation
     is unsupported. That cap reads `providerwrites.is_supported`, so declaring
     the route is what lifts it - the gate was written to unlock itself rather
-    than to be edited. Today neither channel has a proven stop, so both stay
-    capped, which is the correct reading of what this build can actually do.
+    than to be edited.
+
+    It unlocked. On 2026-09-12 `POST /campaign/Pause` against HeyReach 594061
+    returned 200, the campaign read back PAUSED, nothing was sent across it
+    (connectionsSent 0 before and after, the lead still request_pending), the
+    action was recorded canonically and provider, canonical state, ledger and
+    touches reconciled. `SUPPORTED` became `(LINKEDIN_PAUSE,)` on that
+    evidence and the LinkedIn cap lifted with no change to the guard.
+
+    Email did not. `bison.pause` has no documented route, so that channel is
+    still capped at one contact - which is the whole point of asking the
+    question per channel rather than once.
     """
 
-    def test_neither_channel_has_a_proven_stop_yet(self):
-        """So the cap still applies to both, which is correct today."""
+    def test_linkedin_has_a_proven_stop(self):
         from src import executionguard
-        for channel in ("linkedin", "email"):
+        self.assertTrue(providerwrites.is_supported(
+            executionguard.PAUSE_OPERATION["linkedin"]))
+
+    def test_email_still_does_not(self):
+        """One live-validated verb does not validate its neighbours."""
+        from src import executionguard
+        self.assertFalse(providerwrites.is_supported(
+            executionguard.PAUSE_OPERATION["email"]))
+
+    def test_withdrawing_the_declaration_puts_the_cap_back(self):
+        """The gate reads the declaration rather than a constant, so it is
+        still the declaration that decides - which is what makes the lift
+        reversible if the route ever stops working."""
+        from src import executionguard
+        with mock.patch.object(providerwrites, "SUPPORTED", ()):
             self.assertFalse(providerwrites.is_supported(
-                executionguard.PAUSE_OPERATION[channel]), channel)
-
-    def test_declaring_the_pause_is_what_lifts_the_linkedin_cap(self):
-        """The gate was written to unlock itself rather than be edited.
-
-        This is the whole payoff: the day a live pause succeeds, one line in
-        `SUPPORTED` lifts the one-contact cap, with no change to the guard.
-        """
-        from src import executionguard
-        with mock.patch.object(providerwrites, "SUPPORTED",
-                               ("heyreach.pause",)):
-            self.assertTrue(providerwrites.is_supported(
                 executionguard.PAUSE_OPERATION["linkedin"]))
 
 

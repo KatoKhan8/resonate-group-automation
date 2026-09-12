@@ -61,14 +61,20 @@ class TheLayerIsSealed(unittest.TestCase):
     def test_nothing_is_supported_until_it_has_actually_worked_once(self):
         """Implemented is not the same as established, and the gap matters.
 
-        `/campaign/Pause` is implemented and tested. It is not listed, because
-        `executionguard`'s stoppability gate reads `is_supported` and LIFTS a
-        promotion ceiling when the answer is yes - so listing an unproven route
-        would raise a safety limit on the strength of a call that has never
-        succeeded. One successful pause, read back from provider truth, is
-        what changes this line.
+        `/campaign/Pause` was implemented and tested for two days and NOT
+        listed, because `executionguard`'s stoppability gate reads
+        `is_supported` and LIFTS a promotion ceiling when the answer is yes -
+        so listing an unproven route would raise a safety limit on the
+        strength of a call that had never succeeded. The condition written
+        here was "one successful pause, read back from provider truth".
+
+        It happened on 2026-09-12: POST /campaign/Pause on HeyReach 594061
+        returned 200, the campaign read back PAUSED, connectionsSent stayed 0,
+        and provider, canonical state, ledger and touches reconciled. Exactly
+        one verb moved.
         """
-        self.assertEqual(providerwrites.SUPPORTED, (),
+        from src import providerwrites as pw
+        self.assertEqual(providerwrites.SUPPORTED, (pw.LINKEDIN_PAUSE,),
                          "the set of enabled provider writes changed")
 
     def test_every_other_declared_operation_refuses(self):

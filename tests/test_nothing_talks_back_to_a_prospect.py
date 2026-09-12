@@ -73,8 +73,20 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
              "bison.assign_sender", "bison.set_limits", "bison.pause",
              "bison.activate"})
 
-    def test_and_none_of_them_is_supported_anyway(self):
-        self.assertEqual(providerwrites.SUPPORTED, ())
+    def test_and_no_send_verb_is_supported(self):
+        """The only declared write is the STOP.
+
+        `heyreach.pause` is live-validated and declared since 2026-09-12. It
+        is not a send: it halts a campaign, reaches no prospect, and is the
+        verb whose absence used to cap the channel at one person. Nothing that
+        talks to a prospect is supported, which is what this file is about.
+        """
+        from src import providerwrites as pw
+        self.assertEqual(providerwrites.SUPPORTED, (pw.LINKEDIN_PAUSE,))
+        for operation, (_channel, prospect_facing, _why) in                 providerwrites.OPERATIONS.items():
+            if prospect_facing:
+                self.assertFalse(providerwrites.is_supported(operation),
+                                 operation)
 
 
 class NoModelIsAskedWhatToSayBack(unittest.TestCase):

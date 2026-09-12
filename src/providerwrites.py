@@ -136,30 +136,37 @@ OPERATIONS = {
         "what makes a staged sequence start emailing real people"),
 }
 
-# STILL EMPTY, and the reason is worth writing down because it was nearly not.
+# LINKEDIN_PAUSE IS LIVE-VALIDATED. Every other operation is not.
 #
-# `/campaign/Pause` is now implemented: allowlisted in `heyreach.WRITE_ROUTES`,
-# with a transport, a read-back, and thirteen tests. It was briefly added here
-# on that basis. That was wrong, and the mistake is instructive.
-#
+# This was empty, and the note here set the exact condition for changing it:
+# "one successful pause, read back as PAUSED from provider truth. Then this
+# becomes `(LINKEDIN_PAUSE,)` and the stoppability cap lifts because the stop
+# demonstrably exists - which is the order that makes the gate mean
+# something." The condition was set deliberately high because
 # `executionguard`'s `stoppability` gate reads `is_supported(pause_operation)`
-# and LIFTS its one-contact cap when the answer is yes. So declaring pause
-# supported does not merely permit pausing - it raises a promotion ceiling, on
-# the strength of a route that has never once succeeded against the provider.
-# The single live attempt on 2026-09-10 returned a non-2xx and the write layer
-# correctly classified it UNVERIFIED; the campaign stayed PAUSED throughout,
-# and further live attempts were refused by the environment.
+# and LIFTS its one-contact cap on the answer, so this line is a promotion
+# ceiling and not merely a permission.
 #
-# This repository's own vocabulary already has the right word for that state:
-# a fixture is never a live-validated integration. Every other entry in
-# OPERATIONS says "no successful response has ever been read", and that is
-# exactly true of pause today. The code is ready. The claim is not.
+# It is met, on 2026-09-12, against HeyReach campaign 594061:
 #
-# WHAT LIFTS THIS: one successful pause, read back as PAUSED from provider
-# truth. Then this becomes `(LINKEDIN_PAUSE,)` and the stoppability cap lifts
-# because the stop demonstrably exists - which is the order that makes the
-# gate mean something.
-SUPPORTED = ()
+#   POST /campaign/Pause          -> 200
+#   GET  /campaign/GetById        -> status IN_PROGRESS became PAUSED
+#   connectionsSent               -> 0 before and 0 after; nothing was sent
+#   lead 304173736                -> request_pending before and after
+#   canonical campaign state      -> recorded through `orchestrator.pause`
+#   configdiff.compare_heyreach   -> PASS, 13 fields match, 1 unverifiable
+#   four-way reconciliation       -> provider = canonical = ledger = touches
+#
+# The earlier attempt on 2026-09-10 returned a non-2xx and the write layer
+# classified it UNVERIFIED, which is why this stayed empty for two days. The
+# difference is a successful response that was read back, not a better
+# argument about the same code.
+#
+# What this does NOT license: every other entry in OPERATIONS still says no
+# successful response has ever been read, and each stays refused by name. A
+# fixture is never a live-validated integration, and one live-validated verb
+# does not validate its neighbours.
+SUPPORTED = (LINKEDIN_PAUSE,)
 
 PROSPECT_FACING = tuple(op for op, (_c, facing, _w) in OPERATIONS.items()
                         if facing)

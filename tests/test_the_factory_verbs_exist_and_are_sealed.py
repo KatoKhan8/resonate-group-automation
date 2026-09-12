@@ -126,11 +126,16 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
         self.assertEqual(set(heyreach.WRITE_ROUTES), {"/campaign/Pause"})
 
     def test_the_write_layer_is_still_sealed(self):
-        self.assertEqual(providerwrites.SUPPORTED, ())
+        from src import providerwrites as pw
+        self.assertEqual(providerwrites.SUPPORTED, (pw.LINKEDIN_PAUSE,))
+        # `heyreach.pause` left this list on 2026-09-12: a live pause of
+        # campaign 594061 returned 200 and read back PAUSED, so it is
+        # live-validated and declared. It was never a campaign-BUILDING verb
+        # anyway - it is the stop. Every builder below is still sealed.
         for operation in ("heyreach.create_campaign", "heyreach.create_list",
                           "heyreach.set_sequence", "heyreach.assign_sender",
                           "heyreach.set_limits", "heyreach.add_lead",
-                          "heyreach.activate", "heyreach.pause"):
+                          "heyreach.activate"):
             with self.subTest(operation=operation):
                 self.assertFalse(providerwrites.is_supported(operation))
 
