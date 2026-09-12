@@ -37,6 +37,25 @@ class FakeBison:
         self.next_id = 500
         self.created_campaigns = 0
         self.created_leads = 0
+        # The workspace starts with only what the real one had, so a lead
+        # carrying an undeclared variable is refused here exactly as the
+        # provider refuses it.
+        self.declared = {"headline", "industry", "location"}
+
+    @staticmethod
+    def _variables(mapping_of):
+        return [{"name": k, "value": str(v)}
+                for k, v in sorted(mapping_of.items()) if str(v or "").strip()]
+
+    def custom_variables(self):
+        return {name: i for i, name in enumerate(sorted(self.declared))}
+
+    def ensure_custom_variables(self, names=None):
+        names = names or ("subject", "body", "record_id", "contact_key",
+                          "client")
+        fresh = [n for n in names if n not in self.declared]
+        self.declared.update(fresh)
+        return {"declared": sorted(self.declared), "created": fresh}
 
     def _id(self):
         self.next_id += 1
@@ -66,8 +85,15 @@ class FakeBison:
                 "already been taken.")
         if not str(fields.get("first_name") or "").strip():
             raise ProviderError("422 The first name field is required.")
+        for variable in fields.get("custom_variables") or []:
+            if variable["name"] not in self.declared:
+                raise ProviderError(
+                    f"422 You do not have a custom variable named "
+                    f"{variable['name']}. Please create one and try again")
         lid = self._id()
-        self.leads[lid] = {"id": lid, "email": address}
+        self.leads[lid] = {"id": lid, "email": address,
+                           "custom_variables": fields.get("custom_variables")
+                           or []}
         self.created_leads += 1
         return dict(self.leads[lid])
 
@@ -151,6 +177,24 @@ class StagingTwiceBuildsOne(QueueTest):
             for contact in rec["contacts"]:
                 self.assertTrue(contact.get("bison_lead_id"),
                                 f"{contact['key']} has no provider lead id")
+
+    def test_every_lead_can_be_traced_back_to_its_person(self):
+        """A reply names an address. It has to be able to name a person.
+
+        `adapters.from_emailbison` reads `record_id` and `contact_key` off an
+        inbound reply, so a lead staged without them produces replies that
+        stop nobody. The provider refuses undeclared variable names, which is
+        why this also proves the declaration happened first.
+        """
+        bisonfactory.stage(CID, live=True)
+        self.assertEqual(len(self.bison.leads), 2)
+        for lead in self.bison.leads.values():
+            carried = {v["name"]: v["value"]
+                       for v in lead.get("custom_variables") or []}
+            self.assertIn("record_id", carried)
+            self.assertIn("contact_key", carried)
+            self.assertEqual(carried.get("client"), "productive")
+            self.assertTrue(carried["record_id"].startswith("rec-"))
 
     def test_it_is_left_stopped(self):
         """A staged campaign that can send has not been staged."""

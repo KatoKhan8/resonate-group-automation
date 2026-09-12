@@ -249,6 +249,10 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     if not wanted:
         report["did"].append("no leads staged: the plan carries none")
         return
+    # The variables must exist on the workspace before a lead may carry one:
+    # the provider refuses an undeclared name outright. Idempotent, and it
+    # creates nothing that can reach a person.
+    bison.ensure_custom_variables()
     members = set(bison.campaign_lead_ids(provider_id))
     known = _known_lead_ids(campaign, wanted)
     ids, created, reconciled = [], 0, 0
@@ -258,9 +262,19 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             ids.append(existing)
             continue
         try:
-            row = bison.create_lead({"email": lead["email"],
-                                     "first_name": lead["first_name"],
-                                     "last_name": lead["last_name"]})
+            row = bison.create_lead({
+                "email": lead["email"],
+                "first_name": lead["first_name"],
+                "last_name": lead["last_name"],
+                # WHO THIS IS, IN THE PROVIDER'S OWN RECORD.
+                # `adapters.from_emailbison` reads these back off an inbound
+                # reply. Without them a reply arrives attached to an address
+                # and to nothing else, and reply-stop cannot find the person
+                # it is supposed to stop.
+                "custom_variables": bison._variables({
+                    "record_id": lead["record_id"],
+                    "contact_key": lead["contact_key"],
+                    "client": campaign.get("client") or ""})})
             created += 1
         except ProviderError as e:
             # ALREADY THERE, AND WE NEVER WROTE IT DOWN.

@@ -269,7 +269,11 @@ def build_leads(rows):
         # from and never the person, on the one provider whose custom variables
         # are known to round-trip (the client's own cadence reads `subject` and
         # `body` out of this same dict).
-        "custom_variables": {"subject": r.get("subject", ""),
+        # A LIST OF {name, value}, NOT A MAPPING. A mapping is refused with
+        # "The custom_variables.<key>.name field is required", and each name
+        # must exist on the workspace before a lead may carry it - see
+        # `ensure_custom_variables`.
+        "custom_variables": _variables({"subject": r.get("subject", ""),
                              "body": r.get("body", ""),
                              "title": r.get("title", ""),
                              "record_id": r.get("record_id", ""),
@@ -291,8 +295,63 @@ def build_leads(rows):
                              "sender_id": r.get("sender_id", ""),
                              "sender_account_id": r.get("sender_account_id", ""),
                              "provider_account_id": r.get(
-                                 "provider_account_id", "")},
+                                 "provider_account_id", "")}),
     } for r in rows]}
+
+
+# The variables a Productive lead carries. `record_id` and `contact_key` are
+# the load-bearing ones: `adapters.from_emailbison` reads them off an inbound
+# reply, and a reply that cannot name its person stops nobody.
+LEAD_VARIABLES = ("subject", "body", "title", "record_id", "contact_key",
+                  "client", "sender_id", "sender_account_id",
+                  "provider_account_id")
+
+
+def _variables(mapping_of):
+    """Custom variables in the provider's shape, empties dropped.
+
+    An empty value is left out rather than sent blank: the provider would
+    store it, and a blank `record_id` reads exactly like an attributed one
+    until somebody tries to use it.
+    """
+    return [{"name": name, "value": str(value)}
+            for name, value in sorted(mapping_of.items())
+            if str(value or "").strip()]
+
+
+def custom_variables():
+    """Every custom variable declared on this workspace, by name."""
+    status, data = request("GET", f"{base()}/custom-variables", headers())
+    if not ok(status):
+        raise ProviderError(f"emailbison custom_variables: GET -> {status}")
+    rows = mapping(data, "custom_variables").get("data")
+    if not isinstance(rows, list):
+        raise ProviderError(
+            "emailbison custom_variables: the list is not a list; refusing to "
+            "read an unknown shape as 'nothing is declared'")
+    return {r.get("name"): r.get("id") for r in rows if isinstance(r, dict)}
+
+
+def ensure_custom_variables(names=LEAD_VARIABLES):
+    """Declare any of `names` the workspace does not have yet.
+
+    Idempotent by construction: it reads what exists and creates only the
+    difference. Declaring a variable creates no lead and touches no campaign,
+    so this is staging in the strictest sense.
+    """
+    have = custom_variables()
+    created = []
+    for name in names:
+        if name in have:
+            continue
+        status, data = request("POST", f"{base()}/custom-variables",
+                               _json_headers(), {"name": name})
+        if not ok(status):
+            raise ProviderError(
+                f"emailbison ensure_custom_variables: POST {name!r} -> "
+                f"{status} {_message(data)}")
+        created.append(name)
+    return {"declared": sorted(have), "created": created}
 
 
 def leads_endpoint(campaign_id):
