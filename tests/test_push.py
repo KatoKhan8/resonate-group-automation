@@ -9,6 +9,8 @@ import shutil
 import tempfile
 import unittest
 
+from src.providers import bison
+
 from src import cadence, lint, push, store
 from tests.base import FIXTURES, ProviderTest, approve_everything
 
@@ -71,21 +73,33 @@ class TestTheEmailBisonPayload(PushTest):
         lead = payload["body"]["leads"][0]
         self.assertEqual(set(lead), {"email", "first_name", "last_name",
                                      "company_name", "custom_variables"})
-        self.assertEqual(set(lead["custom_variables"]),
+        self.assertEqual(set(bison.variables_of(lead)),
                          {"subject", "body", "title",
                           # Our own identity, so a reply can name the person
-                          # and not only the company. `adapters` reads all
-                          # three back; before, none was ever sent.
-                          "record_id", "contact_key", "client",
-                          # Which human owns this relationship and which of
-                          # their inboxes carries it. Identifiers, not
-                          # credentials. Whether EmailBison echoes these back
-                          # has not been validated against the live API, so
-                          # nothing reads them yet - they are sent so that a
-                          # person looking at the lead in EmailBison's own UI
-                          # can see who owns it.
-                          "sender_id", "sender_account_id",
-                          "provider_account_id"})
+                          # and not only the company. `adapters._custom` reads
+                          # all three back off an inbound reply.
+                          "record_id", "contact_key", "client"})
+
+    def test_an_empty_variable_is_dropped_rather_than_sent_blank(self):
+        """And this fixture has no sender bound, which is why three are gone.
+
+        `sender_id`, `sender_account_id` and `provider_account_id` are in
+        `bison.LEAD_VARIABLES` and absent from the payload, because no seat in
+        `work/senders.jsonl` carries a `sender_id` - so there is nothing to
+        put in them.
+
+        They are dropped rather than sent empty on purpose. The provider
+        stores a blank, and a blank `record_id` reads exactly like an
+        attributed one right up until somebody needs it to name a person.
+        """
+        lead = self.run_push()["payloads"]["emailbison"]["body"]["leads"][0]
+        variables = bison.variables_of(lead)
+        for unbound in ("sender_id", "sender_account_id",
+                        "provider_account_id"):
+            self.assertIn(unbound, bison.LEAD_VARIABLES)
+            self.assertNotIn(unbound, variables)
+        self.assertTrue(all(str(v).strip() for v in variables.values()),
+                        "a blank variable reached the payload")
 
     def test_no_credential_travels_in_the_payload(self):
         """The sender fields are identifiers. This is what stops them drifting."""
@@ -98,8 +112,9 @@ class TestTheEmailBisonPayload(PushTest):
     def test_the_generated_subject_and_body_travel_in_custom_variables(self):
         """Section 5.4: so the client's own 5 to 7 step cadence continues."""
         lead = self.run_push()["payloads"]["emailbison"]["body"]["leads"][0]
-        self.assertTrue(lead["custom_variables"]["subject"])
-        self.assertGreater(len(lead["custom_variables"]["body"].split()), 39)
+        variables = bison.variables_of(lead)
+        self.assertTrue(variables["subject"])
+        self.assertGreater(len(variables["body"].split()), 39)
 
     def test_every_lead_in_the_payload_has_a_sendable_recipient(self):
         result = self.run_push()
@@ -364,7 +379,7 @@ class TestOurIdentifiersTravelWithTheLead(PushTest):
 
     def test_emailbison_carries_all_three(self):
         for lead in self.bison_leads():
-            variables = lead["custom_variables"]
+            variables = bison.variables_of(lead)
             self.assertTrue(variables.get("record_id"))
             self.assertTrue(variables.get("contact_key"))
             self.assertTrue(variables.get("client"))
@@ -392,9 +407,9 @@ class TestOurIdentifiersTravelWithTheLead(PushTest):
         self.assertTrue(events_)
         event = events_[0]
         self.assertEqual(event["record_id"],
-                         lead["custom_variables"]["record_id"])
+                         bison.variables_of(lead)["record_id"])
         self.assertEqual(event["contact_key"],
-                         lead["custom_variables"]["contact_key"])
+                         bison.variables_of(lead)["contact_key"])
 
     def test_the_heyreach_identifiers_round_trip_through_the_adapter(self):
         from src import adapters
@@ -422,7 +437,7 @@ class TestOurIdentifiersTravelWithTheLead(PushTest):
     def test_the_identifiers_match_a_real_record_and_contact(self):
         recs = {r["id"]: r for r in store.load()}
         for lead in self.bison_leads():
-            variables = lead["custom_variables"]
+            variables = bison.variables_of(lead)
             rec = recs[variables["record_id"]]
             keys = {c.get("key") for c in rec.get("contacts") or []}
             self.assertIn(variables["contact_key"], keys)

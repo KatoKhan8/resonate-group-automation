@@ -56,6 +56,25 @@ ALLOWED = {
     ("src/providers/blitz.py", "POST"),
     ("src/providers/deliverable.py", "DYNAMIC"),
     ("src/providers/heyreach.py", "POST"),
+    # EmailBison gained real write verbs on 2026-09-13, after the routes this
+    # repository had written off as absent turned out to be documented. Each
+    # is declared here on purpose, and each is one of two kinds:
+    #
+    #   STAGING - create_campaign (a DRAFT, which cannot send), set_sequence,
+    #   set_limits, create_lead, attach_leads, ensure_custom_variables. None
+    #   reaches a person: the campaign they build is left `paused`, and
+    #   `bison.activate` is still unsupported, so nothing here can start it.
+    #
+    #   STOPPING - pause_campaign and stop_lead, which can only ever mean
+    #   somebody receives LESS. `stop_lead` is the per-lead stop the safety
+    #   argument needs, and refusing it would make this system less safe, not
+    #   more.
+    #
+    # The prospect-facing verb on this provider - activate - is still absent
+    # from `providerwrites.SUPPORTED`, which is what keeps the invariant in
+    # this file true.
+    ("src/providers/bison.py", "POST"),
+    ("src/providers/bison.py", "PATCH"),
     # A completion is a POST that changes nothing at the other end: it creates
     # no campaign, touches no lead, and is not prospect-facing, so it does not
     # belong under `providerwrites`. It is declared here rather than waved

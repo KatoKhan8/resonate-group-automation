@@ -15,6 +15,8 @@ import json
 import os
 import unittest
 
+from src.providers import bison
+
 from src import (cadence, channels, coherence, demo_outreach, lint,
                  outreachpage, push, store)
 from tests.campaignbase import CampaignTest
@@ -43,7 +45,7 @@ class DemoTest(CampaignTest):
     def bison_record_id(self, lead):
         """`record_id` lives in `custom_variables`, which is where EmailBison
         keeps everything the sending cadence needs."""
-        return (lead.get("custom_variables") or {}).get("record_id")
+        return bison.variables_of(lead).get("record_id")
 
     def heyreach_pairs(self):
         return self.res["push"]["payloads"]["heyreach"]["body"]["accountLeadPairs"]

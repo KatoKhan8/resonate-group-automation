@@ -31,11 +31,18 @@ had a hole in it.
 import unittest
 from unittest import mock
 
-from src import (accountpolicy, actionledger, campaigns, clients, eligibility,
+from src import (accountpolicy, approval, actionledger, campaigns, clients, eligibility,
                  executionguard, providerwrites, store, verification)
 from tests.base import QueueTest
 
 OPERATION = providerwrites.LINKEDIN_ADD_LEAD
+
+# `perform` now refuses a prospect-facing write whose payload does not carry
+# the approved words. These tests are about a STOP beating an authorization,
+# not about that check, so they hand it a step that satisfies it - otherwise
+# the words guard fires first and the refusal being measured never happens.
+STEP = {"channel": "linkedin", "note": "a note somebody approved"}
+FINGERPRINT = approval.fingerprint(STEP)
 
 
 def a_contact(email="dana@acme.test"):
@@ -72,7 +79,7 @@ class TheDoorRevalidates(QueueTest):
             channel="linkedin", workspace="productive",
             campaign_id="productive-canary", sender_id="116968",
             rec_id="acme", contact_key="acme-1", step_key="day3",
-            fingerprint="abc123", gates=("tenancy", "approval"),
+            fingerprint=FINGERPRINT, gates=("tenancy", "approval"),
             at=store.now())
 
     def stop_the_contact(self):
@@ -158,7 +165,7 @@ class TheWriteIsRefusedNotJustTheToken(QueueTest):
             self.KEY, channel="linkedin", workspace="productive",
             provider_workspace=10, campaign_id="productive-canary",
             sender_id="116968", rec_id="acme", contact_key="acme-1",
-            step_key="day3", operation=OPERATION, fingerprint="abc123",
+            step_key="day3", operation=OPERATION, fingerprint=FINGERPRINT,
             by="test", cap_per_day=10, cap_per_sender=10)
 
     def attempt(self, revalidate):
@@ -166,12 +173,12 @@ class TheWriteIsRefusedNotJustTheToken(QueueTest):
             key=self.KEY, operation=OPERATION, channel="linkedin",
             workspace="productive", campaign_id="productive-canary",
             sender_id="116968", rec_id="acme", contact_key="acme-1",
-            step_key="day3", fingerprint="abc123", gates=("tenancy",),
+            step_key="day3", fingerprint=FINGERPRINT, gates=("tenancy",),
             at=store.now())
         with mock.patch.object(providerwrites, "SUPPORTED", (OPERATION,)),              mock.patch.object(executionguard, "revalidate", revalidate):
             return providerwrites.perform(
                 OPERATION, authorization=auth,
-                payload={"profile": "dana-reed"},
+                payload={"profile": "dana-reed", "note": STEP["note"]}, step=STEP,
                 transport=lambda p: self.calls.append("transport") or {"ok": 1},
                 readback=lambda: {"ok": 1}, expected={"ok": 1})
 
@@ -215,13 +222,13 @@ class TheWriteIsRefusedNotJustTheToken(QueueTest):
             key=self.KEY, operation=OPERATION, channel="linkedin",
             workspace="productive", campaign_id="productive-canary",
             sender_id="116968", rec_id="acme", contact_key="acme-1",
-            step_key="day3", fingerprint="abc123", gates=("tenancy",),
+            step_key="day3", fingerprint=FINGERPRINT, gates=("tenancy",),
             at=store.now())
         with mock.patch.object(providerwrites, "SUPPORTED", (OPERATION,)):
             with self.assertRaises(executionguard.NotAuthorized):
                 providerwrites.perform(
                     OPERATION, authorization=auth,
-                    payload={"profile": "dana-reed"},
+                    payload={"profile": "dana-reed", "note": STEP["note"]}, step=STEP,
                     transport=lambda p: self.calls.append("transport"),
                     readback=lambda: {"ok": 1})
         self.assertEqual(self.calls, [])

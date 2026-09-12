@@ -15,6 +15,8 @@ import shutil
 import tempfile
 import unittest
 
+from src.providers import bison
+
 from src import (approval, approve, cadence, clients, events, ingest, lint,
                  push, report, run, store)
 from tests.base import FIXTURES, ProviderTest, qualify_everything
@@ -271,15 +273,12 @@ class TestThePayloadsAreReady(PreProduction):
         payload = self.prepared["payloads"]["emailbison"]
         self.assertTrue(payload["endpoint"].endswith("/campaigns/7/leads"))
         for lead in payload["body"]["leads"]:
-            self.assertEqual(set(lead["custom_variables"]),
+            # The sender variables are absent because no seat carries a
+            # `sender_id` yet - see `test_push`, which pins that an empty
+            # variable is dropped rather than sent blank.
+            self.assertEqual(set(bison.variables_of(lead)),
                              {"subject", "body", "title",
-                              "record_id", "contact_key", "client",
-                              # Which human owns the relationship and which
-                              # inbox carries it. Identifiers, not
-                              # credentials - `tests/test_push.py` greps the
-                              # payload for anything credential-shaped.
-                              "sender_id", "sender_account_id",
-                              "provider_account_id"})
+                              "record_id", "contact_key", "client"})
 
     def test_the_heyreach_payload_is_the_documented_shape(self):
         payload = self.prepared["payloads"]["heyreach"]

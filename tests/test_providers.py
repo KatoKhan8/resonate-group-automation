@@ -292,10 +292,11 @@ class TestBison(ProviderTest):
             "record_id": "meridian"}])
         lead = payload["leads"][0]
         self.assertEqual(lead["email"], "ivana.saric@meridian.test")
-        self.assertEqual(lead["custom_variables"]["subject"],
+        variables = bison.variables_of(lead)
+        self.assertEqual(variables["subject"],
                          "five offices, one finance function")
-        self.assertEqual(lead["custom_variables"]["body"], "the draft")
-        self.assertEqual(lead["custom_variables"]["record_id"], "meridian")
+        self.assertEqual(variables["body"], "the draft")
+        self.assertEqual(variables["record_id"], "meridian")
 
     def test_the_builder_sends_nothing(self):
         bison.build_leads([{"email": "a@b.c"}])
@@ -332,28 +333,53 @@ class TestHeyReach(ProviderTest):
 
 
 class TestNoSendPathExists(unittest.TestCase):
-    """Phase 3 ships no way to push a lead. Phase 7 adds it, behind --live."""
+    """Neither sender can START anything, which is what a send needs.
 
-    def test_bison_and_heyreach_expose_no_send_function(self):
+    This used to say "neither may issue a POST at all", and that was the right
+    guarantee while EmailBison had no proven write verbs. It has them now -
+    campaign creation, sequences, limits, membership, and the per-lead stop -
+    so a blanket ban on POST would have to be either deleted or worked around,
+    and both are worse than moving the guarantee to where it actually lives.
+
+    The verb was never the safety property. The ROUTE is. A send on EmailBison
+    is started by `/campaigns/{id}/resume` and on HeyReach by
+    `/campaign/AddLeadsToCampaignV2`, and neither appears in the allowlist its
+    module is permitted to reach.
+    """
+
+    def test_neither_sender_exposes_a_verb_that_starts_anything(self):
         for module in (bison, heyreach):
             names = [n for n in dir(module) if not n.startswith("_")]
-            for banned in ("send", "push", "add_leads", "create_campaign", "start"):
+            for banned in ("send", "push", "add_leads", "start", "resume",
+                           "activate", "launch"):
                 self.assertNotIn(banned, names, f"{module.__name__}.{banned}")
 
-    def test_the_modules_that_could_reach_a_person_never_post(self):
-        """EmailBison and HeyReach are the only two that could send. Neither
-        may issue a POST at all, which is what stops a send being one typo away.
+    def test_every_bison_write_route_is_staging_or_stopping(self):
+        """The allowlist is the guarantee, so it is read rather than trusted."""
+        for route in bison.WRITE_ROUTES:
+            for starting in ("resume", "start", "launch", "activate",
+                             "send-test"):
+                self.assertNotIn(starting, route,
+                                 f"a starting route is declared writable: {route}")
 
-        ContactOut is excluded deliberately: three of its READ endpoints are
-        POST by design (the search filters do not fit in a query string). That
-        is covered by the next test, which pins the routes rather than the verb.
-        """
-        import inspect
-        for module in (reoon, bison):
-            source = inspect.getsource(module)
-            self.assertNotIn('"POST"', source, module.__name__)
-        # HeyReach's read API is POST, so its guarantee is the route allowlist.
+    def test_the_send_route_is_absent_from_both_allowlists(self):
         self.assertNotIn("/campaign/AddLeadsToCampaignV2", heyreach.READ_ROUTES)
+        self.assertFalse(
+            [r for r in bison.WRITE_ROUTES if "resume" in r],
+            "EmailBison's start route is declared writable")
+
+    def test_no_prospect_facing_operation_is_supported_on_either(self):
+        """The end of the chain: even a route that existed could not be used."""
+        from src import providerwrites
+        for operation, (_channel, facing, _why) in                 providerwrites.OPERATIONS.items():
+            if facing:
+                self.assertFalse(providerwrites.is_supported(operation),
+                                 operation)
+
+    def test_reoon_still_never_posts(self):
+        """Verification is a read. Nothing about that changed."""
+        import inspect
+        self.assertNotIn('"POST"', inspect.getsource(reoon))
 
     def test_every_contactout_post_goes_to_a_read_only_route(self):
         read_only = {"/people/count", "/people/search", "/domain/enrich"}

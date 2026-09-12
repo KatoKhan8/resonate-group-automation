@@ -7,6 +7,8 @@ unrelated safety rule, and the launch must still refuse.
 """
 import unittest
 
+from src.providers import bison
+
 from src import cadence, campaigns, lint, orchestrator, push, roles, store
 from tests.campaignbase import CampaignTest
 
@@ -289,9 +291,10 @@ class TestTheDryRun(CampaignTest):
         leads = plan["payloads"]["emailbison"]["body"]["leads"]
         self.assertTrue(leads)
         for lead in leads:
-            self.assertTrue(lead["custom_variables"]["subject"].strip())
-            self.assertGreater(len(lead["custom_variables"]["body"].split()), 20)
-            self.assertNotIn("{{", lead["custom_variables"]["body"])
+            variables = bison.variables_of(lead)
+            self.assertTrue(variables["subject"].strip())
+            self.assertGreater(len(variables["body"].split()), 20)
+            self.assertNotIn("{{", variables["body"])
 
 
 if __name__ == "__main__":

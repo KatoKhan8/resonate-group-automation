@@ -85,11 +85,26 @@ class ThePauseIsPerformable(QueueTest):
         self.assertIn("/campaign/Pause", heyreach.WRITE_ROUTES)
 
     def test_and_nothing_else_came_with_it(self):
-        """A live-validated verb validates itself and nothing adjacent."""
+        """A live-validated verb validates itself and nothing adjacent.
+
+        The supported set grew on 2026-09-13 when EmailBison's documented
+        routes turned out to answer. Each addition was measured against the
+        live estate with a readback, and each is named here so that the next
+        one is a decision rather than a drift.
+        """
+        proven = {"heyreach.pause", "bison.pause", "bison.stop_lead",
+                  "bison.create_campaign", "bison.set_sequence"}
         for operation in providerwrites.OPERATIONS:
-            if operation == "heyreach.pause":
+            if operation in proven:
                 continue
             self.assertFalse(providerwrites.is_supported(operation), operation)
+
+    def test_no_supported_verb_reaches_a_prospect(self):
+        """The property that has to survive every addition to that set."""
+        for operation, (_c, facing, _w) in providerwrites.OPERATIONS.items():
+            if facing:
+                self.assertFalse(providerwrites.is_supported(operation),
+                                 operation)
 
     def test_it_performs_and_is_confirmed_by_the_read_back(self):
         spy = Spy(status="PAUSED")
@@ -186,11 +201,49 @@ class TheCapLiftsWhenTheStopIsProven(unittest.TestCase):
         self.assertTrue(providerwrites.is_supported(
             executionguard.PAUSE_OPERATION["linkedin"]))
 
-    def test_email_still_does_not(self):
-        """One live-validated verb does not validate its neighbours."""
+    def test_email_has_one_too_now(self):
+        """Measured 2026-09-13, and it is the stronger of the two.
+
+        `PATCH /api/campaigns/{id}/pause` stops everybody in a campaign, and
+        `POST .../leads/stop-future-emails` stops ONE person while the rest
+        keep going - which is the granularity the safety argument actually
+        wants. Both were measured with a readback.
+        """
         from src import executionguard
-        self.assertFalse(providerwrites.is_supported(
+        self.assertTrue(providerwrites.is_supported(
             executionguard.PAUSE_OPERATION["email"]))
+        self.assertTrue(providerwrites.is_supported(
+            providerwrites.EMAIL_STOP_LEAD))
+
+    def test_a_declared_stop_has_a_caller_in_the_product(self):
+        """The ceiling must not lift on a stop only a script can invoke.
+
+        `stoppability` lifts a promotion ceiling the moment `is_supported`
+        answers True. For a while it answered True for both channels while
+        NOTHING in `src/` performed either pause - the only live pause ever
+        executed came from an ad-hoc script. A capability nothing calls is
+        exactly the defect this repository keeps finding, and finding it on
+        the gate that bounds unrecallable exposure is the worst place for it.
+
+        Asserted on the import graph rather than by grepping for words: this
+        calls the real `orchestrator.pause` and checks the provider leg ran.
+        """
+        from unittest import mock
+
+        from src import orchestrator
+        for channel, binding, provider_id in (
+                ("linkedin", "heyreach_campaign_id", 594061),
+                ("email", "bison_campaign_id", 352)):
+            campaign = {"campaign_id": "c1", "client": "productive",
+                        "status": "running", "log": [], "events": [],
+                        binding: provider_id}
+            with mock.patch.object(orchestrator, "_perform_pause",
+                                   return_value={"stopped": True}) as spy:
+                orchestrator.pause(campaign, by="tester")
+            self.assertTrue(
+                spy.called,
+                f"orchestrator.pause told nobody on the {channel} binding")
+            self.assertEqual(spy.call_args[0][1], channel)
 
     def test_withdrawing_the_declaration_puts_the_cap_back(self):
         """The gate reads the declaration rather than a constant, so it is

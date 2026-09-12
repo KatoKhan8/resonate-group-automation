@@ -174,13 +174,27 @@ class ACreateWritesNothingDurableFirst(ProviderTest):
             readback=lambda: self.provider.by_id(self.provider.next_id),
             expected={"name": name})
 
-    def test_the_sealed_build_refuses_a_create_at_all(self):
-        """The baseline that makes every other finding a future one rather
-        than a live one: with SUPPORTED restored, nothing can create."""
+    def test_the_bare_door_still_does_not_deduplicate(self):
+        """This file predicted a duplicate. The prediction came true.
+
+        `bison.create_campaign` became supported on 2026-09-13, so the
+        baseline this test used to assert - that nothing can create at all -
+        is gone. What it documented did not go with it: `perform` is a door,
+        not a factory, and calling it twice with the same intent still builds
+        two campaigns, because nothing at this level records the first.
+
+        The answer is not to make the door clever. It is that nothing calls
+        the door directly for a create. `src/bisonfactory.py` persists
+        `bison_campaign_id` onto the campaign row inside the transaction that
+        reads it, so a second run reuses the first campaign - proven against
+        the live estate and pinned in
+        `tests/test_staging_a_campaign_twice_builds_one.py`.
+        """
         providerwrites.SUPPORTED = self._restore
-        with self.assertRaises(providerwrites.WriteUnsupported):
-            self.create()
-        self.assertEqual(self.provider.creates, 0)
+        self.create()
+        self.create()
+        self.assertEqual(self.provider.creates, 2,
+                         "the door deduplicated, which is not its job")
 
     def test_one_intent_created_twice_makes_two_provider_campaigns(self):
         """THE DUPLICATE. Nothing in the call refuses the second attempt,

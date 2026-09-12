@@ -24,8 +24,40 @@ import argparse
 import json
 import sys
 
-from . import (accountpolicy, adapters, campaigns, clients, events, notify,
+from . import (accountpolicy, adapters, campaigns, clients, events, leadstop,
+               notify,
                observability, orchestrator, replies, store)
+
+
+def _contact_of(rec, contact_key):
+    """`events.apply` reports the contact KEY. The stop needs the contact."""
+    for contact in (rec or {}).get("contacts") or []:
+        if contact.get("key") == contact_key:
+            return contact
+    return None
+
+
+def _stop_at_provider(rec, contact, rows=None):
+    """Tell the provider this person stops, if we can name them there.
+
+    Never raises. An inbound event that fails here must still be applied,
+    classified and notified - losing the reply because the stop failed would
+    trade a queued email for a lost one, and the queued email is the thing a
+    person can still be told about.
+
+    What it returns is the audit trail: `None` when there was nothing to
+    stop, otherwise the outcome or the reason it could not be done.
+    """
+    if not contact or not (contact or {}).get("bison_lead_id"):
+        return None
+    try:
+        return leadstop.stop_contact(rec, contact, events.REPLY_RECEIVED,
+                                     rows=rows, live=True)
+    except Exception as e:
+        # Explicitly classified, never swallowed: an unstopped person is the
+        # thing somebody has to go and look at.
+        return {"stopped": False, "error": type(e).__name__,
+                "why": str(e)[:200]}
 
 
 def _campaign_for(rec, rows=None):
@@ -49,7 +81,8 @@ def _text_of(event):
 def handle(event, recs, rows=None, config=None, post=None, model=None):
     """One inbound event, start to finish. Returns what happened at each step."""
     outcome = {"event": event, "applied": None, "paused": False,
-               "classification": None, "notification": None}
+               "classification": None, "notification": None,
+               "provider_stop": None}
 
     applied = events.apply(recs, event)
     outcome["applied"] = applied
@@ -110,6 +143,22 @@ def handle(event, recs, rows=None, config=None, post=None, model=None):
             config = clients.load(rec.get("client"))
         except Exception:
             config = {}
+
+    # THE PAUSE IS LOCAL. THE QUEUE IS NOT.
+    #
+    # `replies.apply` below pauses the record, which stops US planning a next
+    # step. The provider keeps its own scheduler and its own queue, so until
+    # this call existed a reply stopped our planning and nothing else. This
+    # tells the provider, and it is attempted BEFORE classification because
+    # whether the reply was positive, negative or an out-of-office does not
+    # change that they should stop receiving the sequence.
+    #
+    # It is a safety REDUCTION - it can only ever mean somebody receives less
+    # - so it is not gated behind --live the way a send is. A contact with no
+    # provider binding is a no-op, which is every record staged before this
+    # existed.
+    outcome["provider_stop"] = _stop_at_provider(
+        rec, _contact_of(rec, applied.get("contact")), rows)
 
     verdict = replies.apply(
         rec, applied.get("contact"), _text_of(event),

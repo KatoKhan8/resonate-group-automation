@@ -319,6 +319,19 @@ def _variables(mapping_of):
             if str(value or "").strip()]
 
 
+def variables_of(lead):
+    """A staged lead's custom variables as a mapping, for reading.
+
+    The wire shape is a list of {name, value} because that is what the
+    provider takes. `adapters._custom` already reads that shape coming BACK
+    off a reply; this is the same view going out, so a caller inspecting what
+    was staged does not have to walk a list to find one name.
+    """
+    return {v.get("name"): v.get("value")
+            for v in (lead or {}).get("custom_variables") or []
+            if isinstance(v, dict)}
+
+
 def custom_variables():
     """Every custom variable declared on this workspace, by name."""
     status, data = request("GET", f"{base()}/custom-variables", headers())
@@ -365,6 +378,27 @@ def leads_endpoint(campaign_id):
 
 
 ATTACH_PATH = "/campaigns/{campaign_id}/leads/attach-leads"
+
+# EVERY PATH THIS MODULE IS ALLOWED TO WRITE TO.
+#
+# The same guarantee `heyreach.WRITE_ROUTES` gives: the verb is not the
+# safety property, the ROUTE is. A send on this provider is started by
+# `/campaigns/{id}/resume`, and its absence from this tuple is what makes
+# "this module cannot start a campaign" a fact about the code rather than a
+# promise about the caller.
+#
+# Two kinds only. STAGING builds a campaign that is left paused and cannot
+# send. STOPPING can only ever mean somebody receives less.
+WRITE_ROUTES = (
+    "/campaigns",                                   # create, as a DRAFT
+    "/campaigns/{campaign_id}/update",              # limits
+    "/campaigns/{campaign_id}/sequence-steps",      # copy, into a stopped campaign
+    "/campaigns/{campaign_id}/leads/attach-leads",  # membership
+    "/campaigns/{campaign_id}/pause",               # stop everybody
+    "/campaigns/{campaign_id}/leads/stop-future-emails",   # stop ONE person
+    "/leads",                                       # create a lead
+    "/custom-variables",                            # declare a variable name
+)
 
 
 def _json_headers():

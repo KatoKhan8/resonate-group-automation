@@ -71,18 +71,30 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
              "heyreach.pause", "heyreach.activate",
              "bison.add_lead", "bison.create_campaign", "bison.set_sequence",
              "bison.assign_sender", "bison.set_limits", "bison.pause",
-             "bison.activate"})
+             "bison.stop_lead", "bison.activate"})
 
     def test_and_no_send_verb_is_supported(self):
-        """The only declared write is the STOP.
+        """Every declared write stops something or stages something.
 
-        `heyreach.pause` is live-validated and declared since 2026-09-12. It
-        is not a send: it halts a campaign, reaches no prospect, and is the
-        verb whose absence used to cap the channel at one person. Nothing that
-        talks to a prospect is supported, which is what this file is about.
+        The list grew on 2026-09-13 and the property did not. Each addition
+        either reduces what somebody receives or builds a campaign that is
+        left `paused` and cannot send:
+
+          heyreach.pause          halts a campaign
+          bison.pause             halts a campaign
+          bison.stop_lead         halts ONE person's remaining emails
+          bison.create_campaign   creates a DRAFT, which cannot send
+          bison.set_sequence      writes copy into a campaign that is stopped
+
+        Enumerated rather than derived, so adding one stays a decision. The
+        assertion that actually guards this file is the loop below: nothing
+        prospect-facing is supported, whatever the list says.
         """
         from src import providerwrites as pw
-        self.assertEqual(providerwrites.SUPPORTED, (pw.LINKEDIN_PAUSE,))
+        self.assertEqual(
+            providerwrites.SUPPORTED,
+            (pw.LINKEDIN_PAUSE, pw.EMAIL_PAUSE, pw.EMAIL_STOP_LEAD,
+             pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE))
         for operation, (_channel, prospect_facing, _why) in                 providerwrites.OPERATIONS.items():
             if prospect_facing:
                 self.assertFalse(providerwrites.is_supported(operation),

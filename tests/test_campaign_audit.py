@@ -157,13 +157,24 @@ class TestNoClassificationResumesAnything(CampaignTest):
 
 
 class TestNoDirectProviderMutation(CampaignTest):
-    def test_no_module_posts_a_lead_to_either_sender(self):
+    def test_no_module_reaches_a_route_that_starts_sending(self):
+        """A lead may now be staged. Nothing may be STARTED.
+
+        This used to forbid posting to `/leads` at all, which was the right
+        guarantee while EmailBison had no proven write verbs. It has them
+        now - a lead is created and attached to a campaign that is left
+        `paused` - so the guarantee moved to the routes that actually begin a
+        send. `heyreach`'s AddLeadsToCampaignV2 adds a lead to a RUNNING
+        campaign, which is why it stays here while `bison`'s staging does not.
+        """
+        starting = ("AddLeadsToCampaignV2", "/resume", "/StartCampaign",
+                    "send-test")
         for path in source_files():
-            source = read(path)
-            for forbidden in ("AddLeadsToCampaign", "/leads"):
-                for line in source.splitlines():
-                    if forbidden in line and "request(" in line:
-                        self.fail(f"{path}: {line.strip()}")
+            for line in read(path).splitlines():
+                if "request(" not in line:
+                    continue
+                for route in starting:
+                    self.assertNotIn(route, line, f"{path}: {line.strip()}")
 
     def test_live_push_is_still_refused(self):
         from src import push
@@ -193,14 +204,29 @@ class TestNoDirectProviderMutation(CampaignTest):
         # Reading is confirmed. The send route still is not reachable.
         with self.assertRaises(Exception):
             heyreach._read("/campaign/AddLeadsToCampaignV2", {})
-        import inspect
-        self.assertNotIn('request("POST"', inspect.getsource(bison))
+        # EmailBison posts now, and every route it may post to is declared.
+        # The one that starts a campaign is not among them, which is the
+        # property this assertion used to get from banning POST outright.
+        for route in bison.WRITE_ROUTES:
+            self.assertNotIn("resume", route)
+            self.assertNotIn("activate", route)
 
-    def test_no_campaign_is_created_on_a_provider(self):
-        for path in source_files():
-            for line in read(path).splitlines():
-                if "request(" in line and "campaign" in line.lower():
-                    self.assertNotIn('"POST"', line, f"{path}: {line.strip()}")
+    def test_a_campaign_created_on_a_provider_cannot_send(self):
+        """Creating one is allowed now. Starting one is still not.
+
+        `bison.create_campaign` returns a DRAFT, `bisonfactory` leaves it
+        `paused`, and the provider refuses to resume a campaign without a
+        sequence, a schedule, senders and leads - in its own words. The thing
+        that keeps it harmless is that no supported operation can start it.
+        """
+        from src import providerwrites
+        self.assertFalse(providerwrites.is_supported(providerwrites.EMAIL_ACTIVATE))
+        self.assertFalse(
+            providerwrites.is_supported(providerwrites.LINKEDIN_ACTIVATE))
+        for operation, (_channel, facing, _why) in                 providerwrites.OPERATIONS.items():
+            if facing:
+                self.assertFalse(providerwrites.is_supported(operation),
+                                 operation)
 
 
 class TestStateIsResumable(CampaignTest):

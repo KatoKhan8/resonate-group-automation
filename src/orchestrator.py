@@ -531,25 +531,86 @@ def unfreeze(campaign, by="unknown", why="", role=roles.ADMIN):
     return campaign
 
 
-def pause(campaign, why="paused", by="unknown", role=roles.ADMIN):
-    """Canonical state only. THE PROVIDER IS NOT TOLD.
+def pause(campaign, why="paused", by="unknown", role=roles.ADMIN,
+          provider=True):
+    """Stop planning steps AND tell the provider, where a route is proven.
 
-    Named here because the function reads like a stop and is not one. It writes
-    `campaign["pause"]`, sets the status and notes an event, so this system will
-    plan no further steps - and a campaign already running at the vendor keeps
-    running. `providerwrites.SUPPORTED` is empty and both `heyreach.pause` and
-    `bison.pause` refuse by name, so there is no leg of this that could reach
-    out even if one were added here.
+    This used to be canonical state only, and said so: it wrote
+    `campaign["pause"]` while a campaign already running at the vendor kept
+    running. That was honest when no pause verb was supported.
 
-    `api.pause_campaign` records that distinction in the audit row rather than
-    letting a reader infer a stop that did not happen.
+    It is no longer, and the gap had a consequence. `executionguard`'s
+    `stoppability` gate lifts a promotion ceiling the moment
+    `providerwrites.is_supported(pause_op)` answers True - which it now does
+    for both channels - so the ceiling that bounds unrecallable exposure was
+    resting on a stop that only a hand-written script could invoke. A declared
+    capability nothing calls is the defect this repository keeps finding.
+
+    The provider leg NEVER prevents the local one. If the vendor call fails,
+    this system must still stop planning steps: refusing to record a local
+    pause because a provider was unreachable would leave the campaign running
+    at both ends. The outcome is recorded either way, so nobody reads a local
+    pause as a provider stop again.
     """
     roles.require(role, roles.PAUSE_CAMPAIGN, by)
     campaign["pause"] = {"since": store.now(), "reason": why, "by": by}
     campaigns.set_status(campaign, campaigns.PAUSED, why,
                          allow=(campaigns.PAUSED,))
-    _note(campaign, events.CAMPAIGN_PAUSED, by=by, reason=why)
+    stopped = _pause_at_provider(campaign, by=by) if provider else None
+    _note(campaign, events.CAMPAIGN_PAUSED, by=by, reason=why,
+          provider_stop=stopped)
     return campaign
+
+
+def _pause_at_provider(campaign, by="unknown"):
+    """Halt this campaign at whichever vendors it is actually bound to.
+
+    Returns what happened per channel, never raising: see `pause` above for
+    why a provider failure must not block the local stop.
+    """
+    from . import providerwrites
+
+    bindings = (("linkedin", providerwrites.LINKEDIN_PAUSE,
+                 campaign.get("heyreach_campaign_id")),
+                ("email", providerwrites.EMAIL_PAUSE,
+                 campaign.get("bison_campaign_id")))
+    out = {}
+    for channel, operation, provider_id in bindings:
+        if not provider_id:
+            continue
+        if not providerwrites.is_supported(operation):
+            out[channel] = {"stopped": False, "why": "not supported"}
+            continue
+        try:
+            out[channel] = _perform_pause(operation, channel, campaign,
+                                          provider_id, by)
+        except Exception as e:
+            # Classified, never swallowed. An unstopped provider campaign is
+            # precisely the thing somebody has to go and look at.
+            out[channel] = {"stopped": False, "error": type(e).__name__,
+                            "why": str(e)[:200]}
+    return out or None
+
+
+def _perform_pause(operation, channel, campaign, provider_id, by):
+    from . import providerwrites
+    from .providers import bison, heyreach
+
+    if channel == "linkedin":
+        transport = lambda _p: heyreach.pause_campaign(provider_id)
+        readback = lambda: {"status": heyreach.campaign_status(provider_id)}
+        expected = {"status": "PAUSED"}
+    else:
+        transport = lambda _p: bison.pause_campaign(provider_id)
+        readback = lambda: {"status": bison.campaign(provider_id).get("status")}
+        expected = {"status": "paused"}
+    outcome = providerwrites.perform(
+        operation, campaign=str(campaign.get("campaign_id")),
+        tenant=campaign.get("client"),
+        payload={"campaign_id": provider_id}, transport=transport,
+        readback=readback, expected=expected, by=by)
+    return {"stopped": True, "provider_campaign": provider_id,
+            "class": (outcome or {}).get("class")}
 
 
 def resume(campaign, by="unknown", role=roles.ADMIN, recs=None, config=None):
