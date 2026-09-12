@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""A campaign staged twice is one campaign, and its leads are made once.
+
+Proven against the live provider on 2026-09-13 (EmailBison campaign 434:
+created, populated, reused, lead count stable at 2, left `paused`) and pinned
+here offline so it keeps holding.
+
+The second run is the whole test. The first one passing proves only that the
+routes work; it is the re-run that decides whether this system can be
+interrupted and restarted without building a second campaign and mailing
+everybody twice. Both failure modes in here were real:
+
+  - the campaign was reused but its LEADS were created again, and the provider
+    refused with "The email has already been taken";
+  - and the tempting fix - looking the lead up by `?email=` - reads an
+    unfiltered page as if it were a filtered one.
+"""
+import unittest
+
+from src import bisonfactory, campaigns, store
+from src.providers import ProviderError
+from tests.base import QueueTest
+
+
+class FakeBison:
+    """A provider that behaves the way the measured one does.
+
+    Including the parts that bite: creating a lead whose address already
+    exists raises exactly the provider's error, and attaching a lead that is
+    already in the campaign is silently ignored.
+    """
+
+    def __init__(self):
+        self.campaigns = {}
+        self.leads = {}
+        self.members = {}
+        self.next_id = 500
+        self.created_campaigns = 0
+        self.created_leads = 0
+
+    def _id(self):
+        self.next_id += 1
+        return self.next_id
+
+    def bound_workspace(self):
+        return {"id": 10, "name": "PRODUCTIVE"}
+
+    def create_campaign(self, name):
+        cid = self._id()
+        self.campaigns[cid] = {"id": cid, "name": name, "status": "draft"}
+        self.members[cid] = []
+        self.created_campaigns += 1
+        return dict(self.campaigns[cid])
+
+    def campaign(self, cid):
+        row = self.campaigns.get(int(cid))
+        if row is None:
+            raise ProviderError(f"no campaign {cid}")
+        return dict(row)
+
+    def create_lead(self, fields):
+        address = fields["email"].lower()
+        if any(l["email"] == address for l in self.leads.values()):
+            raise ProviderError(
+                "emailbison create_lead: POST /leads -> 422 The email has "
+                "already been taken.")
+        if not str(fields.get("first_name") or "").strip():
+            raise ProviderError("422 The first name field is required.")
+        lid = self._id()
+        self.leads[lid] = {"id": lid, "email": address}
+        self.created_leads += 1
+        return dict(self.leads[lid])
+
+    def find_lead_by_email(self, email):
+        for row in self.leads.values():
+            if row["email"] == str(email).lower():
+                return dict(row)
+        return None
+
+    def campaign_lead_ids(self, cid, per_page=200):
+        return list(self.members.get(int(cid), []))
+
+    def attach_leads(self, cid, lead_ids):
+        cid = int(cid)
+        before = set(self.members.get(cid, []))
+        fresh = [i for i in lead_ids if i not in before]
+        self.members[cid] = sorted(before | set(lead_ids))
+        return {"attached": fresh,
+                "already": [i for i in lead_ids if i in before],
+                "members": list(self.members[cid])}
+
+    def set_sequence(self, cid, title, steps):
+        return {"id": self._id(), "title": title}
+
+    def pause_campaign(self, cid):
+        self.campaigns[int(cid)]["status"] = "paused"
+        return {"campaign_id": cid, "status": "paused"}
+
+
+CID = "camp-factory"
+
+
+class StagingTwiceBuildsOne(QueueTest):
+
+    def setUp(self):
+        super().setUp()
+        self.bison = FakeBison()
+        self._real = bisonfactory.bison
+        bisonfactory.bison = self.bison
+        self.addCleanup(setattr, bisonfactory, "bison", self._real)
+
+        store.save([self._record("rec-1", "one@resonategroup.co", "Ada"),
+                    self._record("rec-2", "two@resonategroup.co", "Grace")])
+        row = campaigns.new_campaign(CID, "productive", "Factory test")
+        row["record_ids"] = ["rec-1", "rec-2"]
+        campaigns.save([row])
+
+    @staticmethod
+    def _record(rid, email, first):
+        return {"id": rid, "client": "productive", "domain": "example.com",
+                "company": "Example", "state": "ready",
+                "contacts": [{"key": f"{rid}-c1", "email": email,
+                              "first_name": first, "last_name": "Tester",
+                              "sendable": True, "verified": True}]}
+
+    def test_the_second_run_creates_nothing(self):
+        first = bisonfactory.stage(CID, live=True)
+        second = bisonfactory.stage(CID, live=True)
+
+        self.assertEqual(self.bison.created_campaigns, 1,
+                         "a second provider campaign was built")
+        self.assertEqual(self.bison.created_leads, 2,
+                         "the leads were created again on the re-run")
+        self.assertEqual(first["provider"]["campaign_id"],
+                         second["provider"]["campaign_id"])
+        self.assertEqual(second["provider"]["readback"]["leads"], 2)
+        # HOW the second run found them, not just that it did. Without this
+        # the test passes on the reconciliation path - create, get refused,
+        # search - which avoids duplicates only while the provider's lead
+        # search happens to be current.
+        self.assertEqual(second["provider"]["leads"],
+                         {"created": 0, "reused": 2, "reconciled": 0})
+
+    def test_the_provider_id_is_persisted_where_it_can_be_found(self):
+        """An id the provider issued and we did not record is a duplicate."""
+        bisonfactory.stage(CID, live=True)
+        row = campaigns.get(CID, campaigns.load())
+        self.assertTrue(row.get("bison_campaign_id"),
+                        "the campaign row does not name its provider campaign")
+        for rec in store.load():
+            for contact in rec["contacts"]:
+                self.assertTrue(contact.get("bison_lead_id"),
+                                f"{contact['key']} has no provider lead id")
+
+    def test_it_is_left_stopped(self):
+        """A staged campaign that can send has not been staged."""
+        report = bisonfactory.stage(CID, live=True)
+        self.assertEqual(report["provider"]["readback"]["status"], "paused")
+
+    def test_a_foreign_workspace_is_refused(self):
+        """The credential's real estate must be the client's estate."""
+        self.bison.bound_workspace = lambda: {"id": 25, "name": "Ironvault"}
+        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+            bisonfactory.stage(CID, live=True)
+        self.assertIn("25", str(caught.exception))
+        self.assertEqual(self.bison.created_campaigns, 0)
+
+    def test_a_dry_run_touches_nothing(self):
+        report = bisonfactory.stage(CID, live=False)
+        self.assertFalse(report["live"])
+        self.assertEqual(self.bison.created_campaigns, 0)
+        self.assertEqual(self.bison.created_leads, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -344,6 +344,67 @@ def create_lead(fields):
     return row
 
 
+def create_campaign(name):
+    """Create a campaign. It comes back in `draft` and sends nothing.
+
+    POST /api/campaigns -> 201, measured 2026-09-12. A draft campaign cannot
+    send: resume refuses one without a sequence and a schedule, in the
+    provider's own words. So this stages and never exposes anybody.
+    """
+    if not str(name or "").strip():
+        raise ProviderError("emailbison create_campaign: a name is required")
+    status, data = request("POST", f"{base()}/campaigns", _json_headers(),
+                           {"name": name})
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison create_campaign: POST -> {status} {_message(data)}")
+    row = mapping(data, "create_campaign").get("data") or {}
+    if not row.get("id"):
+        raise ProviderError(
+            "emailbison create_campaign: the provider returned no id. A "
+            "campaign may exist that nothing here can name; do NOT retry")
+    return row
+
+
+def find_lead_by_email(email):
+    """The one lead with this address, or None. Never a guess.
+
+    `?search=` is the only real filter on this route: a nonsense term returns
+    nothing and a known address returns exactly its lead. `?email=` is NOT -
+    it is accepted and discarded, and answers with an unfiltered page, which
+    is the same trap `workspace_id` sets elsewhere in this API.
+
+    It lags behind creation, so a lead made seconds ago may not be findable.
+    That is why this is a reconciliation path and not the primary one, and why
+    an ambiguous answer raises instead of picking a row.
+    """
+    import urllib.parse
+
+    address = str(email or "").strip().lower()
+    if not address:
+        raise ProviderError("emailbison find_lead_by_email: no address given")
+    status, data = request(
+        "GET", f"{base()}/leads?search={urllib.parse.quote(address)}",
+        headers())
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison find_lead_by_email: GET -> {status}")
+    rows = mapping(data, "find_lead_by_email").get("data")
+    if not isinstance(rows, list):
+        raise ProviderError(
+            "emailbison find_lead_by_email: the lead list is not a list; "
+            "refusing to read an unknown shape as 'no such lead'")
+    exact = [r for r in rows if isinstance(r, dict)
+             and str(r.get("email") or "").strip().lower() == address]
+    if not exact:
+        return None
+    if len(exact) > 1:
+        raise ProviderError(
+            f"emailbison find_lead_by_email: {len(exact)} leads carry "
+            f"{address!r}. Refusing to choose one")
+    return exact[0]
+
+
 def campaign_lead_ids(campaign_id, per_page=200):
     """Which lead ids the PROVIDER says are in this campaign.
 
