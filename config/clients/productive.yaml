@@ -171,3 +171,18 @@ providers:
     workspace: 10
   heyreach:
     org_unit: 118832
+
+# A RUNAWAY GUARD, NOT A COST TARGET. Enrichment credits are authorised for
+# this client's production execution, so these are set far above anything a
+# legitimate batch costs: the priced estimate for the 250-record shard is 37
+# credits expected and 54 worst case. What they stop is a loop - a retry that
+# re-buys the same people, or a stage that fans out without a cap - which is
+# the only way this number gets reached at all.
+#
+# `spendledger.check` reads these before every paid call and `enrich.spend`
+# refuses on them. Absent, all four scopes are null and nothing refuses on
+# cost, which is what was true here until now.
+budget:
+  per_day: 5000
+  per_run: 2000
+  total: 50000

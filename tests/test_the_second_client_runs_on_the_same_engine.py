@@ -481,8 +481,16 @@ class TheEngineRunsBothClients(Estate):
         self.assertEqual(self.config_b["icp"]["markets"], ["Germany"])
         self.assertNotEqual(self.config_a["icp"]["markets"],
                             self.config_b["icp"]["markets"])
+        # Client B's declared ceiling is B's, whatever A happens to declare.
+        # This asserted `caps(config_a)["total"] is None`, which was only ever
+        # true because the real `config/clients/productive.yaml` declared no
+        # budget - the same coupling to that file's current contents that
+        # `_without_providers` exists for, and it broke the day Productive got
+        # a runaway guard. What the requirement actually says is that the two
+        # clients differ, and that each gets its own answer from one loader.
         self.assertEqual(spendledger.caps(self.config_b)["total"], 5)
-        self.assertIsNone(spendledger.caps(self.config_a)["total"])
+        self.assertNotEqual(spendledger.caps(self.config_a)["total"],
+                            spendledger.caps(self.config_b)["total"])
 
     def test_one_engine_call_answers_for_whichever_client_it_was_given(self):
         """HOLDS - `cadence.expand_step` is passed a config, not a slug.

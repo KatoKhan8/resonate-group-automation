@@ -462,6 +462,44 @@ class EachGateStopsTheProviderCallEntirely(GuardTest):
     def test_a_readback_that_is_not_a_dict_prevents_the_call(self):
         self.refused_at("readback", readback="PASS")
 
+    def test_a_readback_authorises_one_action_and_not_a_second(self):
+        """`Readback.spend()` existed, raised on reuse, and had NO CALLER.
+
+        So the single-use property was declared and unenforced: one provider
+        read authorised every action a caller passed it to, bounded only by
+        the fifteen-minute TTL. A loop staging fifty leads read the provider
+        once and acted fifty times, on a configuration that a vendor UI edit
+        could have changed after the first.
+        """
+        sealed = self.readback()
+        with self.allow_killswitch(), self.allow_sender(), self.allow_collision():
+            self.authorize(readback=sealed)          # the first action
+
+        with self.allow_killswitch(), self.allow_sender(), self.allow_collision():
+            with self.assertRaises(executionguard.NotAuthorized) as caught:
+                self.authorize(readback=sealed)      # the same proof, again
+        self.assertEqual(caught.exception.gate, "readback")
+        self.assertIn("already authorised", caught.exception.why)
+
+    def test_a_refusal_after_the_readback_does_not_burn_it(self):
+        """Spent at the readback gate, not at the end of `authorize`.
+
+        A read-back burnt by a run that a LATER gate then stopped would force
+        a needless re-read of the provider. The gates after this one can still
+        refuse, so the burn belongs where the read-back itself is what is
+        being checked - and a refusal at THIS gate must still leave it usable
+        for nobody, which the test above covers.
+        """
+        sealed = self.readback()
+        with self.allow_killswitch(), self.allow_sender(), mock.patch.object(
+                collision, "check_linkedin_profile",
+                return_value=(collision.TOUCHED, {"note": "already talking"})):
+            with self.assertRaises(executionguard.NotAuthorized) as caught:
+                self.authorize(readback=sealed)
+        self.assertEqual(caught.exception.gate, "collision")
+        self.assertIn("readback", caught.exception.passed,
+                      "the readback gate did not pass, so this proves nothing")
+
     def test_collision_appearing_after_staging_prevents_the_call(self):
         """The check is re-read at authorization time, not trusted from before."""
         with self.allow_killswitch(), self.allow_sender(), mock.patch.object(

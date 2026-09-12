@@ -183,6 +183,21 @@ def _utcnow():
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def _spend_readback(readback):
+    """Burn the read-back, returning False if it was already spent.
+
+    A predicate rather than a raise, so the refusal travels through
+    `_require` and arrives as a `NotAuthorized` naming the `readback` gate,
+    like every other refusal here. A caller that sees `DiffRefused` instead
+    would have to learn a second exception for the same kind of answer.
+    """
+    try:
+        readback.spend()
+    except configdiff.DiffRefused:
+        return False
+    return True
+
+
 def readback_is_fresh(verified_at, now=None, ttl=READBACK_TTL_SECONDS):
     """Was the provider configuration verified recently enough to act on?
 
@@ -323,6 +338,23 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
              f"the read-back is older than {READBACK_TTL_SECONDS}s; a vendor "
              f"UI edit can land between verifying a configuration and acting "
              f"on it, and has")
+    # ONE READ-BACK, ONE ACTION - AND NOTHING WAS CALLING THIS.
+    #
+    # `Readback.spend()` exists, raises on reuse, and had no caller anywhere in
+    # `src/`. So the single-use property was declared and unenforced: one
+    # provider read authorised every action a caller cared to pass it to,
+    # bounded only by the 15-second-shy-of-fifteen-minute TTL above. A loop
+    # staging fifty leads read the provider once and acted fifty times, which
+    # is precisely the "existence is not function" defect this repository
+    # keeps producing - the guard computed, correct, and consumed by nobody.
+    #
+    # Spent here rather than at the end of `authorize`, because the gates
+    # after this one can still refuse: a read-back burnt by a run that was
+    # then stopped by suppression would force a re-read for no reason. This is
+    # the last point at which the read-back itself is what is being checked.
+    _require("readback", _spend_readback(readback),
+             "this read-back has already authorised an action; re-read the "
+             "provider rather than reusing one")
     gates.append("readback")
 
     # 4. JIT: suppression, collision, fatigue, sender health ------------------
