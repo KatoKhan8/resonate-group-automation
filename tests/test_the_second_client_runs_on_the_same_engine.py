@@ -1212,15 +1212,48 @@ class ActionsAndCapsDoNotCross(Estate):
                     channel="linkedin", campaign=campaign, rec=rec,
                     contact=contact, step_key="day3", workspace=A_ESTATE,
                     config=config, now=NOW, readback=self.readback(campaign))
-        # It refuses at `campaign_approval` rather than at `tenancy`: the
-        # approval fingerprint covers the client field, so blanking it
-        # invalidates the approval before gate 5 is reached. Both are
-        # fail-closed, and the property that matters is asserted last -
-        # nothing was reserved. `tenancy` at src/executionguard.py:424 is the
-        # backstop for a clientless campaign that somehow carried a matching
-        # fingerprint, which cannot be constructed from outside.
-        self.assertEqual(caught.exception.gate, "campaign_approval")
+        # It used to refuse at `campaign_approval`, incidentally: the approval
+        # fingerprint covers the client field, so blanking it invalidated the
+        # approval before any tenancy check was reached, and this asserted
+        # that. Gate 1 now asks directly whether the record's client and the
+        # campaign's client are the same, and refuses an empty one on either
+        # side - so a clientless campaign is caught by the gate whose subject
+        # it is, at the first gate that can see it, rather than by a
+        # side-effect of fingerprinting two gates later.
+        #
+        # The property that matters is unchanged and still asserted last:
+        # nothing was reserved.
+        self.assertEqual(caught.exception.gate, "tenancy")
+        self.assertIn("unowned record", caught.exception.why)
         self.assertEqual(actionledger.load(), [])
+
+    def test_ATTACK_a_record_may_not_run_in_another_clients_campaign(self):
+        """The leak that gate: everything below gate 1 reads the CAMPAIGN's
+        client - the killswitch, the pilot caps, the sender roster, the ledger
+        row - and nothing asked whether the record was that client's.
+        `eligibility._selected` checks only that the campaign lists the record
+        id, which is exactly the thing a mistake supplies.
+
+        So Client B's prospect inside Client A's campaign was authorised under
+        A's tenancy and recorded against it: contacted from the wrong estate,
+        by the wrong sender, out of the wrong daily allowance, and invisible
+        in B's audit.
+        """
+        rec, contact, campaign, config = self.approved(A, "a-1",
+                                                       self.campaign_a)
+        theirs = dict(rec, client=B)
+        with self.allow_collision(), self.allow_killswitch():
+            with self.assertRaises(executionguard.NotAuthorized) as caught:
+                executionguard.authorize(
+                    operation="linkedin_connection_request",
+                    channel="linkedin", campaign=campaign, rec=theirs,
+                    contact=contact, step_key="day3", workspace=A_ESTATE,
+                    config=config, now=NOW, readback=self.readback(campaign))
+        self.assertEqual(caught.exception.gate, "tenancy")
+        self.assertIn(B, caught.exception.why)
+        self.assertIn(A, caught.exception.why)
+        self.assertEqual(actionledger.load(), [],
+                         "one client's prospect was reserved against another")
 
 
 # ==================================================================== 11 ===

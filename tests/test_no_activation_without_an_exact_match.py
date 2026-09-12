@@ -418,24 +418,28 @@ class OneEmailMutationAtATime(Factory):
     def test_wrong_sender(self):
         self.check({"sender_ids"}, sender_ids=[999005])
 
-    def test_a_wrong_email_address_is_reported_and_does_not_block(self):
-        """THE FINDING, and it is the one `configdiff` already corrected on the
-        other channel. `lead_set` was made REQUIRED for HeyReach - "the diff now
-        asserts WHO the provider holds rather than how many" - and
-        `REQUIRED_BISON` was never given the same field, though
-        `provider_bison` reads the whole lead set and `approved_bison` builds
-        one. So on email, swapping one person for another is DIFFED, REPORTED,
-        and contributes nothing to the verdict: the count still agrees.
+    def test_a_wrong_email_address_blocks(self):
+        """THE FINDING, now closed, and it is the one `configdiff` had already
+        corrected on the other channel. `lead_set` was made REQUIRED for
+        HeyReach - "the diff now asserts WHO the provider holds rather than
+        how many" - and `REQUIRED_BISON` was never given the same field,
+        though `provider_bison` reads the whole lead set and `approved_bison`
+        builds one. So on email, swapping one person for another was DIFFED,
+        REPORTED, and contributed nothing to the verdict, because the count
+        still agreed.
 
-        Asserted exactly as it behaves rather than as it should, with the
-        `should` in `MutationsThisGateCannotSee` as an expected failure.
+        This asserted that behaviour exactly as it was, with the `should` kept
+        beside it in `MutationsThisGateCannotSee` as an expected failure. The
+        field is required now, so both turn over together.
         """
         campaign, recs = self.stage()
         readback = self.compare_email(campaign, recs,
                                       leads=["someone.else@elsewhere.test"])
         self.assertEqual(
             readback.diff["fields"]["lead_set"]["verdict"], configdiff.MISMATCH)
-        self.assertNotIn("lead_set", readback.diff["required"])
+        self.assertIn("lead_set", readback.diff["required"])
+        self.assertNotEqual(readback.verdict, configdiff.PASS,
+                            "a campaign staged to the wrong person passed")
         self.assertEqual(readback.diff["fields"]["lead_count"]["verdict"],
                          configdiff.MATCH,
                          "the count agrees, which is why only the identity "
@@ -536,9 +540,9 @@ class MutationsThisGateCannotSee(Factory):
                          "a campaign nobody approved any copy for passed the "
                          "provider-agreement gate")
 
-    @unittest.expectedFailure
-    def test_who_is_in_an_email_campaign_should_block(self):
-        """`lead_set` is in `REQUIRED_HEYREACH` and NOT in `REQUIRED_BISON`.
+    def test_who_is_in_an_email_campaign_blocks(self):
+        """CLOSED. `lead_set` is in `REQUIRED_BISON` now, as it always was in
+        `REQUIRED_HEYREACH`.
 
         The LinkedIn side was corrected for exactly this and the note is still
         in the module: a campaign used to be proven by `lead_count` plus a
@@ -547,9 +551,9 @@ class MutationsThisGateCannotSee(Factory):
         lead set and `approved_bison` has always built one, so the stronger
         question is answerable on email today and simply is not asked.
 
-        Until it is, a staged email campaign where one address was swapped for
-        another diffs with `lead_set: mismatch` in the report and a verdict
-        that never mentions it.
+        Until it was, a staged email campaign where one address had been
+        swapped for another diffed with `lead_set: mismatch` in the report and
+        a verdict that never mentioned it.
         """
         self.assertIn("lead_set", configdiff.REQUIRED_BISON)
 

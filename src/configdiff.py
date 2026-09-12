@@ -81,6 +81,13 @@ REQUIRED_HEYREACH = (
 
 REQUIRED_BISON = (
     "campaign_id", "campaign_name", "status", "workspace", "sender_ids",
+    # WHO, NOT HOW MANY - the same correction `REQUIRED_HEYREACH` already
+    # carries above. `lead_count` alone says "the provider holds one lead",
+    # and the wrong person passes that as easily as the right one. `lead_set`
+    # was computed on both sides and compared by nothing, so the email lane
+    # verified an approved head-count against a provider head-count and
+    # called it a match.
+    "lead_set",
     "lead_count", "actions", "subjects", "bodies", "delays",
     "max_emails_per_day", "max_new_leads_per_day",
 )
@@ -384,7 +391,17 @@ def approved_bison(campaign, recs=None, config=None):
             address = (contact.get("email") or "").strip().lower()
             if not address:
                 continue
-            leads.add(address)
+            # THE ADDRESS JOINS THE APPROVED SET ONLY IF SOMETHING WAS
+            # APPROVED FOR IT. This ran before the approval filter below, so
+            # every emailable contact on a listed record was reported as an
+            # approved lead whether or not one word to them had been blessed -
+            # and `approved_heyreach` is strict about exactly this. A campaign
+            # naming ten records with one approved contact between them
+            # produced an approved lead set of ten. The only reason that was
+            # not already certifying strangers is that `lead_set` was missing
+            # from `REQUIRED_BISON`, so nothing compared it at all: an unread
+            # field and an unfiltered one, hiding each other.
+            approved_here = False
             for spec in cadence.STEPS:
                 if spec.get("channel") != "email":
                     continue
@@ -402,12 +419,17 @@ def approved_bison(campaign, recs=None, config=None):
                 if not approval.is_approved(rec, contact["key"], spec["key"],
                                             step):
                     continue
+                approved_here = True
                 actions.append(spec["key"])
                 subjects.append(_norm_text(step.get("subject")))
                 bodies.append(_norm_text(step.get("body")))
                 delays.append(int(spec.get("day") or 0))
+            if approved_here:
+                leads.add(address)
     if not leads:
-        raise DiffRefused("no emailable contact on any approved record")
+        raise DiffRefused(
+            "no contact on any listed record has an approved email step, so "
+            "there is no approved lead set to compare the provider against")
 
     volume = (campaign.get("daily_volume") or {}).get("email")
     return {

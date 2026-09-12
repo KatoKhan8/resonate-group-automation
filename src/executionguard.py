@@ -272,6 +272,35 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
         _require("tenancy", str(campaign.get("org_unit") or "") != "",
                  "the canonical campaign names no org_unit, so the LinkedIn "
                  "tenant cannot be pinned")
+
+    # AND THE RECORD HAS TO BELONG TO THE CAMPAIGN'S CLIENT.
+    #
+    # Everything below takes its tenant from the CAMPAIGN - `tenant =
+    # campaign.get("client")` at gate 5, the killswitch, the pilot caps, the
+    # sender roster, the ledger row - and nothing asked whether the RECORD was
+    # that client's. So one client's prospect inside another client's campaign
+    # was authorised under the second client's tenancy and recorded against
+    # it: contacted from the wrong estate, by the wrong sender, out of the
+    # wrong daily allowance, and invisible in the first client's audit.
+    # `eligibility._selected` checks only that the campaign lists the record
+    # id, which is exactly the thing a mistake supplies.
+    #
+    # Reproduced: a `demo` record inside a `productive` campaign authorised
+    # cleanly, with the ledger tenant recorded as `productive`.
+    #
+    # A missing client on either side is refused rather than read as a match,
+    # because an unowned record is what an unscoped import produces.
+    rec_client = str(rec.get("client") or "").strip()
+    campaign_client = str(campaign.get("client") or "").strip()
+    _require("tenancy", rec_client != "" and campaign_client != "",
+             f"record {rec.get('id')!r} names client {rec_client!r} and its "
+             f"campaign names {campaign_client!r}; an unowned record cannot "
+             f"be attributed to a tenant")
+    _require("tenancy", rec_client == campaign_client,
+             f"record {rec.get('id')!r} belongs to client {rec_client!r} but "
+             f"this campaign belongs to {campaign_client!r}. Every gate below "
+             f"reads the campaign's tenant, so this would send one client's "
+             f"prospect from another client's estate and record it there")
     gates.append("tenancy")
 
     # 2. APPROVAL ------------------------------------------------------------
