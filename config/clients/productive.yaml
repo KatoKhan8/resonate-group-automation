@@ -33,6 +33,86 @@ market:
 icp:
   markets: [United Kingdom, Ireland, Netherlands, Germany, France, Nordics,
             Australia, United States]
+
+  # ---------------------------------------------------------------- V2
+  #
+  # THE CLIENT'S OWN CRITERIA, AND THEY ARE THE WHOLE ICP TEST.
+  #
+  # What was here before scored twelve dimensions and called the total an ICP
+  # verdict. Five of those dimensions were structural and seven were PAIN -
+  # does this company's website mention utilisation, profitability, resource
+  # planning, timesheets. The arithmetic made that fatal: structural weights
+  # sum to 55 and `tier_b` is 60, so a flawless marketing agency of the right
+  # size in the right country whose site never says "utilisation" could not
+  # exceed tier C no matter what. Measured on this cohort: 16 of 300
+  # qualified, and 300 of 300 carried "no evidence for time tracking need".
+  #
+  # Pain evidence is not an ICP criterion. It decides WHAT WE SAY, not WHOM WE
+  # TARGET, and it now lives in research and personalisation where it belongs.
+  # These five criteria decide whom we target, and nothing else does.
+  #
+  # UNKNOWN IS NOT FAIL. A criterion we could not establish leaves the company
+  # eligible-with-uncertainty; only affirmative evidence of a violation fails
+  # it. "We failed to prove it" and "we know it is not so" are different
+  # answers and only one of them is a rejection.
+  structural:
+    # Affirmative membership of `exclude` fails. Membership of `include`
+    # passes. Anything else - including a country nobody could establish - is
+    # unknown, because `location_why: no usable location evidence` was the
+    # commonest note on this cohort and it is not evidence of being in Asia.
+    geographies:
+      include: [United Kingdom, Ireland, Netherlands, Germany, France,
+                Nordics, Sweden, Norway, Denmark, Finland, Belgium, Austria,
+                Switzerland, Spain, Italy, Portugal, Poland, Australia,
+                New Zealand, United States, Canada]
+      exclude: [India, Pakistan, United Arab Emirates, Bangladesh, Sri Lanka,
+                Philippines, Indonesia, Vietnam, Thailand, Malaysia, China,
+                Singapore, Hong Kong, Japan, South Korea, Taiwan]
+
+    # The client's words: marketing agencies and software agencies. The
+    # verticals below are the segment classifier's own vocabulary, so this is
+    # a mapping onto what the engine can actually say, not a new taxonomy.
+    company_types:
+      primary: [marketing_agency, software_agency]
+      verticals: [Creative / Branding Agency, Digital Marketing Agency,
+                  Performance Marketing Agency, Advertising Agency,
+                  Media Agency, PR Agency, Design Studio,
+                  Software Development Agency, Web Development Agency,
+                  Product Studio, Digital Agency, Consultancy,
+                  Technology Consultancy, Marketing Agency]
+
+    services_business_required: true
+
+    # A must-have in the client document, and the one that most needs the
+    # unknown/fail distinction. A homepage that does not say "we track time"
+    # is not a company that does not track time. Only affirmative evidence
+    # that it does NOT - a product company selling licences, say - fails here.
+    tracks_time_required: true
+
+    # PROVIDER HEADCOUNTS ARE ESTIMATES AND THE TOLERANCE SAYS SO.
+    # The effective floor is derived - min * (1 - tolerance) = 14 - and is
+    # never written as 14 anywhere in the engine. A company at 14-19 is a size
+    # pass with tolerance; below that it fails only if the number came from a
+    # source good enough to reject on. Unknown headcount is unknown.
+    employees:
+      min: 20
+      tolerance: 0.30
+      # A HEADCOUNT ESTIMATE THAT REVENUE CONTRADICTS IS NOT A SMALL COMPANY.
+      #
+      # Measured on this cohort: 28 companies whose stored headcount is under
+      # the tolerated floor also carry revenue of $3M or more, and one of them
+      # reports four people against $172.7M. That is a broken estimate, not a
+      # four-person agency, and rejecting on it is rejecting on data the
+      # record itself contradicts.
+      #
+      # Agency revenue per head runs roughly $100-200k, so thirteen people
+      # could plausibly produce about $2.6M at the top of that range. Above
+      # this figure the headcount and the revenue cannot both be right.
+      #
+      # The company does NOT pass on revenue - revenue is not a headcount.
+      # Size becomes UNKNOWN, which leaves the other four criteria to decide
+      # and keeps the company out of `icp_pass`. Unset or 0 disables it.
+      revenue_contradicts_below_millions: 3
 # Public-evidence research. Bounded here rather than by `--cap`, because Apify
 # bills in compute units and `COSTS["apify-research"]` is zero - the credit cap
 # cannot see this spend at all. These four numbers are the only ceiling there
