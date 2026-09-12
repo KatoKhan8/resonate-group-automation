@@ -120,6 +120,54 @@ unit 118832, many IN_PROGRESS. That is the reason the account-level collision
 gate exists, and it means a meaningful share of the TAM has already been
 touched by somebody else. Any promotion ladder must assume that.
 
+### Batch 2 and 3 — research, and what it converts
+
+Research cap raised 10 → 75. Batch 2: 192 records, 6,061s (101 min), 20.2s
+per record, 88 Apify runs, **0 credits** of person-level spend.
+
+| | researched | not researched |
+|---|---|---|
+| n | 140 | 160 |
+| medium+high confidence | **9.3%** | **0.0%** |
+| **qualified** | **8.6%** | **0.0%** |
+| mean ICP score | 21.7 | 5.2 |
+
+Not one unresearched company has ever qualified. Research is not a
+contributor to qualification here, it is the precondition. Funnel moved:
+researched 79 → 140, qualified 9 → 12, medium-or-high 10 → 13.
+
+### THE FINDING THAT CHANGES THE CHANNEL DECISION
+
+Of the 12 contacts on qualified companies:
+
+    12 of 12  carry a LinkedIn identifier
+     5 of 12  are email-sendable
+
+Every held qualified company is **email-dead, not dead**, and each for a
+reason that is the system working:
+
+    20northmarketing-com   MX closed: mx_security_provider_blocked:proofpoint
+    321webmarketing-com    accept_all_uncleared - reoon says the catch-all is
+    tractorbeam-com        not safe to send (both contacts, both companies)
+    revupdental-com        geo outside the client's stated markets, 0 personas
+
+So the LinkedIn lane reaches 2.4x what the email lane reaches on this cohort -
+and LinkedIn is the channel that now has a PASS readback and a proven stop.
+`emails_2_of_2_verified` at 41.7% is the measured email ceiling; catch-all
+domains are the dominant cause.
+
+### What the funnel will not claim, correctly
+
+`provider_staged` reads the ACTION LEDGER - "this system staged the lead" -
+and answers 0. The canary's lead is at the provider, but a human put it there
+in the vendor UI, so this system staged nothing and the funnel says so.
+`readback_verified` is hardcoded MISSING rather than 0, because the stage
+does not exist as a recorded thing.
+
+Both are honest. Both are also the reason the PASS readback below cannot be
+counted: it was obtained against live provider truth and there is nowhere
+canonical to write it down.
+
 ### The first confirmed provider write, and the first PASS readback
 
 **The write.** `POST /campaign/Pause` on 594061 returned 200 and the campaign
