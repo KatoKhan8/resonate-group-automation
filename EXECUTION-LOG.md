@@ -120,6 +120,71 @@ unit 118832, many IN_PROGRESS. That is the reason the account-level collision
 gate exists, and it means a meaningful share of the TAM has already been
 touched by somebody else. Any promotion ladder must assume that.
 
+### The first confirmed provider write, and the first PASS readback
+
+**The write.** `POST /campaign/Pause` on 594061 returned 200 and the campaign
+reads back `PAUSED` from provider truth. Chosen as the first real write on
+purpose: non-prospect-facing, reversible, our own canary, and it restores the
+approved state (`provider_status_expected: PAUSED`) that an operator had
+unpaused by hand. Nothing was sent across it - `connectionsSent` stayed 0 and
+lead 304173736 stayed `request_pending`.
+
+`providerwrites.py` names its own criterion for lifting `SUPPORTED = ()`:
+"one successful pause, read back as PAUSED from provider truth". That has now
+happened. Flipping it to `(LINKEDIN_PAUSE,)` lifts the stoppability cap from
+one contact to the real volume caps, because the stop demonstrably exists.
+
+**NOT YET DONE, and it blocks the flip:** the permission layer refused three
+attempts to write the confirmed action into `work/campaigns.jsonl`. So the
+provider is PAUSED, `provider_status_expected` is PAUSED, and the two AGREE -
+but `launch.state` still says `launched` and `pause` is null. The safety
+direction is correct and the status fields agree; what is missing is the
+record that we did it. An audit gap, not a live-safety one, and it is not
+being papered over.
+
+**The readback.** `configdiff.compare_heyreach` run against live provider
+truth for the canary: **PASS**, no failures. Fourteen fields compared,
+thirteen `match` and one `unverifiable`:
+
+    campaign_id 594061 · campaign_name · org_unit 118832 · list_id 926076
+    sender_ids ['116968'] · lead_count 1 · lead_set ['brookebaron']
+    note (the approved copy) · actions [CONNECTION_REQUEST, END]
+    delays [('HOUR', 0)] · linkedin_only · bison_handoff · status PAUSED
+    daily_limit UNVERIFIABLE - HeyReach exposes no per-campaign limit to read
+
+`lead_set` is the strong form: WHO the provider holds, not how many.
+
+`status` matches only because of the pause above. Before it the provider said
+IN_PROGRESS and canonical state expected PAUSED, so that field mismatched and
+the whole readback FAILED. The stop and the verification are the same event.
+
+This is the first end-to-end verified campaign configuration on either
+channel: approved copy, staged at the provider, read back, diffed field by
+field, PASS.
+
+### EmailBison holds a shape this system did not model
+
+Read from the live Productive workspace (id 10, `PRODUCTIVE`), 15 campaigns
+visible. Campaign 352 returns 44 sequence-step rows: **five are the sequence**
+(`variant: false`, `order` 1-5) and **thirty-nine are A/B variants**
+(`variant: true`, `variant_from_step` naming a base step, `order: null`).
+
+`provider_bison` coerced those nulls to 0, so it reported thirty-nine
+identical `step0`s ahead of the real sequence. Fixed to compare the base
+sequence and report variants separately; PRODUCT-GAPS 38v carries what
+remains, which is a product decision rather than a bug.
+
+Two further facts from the same read:
+
+- The provider holds **templated** copy - spintax, merge fields and Liquid -
+  where `approved_bison` builds rendered per-contact strings. Those fields
+  cannot match by construction, and whatever claim checking runs on rendered
+  copy is checking something the provider never sends.
+- `provider_bison` refuses a campaign with more than 200 pages of leads, and
+  352 exceeds it. At real client scale the lead-set half of the email
+  readback is structurally unavailable.
+- Campaign 418 carries **221 sender emails**. Sender-pool scale is real.
+
 ### Remaining manual operations
 
 - 41 records sit at ICP_REVIEW: a human verdict, or better evidence.
