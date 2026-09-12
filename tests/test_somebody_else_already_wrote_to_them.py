@@ -255,6 +255,78 @@ class TheThreeVerdicts(unittest.TestCase):
             collision.check_address("not-an-address", expect_workspace=WS)
 
 
+class AnUnreadEstateIsNotAnEmptyOne(unittest.TestCase):
+    """Two ways this module answered `clear` about something it had not read.
+
+    Both are the same rule: missing evidence is never positive evidence. One
+    lost the rows, the other lost the meaning of a word.
+    """
+
+    class NoPageCount:
+        """Serves rows with no `meta`, which is what a provider that changes
+        its envelope - or a proxy that trims it - looks like from here."""
+
+        def __init__(self, rows):
+            self.rows = rows
+            self.pages = 0
+
+        def __call__(self, method, url, headers=None, body=None, timeout=None):
+            if bison.USERS_PATH in url:
+                return 200, {"data": {"workspace": {"id": WS, "name": "T"}}}
+            self.pages += 1
+            return 200, {"data": self.rows}          # no meta, no last_page
+
+    def test_a_page_with_no_readable_page_count_refuses(self):
+        """It broke out of the loop and returned page one as the whole
+        estate, so a fifteen-row slice of a four-page account answered
+        `clear` - and the same missing `meta` disables the broad-match guard,
+        so both protections vanish together and neither says so."""
+        wire = self.NoPageCount([lead("robin@acmeagency.example", sent=4,
+                                      statuses=("in_sequence",))])
+        providers.set_transport(wire)
+        self.addCleanup(providers.reset_transport)
+        with self.assertRaises(collision.CollisionUnknown) as caught:
+            collision.leads_for_domain("acmeagency.example",
+                                       expect_workspace=WS)
+        self.assertIn("last_page", str(caught.exception))
+        self.assertEqual(wire.pages, 1, "it kept paging blindly")
+
+    def test_an_empty_page_with_no_page_count_is_a_real_end(self):
+        """The one case where stopping is honest: nothing here, nothing after
+        it. A guard that refused this too would refuse every empty estate."""
+        providers.set_transport(self.NoPageCount([]))
+        self.addCleanup(providers.reset_transport)
+        self.assertEqual(
+            collision.leads_for_domain("acmeagency.example",
+                                       expect_workspace=WS), [])
+
+    def test_an_unrecognised_campaign_status_holds_rather_than_allows(self):
+        """`in_sequence` was matched as a single literal, so every other word
+        the provider might use for a live campaign answered "not running" and
+        reached the send gate as ALLOW - "history, not a live conflict"."""
+        wire = Wire([lead("robin@acmeagency.example", sent=4,
+                          statuses=("active",))])
+        providers.set_transport(wire)
+        self.addCleanup(providers.reset_transport)
+        account = collision.check_account("acmeagency.example",
+                                          expect_workspace=WS)
+        self.assertEqual(account["unknown_statuses"], ["active"])
+        decision, why = collision.account_policy(account)
+        self.assertEqual(decision, collision.HOLD)
+        self.assertIn("active", why)
+
+    def test_a_status_this_system_has_verified_still_allows(self):
+        """The other half: a guard that held on everything would be deleted."""
+        wire = Wire([lead("robin@acmeagency.example", sent=4,
+                          statuses=("sequence_finished",))])
+        providers.set_transport(wire)
+        self.addCleanup(providers.reset_transport)
+        account = collision.check_account("acmeagency.example",
+                                          expect_workspace=WS)
+        self.assertEqual(account["unknown_statuses"], [])
+        self.assertEqual(collision.account_policy(account)[0], collision.ALLOW)
+
+
 class TheAccountVerdictCoversColleagues(unittest.TestCase):
     """Outreach here is account-based, so a colleague mid-sequence is a fact
     about the company even when the person we picked is untouched. That is

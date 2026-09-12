@@ -75,6 +75,15 @@ STOP = "stop"            # the account is answered or in play; do not add to it
 TOUCHED = "touched"
 IN_SEQUENCE = "in_sequence"
 CLEAR = "clear"
+
+# The campaign statuses this system has actually seen EmailBison report, and
+# therefore the only ones it may reason about. `in_sequence` is the one the
+# module docstring records from the live estate - a campaign running right
+# now; `sequence_finished` is the terminal counterpart. Anything else is a
+# word nobody here has verified the meaning of, and `touches_of` reports it
+# as unknown rather than assuming it is harmless. Adding a name to this set
+# is a claim that somebody checked what it means at the provider.
+KNOWN_STATUSES = frozenset({IN_SEQUENCE, "sequence_finished"})
 UNKNOWN = "unknown"
 
 
@@ -168,7 +177,27 @@ def leads_for_domain(domain, max_pages=40, expect_workspace=REQUIRED):
         try:
             last = int(last)
         except (TypeError, ValueError):
-            break
+            # AN UNREADABLE PAGE COUNT IS NOT A LAST PAGE. This broke out of
+            # the loop and returned page one as though it were the whole
+            # answer, so an estate that omitted `meta` - or renamed
+            # `last_page` - produced a confident `clear` from a fifteen-row
+            # slice of it. Measured against a four-page estate: without
+            # `meta` the read returned 15 leads and ALLOW, with it 4 pages
+            # and the in-sequence colleague that makes the account STOP. The
+            # same missing `meta` also skips the BROAD_MATCH check above, so
+            # both protections disappear together and neither says so.
+            #
+            # An empty page is a real end: there is nothing here and nothing
+            # after it. Anything else is a read that cannot prove it saw the
+            # whole result, and this module's rule is that an estate we could
+            # not read cannot certify that nobody is in it.
+            if not chunk:
+                break
+            raise CollisionUnknown(
+                f"emailbison leads: page {page} returned {len(chunk)} row(s) "
+                f"and no readable `last_page`, so there is no way to tell "
+                f"whether more rows exist. Refusing to read a partial page as "
+                f"the whole estate.")
         if page >= last:
             break
         page += 1
@@ -210,8 +239,19 @@ def touches_of(row):
         "replies": int(stats.get("replies") or 0),
         "opens": int(stats.get("opens") or 0),
         "campaigns": campaigns,
-        "in_sequence": any(_norm(c["status"]) == "in_sequence"
+        "in_sequence": any(_norm(c["status"]) == IN_SEQUENCE
                            for c in campaigns),
+        # A STATUS THIS SYSTEM DOES NOT RECOGNISE IS NOT A STATUS MEANING
+        # "not running". The line above is a single literal, so every other
+        # word the provider might use for a live campaign - and every word it
+        # adds later - answered False and reached `account_policy` as ALLOW,
+        # "history, not a live conflict". The two names below are the ones
+        # this estate has actually been observed to use; anything else is
+        # unread rather than safe, and is carried up so the account answer
+        # can hold instead of guessing which it was.
+        "unknown_statuses": sorted({
+            _norm(c["status"]) for c in campaigns
+            if _norm(c["status"]) and _norm(c["status"]) not in KNOWN_STATUSES}),
         "created_at": row.get("created_at"),
     }
 
@@ -462,6 +502,8 @@ def check_account(domain, expect_workspace=REQUIRED):
         "people": people,
         "emails_sent_total": sent,
         "anyone_in_sequence": any(p["in_sequence"] for p in people),
+        "unknown_statuses": sorted({s for p in people
+                                    for s in p["unknown_statuses"]}),
         "any_bounce": any(_norm(p["lead_status"]) == "bounced"
                           for p in people),
         "verdict": (IN_SEQUENCE if any(p["in_sequence"] for p in people)
@@ -519,6 +561,12 @@ def account_policy(account):
                       f"replied or been marked interested; the account is "
                       f"answered and whoever is having that conversation "
                       f"owns it")
+    unknown = account.get("unknown_statuses") or []
+    if unknown:
+        return HOLD, (f"a campaign at this account reports "
+                      f"{', '.join(repr(s) for s in unknown)}, which this "
+                      f"system has no verified meaning for. It may be running "
+                      f"right now, and an unread status is not a finished one")
     if account.get("any_bounce"):
         return HOLD, "an address at this account bounced; the data is suspect"
     sent = int(account.get("emails_sent_total") or 0)
