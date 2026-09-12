@@ -21,10 +21,44 @@ The fix threads a COMPUTED verdict rather than a STORED one. Computing is free.
 Storing is not neutral: a first attempt persisted it mid-enrichment, which held
 the record and stopped verification running at all.
 """
+import os
+import shutil
+import tempfile
 import unittest
 from unittest import mock
 
-from src import enrich, research
+from src import enrich, research, store
+
+
+class Isolated(unittest.TestCase):
+    """Every test here can reach `enrich.spend`, which writes a ledger.
+
+    These three classes used bare `unittest.TestCase`, which was invisible
+    until the production write barrier widened to cover the spend ledger on
+    2026-09-12 and four of them started refusing. The barrier was right: they
+    were writing `work/spend-ledger.jsonl` in the real estate all along, and
+    nothing had been stopping them.
+    """
+
+    def setUp(self):
+        # `use_directory` mutates the environment for the whole process - it
+        # sets QUEUE and clears every STATE_OVERRIDE - so it is restored here
+        # rather than left for the next test to inherit. A leaked temp
+        # directory is the same class of bug as the one this fixes: state
+        # pointing somewhere nobody chose.
+        self._env = {k: os.environ.get(k)
+                     for k in ("QUEUE",) + store.STATE_OVERRIDES}
+        self.addCleanup(self._restore)
+        self.tmp = tempfile.mkdtemp(prefix="rga-verdict-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        store.use_directory(self.tmp)
+
+    def _restore(self):
+        for key, value in self._env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def a_company(**over):
@@ -48,7 +82,7 @@ CLOSED_VERDICT = {"icp_status": "rejected", "icp_tier": "NOT_ICP"}
 RESEARCH_ON = {"research": {"apify": {"enabled": True}}}
 
 
-class TheNeedCannotBeStatedWithoutAVerdict(unittest.TestCase):
+class TheNeedCannotBeStatedWithoutAVerdict(Isolated):
 
     def test_no_verdict_means_no_stated_need(self):
         """The defect itself, as a fact about the function."""
@@ -83,7 +117,7 @@ class TheNeedCannotBeStatedWithoutAVerdict(unittest.TestCase):
         self.assertEqual(planned["reason"], research.NEED_ICP_EVIDENCE)
 
 
-class EnrichmentAsksTheFreeQuestionFirst(unittest.TestCase):
+class EnrichmentAsksTheFreeQuestionFirst(Isolated):
     """`qualify.company` spends nothing, which is what makes this legitimate."""
 
     def enrich(self, rec, cap=None, config=None):
@@ -117,7 +151,7 @@ class EnrichmentAsksTheFreeQuestionFirst(unittest.TestCase):
         self.assertTrue(ran.called)
 
 
-class AZeroCapStartsNothingBillable(unittest.TestCase):
+class AZeroCapStartsNothingBillable(Isolated):
     """Making research reachable made the unpriced-call hole reachable too."""
 
     def test_a_cap_of_zero_refuses_the_actor(self):
