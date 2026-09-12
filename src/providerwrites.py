@@ -75,6 +75,7 @@ EMAIL_SET_SEQUENCE = "bison.set_sequence"
 EMAIL_ASSIGN_SENDER = "bison.assign_sender"
 EMAIL_SET_LIMITS = "bison.set_limits"
 EMAIL_PAUSE = "bison.pause"
+EMAIL_STOP_LEAD = "bison.stop_lead"
 EMAIL_ACTIVATE = "bison.activate"
 
 OPERATIONS = {
@@ -150,26 +151,46 @@ OPERATIONS = {
     EMAIL_SET_LIMITS: ("email", False,
         "the three limit fields are readable on the campaign object; no write "
         "verb is established"),
+    EMAIL_STOP_LEAD: ("email", False,
+        "SUPPORTED, AND IT IS THE ONE THIS SYSTEM'S SAFETY ARGUMENT NEEDED. "
+        "POST /api/campaigns/{id}/leads/stop-future-emails with "
+        "{'lead_ids': [...]}. Measured twice independently on 2026-09-13: on "
+        "a campaign holding two leads this system created, stopping one moved "
+        "it from `in_sequence` to `stopped` in about two seconds while the "
+        "sibling stayed `in_sequence` and the campaign's own status never "
+        "changed. So after a reply, an unsubscribe, a suppression or an "
+        "account stop, the NEXT email to THAT person can be prevented without "
+        "touching anybody else. "
+        "Not prospect-facing: it can only ever reduce what somebody receives. "
+        "THE STATUS CODE IS NOT THE PROOF - this route answers 200 for a lead "
+        "that is not in the campaign and does nothing, so `bison.stop_lead` "
+        "refuses an absent lead up front, polls the provider's own "
+        "`lead_campaign_data` until the stop lands, and raises if it never "
+        "does. It also fails if any OTHER member's status moved, because a "
+        "per-lead stop that was not per-lead is not the verb we think we "
+        "have. Two useful properties measured alongside: a stopped membership "
+        "cannot be restarted by re-attaching the same campaign (422), so a "
+        "stop cannot be silently undone by a routine re-stage; and a lead "
+        "that is `in_sequence` anywhere cannot be attached elsewhere (422)"),
     EMAIL_PAUSE: ("email", False,
-        "SUPPORTED, AT CAMPAIGN GRANULARITY - READ THE SECOND HALF. PATCH "
+        "SUPPORTED, AT CAMPAIGN GRANULARITY - AND NO LONGER THE ONLY STOP. "
+        "An earlier version of this entry said stopping one person meant "
+        "pausing their whole campaign, and made campaign shard size a safety "
+        "parameter on the strength of it. That was wrong: see "
+        "EMAIL_STOP_LEAD, which stops exactly one person. This remains the "
+        "blunt instrument for stopping EVERYBODY in a campaign at once, which "
+        "is a different and still necessary thing. PATCH "
         "/api/campaigns/{id}/pause answered 200 on 2026-09-12 and the "
         "campaign read back as `paused`. `bison.pause_campaign` performs that "
         "readback and raises unless the provider itself says `paused`, so a "
         "local row can never claim PAUSED while EmailBison is still sending. "
         "Resume is symmetric and refuses an incomplete campaign in the "
         "provider's own words. "
-        "THE LIMIT: there is no per-lead stop that works before the first "
-        "email. Of twenty candidate per-lead verbs exactly one route exists, "
-        "PATCH /api/leads/{id}/unsubscribe, and against a lead this system "
-        "created AND ATTACHED to a campaign it still answered 422 - 'This "
-        "lead has not been sent any emails yet'. It is post-hoc suppression "
-        "of somebody who has already received mail, not a way to prevent a "
-        "first one, and it is irreversible: /resubscribe and /subscribe both "
-        "404. So stopping ONE person before their first email means pausing "
-        "the whole campaign they are in. That is a genuine stop and a blunt "
-        "one, and it is the reason campaign SHARD SIZE is a safety parameter "
-        "here rather than a performance one: the smallest campaign that can "
-        "be paused is the smallest group that can be stopped"),
+        "PATCH /api/leads/{id}/unsubscribe remains useless as a stop - 422, "
+        "'This lead has not been sent any emails yet', even for an ATTACHED "
+        "lead, and irreversible besides. It was the only per-lead verb found "
+        "by GUESSING at routes, and guessing is what produced two wrong "
+        "conclusions in a row here. The real one was documented all along"),
     EMAIL_ACTIVATE: ("email", True,
         "no documented route. Prospect-facing by definition: activation is "
         "what makes a staged sequence start emailing real people"),
@@ -205,8 +226,8 @@ OPERATIONS = {
 # successful response has ever been read, and each stays refused by name. A
 # fixture is never a live-validated integration, and one live-validated verb
 # does not validate its neighbours.
-SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_CREATE_CAMPAIGN,
-             EMAIL_SET_SEQUENCE)
+SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
+             EMAIL_CREATE_CAMPAIGN, EMAIL_SET_SEQUENCE)
 
 PROSPECT_FACING = tuple(op for op, (_c, facing, _w) in OPERATIONS.items()
                         if facing)

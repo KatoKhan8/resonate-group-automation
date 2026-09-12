@@ -514,6 +514,113 @@ def set_limits(campaign_id, name, emails_per_day, new_leads_per_day=None):
             "max_new_leads_per_day": leads}
 
 
+STOP_PATH = "/campaigns/{campaign_id}/leads/stop-future-emails"
+
+# What the provider calls a membership that will receive nothing further.
+# Read from `lead_campaign_data`, which is the provider's own per-campaign
+# state for a lead and the only place this is recorded.
+STOPPED_STATES = ("stopped", "replied", "bounced", "sequence_finished",
+                  "unsubscribed")
+
+# Observed and deliberately NOT stopped: a lead in a paused campaign reads
+# `sending_paused`. That is the campaign's state borrowed by the membership,
+# and it reverses the moment somebody resumes - so treating it as stopped
+# would report a person as safe while one click puts them back in sequence.
+RESUMABLE_STATES = ("in_sequence", "sending_paused", "never_contacted")
+
+
+def membership(campaign_id, lead_ids=None, per_page=200):
+    """Each lead's status IN THIS CAMPAIGN, as the provider states it.
+
+    `lead_campaign_data` is an ARRAY - one entry per campaign the lead belongs
+    to - so it is filtered by `campaign_id` here. Reading element zero returns
+    another campaign's status for a lead that is in several, which is a
+    mistake that reads as a successful stop.
+    """
+    wanted = None if lead_ids is None else {int(i) for i in lead_ids}
+    url = query(leads_endpoint(campaign_id), {"per_page": per_page})
+    status, data = request("GET", url, headers())
+    if not ok(status):
+        raise ProviderError(f"emailbison membership: GET -> {status}")
+    rows = mapping(data, "membership").get("data")
+    if not isinstance(rows, list):
+        raise ProviderError(
+            "emailbison membership: the campaign lead list is not a list; "
+            "refusing to read an unknown shape as empty membership")
+    out = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get("id") is None:
+            continue
+        if wanted is not None and int(row["id"]) not in wanted:
+            continue
+        for entry in row.get("lead_campaign_data") or []:
+            if isinstance(entry, dict) and str(entry.get("campaign_id")) == str(
+                    campaign_id):
+                out[int(row["id"])] = entry.get("status")
+                break
+    return out
+
+
+def stop_lead(campaign_id, lead_ids, attempts=8, interval=2.0):
+    """Stop future emails to these people, and confirm nobody else moved.
+
+    THE STATUS CODE IS NOT THE PROOF. This route answers 200 for a lead that
+    is not in the campaign at all and does nothing, so a caller trusting the
+    response would record a stop that never happened - on the one operation
+    whose whole purpose is to guarantee somebody stops hearing from us.
+
+    The write is asynchronous and lands in a second or two, so this polls the
+    provider's own membership until every named lead reads as stopped, and
+    raises if any does not. A stop that cannot be confirmed must never be
+    reported as a stop.
+
+    Returns {"stopped": {...}, "untouched": {...}} - the second being every
+    other member of the campaign, so a caller can see that stopping one
+    person left the rest alone.
+    """
+    import time
+
+    wanted = [int(i) for i in (lead_ids or [])]
+    if not wanted:
+        raise ProviderError("emailbison stop_lead: no lead ids given")
+    before = membership(campaign_id)
+    absent = [i for i in wanted if i not in before]
+    if absent:
+        raise ProviderError(
+            f"emailbison stop_lead: lead(s) {absent[:5]} are not in campaign "
+            f"{campaign_id}. This route answers 200 for them and does "
+            f"nothing, so refusing rather than reporting a stop that cannot "
+            f"happen")
+    status, data = request(
+        "POST", base() + STOP_PATH.format(campaign_id=campaign_id),
+        _json_headers(), {"lead_ids": wanted})
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison stop_lead: POST -> {status} {_message(data)}")
+
+    for attempt in range(attempts):
+        time.sleep(interval if attempt else 0.5)
+        now = membership(campaign_id)
+        pending = [i for i in wanted
+                   if str(now.get(i) or "").lower() not in STOPPED_STATES]
+        if not pending:
+            moved = {i: before.get(i) for i in before
+                     if i not in wanted and before.get(i) != now.get(i)}
+            if moved:
+                raise ProviderError(
+                    f"emailbison stop_lead: stopping {wanted} also changed "
+                    f"{moved}. Refusing to report a per-lead stop that was "
+                    f"not per-lead")
+            return {"stopped": {i: now.get(i) for i in wanted},
+                    "untouched": {i: now.get(i) for i in now
+                                  if i not in wanted}}
+    raise ProviderError(
+        f"emailbison stop_lead: the provider accepted the request but lead(s) "
+        f"{pending[:5]} still do not read as stopped after "
+        f"{attempts * interval:.0f}s. Provider state is UNKNOWN - do not "
+        f"record a stop, and do not retry blindly")
+
+
 def campaign_lead_ids(campaign_id, per_page=200):
     """Which lead ids the PROVIDER says are in this campaign.
 

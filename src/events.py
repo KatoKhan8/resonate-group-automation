@@ -49,6 +49,11 @@ PUSH_MARKED = "push_marked"
 EMAIL_DELIVERED = "email_delivered"
 EMAIL_BOUNCED = "email_bounced"
 REPLY_RECEIVED = "reply_received"
+# The provider has confirmed this person will receive nothing further from
+# this campaign. Distinct from a local pause, which only stops US planning a
+# next step - the provider runs its own scheduler and holds its own queue, so
+# until this event exists "suppressed" never meant "they stop receiving".
+PROVIDER_STOP_CONFIRMED = "provider_stop_confirmed"
 LINKEDIN_CONNECTED = "linkedin_connected"
 COMPANY_PAUSED = "company_paused"
 

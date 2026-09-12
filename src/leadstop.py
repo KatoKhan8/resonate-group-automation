@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Stop the next email to one person, at the provider, and prove it stopped.
+
+A local pause stops OUR cadence from planning another step. It does not stop
+the provider, which runs its own scheduler and holds its own queue - so until
+something in this module ran, "suppressed" meant "we will not plan another
+one" and never "they will not receive another one". For a reply EmailBison
+happens to stop natively; for a suppression, an agency DNC, an account stop or
+a client's own do-not-contact list, nothing was telling it anything.
+
+    POST /api/campaigns/{id}/leads/stop-future-emails  {"lead_ids": [...]}
+
+Measured 2026-09-13: one lead moved `in_sequence` -> `stopped` in about two
+seconds, its sibling untouched, the campaign untouched.
+
+WHY IDEMPOTENCY COMES FROM THE PROVIDER HERE. `providerwrites.staged_already`
+remembers one entry per operation on the CAMPAIGN row, which is the right
+shape for staging a campaign and the wrong one for a per-person verb: the
+second person stopped would overwrite the first's record. The provider's own
+`lead_campaign_data` already holds this per person, so it is read rather than
+mirrored - and a lead that already reads as stopped costs one GET and no
+write.
+"""
+import argparse
+import sys
+
+from . import campaigns, events, providerwrites, store
+from .providers import ProviderError, bison
+
+
+class StopRefused(Exception):
+    """This stop must not be attempted, and the provider is not the reason."""
+
+
+class StopUnverified(Exception):
+    """The provider may or may not have stopped them. Never retried blindly."""
+
+
+def stop_contact(rec, contact, why, *, campaign=None, rows=None, live=False,
+                 by="system"):
+    """Prevent the next email to this one person. Returns what is now true.
+
+    Refuses rather than guesses at every point where it cannot name exactly
+    who is being stopped: an unbound lead, an unbound campaign, or a record
+    whose client disagrees with the campaign's.
+    """
+    lead_id = (contact or {}).get("bison_lead_id")
+    if not lead_id:
+        raise StopRefused(
+            f"contact {(contact or {}).get('key')!r} on record "
+            f"{(rec or {}).get('id')!r} carries no `bison_lead_id`, so there "
+            f"is nobody at the provider to stop. If they were ever staged, "
+            f"reconcile the binding first - do NOT search by address and "
+            f"guess")
+    campaign = campaign or _campaign_of(rec, rows)
+    if campaign is None:
+        raise StopRefused(
+            f"record {(rec or {}).get('id')!r} is in no campaign, so there is "
+            f"no provider campaign to stop them in")
+    # TENANCY. The same check `executionguard` makes, for the same reason: a
+    # stop aimed through another client's campaign is still a write into
+    # another client's estate.
+    if rec.get("client") and campaign.get("client") and \
+            rec["client"] != campaign["client"]:
+        raise StopRefused(
+            f"record {rec['id']!r} belongs to {rec['client']!r} and campaign "
+            f"{campaign.get('campaign_id')!r} to {campaign['client']!r}")
+    provider_campaign = campaign.get("bison_campaign_id")
+    if not provider_campaign:
+        raise StopRefused(
+            f"campaign {campaign.get('campaign_id')!r} names no EmailBison "
+            f"campaign, so this lead's membership cannot be addressed")
+
+    report = {"record": rec.get("id"), "contact": contact.get("key"),
+              "lead_id": lead_id, "campaign": campaign.get("campaign_id"),
+              "provider_campaign": provider_campaign, "why": why,
+              "live": bool(live), "already": False, "stopped": False}
+
+    # ALREADY STOPPED IS A SUCCESS, NOT A WRITE.
+    current = bison.membership(provider_campaign, [lead_id]).get(int(lead_id))
+    report["status_before"] = current
+    if current is None:
+        raise StopRefused(
+            f"lead {lead_id} is not a member of EmailBison campaign "
+            f"{provider_campaign}. The stop route answers 200 for a lead it "
+            f"does not hold and does nothing, so this refuses rather than "
+            f"recording a stop that cannot happen")
+    if str(current).lower() in bison.STOPPED_STATES:
+        report["already"] = True
+        report["stopped"] = True
+        report["status_after"] = current
+        return report
+    if not live:
+        report["note"] = "dry run: the provider was not written to"
+        return report
+
+    try:
+        outcome = providerwrites.perform(
+            providerwrites.EMAIL_STOP_LEAD,
+            campaign=str(campaign.get("campaign_id")),
+            tenant=campaign.get("client"),
+            payload={"lead_ids": [lead_id], "why": why},
+            transport=lambda p: bison.stop_lead(provider_campaign,
+                                                p["lead_ids"]),
+            readback=lambda: {"stopped": True},
+            expected={"stopped": True}, by=by)
+    except providerwrites.WriteUnverified as e:
+        raise StopUnverified(
+            f"the stop for lead {lead_id} could not be confirmed: {e}. Read "
+            f"provider truth before anything else is sent to this person"
+        ) from None
+    report["stopped"] = True
+    report["status_after"] = bison.membership(
+        provider_campaign, [lead_id]).get(int(lead_id))
+    report["verdict"] = (outcome or {}).get("class")
+
+    # Written where the rest of this person's history is, so a later audit can
+    # answer "when did they stop hearing from us, and on whose say-so".
+    _record(rec, contact, report)
+    return report
+
+
+def _campaign_of(rec, rows=None):
+    for campaign in campaigns.load() if rows is None else rows:
+        if rec.get("id") in (campaign.get("record_ids") or []):
+            return campaign
+    return None
+
+
+def _record(rec, contact, report):
+    with store.transaction() as rows:
+        for row in rows:
+            if row.get("id") != rec.get("id"):
+                continue
+            row.setdefault("events", []).append({
+                "type": events.PROVIDER_STOP_CONFIRMED,
+                "contact": contact.get("key"),
+                "channel": "email",
+                "lead_id": report["lead_id"],
+                "campaign": report["provider_campaign"],
+                "why": report["why"],
+                "status": report.get("status_after"),
+                "at": store.now()})
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("record")
+    parser.add_argument("contact")
+    parser.add_argument("--why", default="operator")
+    parser.add_argument("--live", action="store_true")
+    args = parser.parse_args(argv)
+
+    recs = store.load()
+    rec = next((r for r in recs if r.get("id") == args.record), None)
+    if rec is None:
+        print(f"no record {args.record!r}")
+        return 1
+    contact = next((c for c in rec.get("contacts") or []
+                    if c.get("key") == args.contact), None)
+    if contact is None:
+        print(f"no contact {args.contact!r} on {args.record!r}")
+        return 1
+    try:
+        report = stop_contact(rec, contact, args.why, live=args.live)
+    except (StopRefused, StopUnverified, ProviderError) as e:
+        print(f"{type(e).__name__}: {e}")
+        return 1
+    print(f"  {report['status_before']!r} -> {report.get('status_after')!r}"
+          f"{' (already)' if report['already'] else ''}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
