@@ -277,6 +277,31 @@ def settle(key, state, *, why="", provider_response=None, readback=None,
             raise ActionRefused(f"{key} was never reserved; nothing to settle")
         if found[-1].get("state") == state:
             return dict(found[-1])
+        # TERMINAL MEANS TERMINAL HERE TOO, AND ONLY `reserve` WAS ENFORCING IT.
+        #
+        # `UNRESERVABLE` exists so a key that reached `SENT` can never be
+        # attempted again - the comment on it says why: `state_of` reads the
+        # latest row, so a second reservation regresses the state and destroys
+        # the durable record that a real person was contacted. `reserve`
+        # implements that. This did not, so the rule was walkable in two
+        # steps rather than one:
+        #
+        #     reserve -> settle(SENT) -> settle(FAILED) -> reserve
+        #
+        # After the second settlement `state_of` is `failed`, which is in
+        # neither BLOCKING nor TERMINAL, and the key is reservable again.
+        # `push.already_pushed` was the only thing still standing between
+        # that and a second prospect-facing action.
+        #
+        # A send that later bounced is a bounce - a new fact, with its own
+        # event - and not an un-sending. So a settlement that would move OFF
+        # a terminal state is refused rather than appended.
+        if found[-1].get("state") in TERMINAL:
+            raise ActionRefused(
+                f"{key} is already {found[-1]['state']} and that is terminal; "
+                f"refusing to settle it as {state!r}. A confirmed action "
+                f"cannot be un-confirmed, and regressing it here would make "
+                f"the key reservable again")
         prior = found[-1]
         row = dict(prior)
         row.update({"state": state, "at": store.now(), "why": why,

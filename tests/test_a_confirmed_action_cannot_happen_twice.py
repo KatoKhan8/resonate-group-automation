@@ -240,6 +240,39 @@ class TheSecondAttemptIsRefused(DuplicationTest):
                     expected={"leads": 1})
         self.assertEqual(spy.calls, [])
 
+    def test_a_sent_key_cannot_be_settled_into_something_reservable(self):
+        """The rule was walkable in two steps instead of one.
+
+        `reserve` refuses a key in `UNRESERVABLE`, and `SENT` is in it. But
+        `settle` took any settlement at all, and `state_of` reads the LATEST
+        row - so `settle(key, FAILED)` after a confirmed send left the state
+        as `failed`, which is in neither BLOCKING nor TERMINAL, and the key
+        was reservable again. The durable record that a real person had been
+        contacted was gone, which is precisely what this ledger exists to
+        keep.
+        """
+        key = self.reserve()
+        self.send(key)
+        self.assertEqual(actionledger.state_of(key), actionledger.SENT)
+
+        with self.assertRaises(actionledger.ActionRefused) as caught:
+            actionledger.settle(key, actionledger.FAILED, why="retrying")
+        self.assertIn("terminal", str(caught.exception))
+
+        self.assertEqual(actionledger.state_of(key), actionledger.SENT,
+                         "the refused settlement changed the state anyway")
+        with self.assertRaises(actionledger.ActionRefused):
+            self.reserve()
+
+    def test_settling_sent_twice_is_still_idempotent(self):
+        """The other half: a repeated confirmation of the SAME outcome is a
+        duplicate report, not a regression, and must not raise."""
+        key = self.reserve()
+        self.send(key)
+        again = actionledger.settle(key, actionledger.SENT, why="same news")
+        self.assertEqual(again["state"], actionledger.SENT)
+        self.assertEqual(actionledger.state_of(key), actionledger.SENT)
+
     def test_the_person_is_visible_to_fatigue_afterwards(self):
         """A DIFFERENT step has a different ledger key, so the ledger cannot
         refuse it. The confirmed touch is what does."""
