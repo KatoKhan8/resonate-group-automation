@@ -113,12 +113,23 @@ OPERATIONS = {
         "order matters: a system that can start an outreach campaign before "
         "it can reliably stop one has bought exposure it cannot end"),
     EMAIL_ADD_LEAD: ("email", True,
-        "the URL is named in bison.leads_endpoint and bison.build_leads builds "
-        "the payload, but no successful response has been read"),
+        "THE NAMED ROUTE DOES NOT ACCEPT THIS. POST /api/campaigns/{id}/leads "
+        "answered 405 on 2026-09-12: 'Supported methods: GET, HEAD, DELETE'. "
+        "So `bison.leads_endpoint` names a URL that cannot be posted to, and "
+        "`bison.build_leads` builds a payload with nowhere to send it. POST "
+        "/api/leads DOES create a lead (201, requires first_name and email) "
+        "but takes no campaign_id, and no route was found that puts a lead "
+        "into a campaign: /lead-lists accepts a list but ignored an inline "
+        "leads array (leads_processed 0), and no import or upload route "
+        "exists. On this API, campaign population is a human action in the "
+        "vendor UI"),
     EMAIL_CREATE_CAMPAIGN: ("email", False,
-        "no documented route. GET /campaigns and /campaigns/{id} both answer, "
-        "so the read side is fully established and only the create verb is "
-        "missing"),
+        "ROUTE ESTABLISHED, NOT YET DECLARED. POST /api/campaigns answered 201 "
+        "on 2026-09-12 and returned a DRAFT campaign (id 427), which DELETE "
+        "/api/campaigns/{id} then removed. So this verb exists and was proven "
+        "against the live estate. It stays unsupported because a campaign this "
+        "system creates cannot be populated - see EMAIL_ADD_LEAD - so creating "
+        "one would produce an empty campaign nobody can fill"),
     EMAIL_SET_SEQUENCE: ("email", False,
         "GET /campaigns/{id}/sequence-steps reads them; no write verb is "
         "established"),
@@ -129,8 +140,19 @@ OPERATIONS = {
         "the three limit fields are readable on the campaign object; no write "
         "verb is established"),
     EMAIL_PAUSE: ("email", False,
-        "no documented route. `status` is readable on the campaign object, so "
-        "a pause would be verifiable, but nothing here can perform one"),
+        "NO PER-LEAD STOP THAT WORKS BEFORE THE FIRST EMAIL. Probed on "
+        "2026-09-12: of twenty candidate per-lead verbs (pause, stop, disable, "
+        "deactivate, archive, block, skip, finish, remove-from-campaign, "
+        "exclude, opt-out, hold, cancel, suspend, end and more) exactly one "
+        "route exists - PATCH /api/leads/{id}/unsubscribe. Invoked against a "
+        "lead this system created, it answered 422: 'This lead has not been "
+        "sent any emails yet'. It is post-hoc suppression of somebody who has "
+        "already received mail, not a way to prevent a first one, and it is "
+        "irreversible - /resubscribe and /subscribe both 404. DELETE "
+        "/api/campaigns/{id}/leads exists but its scope is unproven and the "
+        "client's live campaign holds 21,143 leads, so it was not tested "
+        "there. Campaign status is readable, so a campaign-level pause would "
+        "be verifiable if a route for it were found"),
     EMAIL_ACTIVATE: ("email", True,
         "no documented route. Prospect-facing by definition: activation is "
         "what makes a staged sequence start emailing real people"),
