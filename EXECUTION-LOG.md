@@ -249,3 +249,74 @@ action (`count_on` twice, `contacts_reached`, `require_clear`), none passing
 `rows=`. MEASURED: 1.45ms at 100 ledger rows, 110ms at 10k, 2083ms at 100k.
 Harmless now (the ledger is empty) and quadratic in the number of live
 actions, so it arrives exactly as the promotion ladder scales.
+
+---
+
+## 2026-09-13 — EmailBison is not UI-only, and one person can be stopped
+
+Three conclusions recorded in this file and in `providerwrites.OPERATIONS`
+were wrong, and all three were wrong the same way: a route was guessed at,
+the guess failed, and the failure was written down as the provider not
+having the capability. The operator supplied the documented routes; every
+one of them answers.
+
+### What was falsified
+
+| Recorded as | Actually |
+|---|---|
+| "campaign population is a human action in the vendor UI" | `POST /campaigns/{id}/leads/attach-leads` -> 200, readback `in_sequence` |
+| "no campaign pause route exists" | `PATCH /campaigns/{id}/pause` -> 200, reads back `paused` |
+| "no per-lead stop that works before the first email" | `POST /campaigns/{id}/leads/stop-future-emails` -> one lead `stopped` in ~2s, sibling untouched |
+
+`POST /campaigns/{id}/leads` really is a 405 - it is the READ route. That
+one true observation was generalised into three false ones.
+
+### The campaign factory, measured
+
+`src/bisonfactory.py`, run twice against the live estate in an isolated
+queue (campaign 449, since deleted):
+
+    create -> cap -> schedule -> senders -> sequence -> leads -> attach -> pause
+    re-run -> reused every leg, wrote nothing, still paused
+
+Idempotency anchors: `bison_campaign_id` on the campaign row,
+`bison_lead_id` on the contact, both persisted in the transaction that
+reads them. Provider membership is the oracle for attachment.
+
+### Provider traps that make a failure look like a success
+
+- `POST /campaigns` accepts every field and stores only `name`. A campaign
+  created with `max_emails_per_day: 7` reads back **1000**, silently.
+- `GET .../schedule` answers **200** with `success: false` when no schedule
+  exists. Status-code checking reads absent as present.
+- `attach-sender-emails` answers **200** with `success: false` when it
+  attached nothing.
+- `stop-future-emails` answers **200** for a lead the campaign does not
+  hold, and does nothing.
+- `GET /leads?email=` looks like a filter and is not - it returns an
+  unfiltered page. `?search=` is real but lags behind creation.
+- `custom_variables` must be a LIST of `{name, value}` AND every name must
+  be declared workspace-wide first. `build_leads` had been emitting a
+  mapping of nine undeclared names since phase 3 - a payload that could
+  never have been accepted, unnoticed because nothing had ever posted it.
+- DELETE is asynchronous: 200, still readable, 404 a minute later.
+
+### The copy has no consumer in the client's own campaign
+
+Live campaign 352 uses single-brace uppercase merge fields - FIRST_NAME,
+COMPANY, SENDER_FIRST_NAME, INDUSTRY, TITLE, HEADLINE - and across all 44
+steps references `subject` and `body` **never**. Per-lead generated copy
+staged into that campaign would carry words nothing reads.
+
+### Still blocking a live send
+
+Structural, and not a configuration gap: `heyreach.add_lead` and
+`heyreach.activate` are unsupported, `heyreach.WRITE_ROUTES` is
+`("/campaign/Pause",)`, `killswitch.global_state` derives from
+`push.LiveSendNotEnabled` existing in code, and `sending.live` is unset for
+the workspace. `bison.activate` is likewise unsupported. Lifting any of
+these is a human decision.
+
+UNVERIFIED and needed before an email send: that EmailBison resolves
+`{SUBJECT}` from a lead's `subject` custom variable. Proving it requires a
+real send.
