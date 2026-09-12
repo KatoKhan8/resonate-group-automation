@@ -44,6 +44,7 @@ FOUR RULES, AND THEY ARE THE WHOLE DESIGN.
    read-only provider routes. A differ that could edit either side to make them
    agree would be worse than no differ.
 """
+import collections
 import json
 import sys
 
@@ -502,8 +503,36 @@ def provider_bison(campaign_id, expect_workspace=None, max_pages=200):
     leads, lead_total = page(f"/campaigns/{campaign_id}/leads", "lead set")
     steps = get(f"/campaigns/{campaign_id}/sequence-steps").get("data") or []
     steps = [s for s in steps if isinstance(s, dict)]
-    steps.sort(key=lambda s: int(s.get("order") or 0))
-    live = [s for s in steps if s.get("active")]
+
+    # EMAILBISON HAS A NATIVE VARIANT MODEL AND THIS DID NOT KNOW ABOUT IT.
+    #
+    # Measured on live Productive campaign 352 on 2026-09-12: 44 sequence-step
+    # rows, of which FIVE are the sequence - `variant: false`, `order` 1 to 5 -
+    # and thirty-nine are A/B variants of those five, carrying `variant: true`,
+    # `variant_from_step` pointing at a base step's id, and `order: null`.
+    #
+    # `int(s.get("order") or 0)` turns every one of those nulls into 0, so the
+    # sort put all thirty-nine variants ahead of the sequence and `actions`
+    # came out as thirty-nine indistinguishable `step0`s followed by step1 to
+    # step5. That is not a mismatch with the approved side, it is a fiction
+    # about the provider - and it is the real reason `compare_bison` can never
+    # reach PASS, deeper than the `day1` versus `step1` naming.
+    #
+    # So the base sequence is what gets compared, because it is what canonical
+    # state has a model for. The variants are counted per base step and
+    # reported under a `_` key, which `diff` does not score: this system has no
+    # canonical representation of a provider-side variant yet, and scoring a
+    # field with nothing to compare it to would be inventing a verdict.
+    # COPY-EXPERIMENTS.md describes five variants per step as a Resonate
+    # concept; the provider implements its own, and reconciling the two is a
+    # product decision rather than something to guess here. PRODUCT-GAPS.md
+    # carries it.
+    base = [s for s in steps if not s.get("variant")]
+    variants = [s for s in steps if s.get("variant")]
+    base.sort(key=lambda s: int(s.get("order") or 0))
+    live = [s for s in base if s.get("active")]
+    variants_by_step = collections.Counter(
+        str(s.get("variant_from_step")) for s in variants if s.get("active"))
 
     return {
         "campaign_id": str(row.get("id")),
@@ -524,6 +553,13 @@ def provider_bison(campaign_id, expect_workspace=None, max_pages=200):
         "_per_domain_cap": row.get("daily_max_sends_per_receiving_domain"),
         "_bounced": row.get("bounced"),
         "_emails_sent": row.get("emails_sent"),
+        # Reported, deliberately not scored - see the note above. A human
+        # reading a diff for a campaign with thirty-nine live variants needs
+        # to be told they exist even though nothing here can say whether they
+        # are the right ones.
+        "_variants_per_step": {str(s.get("id")): variants_by_step.get(
+            str(s.get("id")), 0) for s in live},
+        "_variant_rows": len(variants),
     }
 
 

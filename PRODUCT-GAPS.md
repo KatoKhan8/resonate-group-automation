@@ -2989,6 +2989,51 @@ use:
 | `contact["personalization"]` | written only by demo builders, so `eligibility._evidence_aged_out` - the only staleness gate on the send path - can never fire |
 | `executionguard`, `providerwrites`, `configdiff` | nothing in `src/` imports them yet; they are reachable only from their own CLIs and tests |
 
+### 38v. STILL OPEN - the provider has a variant model this system does not
+
+Measured against live Productive EmailBison campaign 352 on 2026-09-12: 44
+sequence-step rows, of which **five are the sequence** (`variant: false`,
+`order` 1-5) and **thirty-nine are A/B variants** of those five (`variant:
+true`, `variant_from_step` naming a base step's id, `order: null`). Campaign
+418 is the same shape at 4 base steps and 6 variants.
+
+`provider_bison` did `int(s.get("order") or 0)`, turning every variant's null
+into 0, so it sorted all thirty-nine ahead of the sequence and reported
+`actions` as thirty-nine indistinguishable `step0`s followed by step1-step5.
+That is not a mismatch with the approved side - it is a fiction about the
+provider, and it is the real reason `compare_bison` can never reach PASS,
+underneath the `day1` versus `step1` naming that is usually blamed.
+
+Now fixed to the extent it can be without guessing: the base sequence is
+compared, the variants are counted per base step and reported under
+`_variants_per_step`, which `diff` does not score.
+
+WHAT IS STILL OPEN is the model. COPY-EXPERIMENTS.md describes five variants
+per message step as a Resonate concept, assigned by this system and evaluated
+by it. EmailBison implements its own variants natively, and the two have
+never been reconciled: nothing in canonical state represents a provider-side
+variant, so the diff has nothing to compare `_variants_per_step` against and
+scoring it would be inventing a verdict. Deciding whether a Resonate variant
+IS an EmailBison variant row, or whether this system should own all variation
+and stage a single step, is a product decision.
+
+Two further facts from the same read, both of which bear on it:
+
+The provider holds TEMPLATED copy, not rendered copy. `email_subject` on 352
+step 1 is `{me again, {FIRST_NAME}|following up from LinkedIn|trying email
+this time}` - spintax plus merge fields - and `email_body` carries Liquid
+(`{% assign %}`) as well. `approved_bison` builds rendered per-contact
+subjects and bodies, so those two fields compare a rendered string against a
+template and can never match. Whatever claim checking `lint` and `claims` do
+on rendered copy is also checking something the provider never sees, because
+the provider personalises at send time.
+
+`provider_bison` refuses a campaign with more than 200 pages of leads, and
+campaign 352 exceeds it. So for a real client campaign at scale the lead-set
+half of the readback is structurally unavailable, and `lead_set` - which was
+just made REQUIRED for email - will refuse rather than verify. That refusal is
+correct behaviour and an unusable readback all the same.
+
 ### 38u. STILL OPEN - an `Authorization` proves shape, not provenance
 
 `src/executionguard.py` said, in its own module docstring, that an
