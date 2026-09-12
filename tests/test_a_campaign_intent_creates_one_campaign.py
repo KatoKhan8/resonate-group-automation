@@ -499,11 +499,17 @@ class TwoWorkersCreatingAtOnce(CampaignTest):
                           "erased by an unrelated create")
         self.assertEqual(second["campaign_id"], "camp-2")
 
-    def test_two_stale_savers_keep_only_the_later_edit(self):
+    def test_two_stale_savers_now_keep_both_edits(self):
         """The shape `interactions.apply` has: load the rows, do slow work -
         `orchestrator.decide` fingerprints every record in the campaign - then
         `campaigns.save(rows)` the list read before that work. Two decisions
-        in flight at once, and only the later one survives."""
+        in flight at once.
+
+        This asserted that only the later one survived, which is what a whole
+        file rewrite does, and a pause was the thing being lost. `campaigns.
+        load` returns a `store.Snapshot` now, so each worker writes back only
+        the rows it actually changed and both edits stand. The characterisation
+        test turning red is how that arrived - see PRODUCT-GAPS.md 38s."""
         first, _recs = self.ready_campaign(campaign_id="camp-1")
         second = orchestrator.create("camp-2", CLIENT, "Other segment",
                                      record_ids=[], created_by="U0DEMOADMIN1",
@@ -519,9 +525,9 @@ class TwoWorkersCreatingAtOnce(CampaignTest):
 
         rows = campaigns.load()
         self.assertEqual(campaigns.get("camp-2", rows)["name"], "renamed by B")
-        self.assertNotEqual(campaigns.get("camp-1", rows)["status"],
-                            campaigns.PAUSED,
-                            "worker A's pause was overwritten by worker B")
+        self.assertEqual(campaigns.get("camp-1", rows)["status"],
+                         campaigns.PAUSED,
+                         "worker A's pause was overwritten by worker B")
 
     @unittest.expectedFailure
     def test_a_campaign_row_cannot_be_dropped_by_a_writer_that_never_saw_it(self):

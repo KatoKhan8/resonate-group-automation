@@ -319,10 +319,31 @@ def run(source=None, client=None, lane=None, model=None, day=21, spend=False,
     # for zero durable records.
     done = {"n": 0}
 
+    # A REFUSED CHECKPOINT COSTS THE RECORDS IT COVERED, NOT THE BATCH.
+    #
+    # This ran with no handler, from inside the stage loop, so a refusal left
+    # the process by way of the stage, the timer and `run()` itself - against
+    # this function's own promise that "a stage that fails on one record fails
+    # that record only: the other 499 carry on". Both refusals are ordinary:
+    # `QueueLocked` after ten seconds of contention with any other writer, and
+    # `HistoryLost` from a reply that landed mid-batch. Measured: a reply
+    # persisted one second into a twelve-record batch left ZERO records
+    # enriched while the durable spend ledger kept every charge - the bounded
+    # loss `CHECKPOINT_EVERY` was chosen from, made total.
+    #
+    # Narrow on purpose. These two mean "another writer got there first",
+    # which the next checkpoint retries for free because `recs` still holds
+    # the work. Anything else is not a contention problem and still stops the
+    # run. The note goes in the report, because a run that silently could not
+    # persist looks exactly like a run with nothing to persist.
     def checkpoint():
         done["n"] += 1
-        if done["n"] % CHECKPOINT_EVERY == 0:
+        if done["n"] % CHECKPOINT_EVERY != 0:
+            return
+        try:
             store.save(recs)
+        except (store.QueueLocked, store.HistoryLost) as e:
+            notes.append(f"checkpoint at {done['n']} record(s) refused: {e}")
 
     # HOW LONG EACH STAGE ACTUALLY TOOK. Not an optimisation aid so much as a
     # correction aid: this repository has twice diagnosed a slow run by

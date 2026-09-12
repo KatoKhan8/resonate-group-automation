@@ -234,8 +234,127 @@ def write_jsonl(path, rows):
     os.replace(tmp, path)
 
 
+MISSING = object()
+
+
+def _frozen(value):
+    """A comparable, hashable form of one field's value."""
+    return json.dumps(value, sort_keys=True, ensure_ascii=False)
+
+
+class Snapshot(list):
+    """The queue as one reader found it, remembering what each row then was.
+
+    WHY A WRITER HAS TO KNOW WHAT IT CHANGED. `save` replaces the whole file,
+    so writing a snapshot back deletes everything that arrived while the
+    caller held it and reverts everything that changed underneath it. Merging
+    by id alone does not fix that: it keeps the new rows and still reverts the
+    changed ones, because nothing distinguishes "this caller edited the row"
+    from "this caller is holding a stale copy of a row somebody else edited".
+
+    The baseline is what distinguishes them, and the reader is the only one
+    who can record it. It is kept as the row's JSON text, which is what a
+    digest would have been built from anyway and, unlike a digest, can still
+    answer WHICH field moved.
+
+    Three outcomes, and none of them is a guess:
+
+      the caller never touched the row  -> whatever is on disk now is newer
+                                           and is kept whole.
+      the caller touched it and nobody
+      else did                          -> the caller's row is written.
+      both touched it                   -> field by field: a field the caller
+                                           changed is the caller's, every
+                                           other field is whatever is on disk.
+                                           A field both changed is the
+                                           caller's, and on the queue the
+                                           history and evidence guards still
+                                           run over the result.
+
+    That last case is why this is a three-way merge rather than a choice
+    between two rows. `interactions.decide` loads the campaign file, runs
+    `orchestrator.decide` and writes its snapshot back; a `freeze` written in
+    between - the stop button `eligibility` reads to block every step of a
+    campaign - lived in a field that caller never looked at, and a whole-row
+    write lifted it. The approval it did write is a different field, and both
+    can be true.
+
+    A plain `list` keeps the old whole-file semantics, deliberately: a caller
+    that built its rows from somewhere other than `load` has no baseline to
+    reason from, and inventing one would be a guess. `list` operations that
+    return a new object - `+`, slicing, a comprehension - produce a plain list
+    and so fall back, which is the safe direction.
+
+    `key` because the campaign file is the same file-shaped state with the
+    same hazard and a different id field, and `campaigns.save` erasing a
+    freeze is the same bug as a checkpoint erasing a drop.
+    """
+
+    def __init__(self, rows, key="id"):
+        super().__init__(rows)
+        self.key = key
+        self.baseline = {row[key]: _frozen(row) for row in rows
+                         if isinstance(row, dict) and key in row}
+
+    def _base_row(self, rec):
+        """The row as it was read, or None if this caller introduced it."""
+        known = self.baseline.get(rec.get(self.key))
+        return None if known is None else json.loads(known)
+
+    def unchanged(self, rec):
+        """Is this row still exactly as it was read?
+
+        A fast path, not a fourth rule: `_merge_row` reaches the same answer
+        for an untouched row, because no field of it differs from the
+        baseline and the merge then yields the disk row unchanged. It is here
+        because a checkpoint every five records over a long batch walks the
+        whole file each time, and most of the file is untouched.
+        """
+        known = self.baseline.get(rec.get(self.key))
+        return known is not None and known == _frozen(rec)
+
+    def _merge_row(self, rec, on_disk_row):
+        """One row, three ways: what it was, what we made it, what it is now."""
+        base = self._base_row(rec)
+        if base is None or on_disk_row is None:
+            return rec                       # nothing to merge against
+        if _frozen(on_disk_row) == self.baseline.get(rec.get(self.key)):
+            return rec                       # nobody else touched it
+        merged = dict(on_disk_row)
+        for field in set(rec) | set(base):
+            before = base.get(field, MISSING)
+            mine = rec.get(field, MISSING)
+            if mine is before or mine == before:
+                continue                     # we left this field alone
+            if mine is MISSING:
+                merged.pop(field, None)      # we removed it on purpose
+            else:
+                merged[field] = mine
+        return merged
+
+    def merge_onto(self, on_disk):
+        """The rows to write: what is on disk, with this caller's edits applied.
+
+        Order follows the disk, because that is the order every other reader
+        sees and a checkpoint has no business reshuffling the file. Rows this
+        caller added - present here with no baseline - go on the end, which is
+        where an append would have put them.
+        """
+        edits = {row[self.key]: row for row in self
+                 if isinstance(row, dict) and self.key in row
+                 and not self.unchanged(row)}
+        out = []
+        for row in on_disk:
+            if not (isinstance(row, dict) and self.key in row):
+                out.append(row)
+                continue
+            mine = edits.pop(row[self.key], None)
+            out.append(row if mine is None else self._merge_row(mine, row))
+        return out + list(edits.values())
+
+
 def load():
-    return read_jsonl(queue_path())
+    return Snapshot(read_jsonl(queue_path()))
 
 
 # ------------------------------------------------- the second barrier
@@ -536,6 +655,38 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
     So a caller that cannot hold the lock throughout passes the digest it read,
     and a change since then is a refusal rather than a clobber. Callers that can
     hold the lock should use `transaction()` instead and not need this.
+
+    AND WHEN `recs` CAME FROM `load`, THE WRITE IS MERGED RATHER THAN TOTAL.
+    `expect_digest` is opt-in and the batch runner never passed it, so a run
+    that walks 500 records across minutes of provider I/O wrote its opening
+    snapshot back at every checkpoint. Reproduced on 2026-09-12 in an isolated
+    estate, two processes, nothing crashing: a record ingested mid-batch was
+    gone after the next checkpoint along with its reply and its unsubscribe, a
+    `drop(rid, "competitor - do not contact")` came back as `state: queued`
+    with `drop_reason: None`, and three decision-makers bought mid-batch were
+    erased. Neither guard objected - both skip records absent from the new
+    set, and `refuse_evidence_loss` indexes verification evidence, so a
+    purchase not yet verified is unprotected.
+
+    Refusing instead would be the wrong trade for this caller: a checkpoint
+    that raises costs the whole run, which is the loss `CHECKPOINT_EVERY` was
+    chosen to bound. So `Snapshot` carries what each row was when it was read,
+    and the merge is exact rather than heuristic:
+
+      absent from `recs`   -> kept. It arrived after this caller read, or this
+                              caller no longer holds it. Removal is a
+                              different rule with a different guard.
+      unchanged since read -> the disk row is kept. This caller did not touch
+                              it, so a change to it is somebody else's and
+                              newer.
+      changed by us alone  -> written.
+      changed by both      -> merged field by field, this caller winning only
+                              the fields it actually changed. See `Snapshot`.
+
+    What that leaves is two writers editing the SAME FIELD of the same record,
+    where the last write wins. That is the case the guards below exist for and
+    the case `expect_digest` exists for; it is not made worse here, and it is
+    a far narrower window than the whole file.
     """
     with lock(timeout):
         on_disk = read_jsonl(queue_path())
@@ -544,6 +695,8 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
                 "the queue changed while this work was in progress, so writing "
                 "it back would discard whatever changed. Nothing was written; "
                 "reload and re-apply.")
+        if isinstance(recs, Snapshot):
+            recs = recs.merge_onto(on_disk)
         refuse_evidence_loss(on_disk, recs)
         # `allow_history_loss` IS FOR TEST CLEANUP AND NOTHING ELSE. A test
         # that adds an event to a shared estate has to take it back out again,

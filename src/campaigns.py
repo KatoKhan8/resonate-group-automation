@@ -97,11 +97,28 @@ def path():
 
 
 def load():
-    return store.read_jsonl(path())
+    return store.Snapshot(store.read_jsonl(path()), key="campaign_id")
 
 
 def save(rows, timeout=None):
+    """Write the campaign file back, merging when `rows` came from `load`.
+
+    THE STOP BUTTON WAS REVERTIBLE BY ANY CONCURRENT WRITE. This replaced the
+    whole file, and `interactions.decide` loads it, runs `orchestrator.decide`
+    and saves the snapshot back across that window. A `freeze` written in
+    between - the flag `eligibility` reads to block every step of a campaign,
+    written because a client asked us to stop - was gone, lifted by a write
+    that had no opinion about it and by a caller that never knew.
+
+    There is no `refuse_history_loss` for this file, so the queue's answer is
+    the one used here too: `store.Snapshot` remembers what each row was when
+    it was read, rows this caller did not touch keep whatever is on disk now,
+    and a plain list still replaces the file for callers that built their rows
+    from somewhere else.
+    """
     with store.lock(timeout, for_path=path()):
+        if isinstance(rows, store.Snapshot):
+            rows = rows.merge_onto(store.read_jsonl(path()))
         store.write_jsonl(path(), rows)
 
 

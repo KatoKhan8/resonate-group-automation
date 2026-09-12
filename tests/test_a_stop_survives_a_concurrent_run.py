@@ -36,6 +36,29 @@ them; `resume_campaign` lifts a CAMPAIGN pause, which lives in the campaign
 file. So there is no legitimate production caller to accommodate, and
 `tests/test_invariants.py` asserts that no `src/` module reaches for the
 test-cleanup escape hatch.
+
+## And then the refusal stopped being the whole answer
+
+Refusing protected the stop by throwing the write away, which is the right
+trade only if the write is worthless. It is not: the same snapshot carries
+every record the run has already paid a provider for, and the refusal left
+`run.checkpoint` - which had no handler - aborting the batch outright. The
+stop was safe and the run's work was gone.
+
+`store.Snapshot` closes it from the other side. A reader records what each
+row was when it read it, so a write-back can tell a field this caller
+actually changed from a field it is merely holding a stale copy of. A record
+the run never touched keeps whatever is on disk; a record it did touch is
+merged field by field. The reply, the events, the contact pause and the
+account pause all live in fields a pipeline run never writes, so they survive
+either way - and now the run's own work survives with them.
+
+The guard did not move and did not soften. It still runs, on the merged
+result, and still refuses a writer that genuinely deletes history - which is
+any caller holding rows that did not come from `load`, because that caller
+has no baseline and nothing can distinguish its edit from its ignorance.
+Those are the tests below that still assert `HistoryLost`, and they are there
+so that the day somebody deletes the merge, this file says so.
 """
 import copy
 import unittest
@@ -91,21 +114,55 @@ class TheStopSurvives(QueueTest):
         """The baseline. Without this the rest proves nothing."""
         self.assertTrue(set(self.decide()["reasons"]) & STOP_REASONS)
 
-    def test_the_stale_checkpoint_is_refused(self):
-        with self.assertRaises(store.HistoryLost):
-            store.save(self.snapshot)
+    def test_the_stale_checkpoint_no_longer_has_anything_to_refuse(self):
+        """The write SUCCEEDS, and that is the improvement rather than a hole.
+
+        `store.Snapshot` merges the checkpoint onto what is on disk, and this
+        run never touched the record, so the reply, its events and its pause
+        are kept and there is nothing left for the guard to object to. The
+        refusal that used to fire here protected the stop by discarding the
+        whole write, which cost the run every record it had already paid for.
+        Now the stop survives AND the work persists. The guard is untouched
+        and still fires for a writer that really does destroy history - see
+        `test_a_writer_with_no_baseline_is_still_refused`.
+        """
+        store.save(self.snapshot)
+        self.assertTrue(set(self.decide()["reasons"]) & STOP_REASONS)
 
     def test_and_the_stop_is_still_there_afterwards(self):
-        with self.assertRaises(store.HistoryLost):
-            store.save(self.snapshot)
+        store.save(self.snapshot)
         self.assertTrue(set(self.decide()["reasons"]) & STOP_REASONS,
-                        "the refusal did not protect the stop")
+                        "the merge did not protect the stop")
+
+    def test_a_run_that_did_edit_the_record_still_cannot_lift_the_stop(self):
+        """The adversarial half. An untouched record is the easy case - the
+        merge keeps the disk row whole. This one was edited by the run, so it
+        goes through the field-by-field merge, where the run must win only the
+        field it actually changed."""
+        mine = copy.deepcopy(self.snapshot)
+        mine[0]["company_facts"] = {"probed": True}
+        store.save(mine)
+        self.assertTrue(store.load()[0]["company_facts"]["probed"],
+                        "the run's own work was dropped")
+        self.assertTrue(set(self.decide()["reasons"]) & STOP_REASONS,
+                        "an editing run lifted the stop")
+
+    def test_a_writer_with_no_baseline_is_still_refused(self):
+        """THE GUARD IS STILL ARMED, and this is what proves it.
+
+        A plain list is a caller that built its rows somewhere other than
+        `load`, so there is no baseline and no way to tell its edit from its
+        ignorance. That write is refused exactly as it was before.
+        """
+        with self.assertRaises(store.HistoryLost):
+            store.save(list(self.snapshot))
+        self.assertTrue(set(self.decide()["reasons"]) & STOP_REASONS)
 
     def test_the_refusal_says_what_it_is_protecting(self):
         """An operator reading this has to know which record and what was at
         stake, or the guard is an obstacle rather than a finding."""
         with self.assertRaises(store.HistoryLost) as caught:
-            store.save(self.snapshot)
+            store.save(list(self.snapshot))
         said = str(caught.exception)
         self.assertIn("acme", said)
         self.assertIn("event", said)
@@ -135,15 +192,23 @@ class TheAccountWidePauseIsProtectedToo(QueueTest):
                              "why": "somebody at this company replied"}
         store.save(live)
 
-    def test_the_stale_write_is_refused(self):
+    def test_the_stale_write_with_no_baseline_is_refused(self):
         with self.assertRaises(store.HistoryLost) as caught:
-            store.save(self.snapshot)
+            store.save(list(self.snapshot))
         self.assertIn("account paused", str(caught.exception))
 
     def test_the_pause_is_still_set_afterwards(self):
-        with self.assertRaises(store.HistoryLost):
-            store.save(self.snapshot)
-        self.assertTrue(store.load()[0].get("paused"))
+        store.save(self.snapshot)
+        self.assertTrue(store.load()[0].get("paused"),
+                        "the merge dropped the account pause")
+
+    def test_an_editing_run_keeps_the_account_pause_too(self):
+        mine = copy.deepcopy(self.snapshot)
+        mine[0]["company_facts"] = {"probed": True}
+        store.save(mine)
+        self.assertTrue(store.load()[0].get("paused"),
+                        "an editing run lifted the account pause")
+        self.assertTrue(store.load()[0]["company_facts"]["probed"])
 
     def test_an_account_suppression_is_protected_as_well(self):
         """The permanent form of the same statement."""
@@ -152,8 +217,10 @@ class TheAccountWidePauseIsProtectedToo(QueueTest):
                                   "at": "2026-09-11T10:00:00+00:00"}
         store.save(live)
         with self.assertRaises(store.HistoryLost) as caught:
-            store.save(self.snapshot)
+            store.save(list(self.snapshot))
         self.assertIn("account suppressed", str(caught.exception))
+        store.save(self.snapshot)                    # and the merge keeps it
+        self.assertTrue(store.load()[0].get("suppression"))
 
 
 class TheGuardDoesNotStopOrdinaryWork(QueueTest):

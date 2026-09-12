@@ -2989,6 +2989,65 @@ use:
 | `contact["personalization"]` | written only by demo builders, so `eligibility._evidence_aged_out` - the only staleness gate on the send path - can never fire |
 | `executionguard`, `providerwrites`, `configdiff` | nothing in `src/` imports them yet; they are reachable only from their own CLIs and tests |
 
+### 38s. FIXED - a batch erased what arrived while it was running
+
+`run.run` loaded the whole queue once, walked 500 records across minutes of
+provider I/O, and wrote that opening snapshot back at every `CHECKPOINT_EVERY`
+records and again at the end. Reproduced 2026-09-12 in an isolated estate,
+two processes, nothing crashing and no race to lose:
+
+  * a record ingested mid-batch - carrying paid verification evidence, an
+    unsubscribed contact and a reply event - was gone after the next
+    checkpoint;
+  * `store.drop(rid, "competitor - do not contact")` applied mid-batch came
+    back as `state: queued` with `drop_reason: None`. **A do-not-contact
+    record returned to the queue**;
+  * three decision-makers bought mid-batch were erased.
+
+Neither guard objected: `refuse_history_loss` and `refuse_evidence_loss` both
+skip a record ABSENT from the new set, and the evidence index covers
+verification answers, so a person-level purchase not yet verified was
+unprotected.
+
+The same shape on `campaigns.jsonl`, which has no history guard at all:
+`interactions.decide` loads the file, runs `orchestrator.decide` and writes
+its snapshot back, so a `freeze` written in between - the stop button
+`eligibility` reads to block every step of a campaign - was lifted by a caller
+that never knew it existed.
+
+And `run.checkpoint()` was called from the stage loop with no handler, so any
+refusal - `QueueLocked` after ten seconds of contention, `HistoryLost` from a
+reply that landed - aborted the whole run and discarded every record's work,
+including records that came before the refusal. Measured: a reply persisted
+one second into a twelve-record batch left zero records enriched while the
+durable spend ledger kept every charge.
+
+`store.Snapshot` now carries what each row was when it was read, and the
+write-back is a three-way merge: a row this caller never touched keeps
+whatever is on disk, a row only this caller touched is written, and a row both
+touched is merged field by field with the caller winning only the fields it
+actually changed. A plain list still replaces the file, so a caller that built
+its rows elsewhere is unaffected. The checkpoint catches those two refusals,
+notes them in the report and lets the next one retry.
+
+### 38t. STILL OPEN - one human in two records is two prospect-facing actions
+
+`push.push_id` is `rec:contact:step:channel` and `actionledger.reserve` refuses
+a repeat of a KEY, so the same person reachable through two queue records - the
+account uploaded twice under two domains, or a parent and a subsidiary - is two
+reservations and two touches. `collision` catches this by READING THE PROVIDER,
+which is exactly what is unavailable in the timeout and crash cases this ledger
+exists for. The ledger already computes the answer and does not consult it:
+`contacts_reached` returns the contact after the first send.
+
+What `reserve` needs is a canonical person identity rather than the
+within-record contact key - `agencydnc.keys_for` and `identity.contact_key`
+already derive one from the email and the LinkedIn URL - because a name slug
+alone would make two different people called Dana Example block each other.
+Asserted as an `expectedFailure` in
+`tests/test_a_batch_does_not_erase_what_arrived_during_it.py`, so the day it is
+closed the test announces itself.
+
 ### 38r. STILL OPEN - smaller, named
 
 `claims.is_claim` still examines a sentence only when it carries a number, a
