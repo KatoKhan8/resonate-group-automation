@@ -66,7 +66,11 @@ class FakeBison:
 
     def create_campaign(self, name):
         cid = self._id()
-        self.campaigns[cid] = {"id": cid, "name": name, "status": "draft"}
+        # 1000 is the provider's default, and it is what a campaign really
+        # carries however it was created - a cap passed here is discarded.
+        self.campaigns[cid] = {"id": cid, "name": name, "status": "draft",
+                               "max_emails_per_day": 1000,
+                               "max_new_leads_per_day": 1000}
         self.members[cid] = []
         self.created_campaigns += 1
         return dict(self.campaigns[cid])
@@ -115,6 +119,13 @@ class FakeBison:
                 "already": [i for i in lead_ids if i in before],
                 "members": list(self.members[cid])}
 
+    def set_limits(self, cid, name, emails_per_day, new_leads_per_day=None):
+        leads = emails_per_day if new_leads_per_day is None else new_leads_per_day
+        self.campaigns[int(cid)]["max_emails_per_day"] = emails_per_day
+        self.campaigns[int(cid)]["max_new_leads_per_day"] = leads
+        return {"campaign_id": cid, "max_emails_per_day": emails_per_day,
+                "max_new_leads_per_day": leads}
+
     def set_sequence(self, cid, title, steps):
         return {"id": self._id(), "title": title}
 
@@ -139,6 +150,7 @@ class StagingTwiceBuildsOne(QueueTest):
                     self._record("rec-2", "two@resonategroup.co", "Grace")])
         row = campaigns.new_campaign(CID, "productive", "Factory test")
         row["record_ids"] = ["rec-1", "rec-2"]
+        row["daily_volume"] = {"email": 5, "linkedin": 0}
         campaigns.save([row])
 
     @staticmethod
@@ -195,6 +207,25 @@ class StagingTwiceBuildsOne(QueueTest):
             self.assertIn("contact_key", carried)
             self.assertEqual(carried.get("client"), "productive")
             self.assertTrue(carried["record_id"].startswith("rec-"))
+
+    def test_an_uncapped_campaign_is_refused(self):
+        """"Nobody set a rate" and "a thousand a day" are not the same state.
+
+        `POST /campaigns` accepts a cap and stores the 1000/day default
+        silently, so a campaign is uncapped until something caps it on
+        purpose.
+        """
+        with campaigns.transaction() as rows:
+            campaigns.get(CID, rows)["daily_volume"] = {"email": 0}
+        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+            bisonfactory.stage(CID, live=True)
+        self.assertIn("1000", str(caught.exception))
+
+    def test_the_cap_is_applied_before_anybody_is_attached(self):
+        """A cap applied after the leads is a cap that was briefly absent."""
+        bisonfactory.stage(CID, live=True)
+        cid = int(campaigns.get(CID, campaigns.load())["bison_campaign_id"])
+        self.assertEqual(self.bison.campaigns[cid]["max_emails_per_day"], 5)
 
     def test_it_is_left_stopped(self):
         """A staged campaign that can send has not been staged."""

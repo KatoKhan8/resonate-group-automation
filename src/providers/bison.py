@@ -464,6 +464,56 @@ def find_lead_by_email(email):
     return exact[0]
 
 
+UPDATE_PATH = "/campaigns/{campaign_id}/update"
+
+
+def set_limits(campaign_id, name, emails_per_day, new_leads_per_day=None):
+    """Cap what this campaign may send in a day, and prove the cap took.
+
+    Two things make this its own function rather than a field on create.
+
+    `POST /campaigns` SILENTLY DISCARDS IT. Measured 2026-09-13: created with
+    `max_emails_per_day: 7`, read back 1000. Nothing in the response says a
+    field was ignored, so a campaign created with a cap and a campaign created
+    without one are indistinguishable until somebody reads it back.
+
+    AND THE WRITE ROUTE IS NOT THE OBVIOUS ONE. `PATCH /campaigns/{id}` is 405
+    (Allow: GET, HEAD, DELETE); the write is `/campaigns/{id}/update`, it
+    requires `name` alongside the limits, and it enforces
+    `max_emails_per_day >= max_new_leads_per_day` in its own words.
+
+    Raises unless the provider reports the numbers asked for. A cap that was
+    requested and not stored is the failure this exists to prevent.
+    """
+    if not isinstance(emails_per_day, int) or emails_per_day < 1:
+        raise ProviderError(
+            f"emailbison set_limits: {emails_per_day!r} is not a daily send "
+            f"cap. Refusing to leave this campaign on the provider default")
+    leads = new_leads_per_day
+    if leads is None:
+        leads = emails_per_day
+    if leads > emails_per_day:
+        raise ProviderError(
+            f"emailbison set_limits: new leads per day ({leads}) exceeds "
+            f"emails per day ({emails_per_day}); the provider refuses this")
+    status, data = request(
+        "PATCH", base() + UPDATE_PATH.format(campaign_id=campaign_id),
+        _json_headers(),
+        {"name": name, "max_emails_per_day": emails_per_day,
+         "max_new_leads_per_day": leads})
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison set_limits: PATCH -> {status} {_message(data)}")
+    row = campaign(campaign_id)
+    got = (row.get("max_emails_per_day"), row.get("max_new_leads_per_day"))
+    if got != (emails_per_day, leads):
+        raise ProviderError(
+            f"emailbison set_limits: asked for {(emails_per_day, leads)} and "
+            f"campaign {campaign_id} reads back {got}. The cap did not take")
+    return {"campaign_id": campaign_id, "max_emails_per_day": emails_per_day,
+            "max_new_leads_per_day": leads}
+
+
 def campaign_lead_ids(campaign_id, per_page=200):
     """Which lead ids the PROVIDER says are in this campaign.
 

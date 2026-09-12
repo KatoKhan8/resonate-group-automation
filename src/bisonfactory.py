@@ -80,6 +80,7 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     provider_id = _find_or_create(campaign, report, by=by)
     report["provider"]["campaign_id"] = provider_id
 
+    _ensure_limits(provider_id, campaign, plan, report)
     _ensure_sequence(provider_id, campaign, plan, report, by=by)
     _ensure_leads(provider_id, campaign, plan, report, by=by)
     _ensure_stopped(provider_id, report, by=by)
@@ -181,6 +182,30 @@ def _find_or_create(campaign, report, by="system"):
                                            f"created and bound")
     report["did"].append(f"created EmailBison campaign {provider_id}")
     return provider_id
+
+
+def _ensure_limits(provider_id, campaign, plan, report):
+    """Cap the campaign before it holds anybody.
+
+    The provider's default is 1000 emails a day and `POST /campaigns` accepts
+    a cap and stores 1000 anyway, so a campaign is uncapped until something
+    explicitly caps it. This runs before leads are attached: the order is the
+    point, since a cap applied afterwards is a cap that was briefly absent.
+
+    A campaign whose daily volume nobody configured is REFUSED rather than
+    left on the default. "Nobody said" and "a thousand a day" must not be the
+    same state.
+    """
+    volume = (campaign.get("daily_volume") or {}).get("email")
+    if not volume:
+        raise FactoryRefused(
+            f"campaign {campaign.get('campaign_id')!r} sets no email daily "
+            f"volume. EmailBison defaults to 1000 a day and discards a cap "
+            f"passed at create time, so staging this would leave a campaign "
+            f"nobody rate-limited")
+    state = bison.set_limits(provider_id, plan["name"], int(volume))
+    report["provider"]["limits"] = state
+    report["did"].append(f"capped at {state['max_emails_per_day']}/day")
 
 
 def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
