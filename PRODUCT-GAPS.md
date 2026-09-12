@@ -3576,3 +3576,49 @@ after the last slash, which for a legacy URL is the final segment alone, so
 two members one character apart shared a lookup key. Five mutations, all
 caught, including one that kept only the first of the three segments - two
 members can share the leading pair.
+
+## EmailBison, measured 2026-09-13
+
+### A bulk CSV upload permanently accretes a lead list
+
+`POST /api/leads/bulk/csv` creates a lead list as a side effect, and
+`DELETE /api/lead-lists/{id}` is **405** (`Allow: GET, HEAD, PUT`). There is
+no delete for lead lists on this API, so every bulk upload leaves one behind
+for good. Two already exist from probing (387, 388); both are empty and
+renamed to say so, and only a person in the vendor UI can remove them.
+
+Consequence for design: prefer `POST /api/leads` plus `attach-leads` over the
+CSV route for anything routine. The CSV route is for a one-off import
+somebody has decided to live with.
+
+### The reply-to-stop loop is poll-only, because nothing is listening
+
+`POST /api/webhook-url` works - 201, with 23 event types including
+`lead_replied`, `lead_unsubscribed` and `email_bounced` - and the workspace
+already carries a `webhooks_secret_key` for signature verification. Zero
+webhooks are configured.
+
+They are not configured because there is nowhere to point them: no publicly
+reachable endpoint runs. Configuring one now would register a URL nothing
+answers, which is worse than none - it would look like the loop was closed.
+
+Until an endpoint exists, a reply is learned by polling, so the delay between
+somebody replying and `leadstop` stopping them is a poll interval rather than
+seconds. `stop-future-emails` itself lands in about two seconds; the latency
+is entirely in finding out.
+
+### A credential's workspace can be changed through the API
+
+`POST /api/workspaces/v1.1/switch-workspace` exists (named by the official
+n8n node; not invoked here). `bison.bound_workspace()` reads which estate a
+key is bound to and `bisonfactory` refuses a mismatch before writing, which
+is the right check - but it establishes the binding at the START of a run.
+The binding is mutable through the same API, so a long-running process cannot
+assume it still holds. Re-read it per write, or keep runs short.
+
+### `completion_percentage` is not a readiness oracle
+
+It stayed 0 on a campaign carrying a sequence, a schedule and an attached
+sender. Do not read it as "ready to launch". The provider states the real
+precondition set in its own refusal: a campaign needs a completed sequence
+AND schedule AND leads AND sender emails before `resume` will do anything.
