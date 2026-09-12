@@ -24,8 +24,8 @@ import argparse
 import json
 import sys
 
-from . import (adapters, campaigns, clients, events, notify, observability,
-               orchestrator, replies, store)
+from . import (accountpolicy, adapters, campaigns, clients, events, notify,
+               observability, orchestrator, replies, store)
 
 
 def _campaign_for(rec, rows=None):
@@ -62,6 +62,28 @@ def handle(event, recs, rows=None, config=None, post=None, model=None):
         provider=event.get("provider"), status=applied["status"],
         reason=applied.get("why"))
     if applied["status"] in ("unmatched", "unknown"):
+        # AN UNATTRIBUTABLE REPLY STILL STOPS THE CADENCE TO THAT PERSON.
+        #
+        # `events.match_record` refuses to guess which record a reply answers
+        # when the same person is on more than one, and that refusal is right:
+        # attributing it wrongly pauses the wrong company. But nothing else
+        # happened either. Reproduced: "please stop, we are not interested"
+        # from an address held on two records left BOTH unpaused, with
+        # `eligibility.decide` answering `eligible` on both - while the
+        # identical reply to a person on one record paused correctly. Being
+        # known twice made the person less safe.
+        #
+        # So the stop is applied to every record carrying them and the
+        # attribution is still not made: no reply event, no classification,
+        # no claim that any of these records received anything. A hold is
+        # reversible by the person who reads the reply. A send is not.
+        held = []
+        if events.is_reply(event):
+            for candidate, contact in events.correspondents(recs, event):
+                if accountpolicy.hold_for_unattributed_reply(
+                        candidate, contact, at=event.get("at")):
+                    held.append((candidate.get("id"), contact.get("key")))
+        outcome["held_unattributed"] = held
         # Operational, and global. `notify.notify` cannot raise, so an alert
         # that cannot route leaves this path exactly as it found it.
         outcome["notification"] = notify.notify(
@@ -69,6 +91,7 @@ def handle(event, recs, rows=None, config=None, post=None, model=None):
             fields={"provider": event.get("provider"),
                     "status": applied["status"],
                     "why": applied.get("why"),
+                    "held": len(held),
                     "action": "a person decides; nothing is auto-attributed"},
             ids={"provider_event_id": event.get("provider_event_id")})
     if applied["status"] != "applied":

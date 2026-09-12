@@ -373,6 +373,46 @@ def match_record(recs, event):
     return None
 
 
+def correspondents(recs, event):
+    """Every (record, contact) this event's sender appears on. May be many.
+
+    `match_record` answers "whose event is this" and refuses to guess when
+    more than one record carries the person - which is right, because
+    attributing a reply to the wrong company pauses the wrong company. This
+    answers a different question: WHO DID THIS PERSON SAY IT TO.
+
+    A stop is not an attribution, and the two were conflated. A reply saying
+    "please stop, we are not interested" from an address held on two records
+    was reported `unmatched` and changed nothing: both records stayed
+    unpaused and `eligibility.decide` answered `eligible` on both, so the
+    cadence kept going to somebody who had asked it to stop. One record and
+    the identical reply paused correctly. Being known twice made the person
+    less safe, which is exactly backwards.
+
+    So attribution stays refused and the stop is applied to every candidate.
+    Returns the pairs; the caller decides what to do with them.
+    """
+    from . import linkedin
+
+    out, seen = [], set()
+    address = (event.get("email") or "").lower()
+    profile = linkedin.canonical(event.get("linkedin"))
+    for rec in recs:
+        for contact in rec.get("contacts") or []:
+            hit = (address
+                   and (contact.get("email") or "").lower() == address) or (
+                profile
+                and linkedin.canonical(contact.get("linkedin")) == profile)
+            if not hit:
+                continue
+            mark = (rec.get("id"), contact.get("key"))
+            if mark in seen:
+                continue
+            seen.add(mark)
+            out.append((rec, contact))
+    return out
+
+
 def match_contact(rec, event):
     key = event.get("contact_key")
     if key:

@@ -459,6 +459,32 @@ def _suppress_contact(rec, contact, outcome, at, why):
     return True
 
 
+AMBIGUOUS_REPLY = "reply_attribution_ambiguous"
+
+
+def hold_for_unattributed_reply(rec, contact, at=None, why=None):
+    """This person replied somewhere; stop the cadence to them here too.
+
+    For the case `events.match_record` deliberately refuses to resolve: the
+    same person on more than one record, so nobody can say WHICH record the
+    reply answered. Attribution stays unmade - no reply event, no
+    classification, no claim that this record received anything - and the
+    cadence stops anyway, because a hold is reversible by a person who reads
+    the reply and a send is not.
+
+    A HOLD rather than a stop or a suppression on purpose. The reply has not
+    been classified: it could be "please remove us" or it could be "sure,
+    Thursday works". Treating an unread reply as an unsubscribe would throw
+    away the good ones, and treating it as nothing is what let the cadence
+    keep running on somebody who had asked it to stop.
+    """
+    return _hold_contact(rec, contact, AMBIGUOUS_REPLY, at or store.now(),
+                         why or ("this person replied, and they appear on "
+                                 "more than one record, so which record the "
+                                 "reply answers has to be decided by a "
+                                 "person. Held here until it is"))
+
+
 def _hold_account(rec, contact_key, outcome, at, channel=None, reason=None):
     """The reversible account-level stop. This is the old blanket pause.
 
