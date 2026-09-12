@@ -199,6 +199,78 @@ class ABatchCheckpointsMoreThanOnce(QueueTest):
         self.assertEqual(len(store.load()), 2, "the file was written anyway")
 
 
+class EveryPerRecordStageCheckpoints(QueueTest):
+    """`CHECKPOINT_EVERY` is worth nothing to a stage that never calls it.
+
+    `stage_enrich` and `stage_qualify` took a `checkpoint` and used it.
+    `stage_personas` and `stage_generate` did not take one at all, and `run()`
+    called them without one - so a kill inside them re-did everything they had
+    done. MEASURED on a 1,000-record estate: 503 records worked, ZERO saves.
+
+    `generate` is the expensive one: it is the model stage, so the work lost
+    is the work that cost money and minutes. Both take a checkpoint now, and
+    the assertion below is on the stage functions rather than on `run()`,
+    because what broke was the argument not being passed.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._pinned = {k: os.environ.pop(k, None)
+                        for k in ("CAMPAIGNS", "ACTION_LEDGER")}
+        store.append([a_record("r%d" % n, "co%d.example" % n) for n in range(6)])
+
+    def tearDown(self):
+        for key, value in self._pinned.items():
+            if value is not None:
+                os.environ[key] = value
+        super().tearDown()
+
+    def test_every_per_record_stage_accepts_a_checkpoint(self):
+        import inspect
+        for name in ("stage_enrich", "stage_qualify", "stage_personas",
+                     "stage_generate"):
+            with self.subTest(stage=name):
+                params = inspect.signature(getattr(run, name)).parameters
+                self.assertIn("checkpoint", params,
+                              f"{name} cannot persist anything mid-stage")
+
+    def test_personas_calls_the_checkpoint_it_is_given(self):
+        calls = {"n": 0}
+        recs = store.load()
+        run.stage_personas(recs, [], checkpoint=lambda: calls.__setitem__(
+            "n", calls["n"] + 1))
+        self.assertGreater(calls["n"], 0,
+                           "stage_personas took a checkpoint and never called "
+                           "it, which is the same as not taking one")
+
+    def test_generate_calls_the_checkpoint_it_is_given(self):
+        calls = {"n": 0}
+        recs = store.load()
+        run.stage_generate(recs, None, False, [],
+                           checkpoint=lambda: calls.__setitem__(
+                               "n", calls["n"] + 1))
+        self.assertGreater(calls["n"], 0,
+                           "the model stage cannot persist what it paid for")
+
+    def test_run_passes_one_to_both(self):
+        """The half that actually broke: the stages were fixed once before and
+        `run()` still called them without the argument."""
+        seen = {}
+        for name in ("stage_personas", "stage_generate"):
+            real = getattr(run, name)
+
+            def spy(*a, _name=name, _real=real, **kw):
+                seen[_name] = kw.get("checkpoint")
+                return _real(*a, **kw)
+
+            setattr(run, name, spy)
+            self.addCleanup(setattr, run, name, real)
+        run.run(stages=("personas", "generate"), spend=False)
+        for name in ("stage_personas", "stage_generate"):
+            self.assertIsNotNone(seen.get(name),
+                                 f"run() called {name} with no checkpoint")
+
+
 class ACheckpointRefusalIsNotABatchFailure(QueueTest):
     """One refused write must cost the records it covers, not the batch.
 

@@ -209,7 +209,7 @@ def unkeyed(rec):
     return [c for c in (rec.get("contacts") or []) if not c.get("key")]
 
 
-def stage_personas(recs, notes):
+def stage_personas(recs, notes, checkpoint=None):
     touched, configs = 0, {}
     for rec in recs:
         if not needs(rec, "personas") and not unkeyed(rec):
@@ -223,6 +223,8 @@ def stage_personas(recs, notes):
                 notes.append(f"{client}: {e}")
         if configs[client] is None:
             mark(rec, "personas", "skipped", f"no config for client {client}")
+            if checkpoint:
+                checkpoint()
             continue
         try:
             personas.select(rec, configs[client])
@@ -231,10 +233,12 @@ def stage_personas(recs, notes):
             touched += 1
         except Exception as e:
             mark(rec, "personas", "failed", f"{type(e).__name__}: {e}")
+        if checkpoint:
+            checkpoint()
     return {"records": touched}
 
 
-def stage_generate(recs, model, spend, notes):
+def stage_generate(recs, model, spend, notes, checkpoint=None):
     touched = 0
     for rec in recs:
         if not needs(rec, "generate"):
@@ -242,6 +246,8 @@ def stage_generate(recs, model, spend, notes):
         if not spend or model is None:
             planned = generate.plan(rec)
             mark(rec, "generate", "planned", f"{len(planned)} model call(s) needed")
+            if checkpoint:
+                checkpoint()
             continue
         try:
             client = clients.load(rec.get("client"))
@@ -255,6 +261,8 @@ def stage_generate(recs, model, spend, notes):
             touched += 1
         except Exception as e:
             mark(rec, "generate", "failed", f"{type(e).__name__}: {e}")
+        if checkpoint:
+            checkpoint()
     return {"records": touched}
 
 
@@ -370,10 +378,12 @@ def run(source=None, client=None, lane=None, model=None, day=21, spend=False,
             targets, notes, checkpoint=checkpoint))
     if "personas" in stages:
         report["personas"] = timed("personas",
-                                   lambda: stage_personas(targets, notes))
+                                   lambda: stage_personas(targets, notes,
+                                                          checkpoint=checkpoint))
     if "generate" in stages:
         report["generate"] = timed(
-            "generate", lambda: stage_generate(targets, model, spend, notes))
+            "generate", lambda: stage_generate(targets, model, spend, notes,
+                                               checkpoint=checkpoint))
 
     store.save(recs)                      # one write, after the per-record stages
 
