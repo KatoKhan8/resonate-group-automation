@@ -168,6 +168,59 @@ def set_aside(contact, why):
     return dict(contact, why=why)
 
 
+# The one exclusion reason that a corrected persona list can undo. A cap
+# exclusion is a different decision and the cap has not moved.
+NOT_A_PERSONA = "not a persona for this client"
+
+
+def readmit(rec, config):
+    """Return contacts whose exclusion reason has stopped being true.
+
+    `set_aside` keeps an excluded contact WHOLE - address, profile,
+    verification evidence, all of it paid for - precisely so that a corrected
+    persona list can restore them. Its own docstring gives the case: two
+    people were excluded because the client's config said "COO" and not
+    "Chief Operating Officer", and "correcting the config could not restore
+    them".
+
+    It still could not. `select_domains` reads `rec["contacts"]`, and a
+    contact set aside is no longer in it, so nothing this module does looks at
+    an exclusion again. Measured on the Productive estate: 26 already-paid
+    contacts sat in `excluded` with `persona: None` under this reason while
+    `classify` places every one of them - including the estate's only
+    resource-management contact, a Design Studio Manager whose title the
+    client's config gained on 2026-09-09.
+
+    Only in the safe direction. Nothing is excluded here, a contact already on
+    the record is not duplicated, and an entry set aside for any other reason
+    is left exactly where it is.
+    """
+    excluded = rec.get("excluded") or []
+    if not excluded:
+        return []
+    held = [(str(c.get("name") or "").strip().lower(),
+             norm_title(c.get("title"))) for c in rec.get("contacts") or []]
+    returned, still_out = [], []
+    for entry in excluded:
+        who = (str(entry.get("name") or "").strip().lower(),
+               norm_title(entry.get("title")))
+        if (entry.get("why") == NOT_A_PERSONA
+                and classify(entry, config)[0]
+                and who not in held):
+            held.append(who)
+            returned.append({k: v for k, v in entry.items() if k != "why"})
+        else:
+            still_out.append(entry)
+    if returned:
+        rec["excluded"] = still_out
+        rec.setdefault("contacts", []).extend(returned)
+        store.log(rec, "personas",
+                  f"{len(returned)} contact(s) set aside as "
+                  f"'{NOT_A_PERSONA}' now match one: returned to the record "
+                  "rather than re-bought")
+    return returned
+
+
 def select_domains(rec, config):
     """The capped persona set for one domain."""
     keep, excluded = [], []
@@ -179,7 +232,7 @@ def select_domains(rec, config):
     for contact in rec.get("contacts") or []:
         persona, score = classify(contact, config)
         if not persona:
-            excluded.append(set_aside(contact, "not a persona for this client"))
+            excluded.append(set_aside(contact, NOT_A_PERSONA))
             continue
         by_persona.setdefault(persona, []).append(
             {"contact": contact, "score": score,
@@ -315,6 +368,11 @@ def select(rec, config=None):
 
     lane = rec.get("lane")
     if lane == "domains":
+        # Before the cap is applied, not after: a contact whose exclusion
+        # reason has stopped being true is a candidate like any other, and
+        # must compete for the cap rather than be appended past it.
+        readmit(rec, config)
+        identity.assign_keys(rec.get("contacts") or [])
         keep, excluded = select_domains(rec, config)
     elif lane == "revive":
         keep, excluded = select_thread(rec, config, "no address or profile on the thread")

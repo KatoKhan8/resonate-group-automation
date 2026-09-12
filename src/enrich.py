@@ -27,9 +27,9 @@ nothing usable is `dropped`, with the reason on it. Nothing is ever deleted.
 """
 import argparse
 
-from . import clients, dedupe, events, identity, linkedin, lint, mx, research
-from . import store, verification
-from .providers import ProviderError, aiark, apify, contactout
+from . import clients, dedupe, events, headcount, identity, linkedin, lint
+from . import mx, research, store, verification
+from .providers import ProviderError, aiark, apify, blitz, contactout
 
 # What a call costs, in credits, for the cap. decision-makers charges per
 # profile returned, so the plan assumes this many until the answer is known.
@@ -277,6 +277,21 @@ def plan(rec, config=None):
             ops.append(op("aiark-people-search",
                           "only if ContactOut finds nobody usable: different index",
                           conditional=True, provider="aiark"))
+    # The headcount second opinion, forecast with the SAME predicate execution
+    # uses. `verification.py` carries the note about what happens when a
+    # forecast and its execution disagree, and this is the number a cap is
+    # sized against. Not nested in the contact branch above, for the reason the
+    # call site is not: a company with contacts can still be missing its size.
+    from . import fieldplan as _fieldplan
+
+    headcount_step, _why = _fieldplan.next_step(rec, "headcount")
+    if (headcount_step and headcount_step["call"] == "blitz-company"
+            and (rec.get("company_facts") or {}).get("linkedin")
+            and not already_bought(rec, "blitz-company")):
+        ops.append(op("blitz-company",
+                      "the company record carries a headcount with no band, so "
+                      "it cannot be read as one, and this client rejects on "
+                      "size", provider="blitz"))
     policy = verification.policy_for(config)
     for c in usable_contacts(rec):
         for step in verification.plan(c, policy):
@@ -814,6 +829,71 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
                 except ProviderError as e:
                     store.log(rec, "enrich", f"ai ark failed: {e}")
                     failures.append("ai ark")
+
+    # 4a. A SECOND OPINION ON A HEADCOUNT THAT IS ABOUT TO DECIDE A REJECTION.
+    #
+    # `src/providers/blitz.py` has been live-confirmed since 2026-09-09 and was
+    # wired into `COSTS`, `CALL_STAGE`, `waterfall.STAGES` and `fieldplan` -
+    # and had ZERO call sites outside tests, so nothing could reach it. A
+    # provider that cannot be called is a fixture with a docstring.
+    #
+    # What licenses it is stated by `fieldplan`, not decided here: the
+    # `headcount` field is MISSING_CONFIRMED when the record holds a number
+    # with no band, because ContactOut's `employees` is frequently a band's
+    # lower bound and a lower bound with no upper bound is not a headcount.
+    # Measured on the Productive estate, 123 companies were rejected on
+    # exactly that. Blitz is addressed by the company LinkedIn URL already on
+    # the record and returns `employees_on_linkedin` beside `size`.
+    #
+    # NOT nested inside the contact branch above. A company with contacts can
+    # still be missing its size, and the size is what the ICP verdict turns
+    # on.
+    company_linkedin = (rec.get("company_facts") or {}).get("linkedin")
+    headcount_step, _why_headcount = fieldplan.next_step(rec, "headcount")
+    if (headcount_step and headcount_step["call"] == "blitz-company"
+            and company_linkedin
+            and not already_bought(rec, "blitz-company")
+            and spend("blitz-company",
+                      "the company record carries a headcount with no band, "
+                      "so it cannot be read as one, and this client rejects "
+                      "on size",
+                      provider="blitz",
+                      reason_code=CONTACTOUT_MISSING_COMPANY_DATA)):
+        if live:
+            try:
+                info = blitz.company(company_linkedin)
+                if info["found"]:
+                    block = headcount.observe(
+                        rec, "blitz-company", value=info.get("employees"),
+                        band=info.get("employee_range"), config=config)
+                    store.log(rec, "enrich",
+                              f"blitz-company: {info.get('employees')} people, "
+                              f"band {info.get('employee_range')} -> "
+                              f"{block['state']}")
+                    if block["state"] == headcount.CONFLICT:
+                        events.record(rec, events.PROVIDER_CALL_COMPLETED,
+                                      provider="blitz",
+                                      operation="blitz-company",
+                                      status="headcount_conflict")
+                else:
+                    # A stated miss, which is an answer: Blitz has been asked
+                    # and the ledger row above says so, so nothing re-buys it.
+                    store.log(rec, "enrich",
+                              "blitz-company: found: false - Blitz does not "
+                              "hold this company")
+                # `fair_usage.records_used` is the only real cost there is,
+                # and it is known only after the answer. Written onto the row
+                # `spend()` just appended, because an expected cost standing
+                # in for a reported one is what makes a ledger unauditable.
+                used = (info.get("fair_usage") or {}).get("records_used")
+                if used is not None:
+                    for row in reversed(rec.get("waterfall") or []):
+                        if row.get("call") == "blitz-company":
+                            row["actual_cost"] = used
+                            break
+            except ProviderError as e:
+                store.log(rec, "enrich", f"blitz-company failed: {e}")
+                failures.append("blitz-company")
 
     # 4b. Public evidence, last and only on a stated need. Structured data
     # from ContactOut and AI Ark is always preferred; this runs when a step

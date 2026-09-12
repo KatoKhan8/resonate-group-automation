@@ -28,7 +28,7 @@ a task.
 import argparse
 import json
 
-from . import evidence, segments, store
+from . import evidence, icpstructural, segments, store
 
 # ------------------------------------------------------------- the verdict
 
@@ -111,6 +111,13 @@ DEFAULT_PENALTIES = {
 # given company would score. Stored on every verdict so a batch scored under an
 # older model is visible as such rather than silently compared to a newer one.
 SCORING_VERSION = "2026-08-27.1"
+
+# The version a verdict carries once the client's own structural criteria are
+# the gate. The number below it - the twelve weighted dimensions - is
+# unchanged, which is why both versions are stored on the same verdict rather
+# than one replacing the other: `icp_status_v1` and `icp_tier_v1` plus the
+# untouched `icp_score` reconstruct the V1 answer exactly.
+STRUCTURAL_SCORING_VERSION = "2026-09-13.1-structural"
 
 DEFAULT_THRESHOLDS = {
     "tier_a": 75,
@@ -416,6 +423,20 @@ def score(rec, config=None, segment=None):
                              components)
     status, tier, why = _verdict(bounded, confidence, scored_dimensions,
                                  segment, negative, thresholds)
+    status_v1, tier_v1 = status, tier
+
+    # The client's own criteria, resolved into the field the pipeline reads.
+    # `config or {}` rather than `config`: a None config means "no client
+    # configuration was handed in", which is exactly what `settings` above
+    # already treats it as. Letting it fall through to `structural`'s own
+    # `clients.load` would read a file per record and make the answer depend
+    # on what is on disk rather than on what the caller passed.
+    structural = icpstructural.structural(rec, config or {}, segment=segment)
+    version = SCORING_VERSION
+    if structural["configured"]:
+        status, tier, why = _structural_verdict(structural, bounded,
+                                                thresholds)
+        version = STRUCTURAL_SCORING_VERSION
 
     result = {
         "record_id": rec.get("id"),
@@ -424,6 +445,13 @@ def score(rec, config=None, segment=None):
         "icp_raw_score": round(total, 1),
         "icp_tier": tier,
         "icp_status": status,
+        # The V1 answer, preserved rather than overwritten. With `icp_score`
+        # and `icp_confidence` untouched beside them, these reconstruct what
+        # the twelve-dimension model said about this company.
+        "icp_tier_v1": tier_v1,
+        "icp_status_v1": status_v1,
+        "v1_scoring_version": SCORING_VERSION,
+        "structural": structural,
         "icp_confidence": confidence,
         "positive_signals": positive,
         "negative_signals": negative,
@@ -436,7 +464,7 @@ def score(rec, config=None, segment=None):
         "confidence_components": components,
         "contradictions": components["contradictions"],
         "icp_grade": None,             # filled in below, needs the verdict
-        "scoring_version": SCORING_VERSION,
+        "scoring_version": version,
         "scored_at": store.now(),
     }
     # How well it matches, said separately from whether we may spend on it.
@@ -765,6 +793,71 @@ def _verdict(bounded, confidence, scored, segment, negative, thresholds):
     return (REVIEW, TIER_REVIEW,
             f"scored {bounded:.0f}: between the rejection and qualification "
             "thresholds")
+
+
+# ------------------------------------------- the client's own criteria decide
+#
+# `src/icpstructural.py` answers the question the client actually asked -
+# services business, right vertical, a geography they sell to, 20+ people -
+# and it answered it correctly for a fortnight while NOTHING IMPORTED IT. The
+# whole pipeline gates on `verdict["icp_status"]`: `routing.plan` zeroes the
+# contact cap for anything not `qualified`, `dmplan.may_enrich` refuses the
+# spend, `qualify.state_of` reports the batch. A second, better evaluator
+# stored beside that field changes nothing at all.
+#
+# So the structural verdict is resolved into the field every consumer already
+# reads, and the V1 answer is preserved on the same verdict rather than
+# overwritten. Two things stay true:
+#
+#   The score is still computed, in full, and it is now a PRIORITY inside the
+#   eligible pool rather than the gate into it. That is what `icpstructural`'s
+#   own docstring says it should be.
+#
+#   The tier has to move with the status or the wiring is theatre: a company
+#   the client's criteria qualify, left on `TIER_REVIEW` because its homepage
+#   never says "utilisation", gets a cap of zero and is never enriched - the
+#   V1 gate silently re-imposed one layer down. An eligible company therefore
+#   takes the tier its score earns, floored at `TIER_C`, which is the smallest
+#   cap that lets the gate mean anything.
+#
+# Clients with no `icp.structural` block are untouched: `configured` is False
+# and this returns the V1 answer unchanged.
+
+FROM_STRUCTURAL = {
+    icpstructural.ICP_PASS: QUALIFIED,
+    icpstructural.ICP_PASS_WITH_UNCERTAINTY: QUALIFIED,
+    icpstructural.ICP_REVIEW: REVIEW,
+    icpstructural.ICP_FAIL: REJECTED,
+}
+
+
+def _priority_tier(bounded, thresholds):
+    """Where an already-eligible company ranks. Never an exclusion."""
+    if bounded >= thresholds["tier_a"]:
+        return TIER_A
+    if bounded >= thresholds["tier_b"]:
+        return TIER_B
+    return TIER_C
+
+
+def _structural_verdict(structural, bounded, thresholds):
+    """(status, tier, why) from the client's structural criteria."""
+    verdict = structural["verdict"]
+    status = FROM_STRUCTURAL[verdict]
+    if status == QUALIFIED:
+        tier = _priority_tier(bounded, thresholds)
+        return (status, tier,
+                f"the client's structural criteria are satisfied ({verdict}); "
+                f"scored {bounded:.0f}, which is a priority of {tier} inside "
+                "the eligible pool rather than a gate")
+    if status == REJECTED:
+        return (status, TIER_NOT_ICP,
+                "the client's structural criteria reject this company on "
+                f"{structural.get('primary_reason')}")
+    unknown = ", ".join(structural.get("unknown_criteria") or ()) or "nothing"
+    return (status, TIER_REVIEW,
+            "the two criteria that decide what kind of company this is are "
+            f"not both established; unknown: {unknown}")
 
 
 def summarise(results):

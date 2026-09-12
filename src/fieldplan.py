@@ -86,6 +86,43 @@ def _company_email_domain(rec, contact):
     return (rec.get("company_facts") or {}).get("email_domain")
 
 
+def _headcount(rec, contact):
+    """A company size that can actually be READ as one.
+
+    NOT `employees` on its own, and that distinction is the whole field.
+    `src/icpstructural.py` establishes that ContactOut's `employees` is
+    frequently the lower bound of a band rather than a measured headcount.
+    Measured on the 300-record Productive estate: 236 records carry that
+    number with NO `employee_range` beside it, and 123 companies were rejected
+    on it - a lower bound with no upper bound, read as though it were a count.
+
+    So a resolved `headcount` block - two providers, with their provenance -
+    is an answer, and a band is an answer, and a bare number from one provider
+    is not. This is the field that licenses the second opinion, and it is
+    separate from `company_profile` because that one is about whether we know
+    what the company IS.
+    """
+    facts = rec.get("company_facts") or {}
+    block = facts.get("headcount") or {}
+    if block.get("value") or block.get("range"):
+        return block
+    return facts.get("employee_range") or None
+
+
+def _headcount_conflicted(rec, contact):
+    """Two providers, opposite sides of the client's floor. See headcount.py.
+
+    This is what `CONFLICTED` was declared for and never returned by: the
+    field is not missing - it has been answered twice, and the answers cannot
+    both be right. A third structured provider would not settle it, so it is
+    reported as a conflict rather than as a gap somebody should go and buy.
+    """
+    from . import headcount
+
+    return (rec.get("company_facts") or {}).get(
+        "headcount", {}).get("state") == headcount.CONFLICT
+
+
 def _company_profile(rec, contact):
     """The firmographics `company-information-from-domain` comes back with.
 
@@ -145,6 +182,19 @@ FIELDS = {
         "label": "industry and headcount",
         "reason": enrich.CONTACTOUT_MISSING_COMPANY_DATA,
         "filled_by": ("company-information-from-domain", "blitz-company"),
+    },
+    "headcount": {
+        "scope": COMPANY,
+        "stage": waterfall.COMPANY_INFO,
+        "read": _headcount,
+        "label": "a company size that can be read as one",
+        # The company record came back with a number and no band, which is
+        # the thing the verdict needs and did not get. `blitz-company` returns
+        # `employees_on_linkedin` beside `size`, so it is the step that can
+        # actually fill this.
+        "reason": enrich.CONTACTOUT_MISSING_COMPANY_DATA,
+        "filled_by": ("company-information-from-domain", "blitz-company"),
+        "conflict": _headcount_conflicted,
     },
     "phone": {
         "scope": PERSON,
@@ -226,6 +276,8 @@ def state_of(rec, name, contact=None):
     spec = field(name)
     if spec.get("unsupported"):
         return UNSUPPORTED
+    if spec.get("conflict") and spec["conflict"](rec, contact):
+        return CONFLICTED
     value = spec["read"](rec, contact)
     if value not in (None, "", [], {}):
         return KNOWN

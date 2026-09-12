@@ -128,7 +128,50 @@ def company(rec, config=None, store_result=True):
             "human_review": (rec.get("qualification") or {}).get(
                 "human_review"),
         }
+        _release_stale_icp_drop(rec)
     return result
+
+
+# `enrich.outcome` retires a company with no contacts and a rejected verdict
+# as `dropped`, with this exact reason, and that is right: it is a decision.
+# What it is NOT is an independent fact. The drop is DERIVED from the verdict,
+# so when the verdict stops saying rejected the drop has lost the only thing
+# holding it up.
+#
+# Measured on the Productive estate the moment the client's structural
+# criteria became the gate: 11 companies the client's own criteria qualify sat
+# `dropped` under this reason, written from a verdict the twelve-dimension
+# model produced and nothing now agrees with. `dropped` is terminal in
+# `run.TERMINAL`, outside `enrich.run`'s states and `blocked` in
+# `eligibility._record_state` - so a better verdict would have been computed,
+# stored, reported, and been unable to reach a single one of them.
+#
+# This re-derives it, and only in the safe direction. It never drops anything,
+# it touches no record dropped for any other reason - a suppression, a
+# duplicate, a human's own rejection, no contact found - and a human's
+# recorded `reject` still reads REJECTED through `state_of`, so a person who
+# said no is not overruled by a model that changed its mind. The record
+# returns to `queued`, which is where the runner already looks, and the log
+# says why.
+ICP_DROP_RELEASED = ("the ICP rejection this record was dropped under no "
+                     "longer stands: returned to the queue as %s")
+
+
+def _release_stale_icp_drop(rec):
+    """Undo a drop whose only justification was a verdict that has changed."""
+    from . import enrich
+
+    if rec.get("state") != "dropped":
+        return None
+    if rec.get("drop_reason") != enrich.ICP_REJECTED:
+        return None
+    state = state_of(rec)
+    if state == dmplan.REJECTED:
+        return None
+    rec["state"] = "queued"
+    rec["drop_reason"] = None
+    store.log(rec, "qualify", ICP_DROP_RELEASED % state)
+    return state
 
 
 # --------------------------------------------------- the human review

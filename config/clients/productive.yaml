@@ -161,10 +161,22 @@ personas:
     # A title outside both lists still fails closed - `personas.classify`
     # returns None and the contact is set aside as "not a persona for this
     # client", which is what happened to all four of these before today.
+    #
+    # THE FIVE RESOURCE-MANAGEMENT SPELLINGS ADDED 2026-09-13. The
+    # `routing.strategies` block at the foot of this file already listed all
+    # seven of them as `resource_management` targets, which is what a paid
+    # ContactOut search actually goes looking for - and `personas.classify`
+    # recognised only two, so five of the seven titles this client pays to
+    # find would have been set aside as "not a persona for this client" the
+    # moment one came back. Two lists that say who we target, disagreeing.
+    # This is not a widening of who Productive sells to: it is the persona
+    # list catching up with the search this client is already buying.
     titles: [Operations Manager, Operations Director, Project Manager,
              Finance Manager, Head of Finance, Head of Operations,
              Head of Production, Production Director,
              Design Studio Manager, Studio Manager,
+             Head of Resource Management, Head of Resourcing,
+             Resource Manager, Resourcing Manager, Traffic Manager,
              Project Director, Design Director]
     cap_per_domain: 2
     angles:

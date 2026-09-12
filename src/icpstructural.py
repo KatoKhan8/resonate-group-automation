@@ -202,10 +202,25 @@ def resolve_employees(rec, segment):
     so reading it as a headcount understates the company by up to the width of
     the band. `headcount_signal` is how many people a provider actually found,
     which is a floor rather than an estimate.
+
+    `company_facts.headcount` is the resolved answer written by
+    `src/headcount.py` once a second provider has spoken, and it is a witness
+    here like any other: it raises the lower bound and contributes its band.
+    It does NOT decide the criterion on its own - a conflict between two
+    sources is handled in `_employees`, where the answer is neither of their
+    numbers.
     """
     facts = rec.get("company_facts") or {}
     low, high = _band(facts.get("employee_range"))
     sources, lower = [], []
+    block = facts.get("headcount") or {}
+    block_range = block.get("range") or []
+    if len(block_range) == 2 and isinstance(block_range[1], int):
+        high = block_range[1] if high is None else max(high, block_range[1])
+    if isinstance(block.get("value"), int) and block["value"] > 0:
+        lower.append(block["value"])
+        sources.append("company_facts.headcount[%s]"
+                       % (block.get("source") or "unstated"))
     if low is not None:
         sources.append("company_facts.employee_range")
         lower.append(low)
@@ -364,9 +379,30 @@ def _employees(rec, segment, rules):
     unestablished - and only a band lying wholly below the floor fails. An
     exact count with nothing to contradict it still fails, because that is a
     measurement of a company too small for this client.
+
+    AND TWO PROVIDERS THAT DISAGREE ARE NOT A HEADCOUNT EITHER. One says four
+    people and another says sixty: taking the larger qualifies a company on
+    evidence half of which says it does not, and taking the smaller rejects
+    one on evidence half of which says it does. `src/headcount.py` holds that
+    rule, and the answer here is UNKNOWN - never a FAIL, and never a PASS.
     """
     if not rules["min_employees"]:
         return _answer(NOT_REQUIRED, "this client declares no size rule")
+    # Deferred: `headcount` asks this module for the client's derived floor,
+    # so the import back is made at call time - the same arrangement
+    # `waterfall` and `enrich` already use.
+    from . import headcount
+
+    resolved = headcount.resolve(rec, rules=rules)
+    if resolved["state"] == headcount.CONFLICT:
+        return _answer(
+            UNKNOWN,
+            "; ".join(c["why"] for c in resolved["contradictions"])
+            + ". Two sources cannot both be right about which side of the "
+              "floor this company falls, so its size is unestablished rather "
+              "than small or large",
+            evidence=resolved["contradictions"],
+            source="company_facts.headcount")
     minimum, floor = rules["min_employees"], rules["effective_min_employees"]
     lower, upper, source = resolve_employees(rec, segment)
     if lower is None and upper is None:
