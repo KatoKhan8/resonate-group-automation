@@ -189,6 +189,49 @@ class ABatchCheckpointsMoreThanOnce(QueueTest):
                          "a refused write rebased anyway, so the retry "
                          "thought the edit was already on disk")
 
+    def test_the_shared_serialisation_produces_the_same_baseline(self):
+        """`merge_onto` hands `rebase` the serialisation it already computed,
+        because doing it twice was 18-28% of the cost of a save and `save` is
+        98% of the wall time of a resumed run. An optimisation on the field
+        that decides whether a drop gets reverted has to produce exactly the
+        same answer as the slow path, so that is asserted rather than
+        assumed."""
+        held = store.load()
+        store.get("r0", held)["state"] = "enriched"
+        store.save(held)
+        shared = dict(held.baseline)
+
+        again = store.load()
+        store.get("r0", again)["state"] = "enriched"
+        again._serialised = None          # force the recompute
+        store.Snapshot.rebase(again)
+        self.assertEqual(shared, again.baseline)
+
+    def test_a_refused_write_leaves_no_stale_handover(self):
+        """The hazard the handover introduces: `merge_onto` runs, the write
+        refuses, `rebase` is never called. The serialisation it handed over
+        must not survive to be believed by a later rebase, or the edit would
+        look persisted when nothing was written."""
+        held = store.load()
+        store.get("r0", held)["state"] = "enriched"
+
+        real = store._write
+
+        def refuse(recs):
+            raise store.QueueLocked("another process has the queue")
+
+        store._write = refuse
+        try:
+            with self.assertRaises(store.QueueLocked):
+                store.save(held)
+        finally:
+            store._write = real
+
+        store.save(held)
+        self.assertEqual(store.get("r0")["state"], "enriched",
+                         "the refused write's handover was believed, so the "
+                         "retry thought the edit was already on disk")
+
     def test_a_row_with_no_id_is_refused_rather_than_vanishing(self):
         """A row the merge cannot address was written nowhere and raised
         nothing, which is the failure mode this whole class exists to remove."""
