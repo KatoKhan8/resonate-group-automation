@@ -58,10 +58,37 @@ def prompt_text(name):
 # --------------------------------------------------------------- context
 
 def facts_block(rec):
-    """The trimmed facts a prompt is allowed to see. No provider payloads."""
+    """The trimmed facts a prompt is allowed to see. No provider payloads.
+
+    FACTS ABOUT THE COMPANY, NEVER FACTS ABOUT OUR OWN PROCESS. `icp_flags`
+    and `headcount_signal` were on this list, and the model did exactly what
+    it was asked: it wrote about them. The one campaign-ready Productive
+    contact's approved-pending day1 email read
+
+        Subject: HSMG geo flag and headcount
+        "The specific signal triggering this outreach is the geo outside
+         client's stated markets flag."
+        "We failed to filter our outreach by geography, and we own that
+         failure completely without excuse."
+        "Your headcount signal is 23."
+
+    to a stranger, and day15 opened "The ICP flag indicates geographic
+    targeting outside stated markets."
+
+    `lint` and `claims` both passed it, and were right to by their own rules:
+    every sentence IS grounded in this record's stored evidence. The evidence
+    was our qualification verdict about our own targeting, and our provider's
+    internal people-count. Grounding checks that a claim is supported; it
+    cannot know that the support is a note we wrote to ourselves.
+
+    So the allowlist is the boundary, and it is drawn at what a person at the
+    company would recognise as being about their company. `icp_flags` is our
+    verdict. `headcount_signal` is our estimate in our vocabulary, and
+    `employees` already carries the same number in theirs.
+    """
     facts = rec.get("company_facts") or {}
     keep = ("name", "employees", "revenue", "founded", "industry", "offices",
-            "specialties", "notable", "email_domain", "icp_flags", "headcount_signal")
+            "specialties", "notable", "email_domain")
     return {k: facts[k] for k in keep if facts.get(k) not in (None, "", [], {})}
 
 
