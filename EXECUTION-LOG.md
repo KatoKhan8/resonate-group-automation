@@ -101,7 +101,7 @@ Reconciled three times today, unchanged each time:
     campaign  IN_PROGRESS, started 2026-09-09T18:07:51Z, org unit 118832
     progress  totalUsers 1, inProgress 1, finished 0, failed 0
     stats     connectionsSent 0, accepted 0, replies 0, uniqueLeadsContacted 0
-    lead      304173736 Brooke Baron, state request_pending, sender 116968
+    lead      304173736 a named contact, state request_pending, sender 116968
     seat      116968 active, auth valid, no cooldowns, 9 active campaigns
 
 Provider truth, action ledger (absent — nothing ever reserved), confirmed
@@ -146,8 +146,8 @@ Of the 12 contacts on qualified companies:
 Every held qualified company is **email-dead, not dead**, and each for a
 reason that is the system working:
 
-    20northmarketing-com   MX closed: mx_security_provider_blocked:proofpoint
-    321webmarketing-com    accept_all_uncleared - reoon says the catch-all is
+    a prospect domain-com   MX closed: mx_security_provider_blocked:proofpoint
+    another prospect domain-com    accept_all_uncleared - reoon says the catch-all is
     tractorbeam-com        not safe to send (both contacts, both companies)
     revupdental-com        geo outside the client's stated markets, 0 personas
 
@@ -195,7 +195,7 @@ truth for the canary: **PASS**, no failures. Fourteen fields compared,
 thirteen `match` and one `unverifiable`:
 
     campaign_id 594061 · campaign_name · org_unit 118832 · list_id 926076
-    sender_ids ['116968'] · lead_count 1 · lead_set ['brookebaron']
+    sender_ids ['116968'] · lead_count 1 · lead_set ['a-named-contact']
     note (the approved copy) · actions [CONNECTION_REQUEST, END]
     delays [('HOUR', 0)] · linkedin_only · bison_handoff · status PAUSED
     daily_limit UNVERIFIABLE - HeyReach exposes no per-campaign limit to read

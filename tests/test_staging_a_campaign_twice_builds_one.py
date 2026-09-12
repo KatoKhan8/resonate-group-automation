@@ -170,8 +170,8 @@ class StagingTwiceBuildsOne(QueueTest):
         bisonfactory.bison = self.bison
         self.addCleanup(setattr, bisonfactory, "bison", self._real)
 
-        store.save([self._record("rec-1", "one@resonategroup.co", "Ada"),
-                    self._record("rec-2", "two@resonategroup.co", "Grace")])
+        store.save([self._record("rec-1", "one@example.com", "Ada"),
+                    self._record("rec-2", "two@example.com", "Grace")])
         row = campaigns.new_campaign(CID, "productive", "Factory test")
         row["record_ids"] = ["rec-1", "rec-2"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}

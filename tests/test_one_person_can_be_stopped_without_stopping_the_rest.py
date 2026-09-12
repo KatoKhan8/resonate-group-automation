@@ -78,8 +78,8 @@ class StoppingOnePerson(QueueTest):
         self.addCleanup(setattr, leadstop, "bison", self._real)
 
         store.save([
-            self._record("rec-subject", "subject@resonategroup.co", 11),
-            self._record("rec-bystander", "bystander@resonategroup.co", 12)])
+            self._record("rec-subject", "subject@example.com", 11),
+            self._record("rec-bystander", "bystander@example.com", 12)])
         row = campaigns.new_campaign("camp-stop", "productive", "Stop test")
         row["record_ids"] = ["rec-subject", "rec-bystander"]
         row["bison_campaign_id"] = 77
@@ -202,10 +202,10 @@ class TheSweepCatchesEveryStopReason(QueueTest):
         return rec
 
     def test_an_unsubscribed_person_is_stopped_at_the_provider(self):
-        subject = self._record("rec-subject", "subject@resonategroup.co", 11)
+        subject = self._record("rec-subject", "subject@example.com", 11)
         subject["contacts"][0]["unsubscribed"] = True
         store.save([subject,
-                    self._record("rec-bystander", "b@resonategroup.co", 12)])
+                    self._record("rec-bystander", "b@example.com", 12)])
         report = leadstop.sweep(live=True)
         self.assertEqual(report["checked"], 2)
         self.assertEqual([r["contact"] for r in report["stopped"]],
@@ -215,7 +215,7 @@ class TheSweepCatchesEveryStopReason(QueueTest):
                          "the sweep stopped somebody it had no reason to")
 
     def test_a_dry_sweep_writes_nothing(self):
-        subject = self._record("rec-subject", "subject@resonategroup.co", 11)
+        subject = self._record("rec-subject", "subject@example.com", 11)
         subject["contacts"][0]["unsubscribed"] = True
         store.save([subject])
         leadstop.sweep(live=False)
@@ -224,7 +224,7 @@ class TheSweepCatchesEveryStopReason(QueueTest):
 
     def test_an_unstaged_contact_is_never_checked(self):
         """Nobody at the provider, nothing to stop."""
-        rec = self._record("rec-subject", "subject@resonategroup.co", 11)
+        rec = self._record("rec-subject", "subject@example.com", 11)
         rec["contacts"][0].pop("bison_lead_id")
         rec["contacts"][0]["unsubscribed"] = True
         store.save([rec])
@@ -233,7 +233,7 @@ class TheSweepCatchesEveryStopReason(QueueTest):
         self.assertEqual(self.bison.writes, 0)
 
     def test_running_it_twice_writes_once(self):
-        subject = self._record("rec-subject", "subject@resonategroup.co", 11)
+        subject = self._record("rec-subject", "subject@example.com", 11)
         subject["contacts"][0]["unsubscribed"] = True
         store.save([subject])
         leadstop.sweep(live=True)
