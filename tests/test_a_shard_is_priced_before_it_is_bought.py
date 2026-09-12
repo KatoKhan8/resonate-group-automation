@@ -37,9 +37,13 @@ Two of the estimate's own line items never reach the durable ledger:
     in compute units the credit cap cannot read. Zero in a credit estimate is
     correct and is not free.
 
-So `preflight()` returns `ledgered` and `unledgered` separately. A single
-total would present a floor as a forecast, and a ceiling sized against a
-floor is not a ceiling.
+`preflight()` used to return `ledgered` and `unledgered` separately, because
+a single total would have presented a floor as a forecast and a ceiling sized
+against a floor is not a ceiling. Verification now goes through
+`spendledger.check` before the call and `spendledger.record` after it, so the
+two halves are the same number and the split has been folded into the
+headline - exactly as the execution test below instructed whoever closed it.
+`estimated_expected` is the whole bill and all of it is durable.
 
 ## And the person-level second pass
 
@@ -54,15 +58,19 @@ qualification rate into the headline number.
 import unittest
 from unittest import mock
 
-from src import clients, enrich, spendledger, store, verification
+from src import clients, enrich, events, spendledger, store, verification
 from tests.base import QueueTest
 
 
 # Calls performed by `verification.verify`, in that module's own vocabulary
 # rather than by matching on names. Derived from the two tables verification
 # publishes, so a fourth verifier added there arrives in this set already.
-UNLEDGERED_CALLS = ({f"{p}-verify" for p in verification.COSTS}
-                    | set(verification.CALL_NAMES.values()))
+# The names verification bills under, in that module's own vocabulary rather
+# than matched on text. Kept because the reconciliation test below proves the
+# estimate against what these actually append to the durable ledger; it is no
+# longer a list of calls that ESCAPE it.
+VERIFICATION_CALLS = ({f"{p}-verify" for p in verification.COSTS}
+                      | set(verification.CALL_NAMES.values()))
 
 
 def preflight(records, config, client, shard=None, now=None):
@@ -72,20 +80,13 @@ def preflight(records, config, client, shard=None, now=None):
     the caller's decision and not a spend question.
     """
     shard = records if shard is None else records[:shard]
-    expected = maximum = ledgered = unledgered = 0
+    expected = maximum = 0
     unpriced, deferred = [], 0
     for rec in shard:
         ops = enrich.plan(rec, config)
         exposure = enrich.exposure(ops)
         expected += exposure["expected"]
         maximum += exposure["maximum"]
-        for op in ops:
-            if op.get("conditional"):
-                continue
-            if op["call"] in UNLEDGERED_CALLS:
-                unledgered += op["cost"]
-            else:
-                ledgered += op["cost"]
         unpriced += [op["call"] for op in ops
                      if op["call"] in enrich.UNPRICED]
         if enrich.person_level_pending(rec):
@@ -111,8 +112,6 @@ def preflight(records, config, client, shard=None, now=None):
         # ESTIMATED COST FOR NEXT SHARD
         "estimated_expected": expected,
         "estimated_maximum": maximum,
-        "estimated_ledgered": ledgered,
-        "estimated_unledgered": unledgered,
         "unpriced_calls": sorted(set(unpriced)),
         # CURRENT DAILY SPEND
         "spent_today": spent_today,
@@ -161,8 +160,7 @@ class ThePreflightProducesTheThreeNumbers(QueueTest):
                         "productive")
         self.assertEqual(out["records"], 250)
         self.assertEqual(out["estimated_expected"], 250)
-        self.assertEqual(out["estimated_ledgered"], 250)
-        self.assertEqual(out["estimated_unledgered"], 0)
+        self.assertEqual(out["estimated_expected"], 250)
 
     def test_the_estimate_is_produced_without_a_provider_call(self):
         """The whole point: this runs before any paid work starts."""
@@ -234,32 +232,70 @@ class RemainingBudgetIsUnobtainableForTheRealClient(QueueTest):
 
 class TheEstimateSaysWhichPartTheLedgerWillNotSee(QueueTest):
 
-    def test_verification_is_estimated_and_flagged_as_unledgered(self):
+    def test_verification_is_part_of_the_estimate(self):
         out = preflight([a_qualified_domain(1, addresses=2)], {},
                         "productive")
-        self.assertGreater(out["estimated_unledgered"], 0)
-        self.assertEqual(out["estimated_expected"],
-                         out["estimated_ledgered"] + out["estimated_unledgered"])
+        self.assertGreater(out["estimated_expected"], 0)
 
-    def test_verification_really_does_not_reach_the_durable_ledger(self):
+    def test_verification_reaches_the_durable_ledger(self):
         """Execution, not source text. A live verify with a stubbed verifier
-        writes its waterfall step and nothing to the spend ledger."""
+        writes BOTH ledgers: the per-record waterfall and the per-client
+        spend ledger that `check`, `report` and this preflight all read.
+
+        It wrote only the first, so the durable spend audit under-reported by
+        exactly the verification bill - measured on the Productive estate at
+        30 credits over ten contacts with not one row in the ledger, and
+        forecast at 37 of 37 credits for the next 250-record shard, because
+        the company-level work is done and what remains is addresses."""
         rec = a_qualified_domain(1, addresses=1)
         contact = rec["contacts"][0]
         before = len(spendledger.load())
         answer = verification.result("contactout", verification.S_VALID,
                                      contact["email"])
         with mock.patch.object(verification, "call", return_value=answer):
-            verification.verify(contact, verification.DEFAULT_POLICY,
-                                live=True, rec=rec,
-                                budget=enrich.Budget(100))
-        self.assertEqual(len(spendledger.load()), before,
-                         "verification now reaches spendledger - delete "
-                         "UNLEDGERED_CALLS and fold it into the headline")
+            decision = verification.verify(contact, verification.DEFAULT_POLICY,
+                                           live=True, rec=rec,
+                                           budget=enrich.Budget(100))
+        appended = spendledger.load()[before:]
+        self.assertTrue(appended, "verification spent and the durable ledger "
+                                  "never heard about it")
+        self.assertTrue(all(r["call"] in VERIFICATION_CALLS for r in appended))
+        # Every provider the waterfall paid for, not just the first: the
+        # ledger total is what the decision says the contact cost.
+        self.assertEqual(sum(r["expected_cost"] for r in appended),
+                         decision["cost"])
+        self.assertGreater(decision["cost"], 0)
         self.assertTrue([s for s in rec.get("waterfall") or []
-                         if s.get("call") in UNLEDGERED_CALLS],
-                        "the waterfall step is the only place this spend is "
-                        "recorded at all")
+                         if s.get("call") in VERIFICATION_CALLS],
+                        "the per-record waterfall step stopped being written")
+
+    def test_a_declared_ceiling_now_refuses_a_verification_call(self):
+        """The point of the ledger row: the NEXT call can be refused by it.
+
+        `verify` consulted `cap` and `budget`, both in memory and both dead
+        with the process. The durable ceiling could not see this spend at all,
+        so a client's `per_day` was unenforceable against the one category
+        that dominates a person-level pass."""
+        config = {"budget": {"per_day": 1}}
+        rec = a_qualified_domain(1, addresses=1)
+        contact = rec["contacts"][0]
+        spendledger.record("productive", "contactout", "decision-makers", 1)
+        answer = verification.result("contactout", verification.S_VALID,
+                                     contact["email"])
+        before = len(spendledger.load())
+        with mock.patch.object(verification, "call", return_value=answer) as spy:
+            verification.verify(contact, verification.DEFAULT_POLICY,
+                                live=True, rec=rec, config=config,
+                                budget=enrich.Budget(100))
+        spy.assert_not_called()
+        self.assertEqual(len(spendledger.load()), before,
+                         "refused and charged anyway")
+        skipped = [e for e in rec.get("events") or []
+                   if e.get("type") == events.PROVIDER_CALL_SKIPPED
+                   and "durable budget" in (e.get("reason") or "")]
+        self.assertTrue(skipped, "refused silently; a contact stopped by the "
+                                 "durable ceiling must be distinguishable "
+                                 "from one the waterfall finished with")
 
     def test_an_unpriced_call_is_named_rather_than_counted_as_free(self):
         self.assertIn("apify-research", enrich.UNPRICED)
@@ -315,12 +351,13 @@ class TheEstimateMatchesWhatALiveRunActuallyCommits(QueueTest):
         self.assertEqual(self.one_pass(records, cap=10 ** 6), estimate)
 
     def test_the_estimate_equals_the_durable_ledger_for_the_same_shard(self):
-        """The ledgered half of the estimate, against what the run appended."""
+        """The whole estimate now, not a half of it: what was forecast is
+        what the run appended to the durable ledger."""
         records = [a_domain(i) for i in range(25)]
         out = preflight(records, {}, "productive")
         self.one_pass(records, cap=10 ** 6)
         self.assertEqual(spendledger.spent("productive"),
-                         out["estimated_ledgered"])
+                         out["estimated_expected"])
 
 
 if __name__ == "__main__":

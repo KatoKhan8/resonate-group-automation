@@ -20,7 +20,7 @@ for a verdict.
 """
 import argparse
 
-from . import events, store
+from . import events, spendledger, store
 
 # ---------------------------------------------------------------- states
 
@@ -618,10 +618,17 @@ LEDGER_REASONS = {"contactout": None,
                   "reoon": "verification_contradiction"}
 
 
-def verify(contact, policy=None, live=False, rec=None, budget=None):
+def verify(contact, policy=None, live=False, rec=None, budget=None,
+           config=None):
     """Walk the waterfall for one address and write the verdict onto the contact.
 
     Stops the moment the policy has enough. Returns the decision.
+
+    `config` is the client's, and it is what carries the declared spend
+    ceilings. Without it the call is still LEDGERED - the audit is never
+    optional - but no durable ceiling can be enforced, because a ceiling
+    nobody declared is not a ceiling this function may invent. The one
+    production caller, `enrich.verify_contacts`, passes it.
     """
     policy = policy or DEFAULT_POLICY
     email = contact.get("email")
@@ -682,6 +689,31 @@ def verify(contact, policy=None, live=False, rec=None, budget=None):
             break
         if not live:
             break                                 # planning only
+        # THE DURABLE CEILING, BEFORE THE CALL AND NOT AFTER IT.
+        #
+        # The two stops above are in-memory: `cap` is per contact and `budget`
+        # is per batch, and both die with the process. `spendledger` is the
+        # one that survives a run, and verification never consulted it -
+        # `enrich.spend` is described in its own comment as "the one door
+        # every provider call goes through", and this waterfall does not go
+        # through it. So a client's declared `per_day` ceiling could not see
+        # the verification bill at all, and on the next Productive shard the
+        # preflight prices that bill at 37 of 37 expected credits: the whole
+        # run, unbounded.
+        #
+        # Refused the same way the other two are - an event, a named stop,
+        # and out - so a contact stopped by the durable ceiling is still
+        # distinguishable from one the waterfall finished with.
+        if rec is not None:
+            try:
+                spendledger.check(rec.get("client"), config, cost,
+                                  provider=provider)
+            except spendledger.BudgetExceeded as e:
+                stopped = f"durable budget: {e}"
+                events.record(rec, events.PROVIDER_CALL_SKIPPED,
+                              contact_key=contact.get("key"), provider=provider,
+                              operation="verify", reason=stopped[:200])
+                break
         if rec is not None:
             events.record(rec, events.PROVIDER_CALL_STARTED,
                           contact_key=contact.get("key"), provider=provider,
@@ -706,6 +738,21 @@ def verify(contact, policy=None, live=False, rec=None, budget=None):
                 CALL_NAMES.get(provider, f"{provider}-verify"),
                 reason=LEDGER_REASONS.get(provider),
                 result=entry.get("status"), expected_cost=cost)
+            # AND THE SPEND LEDGER, WHICH IS A DIFFERENT LEDGER.
+            #
+            # `waterfall` is per record and answers "what was bought for this
+            # company"; `spendledger` is per client and per day and is what
+            # `spendledger.report`, `spendledger.check` and the shard
+            # preflight all read. Writing only the first left the second
+            # under-reporting by exactly the verification bill. Measured on
+            # this estate: 30 credits across ten contacts, 37 stored evidence
+            # rows, and not one row in `work/spend-ledger.jsonl` - 13% of the
+            # true spend to date, and 100% of what the next 250-record shard
+            # is forecast to cost, because the company-level work is done and
+            # what remains is addresses.
+            spendledger.record(rec.get("client"), provider,
+                               CALL_NAMES.get(provider, f"{provider}-verify"),
+                               cost)
         if rec is not None:
             events.record(rec, events.PROVIDER_CALL_COMPLETED,
                           contact_key=contact.get("key"), provider=provider,

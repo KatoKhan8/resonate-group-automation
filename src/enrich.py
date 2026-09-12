@@ -946,7 +946,13 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
                                  "any verifier ran")
             continue
         before = (c.get("verification") or {}).get("state")
-        decision = verification.verify(c, policy, live=live, rec=rec, budget=budget)
+        # `config` threaded so the waterfall can consult the client's DURABLE
+        # ceiling before each paid call. `cap` and `budget` are both in
+        # memory and die with the process; `spendledger` is the one that
+        # survives a run, and this is the one door verification reaches it
+        # through.
+        decision = verification.verify(c, policy, live=live, rec=rec,
+                                       budget=budget, config=config)
         if decision.get("cost"):
             done.append({"call": "verification", "provider": "waterfall",
                          "why": f"{c['email']}: {decision['reason']}",
