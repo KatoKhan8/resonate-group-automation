@@ -143,6 +143,77 @@ def plan(rec, config=None, verdict=None):
     return {"record": rec["id"], "planned": True, "reason": reason, **planned}
 
 
+def _from_the_site_itself(rec, config):
+    """Read the company's own website. Returns retained evidence, or None.
+
+    None means "this did not settle it" - either the site defeated a plain
+    HTTP read in a way `webfetch` names, or it yielded nothing usable - and
+    the caller falls through to the paid crawl. Anything else is evidence
+    gathered for free, through the same boilerplate filter and the same
+    events as the paid leg, so a consumer cannot tell which leg paid for a
+    fact and does not need to.
+    """
+    from . import evidence as ev
+    from . import webfetch
+
+    domain = rec.get("domain")
+    if not domain:
+        return None
+    try:
+        got = webfetch.research(domain, config)
+    except Exception as e:                       # a free leg may never break a run
+        events.record(rec, events.SCRAPE_FAILED, provider="webfetch",
+                      operation="company_website",
+                      reason=f"{type(e).__name__}: {e}"[:120])
+        return None
+
+    outcome, pages = got.get("outcome"), got.get("pages") or []
+    if not pages:
+        events.record(rec, events.SCRAPE_FAILED, provider="webfetch",
+                      operation="company_website", reason=str(outcome))
+        store.log(rec, "research",
+                  f"site read: {outcome}, falling back to a paid crawl"
+                  if got.get("fallback_worthy")
+                  else f"site read: {outcome}, nothing usable")
+        return None
+
+    # `_page` already returns the evidence shape - `source_url`, `field`,
+    # `fact`, `provider: local_http`, `content_hash`, `http_status`, `chars` -
+    # and 26 records already carry `local_http` rows from an ad-hoc run, so
+    # the consumers are known to read it. Only the two fields the paid leg
+    # stamps afterwards are added, rather than re-mapping and losing the hash.
+    usable = []
+    for page in pages:
+        entry = dict(page, record_id=rec["id"],
+                     retrieved_at=(page.get("retrieved_at")
+                                   or got.get("retrieved_at") or store.now()))
+        why = ev.boilerplate(entry.get("fact"))
+        if why:
+            events.record(rec, events.EVIDENCE_REFUSED, provider="webfetch",
+                          operation=entry.get("field"),
+                          reason=f"{entry.get('source_url')}: {why}")
+            continue
+        usable.append(entry)
+
+    if not usable:
+        events.record(rec, events.SCRAPE_FAILED, provider="webfetch",
+                      operation="company_website",
+                      reason=f"{outcome}: every page was boilerplate")
+        return None
+
+    rec.setdefault("research", []).extend(usable)
+    events.record(rec, events.SCRAPE_COMPLETED, provider="webfetch",
+                  operation="company_website", reason=str(outcome),
+                  items=len(usable))
+    for entry in usable:
+        events.record(rec, events.EVIDENCE_ADDED, provider="webfetch",
+                      operation=entry.get("field"),
+                      reason=entry.get("source_url"))
+    store.log(rec, "research",
+              f"site read: {len(usable)} page(s) retained for free")
+    return usable
+
+
 def run(rec, config=None, live=False, spend=None, scrape_budget=None,
         verdict=None):
     """Gather public evidence. Returns what was retained, never the raw dataset.
@@ -173,6 +244,33 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None,
                   operation=proposal["actor"], reason=proposal["reason"])
     if not live:
         return []
+
+    # THE FREE LEG OF THE WATERFALL, WHICH NOTHING WAS CALLING.
+    #
+    # `src/webfetch.py` is complete: bounded pages, bytes, redirects and
+    # wall-clock, robots respected, same-domain only, and it follows the
+    # site's OWN links rather than guessing `/about` and `/team` the way the
+    # Apify proposal does - two of five guessed paths 404'd on the first live
+    # run and the navigation text was kept as though the page were real. It
+    # classifies what it could not read (`JS_RENDERING_REQUIRED`, `BLOCKED`,
+    # `TIMEOUT`) instead of pretending, and `FALLBACK_WORTHY` names exactly
+    # the outcomes worth paying for.
+    #
+    # It had ZERO callers. Its own docstring describes the waterfall - "reads
+    # the site directly first and falls back to a paid crawl only for the
+    # sites that genuinely defeat this" - and the pipeline went straight to
+    # Apify every time. Measured on the Productive cohort: 103 of 300 records
+    # carry no research evidence at all, 88 of the 158 under the headcount
+    # floor have no research text, and only 25 of the 111 size-failures ever
+    # had a team or about page crawled. Crawl coverage is the constraint, and
+    # this is the free half of it.
+    #
+    # Placed BEFORE the Apify budget and before `spend`, because a socket
+    # costs nothing and must not consume a run this client is rationing. A
+    # site this reads successfully never reaches the paid leg at all.
+    free = _from_the_site_itself(rec, config)
+    if free is not None:
+        return free
 
     if scrape_budget is not None and not scrape_budget.allow(rec["id"]):
         events.record(rec, events.PROVIDER_CALL_SKIPPED, provider="apify",
