@@ -22,6 +22,7 @@ Hence `require_workspace`, called before the first page rather than after the
 last: an inventory attributed to the wrong workspace is worse the more complete
 it is.
 """
+import os
 import unittest
 
 from src import collision, providers
@@ -29,6 +30,31 @@ from src.providers import bison
 
 PRODUCTIVE = {"data": {"workspace": {"id": 10, "name": "PRODUCTIVE"}}}
 GREENFIELD = {"data": {"workspace": {"id": 3, "name": "Greenfield"}}}
+
+# THE SAME PLACEHOLDER, FOR THE SAME REASON, AS
+# `test_somebody_else_already_wrote_to_them` - see the note there.
+# `tests/__init__.py` clears every credential at package import; these are
+# plain `unittest.TestCase` classes, so `bison.headers()` raised `MissingKey`
+# and all twelve tenancy tests errored before asserting anything. A file whose
+# subject is that the credential IS the tenancy boundary has to hold a
+# credential, and it must not be the operator's.
+PLACEHOLDER = "test-key-not-real"
+_saved = {}
+
+
+def setUpModule():
+    for name in ("BISON_KEY", "BISON_BASE"):
+        _saved[name] = os.environ.get(name)
+    os.environ["BISON_KEY"] = PLACEHOLDER
+    os.environ.setdefault("BISON_BASE", "https://bison.invalid")
+
+
+def tearDownModule():
+    for name, value in _saved.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
 
 
 class Wire:

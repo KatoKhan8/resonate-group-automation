@@ -38,12 +38,46 @@ called every account clear on a broad match. So the label is searched, the
 address is matched locally, and a response that looks broad rather than
 filtered refuses to answer at all.
 """
+import os
 import unittest
 
 from src import collision, providers
 from src.providers import bison
 
 WS = 10          # the workspace every read in this file is pinned to
+
+# A KEY THAT IS NOT A KEY, BECAUSE THE FIREWALL TOOK THE REAL ONE AWAY.
+#
+# `tests/__init__.py` clears every credential at package import and points
+# `load_env` at a path that cannot exist, so `bison.headers()` - which every
+# read below reaches through, transport stub or not - raises `MissingKey`.
+# These are plain `unittest.TestCase` classes and inherit none of
+# `ProviderTest`'s scrubbing, so the eighteen tests in this file errored
+# before reaching the behaviour they exist to pin. Measured at HEAD
+# 2026-09-12: 18 errors here, 12 in
+# `test_the_credential_is_the_tenancy_boundary`, all
+# `MissingKey: no BISON_KEY in config/.env` - the collision and tenancy
+# guards for the send path, red and proving nothing.
+#
+# PRODUCT-GAPS.md 38f says two modules "now set their own placeholder". These
+# two were missed. Same placeholder, same restore-exactly-what-was-there.
+PLACEHOLDER = "test-key-not-real"
+_saved = {}
+
+
+def setUpModule():
+    for name in ("BISON_KEY", "BISON_BASE"):
+        _saved[name] = os.environ.get(name)
+    os.environ["BISON_KEY"] = PLACEHOLDER
+    os.environ.setdefault("BISON_BASE", "https://bison.invalid")
+
+
+def tearDownModule():
+    for name, value in _saved.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
 
 
 def lead(email, sent=0, statuses=(), lead_status="unverified"):
