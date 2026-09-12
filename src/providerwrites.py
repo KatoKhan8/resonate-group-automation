@@ -265,6 +265,61 @@ def _record_confirmed_touch(authorization):
                          at=store.now(), day=step.get("day"))
 
 
+def material_fingerprint(payload):
+    """A stable digest of what is being staged.
+
+    Sorted keys, because a payload that round-trips through JSON comes back
+    in a different order and an ordering difference is not a different
+    campaign.
+    """
+    import hashlib
+
+    return hashlib.sha256(
+        json.dumps(payload or {}, sort_keys=True, default=str,
+                   ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+
+
+def staged_already(campaign_id, operation, payload):
+    """Has this exact material already been staged for this campaign?
+
+    WHY NOT THE ACTION LEDGER. It refuses a reservation that cannot name a
+    record, a contact, a sender and a step - "an action nobody can attribute
+    is an action nobody can reconcile" - and a staging write has none of
+    those. It is a fact about a CAMPAIGN, not about a person, so it is
+    recorded where campaign facts live. Bending the ledger's attribution rule
+    to fit would weaken the guard that makes it worth having.
+
+    Returns the recorded entry, or None.
+    """
+    from . import campaigns
+
+    row = campaigns.get(str(campaign_id))
+    if row is None:
+        return None
+    entry = (row.get("provider_staged") or {}).get(operation)
+    if not entry:
+        return None
+    if entry.get("fingerprint") != material_fingerprint(payload):
+        return None            # different material, so a different write
+    return entry
+
+
+def record_staged(campaign_id, operation, payload, observed):
+    """Write down that this material reached the provider, and what came back."""
+    from . import campaigns, store
+
+    with campaigns.transaction() as rows:
+        row = campaigns.get(str(campaign_id), rows)
+        if row is None:
+            return None
+        entry = {"operation": operation,
+                 "fingerprint": material_fingerprint(payload),
+                 "at": store.now(),
+                 "observed": observed if isinstance(observed, dict) else None}
+        row.setdefault("provider_staged", {})[operation] = entry
+    return entry
+
+
 def perform(operation, *, authorization=None, tenant=None, campaign=None,
             payload=None, transport=None, readback=None, expected=None,
             by="system"):
@@ -310,7 +365,30 @@ def perform(operation, *, authorization=None, tenant=None, campaign=None,
                 f"prospect-facing write must be reserved before it is "
                 f"attempted, or nothing can reconcile it afterwards")
     else:
+        # A STAGING WRITE IS NOT PROSPECT-FACING AND IS STILL NOT REPEATABLE.
+        #
+        # `key` is None here because the action ledger is for actions that
+        # reach a person, and this does not. But nothing else was refusing a
+        # repeat either, so create-campaign, create-list, set-sequence,
+        # assign-sender and set-limits could each be performed twice and build
+        # a second provider campaign. A crash between the POST and the
+        # response leaves a campaign nobody can find and a retry that makes
+        # another.
+        #
+        # So the campaign row remembers what has been staged onto it, keyed by
+        # the fingerprint of the material. Restage the same material and this
+        # refuses; change the material and the fingerprint moves and it is a
+        # different write, which is what a spec fingerprint is for.
         key = None
+        done = staged_already(campaign, operation, payload)
+        if done is not None:
+            raise WriteRefused(
+                f"{operation} was already staged for campaign {campaign!r} at "
+                f"{done.get('at')} with the same material "
+                f"(fingerprint {done.get('fingerprint')}). Staging it again "
+                f"builds a second provider campaign; read provider truth and "
+                f"reuse what is there, or change the material so this is a "
+                f"different write")
 
     if not callable(transport):
         raise WriteRefused("no transport supplied; refusing to guess one")
@@ -363,6 +441,13 @@ def perform(operation, *, authorization=None, tenant=None, campaign=None,
             f"retry") from None
 
     verdict = _classify(observed, expected)
+
+    # Recorded only on an accepted staging write. An UNVERIFIED one must stay
+    # re-attemptable after a human has read provider truth, and recording it
+    # here would refuse that retry on the strength of a write nobody could
+    # confirm.
+    if not facing and verdict == ACCEPTED:
+        record_staged(campaign, operation, payload, observed)
 
     # THE TOUCH IS WRITTEN BEFORE THE LEDGER SETTLES, and the order is the
     # whole safety argument. Dying between these two writes must fail closed:
