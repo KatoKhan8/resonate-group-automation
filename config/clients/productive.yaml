@@ -36,13 +36,35 @@ icp:
 # Public-evidence research. Bounded here rather than by `--cap`, because Apify
 # bills in compute units and `COSTS["apify-research"]` is zero - the credit cap
 # cannot see this spend at all. These four numbers are the only ceiling there
-# is, so they are set deliberately low: at most ten runs in a batch, five pages
-# of one domain, twenty items, and `research.run` refuses a run for a record
-# that already has the structured evidence it would go looking for.
+# is: at most `max_runs_per_batch` runs in a batch, five pages of one domain,
+# twenty items, and `research.run` refuses a run for a record that already has
+# the structured evidence it would go looking for.
+#
+# RAISED FROM 10 TO 75 ON 2026-09-12, ON A MEASUREMENT RATHER THAN A HUNCH.
+#
+# Ten was set deliberately low while nothing was known about what research was
+# worth. It is now known, from the 300-record Productive estate:
+#
+#     researched      n=72   medium-or-high ICP confidence 13.9%   mean score 23.9
+#     not researched  n=228  medium-or-high ICP confidence  0.0%   mean score  7.8
+#
+# Research is the ONLY path out of `unknown` in this model - `source_diversity`
+# and `recency` score zero on all 300 records whatever happens, so coverage is
+# the one component that moves, and it moves from a 0.417 ceiling to 0.75.
+# At ten runs a batch, the 149 records still unqualified needed fifteen more
+# batches to find out whether any of them is a customer. `funnel.py` had
+# already written the same sentence about a 200-domain cohort: "max_runs_per_
+# batch is 10, so 183 of 200 domains never got a scrape."
+#
+# Seventy-five, not unbounded. One batch now covers half the remaining cohort
+# in roughly ninety minutes at the measured 86s per company, which keeps a
+# shard small enough to checkpoint, observe and abandon. The ceiling stays a
+# ceiling: compute units are still a number this system is never told, so the
+# only honest control is how many runs it starts.
 research:
   apify:
     enabled: true
-    max_runs_per_batch: 10
+    max_runs_per_batch: 75
     max_items_per_run: 20
     max_pages_per_domain: 5
 personas:
