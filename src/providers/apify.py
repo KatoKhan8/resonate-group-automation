@@ -63,15 +63,25 @@ RUN_TIMEOUT = 180
 # the ceiling is what stops a bounded wait becoming an unbounded one, and
 # deriving attempts from the timeout quietly escaped it. Widening the window
 # must not widen the number of polls.
-POLL_INTERVAL = 9.0
-# Poll for as long as the run is allowed to take, rather than for a third of
-# it. This was 10 attempts at 3 seconds - thirty seconds - while `plan()` told
-# the operator the run was "bounded by 120s". A real crawl of five pages takes
-# longer than thirty seconds, so `wait_for` returned TIMEOUT on runs that then
-# SUCCEEDED: the compute was billed, the dataset was written, and the evidence
-# was thrown away because nobody was still listening. Measured on two live
-# runs, both SUCCEEDED after `wait_for` had already given up on them.
-POLL_ATTEMPTS = int(RUN_TIMEOUT / POLL_INTERVAL)
+# HOW LONG TWENTY POLLS HAVE TO COVER.
+#
+# The attempt count is capped at twenty by `tests/test_invariants.py` and
+# rightly so: the ceiling is what keeps a bounded wait bounded. But the
+# interval was pinned at nine seconds and the loop sleeps between polls
+# rather than after the last one, so twenty attempts waited 19 x 9 = 171
+# seconds against an actor whose own `timeout` is 180. Every run finishing in
+# that nine-second gap - and every run the actor itself killed at its
+# deadline - was reported as a client-side TIMEOUT with no dataset, after the
+# compute had been billed and the dataset written.
+#
+# Measured over four real batches: 35 failures on 248 started runs (14.1%),
+# 28 of them client-side TIMEOUT. So the interval is derived from the window
+# instead of fixed, and the window runs past the actor's deadline far enough
+# to observe its own verdict. Widening the window does not widen the number
+# of polls, which is the invariant that matters.
+FINALISE_MARGIN = 30
+POLL_ATTEMPTS = 20
+POLL_INTERVAL = (RUN_TIMEOUT + FINALISE_MARGIN) / max(1, POLL_ATTEMPTS - 1)
 
 ALLOWED_SCHEMES = ("http", "https")
 
@@ -296,14 +306,26 @@ def run_status(run_id):
 
 def wait_for(run_id, attempts=POLL_ATTEMPTS, interval=POLL_INTERVAL,
              sleep=time.sleep):
-    """Bounded polling. Gives up cleanly rather than waiting for ever."""
+    """Bounded polling. Gives up cleanly rather than waiting for ever.
+
+    A CLIENT-SIDE TIMEOUT STILL KNOWS WHERE THE DATA IS. This returned
+    `dataset_id: None` while the last `run_status` had just handed one over,
+    so a run this system stopped waiting for was indistinguishable from a run
+    that produced nothing - and `research.run` then threw away a dataset
+    Apify had already written and billed for. The id travels with the
+    verdict now; whether a partial dataset is worth reading is the caller's
+    decision, not something to foreclose by dropping the id.
+    """
+    last = {"id": run_id, "status": "TIMEOUT", "dataset_id": None}
     for attempt in range(max(1, attempts)):
         current = run_status(run_id)
         if current["status"] in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
             return current
+        if current.get("dataset_id"):
+            last = dict(current, status="TIMEOUT")
         if attempt < attempts - 1:
             sleep(interval)
-    return {"id": run_id, "status": "TIMEOUT", "dataset_id": None}
+    return last
 
 
 def dataset_items(dataset_id, limit):

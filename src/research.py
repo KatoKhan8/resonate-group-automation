@@ -243,13 +243,31 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None,
                       operation=proposal["actor"], reason=proposal["reason"],
                       run_id=started.get("id"))
         finished = apify.wait_for(started["id"])
-        if finished["status"] != "SUCCEEDED" or not finished.get("dataset_id"):
+        # A PARTIAL CRAWL IS EVIDENCE. This required SUCCEEDED, so a run the
+        # actor killed at its own deadline was discarded WITH ITS DATASET ID
+        # IN HAND - three of five pages already fetched, already billed, and
+        # thrown away. Measured: 35 of 248 runs ended other than SUCCEEDED,
+        # and the record was left with nothing, so the next batch started a
+        # second actor for the same domain. 23.4% of all runs were duplicates.
+        #
+        # So the dataset decides, not the status. A run with a dataset is read
+        # whatever its verdict, and what came back is recorded as partial so
+        # nobody mistakes three pages for five.
+        if not finished.get("dataset_id"):
             events.record(rec, events.SCRAPE_FAILED, provider="apify",
                           operation=proposal["actor"],
                           reason=f"run {finished['status']}")
             store.log(rec, "research", f"apify run {finished['status']}")
             return []
         items = apify.dataset_items(finished["dataset_id"], conf["max_items_per_run"])
+        if finished["status"] != "SUCCEEDED":
+            events.record(rec, events.SCRAPE_PARTIAL, provider="apify",
+                          operation=proposal["actor"],
+                          reason=f"run {finished['status']}",
+                          items=len(items))
+            store.log(rec, "research",
+                      f"apify run {finished['status']}: kept {len(items)} "
+                      f"page(s) it had already written")
     except ProviderError as e:
         events.record(rec, events.SCRAPE_FAILED, provider="apify",
                       operation=proposal["actor"], reason=str(e)[:100])

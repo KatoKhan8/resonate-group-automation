@@ -185,6 +185,10 @@ SCRAPE_PLANNED = "scrape_planned"
 SCRAPE_STARTED = "scrape_started"
 SCRAPE_COMPLETED = "scrape_completed"
 SCRAPE_FAILED = "scrape_failed"
+# A run that did not SUCCEED and wrote a dataset anyway. Its own event
+# because "we got three of five pages" and "we got nothing" are different
+# facts about a company, and only one of them is worth re-running.
+SCRAPE_PARTIAL = "scrape_partial"
 
 EVIDENCE_ADDED = "evidence_added"
 
@@ -198,7 +202,8 @@ PROVIDER_EVENTS = (PROVIDER_CALL_PLANNED, PROVIDER_CALL_STARTED,
                    PROVIDER_CALL_SKIPPED, PROVIDER_CREDIT_ESTIMATED,
                    PROVIDER_CREDIT_SPENT)
 RESEARCH_EVENTS = (SCRAPE_PLANNED, SCRAPE_STARTED, SCRAPE_COMPLETED,
-                   SCRAPE_FAILED, EVIDENCE_ADDED, EVIDENCE_REFUSED)
+                   SCRAPE_FAILED, SCRAPE_PARTIAL, EVIDENCE_ADDED,
+                   EVIDENCE_REFUSED)
 
 INTERNAL = (CAMPAIGN_EVENTS + SLACK_EVENTS + MX_EVENTS +
             (REPLY_CLASSIFIED, POSITIVE_REPLY_DETECTED, MEETING_MARKED,
