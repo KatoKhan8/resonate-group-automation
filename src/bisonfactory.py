@@ -81,6 +81,8 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
     report["provider"]["campaign_id"] = provider_id
 
     _ensure_limits(provider_id, campaign, plan, report)
+    _ensure_schedule(provider_id, plan, report)
+    _ensure_senders(provider_id, campaign, report)
     _ensure_sequence(provider_id, campaign, plan, report, by=by)
     _ensure_leads(provider_id, campaign, plan, report, by=by)
     _ensure_stopped(provider_id, report, by=by)
@@ -122,8 +124,10 @@ def _plan(campaign, recs, config):
                           "last_name": (person.get("last_name") or "").strip()})
     return {"fingerprint": campaigns.fingerprint(campaign, recs=recs,
                                                  config=config),
-            "name": campaign.get("name") or f"resonate-{campaign.get('id')}",
+            "name": campaign.get("name") or f"resonate-{campaign.get('campaign_id')}",
             "leads": leads,
+            "window": (config or {}).get("sending_window") or {},
+            "sequence": (config or {}).get("email_sequence") or {},
             "bison_campaign_id": campaign.get("bison_campaign_id")}
 
 
@@ -140,7 +144,7 @@ def _find_or_create(campaign, report, by="system"):
             live_row = bison.campaign(bound)
         except ProviderError as e:
             raise FactoryRefused(
-                f"campaign {campaign.get('id')} is bound to EmailBison "
+                f"campaign {campaign.get('campaign_id')} is bound to EmailBison "
                 f"campaign {bound}, which the provider will not return "
                 f"({e}). Refusing to create a second one behind a binding "
                 f"that may still be valid; reconcile by hand") from None
@@ -208,13 +212,79 @@ def _ensure_limits(provider_id, campaign, plan, report):
     report["did"].append(f"capped at {state['max_emails_per_day']}/day")
 
 
+def _ensure_schedule(provider_id, plan, report):
+    """Write the sending window, and refuse a campaign that has none.
+
+    Same argument as the daily cap: a campaign staged without a window takes
+    whatever the provider does, and "nobody chose" must not be indistinguish-
+    able from "somebody chose that". `GET .../schedule` answers 200 with
+    `success: false` when no schedule exists, so absence here is read from the
+    body rather than the status.
+    """
+    window = plan.get("window") or {}
+    missing = [k for k in ("days", "start", "end", "timezone")
+               if not window.get(k)]
+    if missing:
+        raise FactoryRefused(
+            f"the client config sets no sending window ({', '.join(missing)} "
+            f"absent), so this campaign would send on whatever schedule the "
+            f"provider defaults to. Set `sending_window` for this client")
+    existing = bison.schedule(provider_id)
+    if existing and str(existing.get("timezone")) == str(window["timezone"]) \
+            and all(bool(existing.get(d)) == (d in window["days"])
+                    for d in bison.DAYS):
+        report["did"].append("schedule already correct; unchanged")
+        return
+    bison.set_schedule(provider_id, window["days"], window["start"],
+                       window["end"], window["timezone"])
+    report["did"].append(
+        f"scheduled {len(window['days'])} day(s) {window['start']}-"
+        f"{window['end']} {window['timezone']}")
+
+
+def _ensure_senders(provider_id, campaign, report):
+    """Bind the inboxes this campaign sends from.
+
+    The provider answers 200 with `success: false` when it attaches nothing,
+    so `bison.attach_senders` reads the membership back and raises unless
+    every sender asked for is actually bound. A campaign with no configured
+    senders is left alone rather than guessed at - picking an inbox would be
+    choosing which human a prospect hears from.
+    """
+    wanted = []
+    for sender in (campaign.get("senders") or {}).get("email") or []:
+        ident = sender.get("provider_account_id") if isinstance(sender, dict) \
+            else sender
+        if ident:
+            wanted.append(int(ident))
+    if not wanted:
+        report["did"].append(
+            "no senders staged: the campaign names none, and choosing an "
+            "inbox would be choosing who a prospect hears from")
+        return
+    bound = bison.campaign_senders(provider_id)
+    if set(wanted) <= set(bound):
+        report["did"].append(f"{len(wanted)} sender(s) already bound")
+        return
+    state = bison.attach_senders(provider_id, wanted)
+    report["provider"]["senders"] = state["senders"]
+    report["did"].append(f"bound {len(state['senders'])} sender inbox(es)")
+
+
 def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
     """Write the sequence once. The campaign row remembers that it was."""
-    steps = plan.get("steps") or []
+    configured = plan.get("sequence") or {}
+    steps = ([{"order": 1,
+               "email_subject": configured["subject"],
+               "email_body": configured["body"],
+               "wait_in_days": configured.get("wait_in_days") or 3}]
+             if configured.get("subject") and configured.get("body") else [])
     if not steps:
-        report["did"].append("no sequence staged: the plan carries no steps")
+        report["did"].append(
+            "no sequence staged: the client config names no `email_sequence`")
         return
-    payload = {"title": plan["name"], "sequence_steps": steps}
+    payload = {"title": configured.get("title") or plan["name"],
+               "sequence_steps": steps}
     already = providerwrites.staged_already(campaign.get("campaign_id"),
                                             providerwrites.EMAIL_SET_SEQUENCE,
                                             payload)

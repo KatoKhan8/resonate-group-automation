@@ -284,6 +284,56 @@ providers:
 # `spendledger.check` reads these before every paid call and `enrich.spend`
 # refuses on them. Absent, all four scopes are null and nothing refuses on
 # cost, which is what was true here until now.
+# WHEN A CAMPAIGN MAY SEND.
+#
+# Read by `bisonfactory` and written to EmailBison as the campaign schedule.
+# There is deliberately no default: a campaign staged without a window would
+# inherit whatever the provider does, and "nobody chose a sending window" must
+# not look the same as a chosen one.
+#
+# ASSUMPTION TO CONFIRM: the timezone is the SENDER's, not the prospect's -
+# EmailBison schedules one window per campaign, so a campaign spanning US and
+# EU prospects sends in this window regardless of where they are. Europe/
+# Zagreb is Productive's own working day. If the intent is to land in a US
+# morning, this needs to be a second campaign with its own window rather than
+# a wider one here.
+# THE SEQUENCE A STAGED CAMPAIGN CARRIES.
+#
+# EmailBison merge fields are SINGLE-BRACE and UPPERCASE - `{FIRST_NAME}`,
+# `{COMPANY}` - and `{a|b|c}` is spintax, not a field. Read off the client's
+# own live campaign 352 on 2026-09-13, which uses FIRST_NAME, COMPANY,
+# SENDER_FIRST_NAME, INDUSTRY, TITLE and HEADLINE.
+#
+# WHAT THAT CAMPAIGN DOES NOT DO is reference `subject` or `body` - not once
+# across its 44 steps. So the per-lead copy this system generates has no
+# consumer there: staging a lead into 352 with `subject`/`body` custom
+# variables would carry words nothing reads.
+#
+# A campaign THIS system builds uses `{SUBJECT}` and `{BODY}`, which resolve
+# to the custom variables each staged lead carries - so the generated,
+# approved, lint-checked copy is what goes out.
+#
+# UNVERIFIED: that EmailBison renders `{SUBJECT}` from a custom variable named
+# `subject`. The provider accepts and stores the merge field, and proving it
+# RESOLVES requires a real send, which is blocked. Until then no campaign
+# built from this may be resumed.
+# One step, deliberately. This parser takes no block lists, and more
+# importantly a SECOND generated step would need its own merge fields
+# (`{SUBJECT_2}`, `{BODY_2}`) because a custom variable holds one value per
+# lead - which is a design decision nobody has taken yet. One step that
+# carries real approved copy beats five that carry a template.
+email_sequence:
+  title: Resonate generated cadence
+  subject: "{SUBJECT}"
+  body: "<p>{BODY}</p>"
+  wait_in_days: 3
+
+sending_window:
+  days: [monday, tuesday, wednesday, thursday, friday]
+  start: "09:00"
+  end: "17:00"
+  timezone: Europe/Zagreb
+
 budget:
   per_day: 5000
   per_run: 2000

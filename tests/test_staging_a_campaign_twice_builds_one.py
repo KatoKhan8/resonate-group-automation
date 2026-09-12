@@ -41,6 +41,8 @@ class FakeBison:
         # carrying an undeclared variable is refused here exactly as the
         # provider refuses it.
         self.declared = {"headline", "industry", "location"}
+        self.schedules = {}
+        self.senders = {}
 
     @staticmethod
     def _variables(mapping_of):
@@ -126,6 +128,27 @@ class FakeBison:
         return {"campaign_id": cid, "max_emails_per_day": emails_per_day,
                 "max_new_leads_per_day": leads}
 
+    DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday",
+            "saturday", "sunday")
+
+    def schedule(self, cid):
+        return dict(self.schedules.get(int(cid), {}))
+
+    def set_schedule(self, cid, days, start, end, timezone):
+        row = {d: (d in days) for d in self.DAYS}
+        row.update({"start_time": start, "end_time": end,
+                    "timezone": timezone})
+        self.schedules[int(cid)] = row
+        return row
+
+    def campaign_senders(self, cid):
+        return list(self.senders.get(int(cid), []))
+
+    def attach_senders(self, cid, ids):
+        self.senders[int(cid)] = sorted({*self.senders.get(int(cid), []),
+                                         *[int(i) for i in ids]})
+        return {"campaign_id": cid, "senders": self.senders[int(cid)]}
+
     def set_sequence(self, cid, title, steps):
         return {"id": self._id(), "title": title}
 
@@ -142,6 +165,7 @@ class StagingTwiceBuildsOne(QueueTest):
     def setUp(self):
         super().setUp()
         self.bison = FakeBison()
+        self.bison.DAYS = FakeBison.DAYS
         self._real = bisonfactory.bison
         bisonfactory.bison = self.bison
         self.addCleanup(setattr, bisonfactory, "bison", self._real)

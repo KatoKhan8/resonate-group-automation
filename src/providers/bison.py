@@ -396,6 +396,8 @@ WRITE_ROUTES = (
     "/campaigns/{campaign_id}/leads/attach-leads",  # membership
     "/campaigns/{campaign_id}/pause",               # stop everybody
     "/campaigns/{campaign_id}/leads/stop-future-emails",   # stop ONE person
+    "/campaigns/{campaign_id}/schedule",            # when it may send
+    "/campaigns/{campaign_id}/attach-sender-emails",  # which inboxes
     "/leads",                                       # create a lead
     "/custom-variables",                            # declare a variable name
 )
@@ -653,6 +655,115 @@ def stop_lead(campaign_id, lead_ids, attempts=8, interval=2.0):
         f"{pending[:5]} still do not read as stopped after "
         f"{attempts * interval:.0f}s. Provider state is UNKNOWN - do not "
         f"record a stop, and do not retry blindly")
+
+
+SCHEDULE_PATH = "/campaigns/{campaign_id}/schedule"
+SENDERS_PATH = "/campaigns/{campaign_id}/attach-sender-emails"
+
+DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
+        "sunday")
+
+
+def set_schedule(campaign_id, days, start, end, timezone):
+    """When this campaign is allowed to send, and confirm it took.
+
+    All eleven fields are required by the provider - a partial body is a 422.
+    `days` names the sending days; everything else is explicitly false rather
+    than omitted, because an omitted day is a validation error and not a
+    quiet no.
+
+    Round-trip asymmetry to know about: a time written as "09:00" reads back
+    as "09:00:00", so the readback compares the hour and minute rather than
+    the string.
+    """
+    unknown = [d for d in days if d not in DAYS]
+    if unknown:
+        raise ProviderError(f"emailbison set_schedule: not days: {unknown}")
+    if not days:
+        raise ProviderError(
+            "emailbison set_schedule: no sending days. A campaign that may "
+            "send on no day is a campaign nobody meant to create")
+    body = {day: (day in days) for day in DAYS}
+    body.update({"start_time": start, "end_time": end, "timezone": timezone,
+                 "save_as_template": False})
+    status, data = request(
+        "POST", base() + SCHEDULE_PATH.format(campaign_id=campaign_id),
+        _json_headers(), body)
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison set_schedule: POST -> {status} {_message(data)}")
+    got = schedule(campaign_id)
+    for day in DAYS:
+        if bool(got.get(day)) != body[day]:
+            raise ProviderError(
+                f"emailbison set_schedule: asked for {day}={body[day]} and "
+                f"the campaign reads back {got.get(day)!r}")
+    if str(got.get("timezone")) != str(timezone):
+        raise ProviderError(
+            f"emailbison set_schedule: timezone reads back "
+            f"{got.get('timezone')!r}, not {timezone!r}")
+    return got
+
+
+def schedule(campaign_id):
+    """This campaign's schedule, or {} when it has none.
+
+    A 200 IS NOT AN EXISTENCE PROOF HERE. With no schedule set, this route
+    answers 200 carrying {"success": false, "message": "Schedule does not
+    exist for <name>"} - so status-code checking reads absent as present.
+    """
+    status, data = request(
+        "GET", base() + SCHEDULE_PATH.format(campaign_id=campaign_id),
+        headers())
+    if not ok(status):
+        raise ProviderError(f"emailbison schedule: GET -> {status}")
+    row = mapping(data, "schedule").get("data") or {}
+    if row.get("success") is False:
+        return {}
+    return row
+
+
+def attach_senders(campaign_id, sender_email_ids):
+    """Bind the inboxes this campaign sends from, and read back who is bound.
+
+    THE RESPONSE IS NOT THE ANSWER. This route returns 200 with
+    `data.success: false` both for a repeat and for an empty array, so the
+    status code cannot distinguish "attached" from "did nothing". The
+    membership read is the oracle, and this raises unless every sender asked
+    for is actually on the campaign afterwards.
+    """
+    wanted = [int(i) for i in (sender_email_ids or [])]
+    if not wanted:
+        raise ProviderError("emailbison attach_senders: no sender ids given")
+    status, data = request(
+        "POST", base() + SENDERS_PATH.format(campaign_id=campaign_id),
+        _json_headers(), {"sender_email_ids": wanted})
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison attach_senders: POST -> {status} {_message(data)}")
+    bound = campaign_senders(campaign_id)
+    missing = [i for i in wanted if i not in bound]
+    if missing:
+        raise ProviderError(
+            f"emailbison attach_senders: the provider answered {status} but "
+            f"sender(s) {missing} are not on campaign {campaign_id}. This "
+            f"route reports success for a write it did not make")
+    return {"campaign_id": campaign_id, "senders": bound}
+
+
+def campaign_senders(campaign_id):
+    """Which sender inboxes the PROVIDER says this campaign sends from."""
+    status, data = request(
+        "GET", f"{base()}/campaigns/{campaign_id}/sender-emails?per_page=200",
+        headers())
+    if not ok(status):
+        raise ProviderError(f"emailbison campaign_senders: GET -> {status}")
+    rows = mapping(data, "campaign_senders").get("data")
+    if not isinstance(rows, list):
+        raise ProviderError(
+            "emailbison campaign_senders: the sender list is not a list; "
+            "refusing to read an unknown shape as 'no senders bound'")
+    return [r.get("id") for r in rows if isinstance(r, dict) and r.get("id")]
 
 
 def campaign_lead_ids(campaign_id, per_page=200):
