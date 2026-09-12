@@ -233,6 +233,20 @@ class TheRepairPreventsAnotherPurchase(unittest.TestCase):
     """
 
     def setUp(self):
+        # ISOLATED BECAUSE THESE VERIFY WITH A REC AND `live=True`. That is a
+        # paid call, and a paid call writes the spend ledger, which lives
+        # beside the queue - so without this the ledger written is the
+        # operator's own. It was: nineteen rows of fabricated spend landed in
+        # the real `work/spend-ledger.jsonl` the hour verification was wired
+        # into it. `spendledger.record` asks `refuse_production_write` now, so
+        # this class is refused rather than silently believed, and the fix is
+        # the one that refusal names - isolate the store.
+        self.tmp = tempfile.mkdtemp(prefix="rga-evidence-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self._prev_queue = os.environ.get("QUEUE")
+        os.environ["QUEUE"] = os.path.join(self.tmp, "work", "queue.jsonl")
+        self.addCleanup(self._restore_queue)
+
         self.attempted = []
         self._real_call = verification.call
 
@@ -243,6 +257,12 @@ class TheRepairPreventsAnotherPurchase(unittest.TestCase):
 
         verification.call = spy
         self.addCleanup(setattr, verification, "call", self._real_call)
+
+    def _restore_queue(self):
+        if self._prev_queue is None:
+            os.environ.pop("QUEUE", None)
+        else:
+            os.environ["QUEUE"] = self._prev_queue
 
     def _verify(self, c, rec):
         self.attempted = []

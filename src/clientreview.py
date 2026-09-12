@@ -408,6 +408,11 @@ def record(entries, file_path=None):
         if not entry.get("workspace"):
             raise ReviewRefused("a decision must name its workspace")
     file_path = file_path or path()
+    # Inside the write barrier: this builds its own append rather than
+    # going through `store.write_jsonl`, and `path()` resolves beside the
+    # queue, so a test that reaches it without isolating the store writes
+    # the operator's real state. Measured on `spend-ledger.jsonl`.
+    store.refuse_production_write(file_path)
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "a", encoding="utf-8") as handle:
         for entry in entries:

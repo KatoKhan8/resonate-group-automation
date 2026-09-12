@@ -295,6 +295,8 @@ def enqueue(rec, contact_key, workspace, config=None, file_path=None,
                    last_success=(before or {}).get("last_success"))
         written.append(row)
     if written:
+        # Inside the write barrier - see `spendledger.record`.
+        store.refuse_production_write(file_path)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "a", encoding="utf-8") as handle:
             for row in written:
@@ -312,6 +314,8 @@ def record_attempt(row, ok, error=None, file_path=None, at=None):
                    last_error=None if ok else str(error or "unknown"),
                    last_success=stamp if ok else row.get("last_success"),
                    attempted_at=stamp)
+    # Inside the write barrier - see the note in `spendledger.record`.
+    store.refuse_production_write(file_path)
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(updated, sort_keys=True) + "\n")

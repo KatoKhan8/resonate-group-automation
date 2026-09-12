@@ -93,6 +93,23 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
     row = {"at": at or store.now(), "day": today(),
            "client": client, "provider": provider, "call": call,
            "expected_cost": int(expected_cost or 0), "run_id": run_id}
+    # OUTSIDE THE BARRIER UNTIL NOW, AND IT COST REAL CLIENT STATE.
+    #
+    # This builds its own append rather than going through `store.write_jsonl`,
+    # so it never asked `refuse_production_write` - the same way `mx`, `poller`
+    # and `replywatch` had to be made to ask for themselves. `path()` falls
+    # back to `dirname(store.queue_path())`, so any test that reaches a paid
+    # call without isolating the store writes the operator's real ledger.
+    #
+    # Measured the hour this guard was added: wiring verification into the
+    # ledger made exactly that happen, and 19 rows of fabricated spend -
+    # deliverable, reoon, contactout - landed in the client's real
+    # `work/spend-ledger.jsonl`. Fabricated spend is worse here than in most
+    # files, because `check()` reads this to refuse the NEXT call: invented
+    # credits exhaust a real ceiling.
+    #
+    # Before `os.makedirs`, so the refusal lands before any filesystem change.
+    store.refuse_production_write(path())
     # A first run on a fresh deployment has no directory yet, and the spend
     # control refusing to record because of that would be the worst possible
     # failure: the call still happens, and nothing counts it.

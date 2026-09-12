@@ -5,6 +5,7 @@ checked against the source tree and against a real pipeline run, so they fail
 the moment someone breaks one rather than at the moment it costs money.
 """
 import ast
+import contextlib
 import inspect
 import io
 import json
@@ -504,6 +505,121 @@ class TestTheLockCoversEveryWriter(unittest.TestCase):
     def test_a_refused_write_is_a_clean_failure(self):
         self.assertTrue(issubclass(store.QueueLocked, RuntimeError))
         self.assertGreater(store.LOCK_TIMEOUT, 0)
+
+
+class TestTheBarrierCoversEveryWriter(unittest.TestCase):
+    """Every module that writes beside the queue must ask before it writes.
+
+    `store.refuse_production_write` is the second barrier: the first is a
+    test remembering to isolate the store, and this is what catches the one
+    that forgets. `store.write_jsonl` asks on behalf of everything routed
+    through it, so the modules that matter are the ones building their own
+    append or temp-file-and-replace - `store`'s own comment names `mx`,
+    `poller` and `replywatch` as having had to be made to ask for themselves.
+
+    Six more were not asking, and it was not theoretical: wiring verification
+    into `spendledger` put 19 rows of fabricated spend into the operator's
+    real `work/spend-ledger.jsonl` within the hour, because
+    `spendledger.record` builds its own append and `path()` resolves beside
+    the queue. Asserted as a property of the set rather than a list somebody
+    updates, so the next module to write its own file arrives here already.
+    """
+
+    # Modules that resolve a path from `store.queue_path()` and then write it
+    # themselves. Membership is asserted below, so this is a checklist that
+    # cannot silently fall behind the code.
+    SELF_WRITERS = ("agencydnc", "clientreview", "discovery", "gtm",
+                    "observability", "poller", "replywatch", "signals",
+                    "spendledger", "tagsync", "mx")
+
+    def _real(self, name):
+        return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")
+
+    def _writers(self):
+        """Each writer, invoked for real against the real work directory.
+
+        Behaviour rather than source text: an earlier version of this asserted
+        that "refuse_production_write" appeared somewhere in the module, and a
+        module with two append sites passed with the guard deleted from one of
+        them. What matters is that the call refuses, so the call is made.
+        """
+        from src import (agencydnc, clientreview, discovery, gtm, spendledger,
+                         tagsync)
+        row = {"record_id": "r", "contact_key": "c", "workspace": "w",
+               "provider": "heyreach", "tags": [], "stage": "s",
+               "status": "pending", "attempts": 0, "outcome": "negative"}
+        return {
+            "agencydnc": lambda: agencydnc.add(
+                "email", "somebody@example.test", file_path=self._real("dnc")),
+            "clientreview": lambda: clientreview.record(
+                [{"workspace": "w", "domain": "a.test"}],
+                file_path=self._real("client-review")),
+            "discovery": lambda: discovery.record(
+                [{"workspace": "w", "domain": "a.test"}],
+                file_path=self._real("discovery")),
+            "gtm": lambda: gtm.record(
+                {"workspace": "w", "id": "g1"}, file_path=self._real("gtm")),
+            "tagsync": lambda: tagsync.record_attempt(
+                row, True, file_path=self._real("tag-outbox")),
+            "spendledger": lambda: spendledger.record(
+                "productive", "contactout", "decision-makers", 10),
+        }
+
+    def test_every_self_writer_refuses_the_real_work_directory(self):
+        for name, call in self._writers().items():
+            with self.subTest(module=name):
+                with self.assertRaises(store.ProductionStateUnderTest):
+                    call()
+
+    def test_nothing_was_written_by_that(self):
+        """The refusal has to land before the filesystem changes, or the test
+        above would be asserting a refusal that happened too late."""
+        before = sorted(os.listdir(store.PRODUCTION_WORK))
+        for call in self._writers().values():
+            with contextlib.suppress(store.ProductionStateUnderTest):
+                call()
+        self.assertEqual(sorted(os.listdir(store.PRODUCTION_WORK)), before)
+
+    def test_every_self_writer_is_on_the_checklist(self):
+        """The modules not driven above still have to ask, and the two lists
+        together are what keeps this honest."""
+        import importlib
+        for name in self.SELF_WRITERS:
+            with self.subTest(module=name):
+                self.assertIn(
+                    "refuse_production_write",
+                    inspect.getsource(importlib.import_module(f"src.{name}")),
+                    f"src/{name}.py writes beside the queue without asking "
+                    f"the barrier")
+
+    def test_the_checklist_has_not_fallen_behind_the_code(self):
+        """The half that keeps the list honest: any module resolving a path
+        from `queue_path()` and opening it for append, or replacing it, has
+        to be in the set above."""
+        import glob
+        import os as _os
+        missing = []
+        for path_ in glob.glob(_os.path.join("src", "*.py")):
+            name = _os.path.splitext(_os.path.basename(path_))[0]
+            if name in self.SELF_WRITERS or name == "store":
+                continue
+            with open(path_, encoding="utf-8") as fh:
+                source = fh.read()
+            if "queue_path()" not in source:
+                continue
+            if ('"a", encoding' in source or "'a', encoding" in source
+                    or "os.replace(" in source):
+                missing.append(name)
+        self.assertEqual(missing, [],
+                         "these write beside the queue themselves and are not "
+                         "on the barrier checklist")
+
+    def test_the_barrier_actually_refuses_under_test(self):
+        """It is only a barrier if it fires. Asserted by calling it on the
+        real directory from inside a test, which is what it exists to stop."""
+        with self.assertRaises(store.ProductionStateUnderTest):
+            store.refuse_production_write(
+                os.path.join(store.PRODUCTION_WORK, "spend-ledger.jsonl"))
 
 
 class TestTheProviderHierarchy(unittest.TestCase):

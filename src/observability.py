@@ -54,6 +54,10 @@ def count(name, persist=False, **fields):
 def _append(entry):
     target = path()
     with store.lock(for_path=target):
+        # Inside the write barrier - see the note in `spendledger.record`:
+        # a self-built append beside the queue is a test's route into the
+        # operator's real state.
+        store.refuse_production_write(target)
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with open(target, "a", encoding="utf-8", newline="\n") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
