@@ -87,35 +87,33 @@ class ElapsedTimeIsNotEvidence(unittest.TestCase):
 
 class ConnectionRemovedAfterAcceptance(unittest.TestCase):
 
-    @unittest.expectedFailure
     def test_a_removed_connection_should_not_be_reported_as_accepted(self):
-        """DEFECT: The machine has no event type for a removed connection
-        and no observation path that overrides an event-log acceptance.
-        Once `linkedin_connected` is in the log, the state is
-        CONNECTION_ACCEPTED regardless of what the provider says afterwards.
-        A prospect who removes the connection is still reported as
-        connected, and a message step would GO to someone who is no longer
-        reachable.
-
-        The correct behavior: when the provider reports NOT_CONNECTED after
-        an acceptance, the state should reflect the removal, not the old
-        acceptance."""
+        """A provider-reported removal overrides the event-log acceptance.
+        The state is NOT_CONNECTED - not CONNECTION_NOT_ACCEPTED, because
+        the latter would fire the InMail fallback, and InMail is for a
+        refused request, not a removed connection."""
         rec = _record([_request(), _accepted()])
         observed = ls.observation(state=ls.NOT_CONNECTED, source="test")
         result = _state(rec, observed=observed)
         self.assertNotEqual(result["state"], ls.CONNECTION_ACCEPTED,
                             "a provider-reported removal should override "
                             "the event-log acceptance")
+        self.assertEqual(result["state"], ls.NOT_CONNECTED)
 
-    @unittest.expectedFailure
     def test_a_message_step_should_not_go_after_removal(self):
-        """The operational consequence: a message is planned for a person
-        who is no longer connected. The machine cannot see the removal."""
+        """The operational consequence: a message is NOT planned for a
+        person who is no longer connected. Proved at the planner, not
+        merely at the state string. The code is HELD_REQUIRES_UNMET
+        because the requirement check fires before the action-specific
+        message branch - the step requires CONNECTION_ACCEPTED and the
+        state NOT_CONNECTED does not satisfy it."""
         rec = _record([_request(), _accepted()])
         observed = ls.observation(state=ls.NOT_CONNECTED, source="test")
         move = _move(rec, MESSAGE_STEP, observed=observed)
         self.assertNotEqual(move["status"], ls.GO,
                             "a message should not go to a removed connection")
+        self.assertEqual(move["status"], ls.WAIT)
+        self.assertEqual(move["code"], ls.HELD_REQUIRES_UNMET)
 
 
 # ----------------------------------------------------------------------- 3

@@ -592,6 +592,17 @@ def connection(rec, contact, observed=None, steps=None, config=None, at=None):
                       "connection request is not needed",
                       source=observed.get("source") or "observation")
 
+    # 2b. A provider-reported removal outranks a stale event-log acceptance.
+    #     The same shape as the open profile above: provider truth wins.
+    #     NOT_CONNECTED is the correct state (not CONNECTION_NOT_ACCEPTED)
+    #     because the latter would fire the InMail fallback, and InMail is
+    #     for a refused request, not a removed connection.
+    if observed.get("state") == NOT_CONNECTED and facts["accepted_at"]:
+        return answer(NOT_CONNECTED,
+                      "the provider reports this person is no longer "
+                      "connected; a recorded acceptance is stale",
+                      source=observed.get("source") or "observation")
+
     # 3. Acceptance. Ours if we asked, theirs if we did not.
     if facts["accepted_at"] or observed.get("state") == CONNECTION_ACCEPTED:
         when = facts["accepted_at"] or observed.get("at")
