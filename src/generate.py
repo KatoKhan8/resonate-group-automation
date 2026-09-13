@@ -579,6 +579,25 @@ def plan(rec, client=None, campaign=None):
                             "why": f"{c['name']}'s {spec['key']} email fails "
                                    f"lint ({', '.join(failures)})",
                             "contact": c.get("name"), "day": spec["key"]})
+                continue
+            # AND THE CLAIMS, for the same reason and with the same
+            # consequence. `draft()` now checks claims before storing, but a
+            # draft written BEFORE that check existed is already on the
+            # record and nothing would ever look at it again - the planner
+            # would count it as done and `executionguard` would refuse it
+            # forever at send time. Measured 2026-09-14: "Final note on our
+            # previous discussions" was staged to EmailBison for a contact
+            # this system has never written to, and re-running generation
+            # did not touch it.
+            unsupported = claims.check(
+                f"{step.get('subject') or ''}\n{step.get('body') or ''}",
+                rec, c)
+            if unsupported:
+                ops.append({"step": "draft",
+                            "why": f"{c['name']}'s {spec['key']} email makes "
+                                   f"an unsupported claim "
+                                   f"({unsupported[0].get('why', '')[:60]})",
+                            "contact": c.get("name"), "day": spec["key"]})
     return ops
 
 
