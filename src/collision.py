@@ -388,14 +388,27 @@ def linkedin_touches_of(row):
     }
 
 
-def our_linkedin_seats(workspace):
-    """The provider seat ids this client owns, from canonical state.
+def _client_config(workspace):
+    """The client config, or {} when it cannot be read.
 
-    HeyReach's inbox route takes no organisation scope - `organizationUnitId`
-    is readable on a campaign and is not a parameter anywhere - so the estate
-    a conversation search covers is whatever the API key can see. The tenant
-    boundary therefore cannot come from the query; it has to come from the
-    answer, and this is the only canonical statement of which seats are ours.
+    `{}` means the org-unit check has nothing to compare against, and
+    `seats_whose_conversations_are_ours` then requires only that the estate
+    states ONE unit - which is the weaker half of the same guarantee, not a
+    licence to skip it.
+    """
+    from . import clients
+
+    try:
+        return clients.load(workspace)
+    except Exception:
+        return {}
+
+
+def our_linkedin_seats(workspace):
+    """The seats this client may SEND from. The attested sending pool.
+
+    Deliberately narrow: a seat reaches a prospect under a real person's
+    name, and `senderinventory` records which ones a human attested.
     """
     from . import senderidentity
 
@@ -408,6 +421,53 @@ def our_linkedin_seats(workspace):
             f"conversation in this inbox cannot be attributed to this client. "
             f"Refusing to read an unscoped inbox as no prior contact.")
     return seats
+
+
+def seats_whose_conversations_are_ours(workspace, config=None):
+    """Every seat whose inbox counts as this client's history.
+
+    A DIFFERENT QUESTION FROM `our_linkedin_seats`, AND THE TWO SHARED ONE
+    LIST. "Which seats may we send from" is the attested pool - 32 rows a
+    human signed off. "Whose conversations are ours" is the whole tenant, and
+    scoping the second to the first discarded every conversation on a seat
+    nobody had attested as belonging to another tenant.
+
+    It did not. Measured 2026-09-13: all 82 HeyReach campaigns this key can
+    see carry `organizationUnitId 118832`, 39 of 41 seats appear in those
+    campaigns, and the conversation counts reconcile exactly - 23,617 on
+    roster seats plus 2,422 off-roster is 26,039, the whole inbox. Of those
+    2,422 discarded conversations, 188 are people who REPLIED. Every one of
+    them would have answered CLEAR.
+
+    So the tenant boundary is derived from the campaigns, which are the only
+    rows that state an organisation unit - seat rows carry none. If a single
+    campaign belongs to another unit, the key is multi-tenant, an inbox
+    conversation cannot be attributed from the answer alone, and this refuses
+    rather than guessing in either direction.
+    """
+    from .providers import heyreach
+
+    expected = str(((config or {}).get("providers") or {}).get(
+        "heyreach", {}).get("org_unit") or "")
+    campaigns, _meta = heyreach.campaigns()
+    units = {str(c.get("organizationUnitId")) for c in campaigns
+             if c.get("organizationUnitId") is not None}
+    if not units:
+        raise CollisionUnknown(
+            "no campaign this key can see states an organisation unit, so "
+            "the tenant boundary cannot be established and an inbox "
+            "conversation cannot be attributed to this client")
+    if expected and units != {expected}:
+        raise CollisionUnknown(
+            f"this key sees campaigns in organisation unit(s) "
+            f"{sorted(units)} and {workspace!r} is configured for "
+            f"{expected!r}. The inbox mixes tenants, so a conversation in it "
+            f"cannot be attributed from the answer alone")
+    seats, _ = heyreach.all_li_accounts()
+    everybody = {str(a.get("id")) for a in seats if a.get("id") is not None}
+    # The attested pool is always ours even if a seat has since been removed
+    # at the provider; a conversation it held is still this client's history.
+    return everybody | our_linkedin_seats(workspace)
 
 
 def check_linkedin_profile(url, name=None, expect_workspace=REQUIRED):
@@ -440,7 +500,15 @@ def check_linkedin_profile(url, name=None, expect_workspace=REQUIRED):
         raise CollisionUnknown(
             "check_linkedin_profile needs the workspace whose inbox this is. "
             "An unscoped CLEAR is not a statement about any client.")
-    seats = our_linkedin_seats(expect_workspace)
+    # THE TENANT'S SEATS, NOT THE SENDING POOL. A conversation on a seat
+    # nobody attested is still this client's history - see
+    # `seats_whose_conversations_are_ours`, which exists because scoping this
+    # to the attested 32 discarded 188 people who had replied.
+    try:
+        seats = seats_whose_conversations_are_ours(
+            expect_workspace, config=_client_config(expect_workspace))
+    except CollisionUnknown:
+        raise
     slug = profile_slug(url)
     if not slug:
         raise CollisionUnknown(f"{url!r} is not a LinkedIn profile to check")
