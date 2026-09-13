@@ -38,8 +38,8 @@ attacks, and what each one found:
 """
 import unittest
 
-from src import bisonfactory, campaigns, providerwrites, store
-from src.providers import ProviderError, bison
+from src import bisonfactory, campaigns, providers, providerwrites, store
+from src.providers import bison
 from tests.base import ProviderTest
 from tests.fakebison import FakeBison
 
@@ -245,7 +245,7 @@ class TheSequenceIsWrittenOnceOrNotAtAll(FactoryTest):
             return original(method, path, params, body)
 
         self.bison.route = nonsense
-        with self.assertRaises(ProviderError):
+        with self.assertRaises(providers.ProviderError):
             bison.sequence_steps(ident)
 
     def test_the_provider_would_have_appended(self):
@@ -378,7 +378,7 @@ class OnePersonCannotBeInTwoLiveSequences(FactoryTest):
         self.assertIn("in_sequence", message)
 
     def test_the_refusal_is_its_own_class_because_a_retry_cannot_fix_it(self):
-        self.assertTrue(issubclass(bison.LeadsNotAttachable, ProviderError))
+        self.assertTrue(issubclass(bison.LeadsNotAttachable, providers.ProviderError))
 
     def test_it_does_not_claim_a_collision_it_did_not_find(self):
         """The provider's sentence also covers bounced and unsubscribed, and
@@ -462,7 +462,7 @@ class AWindowThatChangedMustBeWritten(FactoryTest):
             return original(method, path, params, body)
 
         self.bison.route = post_only
-        with self.assertRaises(ProviderError) as caught:
+        with self.assertRaises(providers.ProviderError) as caught:
             bison.set_schedule(ident, ["monday"], "09:00", "17:00", "UTC")
         self.assertIn("wrote nothing", str(caught.exception))
 
@@ -484,7 +484,7 @@ class AWindowThatChangedMustBeWritten(FactoryTest):
             return status, data
 
         self.bison.route = keep_the_old_hours
-        with self.assertRaises(ProviderError) as caught:
+        with self.assertRaises(providers.ProviderError) as caught:
             bison.set_schedule(ident, ["monday"], "09:00", "12:00", "UTC")
         self.assertIn("end_time", str(caught.exception))
 
@@ -507,14 +507,14 @@ class ResumeSaysWhetherItActuallyStarted(FactoryTest):
         `failed` seconds later, and nothing sends."""
         ident = self.ready()
         self.bison.resume_lands_on = "failed"
-        with self.assertRaises(ProviderError) as caught:
+        with self.assertRaises(providers.ProviderError) as caught:
             bison.resume_campaign(ident, expect_leads=1)
         self.assertIn("NOT sending", str(caught.exception))
 
     def test_queued_that_never_resolves_is_not_started(self):
         ident = self.ready()
         self.bison.resume_lands_on = "queued"
-        with self.assertRaises(ProviderError) as caught:
+        with self.assertRaises(providers.ProviderError) as caught:
             bison.resume_campaign(ident, expect_leads=1, attempts=2,
                                   interval=0)
         self.assertIn("UNKNOWN", str(caught.exception))
@@ -522,14 +522,14 @@ class ResumeSaysWhetherItActuallyStarted(FactoryTest):
     def test_a_status_this_module_cannot_classify_is_refused(self):
         ident = self.ready()
         self.bison.resume_lands_on = "hibernating"
-        with self.assertRaises(ProviderError) as caught:
+        with self.assertRaises(providers.ProviderError) as caught:
             bison.resume_campaign(ident, expect_leads=1, attempts=1)
         self.assertIn("cannot classify", str(caught.exception))
 
     def test_the_lead_count_guard_still_comes_first(self):
         ident = self.ready()
         self.bison.resume_lands_on = "active"
-        with self.assertRaises(ProviderError):
+        with self.assertRaises(providers.ProviderError):
             bison.resume_campaign(ident, expect_leads=9)
         self.assertNotIn(("PATCH", f"/campaigns/{ident}/resume"),
                          self.bison.calls)
@@ -562,7 +562,7 @@ class FindingACampaignByNameReadsTheTable(FactoryTest):
             return status, data
 
         self.bison.route = truncate
-        with self.assertRaises(ProviderError) as caught:
+        with self.assertRaises(providers.ProviderError) as caught:
             bison.find_campaigns_by_name("the one")
         self.assertIn("partial read", str(caught.exception))
 
@@ -624,7 +624,7 @@ class APageIsNotAMembership(FactoryTest):
         ident = self.big(members=3000)
         self.bison.campaigns[ident]["status"] = "paused"
         self.assertEqual(bison.campaign_lead_count(ident), 3000)
-        with self.assertRaises(ProviderError) as caught:
+        with self.assertRaises(providers.ProviderError) as caught:
             bison.resume_campaign(ident, expect_leads=15)
         # The exact sentence, because a refusal from somewhere else in the
         # call - a page walk giving up, say - would satisfy a looser one and

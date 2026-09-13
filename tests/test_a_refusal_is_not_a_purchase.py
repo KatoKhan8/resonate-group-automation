@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """A verifier that declines to call is not billed for calling.
 
-`deliverable.verify` raises `ContractNotVerified` BEFORE it touches the
+`deliverable.verify` raises `deliverable.ContractNotVerified` BEFORE it touches the
 network: its response shape has never been read from a real answer, so it
 declines rather than spending a credit to find out. That is the right call.
 
-What was wrong is what happened next. `call()` flattened every `ProviderError`
+What was wrong is what happened next. `call()` flattened every `providers.ProviderError`
 into `status: error`, and `verify()` charged the spend ledger unconditionally
 afterwards. Measured on the live estate 2026-09-13: 41 ledger rows and 41
 credits for deliverable, and 32 of 32 stored evidence rows with
@@ -25,8 +25,8 @@ import unittest
 from unittest import mock
 
 from src import verification
-from src.providers import ProviderError
-from src.providers.deliverable import ContractNotVerified
+from src import providers
+from src.providers import deliverable
 
 
 class ALocalRefusalIsFree(unittest.TestCase):
@@ -41,7 +41,7 @@ class ALocalRefusalIsFree(unittest.TestCase):
         with mock.patch.dict(verification.verifiers(),
                              {"reoon": mock.Mock(
                                  verify=mock.Mock(
-                                     side_effect=ProviderError("read timed out")))},
+                                     side_effect=providers.ProviderError("read timed out")))},
                              clear=False):
             entry = verification.call("reoon", "somebody@example.test")
         self.assertEqual(entry["status"], verification.S_ERROR)
@@ -65,13 +65,13 @@ class TheRefusalClassIsNamedNotGuessed(unittest.TestCase):
 
     def test_only_a_declared_local_refusal_is_exempt(self):
         refusals = verification._local_refusals()
-        self.assertIn(ContractNotVerified, refusals)
-        # A bare ProviderError must NOT be exempt, or every provider failure
+        self.assertIn(deliverable.ContractNotVerified, refusals)
+        # A bare providers.ProviderError must NOT be exempt, or every provider failure
         # becomes free and the ledger stops tracking the bill.
-        self.assertNotIn(ProviderError, refusals)
+        self.assertNotIn(providers.ProviderError, refusals)
 
     def test_a_subclass_that_is_not_declared_is_still_charged(self):
-        class SomethingElse(ProviderError):
+        class SomethingElse(providers.ProviderError):
             pass
 
         self.assertFalse(isinstance(SomethingElse("x"),

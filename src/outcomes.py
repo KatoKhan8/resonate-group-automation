@@ -867,7 +867,7 @@ def run_report(client=None, recs=None, campaign_rows=None, config=None):
         # last said otherwise that is reported as a disagreement rather than
         # silently preferred in either direction.
         _stage("ACTIVE", len(active),
-               "campaigns.jsonl bound to a provider campaign and not draft, "
+               "the campaign store, bound to a provider campaign and not draft, "
                "paused or completed",
                note=(f"{len(disagreements)} campaign(s) where the provider "
                      f"last said something else" if disagreements else None)),
@@ -1022,7 +1022,7 @@ def _seats(campaign_rows):
                              or entry.get("provider_account_id") or entry))
     return {"email_senders": sorted(email), "linkedin_seats": sorted(linkedin),
             "email_sender_count": len(email), "seat_count": len(linkedin),
-            "truth": "campaigns.jsonl senders block"}
+            "truth": "campaign store senders block"}
 
 
 def _safety(recs, campaign_rows):
