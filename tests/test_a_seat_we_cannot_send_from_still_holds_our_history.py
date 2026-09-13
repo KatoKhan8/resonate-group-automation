@@ -39,7 +39,20 @@ def one_tenant(*units):
     return ([{"organizationUnitId": u} for u in (units or (118832,))], {})
 
 
-class TheTwoQuestionsAreAskedSeparately(unittest.TestCase):
+class ScopeTest(unittest.TestCase):
+    """The tenant scope is cached per process, so it is cleared per test.
+
+    Found by this file failing only when run after another test that had
+    already resolved it - a cache that outlives a test is a cache that
+    answers the next one.
+    """
+
+    def setUp(self):
+        collision.forget_tenant_scope()
+        self.addCleanup(collision.forget_tenant_scope)
+
+
+class TheTwoQuestionsAreAskedSeparately(ScopeTest):
 
     def test_the_sending_pool_is_the_attested_roster(self):
         with mock.patch("src.senderidentity.linkedin_accounts",
@@ -85,7 +98,7 @@ class TheTwoQuestionsAreAskedSeparately(unittest.TestCase):
         self.assertIn("99", seats)
 
 
-class AMixedInboxCannotBeAttributed(unittest.TestCase):
+class AMixedInboxCannotBeAttributed(ScopeTest):
 
     def test_two_organisation_units_refuse(self):
         with mock.patch("src.senderidentity.linkedin_accounts",

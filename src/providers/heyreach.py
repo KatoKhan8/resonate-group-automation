@@ -119,10 +119,19 @@ def add_leads_endpoint():
 #   POST /inbox/GetConversationsV2 {filters, offset, limit}
 #                                                -> {items, totalCount}
 #
-# Confirmed absent, so not guessed at: /linkedinaccount/GetAll and
-# /webhooks/GetAll both answer 404, and GET /campaign/GetAll answers 405. The
-# sender accounts come from a campaign's own `campaignAccountIds` instead,
-# which is what mapping validation actually needs.
+# /linkedinaccount/GetAll and /webhooks/GetAll both answer 404, and GET
+# /campaign/GetAll answers 405.
+#
+# TWO OF THOSE 404s WERE WRONG ROUTE NAMES, NOT ABSENT CAPABILITIES, and this
+# comment read them as absence twice. `/li_account/GetAll` is the seat route
+# and is now on the read allowlist below. `/webhooks/GetAllWebhooks` is the
+# webhook route - the vendor documents create, read, update and delete under
+# /webhooks/ plus twelve event types - and nothing here has ever called it.
+#
+# The distinction this comment kept losing: "the provider does not expose it"
+# justifies building around it, and "we have never asked correctly" does not.
+# A route is recorded absent here only when the NAME the vendor documents
+# answered 404.
 #
 # These are POST endpoints that read. That is why this module is allowed a POST
 # at all, and why READ_ROUTES below is an explicit allowlist: the send route,
@@ -145,6 +154,13 @@ EVENTS_CONTRACT_CONFIRMED = True          # for reading. Sending is not.
 # from an inbox row. Inferring acceptance wrongly would unlock the day-8
 # LinkedIn follow-up for someone who never accepted, which reads to them as a
 # stranger messaging out of nowhere.
+#
+# AND IT IS A STATEMENT ABOUT THIS ROUTE, NOT ABOUT THE PROVIDER - the same
+# distinction `/campaign/GetLeadsFromCampaign` forced further down. The vendor
+# documents two other ways to ask: a `CONNECTION_REQUEST_ACCEPTED` webhook
+# event, and `POST /MyNetwork/IsConnection`. Neither is on an allowlist,
+# neither has ever answered here, and neither changes this constant - what
+# would change it is a read this module performs and reads back.
 CONNECTION_STATUS_AVAILABLE = False
 
 READ_ROUTES = ("/campaign/GetAll", "/inbox/GetConversationsV2")
@@ -200,10 +216,29 @@ def events_contract():
         "base": BASE,
         "polling": "confirmed live: POST /inbox/GetConversationsV2, paged by "
                    "offset",
-        "webhook": "no webhook management on the confirmed surface "
-                   "(/webhooks/GetAll answers 404). Polling is the transport",
-        "absent": "/linkedinaccount/GetAll answers 404; sender accounts come "
-                  "from a campaign's own campaignAccountIds",
+        # THE 404 WAS A TYPO, AGAIN. This said "no webhook management on the
+        # confirmed surface (/webhooks/GetAll answers 404)", which is the same
+        # mistake `/linkedinaccount/GetAll` was: a wrong route name read as an
+        # absent capability. The vendor's own collection documents five routes
+        # under /webhooks/ - CreateWebhook, GetWebhookById, GetAllWebhooks,
+        # UpdateWebhook, DeleteWebhook - and twelve event types, among them
+        # CONNECTION_REQUEST_SENT, CONNECTION_REQUEST_ACCEPTED, MESSAGE_SENT
+        # and MESSAGE_REPLY_RECEIVED.
+        #
+        # NONE of them is called from here and none is on any allowlist, so
+        # this states what this build DOES, not what the provider lacks. The
+        # distinction is the whole point: "the provider has no webhooks" would
+        # justify polling forever, and "we have never called them" does not.
+        "webhook": "documented by the vendor (POST /webhooks/CreateWebhook, "
+                   "POST /webhooks/GetAllWebhooks, GET GetWebhookById, PATCH "
+                   "UpdateWebhook, DELETE DeleteWebhook; 12 event types) and "
+                   "NEVER called from here - on no allowlist, never answered. "
+                   "Polling is the transport this build actually uses",
+        "absent": "/linkedinaccount/GetAll answers 404. The route that does "
+                  "answer is /li_account/GetAll, which is on the read "
+                  "allowlist and is what `senderinventory` rebuilds the seat "
+                  "roster from; a campaign's campaignAccountIds says which "
+                  "seats that campaign uses, which is a different question",
         "mapping": "src/adapters.from_heyreach, written against a real page",
         "hazard": "a conversation carries our own messages. lastMessageSender "
                   "must be the correspondent for it to be a reply",
@@ -1008,8 +1043,45 @@ def all_li_accounts(page_size=MAX_PAGE, max_pages=10):
     return items, total
 
 
+# AN UNRECOGNISED FILTER KEY IS DISCARDED IN SILENCE AND THE WHOLE INBOX COMES
+# BACK. That is the failure mode this allowlist exists for, and it is measured
+# rather than feared: on 2026-09-13, against an inbox of 26,039 conversations,
+#
+#   {"nonsenseKeyNobodyDocuments": "x"}  -> 26039   the key was dropped
+#   {"companyName": "Nineyards"}         -> 26039   same: not a filter
+#   {"leadProfileUrl": <a real profile>} ->     1   honoured
+#   {"linkedInAccountIds": [116968]}     ->  1261   honoured
+#   {"linkedInAccountIds": [999999999]}  ->     0   honoured, and empty
+#
+# A caller asking a narrow question with a misspelled key therefore gets an
+# answer that looks like the estate agreeing with it. `collision` reads this
+# route to decide whether somebody has already been written to, so "the filter
+# was ignored" arriving as 26,039 rows is the shape of a false CLEAR - and a
+# typo is the ordinary way to produce it.
+#
+# So the keys are an allowlist and an unknown one raises. Only keys measured to
+# change the answer are on it. Two hazards a caller still owns:
+#
+#   `companyName` IS NOT HERE and cannot be. `collision.account_is_unanswerable`
+#   is right: no key asks the company-level question.
+#
+#   A `leadProfileUrl` this API cannot resolve answers 400, NOT 0 - measured on
+#   a well-formed but unknown slug. A refusal is not an absence of
+#   conversations, and `_read` raises rather than returning an empty page for
+#   exactly that reason.
+INBOX_FILTER_KEYS = ("searchString", "leadProfileUrl", "linkedInAccountIds",
+                     "campaignIds")
+
+
 def conversations(offset=0, limit=50, filters=None):
     """One page of the inbox. Read-only: reading marks nothing as seen."""
+    unknown = sorted(set(filters or {}) - set(INBOX_FILTER_KEYS))
+    if unknown:
+        raise ProviderError(
+            f"heyreach /inbox/GetConversationsV2: {unknown} is not a filter "
+            f"this route honours. It would be discarded in silence and the "
+            f"whole inbox returned, which reads as a result. Measured keys: "
+            f"{', '.join(INBOX_FILTER_KEYS)}")
     data = _read("/inbox/GetConversationsV2",
                  {"filters": filters or {}, "offset": int(offset),
                   "limit": int(limit)})

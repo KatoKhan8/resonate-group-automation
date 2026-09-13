@@ -74,6 +74,19 @@ def inbox(rows, total=None, seats=(OUR_SEAT,)):
                               total if total is not None else len(rows))))
             self.enter_context(mock.patch.object(
                 senderidentity, "linkedin_accounts", return_value=rows_out))
+            # THE TENANT SCOPE, which is a different question from the
+            # sending roster above and is derived from provider truth:
+            # campaigns state the organisation unit, seats do not. Stubbed
+            # here so these tests keep asserting what they are about rather
+            # than reaching the network for a boundary they already stipulate.
+            collision.forget_tenant_scope()
+            self.addfinalizer = self.callback(collision.forget_tenant_scope)
+            self.enter_context(mock.patch.object(
+                collision.heyreach, "campaigns",
+                return_value=([{"organizationUnitId": 118832}], {})))
+            self.enter_context(mock.patch.object(
+                collision.heyreach, "all_li_accounts",
+                return_value=([{"id": x} for x in seats], {})))
             return self.conversations
 
     return Stubs()

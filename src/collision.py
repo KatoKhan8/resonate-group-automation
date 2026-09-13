@@ -423,6 +423,18 @@ def our_linkedin_seats(workspace):
     return seats
 
 
+# The tenant scope costs two provider reads and does not change between
+# profiles, so it is resolved once per process per workspace. Per-call it
+# doubled the request count of every collision check for an answer that is
+# the same every time. Cleared by `forget_tenant_scope` in tests.
+_TENANT_SCOPE = {}
+
+
+def forget_tenant_scope():
+    """Drop the cached tenant scope. For tests and for a seat re-inventory."""
+    _TENANT_SCOPE.clear()
+
+
 def seats_whose_conversations_are_ours(workspace, config=None):
     """Every seat whose inbox counts as this client's history.
 
@@ -447,6 +459,8 @@ def seats_whose_conversations_are_ours(workspace, config=None):
     """
     from .providers import heyreach
 
+    if workspace in _TENANT_SCOPE:
+        return set(_TENANT_SCOPE[workspace])
     expected = str(((config or {}).get("providers") or {}).get(
         "heyreach", {}).get("org_unit") or "")
     campaigns, _meta = heyreach.campaigns()
@@ -467,7 +481,9 @@ def seats_whose_conversations_are_ours(workspace, config=None):
     everybody = {str(a.get("id")) for a in seats if a.get("id") is not None}
     # The attested pool is always ours even if a seat has since been removed
     # at the provider; a conversation it held is still this client's history.
-    return everybody | our_linkedin_seats(workspace)
+    scope = everybody | our_linkedin_seats(workspace)
+    _TENANT_SCOPE[workspace] = set(scope)
+    return scope
 
 
 def check_linkedin_profile(url, name=None, expect_workspace=REQUIRED):
@@ -500,18 +516,18 @@ def check_linkedin_profile(url, name=None, expect_workspace=REQUIRED):
         raise CollisionUnknown(
             "check_linkedin_profile needs the workspace whose inbox this is. "
             "An unscoped CLEAR is not a statement about any client.")
+    # THE SLUG FIRST, because it is free and local. Resolving the tenant
+    # scope costs two provider reads, and spending them to reject a URL that
+    # is not a profile is two requests for an answer already in hand.
+    slug = profile_slug(url)
+    if not slug:
+        raise CollisionUnknown(f"{url!r} is not a LinkedIn profile to check")
     # THE TENANT'S SEATS, NOT THE SENDING POOL. A conversation on a seat
     # nobody attested is still this client's history - see
     # `seats_whose_conversations_are_ours`, which exists because scoping this
     # to the attested 32 discarded 188 people who had replied.
-    try:
-        seats = seats_whose_conversations_are_ours(
-            expect_workspace, config=_client_config(expect_workspace))
-    except CollisionUnknown:
-        raise
-    slug = profile_slug(url)
-    if not slug:
-        raise CollisionUnknown(f"{url!r} is not a LinkedIn profile to check")
+    seats = seats_whose_conversations_are_ours(
+        expect_workspace, config=_client_config(expect_workspace))
     # THE FIRST NAME, not the full name. The search is literal on
     # punctuation - "O'neill" answers 4 and "Oneill" answers 0 - so a
     # full-name term is a fragile negative: one stored apostrophe, double
