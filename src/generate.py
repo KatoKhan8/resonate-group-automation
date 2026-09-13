@@ -18,7 +18,7 @@ regenerated, never patched, and never widened away (CLAUDE.md).
 import argparse
 import os
 
-from . import clients, events, lint, llm, research, store
+from . import claims, clients, events, lint, llm, research, store
 
 
 def cadence_note_words():
@@ -99,8 +99,18 @@ def contact_block(contact):
 
 def context_for(step, rec, contact=None, client=None):
     """Assemble the smallest context that can answer the question."""
+    # `lane` IS OURS, NOT THEIRS. It names the pipeline a record arrived
+    # through - "domains", "cold", "revive" - and the model read "domains" as
+    # the SUBJECT, writing a cold email to an agency CEO asking who owns
+    # their domain portfolio and renewal decisions. Productive sells time
+    # tracking and profitability; it has nothing to do with domain names.
+    #
+    # Routing vocabulary is not something a prospect has ever heard, so it is
+    # kept out of the prompt. The branches below still read `rec["lane"]` and
+    # add what the lane MEANS - a diagnosis, a hook - which is the part that
+    # carries information.
     block = {"company": rec.get("company"), "domain": rec.get("domain"),
-             "lane": rec.get("lane"), "facts": facts_block(rec)}
+             "facts": facts_block(rec)}
     public = research.for_prompt(rec)
     if public:
         # Attributed and trimmed. The fence in llm.py marks it as data.
@@ -121,6 +131,26 @@ def context_for(step, rec, contact=None, client=None):
     elif step == "draft":
         block["contact"] = contact_block(contact or {})
         block["angle"] = (contact or {}).get("angle")
+        # HAS THIS PERSON EVER HEARD FROM US? The prompt's shape depends on
+        # it, and until this was passed the template assumed yes: it asked
+        # for "the date and the sentence", for the model to "own the failure
+        # if it was ours", and for "an answer to the question they asked".
+        # Against a cold prospect the model obliged, inventing a missed
+        # deadline, an apology and a thread - correct behaviour for the
+        # instructions it was given.
+        #
+        # Read from the same confirmed events `claims` checks against, so the
+        # prompt and the gate cannot disagree about whether a history exists.
+        block["prior_contact"] = bool(claims.prior_contact(rec, contact))
+        # WHAT THE ANGLE MEANS, not just its name. `linkedin_note` has passed
+        # this since it was written and `draft` never did, so the model was
+        # handed `angle: "founder"` and no statement of what the client
+        # actually sells. It filled the gap by inventing a pitch - "helping
+        # innovative agencies scale their impact" - which is true of nobody
+        # and sells nothing. The config already says it:
+        # `founder: profitability visible on Monday not two weeks late`.
+        block["angle_wording"] = ((client or {}).get("personas") or {}).get(
+            (contact or {}).get("persona") or "", {}).get("angles")
         block["evidence"] = (rec.get("evidence") or {}).get(
             lint.contact_key(contact or {}), [])
         block["tone"] = (client or {}).get("tone")

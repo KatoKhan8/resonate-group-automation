@@ -133,6 +133,18 @@ RELATIONSHIP = tuple(re.compile(p, re.I) for p in (
     r"note|discussion|meeting|thread)\b",
     r"\b(?:as|like)\s+(?:we\s+)?(?:discussed|mentioned|agreed|promised|"
     r"said|covered|noted)\b",
+    # A DEFINITE REFERENCE TO A SHARED ARTEFACT. The first version of this
+    # rule wanted an adjective - "our last email" - and the generator wrote
+    # "The 2026-09-10 email thread highlights a gap", which names a thread by
+    # date and passed. A date is not a weaker claim than "last"; it is a
+    # stronger one. "the email" alone stays allowed, because "I will keep the
+    # email short" asserts nothing.
+    r"\b(?:the|that|this|our)\s+(?:\S+\s+){0,2}"
+    r"(?:email|message|mail)\s+(?:thread|chain|exchange)\b",
+    r"\b(?:the|our|that)\s+(?:initial|original|earlier|first)\s+"
+    r"(?:outreach|contact|approach|introduction|intro)\b",
+    r"\b(?:the|our|your)\s+(?:\S+\s+){0,2}"
+    r"(?:call|meeting|demo|walkthrough)\s+(?:last|on|earlier)\b",
     r"\bfollow(?:ing)?[- ]?up\s+(?:on|from|about|to)\s+(?:our|your|the|my|"
     r"that|last|previous)\b",
     r"\b(?:circling|circle|looping|loop|checking|reaching)\s+back\b",

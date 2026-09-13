@@ -75,6 +75,11 @@ UNSUPPORTED = (
     "Per our call, the revised timeline is Friday.",
     "As promised, the deck is attached.",
     "Checking back after we spoke.",
+    # Named by date rather than by "last", which the first version of the
+    # rule required. The generator wrote this one too, and it passed.
+    "The 2026-09-10 email thread highlights a gap in domain validation.",
+    "We own the oversight of the initial outreach timeline.",
+    "Our call last Tuesday covered the scope.",
 )
 
 # Ordinary first-touch copy. A guard that refuses these is a guard somebody
@@ -96,6 +101,10 @@ NEUTRAL = (
     "The agencies we worked with last year had the same problem.",
     "Clients we met had the same problem.",
     "Our team has worked on delivery tooling for eight years.",
+    # "the email" is not a shared artefact until something says it is.
+    "I will keep the email short.",
+    "The email below explains it.",
+    "Would a short call this week work?",
 )
 
 
