@@ -75,6 +75,20 @@ ALLOWED = {
     # this file true.
     ("src/providers/bison.py", "POST"),
     ("src/providers/bison.py", "PATCH"),
+    # PUT, added 2026-09-13, and it writes exactly one thing: the SENDING
+    # WINDOW of a campaign that already has one. `POST .../schedule` creates a
+    # schedule and refuses to replace one - it answers 200 carrying
+    # `success: false, "Schedule already exists"` and writes nothing - so
+    # without this verb a window could be set once and never narrowed, and the
+    # attempt to narrow it read as a success. `PATCH` and `DELETE` are both
+    # 405 on that route; the 405 names GET, HEAD, POST, PUT.
+    #
+    # It is STAGING, and of the constraining kind: the only thing it can
+    # change is when a campaign is allowed to send, and the route is already
+    # in `bison.WRITE_ROUTES`. It starts nothing - `/campaigns/{id}/resume` is
+    # the only verb here that reaches a person and it is a PATCH, declared
+    # above and guarded in `resume_campaign`.
+    ("src/providers/bison.py", "PUT"),
     # A completion is a POST that changes nothing at the other end: it creates
     # no campaign, touches no lead, and is not prospect-facing, so it does not
     # belong under `providerwrites`. It is declared here rather than waved

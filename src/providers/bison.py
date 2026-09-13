@@ -339,15 +339,18 @@ def variables_of(lead):
 
 
 def custom_variables():
-    """Every custom variable declared on this workspace, by name."""
-    status, data = request("GET", f"{base()}/custom-variables", headers())
-    if not ok(status):
-        raise ProviderError(f"emailbison custom_variables: GET -> {status}")
-    rows = mapping(data, "custom_variables").get("data")
-    if not isinstance(rows, list):
-        raise ProviderError(
-            "emailbison custom_variables: the list is not a list; refusing to "
-            "read an unknown shape as 'nothing is declared'")
+    """Every custom variable declared on this workspace, by name.
+
+    PAGED, at fifteen a page like everything else here. This workspace has
+    twelve, so one page has been the whole answer so far and would silently
+    stop being it at the sixteenth: `ensure_custom_variables` below reads this
+    to decide what is MISSING, and a name on page two reads as absent, so it
+    would try to create a variable that already exists and be refused. One
+    variable away from breaking every staging run.
+    """
+    rows, _total = _paged(
+        "custom_variables",
+        lambda page: query(f"{base()}/custom-variables", {"page": page}))
     return {r.get("name"): r.get("id") for r in rows if isinstance(r, dict)}
 
 
@@ -472,7 +475,7 @@ def create_campaign(name):
     return row
 
 
-def find_lead_by_email(email):
+def find_lead_by_email(email, attempts=1, interval=1.0):
     """The one lead with this address, or None. Never a guess.
 
     `?search=` is the only real filter on this route: a nonsense term returns
@@ -480,35 +483,90 @@ def find_lead_by_email(email):
     it is accepted and discarded, and answers with an unfiltered page, which
     is the same trap `workspace_id` sets elsewhere in this API.
 
-    It lags behind creation, so a lead made seconds ago may not be findable.
-    That is why this is a reconciliation path and not the primary one, and why
-    an ambiguous answer raises instead of picking a row.
+    IT IS AN INDEX AND THE INDEX LAGS CREATION. Measured on the campaign
+    listing on 2026-09-13, where the same lag is visible and bounded: absent
+    in the same second, present one second later. So a lead created moments
+    ago by another process is exactly the lead this cannot see, and that is
+    precisely when a caller asks - after the provider refused a create with
+    "already been taken".
+
+    `attempts` is therefore the caller's, and it defaults to ONE. A caller
+    that is merely asking gets one honest read; a caller reconciling a create
+    it just lost a race for says how long it is prepared to wait. Waiting is
+    not built in by default because a `None` that took five seconds to arrive
+    is still a `None`, and most callers are not racing anything.
+
+    An ambiguous answer raises instead of picking a row, at every attempt.
     """
+    import time
     import urllib.parse
 
     address = str(email or "").strip().lower()
     if not address:
         raise ProviderError("emailbison find_lead_by_email: no address given")
-    status, data = request(
-        "GET", f"{base()}/leads?search={urllib.parse.quote(address)}",
-        headers())
-    if not ok(status):
-        raise ProviderError(
-            f"emailbison find_lead_by_email: GET -> {status}")
-    rows = mapping(data, "find_lead_by_email").get("data")
-    if not isinstance(rows, list):
-        raise ProviderError(
-            "emailbison find_lead_by_email: the lead list is not a list; "
-            "refusing to read an unknown shape as 'no such lead'")
-    exact = [r for r in rows if isinstance(r, dict)
-             and str(r.get("email") or "").strip().lower() == address]
-    if not exact:
-        return None
-    if len(exact) > 1:
-        raise ProviderError(
-            f"emailbison find_lead_by_email: {len(exact)} leads carry "
-            f"{address!r}. Refusing to choose one")
-    return exact[0]
+    for attempt in range(max(1, int(attempts))):
+        if attempt:
+            time.sleep(interval)
+        status, data = request(
+            "GET", f"{base()}/leads?search={urllib.parse.quote(address)}",
+            headers())
+        if not ok(status):
+            raise ProviderError(
+                f"emailbison find_lead_by_email: GET -> {status}")
+        rows = mapping(data, "find_lead_by_email").get("data")
+        if not isinstance(rows, list):
+            raise ProviderError(
+                "emailbison find_lead_by_email: the lead list is not a list; "
+                "refusing to read an unknown shape as 'no such lead'")
+        exact = [r for r in rows if isinstance(r, dict)
+                 and str(r.get("email") or "").strip().lower() == address]
+        if len(exact) > 1:
+            raise ProviderError(
+                f"emailbison find_lead_by_email: {len(exact)} leads carry "
+                f"{address!r}. Refusing to choose one")
+        if exact:
+            return exact[0]
+    return None
+
+
+def find_campaigns_by_name(name):
+    """Every campaign carrying this exact name. A list, never a choice.
+
+    THE ONE THING THAT CAN FIND A CAMPAIGN NOBODY WROTE DOWN. A crash between
+    `POST /campaigns` and persisting the id leaves a real campaign that no
+    local state names, and the next run would build a second one - measured
+    2026-09-13, two campaigns with byte-identical names.
+
+    AND IT WALKS THE LISTING RATHER THAN ASKING `?search=`. `?search=` is a
+    real filter on this route - a nonsense term returns nothing - but it is an
+    INDEX, and the index lags creation: measured 2026-09-13, a campaign
+    created and searched for in the same second came back absent, and was
+    found one second later. The whole purpose of this function is to find a
+    campaign created moments ago by a process that then died, so a read that
+    is a second behind would answer "no such campaign" at exactly the moment
+    it matters and the caller would create the duplicate anyway. The listing
+    showed the same campaign immediately, on every attempt.
+
+    (`?name=` is neither: it is accepted, discarded, and answers with an
+    unfiltered page - the trap `workspace_id` sets elsewhere in this API.)
+
+    Names are NOT unique on this API - it accepted two campaigns with the same
+    name without complaint - so this returns everything it found and leaves
+    the decision to a caller that can refuse. A short read raises rather than
+    returning fewer: "there is no campaign by that name" is the answer that
+    licenses creating one, and it must never be produced by a failed read.
+    """
+    wanted = str(name or "").strip()
+    if not wanted:
+        raise ProviderError("emailbison find_campaigns_by_name: no name given")
+    rows, _total = _paged(
+        "find_campaigns_by_name",
+        lambda page: query(f"{base()}/campaigns",
+                           {"page": page, "per_page": 100}))
+    return [{"id": r.get("id"), "name": r.get("name"),
+             "status": r.get("status")}
+            for r in rows if isinstance(r, dict)
+            and str(r.get("name") or "").strip() == wanted]
 
 
 UPDATE_PATH = "/campaigns/{campaign_id}/update"
@@ -576,35 +634,188 @@ STOPPED_STATES = ("stopped", "replied", "bounced", "sequence_finished",
 RESUMABLE_STATES = ("in_sequence", "sending_paused", "never_contacted")
 
 
-def membership(campaign_id, lead_ids=None, per_page=200):
+# THE CAMPAIGN LEAD LIST IGNORES `per_page` AND SERVES FIFTEEN ROWS.
+#
+# Measured 2026-09-13 on the live estate: `GET /campaigns/352/leads?per_page=200`
+# answers fifteen rows with `meta.per_page: 15`, `meta.total: 21159`,
+# `meta.last_page: 1411`. `per_page=50` and `per_page=15` answer identically.
+# The same is true of `/campaigns/{id}/sender-emails`: campaign 352 reads back
+# fifteen inboxes and holds 222.
+#
+# This is the defect `sender_emails` was written to prevent, living in three
+# other reads at once, and every consequence was silent:
+#
+#   `membership(campaign, [lead])` returned {} for a genuine member of 352,
+#   so `leadstop.stop` raised "lead is not a member of campaign 352" - the
+#   per-lead STOP was unreachable for every campaign this agency actually
+#   runs;
+#   `attach_leads` compared a fifteen-row readback against what it asked for
+#   and would have raised "the provider answered 200 but N leads are not in
+#   the campaign" for any campaign past its first page;
+#   `resume_campaign(expect_leads=15)` would have passed on a campaign holding
+#   twenty thousand people - the guard whose whole job is to stop a campaign
+#   reaching more people than the caller believes.
+#
+# So nothing here reads a page and calls it a membership. A question about
+# SPECIFIC leads is asked of those leads, which is exact and costs one read
+# each; a question about the whole campaign is paged, and refuses rather than
+# truncating.
+
+#: Pages a whole-campaign walk will do before it gives up. Fifteen rows a
+#: page, so 600 leads or 600 inboxes. A campaign larger than this is not
+#: read short - it raises, and names the two bounded reads that do scale.
+PAGE_CAP = 40
+PAGE_SIZE = 15
+
+
+def _paged(what, url_of, cap=PAGE_CAP):
+    """Every row behind a paginated route, or a refusal. Never a page.
+
+    Returns `(rows, total)`. Raises `PartialInventory` when the walk would
+    exceed `cap` or when fewer rows arrive than `meta.total` claims: an
+    absence read off a short list is the failure this whole file is careful
+    about, and it is worse here than anywhere because the lists are
+    memberships.
+    """
+    rows, total, page = [], None, 1
+    while True:
+        status, data = request("GET", url_of(page), headers())
+        if not ok(status):
+            raise ProviderError(f"emailbison {what}: page {page} -> {status}")
+        chunk = mapping(data, what).get("data")
+        if not isinstance(chunk, list):
+            raise ProviderError(
+                f"emailbison {what}: the list is not a list; refusing to read "
+                f"an unknown shape as an empty one")
+        rows += chunk
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+        if total is None:
+            total = meta.get("total")
+        try:
+            last = int(meta.get("last_page"))
+        except (TypeError, ValueError):
+            break
+        if page >= last:
+            break
+        if page >= cap:
+            raise PartialInventory(
+                f"emailbison {what}: {last} pages to walk and this read stops "
+                f"at {cap}. Refusing to return {len(rows)} of {total} as "
+                f"though it were all of them - ask about specific leads with "
+                f"`membership(campaign, lead_ids)` or about the size with "
+                f"`campaign_lead_count`, both of which are bounded")
+        page += 1
+    if isinstance(total, int) and len(rows) != total:
+        raise PartialInventory(
+            f"emailbison {what}: meta.total says {total} and {len(rows)} "
+            f"arrived across {page} page(s). Refusing to report a partial "
+            f"read as a complete one")
+    return rows, total
+
+
+def _status_in(row, campaign_id):
+    """This lead's status IN THIS CAMPAIGN, from the provider's own array.
+
+    `lead_campaign_data` has one entry per campaign the lead belongs to, so it
+    is filtered by `campaign_id`. Reading element zero returns another
+    campaign's status for a lead that is in several, which is a mistake that
+    reads as a successful stop.
+    """
+    for entry in (row or {}).get("lead_campaign_data") or []:
+        if isinstance(entry, dict) and str(entry.get("campaign_id")) == str(
+                campaign_id):
+            return entry.get("status")
+    return None
+
+
+def membership(campaign_id, lead_ids=None):
     """Each lead's status IN THIS CAMPAIGN, as the provider states it.
 
-    `lead_campaign_data` is an ARRAY - one entry per campaign the lead belongs
-    to - so it is filtered by `campaign_id` here. Reading element zero returns
-    another campaign's status for a lead that is in several, which is a
-    mistake that reads as a successful stop.
+    NAMED LEADS ARE ASKED OF THEMSELVES. `GET /leads/{id}` carries the same
+    `lead_campaign_data` array and is exact for that person whatever page of
+    the campaign they are on - which is the only way this answer can be right
+    for a campaign of twenty thousand. It costs one read per named lead, and
+    the callers that name leads are naming a handful.
+
+    With no `lead_ids` this walks the campaign and refuses past `PAGE_CAP`.
+    That form is for a small campaign; a big one has no cheap whole answer and
+    is told so rather than given a page.
     """
-    wanted = None if lead_ids is None else {int(i) for i in lead_ids}
-    url = query(leads_endpoint(campaign_id), {"per_page": per_page})
-    status, data = request("GET", url, headers())
-    if not ok(status):
-        raise ProviderError(f"emailbison membership: GET -> {status}")
-    rows = mapping(data, "membership").get("data")
-    if not isinstance(rows, list):
-        raise ProviderError(
-            "emailbison membership: the campaign lead list is not a list; "
-            "refusing to read an unknown shape as empty membership")
+    if lead_ids is not None:
+        out = {}
+        for lead_id in {int(i) for i in lead_ids}:
+            status = _status_in(lead(lead_id), campaign_id)
+            if status is not None:
+                out[lead_id] = status
+        return out
+    rows, _total = _paged(
+        "membership",
+        lambda page: query(leads_endpoint(campaign_id), {"page": page}))
     out = {}
     for row in rows:
         if not isinstance(row, dict) or row.get("id") is None:
             continue
-        if wanted is not None and int(row["id"]) not in wanted:
-            continue
-        for entry in row.get("lead_campaign_data") or []:
-            if isinstance(entry, dict) and str(entry.get("campaign_id")) == str(
-                    campaign_id):
-                out[int(row["id"])] = entry.get("status")
+        status = _status_in(row, campaign_id)
+        if status is not None:
+            out[int(row["id"])] = status
+    return out
+
+
+def campaign_lead_count(campaign_id):
+    """How many leads the provider says this campaign holds. One read.
+
+    `meta.total` on the first page, which is the only number on this route
+    that is about the campaign rather than about the page. It is what
+    `resume_campaign` counts against, because a resumed campaign sends to
+    everybody it holds and the size of that is the containment.
+    """
+    status, data = request(
+        "GET", query(leads_endpoint(campaign_id), {"page": 1}), headers())
+    if not ok(status):
+        raise ProviderError(f"emailbison campaign_lead_count: GET -> {status}")
+    meta = data.get("meta") if isinstance(data, dict) else None
+    total = (meta or {}).get("total")
+    if not isinstance(total, int):
+        raise ProviderError(
+            "emailbison campaign_lead_count: no `meta.total` in the response; "
+            "refusing to count a campaign's reach from the length of a page")
+    return total
+
+
+#: Pages of the membership the blast-radius check reads. Fifteen rows a page.
+SAMPLE_PAGES = 2
+
+
+def _sample(campaign_id, pages=SAMPLE_PAGES):
+    """A bounded slice of this campaign's membership, for a before/after diff.
+
+    Deliberately NOT `membership(campaign_id)`: that refuses a big campaign
+    rather than truncating it, which is right for a question about the whole
+    membership and useless for a check that only has to notice collateral
+    damage. This one is honest about being a sample because its caller reports
+    the denominator.
+    """
+    out = {}
+    for page in range(1, pages + 1):
+        status, data = request(
+            "GET", query(leads_endpoint(campaign_id), {"page": page}),
+            headers())
+        if not ok(status):
+            raise ProviderError(f"emailbison stop_lead sample: GET -> {status}")
+        rows = mapping(data, "stop_lead sample").get("data")
+        if not isinstance(rows, list):
+            raise ProviderError(
+                "emailbison stop_lead sample: the campaign lead list is not a "
+                "list; refusing to read an unknown shape as empty membership")
+        for row in rows:
+            if isinstance(row, dict) and row.get("id") is not None:
+                out[int(row["id"])] = _status_in(row, campaign_id)
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+        try:
+            if page >= int(meta.get("last_page")):
                 break
+        except (TypeError, ValueError):
+            break
     return out
 
 
@@ -621,16 +832,27 @@ def stop_lead(campaign_id, lead_ids, attempts=8, interval=2.0):
     raises if any does not. A stop that cannot be confirmed must never be
     reported as a stop.
 
-    Returns {"stopped": {...}, "untouched": {...}} - the second being every
-    other member of the campaign, so a caller can see that stopping one
-    person left the rest alone.
+    Returns {"stopped", "untouched", "sampled_of"}. `untouched` is the
+    blast-radius check and it is now a SAMPLE that says how big it was.
+
+    It used to read "every other member of the campaign", and it never did:
+    the membership route serves fifteen rows whatever it is asked for, so on
+    campaign 352 that sentence meant fifteen of 21,159 chosen by the provider.
+    Reading all of them is 1,411 requests before the stop and 1,411 after it,
+    on the one operation that has to be fast because somebody just replied. So
+    the sample is bounded on purpose and `sampled_of` states the denominator -
+    a partial check that says it is partial, rather than a complete-sounding
+    one that was never complete.
+
+    The leads being STOPPED are not sampled. They are read individually and
+    exactly, which is what makes the stop itself confirmable.
     """
     import time
 
     wanted = [int(i) for i in (lead_ids or [])]
     if not wanted:
         raise ProviderError("emailbison stop_lead: no lead ids given")
-    before = membership(campaign_id)
+    before = membership(campaign_id, wanted)
     absent = [i for i in wanted if i not in before]
     if absent:
         raise ProviderError(
@@ -638,6 +860,8 @@ def stop_lead(campaign_id, lead_ids, attempts=8, interval=2.0):
             f"{campaign_id}. This route answers 200 for them and does "
             f"nothing, so refusing rather than reporting a stop that cannot "
             f"happen")
+    total = campaign_lead_count(campaign_id)
+    sample_before = _sample(campaign_id)
     status, data = request(
         "POST", base() + STOP_PATH.format(campaign_id=campaign_id),
         _json_headers(), {"lead_ids": wanted})
@@ -647,20 +871,23 @@ def stop_lead(campaign_id, lead_ids, attempts=8, interval=2.0):
 
     for attempt in range(attempts):
         time.sleep(interval if attempt else 0.5)
-        now = membership(campaign_id)
+        now = membership(campaign_id, wanted)
         pending = [i for i in wanted
                    if str(now.get(i) or "").lower() not in STOPPED_STATES]
         if not pending:
-            moved = {i: before.get(i) for i in before
-                     if i not in wanted and before.get(i) != now.get(i)}
+            sample_after = _sample(campaign_id)
+            moved = {i: sample_before.get(i) for i in sample_before
+                     if i not in wanted
+                     and sample_before.get(i) != sample_after.get(i)}
             if moved:
                 raise ProviderError(
                     f"emailbison stop_lead: stopping {wanted} also changed "
                     f"{moved}. Refusing to report a per-lead stop that was "
                     f"not per-lead")
             return {"stopped": {i: now.get(i) for i in wanted},
-                    "untouched": {i: now.get(i) for i in now
-                                  if i not in wanted}}
+                    "untouched": {i: s for i, s in sample_after.items()
+                                  if i not in wanted},
+                    "sampled_of": total}
     raise ProviderError(
         f"emailbison stop_lead: the provider accepted the request but lead(s) "
         f"{pending[:5]} still do not read as stopped after "
@@ -675,6 +902,39 @@ DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
         "sunday")
 
 
+def _hhmm(value):
+    """"09:00", "09:00:00" and "9:00" as one comparable (hour, minute)."""
+    parts = str(value or "").strip().split(":")
+    if len(parts) < 2 or not parts[0].strip().isdigit() \
+            or not parts[1].strip().isdigit():
+        raise ProviderError(
+            f"emailbison schedule: {value!r} is not a time of day")
+    return int(parts[0]), int(parts[1])
+
+
+def schedule_matches(existing, days, start, end, timezone):
+    """Is the window the provider holds the window that was asked for?
+
+    Here rather than in the caller because the only hard part is this
+    module's business: the provider stores "09:00" and returns "09:00:00", so
+    a string comparison says a correct schedule is wrong and an `or`-guarded
+    one says a wrong schedule is correct. A caller asking "is this already
+    right" and this module asking "did the write take" must not answer that
+    differently, which is what happened - `set_schedule` compared the days and
+    the timezone, the factory compared the days and the timezone, and neither
+    compared the hours.
+
+    An absent schedule is not a match. `{}` here means the campaign has none,
+    and "nobody chose" must never satisfy "somebody chose this".
+    """
+    if not existing:
+        return False
+    return (str(existing.get("timezone")) == str(timezone)
+            and all(bool(existing.get(d)) == (d in days) for d in DAYS)
+            and _hhmm(existing.get("start_time")) == _hhmm(start)
+            and _hhmm(existing.get("end_time")) == _hhmm(end))
+
+
 def set_schedule(campaign_id, days, start, end, timezone):
     """When this campaign is allowed to send, and confirm it took.
 
@@ -683,9 +943,20 @@ def set_schedule(campaign_id, days, start, end, timezone):
     than omitted, because an omitted day is a validation error and not a
     quiet no.
 
+    POST CREATES AND WILL NOT REPLACE. Measured 2026-09-13: on a campaign that
+    already has a schedule, `POST .../schedule` answers **200** carrying
+    `{"success": false, "message": "Schedule already exists for <name>"}` and
+    writes nothing at all. The update verb is `PUT` - `PATCH` and `DELETE` are
+    both 405 there, and the 405 names GET, HEAD, POST, PUT. So the verb is
+    chosen from whether a schedule exists, and a body that says `success:
+    false` is read as the refusal it is rather than as the 200 it arrives in.
+
     Round-trip asymmetry to know about: a time written as "09:00" reads back
     as "09:00:00", so the readback compares the hour and minute rather than
-    the string.
+    the string. It compares them at all now - it did not, and with the POST
+    trap above that meant narrowing a window from 09:00-17:00 to 09:00-12:00
+    on the same days answered 200, wrote nothing, and returned the OLD
+    schedule as though the change had taken.
     """
     unknown = [d for d in days if d not in DAYS]
     if unknown:
@@ -697,18 +968,38 @@ def set_schedule(campaign_id, days, start, end, timezone):
     body = {day: (day in days) for day in DAYS}
     body.update({"start_time": start, "end_time": end, "timezone": timezone,
                  "save_as_template": False})
-    status, data = request(
-        "POST", base() + SCHEDULE_PATH.format(campaign_id=campaign_id),
-        _json_headers(), body)
+    # BOTH VERBS SPELLED OUT, and not chosen into a variable. Every HTTP
+    # write in this repository has to be a literal a reader can find -
+    # `tests/test_nothing_writes_to_a_provider` refuses a `request(verb, ...)`
+    # outright - because a verb decided at runtime is a write no static read
+    # can name. Two branches is the price of that, and it is worth it.
+    url = base() + SCHEDULE_PATH.format(campaign_id=campaign_id)
+    if schedule(campaign_id):
+        verb = "PUT"
+        status, data = request("PUT", url, _json_headers(), body)
+    else:
+        verb = "POST"
+        status, data = request("POST", url, _json_headers(), body)
     if not ok(status):
         raise ProviderError(
-            f"emailbison set_schedule: POST -> {status} {_message(data)}")
+            f"emailbison set_schedule: {verb} -> {status} {_message(data)}")
+    answered = data.get("data") if isinstance(data, dict) else None
+    if isinstance(answered, dict) and answered.get("success") is False:
+        raise ProviderError(
+            f"emailbison set_schedule: {verb} answered {status} and wrote "
+            f"nothing: {_message(data)}. A sending window that was asked for "
+            f"and not stored is the whole failure this call exists to catch")
     got = schedule(campaign_id)
     for day in DAYS:
         if bool(got.get(day)) != body[day]:
             raise ProviderError(
                 f"emailbison set_schedule: asked for {day}={body[day]} and "
                 f"the campaign reads back {got.get(day)!r}")
+    for field, wanted in (("start_time", start), ("end_time", end)):
+        if _hhmm(got.get(field)) != _hhmm(wanted):
+            raise ProviderError(
+                f"emailbison set_schedule: asked for {field}={wanted!r} and "
+                f"campaign {campaign_id} reads back {got.get(field)!r}")
     if str(got.get("timezone")) != str(timezone):
         raise ProviderError(
             f"emailbison set_schedule: timezone reads back "
@@ -763,17 +1054,19 @@ def attach_senders(campaign_id, sender_email_ids):
 
 
 def campaign_senders(campaign_id):
-    """Which sender inboxes the PROVIDER says this campaign sends from."""
-    status, data = request(
-        "GET", f"{base()}/campaigns/{campaign_id}/sender-emails?per_page=200",
-        headers())
-    if not ok(status):
-        raise ProviderError(f"emailbison campaign_senders: GET -> {status}")
-    rows = mapping(data, "campaign_senders").get("data")
-    if not isinstance(rows, list):
-        raise ProviderError(
-            "emailbison campaign_senders: the sender list is not a list; "
-            "refusing to read an unknown shape as 'no senders bound'")
+    """Which sender inboxes the PROVIDER says this campaign sends from.
+
+    PAGED, because this route ignores `per_page` too. It was asked for 200 and
+    answered 15 with `meta.total: 222` for campaign 352 - so `attach_senders`
+    below, which reads this back to prove a bind took, would have raised
+    "sender(s) are not on this campaign" for any campaign past fifteen
+    inboxes, on a write that had in fact succeeded. Fifteen inboxes is a
+    canary; a real campaign here runs on fifty-nine.
+    """
+    rows, _total = _paged(
+        "campaign_senders",
+        lambda page: query(f"{base()}/campaigns/{campaign_id}/sender-emails",
+                           {"page": page}))
     return [r.get("id") for r in rows if isinstance(r, dict) and r.get("id")]
 
 
@@ -815,22 +1108,94 @@ def update_lead(lead_id, fields):
     return held
 
 
-def campaign_lead_ids(campaign_id, per_page=200):
-    """Which lead ids the PROVIDER says are in this campaign.
+def campaign_lead_ids(campaign_id):
+    """Every lead id the PROVIDER says is in this campaign, or a refusal.
 
     Membership read from the provider rather than from anything we remember
-    writing. Used to confirm an attach and to make one idempotent.
+    writing. Paged, and it refuses past `PAGE_CAP` rather than returning a
+    page: it used to take `per_page=200`, which this route ignores, and
+    returned fifteen ids for a campaign of 21,159.
+
+    For a big campaign the honest answers are `campaign_lead_count` and
+    `membership(campaign, lead_ids)`, both of which are bounded, and this says
+    so instead of guessing.
     """
-    url = query(leads_endpoint(campaign_id), {"per_page": per_page})
-    status, data = request("GET", url, headers())
-    if not ok(status):
-        raise ProviderError(f"emailbison campaign_lead_ids: GET -> {status}")
-    rows = mapping(data, "campaign_lead_ids").get("data")
-    if not isinstance(rows, list):
-        raise ProviderError(
-            "emailbison campaign_lead_ids: the campaign lead list is not a "
-            "list; refusing to read an unknown shape as empty membership")
+    rows, _total = _paged(
+        "campaign_lead_ids",
+        lambda page: query(leads_endpoint(campaign_id), {"page": page}))
     return [r.get("id") for r in rows if isinstance(r, dict) and r.get("id")]
+
+
+class LeadsNotAttachable(ProviderError):
+    """This campaign may not hold these people, and the provider said so.
+
+    Its own class because the caller has to be able to tell it from a
+    transport failure: a retry fixes a 500 and cannot fix this.
+    """
+
+
+# The provider's own sentence for the refusal, lowercased. It names THREE
+# different facts at once - in another sequence, previously bounced,
+# unsubscribed - and two of them are suppression. Matching on it is matching
+# on an ambiguity, which is exactly why `_attach_refusal` below goes and asks
+# the leads rather than reporting this message as though it meant one thing.
+REFUSED_ATTACH = "no leads were added"
+
+# How many leads a refusal will interrogate before it stops. A refusal names
+# none of them, so the diagnosis costs one GET per lead; on a campaign of two
+# hundred that is two hundred reads on an error path. Bounded, and the message
+# says the bound was reached rather than implying the rest are clean.
+DIAGNOSE_AT_MOST = 50
+
+
+def _attach_refusal(campaign_id, lead_ids, status, data):
+    """Name WHO could not be attached and WHICH campaign is holding them.
+
+    ONE PERSON, ONE LIVE SEQUENCE - AND THE PROVIDER ENFORCES IT SILENTLY.
+    Measured 2026-09-13: a lead whose `lead_campaign_data` reads `in_sequence`
+    for any campaign cannot be attached to a second one. The refusal is a 422
+    naming no lead and no campaign, and it is all-or-nothing: one held person
+    in a batch of two hundred attaches nobody.
+
+    `in_sequence` is not the same as "the campaign is running". A lead
+    attached to a campaign still in DRAFT reads `in_sequence` immediately;
+    pausing that campaign moves it to `sending_paused` and it becomes
+    attachable again. So the thing that holds a person is any campaign that
+    has not been stopped, which a caller cannot see from its own state.
+
+    The other two facts in the provider's sentence - bounced, unsubscribed -
+    are suppression, and they are NOT reported as a sequence collision. An
+    address nobody may write to and a person already in a cadence are
+    different answers, and a caller that confused them would keep retrying a
+    person it must never contact.
+    """
+    held, unknown, checked = [], [], list(lead_ids)[:DIAGNOSE_AT_MOST]
+    for lead_id in checked:
+        row = lead(lead_id)
+        entries = [e for e in (row.get("lead_campaign_data") or [])
+                   if isinstance(e, dict)]
+        blocking = [e for e in entries
+                    if str(e.get("status") or "").lower() == "in_sequence"
+                    and str(e.get("campaign_id")) != str(campaign_id)]
+        if blocking:
+            held.append(f"{row.get('email') or lead_id} is in_sequence in "
+                        f"campaign(s) "
+                        f"{sorted(str(e.get('campaign_id')) for e in blocking)}")
+        else:
+            unknown.append(f"{row.get('email') or lead_id} "
+                           f"({[e.get('status') for e in entries] or 'no campaign'})")
+    tail = ("" if len(lead_ids) <= DIAGNOSE_AT_MOST else
+            f" Only the first {DIAGNOSE_AT_MOST} of {len(lead_ids)} were "
+            f"checked, so this list may be incomplete.")
+    return (
+        f"emailbison attach_leads: campaign {campaign_id} refused all "
+        f"{len(lead_ids)} lead(s) with {status} - the provider says they are "
+        f"'either in other sequences, have previously bounced, or "
+        f"unsubscribed', which is three different facts in one sentence. "
+        f"Held elsewhere: {held or 'none found'}. Not explained by a sequence "
+        f"collision, so bounced or unsubscribed is the remaining reading and "
+        f"this call will not guess which: {unknown or 'none'}.{tail} Nothing "
+        f"was attached: this route is all-or-nothing.")
 
 
 def attach_leads(campaign_id, lead_ids):
@@ -842,38 +1207,96 @@ def attach_leads(campaign_id, lead_ids):
 
     Idempotent on both sides. The provider itself refuses to double-add
     ("Existing leads were not added"), and this reads membership first, so a
-    repeat costs one GET and writes nothing.
+    repeat costs one read per lead and writes nothing.
 
-    Returns {"attached", "already", "members"}, where `members` is the
-    provider's own membership AFTER the write. A caller asking whether a lead
-    is in a campaign reads `members`, never the status code: this raises when
-    the readback lacks what was asked for, so a silent partial attach cannot
-    be reported as success.
+    BOTH READS ASK ABOUT THE LEADS THIS CALL NAMES, not about the campaign.
+    They used to list the campaign's members, which serves fifteen rows
+    whatever it is asked for - so for any campaign past its first page the
+    readback found the leads absent and raised "the provider answered 200 but
+    N leads are not in campaign X" on a write that had actually succeeded.
+    Asking the named leads is exact at any campaign size, and it is bounded by
+    the size of the batch rather than by the size of the campaign.
+
+    Returns {"attached", "already", "members", "count"}, where `members` is
+    the leads THIS CALL asked about that the provider confirms are in the
+    campaign afterwards, and `count` is how many leads the campaign holds in
+    total. A caller asking whether a lead is in a campaign reads `members`,
+    never the status code.
     """
     wanted = [i for i in (lead_ids or []) if i is not None]
     if not wanted:
         raise ProviderError("emailbison attach_leads: no lead ids given")
-    before = set(campaign_lead_ids(campaign_id))
-    missing = [i for i in wanted if i not in before]
+    before = set(membership(campaign_id, wanted))
+    missing = [i for i in wanted if int(i) not in before]
     if not missing:
         return {"attached": [], "already": list(wanted),
-                "members": sorted(before)}
+                "members": sorted(before),
+                "count": campaign_lead_count(campaign_id)}
     status, data = request(
         "POST", base() + ATTACH_PATH.format(campaign_id=campaign_id),
         _json_headers(), {"lead_ids": missing})
     if not ok(status):
+        if REFUSED_ATTACH in _message(data).lower():
+            raise LeadsNotAttachable(_attach_refusal(campaign_id, missing,
+                                                     status, data))
         raise ProviderError(
             f"emailbison attach_leads: POST attach-leads -> {status} "
             f"{_message(data)}")
-    after = set(campaign_lead_ids(campaign_id))
-    absent = [i for i in wanted if i not in after]
+    after = set(membership(campaign_id, wanted))
+    absent = [i for i in wanted if int(i) not in after]
     if absent:
         raise ProviderError(
             f"emailbison attach_leads: the provider answered {status} but "
             f"{len(absent)} of {len(wanted)} leads are not in campaign "
             f"{campaign_id} on readback: {absent[:5]}")
-    return {"attached": missing, "already": [i for i in wanted if i in before],
-            "members": sorted(after)}
+    return {"attached": missing,
+            "already": [i for i in wanted if int(i) in before],
+            "members": sorted(after),
+            "count": campaign_lead_count(campaign_id)}
+
+
+def sequence_steps(campaign_id):
+    """The steps this campaign actually holds, in the provider's own words.
+
+    THE READBACK `set_sequence` NEVER HAD. Without it, writing a sequence was
+    a write nobody could classify: `bisonfactory` passed a readback computed
+    from its own input, so it compared the request to itself and always
+    agreed. `GET /campaigns/{id}/sequence-steps` answers 200 with the stored
+    steps, so the real question is answerable and now is.
+
+    TWO THINGS ABOUT THIS ROUTE, BOTH MEASURED 2026-09-13 AND BOTH THE
+    OPPOSITE OF ITS NEIGHBOURS.
+
+    A 200 IS NOT AN EXISTENCE PROOF, exactly as on the schedule route: a
+    campaign with no sequence answers 200 carrying `{"success": false,
+    "message": "Sequence steps do not exist for <name>"}`, so absence is read
+    from the body.
+
+    AND IT IS NOT PAGINATED. Campaign 352 returns all 44 of its steps in one
+    response with no `meta` at all, and `?page=2` returns the same 44. So this
+    is one read and not a walk - which is why it does not go through `_paged`
+    like the membership routes, and why that is stated rather than left to
+    look like an oversight.
+    """
+    status, data = request(
+        "GET", f"{base()}/campaigns/{campaign_id}/sequence-steps", headers())
+    if not ok(status):
+        raise ProviderError(f"emailbison sequence_steps: GET -> {status}")
+    rows = mapping(data, "sequence_steps").get("data")
+    if isinstance(rows, dict) and rows.get("success") is False:
+        return []
+    if not isinstance(rows, list):
+        raise ProviderError(
+            "emailbison sequence_steps: the step list is not a list and does "
+            "not say the sequence is absent; refusing to read an unknown "
+            "shape as 'this campaign has no sequence', which is what licenses "
+            "writing one into a route that only appends")
+    return [{"id": r.get("id"), "order": r.get("order"),
+             "email_subject": r.get("email_subject"),
+             "email_body": r.get("email_body"),
+             "wait_in_days": r.get("wait_in_days"),
+             "active": r.get("active")}
+            for r in rows if isinstance(r, dict)]
 
 
 def set_sequence(campaign_id, title, steps):
@@ -882,6 +1305,19 @@ def set_sequence(campaign_id, title, steps):
     Measured 2026-09-12: an empty body answers 422 naming both as required,
     and `title` plus a NESTED `sequence_steps` array answers 201. A flat
     single step is rejected - the steps have to be nested.
+
+    THIS APPENDS. IT DOES NOT REPLACE, AND NOTHING CAN. Measured 2026-09-13 on
+    a throwaway campaign: writing one step, then another, left the campaign
+    holding BOTH, and a third write of two steps left four - renumbered 1, 3,
+    2, 4, so the orders interleave rather than following the writes. There is
+    no removal: `/campaigns/{id}/sequence-steps` is GET, HEAD, POST only, PUT
+    is 405, and no per-step route exists at all.
+
+    So a campaign whose sequence is written twice sends twice, the second
+    email carrying the older copy, and the only remedy is deleting the
+    campaign. The caller is responsible for writing this ONLY into a campaign
+    that holds no steps - `bisonfactory._ensure_sequence` reads
+    `sequence_steps` first and refuses a mismatch rather than appending.
     """
     if not steps:
         raise ProviderError("emailbison set_sequence: no steps given")
@@ -903,7 +1339,7 @@ def campaign(campaign_id):
     return mapping(data, "campaign").get("data") or {}
 
 
-def scheduled_emails(campaign_id, per_page=50):
+def scheduled_emails(campaign_id):
     """The pre-send queue for one campaign, AS THE PROVIDER WILL SEND IT.
 
     The only place the RENDERED copy is visible. `email_subject` and
@@ -915,22 +1351,43 @@ def scheduled_emails(campaign_id, per_page=50):
     So "did our copy render" is answerable BEFORE anybody receives anything,
     which is the difference between proving a template was stored and proving
     what a person will actually read.
+
+    PAGED, AND `per_page` IS GONE because it never did anything. This route
+    ignores it exactly as the membership routes do: campaign 352 asked for 50
+    answers fifteen rows with `meta.total: 95312`. A queue read is consumed as
+    "what is about to go out", and fifteen of ninety-five thousand answering
+    that question is how a send nobody expected becomes a send nobody saw. A
+    queue too big to walk raises rather than returning its first page.
     """
-    status, data = request(
-        "GET",
-        f"{base()}/campaigns/{campaign_id}/scheduled-emails?per_page={per_page}",
-        headers())
-    if not ok(status):
-        raise ProviderError(f"emailbison scheduled_emails: GET -> {status}")
-    rows = mapping(data, "scheduled_emails").get("data")
-    if not isinstance(rows, list):
-        raise ProviderError(
-            "emailbison scheduled_emails: the queue is not a list; refusing "
-            "to read an unknown shape as an empty queue")
+    rows, _total = _paged(
+        "scheduled_emails",
+        lambda page: query(
+            f"{base()}/campaigns/{campaign_id}/scheduled-emails",
+            {"page": page}))
     return rows
 
 
-def resume_campaign(campaign_id, expect_leads=None):
+# WHAT A CAMPAIGN'S `status` CAN SAY, CLASSIFIED RATHER THAN ASSUMED.
+# Observed on this instance: draft, paused, queued, active, failed, completed,
+# archived, and "pending deletion". Only the first group means the provider
+# accepted the start and is sending.
+STARTED_STATES = ("active", "running", "completed")
+# Accepted and NOT started yet. `PATCH .../resume` answers 200 and the row
+# reads `queued` for a second or two while the provider decides - so `queued`
+# is an unfinished answer, never a started one.
+STARTING_STATES = ("queued", "starting")
+NOT_STARTED_STATES = ("draft", "paused")
+# The provider tried to start it and gave up. Measured twice on 2026-09-13: a
+# campaign with a sequence, a schedule, a sender and a lead went queued ->
+# failed within three seconds because its next sending window was six days
+# away. It answers 200 the whole time.
+FAILED_STATES = ("failed",)
+# Queued for deletion and still answering GET with a row. Two seconds later
+# the same GET is a 404. A binding pointing here is stale, not reusable.
+PENDING_DELETION = "pending deletion"
+
+
+def resume_campaign(campaign_id, expect_leads=None, attempts=8, interval=2.0):
     """Start a campaign sending, and confirm from the provider that it did.
 
     THE ONE VERB IN THIS MODULE THAT REACHES A PERSON. Everything else here
@@ -947,13 +1404,34 @@ def resume_campaign(campaign_id, expect_leads=None):
     The provider refuses an incomplete campaign in its own words: it wants a
     sequence, a schedule, senders AND leads. So a 400 is a statement about the
     campaign rather than a failed call.
+
+    AND THE 200 IS NOT THE ANSWER EITHER. The readback used to accept any
+    status that was not `draft` or `paused`, which made `queued` - the
+    provider still thinking - and `failed` - the provider having given up -
+    both read as started. Measured twice on 2026-09-13: `resume` answered 200,
+    this returned `{"status": "queued"}`, and three seconds later the campaign
+    read `failed` and never sent anything. An operator would have been told
+    the campaign was live.
+
+    So the status is classified rather than defaulted, and `queued` is polled
+    out rather than reported. A resume whose outcome is still unknown when the
+    polling runs out raises: "we do not know yet" and "it started" must not be
+    the same answer on the one verb here that reaches a person.
     """
+    import time
+
     if expect_leads is not None:
-        held = campaign_lead_ids(campaign_id)
-        if len(held) != int(expect_leads):
+        # COUNTED FROM `meta.total`, NOT FROM A LIST. The list route serves
+        # fifteen rows however many the campaign holds, so this guard used to
+        # compare the caller's expectation against a page: `expect_leads=15`
+        # would have passed on a campaign of twenty thousand people, on the
+        # one check whose whole job is to stop a campaign reaching more people
+        # than the caller believes.
+        held = campaign_lead_count(campaign_id)
+        if held != int(expect_leads):
             raise ProviderError(
                 f"emailbison resume_campaign: campaign {campaign_id} holds "
-                f"{len(held)} lead(s) and the caller expected "
+                f"{held} lead(s) and the caller expected "
                 f"{expect_leads}. Refusing to start a campaign whose reach is "
                 f"not what the caller thinks it is")
     status, data = request("PATCH",
@@ -962,12 +1440,33 @@ def resume_campaign(campaign_id, expect_leads=None):
     if not ok(status):
         raise ProviderError(
             f"emailbison resume_campaign: PATCH -> {status} {_message(data)}")
-    state = str(campaign(campaign_id).get("status") or "").lower()
-    if state in ("draft", "paused"):
-        raise ProviderError(
-            f"emailbison resume_campaign: the provider answered {status} but "
-            f"campaign {campaign_id} still reads back as {state!r}")
-    return {"campaign_id": campaign_id, "status": state}
+    state = ""
+    for attempt in range(attempts):
+        if attempt:
+            time.sleep(interval)
+        state = str(campaign(campaign_id).get("status") or "").lower()
+        if state in STARTED_STATES:
+            return {"campaign_id": campaign_id, "status": state}
+        if state in FAILED_STATES:
+            raise ProviderError(
+                f"emailbison resume_campaign: the provider answered {status} "
+                f"and then moved campaign {campaign_id} to {state!r}. It is "
+                f"NOT sending. One cause is known: a campaign whose next "
+                f"sending window is days away fails this way within seconds")
+        if state in NOT_STARTED_STATES:
+            raise ProviderError(
+                f"emailbison resume_campaign: the provider answered {status} "
+                f"but campaign {campaign_id} still reads back as {state!r}")
+        if state not in STARTING_STATES:
+            raise ProviderError(
+                f"emailbison resume_campaign: campaign {campaign_id} reads "
+                f"back as {state!r}, which this module cannot classify as "
+                f"started or not started. Refusing to report a send that "
+                f"cannot be confirmed")
+    raise ProviderError(
+        f"emailbison resume_campaign: campaign {campaign_id} is still "
+        f"{state!r} after {attempts * interval:.0f}s. Whether it is sending "
+        f"is UNKNOWN - read provider truth before resuming again")
 
 
 def pause_campaign(campaign_id):

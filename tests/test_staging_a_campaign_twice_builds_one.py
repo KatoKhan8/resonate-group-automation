@@ -43,6 +43,7 @@ class FakeBison:
         self.declared = {"headline", "industry", "location"}
         self.schedules = {}
         self.senders = {}
+        self.steps = {}
 
     @staticmethod
     def _variables(mapping_of):
@@ -121,14 +122,38 @@ class FakeBison:
         self.created_leads += 1
         return dict(self.leads[lid])
 
-    def find_lead_by_email(self, email):
+    def find_lead_by_email(self, email, attempts=1, interval=1.0):
         for row in self.leads.values():
             if row["email"] == str(email).lower():
                 return dict(row)
         return None
 
-    def campaign_lead_ids(self, cid, per_page=200):
+    # The status vocabulary, taken from the real module rather than retyped:
+    # a fixture that disagreed with it about what "started" means would be
+    # testing a provider that does not exist.
+    from src.providers.bison import (FAILED_STATES, NOT_STARTED_STATES,
+                                     PENDING_DELETION, STARTED_STATES,
+                                     STARTING_STATES)
+
+    def find_campaigns_by_name(self, name):
+        """The crash-recovery lookup: a campaign nobody wrote down.
+
+        Here it is also the thing that proves the second run of this test
+        reuses a BINDING rather than rediscovering the campaign by name -
+        `created_campaigns` stays at one either way, so the fake has to be
+        able to answer honestly.
+        """
+        return [{"id": c["id"], "name": c["name"], "status": c["status"]}
+                for c in self.campaigns.values() if c["name"] == name]
+
+    def campaign_lead_ids(self, cid):
         return list(self.members.get(int(cid), []))
+
+    def campaign_lead_count(self, cid):
+        """How many, read from `meta.total` in the real module: the campaign
+        lead route serves fifteen rows whatever `per_page` asks for, so a
+        count taken from a list is a count of a page."""
+        return len(self.members.get(int(cid), []))
 
     def attach_leads(self, cid, lead_ids):
         cid = int(cid)
@@ -137,7 +162,8 @@ class FakeBison:
         self.members[cid] = sorted(before | set(lead_ids))
         return {"attached": fresh,
                 "already": [i for i in lead_ids if i in before],
-                "members": list(self.members[cid])}
+                "members": list(self.members[cid]),
+                "count": len(self.members[cid])}
 
     def set_limits(self, cid, name, emails_per_day, new_leads_per_day=None):
         leads = emails_per_day if new_leads_per_day is None else new_leads_per_day
@@ -154,10 +180,17 @@ class FakeBison:
 
     def set_schedule(self, cid, days, start, end, timezone):
         row = {d: (d in days) for d in self.DAYS}
-        row.update({"start_time": start, "end_time": end,
+        # "09:00" is stored and "09:00:00" comes back, which is the asymmetry
+        # `schedule_matches` exists to absorb. Modelled here so a comparison
+        # that got it wrong would fail in this test too.
+        row.update({"start_time": start + ":00", "end_time": end + ":00",
                     "timezone": timezone})
         self.schedules[int(cid)] = row
         return row
+
+    def schedule_matches(self, existing, days, start, end, timezone):
+        from src.providers import bison as real
+        return real.schedule_matches(existing, days, start, end, timezone)
 
     def campaign_senders(self, cid):
         return list(self.senders.get(int(cid), []))
@@ -168,7 +201,19 @@ class FakeBison:
         return {"campaign_id": cid, "senders": self.senders[int(cid)]}
 
     def set_sequence(self, cid, title, steps):
+        # IT APPENDS. Measured 2026-09-13: two writes leave two steps, and
+        # there is no replace and no delete. Modelled so this fixture cannot
+        # make a double-send look like an idempotent re-stage.
+        self.steps.setdefault(int(cid), []).extend(
+            {"id": self._id(), "order": i + 1,
+             "email_subject": s.get("email_subject"),
+             "email_body": s.get("email_body"),
+             "wait_in_days": s.get("wait_in_days"), "active": True}
+            for i, s in enumerate(steps))
         return {"id": self._id(), "title": title}
+
+    def sequence_steps(self, cid):
+        return [dict(s) for s in self.steps.get(int(cid), [])]
 
     def pause_campaign(self, cid):
         self.campaigns[int(cid)]["status"] = "paused"

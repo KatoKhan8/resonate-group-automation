@@ -9,9 +9,19 @@ This module orchestrates those; it invents no new state.
 
 WHAT MAKES IT IDEMPOTENT. `bison_campaign_id` on the campaign row is the
 anchor. It is written the instant the provider answers, inside the same
-transaction that reads it, so a crash between the POST and the persist is the
-one failure this cannot paper over - and that case is reported as ambiguous
-rather than retried, because a retry would build a second campaign.
+transaction that reads it. A crash between the POST and the persist leaves a
+real campaign that no local state names, and this paragraph used to say that
+case "is reported as ambiguous rather than retried" - it was not. Nothing
+looked, and the next run built a second campaign: measured on 2026-09-13, two
+campaigns with byte-identical names. The name is now DERIVED from the campaign
+row (`provider_campaign_name`) and looked up before anything is created, so an
+orphan is recovered and bound; two orphans are the ambiguity that paragraph
+claimed, and they are refused.
+
+THE OTHER THING THAT MAKES IT IDEMPOTENT IS THE ORDER. The campaign is
+stopped BEFORE its leads are attached, because a lead in a campaign that has
+not been stopped reads `in_sequence` and a lead that is `in_sequence`
+anywhere cannot be attached anywhere else. See `stage`.
 
 WHAT IT WILL NOT DO. It never resumes a campaign. Activation is what makes a
 staged sequence start emailing real people, `bison.activate` is not in
@@ -77,18 +87,56 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
             f"is configured for workspace {expected}. Refusing to build one "
             f"client's campaign inside another client's estate")
 
-    provider_id = _find_or_create(campaign, report, by=by)
+    provider_id, provider_name = _find_or_create(campaign, report, by=by)
     report["provider"]["campaign_id"] = provider_id
+    report["provider"]["name"] = provider_name
 
-    _ensure_limits(provider_id, campaign, plan, report)
+    _ensure_limits(provider_id, campaign, provider_name, report)
     _ensure_schedule(provider_id, plan, report)
     _ensure_senders(provider_id, campaign, report)
     _ensure_sequence(provider_id, campaign, plan, report, by=by)
-    _ensure_leads(provider_id, campaign, plan, report, by=by)
+    # STOPPED BEFORE IT HOLDS ANYBODY, for the reason `_ensure_limits` is
+    # applied before the leads and for one more that is not about this
+    # campaign at all. A lead attached to a campaign that has not been stopped
+    # reads `in_sequence` AT ONCE - draft is enough - and a lead that is
+    # `in_sequence` anywhere cannot be attached to any other campaign; the
+    # provider refuses the whole batch with one unattributed 422. So the old
+    # order left every lead of this campaign unattachable elsewhere for the
+    # length of a staging run, and two campaigns staged at the same time
+    # raced: measured 2026-09-13, the second one failed outright.
     _ensure_stopped(provider_id, report, by=by)
+    _ensure_leads(provider_id, campaign, plan, report, by=by)
 
     report["provider"]["readback"] = _readback(provider_id)
     return report
+
+
+def provider_campaign_name(campaign):
+    """The name this campaign row has at EmailBison. Derived, never chosen.
+
+    THE ONLY HANDLE ON A CAMPAIGN NOBODY WROTE DOWN. `bison_campaign_id` is
+    the anchor and it is written the instant the provider answers - but if the
+    process dies in between, the provider holds a campaign that no local state
+    names and the next run builds another. Measured 2026-09-13: two campaigns,
+    byte-identical names, one of them orphaned.
+
+    So the name carries the canonical identity, and `_find_or_create` looks it
+    up before it creates anything. `client` is in it because `campaign_id` is
+    unique per client and this workspace holds more than one tenant's work,
+    and the operator's own name stays at the front because this string is what
+    a person sees in EmailBison's UI.
+
+    WHAT IS DELIBERATELY NOT IN IT: `campaigns.fingerprint`. That digest moves
+    whenever a draft, a sender, a volume or a client setting changes, which is
+    exactly right for "is this still what was approved" and exactly wrong for
+    "which provider campaign is this". A name carrying it would stop matching
+    the moment copy was regenerated, and the next re-stage would build a
+    second campaign for the same row - the defect this function exists to
+    close, reintroduced. Identity is stable; material is not; they are
+    different questions and the fingerprint answers the other one.
+    """
+    human = str(campaign.get("name") or "").strip() or "resonate"
+    return f"{human} [{campaign.get('client')}/{campaign.get('campaign_id')}]"
 
 
 def _plan(campaign, recs, config):
@@ -157,7 +205,7 @@ def _plan(campaign, recs, config):
                                   (person.get("name") or "").split()[1:]))})
     return {"fingerprint": campaigns.fingerprint(campaign, recs=recs,
                                                  config=config),
-            "name": campaign.get("name") or f"resonate-{campaign.get('campaign_id')}",
+            "name": provider_campaign_name(campaign),
             "leads": leads,
             # THE CAMPAIGN'S OWN WINDOW WINS. EmailBison schedules ONE window
             # per campaign, so the window is a property of the cohort rather
@@ -215,11 +263,57 @@ def _find_or_create(campaign, report, by="system"):
                 f"campaign {bound}, which the provider will not return "
                 f"({e}). Refusing to create a second one behind a binding "
                 f"that may still be valid; reconcile by hand") from None
+        status = str(live_row.get("status") or "").lower()
+        if status == bison.PENDING_DELETION:
+            # DELETE IS ASYNCHRONOUS HERE AND THE ROW SURVIVES IT FOR A FEW
+            # SECONDS. Measured 2026-09-13: `DELETE /campaigns/{id}` answers
+            # 200 "queued for deletion", the GET keeps answering 200 with this
+            # status, and two seconds later the same GET is a 404. Staging
+            # into that window writes a cap, a schedule, a sequence and a set
+            # of leads into a campaign that is about to stop existing, and
+            # every readback in between looks correct.
+            raise FactoryRefused(
+                f"campaign {campaign.get('campaign_id')} is bound to "
+                f"EmailBison campaign {bound}, which is {status!r}. It is on "
+                f"its way out and anything staged into it goes with it. Clear "
+                f"the binding once the provider has finished deleting it")
         report["did"].append(f"reused EmailBison campaign {bound}")
         report["provider"]["status_before"] = live_row.get("status")
-        return bound
+        return bound, str(live_row.get("name") or report["plan"]["name"])
 
-    payload = {"name": report["plan"]["name"]}
+    # BEFORE CREATING: IS ONE ALREADY THERE UNDER THIS ROW'S NAME?
+    #
+    # This is the crash-between-POST-and-persist case, and until now the
+    # module's own docstring claimed it was "reported as ambiguous rather than
+    # retried" while the code went straight to a second POST. `bison_campaign_
+    # id` is written inside the transaction that reads it, so the window is
+    # small - and a window that is only small is one that eventually opens.
+    #
+    # The lookup is exact and the name is derived, so this finds the campaign
+    # this row would have built and nothing else. Two of them is not a case to
+    # choose between: both are real campaigns that can hold real people.
+    planned = report["plan"]["name"]
+    orphans = bison.find_campaigns_by_name(planned)
+    orphans = [o for o in orphans
+               if str(o.get("status") or "").lower() != bison.PENDING_DELETION]
+    if len(orphans) > 1:
+        raise FactoryAmbiguous(
+            f"EmailBison holds {len(orphans)} campaigns named {planned!r} "
+            f"({sorted(o.get('id') for o in orphans)}) and this row is bound "
+            f"to none of them. Both can hold real people. Bind the right one "
+            f"by hand and delete the other; do NOT re-run this")
+    if orphans:
+        found = orphans[0]
+        _bind(campaign, found["id"], "found by name and bound: it was created "
+                                     "and never recorded")
+        report["did"].append(
+            f"recovered EmailBison campaign {found['id']} by name: it existed "
+            f"already and this row was bound to nothing")
+        report["provider"]["recovered"] = True
+        report["provider"]["status_before"] = found.get("status")
+        return found["id"], str(found.get("name") or planned)
+
+    payload = {"name": planned}
     # `perform` reports the response as trimmed JSON TEXT, which is right for
     # an audit line and useless for reading an id back out of. The transport
     # holds the real row, so it is captured here rather than reparsed.
@@ -244,18 +338,25 @@ def _find_or_create(campaign, report, by="system"):
 
     # PERSIST IMMEDIATELY, IN ITS OWN TRANSACTION.
     # Everything after this point can be retried. This cannot: an unpersisted
-    # id is a campaign nobody can find, and the next run would build another.
+    # id is a campaign nobody can find, and the next run would build another -
+    # which is now recoverable by name above rather than merely narrow.
+    _bind(campaign, provider_id, "created and bound")
+    report["did"].append(f"created EmailBison campaign {provider_id}")
+    return provider_id, planned
+
+
+def _bind(campaign, provider_id, why):
+    """Write the provider's campaign id onto the row, in its own transaction."""
     with campaigns.transaction() as rows:
         row = campaigns.get(str(campaign.get("campaign_id")), rows)
         if row is not None:
             row["bison_campaign_id"] = provider_id
-            campaigns.log(row, "provider", f"EmailBison campaign {provider_id} "
-                                           f"created and bound")
-    report["did"].append(f"created EmailBison campaign {provider_id}")
+            campaigns.log(row, "provider",
+                          f"EmailBison campaign {provider_id} {why}")
     return provider_id
 
 
-def _ensure_limits(provider_id, campaign, plan, report):
+def _ensure_limits(provider_id, campaign, provider_name, report):
     """Cap the campaign before it holds anybody.
 
     The provider's default is 1000 emails a day and `POST /campaigns` accepts
@@ -266,6 +367,12 @@ def _ensure_limits(provider_id, campaign, plan, report):
     A campaign whose daily volume nobody configured is REFUSED rather than
     left on the default. "Nobody said" and "a thousand a day" must not be the
     same state.
+
+    `provider_name` IS THE PROVIDER'S OWN NAME, not the planned one. The cap
+    route requires `name` in the same body, so writing a cap rewrites the
+    name - and re-staging is routine. Passing the planned name here meant
+    reconciling a campaign somebody had renamed in EmailBison's UI silently
+    renamed it back, which is an edit nobody asked this function to make.
     """
     volume = (campaign.get("daily_volume") or {}).get("email")
     if not volume:
@@ -274,7 +381,7 @@ def _ensure_limits(provider_id, campaign, plan, report):
             f"volume. EmailBison defaults to 1000 a day and discards a cap "
             f"passed at create time, so staging this would leave a campaign "
             f"nobody rate-limited")
-    state = bison.set_limits(provider_id, plan["name"], int(volume))
+    state = bison.set_limits(provider_id, provider_name, int(volume))
     report["provider"]["limits"] = state
     report["did"].append(f"capped at {state['max_emails_per_day']}/day")
 
@@ -287,6 +394,12 @@ def _ensure_schedule(provider_id, plan, report):
     able from "somebody chose that". `GET .../schedule` answers 200 with
     `success: false` when no schedule exists, so absence here is read from the
     body rather than the status.
+
+    "ALREADY CORRECT" MEANS ALL OF IT. This compared the days and the timezone
+    and not the hours, so narrowing a window from 09:00-17:00 to 09:00-12:00
+    on the same days was reported as "already correct; unchanged" and the
+    campaign kept sending until five. The hours are the part of a sending
+    window a client actually asks to change.
     """
     window = plan.get("window") or {}
     missing = [k for k in ("days", "start", "end", "timezone")
@@ -296,10 +409,9 @@ def _ensure_schedule(provider_id, plan, report):
             f"the client config sets no sending window ({', '.join(missing)} "
             f"absent), so this campaign would send on whatever schedule the "
             f"provider defaults to. Set `sending_window` for this client")
-    existing = bison.schedule(provider_id)
-    if existing and str(existing.get("timezone")) == str(window["timezone"]) \
-            and all(bool(existing.get(d)) == (d in window["days"])
-                    for d in bison.DAYS):
+    if bison.schedule_matches(bison.schedule(provider_id), window["days"],
+                              window["start"], window["end"],
+                              window["timezone"]):
         report["did"].append("schedule already correct; unchanged")
         return
     bison.set_schedule(provider_id, window["days"], window["start"],
@@ -339,7 +451,26 @@ def _ensure_senders(provider_id, campaign, report):
 
 
 def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
-    """Write the sequence once. The campaign row remembers that it was."""
+    """Write the sequence into an EMPTY campaign, or refuse.
+
+    THE WRITE APPENDS AND NOTHING CAN UNDO IT. Measured 2026-09-13: two writes
+    leave two steps, three writes leave four, renumbered 1, 3, 2, 4. There is
+    no replace verb and no per-step route - the sequence path is GET, HEAD,
+    POST only. A campaign whose sequence is written twice therefore sends
+    twice, the second email carrying the older copy, and the only remedy is
+    deleting the campaign.
+
+    `providerwrites.staged_already` guarded the IDENTICAL payload, which is
+    the case that never needed guarding: a client editing `email_sequence`, or
+    a campaign whose derived title changed, produces a DIFFERENT payload, and
+    that went straight to a second POST. So the provider is asked what it
+    holds, and a campaign already holding a different sequence stops here.
+
+    AND THE READ-BACK IS A READ NOW. It used to be `{"steps": len(steps)}`
+    compared against `{"steps": len(steps)}` - the request compared to itself,
+    which agreed unconditionally. `bison.sequence_steps` answers the real
+    question, so a write that did not take is visible.
+    """
     configured = plan.get("sequence") or {}
     steps = ([{"order": 1,
                "email_subject": configured["subject"],
@@ -350,22 +481,47 @@ def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
         report["did"].append(
             "no sequence staged: the client config names no `email_sequence`")
         return
+    held = bison.sequence_steps(provider_id)
+    if held:
+        wanted = [(s["email_subject"], s["email_body"]) for s in steps]
+        got = [(s.get("email_subject"), s.get("email_body")) for s in held]
+        if got == wanted:
+            report["did"].append(
+                f"sequence already staged ({len(held)} step(s)); unchanged")
+            return
+        raise FactoryRefused(
+            f"EmailBison campaign {provider_id} already holds {len(held)} "
+            f"sequence step(s) and they are not the {len(steps)} this "
+            f"campaign specifies. The sequence route APPENDS - there is no "
+            f"replace and no delete - so writing would leave the campaign "
+            f"sending both, the old copy second. Held: "
+            f"{[s.get('email_subject') for s in held]}. Wanted: "
+            f"{[s['email_subject'] for s in steps]}. Rebuild the campaign, or "
+            f"fix it by hand in EmailBison")
+    # THE PROVIDER CAMPAIGN IS PART OF WHAT THIS WRITE IS.
+    #
+    # `providerwrites.perform` refuses a repeat of the same MATERIAL for the
+    # same campaign row, and the material used to be the title and the steps
+    # alone. So a row whose provider campaign was deleted and rebuilt could
+    # never be given its sequence again: the new campaign holds nothing, the
+    # row remembers the same words, and the write is refused. Naming the
+    # provider campaign makes staging into 501 a different write from staging
+    # into 500, which is what it is. The transport reads `title` and
+    # `sequence_steps` and ignores this.
     payload = {"title": configured.get("title") or plan["name"],
+               "bison_campaign_id": provider_id,
                "sequence_steps": steps}
-    already = providerwrites.staged_already(campaign.get("campaign_id"),
-                                            providerwrites.EMAIL_SET_SEQUENCE,
-                                            payload)
-    if already:
-        report["did"].append("sequence already staged; unchanged")
-        return
     providerwrites.perform(
         providerwrites.EMAIL_SET_SEQUENCE,
         campaign=str(campaign.get("campaign_id")), tenant=campaign.get("client"),
         payload=payload,
         transport=lambda p: bison.set_sequence(provider_id, p["title"],
                                                p["sequence_steps"]),
-        readback=lambda: {"steps": len(steps)},
-        expected={"steps": len(steps)}, by=by)
+        readback=lambda: {"steps": [
+            (s.get("email_subject"), s.get("email_body"))
+            for s in bison.sequence_steps(provider_id)]},
+        expected={"steps": [(s["email_subject"], s["email_body"])
+                            for s in steps]}, by=by)
     report["did"].append(f"staged a {len(steps)}-step sequence")
 
 
@@ -440,7 +596,7 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     # the provider refuses an undeclared name outright. Idempotent, and it
     # creates nothing that can reach a person.
     bison.ensure_custom_variables()
-    members = set(bison.campaign_lead_ids(provider_id))
+    before = bison.campaign_lead_count(provider_id)
     known = _known_lead_ids(campaign, wanted)
     ids, created, reconciled, refreshed = [], 0, 0, 0
     for lead in wanted:
@@ -480,9 +636,20 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             # Creating it again is what the provider just refused, and
             # guessing an id would attach a stranger to this campaign. So the
             # address is looked up exactly, or this stops.
+            #
+            # THE LOOKUP WAITS, because the commonest way to get here is a
+            # race this process just lost: two campaigns for the same client
+            # staged at once, both needing the same person, one of them
+            # creating the lead a fraction of a second earlier. The provider's
+            # lead search is an index and the index is about a second behind,
+            # so asking once meant the loser reported AMBIGUOUS and stopped -
+            # measured 2026-09-13. Six tries over five seconds, and if it is
+            # still not there this stops exactly as before: a lead that exists
+            # and cannot be named must not be guessed at.
             if "already been taken" not in str(e):
                 raise
-            row = bison.find_lead_by_email(lead["email"])
+            row = bison.find_lead_by_email(lead["email"], attempts=6,
+                                           interval=1.0)
             if not row:
                 raise FactoryAmbiguous(
                     f"EmailBison says {lead['email']} already exists but will "
@@ -505,15 +672,20 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
         f"created {created} lead(s), reused {len(known)}, reconciled "
         f"{reconciled}; attached {len(outcome['attached'])}, "
         f"{len(outcome['already'])} already present, "
-        f"{len(outcome['members'])} in campaign now")
-    report["provider"]["members_before"] = sorted(members)
+        f"{outcome['count']} in campaign now")
+    # The SIZE before and after, not a list of members: the campaign lead
+    # route serves fifteen rows however many the campaign holds, so a list
+    # here was a page pretending to be a membership.
+    report["provider"]["leads_before"] = before
 
 
 def _ensure_stopped(provider_id, report, by="system"):
-    """Leave a staged campaign stopped. Do not stop a running one.
+    """Stop the campaign BEFORE it holds anybody. Do not stop a running one.
 
     A campaign this factory builds must not be able to send, so it is paused -
-    that part is unchanged, and the factory still never STARTS anything.
+    that part is unchanged, and the factory still never STARTS anything. What
+    changed is when: the pause now happens before the leads are attached, and
+    `stage` says why.
 
     What it must not do is pause a campaign that is ALREADY LIVE. Re-staging
     is routine: it reconciles copy, limits and membership, and it is run again
@@ -526,15 +698,31 @@ def _ensure_stopped(provider_id, report, by="system"):
     Stopping a live campaign is a decision somebody takes on purpose, through
     `orchestrator.pause`, which records who and why. It is not a side effect
     of reconciling a draft.
+
+    AND "NOT DRAFT OR PAUSED" IS NOT THE SAME AS "RUNNING". That test reported
+    a campaign the provider had marked `failed` as LEFT RUNNING - an operator
+    reading that line would believe a dead campaign was sending. The statuses
+    this instance actually uses are enumerated in `bison`, so they are
+    classified here rather than divided into one name and everything else.
     """
     status = str(bison.campaign(provider_id).get("status") or "").lower()
-    if status not in ("draft", "paused", ""):
+    if status in bison.STARTED_STATES or status in bison.STARTING_STATES:
         report["did"].append(
             f"campaign is {status} and was LEFT RUNNING: re-staging "
             f"reconciles material, it does not stop a live campaign. Use "
             f"orchestrator.pause to stop it")
         report["provider"]["left_running"] = True
         return
+    if status in bison.FAILED_STATES:
+        # It is not sending and it is not a campaign this factory built into
+        # shape either. Pausing it below is honest - it cannot send afterwards
+        # and it could not before - but the reason it is here has to survive
+        # into the report, because `failed` means the provider refused to
+        # start it and a staged-looking readback would hide that.
+        report["provider"]["provider_failed"] = True
+        report["did"].append(
+            f"campaign reads {status}: the provider tried to start it and "
+            f"gave up. It is NOT sending")
     state = bison.pause_campaign(provider_id)
     report["did"].append(f"campaign left {state['status']}")
 
@@ -544,7 +732,7 @@ def _readback(provider_id):
     row = bison.campaign(provider_id)
     return {"id": row.get("id"), "name": row.get("name"),
             "status": row.get("status"),
-            "leads": len(bison.campaign_lead_ids(provider_id))}
+            "leads": bison.campaign_lead_count(provider_id)}
 
 
 def main(argv=None):
