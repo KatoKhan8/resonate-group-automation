@@ -247,6 +247,33 @@ angle_labels:
 # compared, and it is this one line. That is the property that matters: the
 # alternative is a sequence pasted into several modules.
 cadence: productive_li_heavy_v1
+
+# THE LINKEDIN HALF OF THAT CADENCE DID NOT EXIST UNTIL THIS LINE.
+#
+# `productive_li_heavy_v1` is six LinkedIn activities and li2..li6 are all
+# marked `generated`. `generate.plan` writes a LinkedIn note only when this
+# mode is `llm`, and it defaulted to `template` - so nothing ever wrote copy
+# for those five steps, and `cadence.expand_step` drops a generated step that
+# has no stored copy.
+#
+# Measured 2026-09-13 on `16kagency-com`, building the real timeline against
+# this real config: ONE LinkedIn step. li1 survives because it names the
+# `linkedin_intro` template; li2..li6 were absent from the timeline
+# entirely. Adding a confirmed connection event changed nothing - li1 went to
+# `skipped`, correctly, and the other five still did not appear. A connected
+# prospect had SIX zero executable LinkedIn touches against five email ones.
+#
+# That is exactly the failure `cadencelibrary.py`'s own docstring warns
+# about: a cadence that quietly drops steps reports eleven touches and sends
+# one. The email half was never affected, which is why it went unnoticed.
+#
+# `template` remains the right default for a client who has not chosen -
+# it costs nothing and it cannot wander. Productive has chosen: four of the
+# six LinkedIn activities are message opportunities, and four messages that
+# each have a different job cannot come from one template. The ladder in
+# `generate.LINKEDIN_LADDER` is what gives each rung its own job.
+linkedin_connection_note:
+  mode: llm
 tone:
   email: polished, professional, no em dashes, no buzzwords, no fluff openers
   linkedin: casual, lowercase, human
