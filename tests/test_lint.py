@@ -111,6 +111,29 @@ class TestSendability(unittest.TestCase):
 
 
 class TestDashes(unittest.TestCase):
+    def test_a_curly_apostrophe_fails(self):
+        """Two of sixteen generated drafts carried one and passed.
+
+        It is the character that becomes "you?re" the moment anything in the
+        chain guesses the wrong encoding, and that is how it was found.
+        """
+        self.assertIn("em_dash", fails(text=BODY_40 + " you’re right"))
+
+    def test_a_non_breaking_hyphen_fails(self):
+        """Not a hyphen to a client without the glyph. A box."""
+        self.assertIn("em_dash", fails(text=BODY_40 + " month‑end"))
+
+    def test_an_accented_name_is_not_substituted_punctuation(self):
+        """Mueller and strasse are somebody's name and somebody's street.
+
+        A rule refusing every non-ASCII character would refuse half the
+        market this client sells to, which is why the constant lists five
+        substitutions for characters already on the keyboard rather than a
+        codepoint range.
+        """
+        self.assertNotIn("em_dash",
+                         fails(text=BODY_40 + " Müller on the straße"))
+
     def test_em_dash_in_body(self):
         self.assertIn("em_dash", fails(text=BODY_40 + " word—word"))
 

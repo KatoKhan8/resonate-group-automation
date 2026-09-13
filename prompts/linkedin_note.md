@@ -61,3 +61,5 @@ is my third note" is pressure, not information.
 - No question that requires a considered answer on the connection request, and
   no calendar link anywhere.
 - Lowercase and human is fine here. It is a note, not a letter.
+- Plain ASCII punctuation. No em or en dashes, no curly apostrophes,
+  no non-breaking hyphens. Accented letters in a real name are fine.

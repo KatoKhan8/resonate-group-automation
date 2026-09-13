@@ -133,7 +133,11 @@ instead, or say it about the teams we work with and leave them out of it.
 
 ## Constraints, all enforced by lint.py before this ships
 
-- No em dashes or en dashes anywhere.
+- No em dashes or en dashes anywhere. Plain ASCII punctuation only:
+  a straight apostrophe, never a curly one, and an ordinary hyphen,
+  never a non-breaking one. Accented letters in somebody's actual name
+  or company name are fine and expected - the rule is about typography
+  you substitute, not about the alphabet a name is written in.
 - No attachment talk.
 - No unfilled placeholders in the subject or the body.
 - Body 40 to 180 words. Subject under 60 characters.

@@ -22,7 +22,32 @@ from . import identity, store
 MIN_WORDS = 40
 MAX_WORDS = 180
 MAX_SUBJECT = 60          # "under 60 characters": 59 passes, 60 fails
-DASHES = ("—", "–")
+
+# THE EM DASH WAS NEVER THE POINT. The rule is Productive's own tone line -
+# "no em dashes" - and what it is really about is a model quietly substituting
+# typography a person would not have typed. Two of the sixteen generated
+# drafts in the estate on 2026-09-13 carried one of these and passed:
+#
+#   U+2019 RIGHT SINGLE QUOTATION MARK   16kagency-com/em4, in "you<U+2019>re"
+#   U+2011 NON-BREAKING HYPHEN           1gslab-com/em2
+#
+# A non-breaking hyphen is not a hyphen to an email client that lacks the
+# glyph; it is a box. A smart apostrophe survives a modern client and does
+# not survive every one, and it is the character that turns into "you?re" the
+# moment anything in the chain guesses the wrong encoding - which is how it
+# was found, in a terminal.
+#
+# Deliberately NOT every non-ASCII character. "Müller" and "straße" are
+# somebody's name and somebody's street, and a rule that refused them would
+# refuse half the German and Nordic market this client sells to. These five
+# are substitutions for characters that are already on the keyboard.
+SUBSTITUTED_PUNCTUATION = ("—", "–", "‑", "’", "‘")
+
+# The failure key stays `em_dash`. It is the name this rule has had
+# since it was written, `render` and `classify` both key off it, and
+# renaming it across fourteen call sites is churn this change did not
+# need. The constant is what a reader looks at to find out what the
+# rule covers, so the constant is what carries the honest name.
 
 BANNED_PHRASES = (
     "i hope this email finds you well", "i wanted to reach out", "circling back",
@@ -203,7 +228,7 @@ def check(rec, key, step):
         if greeted and not _names_match(greeted, contact.get("name")):
             fails.add("greets_the_wrong_person")
 
-    if any(d in body or d in subject for d in DASHES):
+    if any(d in body or d in subject for d in SUBSTITUTED_PUNCTUATION):
         fails.add("em_dash")
     if ATTACHMENT_RE.search(body):
         fails.add("attachment")
@@ -317,7 +342,7 @@ def check_linkedin(rec, key, step):
 
     if PLACEHOLDER_RE.search(text):
         fails.add("placeholder")
-    if any(d in text for d in DASHES):
+    if any(d in text for d in SUBSTITUTED_PUNCTUATION):
         fails.add("em_dash")
     if ATTACHMENT_RE.search(text):
         fails.add("attachment")
