@@ -79,6 +79,30 @@ class SchemaError(ModelError):
     """The answer did not match the contract."""
 
 
+def _is_upstream_failure(body):
+    """Does this error body say the GATEWAY's upstream failed, not us?
+
+    A router that fans out to model providers reports their outage with its
+    own status code, so the status alone cannot tell "your request was wrong"
+    from "the model behind me fell over". The body can, and it is the only
+    thing that can.
+
+    Matched on the machine-readable `type` first and on the gateway's own
+    sentence second. Deliberately narrow: a prompt this provider REFUSED -
+    content policy, a bad model name, a revoked key - must keep holding the
+    record, because that is a fact about what we sent.
+    """
+    if not isinstance(body, dict):
+        return False
+    error = body.get("error")
+    error = error if isinstance(error, dict) else {}
+    if str(error.get("type") or "").strip().lower() == "backend_error":
+        return True
+    said = f"{error.get('message') or ''} {body.get('message') or ''}".lower()
+    return ("backend request failed" in said
+            or "provider returned error" in said)
+
+
 class ModelUnavailable(ModelError):
     """The endpoint could not be reached or would not serve us. NOT the
     record's fault, and not a fact about this company.
@@ -243,8 +267,19 @@ class OpenAICompatibleModel:
             # may hold one. A 4xx that is not 429 IS about what we sent (a
             # bad model name, a rejected prompt, a revoked key), and stays a
             # plain `ModelError` so the existing handling is unchanged.
+            #
+            # EXCEPT WHEN THE 4xx IS SOMEBODY ELSE'S 5xx WEARING A COAT.
+            # A gateway that fans out to model providers reports THEIR outage
+            # with ITS own status, and OpenRouter answers 400 carrying
+            # `{"type": "backend_error", "message": "Backend request failed
+            # with status 400"}`. Measured 2026-09-13: that held
+            # `2020companies-com` and `25wat-com` mid-batch, one of them after
+            # two LinkedIn notes had already been written. Nothing was wrong
+            # with either company, and reading the status alone could not tell
+            # us that - the body could.
             cls = (ModelUnavailable
-                   if status == 429 or (status or 0) >= 500 else ModelError)
+                   if status == 429 or (status or 0) >= 500
+                   or _is_upstream_failure(data) else ModelError)
             raise cls(
                 f"model endpoint answered {status}: "
                 f"{providers.redact(str(data))[:200]}")

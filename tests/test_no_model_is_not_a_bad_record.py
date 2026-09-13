@@ -117,12 +117,37 @@ class AnUnreachableModelHoldsNobodyEither(unittest.TestCase):
             with self.assertRaises(llm.ModelUnavailable):
                 self.a_model().complete("anything")
 
+    def test_a_gateway_wrapping_an_upstream_outage_is_unavailable(self):
+        """Somebody else's 5xx wearing a 400's coat.
+
+        A router that fans out to model providers reports THEIR outage with
+        ITS own status. Measured 2026-09-13: OpenRouter answered 400 carrying
+        `Provider returned error` / `backend_error`, and it held
+        `2020companies-com` and `25wat-com` mid-batch - one of them after two
+        LinkedIn notes had already been written. Nothing was wrong with
+        either company.
+        """
+        bodies = [
+            {"error": {"message": "Provider returned error", "code": 400}},
+            {"error": {"type": "backend_error",
+                       "message": "Backend request failed with status 400"}},
+        ]
+        for body in bodies:
+            with self.subTest(body=body):
+                self.assertIsInstance(self.status(400, body),
+                                      llm.ModelUnavailable)
+
     def test_a_rejected_request_is_still_the_records_business(self):
         """A 400 or a 401 is about what WE sent, and the existing handling
         of it - hold, and move on - is unchanged."""
+        # A body that names OUR mistake, so the gateway check above cannot
+        # swallow the case it must not: a bad model id, a revoked key or a
+        # refused prompt IS about what we sent, and must keep holding.
+        body = {"error": {"type": "invalid_request_error",
+                          "message": "Invalid model id"}}
         for code in (400, 401, 403, 404):
             with self.subTest(status=code):
-                self.assertNotIsInstance(self.status(code),
+                self.assertNotIsInstance(self.status(code, body),
                                          llm.ModelUnavailable)
 
 
