@@ -329,8 +329,21 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system",
         report["did"].append("dry run: nothing was sent")
         return report
 
-    # Write the sequence through the sealed door.
-    provider_id = int(campaign_id)
+    # THE PROVIDER ID IS ON THE ROW, NOT THE ROW'S NAME. This was
+    # `int(campaign_id)`, which reads the CANONICAL id as the provider's -
+    # so `productive-linkedin-production-v1` raised `invalid literal for
+    # int()`, and any campaign whose canonical id happened to be numeric
+    # would have written a sequence into whatever campaign that number names
+    # at HeyReach. `bisonfactory` reads `bison_campaign_id` off the row for
+    # exactly this reason; the binding is canonical state, not a coincidence
+    # of naming.
+    provider_id = campaign.get("heyreach_campaign_id")
+    if not provider_id:
+        raise FactoryRefused(
+            f"campaign {campaign_id!r} carries no `heyreach_campaign_id`, so "
+            f"there is no provider campaign to write a sequence into. Map it "
+            f"with `orchestrator.map_external` first")
+    provider_id = int(provider_id)
     sequence = plan["sequence"]
 
     def _transport(_payload):

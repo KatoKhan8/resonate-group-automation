@@ -331,10 +331,46 @@ class ReplaceNotAppend(unittest.TestCase):
         self.assertEqual(channel, "linkedin")
         self.assertFalse(facing)
 
-    def test_the_operation_is_not_in_supported(self):
-        """The door refuses until Claude enables it."""
-        self.assertFalse(
+    def test_the_provider_id_comes_from_the_row_not_the_rows_name(self):
+        """A canonical id is not a provider id.
+
+        This was `int(campaign_id)`. The real campaign row is called
+        `productive-linkedin-production-v1` and is mapped to HeyReach 599020,
+        so the live call raised `invalid literal for int()` - and a row whose
+        canonical id happened to be numeric would have written a sequence
+        into whatever campaign that number names at the provider. Every test
+        here used a numeric id, so nothing caught it.
+        """
+        from src import campaigns, heyreachfactory
+
+        row = campaigns.new_campaign("productive-linkedin-production-v1",
+                                     "productive", "LinkedIn")
+        row["heyreach_campaign_id"] = "599020"
+        self.assertNotEqual(row["campaign_id"], row["heyreach_campaign_id"])
+        with self.assertRaises(Exception):
+            int(row["campaign_id"])
+
+    # A test for the "no `heyreach_campaign_id`" refusal belongs here and is
+    # NOT written, because `stage` loads campaigns from the store and this
+    # class has no temp estate - `store.refuse_production_write` correctly
+    # refused the attempt, which is the guard working. It needs the
+    # `QueueTest`/`CampaignTest` harness the bisonfactory tests use.
+
+    def test_the_operation_is_enabled_and_is_not_prospect_facing(self):
+        """Enabled 2026-09-14 by Claude, which is what this test recorded.
+
+        It was written as "the door refuses until Claude enables it" while
+        the mechanism was being built. It has been enabled, and what makes
+        that safe is the flag rather than the decision: a sequence written
+        onto a campaign holding nobody reaches nobody, and `UpdateSequence`
+        replaces rather than appends so a second write is not a second
+        sequence.
+        """
+        self.assertTrue(
             providerwrites.is_supported(providerwrites.LINKEDIN_SET_SEQUENCE))
+        _channel, facing, _why = providerwrites.OPERATIONS[
+            providerwrites.LINKEDIN_SET_SEQUENCE]
+        self.assertFalse(facing)
 
 
 # ============================================================ readback

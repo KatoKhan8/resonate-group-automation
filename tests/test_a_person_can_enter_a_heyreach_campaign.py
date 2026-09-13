@@ -734,13 +734,25 @@ class TheSealStillHolds(unittest.TestCase):
                    if providerwrites.is_supported(op)]
         self.assertEqual(enabled, [])
 
-    def test_supported_is_unchanged(self):
+    def test_supported_is_exactly_this(self):
+        """The whole list, so enabling a route is an act rather than a drift.
+
+        `LINKEDIN_SET_SEQUENCE` joined it on 2026-09-14 - not prospect-facing,
+        route established, campaign unstartable. `LINKEDIN_ADD_LEAD` did NOT,
+        and that is what this file is about.
+        """
         self.assertEqual(
             providerwrites.SUPPORTED,
             (providerwrites.LINKEDIN_PAUSE, providerwrites.EMAIL_PAUSE,
              providerwrites.EMAIL_STOP_LEAD,
              providerwrites.EMAIL_CREATE_CAMPAIGN,
-             providerwrites.EMAIL_SET_SEQUENCE))
+             providerwrites.EMAIL_SET_SEQUENCE,
+             providerwrites.LINKEDIN_SET_SEQUENCE))
+
+    def test_the_add_lead_operation_is_still_not_supported(self):
+        """The one this whole module exists to keep sealed."""
+        self.assertNotIn(providerwrites.LINKEDIN_ADD_LEAD,
+                         providerwrites.SUPPORTED)
 
     def test_the_route_is_on_write_routes(self):
         """The mechanism exists; the permission does not."""

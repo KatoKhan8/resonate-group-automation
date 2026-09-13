@@ -265,12 +265,33 @@ class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
         # campaign 594061 returned 200 and read back PAUSED, so it is
         # live-validated and declared. It was never a campaign-BUILDING verb
         # anyway - it is the stop. Every builder below is still sealed.
+        # `heyreach.set_sequence` left this list on 2026-09-14, deliberately.
+        # It is NOT prospect-facing - a sequence written onto a campaign
+        # holding nobody reaches nobody - the route is established because
+        # 599020 already carries a sequence written through it, and no wired
+        # verb can start that campaign. The verbs that can reach a person,
+        # `add_lead` and `activate`, are still sealed and are the ones this
+        # test is really about.
         for operation in ("heyreach.create_campaign", "heyreach.create_list",
-                          "heyreach.set_sequence", "heyreach.assign_sender",
+                          "heyreach.assign_sender",
                           "heyreach.set_limits", "heyreach.add_lead",
                           "heyreach.activate"):
             with self.subTest(operation=operation):
                 self.assertFalse(providerwrites.is_supported(operation))
+
+    def test_the_two_verbs_that_reach_a_person_are_still_sealed(self):
+        """The distinction the list above now rests on, asserted directly."""
+        for operation in ("heyreach.add_lead", "heyreach.activate"):
+            with self.subTest(operation=operation):
+                channel, facing, _why = providerwrites.OPERATIONS[operation]
+                self.assertTrue(facing, "this test is about prospect-facing verbs")
+                self.assertFalse(providerwrites.is_supported(operation))
+
+    def test_the_enabled_sequence_write_is_not_prospect_facing(self):
+        """What licenses enabling it, asserted rather than asserted-in-prose."""
+        _channel, facing, _why = providerwrites.OPERATIONS["heyreach.set_sequence"]
+        self.assertFalse(facing)
+        self.assertTrue(providerwrites.is_supported("heyreach.set_sequence"))
 
     def test_the_add_leads_url_is_named_but_is_not_a_read_route(self):
         """Naming a URL is not owning a contract.

@@ -95,10 +95,21 @@ OPERATIONS = {
         "no documented route; POST /campaign/GetById already answers 405 and "
         "nothing suggests a create verb exists on the public API"),
     LINKEDIN_SET_SEQUENCE: ("linkedin", False,
-        "no documented route. The graph is READABLE via "
-        "/campaign/GetCampaignSequence, so a write would be verifiable the "
-        "moment a verb is established - but the sequence, and therefore the "
-        "note a prospect reads, was configured by hand in the vendor UI"),
+        "SUPPORTED as of 2026-09-14. This said 'no documented route ... a "
+        "write would be verifiable the moment a verb is established', and the "
+        "verb IS established: `/campaign/UpdateSequence` is on "
+        "`heyreach.WRITE_ROUTES` and campaign 599020 carries a sequence that "
+        "was written through it. The condition this entry set for itself has "
+        "been met.\n"
+        "        Not prospect-facing, and that is what makes it safe to "
+        "enable ahead of the rest: a sequence written onto a campaign holding "
+        "nobody reaches nobody. 599020 has no list, no leads, and there is no "
+        "wired verb that can start it - Resume and StartCampaign are "
+        "deliberately absent and asserted absent by the seals.\n"
+        "        `UpdateSequence` REPLACES the whole graph rather than "
+        "appending, established from the adapter rather than assumed, which "
+        "is the opposite of EmailBison's sequence route and is why writing "
+        "this one twice is safe where writing that one twice is not."),
     LINKEDIN_ASSIGN_SENDER: ("linkedin", False,
         "no documented route. campaignAccountIds is readable on the campaign "
         "object, so a write would be verifiable; assignment was done by hand"),
@@ -232,7 +243,12 @@ OPERATIONS = {
 # fixture is never a live-validated integration, and one live-validated verb
 # does not validate its neighbours.
 SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
-             EMAIL_CREATE_CAMPAIGN, EMAIL_SET_SEQUENCE)
+             EMAIL_CREATE_CAMPAIGN, EMAIL_SET_SEQUENCE,
+             # Enabled 2026-09-14. Not prospect-facing: a sequence written
+             # onto a campaign holding nobody reaches nobody, and no wired
+             # verb can start that campaign. See the entry above for the
+             # condition it had set for itself and how it was met.
+             LINKEDIN_SET_SEQUENCE)
 
 PROSPECT_FACING = tuple(op for op, (_c, facing, _w) in OPERATIONS.items()
                         if facing)
