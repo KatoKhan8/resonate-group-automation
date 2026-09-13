@@ -64,7 +64,7 @@ import copy
 import unittest
 
 from src import eligibility, replies, store, verification
-from tests.base import QueueTest
+from tests.base import QueueTest, pin_client_config
 
 STOP_REASONS = {"blocked:contact_paused", "blocked:replied",
                 "blocked:contact_stopped", "blocked:suppressed",
@@ -90,6 +90,10 @@ class TheStopSurvives(QueueTest):
 
     def setUp(self):
         super().setUp()
+        # Pinned, not loaded. This module is not about which cadence
+        # Productive currently runs, and the modules under test load
+        # the client file themselves.
+        pin_client_config(self)
         rec = store.new_record("acme", "domains", "productive", "Acme",
                                "acme.test")
         rec["state"] = "verified"

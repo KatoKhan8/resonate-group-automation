@@ -13,7 +13,7 @@ import contextlib
 import unittest
 
 from src import eligibility, lint, push, store, verification as v
-from tests.base import FIXTURES, ProviderTest
+from tests.base import FIXTURES, ProviderTest, pin_client_config
 
 
 @contextlib.contextmanager
@@ -303,6 +303,10 @@ class TestTheEmailBisonGate(ProviderTest):
 
     def setUp(self):
         super().setUp()
+        # Pinned, not loaded. This module is not about which cadence
+        # Productive currently runs, and the modules under test load
+        # the client file themselves.
+        pin_client_config(self)
         import os
         import shutil
         import tempfile
@@ -432,6 +436,10 @@ class TestTheReasonCodeReachesTheCaller(ProviderTest):
 
     def setUp(self):
         super().setUp()
+        # Pinned, not loaded. This module is not about which cadence
+        # Productive currently runs, and the modules under test load
+        # the client file themselves.
+        pin_client_config(self)
         import os
         import shutil
         import tempfile
@@ -500,6 +508,10 @@ class TestTheLaunchChecklist(ProviderTest):
 
     def setUp(self):
         super().setUp()
+        # Pinned, not loaded. This module is not about which cadence
+        # Productive currently runs, and the modules under test load
+        # the client file themselves.
+        pin_client_config(self)
         import os
         import shutil
         import tempfile

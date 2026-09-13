@@ -30,6 +30,7 @@ import tempfile
 import unittest
 
 from src import agencydnc, eligibility, executionguard, store, verification
+from tests.base import pin_client_config
 
 
 class TheSendGateHonoursTheAgencyList(unittest.TestCase):
@@ -55,6 +56,12 @@ class TheSendGateHonoursTheAgencyList(unittest.TestCase):
                          for k in ("QUEUE", "OUT") + store.STATE_OVERRIDES}
             self.addCleanup(self._restore_environment)
         store.use_directory(tempfile.mkdtemp(prefix="rga-dnc-"))
+        # Pinned, not loaded. This module is about the agency DNC reaching the
+        # send gate, not about which cadence Productive currently runs - and
+        # the fixture below stores `day5` and `day3` steps, which is what the
+        # gate is asked about. Under the live LinkedIn-heavy cadence the gate
+        # correctly answered `skipped:no_such_step` for both.
+        pin_client_config(self)
         rec = store.new_record("acme", "domains", "productive", "Acme",
                                "acme.test")
         rec["state"] = "verified"
