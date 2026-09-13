@@ -125,6 +125,11 @@ def result(provider, status, email=None, **fields):
         "role_account": fields.get("role_account"),
         "score": fields.get("score"),
         "reason": fields.get("reason"),
+        # Whether this call actually cost anything. `None` means nobody said,
+        # and nobody saying is treated as charged - see `call`, which only
+        # marks a refusal raised BEFORE the network as free. Defaulting the
+        # other way would let a silent provider quietly stop being billed.
+        "charged": fields.get("charged"),
         "at": fields.get("at") or store.now(),
     }
     return entry
@@ -573,6 +578,17 @@ def verifiers():
     return {"contactout": contactout, "deliverable": deliverable, "reoon": reoon}
 
 
+def _local_refusals():
+    """Provider errors raised before any network call, so nothing was spent.
+
+    A tuple rather than a single class so the next provider that declines
+    locally is added here rather than by loosening the test above.
+    """
+    from .providers.deliverable import ContractNotVerified
+
+    return (ContractNotVerified,)
+
+
 def call(provider, email):
     """One verifier, normalised, never raising into the caller."""
     from .providers import ProviderError
@@ -599,7 +615,22 @@ def call(provider, email):
                           deliverable=answer.get("is_deliverable"),
                           score=answer.get("overall_score"))
     except ProviderError as e:
-        return result(provider, S_ERROR, email, reason=str(e)[:120])
+        # A REFUSAL IS NOT A PURCHASE.
+        #
+        # `deliverable.verify` raises `ContractNotVerified` BEFORE it touches
+        # the network: its response shape has never been read from a real
+        # answer, so it declines rather than spending a credit to find out.
+        # That refusal arrived here as a plain error and was billed anyway -
+        # 41 rows and 41 credits in the spend ledger for calls that provably
+        # never happened, against a declared ceiling those credits consume.
+        #
+        # Only a LOCAL refusal is exempt. A timeout or a 500 stays charged,
+        # because the provider may well have done the work before failing to
+        # tell us, and guessing in the cheap direction is how a ledger starts
+        # under-reporting a real bill.
+        charged = not isinstance(e, _local_refusals())
+        return result(provider, S_ERROR, email, reason=str(e)[:120],
+                      charged=charged)
     except Exception as e:                       # a timeout, a broken adapter
         return result(provider, S_ERROR, email, reason=f"{type(e).__name__}")
     return result(provider, S_UNKNOWN, email)
@@ -720,7 +751,13 @@ def verify(contact, policy=None, live=False, rec=None, budget=None,
                           operation="verify", estimated_cost=cost)
         entry = call(provider, email)
         evidence.append(entry)
-        spent += cost
+        # A call the provider declined locally costs nothing, so it is not
+        # counted against the per-contact budget either - otherwise a
+        # verifier that never runs still exhausts `max_verification_cost_per_
+        # contact` and starves the verifier that would have answered.
+        charged = entry.get("charged") is not False
+        if charged:
+            spent += cost
         if rec is not None:
             # The ledger the spend audit reads.
             #
@@ -737,7 +774,8 @@ def verify(contact, policy=None, live=False, rec=None, budget=None,
                 rec, waterfall.EMAIL_VERIFICATION, provider,
                 CALL_NAMES.get(provider, f"{provider}-verify"),
                 reason=LEDGER_REASONS.get(provider),
-                result=entry.get("status"), expected_cost=cost)
+                result=entry.get("status"),
+                expected_cost=cost if charged else 0)
             # AND THE SPEND LEDGER, WHICH IS A DIFFERENT LEDGER.
             #
             # `waterfall` is per record and answers "what was bought for this
@@ -750,9 +788,10 @@ def verify(contact, policy=None, live=False, rec=None, budget=None,
             # true spend to date, and 100% of what the next 250-record shard
             # is forecast to cost, because the company-level work is done and
             # what remains is addresses.
-            spendledger.record(rec.get("client"), provider,
-                               CALL_NAMES.get(provider, f"{provider}-verify"),
-                               cost)
+            if charged:
+                spendledger.record(
+                    rec.get("client"), provider,
+                    CALL_NAMES.get(provider, f"{provider}-verify"), cost)
         if rec is not None:
             events.record(rec, events.PROVIDER_CALL_COMPLETED,
                           contact_key=contact.get("key"), provider=provider,
