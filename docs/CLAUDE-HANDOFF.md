@@ -32,14 +32,58 @@ receive reporting.
 These are the only things stopping the mission, and none of them is a code
 defect.
 
-1. **Live provider writes are refused by the session's permission layer.**
-   `python -m src.bisonfactory <campaign> --live` and any script calling a
-   write verb were denied by the auto-mode classifier. Provider READS work
-   and were used throughout. Until a Bash permission rule allows the write
-   path, no campaign can be staged, no sequence written, no lead attached.
-   This is the single gate in front of everything under "Next actions".
+1. ~~Live provider writes refused by the permission layer.~~ **CLEARED.**
+   Campaign 481 was created, capped, scheduled, given two senders and a
+   five-step sequence. See "The five-step campaign".
 
-2. **`sender_id` is null on all 285 sender rows**, which blocks per-human
+2. **THE MODEL ACCOUNT HAS NO CREDITS. This blocks every remaining live
+   deliverable on EmailBison.** Read from OpenRouter on 2026-09-13:
+
+       GET /credits  ->  {"total_credits": 0, "total_usage": 0}
+       GET /key      ->  {"is_free_tier": true, "limit": null}
+       generation    ->  429 "Rate limit exceeded: free-models-per-day.
+                         Add 10 credits to unlock 1000 free model requests
+                         per day"   (X-RateLimit-Limit: 50)
+
+   Fifty free requests a day, spent. A five-step draft costs five calls per
+   contact plus persona-angle calls, so the twenty-account cohort needs
+   roughly 120 and got 10.
+
+   **Nothing in code fixes this.** No approved copy means no leads: the
+   sequence is a template of `{SUBJECT_1}`..`{SUBJECT_5}` merge fields and a
+   lead without the words sends five empty emails. `_ensure_leads` refuses,
+   by name, and that refusal is correct.
+
+   Ten dollars of credit unblocks it. Then:
+   `py -3 -m src.generate --live --client productive --id ...` for the
+   cohort, approve, and `py -3 -m src.bisonfactory
+   productive-email-liheavy-v1 --live`.
+
+   Two records already carry five drafts each. Neither can be staged: three
+   of those ten drafts fail the typography rule added today, and a failing
+   draft must be REGENERATED rather than patched - which needs the model.
+
+3. **NO ROUTE CAN PUT A PERSON INTO A HEYREACH CAMPAIGN.** `WRITE_ROUTES` is
+   seven routes and not one of them adds a lead:
+
+       /campaign/Create               /campaign/UpdateSequence
+       /campaign/Pause                /campaign/StopLeadInCampaign
+       /list/CreateEmptyList          /campaign/AddLinkedInAccountsToCampaign
+                                      /campaign/RemoveLinkedInAccountsFromCampaign
+
+   Every `AddLeadsToCampaign` spelling is deliberately absent AND asserted
+   absent by the seal tests, along with `Resume` and `StartCampaign`. This is
+   a product decision on the record, not an oversight: a campaign can be
+   built and left in DRAFT, it cannot be started, and no person can be put
+   into one.
+
+   So a HeyReach campaign containing real Productive leads is IMPOSSIBLE with
+   the system as built, whatever the copy situation. Reaching it means
+   deliberately crossing a safety boundary somebody drew on purpose. That is
+   an operator decision. TASK-009 builds and tests the mechanism behind the
+   same gates EmailBison's `add_lead` sits behind; it does not cross it.
+
+4. **`sender_id` is null on all 285 sender rows**, which blocks per-human
    attribution (`assignment.py`). It does NOT block staging - corrected
    below.
 
