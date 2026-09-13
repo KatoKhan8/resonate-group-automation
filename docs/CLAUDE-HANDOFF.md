@@ -423,6 +423,64 @@ nothing wrong with them.
 The free tier is NOT the fallback to return to. It is capped at 50 requests a
 day and that cap is what blocked this pipeline for most of the evening.
 
+## Copy quality: what was wrong, what fixed it, where it stands
+
+Four separate defects, found in this order, each hiding the next.
+
+**1. `claims.check` ran only at send time.** `generate.draft` called
+`lint.check` and nothing else, so a draft asserting something the record does
+not support was generated, stored, approved and carried to EmailBison as a
+per-lead variable. Lead 203708 carried the subject *"Final note on our
+previous discussions"* for a contact this system has never written to.
+
+**2. And it would have passed anyway.** The RELATIONSHIP patterns listed
+those nouns singular, and `` after "discussion" will not match inside
+"discussions". *"our previous discussion"* was refused; *"our previous
+discussions"* sailed through. One letter.
+
+**3. Every draft was written blind to its siblings.** `already_sent` reads
+the durable event log, `CONFIRMING_EVENTS` requires a confirmed touch, and
+nothing has been sent - so it is EMPTY when writing em1, em3 and em5 alike.
+Three consecutive emails to 28 ROW opened with the same sentence. This was
+read as a model weakness and was not: the ladder gives each rung a different
+job and `step.purpose` reaches the prompt correctly, both verified. Any model
+given five briefs and no sight of its own earlier answers repeats itself.
+
+**4. The quality gate counted the company's own name as repetition.** Every
+message in a sequence to one company names that company. `acqcom-com` showed
+two colliding pairs with "acqcom", "digital" and "marketing" counted and ZERO
+with them discounted, on copy that was fine.
+
+### The three gates are now symmetrical
+
+    lint     do the words break a rule
+    claims   do they assert something untrue
+    quality  do they say anything the other steps have not
+
+Each refuses at the point of STORING, each re-plans a stored draft that fails
+it, and each explains itself to the model in a sentence rather than a code.
+The last part matters: the retry used to feed back `filler_phrase`, and a
+model told `filler_phrase` three times has been told nothing three times.
+
+### The model comparison, measured
+
+    openai/gpt-4o-mini    5 of 65 steps clean.   em5 failed six straight attempts
+    openai/gpt-4.1-mini   5 of 5 on first test.  em5 produced first time
+
+`LLM_MODEL` is now `openai/gpt-4.1-mini`. `qwen/qwen3-235b-a22b-2507` was
+tried first per the routing policy and held 12 of 20 records on upstream 400s.
+
+### Where it stands
+
+Repeated regeneration converges because the gate refuses at store time and
+the reason is fed back:
+
+    pass 0   60 of 65 steps failing
+    pass 1   40 of 65
+    pass 2   30 of 65,  7 of 13 records fully clean
+
+A record is stageable only when all five steps are clean AND approved.
+
 ## Why campaign 481 is not activated, and what would activate it
 
 It is staged, verified and PAUSED. Nothing has been sent from it and nothing
