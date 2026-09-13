@@ -301,11 +301,23 @@ def observation_of(rec, contact, action, campaign=None, provider_rows=None):
         "client": rec.get("client"),
         "account": {"record_id": rec.get("id"), "domain": rec.get("domain"),
                     "company": rec.get("company")},
-        "person": {"contact_key": contact_key, "persona": contact.get("persona"),
-                   "angle": contact.get("angle"), "title": contact.get("title"),
-                   # Persona and angle live on the contact and can be changed
-                   # by a later run. Nothing pins them to the message.
-                   "provenance": (INFERRED if contact.get("persona") else ABSENT)},
+        # THE EVENT FIRST, THE CONTACT ONLY AS A FALLBACK.
+        #
+        # Persona and angle live on the contact and a later generation
+        # overwrites them, so reading the contact answers "what do we think
+        # today" when the question is "what did we send". `push.mark_pushed`
+        # pins both onto the confirming event at send time, and a pinned
+        # value is a measurement rather than a reconstruction - so it is
+        # RECORDED where it exists and INFERRED where it does not, which is
+        # every send made before that producer was wired.
+        "person": {"contact_key": contact_key,
+                   "persona": (entry.get("persona")
+                               or contact.get("persona")),
+                   "angle": entry.get("angle") or contact.get("angle"),
+                   "title": contact.get("title"),
+                   "provenance": (
+                       RECORDED if entry.get("persona")
+                       else INFERRED if contact.get("persona") else ABSENT)},
         "channel": channel,
         "step": step_key,
         "day": action.get("day"),

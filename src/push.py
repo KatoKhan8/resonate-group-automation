@@ -438,6 +438,22 @@ def mark_pushed(rec, contact_key, step_key, push_identity, at=None, day=None,
     # what `account.touches` reads, which is what attribution and exposure
     # both count from. A backfill or a replay wrote today's date onto every
     # touch it recreated.
+    # WHY THIS MESSAGE, PINNED TO THE MESSAGE.
+    #
+    # The persona, the angle and the evidence the copy was built from all
+    # live on the CONTACT, and the next generation overwrites them. So the
+    # questions this system exists to answer - which personas reply, which
+    # angles work, which evidence creates a reply - were being asked of
+    # whatever the contact happened to say later, not of what was sent.
+    #
+    # That is not a reporting inconvenience. Read at send time it is a
+    # measurement; read afterwards it is a guess that looks like one, and
+    # `outcomes` was correctly reporting those dimensions as INFERRED. Every
+    # send made before this is permanently unattributable.
+    #
+    # Same reasoning as the sender and the variant two lines below, both of
+    # which had to learn it first.
+    decision = (contact or {}).get("personalization") or {}
     events.record(rec, events.PUSH_MARKED, contact_key=contact_key,
                   at=at,
                   channel=channel, step=step_key,
@@ -445,6 +461,12 @@ def mark_pushed(rec, contact_key, step_key, push_identity, at=None, day=None,
                   day=day if day is not None else step.get("day"),
                   sender_id=sender.get("sender_id") or None,
                   account_id=sender.get("sender_account_id") or None,
+                  persona=(contact or {}).get("persona") or None,
+                  angle=carried.get("angle") or (contact or {}).get("angle")
+                  or None,
+                  evidence_ids=list(decision.get("selected_evidence_ids")
+                                    or []) or None,
+                  evidence_level=decision.get("level") or None,
                   variant_id=carried.get("variant_id") or None,
                   variant_style=carried.get("variant_style") or None,
                   variant_version=carried.get("variant_version"))
