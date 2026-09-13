@@ -375,6 +375,33 @@ a clean tree and no run in the previous session looked.
    company, and at least one mojibake character. Both passed lint.
 6. `sender_id` null on all sender rows blocks per-human attribution.
 
+## Checkpoint, late 2026-09-13
+
+Things learned the expensive way tonight, recorded so nobody relearns them.
+
+**A paid generation run died having written nothing.** `generate.run` saves
+ONCE at the end, so roughly fifty minutes of OpenRouter calls across eighteen
+records were lost when the process went away - no log, no exit code, no
+drafts. TASK-011 fixes it properly. The operational workaround until then is
+`/tmp/genbatch.sh`: two records per invocation, so each batch persists.
+
+**`QWEN.md` now lives on `master`.** It previously existed only on
+`qwen-worker`, a branch reset orphaned the commit, and a Qwen run stopped
+dead reporting "No QWEN.md exists in the repository". Durable state belongs
+where both branches can see it.
+
+**A scheduled_date is not a commitment.** Campaign 451's one scheduled email
+read `2026-09-14T13:19Z` earlier in the evening and `2026-09-14T16:24Z` a few
+hours later. Nothing was staged or restaged in between. The provider re-plans
+its own queue, so a scheduled time is an intention rather than a promise, and
+reporting one as "sending at 13:19" would have been wrong.
+
+**Enabling `linkedin_connection_note.mode: llm` costs roughly twice the model
+calls per record.** A record now plans one persona angle, five email drafts
+AND six LinkedIn notes - about twelve calls rather than six. That is the
+price of the LinkedIn half of the cadence existing at all, and it should be
+in any estimate of what a cohort costs.
+
 ## Model routing, decided 2026-09-13
 
 The operator's policy, and it is a policy rather than a preference:
