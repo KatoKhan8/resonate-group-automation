@@ -99,6 +99,129 @@ SECOND_PERSON_ASSERTIONS = (
     "your team has ", "your agency is ", "your studio is ",
 )
 
+# A CLAIM ABOUT THE RELATIONSHIP IS STILL A CLAIM.
+#
+# Every rule above asks what a sentence says about the PROSPECT, so a
+# sentence about US was treated as harmless - `GENERIC_SUBJECTS` exits early
+# for anything starting "we", "our" or "I". An assertion of shared history is
+# about us AND them, and it fell straight through that exit.
+#
+# What reached a real draft on 2026-09-13, lint clean and claims clean:
+#
+#   "I want to make sure our last conversation landed clearly"
+#   "We missed the deadline for the brand audit deliverable last week."
+#
+# There was no conversation, no deliverable and no deadline. This is worse
+# than an unsupported figure: a wrong headcount is an error, an invented
+# relationship is a lie, and it is the recipient - not us - who discovers it.
+#
+# Matched on the STEM so ordinary inflection is covered without a list per
+# tense: spoke/spoken, discussed/discussing, connected/connecting. Bounded at
+# the start so "as discussed" is caught and "we discussed our roadmap
+# internally" is not - the second says nothing about them.
+RELATIONSHIP = tuple(re.compile(p, re.I) for p in (
+    # prior conversation, in any direction. PAST AND PERFECT ONLY: "we spoke"
+    # names an event that either happened or did not, while "we speak" is
+    # habitual and says nothing about this person. A first draft included the
+    # present tense and refused "most operations leads we speak to are
+    # running scheduling in one place", which is honest copy about our own
+    # experience - and a guard that refuses honest copy gets switched off.
+    r"\b(?:we|i|you)\s+(?:\w+\s+){0,2}"
+    r"(?:spoke|spoken|talked|chatted|connected|met|corresponded)\b",
+    r"\b(?:our|the|your|that|a)\s+(?:last|previous|recent|earlier|first|"
+    r"initial|prior)\s+(?:conversation|call|chat|exchange|email|message|"
+    r"note|discussion|meeting|thread)\b",
+    r"\b(?:as|like)\s+(?:we\s+)?(?:discussed|mentioned|agreed|promised|"
+    r"said|covered|noted)\b",
+    r"\bfollow(?:ing)?[- ]?up\s+(?:on|from|about|to)\s+(?:our|your|the|my|"
+    r"that|last|previous)\b",
+    r"\b(?:circling|circle|looping|loop|checking|reaching)\s+back\b",
+    r"\b(?:when|since|after|before)\s+we\s+(?:last\s+)?"
+    r"(?:spoke|talked|met|connected|chatted)\b",
+    # things they are said to have told us
+    r"\byou\s+(?:\w+\s+){0,2}"
+    r"(?:mentioned|told|said|asked|replied|responded|wrote|confirmed|"
+    r"agreed|promised|requested|shared with)\b",
+    r"\b(?:per|from)\s+(?:our|your)\s+(?:last\s+)?(?:conversation|call|"
+    r"email|note|message|chat|discussion)\b",
+    # an ongoing relationship or engagement
+    r"\bwe(?:'ve| have)?\s+(?:\w+\s+){0,2}"
+    r"(?:worked|partnered|collaborated|engaged)\s+(?:together|with you)\b",
+    r"\b(?:our|the)\s+(?:ongoing|current|existing)\s+"
+    r"(?:work|engagement|project|partnership|relationship|account)\b",
+    r"\b(?:your|the)\s+(?:current|existing|last)\s+"
+    r"(?:project|engagement|deliverable|scope|retainer|invoice)\s+with\s+us\b",
+    # us having been watching them, which implies a history we cannot show
+    r"\b(?:i|we)(?:'ve| have)?\s+(?:been\s+)?(?:following|watching|tracking|"
+    r"admiring)\s+(?:your|you)\b",
+    # apologies and commitments, which only exist inside a relationship
+    r"\bwe\s+(?:\w+\s+){0,2}(?:missed|delayed|slipped|overran|rescheduled)\s+"
+    r"(?:the|your|our)\b",
+    r"\b(?:sorry|apolog\w+)\s+(?:for|about)\s+(?:the|our|my|any)\s+"
+    r"(?:delay|miss|mistake|error|confusion|mix[- ]?up)\b",
+    r"\b(?:as\s+)?promised\b",
+    r"\b(?:my|our)\s+(?:last|previous|earlier)\s+(?:email|message|note)\b",
+    r"\bdid\s+you\s+(?:get|receive|see)\s+(?:my|our)\b",
+))
+
+# What the record must show before any of the above may ship. Deliberately
+# NOT the research blob: prior contact is a fact about what WE did, not about
+# what a scraper read, and no amount of company research makes a conversation
+# have happened.
+PRIOR_CONTACT_EVENTS = ("reply_received", "email_delivered",
+                        "linkedin_connected", "push_marked")
+
+
+# A POPULATION IS NOT THIS PERSON. "the agencies we worked with", "most
+# leads we spoke to", "clients we met last year" - all describe our own
+# experience, and the relative clause puts the verb next to "we" without
+# saying anything about the recipient. Looked for in the words immediately
+# BEFORE the phrase, because that is where the antecedent sits.
+POPULATION = re.compile(
+    r"\b(?:most|many|some|several|few|every|all|other|the|those|these)?\s*"
+    r"(?:operations\s+|marketing\s+|creative\s+)?"
+    r"(?:leads|clients|customers|agencies|studios|teams|companies|founders|"
+    r"people|prospects|firms|partners|accounts)\s+$", re.I)
+
+
+def implies_prior_contact(sentence):
+    """The phrase asserting a shared history WITH THIS PERSON, or None.
+
+    Returns the matched text rather than a bool so a refusal can quote the
+    words that caused it - somebody rewriting the draft needs to know which
+    clause was the problem, not merely that one was.
+    """
+    for pattern in RELATIONSHIP:
+        found = pattern.search(sentence)
+        if not found:
+            continue
+        if POPULATION.search(sentence[:found.start()]):
+            continue                 # "leads we spoke to", not "we spoke"
+        return found.group(0)
+    return None
+
+
+def prior_contact(rec, contact=None):
+    """Has this system actually reached this person before?
+
+    Read from the record's own event log, which is where a confirmed touch is
+    written and what `fatigue` and `collision` already read. A planned or
+    attempted step is not contact: `PRIOR_CONTACT_EVENTS` names only outcomes
+    the provider confirmed, so a message that was drafted and never sent
+    cannot license "as discussed".
+    """
+    key = (contact or {}).get("key")
+    for entry in (rec or {}).get("events") or []:
+        if entry.get("type") not in PRIOR_CONTACT_EVENTS:
+            continue
+        # An event naming a different colleague is that colleague's history.
+        # "We spoke last week" to somebody we have never written to is false
+        # however busy their inbox has been.
+        if key and entry.get("contact") and entry.get("contact") != key:
+            continue
+        return entry
+    return None
+
 
 def asserts_about_them(low):
     """Is this a flat statement about how the prospect OPERATES?
@@ -119,6 +242,14 @@ def asserts_about_them(low):
 def is_claim(sentence):
     """Does this sentence assert something checkable about the prospect?"""
     low = sentence.lower()
+    # BEFORE EVERY EXEMPTION BELOW. A shared history is asserted in the first
+    # person - "we spoke", "as discussed", "I've been following your work" -
+    # so `GENERIC_SUBJECTS` waves it through as a sentence about us, and the
+    # question branch waves through "did you get my last email?". Both were
+    # measured passing on a real draft. This is the one kind of claim whose
+    # subject is the RELATIONSHIP rather than either party.
+    if implies_prior_contact(sentence):
+        return True
     if not any(marker in low.split() or marker in low for marker in CLAIM_MARKERS):
         # No second person and no third party: it is about us.
         if not any(w in low for w in EVENT_WORDS):
@@ -209,9 +340,26 @@ def _tokens(text):
     return set(re.findall(r"[a-z][a-z\-]{3,}", (text or "").lower()))
 
 
-def check_sentence(sentence, support, identity=frozenset()):
-    """Is this claim supported? Returns (ok, why_not)."""
+def check_sentence(sentence, support, identity=frozenset(), contacted=None):
+    """Is this claim supported? Returns (ok, why_not).
+
+    `contacted` is the confirmed prior-contact event for this person, or None.
+    It is a separate argument rather than part of `support` because it answers
+    a different question: `support` is what we know ABOUT them, and this is
+    what we have actually DONE to them. Company research can never make a
+    conversation have happened, so the two must not share a haystack.
+    """
     low = sentence.lower()
+
+    # A RELATIONSHIP WE CANNOT SHOW IS NOT A RELATIONSHIP.
+    #
+    # Checked first: it needs no figure, no event word and no second-person
+    # verb, so every rule below would pass it. And unlike a wrong number, the
+    # recipient is the person who finds out it is false.
+    asserted = implies_prior_contact(sentence)
+    if asserted and not contacted:
+        return False, (f"{asserted!r} asserts we have contacted this person "
+                       f"before, and no confirmed touch says we have")
 
     # A FIGURE IS A WHOLE TOKEN, NOT A SUBSTRING. `cleaned not in support` ran
     # against one joined blob, so a founding year licensed its own digits and
@@ -296,11 +444,12 @@ def check(text, rec, contact=None, chosen=()):
     """Every unsupported claim in this text. Empty means it may ship."""
     support = support_text(rec, contact, chosen)
     identity = identity_tokens(rec, contact)
+    contacted = prior_contact(rec, contact)
     problems = []
     for sentence in sentences(text):
         if not is_claim(sentence):
             continue
-        ok, why = check_sentence(sentence, support, identity)
+        ok, why = check_sentence(sentence, support, identity, contacted)
         if not ok:
             problems.append({"sentence": sentence[:160], "why": why})
     return problems
