@@ -642,7 +642,50 @@ def plan(rec, client=None, campaign=None):
                                    f"an unsupported claim "
                                    f"({unsupported[0].get('why', '')[:60]})",
                             "contact": c.get("name"), "day": spec["key"]})
+                continue
+            # AND THE QUALITY GATE, which is the third of the same kind. Lint
+            # asks whether the words break a rule, claims asks whether they
+            # assert something untrue, and this asks whether they say
+            # anything the other steps have not already said. All three are
+            # reasons a stored draft is not finished work, and all three were
+            # invisible to a planner that asked only whether a body existed.
+            #
+            # Measured 2026-09-14 with the company's own name discounted: 60
+            # of 65 stored steps repeat another step in their own sequence.
+            quality_out = _quality_of(rec, c, stored, spec["key"], client)
+            if quality_out:
+                ops.append({"step": "draft",
+                            "why": f"{c['name']}'s {spec['key']} email "
+                                   f"repeats another step "
+                                   f"({', '.join(quality_out)})",
+                            "contact": c.get("name"), "day": spec["key"]})
     return ops
+
+
+def _quality_of(rec, contact, stored, step_key, config):
+    """The quality gate's reasons for one stored step, or an empty list.
+
+    THE COMPANY'S OWN NAME IS DISCOUNTED. Every message in a sequence to one
+    company names that company, and counting those tokens as shared content
+    made relevance look like duplication - `acqcom-com` went from two
+    colliding pairs to zero with "acqcom", "digital" and "marketing"
+    excluded, on copy that was fine.
+    """
+    import re as _re
+
+    from . import quality
+
+    step = (stored or {}).get(step_key) or {}
+    if not step.get("body"):
+        return []
+    siblings = [{"key": k, "text": f"{s.get('subject') or ''} {s.get('body') or ''}"}
+                for k, s in sorted((stored or {}).items())
+                if s.get("channel") == "email" and s.get("body")]
+    name = (rec.get("company_facts") or {}).get("name") or rec.get("company") or ""
+    ignore = {w for w in _re.findall(r"[a-z]+", str(name).lower()) if len(w) > 2}
+    found = quality.gate(f"{step.get('subject') or ''} {step.get('body') or ''}",
+                         config, steps=siblings, channel="email", ignore=ignore)
+    return (found or {}).get("reasons") or []
 
 
 def diagnose(rec, model):

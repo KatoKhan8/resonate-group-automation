@@ -457,7 +457,37 @@ class TestOnlyTwoEmailsAreGenerated(GenerateTest):
         # client - while the property it was reaching for never changed. A
         # `ScriptedModel` with no answers raises if it is asked anything at
         # all, so the second run's silence is what proves it.
-        answers = [draft_answer(first="Ivana") for _ in range(10)]
+        # EACH ANSWER IS GENUINELY DIFFERENT, because the quality gate now
+        # re-plans a step that repeats another step in its own sequence - and
+        # ten copies of one body is the most repetitive sequence there is.
+        # The fixture was handing back the same words five times and the gate
+        # was right to send them back. Distinct bodies keep this test about
+        # what it is about: a CLEAN stored draft is not regenerated.
+        bodies = [
+            "Ivana, your scheduling runs through one spreadsheet that three "
+            "people edit, and nobody can say on Tuesday whether Friday is "
+            "already full. What decides today whether a new project can start "
+            "next week without pushing something else out?",
+            "Ivana, month end reconciliation takes four days here and most of "
+            "it is chasing which hours belong to which client. How long after "
+            "the last working day do you actually know what each account "
+            "earned, and who assembles that answer?",
+            "Ivana, a studio your size usually discovers a budget overrun "
+            "when the invoice is drafted rather than while the work is "
+            "happening. What would have to change for an overrun to surface "
+            "in week two instead of week six on your projects?",
+            "Ivana, hiring decisions at twenty six people tend to rest on how "
+            "busy everyone feels. What evidence do you use when somebody asks "
+            "whether the next designer is needed now or in three months, and "
+            "how confident are you in it currently?",
+            "Ivana, if none of this is a priority, say so and I will close "
+            "the file. If it is, the one thing worth knowing is where your "
+            "current answer comes from today and how much reconstruction "
+            "sits behind it every single reporting month.",
+        ]
+        answers = [draft_answer(first="Ivana", body=bodies[n % len(bodies)],
+                                subject=f"question {n} about how this runs")
+                   for n in range(10)]
         model = llm.ScriptedModel(*answers)
         generate.run(model=model, live=True, ids=["meridian"])
         self.assertTrue(model.prompts, "the first run generated nothing")

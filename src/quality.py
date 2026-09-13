@@ -559,7 +559,7 @@ def _distinctive_words(text):
     return set(_DISTINCTIVE_RE.findall(str(text or "").lower()))
 
 
-def repetition_across_rungs(steps):
+def repetition_across_rungs(steps, ignore=()):
     """Pairs of steps that share too many distinctive words.
 
     `steps` is a list of dicts, each with at least `key` (the step
@@ -583,7 +583,19 @@ def repetition_across_rungs(steps):
     """
     if not steps or len(steps) < 2:
         return []
-    word_sets = [(s.get("key", ""), _distinctive_words(s.get("text", "")))
+    # THE PROSPECT'S OWN NAME IS NOT REPETITION. Every message in a sequence
+    # to one company names that company, and counting those tokens as shared
+    # content made relevance look like duplication. Measured 2026-09-14 on
+    # `acqcom-com`, five emails from `gpt-4.1-mini`: two colliding pairs with
+    # "acqcom", "digital" and "marketing" counted, and ZERO with them
+    # discounted. The copy was fine and the check was reading the company
+    # name back to itself.
+    #
+    # `ignore` is supplied by the caller because only the caller knows whose
+    # company this is. An empty one keeps the old behaviour exactly.
+    skip = {str(w).lower() for w in (ignore or ())}
+    word_sets = [(s.get("key", ""),
+                  _distinctive_words(s.get("text", "")) - skip)
                  for s in steps]
     collisions = []
     for i, (key_a, words_a) in enumerate(word_sets):
@@ -668,7 +680,7 @@ REASON_REPETITION = "repetition_across_rungs"
 REASON_UNSUPPORTED_CLAIM = "unsupported_third_party_claim"
 
 
-def gate(text, config, steps=None, channel="linkedin"):
+def gate(text, config, steps=None, channel="linkedin", ignore=()):
     """The quality gate for one message.
 
     Returns a dict with:
@@ -718,7 +730,7 @@ def gate(text, config, steps=None, channel="linkedin"):
         detail["unsupported_claims"] = third_party
 
     if steps is not None:
-        collisions = repetition_across_rungs(steps)
+        collisions = repetition_across_rungs(steps, ignore=ignore)
         if collisions:
             reasons.append(REASON_REPETITION)
             detail["repetitions"] = [{"step_a": a, "step_b": b,
