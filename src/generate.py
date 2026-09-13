@@ -32,6 +32,62 @@ PROMPTS = os.path.join(store.ROOT, "prompts")
 GENERATED_DAYS = ("day1", "day15")
 MAX_DRAFT_ATTEMPTS = 3
 
+# --------------------------------------------------------- the step ladder
+#
+# EVERY STEP HAS A DIFFERENT JOB, AND THE PROMPT IS TOLD WHICH ONE.
+#
+# Without this the only thing distinguishing message four from message one is
+# the model's own appetite for variety, and what came back was four
+# paraphrases of the same pitch - the failure the operator named. A cadence is
+# not one argument repeated at intervals; it is several arguments, each of
+# which is the reason THIS message exists.
+#
+# Keyed on the step's ORDINAL WITHIN ITS CHANNEL rather than on its key,
+# because step keys belong to the sequence and the sequence is configuration:
+# `cadence.STEPS` spells them `day1`/`day15`, `cadencelibrary` spells the same
+# shape `em1`..`em5` and `li1`..`li6`, and a campaign may carry its own. The
+# second email is the second email whatever it is called.
+#
+# These are jobs, not wording. Nothing here is a sentence a prospect ever
+# sees, and none of it licenses a claim: the evidence rung below says what
+# kind of thing to reach for, never that we have one.
+EMAIL_LADDER = (
+    "Relevance. Why you are writing to THIS person at THIS company, in their "
+    "own operational language. One question they can answer in a line.",
+    "A different angle from the first email. Not the same argument rephrased: "
+    "a different part of how the business runs, and a different question.",
+    "New value. One concrete use case or consequence a team their size would "
+    "recognise, and what changes when it is visible rather than reconstructed.",
+    "A short bump that makes a DIFFERENT argument from every email before it. "
+    "Shortest message in the sequence. One idea, one question, no recap.",
+    "Close the loop. Give them an easy no, make no new pitch, ask for nothing "
+    "beyond permission to stop.",
+)
+
+# Rung one is the CONNECTION REQUEST, which is a different object from a
+# message: it has no subject, it is read beside a profile photo, and asking a
+# question that needs thought in it is how it gets ignored. Rungs two onward
+# are messages to somebody who accepted.
+LINKEDIN_LADDER = (
+    "A connection request note. One line on why you are writing to them "
+    "specifically, in the operational language of their angle. No ask beyond "
+    "connecting, and no question that needs a considered answer.",
+    "A short first message. One operational angle, put as a question about "
+    "how they handle it today. Different words and a different angle from the "
+    "connection note.",
+    "A second, different operational angle. Name the consequence of not "
+    "having it rather than the feature that provides it.",
+    "The use case. What a team their size actually changed, and what it was "
+    "costing them before. This is the rung where evidence belongs, if there "
+    "is any; if there is none, describe the pattern as ours rather than "
+    "theirs.",
+    "A concise final follow-up. One line, one question, no new argument and "
+    "no summary of the previous ones.",
+    "Close the loop. An easy no, and leave it there.",
+)
+
+LADDERS = {"email": EMAIL_LADDER, "linkedin": LINKEDIN_LADDER}
+
 # Wording that would make the note reference the email. Section 7.
 # The schema in llm.py rejects the obvious cases; this is the fuller list the
 # cadence checks with, so the storer is strictly stricter than the contract.
@@ -97,7 +153,205 @@ def contact_block(contact):
             if contact.get(k)}
 
 
-def context_for(step, rec, contact=None, client=None):
+# ------------------------------------------------- which step is this, and
+#                                                    what has already gone out
+
+def sequence_for(rec, client=None, contact=None, campaign=None):
+    """The steps this contact will actually receive, asked of the authority.
+
+    `cadence.steps_for` resolves the assigned experiment arm, then the
+    campaign's own sequence, then the client's named one, then the module
+    constant. Re-deriving any of that here would be a second opinion about
+    which cadence is running, and the two would drift the first time an arm
+    was assigned. Imported late for the same reason `cadence_note_words` is.
+    """
+    from . import cadence
+
+    if client is None:
+        # Same precedent as `note_mode` directly below: the config is the
+        # client's, so it is read from the client's own file when a caller did
+        # not already have it. A config that cannot be read leaves
+        # `steps_for` on the module constant, which is what ran before any
+        # client named a sequence - not a guess at which one they meant.
+        try:
+            client = clients.load(rec.get("client"))
+        except clients.ConfigError:
+            client = None
+    return cadence.steps_for(campaign, client, rec, contact)
+
+
+def position(sequence, step_key):
+    """Where this step sits in its own channel: (channel, ordinal, total).
+
+    Ordinal is 1-based and counts only steps on the same channel, because the
+    ladders are per channel - the second email is the second email whether or
+    not three LinkedIn steps happened in between. Returns (None, None, None)
+    for a step the sequence does not contain, which is what a step from an
+    older cadence looks like after the sequence changed.
+    """
+    for spec in sequence or ():
+        if spec.get("key") != step_key:
+            continue
+        channel = spec.get("channel")
+        same = [s for s in sequence if s.get("channel") == channel]
+        keys = [s.get("key") for s in same]
+        return channel, keys.index(step_key) + 1, len(same)
+    return None, None, None
+
+
+def purpose_for(channel, ordinal):
+    """This step's distinct job, or None when the ladder does not name one.
+
+    None rather than the last rung repeated. A sequence longer than its
+    ladder has steps nobody has decided the job of, and silently handing one
+    of them "close the loop" produces a second closing message - which is
+    exactly the duplication the ladder exists to stop. The prompt is told it
+    has no assigned job and what to do about it, which is a stated case
+    rather than a fallback that looks like an answer.
+    """
+    ladder = LADDERS.get(channel) or ()
+    if not ordinal or ordinal > len(ladder):
+        return None
+    return ladder[ordinal - 1]
+
+
+def step_block(sequence, step_key, channel=None):
+    """What the prompt is told about the step it is writing."""
+    found, ordinal, total = position(sequence, step_key)
+    channel = found or channel
+    return {"key": step_key, "channel": channel,
+            "number": ordinal, "of": total,
+            "purpose": purpose_for(channel, ordinal)}
+
+
+def _day_of(sequence, step_key):
+    for spec in sequence or ():
+        if spec.get("key") == step_key:
+            return spec.get("day")
+    return None
+
+
+def sent_so_far(rec, contact, sequence=None, before_day=None):
+    """What this person has ACTUALLY received, from the durable event log.
+
+    ## Why not from the record's current state
+
+    `rec["cadence"]` holds the copy, `contact["angle"]` holds the argument and
+    `contact["persona"]` holds the family - and all three are overwritten by
+    the next generation, the next routing pass, or a human editing a persona
+    in the product. A step-four prompt that reconstructed "what we already
+    said" from those would be reading today's intentions and calling them
+    history. `push.mark_pushed` exists precisely because that is not good
+    enough: it pins the persona, the angle, the evidence ids and the variant
+    onto the confirming event at the moment of sending, so what was sent stays
+    what was sent.
+
+    ## What counts as sent
+
+    `touch.CONFIRMING_EVENTS` decides, not this function. Those are
+    `push_marked`, `email_delivered` and `linkedin_connected`, and
+    `push_prepared` is absent from them by name - a payload that was built is
+    not a message that arrived, and on this build every payload is built and
+    none is sent. A second opinion about what "sent" means is how a planned
+    step becomes "as I mentioned last week".
+
+    ## The words
+
+    The event does not carry the subject and the body; it carries `push_id`,
+    and so does the step that was pushed. Where the two agree, the stored copy
+    IS the copy that went out and may be shown to the next prompt. Where they
+    do not - no push id, a different one, a step nothing stored - the words
+    are withheld and the row still says the touch happened, with its channel,
+    its day and the angle pinned on the event. Withholding words is a smaller
+    error than showing words that were not sent.
+    """
+    from . import touch
+
+    key = lint.contact_key(contact or {})
+    cadence_rows = (rec.get("cadence") or {}).get(key) or {}
+    by_step = {}
+    for entry in rec.get("events") or []:
+        state = touch.CONFIRMING_EVENTS.get(entry.get("type"))
+        if state is None or not touch.is_confirmed(state):
+            continue
+        if entry.get("contact") != key:
+            continue
+        step_key = entry.get("step")
+        if not step_key:
+            continue                       # a touch that names no step
+        by_step.setdefault(step_key, []).append(entry)
+
+    out = []
+    for step_key, entries in by_step.items():
+        # The push is the event that knows why this message said what it
+        # said; a provider delivery confirmation knows only that it landed.
+        pushed = next((e for e in entries
+                       if e.get("type") == events.PUSH_MARKED), None)
+        first = pushed or entries[0]
+        day = first.get("day")
+        if day is None:
+            day = _day_of(sequence, step_key)
+        if before_day is not None and day is not None and day >= before_day:
+            continue
+        channel = first.get("channel")
+        _, ordinal, _ = position(sequence, step_key)
+        row = {"step": step_key, "channel": channel, "day": day,
+               "at": first.get("at"),
+               "purpose": purpose_for(channel, ordinal),
+               # OUR argument as it was at the time, off the event. Never
+               # `contact["angle"]`, which is whatever the last routing pass
+               # decided and may now be a different angle entirely.
+               "angle": (pushed or {}).get("angle"),
+               "persona": (pushed or {}).get("persona")}
+        stored = cadence_rows.get(step_key) or {}
+        push_id = (pushed or {}).get("push_id")
+        if push_id and stored.get("push_id") == push_id:
+            row["subject"] = stored.get("subject")
+            row["opening"] = _opening(stored)
+        else:
+            row["copy_withheld"] = (
+                "the stored step is not provably the one that was sent, so "
+                "what it says now is not evidence of what went out")
+        out.append(row)
+    out.sort(key=lambda r: (r.get("day") if r.get("day") is not None else 0,
+                            str(r.get("at") or ""), r["step"]))
+    return out
+
+
+def _opening(step):
+    """The first sentence of what was sent. Enough not to repeat it."""
+    text = (step.get("body") or step.get("note") or "").strip()
+    first = text.split("\n", 1)[0].strip()
+    return first[:200] or None
+
+
+def history_block(rec, contact, sequence, step_key, channel):
+    """`sent_so_far`, split by whether this step may see the words.
+
+    Same channel keeps its copy: not repeating message two is the whole
+    reason message four is given a history. The OTHER channel is reduced to
+    the fact, the day and the angle, because the two channels do not know
+    about each other - a LinkedIn message holding the text of an email is one
+    careless sentence away from "as I wrote to you", which `lint` refuses and
+    a prospect would never have to refuse because they would simply stop
+    reading.
+    """
+    rows = sent_so_far(rec, contact, sequence,
+                       before_day=_day_of(sequence, step_key))
+    out = []
+    for row in rows:
+        if row.get("channel") == channel:
+            out.append(row)
+            continue
+        out.append({k: row[k] for k in ("step", "channel", "day", "purpose",
+                                        "angle") if k in row}
+                   | {"words_withheld": "the other channel's copy is never "
+                                        "quoted and never referred to"})
+    return out
+
+
+def context_for(step, rec, contact=None, client=None, step_key=None,
+                sequence=None):
     """Assemble the smallest context that can answer the question."""
     # `lane` IS OURS, NOT THEIRS. It names the pipeline a record arrived
     # through - "domains", "cold", "revive" - and the model read "domains" as
@@ -128,6 +382,13 @@ def context_for(step, rec, contact=None, client=None):
         block["angle_wording"] = ((client or {}).get("personas") or {}).get(
             (contact or {}).get("persona") or "", {}).get("angles")
         block["tone"] = ((client or {}).get("tone") or {}).get("linkedin")
+        block["prior_contact"] = bool(claims.prior_contact(rec, contact))
+        if step_key:
+            sequence = sequence_for(rec, client, contact) if sequence is None \
+                else sequence
+            block["step"] = step_block(sequence, step_key, "linkedin")
+            block["already_sent"] = history_block(rec, contact, sequence,
+                                                  step_key, "linkedin")
     elif step == "draft":
         block["contact"] = contact_block(contact or {})
         block["angle"] = (contact or {}).get("angle")
@@ -154,6 +415,19 @@ def context_for(step, rec, contact=None, client=None):
         block["evidence"] = (rec.get("evidence") or {}).get(
             lint.contact_key(contact or {}), [])
         block["tone"] = (client or {}).get("tone")
+        # WHICH MESSAGE OF THE SEQUENCE THIS IS, AND WHAT THE ONES BEFORE IT
+        # SAID. Without both the model has no way to make email four differ
+        # from email one except by taste, and what it produced was the same
+        # pitch four times. `step.purpose` says what THIS message is for;
+        # `already_sent` says what is already spent, and is read from
+        # confirmed events rather than from the record's current copy - see
+        # `sent_so_far` for why those are not the same question.
+        if step_key:
+            sequence = sequence_for(rec, client, contact) if sequence is None \
+                else sequence
+            block["step"] = step_block(sequence, step_key, "email")
+            block["already_sent"] = history_block(rec, contact, sequence,
+                                                  step_key, "email")
         if rec.get("lane") == "revive":
             block["diagnosis"] = rec.get("diagnosis")
         if rec.get("lane") == "cold":
@@ -163,7 +437,8 @@ def context_for(step, rec, contact=None, client=None):
     return block
 
 
-def render_prompt(step, rec, contact=None, client=None):
+def render_prompt(step, rec, contact=None, client=None, step_key=None,
+                  sequence=None):
     """Contract first, then the record fenced as untrusted data.
 
     A CRM thread can say anything, including "ignore your instructions". The
@@ -171,8 +446,9 @@ def render_prompt(step, rec, contact=None, client=None):
     data, so a thread cannot promote itself to an instruction.
     """
     import json
-    context = json.dumps(context_for(step, rec, contact, client), indent=2,
-                         ensure_ascii=False)
+    context = json.dumps(
+        context_for(step, rec, contact, client, step_key, sequence),
+        indent=2, ensure_ascii=False)
     return f"{prompt_text(step)}\n\n{llm.fence(context)}"
 
 
@@ -188,8 +464,22 @@ def note_mode(rec, client=None):
     return clients.linkedin_note_mode(client)
 
 
-def plan(rec, client=None):
-    """What this record needs from a model, and why. No call without a reason."""
+def plan(rec, client=None, campaign=None):
+    """What this record needs from a model, and why. No call without a reason.
+
+    THE SEQUENCE DECIDES WHICH STEPS ARE WRITTEN, not a constant here.
+    `GENERATED_DAYS` was `("day1", "day15")` and matched `cadence.STEPS`
+    exactly, which was correct for as long as there was one cadence. There is
+    not: a campaign may carry its own sequence, a client may name one, and an
+    experiment arm may substitute one. A record running a five-email sequence
+    got two drafts and three templates, and nothing said so.
+
+    Consumption is the test, not declaration. `cadence.expand_step` uses the
+    STORED copy for a step the sequence marks `generated` and re-renders the
+    template for every other step, so generating a draft for a step the
+    sequence has not marked generated would spend a model call on words
+    nothing reads.
+    """
     ops = []
     if rec.get("state") in ("dropped", "pushed"):
         return ops
@@ -233,23 +523,31 @@ def plan(rec, client=None):
         if rec.get("lane") == "domains" and not c.get("angle"):
             ops.append({"step": "persona_angle", "why": f"{c['name']} has no angle",
                         "contact": c.get("name")})
+        sequence = sequence_for(rec, client, c, campaign)
+        stored = (rec.get("cadence") or {}).get(lint.contact_key(c), {})
         if note_mode(rec, client) == "llm" and c in on_linkedin:
-            stored_note = (rec.get("cadence") or {}).get(
-                lint.contact_key(c), {}).get("day3") or {}
-            if not (stored_note.get("generated") and stored_note.get("note")):
+            for spec in sequence:
+                if spec.get("channel") != "linkedin":
+                    continue
+                note = stored.get(spec["key"]) or {}
+                if note.get("generated") and note.get("note"):
+                    continue
                 ops.append({"step": "linkedin_note",
-                            "why": f"{c['name']} has no written connection note",
-                            "contact": c.get("name"), "day": "day3"})
+                            "why": f"{c['name']} has no written "
+                                   f"{spec['key']} note",
+                            "contact": c.get("name"), "day": spec["key"]})
         # EMAIL DRAFTS STAY BEHIND EMAIL VERIFICATION. CLAUDE.md: no email is
         # generated for an unverified address, and that rule is untouched -
         # only the LinkedIn note moved out from behind it.
         if c not in sendable:
             continue
-        for day in GENERATED_DAYS:
-            step = (rec.get("cadence") or {}).get(lint.contact_key(c), {}).get(day)
-            if not (step or {}).get("body"):
-                ops.append({"step": "draft", "why": f"{c['name']} has no {day} email",
-                            "contact": c.get("name"), "day": day})
+        for spec in sequence:
+            if spec.get("channel") != "email" or not spec.get("generated"):
+                continue
+            if not (stored.get(spec["key"]) or {}).get("body"):
+                ops.append({"step": "draft",
+                            "why": f"{c['name']} has no {spec['key']} email",
+                            "contact": c.get("name"), "day": spec["key"]})
     return ops
 
 
@@ -284,8 +582,15 @@ def persona_angle(rec, contact, model, client=None):
     return data
 
 
-def linkedin_note(rec, contact, model, client=None):
-    """The day 3 note, written rather than templated. Short, and no crossover.
+def linkedin_note(rec, contact, model, client=None, step_key="day3"):
+    """One written LinkedIn step. Short, and no crossover.
+
+    `step_key` defaults to `day3` because that is where `cadence.STEPS` puts
+    the connection request and every caller before the LinkedIn-heavy
+    sequence existed passed nothing. A sequence with several LinkedIn steps
+    writes each of them, and the step key is what tells the prompt which rung
+    of `LINKEDIN_LADDER` it is on - a connection request and a fourth message
+    are not the same object and must not be written from the same brief.
 
     Cost accounting: every model call is counted here through
     `model_calls`, and the attempts are on the record's log, so the price of
@@ -293,27 +598,34 @@ def linkedin_note(rec, contact, model, client=None):
     """
     key = lint.contact_key(contact)
     data, attempts, errors = llm.ask(
-        model, "linkedin_note", render_prompt("linkedin_note", rec, contact, client))
+        model, "linkedin_note",
+        render_prompt("linkedin_note", rec, contact, client, step_key))
     note = data["note"].strip()
     step = {"channel": "linkedin", "generated": True, "note": note}
     leaks = [w for w in NOTE_MUST_NOT_MENTION if w in note.lower()]
     if leaks:
         store.log(rec, "linkedin_note", f"rejected, mentions {leaks[0]}")
         return None
-    rec.setdefault("cadence", {}).setdefault(key, {})["day3"] = step
+    rec.setdefault("cadence", {}).setdefault(key, {})[step_key] = step
     count_model_call("linkedin_note", attempts)
     store.log(rec, "linkedin_note", note[:80], attempts=attempts, rejected=errors)
     events.record(rec, events.DRAFT_GENERATED, contact_key=key,
-                  channel="linkedin", step="day3", generated=True)
+                  channel="linkedin", step=step_key, generated=True)
     return step
 
 
 def draft(rec, contact, day, model, client=None):
-    """Generate, lint, regenerate. Never patch, never widen a rule."""
+    """Generate, lint, regenerate. Never patch, never widen a rule.
+
+    `day` is the STEP KEY, which is what it has always been - `day1`,
+    `day15`, and now `em1`..`em5` under a sequence that names them that way.
+    It is passed to the prompt so the draft knows which rung of
+    `EMAIL_LADDER` it is writing and what the earlier rungs already spent.
+    """
     key = lint.contact_key(contact)
     rejected = []
     for attempt in range(1, MAX_DRAFT_ATTEMPTS + 1):
-        prompt = render_prompt("draft", rec, contact, client)
+        prompt = render_prompt("draft", rec, contact, client, day)
         if rejected:
             prompt += ("\n## Your previous draft failed lint\n\n"
                        f"{'; '.join(rejected[-1])}\n\nWrite a new one. Do not patch the old one.\n")
@@ -361,10 +673,17 @@ def size(rec, live=False):
 
 # ---------------------------------------------------------------- runner
 
-def generate_record(rec, model, client=None):
-    """Every step this record needs, in order, stopping at the first that fails."""
+def generate_record(rec, model, client=None, campaign=None):
+    """Every step this record needs, in order, stopping at the first that fails.
+
+    `client` reaches `plan` now and did not before. It always mattered -
+    `channels.linkedin_verdict` and `note_mode` both take it - and it matters
+    more since the sequence decides which steps are written: planning without
+    the config resolves the module constant and would draft `day1`/`day15`
+    for a record whose client runs `em1`..`em5`.
+    """
     done = []
-    for op in plan(rec):
+    for op in plan(rec, client, campaign):
         contact = next((c for c in rec.get("contacts") or []
                         if c.get("name") == op.get("contact")), None)
         try:
@@ -375,7 +694,7 @@ def generate_record(rec, model, client=None):
             elif op["step"] == "persona_angle" and contact:
                 persona_angle(rec, contact, model, client)
             elif op["step"] == "linkedin_note" and contact:
-                if not linkedin_note(rec, contact, model, client):
+                if not linkedin_note(rec, contact, model, client, op["day"]):
                     continue
             elif op["step"] == "draft" and contact:
                 if not draft(rec, contact, op["day"], model, client):
@@ -386,11 +705,23 @@ def generate_record(rec, model, client=None):
             if rec.get("state") not in ("dropped", "pushed"):
                 rec["state"] = "held"
             break
-    if done and any((rec.get("cadence") or {}).get(lint.contact_key(c), {}).get("day1")
+    # THE FIRST EMAIL OF THE SEQUENCE, not the literal `day1`. Under a
+    # sequence that names its opener `em1` the literal matched nothing, so a
+    # record with five finished drafts stayed `verified` forever and never
+    # reached approval.
+    if done and any(_opener_written(rec, c, client, campaign)
                     for c in rec.get("contacts") or []):
         if rec.get("state") not in ("dropped", "pushed", "held"):
             rec["state"] = "drafted"
     return done
+
+
+def _opener_written(rec, contact, client=None, campaign=None):
+    stored = (rec.get("cadence") or {}).get(lint.contact_key(contact), {})
+    for spec in sequence_for(rec, client, contact, campaign):
+        if spec.get("channel") == "email":
+            return bool(stored.get(spec["key"]))
+    return False
 
 
 def run(model=None, live=False, ids=None, limit=None, client=None):
@@ -403,7 +734,7 @@ def run(model=None, live=False, ids=None, limit=None, client=None):
 
     report = []
     for rec in targets:
-        ops = generate_record(rec, model, client) if live else plan(rec)
+        ops = generate_record(rec, model, client) if live else plan(rec, client)
         report.append({"id": rec["id"], "lane": rec.get("lane"),
                        "state": rec.get("state"), "ops": ops})
     if live:
