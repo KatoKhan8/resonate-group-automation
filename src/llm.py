@@ -79,6 +79,29 @@ class SchemaError(ModelError):
     """The answer did not match the contract."""
 
 
+class ModelUnavailable(ModelError):
+    """The endpoint could not be reached or would not serve us. NOT the
+    record's fault, and not a fact about this company.
+
+    A rate limit, a 5xx, a timeout, a DNS failure: every one of these is a
+    fact about OUR account or OUR network at this moment, and none of them
+    says anything about the prospect being drafted for. `generate_record`
+    holds a record when a model fails ON it, which is right for a draft that
+    came back malformed three times - and holding for one of these parks the
+    record permanently, because nothing in this repository moves a record out
+    of `held` and `approve.EMAIL_REFUSED_STATES` refuses to approve one.
+
+    Measured 2026-09-13: one batch of twenty records met OpenRouter's
+    free-tier daily cap - `429 Rate limit exceeded: free-models-per-day` -
+    and eighteen of them were held. Nothing was wrong with any of the
+    eighteen companies. Re-running after the cap resets would write their
+    drafts and leave them held anyway, so they could never be approved.
+
+    Same argument as `NoModelConfigured` and the same treatment: it stops the
+    RUN, loudly, with nothing written onto a record.
+    """
+
+
 class NoModelConfigured(ModelError):
     """Nobody configured a model. NOT a fault of the record being drafted.
 
@@ -206,12 +229,23 @@ class OpenAICompatibleModel:
         except Exception as e:                       # noqa: BLE001
             # `redact` because an HTTP library quotes the request back in its
             # message, Authorization header and all.
-            raise ModelError(
+            #
+            # UNAVAILABLE, not failed: the endpoint was never reached, so
+            # nothing was learned about the prompt or the record behind it.
+            raise ModelUnavailable(
                 f"{type(e).__name__}: {providers.redact(str(e))[:200]}") from None
         elapsed = time.monotonic() - started
 
         if not providers.ok(status):
-            raise ModelError(
+            # A RATE LIMIT AND A SERVER FAULT ARE FACTS ABOUT US, NOT ABOUT
+            # THE RECORD. 429 is our quota, 5xx is their instance, and both
+            # say nothing about the company being drafted for - so neither
+            # may hold one. A 4xx that is not 429 IS about what we sent (a
+            # bad model name, a rejected prompt, a revoked key), and stays a
+            # plain `ModelError` so the existing handling is unchanged.
+            cls = (ModelUnavailable
+                   if status == 429 or (status or 0) >= 500 else ModelError)
+            raise cls(
                 f"model endpoint answered {status}: "
                 f"{providers.redact(str(data))[:200]}")
         if not isinstance(data, dict):

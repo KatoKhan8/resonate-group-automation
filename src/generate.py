@@ -704,13 +704,24 @@ def generate_record(rec, model, client=None, campaign=None):
                 if not draft(rec, contact, op["day"], model, client):
                     continue
             done.append(op)
-        except llm.NoModelConfigured:
-            # A CONFIGURATION FAULT IS NOT A RECORD FAULT. Holding here wrote
-            # "nobody set LLM_API_KEY" into canonical state as though this
-            # company were the problem, once per record, with no event - and
-            # the run still printed GENERATED. Raising instead means the
-            # operator is told once, before anything is saved, and no record
-            # carries the blame.
+        except (llm.NoModelConfigured, llm.ModelUnavailable):
+            # A FAULT OF OURS IS NOT A FAULT OF THE RECORD. Holding here
+            # wrote "nobody set LLM_API_KEY", or "we are over our daily
+            # quota", into canonical state as though this company were the
+            # problem - once per record, with no event, and the run still
+            # printed GENERATED.
+            #
+            # And the hold is not recoverable. Nothing in this repository
+            # moves a record out of `held`, and `approve.EMAIL_REFUSED_STATES`
+            # refuses to approve one, so a rate limit that lasts an hour
+            # parks a company forever. Measured 2026-09-13: eighteen of
+            # twenty records held on `429 free-models-per-day`, none of which
+            # had anything wrong with it.
+            #
+            # Raising stops the run, tells the operator once, before anything
+            # is saved, and leaves no record carrying the blame. A model that
+            # failed ON a record - malformed JSON three times over, a draft
+            # that will not pass lint - still holds it, below.
             raise
         except llm.ModelError as e:
             store.log(rec, op["step"], f"held: {e}")

@@ -85,6 +85,67 @@ class NoModelIsItsOwnKindOfFailure(unittest.TestCase):
         self.assertNotIsInstance(caught.exception, llm.NoModelConfigured)
 
 
+class AnUnreachableModelHoldsNobodyEither(unittest.TestCase):
+    """A rate limit and a server fault are facts about us, not the record."""
+
+    def a_model(self):
+        return llm.OpenAICompatibleModel(key="k", model="m",
+                                         base="https://endpoint.test/v1")
+
+    def status(self, code, body=None):
+        with mock.patch.object(providers, "request",
+                               return_value=(code, body or {"e": "x"})):
+            with self.assertRaises(llm.ModelError) as caught:
+                self.a_model().complete("anything")
+        return caught.exception
+
+    def test_a_rate_limit_is_unavailable(self):
+        """The measured one: OpenRouter free-models-per-day."""
+        e = self.status(429, {"error": {"message": "Rate limit exceeded: "
+                                                   "free-models-per-day"}})
+        self.assertIsInstance(e, llm.ModelUnavailable)
+
+    def test_a_server_fault_is_unavailable(self):
+        for code in (500, 502, 503):
+            with self.subTest(status=code):
+                self.assertIsInstance(self.status(code), llm.ModelUnavailable)
+
+    def test_a_transport_failure_is_unavailable(self):
+        """The endpoint was never reached, so nothing was learned."""
+        with mock.patch.object(providers, "request",
+                               side_effect=OSError("dns went away")):
+            with self.assertRaises(llm.ModelUnavailable):
+                self.a_model().complete("anything")
+
+    def test_a_rejected_request_is_still_the_records_business(self):
+        """A 400 or a 401 is about what WE sent, and the existing handling
+        of it - hold, and move on - is unchanged."""
+        for code in (400, 401, 403, 404):
+            with self.subTest(status=code):
+                self.assertNotIsInstance(self.status(code),
+                                         llm.ModelUnavailable)
+
+
+class ARateLimitDoesNotParkACompany(QueueTest):
+
+    def setUp(self):
+        super().setUp()
+        store.save([a_record()])
+
+    def test_generate_record_raises_instead_of_holding(self):
+        class RateLimited:
+            name = "rate-limited"
+
+            def complete(self, prompt):
+                raise llm.ModelUnavailable("model endpoint answered 429")
+
+        rec = store.load()[0]
+        with self.assertRaises(llm.ModelUnavailable):
+            generate.generate_record(rec, RateLimited(), CONFIG)
+        self.assertEqual(rec.get("state"), "verified",
+                         "a company was parked for our own rate limit")
+
+
 class AMissingModelHoldsNobody(QueueTest):
 
     def setUp(self):
