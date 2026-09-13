@@ -808,6 +808,24 @@ def draft(rec, contact, day, model, client=None):
         if unsupported:
             content_failures = content_failures + [
                 f"unsupported claim: {c}" for c in unsupported[:3]]
+        # AND THE QUALITY GATE, INSIDE THE ATTEMPT LOOP. Wiring it only into
+        # `plan` made it re-plan a repetitive draft and then store another
+        # one, because `draft` was still storing anything lint and claims
+        # accepted - so a run regenerated and re-stored copy that repeated,
+        # and the next run asked again. The gate has to refuse at the point
+        # of storing, exactly as the other two do, or it is advisory.
+        #
+        # Checked against the trial record, so the step being written is
+        # compared with its siblings AS THEY WILL BE STORED. The company's
+        # own name is discounted - naming the prospect's company in every
+        # message is relevance, not repetition.
+        repeats = _quality_of(trial, contact,
+                              (trial.get("cadence") or {}).get(key) or {},
+                              day, client)
+        if repeats:
+            content_failures = content_failures + [
+                f"this repeats another step in the sequence; say something "
+                f"the others do not ({', '.join(repeats)})"]
         if not content_failures:
             rec.setdefault("cadence", {}).setdefault(key, {})[day] = candidate
             store.log(rec, "draft", f"{contact.get('name')} {day}: {data['subject']}",
