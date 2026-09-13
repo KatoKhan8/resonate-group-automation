@@ -6,6 +6,48 @@ date. Nothing in this file is inferred from a plan. Where it corrects the
 previous handoff the correction is marked, because the previous numbers were
 quoted and acted on.
 
+## Where this stood at the end of the overnight run, 2026-09-14
+
+    GIT        master 8e36bc6, everything pushed, worktrees clean
+               53 commits overnight
+               qwen-worker f505f46, pushed, nothing ahead
+
+    QWEN       12 tasks complete and integrated, 5 queued, 0 running
+               every commit reviewed before merge; four corrected on review
+
+    PRODUCTIVE 300 domains, 113 icp_pass*, 55 verified sendable contacts
+               149 email drafts, 194 LinkedIn notes, 238 approved steps
+               15 accounts collision-clean, 9 in the staged cohort
+
+    EMAILBISON 481  paused   9 sending_paused + 14 stopped, 5 steps, 0 scheduled
+               451  active   1 scheduled 2026-09-14T16:24Z, not yet sent
+
+    HEYREACH   599020  DRAFT  24 nodes, real approved copy, no list, no leads
+
+    LIVE       confirmed touches 0. sent 0. replies 0.
+               wrong recipient 0, wrong tenant 0, suppression violations 0
+               duplicates 0 - nine were caught and stopped before any send
+
+### The four numbers that changed the picture
+
+**15, not 53.** The client's own campaigns already cover 38 of the 53
+qualified accounts with a verified contact. Any "qualified accounts" figure
+that does not subtract the client's estate describes inventory nobody may
+work.
+
+**Nine people the client was already emailing got into our campaign**, one of
+them `in_sequence` right now. The provider refused five of nineteen; nothing
+in this system objected. All fourteen are stopped and the gate that should
+have caught them exists now.
+
+**60 of 65 staged email steps repeated another step in their own sequence.**
+Four regeneration passes with the gate enforcing took that to 20, and 9 of 13
+records to fully clean.
+
+**26 stored drafts asserted things the record does not support**, including a
+subject reading "Final note on our previous discussions" to somebody this
+system has never written to.
+
 ## Repository
 
 - branch: `master`
