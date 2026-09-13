@@ -197,11 +197,49 @@ class TheSequenceIsReadable(unittest.TestCase):
         self.assertEqual(heyreach.connection_notes(empty), [])
 
 
-class TheWriteSurfaceIsOneRouteAndItIsTheStop(unittest.TestCase):
+class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
     """Refusals only. No payload below was ever accepted by the provider."""
 
-    def test_the_only_write_route_is_the_pause(self):
-        self.assertEqual(set(heyreach.WRITE_ROUTES), {"/campaign/Pause"})
+    def test_the_write_surface_is_exactly_this_and_nothing_else(self):
+        """The whole list, so adding a route is an act rather than a drift.
+
+        This asserted `== {"/campaign/Pause"}` and had been failing for a
+        long time - the module carried seven routes by the time anybody ran
+        the full suite. A seal that has been red since before anyone looked
+        seals nothing, which is why it is written as the exact set: a route
+        added without updating this line fails here, and updating this line
+        is the deliberate act.
+
+        `AddLeadsToCampaignV2` is on this list and is NOT in
+        `providerwrites.SUPPORTED`. That distinction is the point - a route
+        on `WRITE_ROUTES` is one this module CAN call; a route in `SUPPORTED`
+        is one this build WILL call. The mechanism exists and is not enabled.
+        """
+        self.assertEqual(set(heyreach.WRITE_ROUTES), {
+            "/campaign/Pause",
+            "/campaign/StopLeadInCampaign",
+            "/list/CreateEmptyList",
+            "/campaign/Create",
+            "/campaign/UpdateSequence",
+            "/campaign/AddLinkedInAccountsToCampaign",
+            "/campaign/RemoveLinkedInAccountsFromCampaign",
+            "/campaign/AddLeadsToCampaignV2",
+        })
+
+    def test_the_add_leads_route_is_not_enabled(self):
+        """Built, proven offline, and refused by the door until enabled."""
+        from src import providerwrites
+
+        self.assertIn(providerwrites.LINKEDIN_ADD_LEAD,
+                      providerwrites.OPERATIONS)
+        self.assertNotIn(providerwrites.LINKEDIN_ADD_LEAD,
+                         providerwrites.SUPPORTED)
+
+    def test_starting_a_campaign_is_still_absent(self):
+        """The one that must never arrive by accident."""
+        for route in heyreach.WRITE_ROUTES:
+            self.assertNotIn("Resume", route)
+            self.assertNotIn("StartCampaign", route)
 
     def test_the_campaign_building_verbs_are_refused_by_the_transport(self):
         """Every verb autonomous campaign creation would need.

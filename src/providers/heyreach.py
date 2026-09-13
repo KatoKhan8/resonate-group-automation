@@ -1252,6 +1252,13 @@ WRITE_ROUTES = (
     "/campaign/AddLinkedInAccountsToCampaign",
     "/campaign/RemoveLinkedInAccountsFromCampaign",
     "/campaign/StopLeadInCampaign",
+    # TASK-009: the add-leads route is on the write allowlist so the transport
+    # and readback can be developed and tested. It is NOT in `SUPPORTED` in
+    # `providerwrites` - the door refuses it until Claude enables it after
+    # review. A route on WRITE_ROUTES is a route this module CAN call; a route
+    # in SUPPORTED is a route this build WILL call. The two lists are the
+    # difference between "the mechanism exists" and "it is live".
+    "/campaign/AddLeadsToCampaignV2",
 )
 
 # The routes that take their argument in the query string rather than a body.
@@ -1856,6 +1863,114 @@ def stop_lead_in_campaign(campaign_id, member_id, profile_url):
             f"{campaign_id}. The person is still in the sequence")
     return {"campaign_id": campaign_id, "profile_url": profile_url,
             "lead_status": state}
+
+
+# ------------------------------------------------- adding leads to a campaign
+#
+# TASK-009. The route is on WRITE_ROUTES above. It is NOT in `SUPPORTED` in
+# `providerwrites` - the door refuses it until Claude enables it after review.
+#
+# WHAT IS ESTABLISHED AND WHAT IS NOT.
+#
+# The request shape comes from `build_lead_pairs`, which already constructs the
+# `accountLeadPairs` format from rows. The URL comes from `add_leads_endpoint`.
+# The readback uses `/campaign/GetLeadsFromCampaign`, which is already wired
+# and returns per-lead membership with lifecycle state.
+#
+# What is NOT established: the response shape of `AddLeadsToCampaignV2` itself.
+# No successful response has ever been read. So the transport returns whatever
+# the provider sends, and the READBACK is what decides the verdict - not the
+# status code or the response body. A 200 with no membership confirmation is
+# not a success; a membership read that finds every asked-for lead is.
+#
+# The request body fields that are UNKNOWN until a live call:
+#   - what the response body contains on success
+#   - what it returns for a lead already in the campaign
+#   - what it returns for a lead it rejects (bad URL, wrong org, etc.)
+#   - whether it is atomic (all-or-nothing) or per-lead
+# These are recorded as questions for Claude in the task result.
+
+
+def add_leads_to_campaign(campaign_id, rows, linkedin_account_id):
+    """Add leads to a campaign. Returns the raw provider response.
+
+    NOT prospect-facing at this layer: this is the transport only. The caller
+    goes through `providerwrites.perform`, which owns the authorization, the
+    readback and the classification.
+
+    The request body is `{campaignId, accountLeadPairs}`. `build_lead_pairs`
+    constructs the per-lead shape from rows; this function wraps it with the
+    campaign id and posts it.
+    """
+    pairs = build_lead_pairs(rows, linkedin_account_id)
+    if not pairs:
+        raise ProviderError(
+            "heyreach add_leads_to_campaign: no lead pairs to send. "
+            "The rows produced no accountLeadPairs - check that each row "
+            "has a linkedin_url")
+    body = {"campaignId": int(campaign_id), "accountLeadPairs": pairs}
+    return _write_body("/campaign/AddLeadsToCampaignV2", body)
+
+
+def readback_membership(campaign_id, expected_urls):
+    """Read back who is in the campaign and compare against who was asked for.
+
+    Returns a dict with:
+      - `found`: set of profile URLs found in the campaign
+      - `missing`: set of profile URLs asked for but not found
+      - `total`: the campaign's reported total lead count
+      - `per_lead`: list of per-lead state dicts from `campaign_leads`
+
+    Pages through the whole campaign rather than trusting a single page.
+    Bounded at 50 pages (5000 leads) to prevent runaway on a large campaign.
+    """
+    expected = {str(u).strip().lower() for u in expected_urls if u}
+    if not expected:
+        raise ProviderError(
+            "heyreach readback_membership: no expected URLs supplied. "
+            "A readback with nothing to compare against verifies nothing")
+    found = set()
+    per_lead = []
+    offset = 0
+    total = None
+    for _ in range(50):
+        rows, count = campaign_leads(campaign_id, offset=offset)
+        if count is not None:
+            total = count
+        for row in rows:
+            url = str(row.get("profile_url") or "").strip().lower()
+            if url in expected:
+                found.add(url)
+                per_lead.append(row)
+        offset += len(rows)
+        if not rows or (total is not None and offset >= int(total)):
+            break
+    missing = expected - found
+    return {"found": found, "missing": missing, "total": total,
+            "per_lead": per_lead}
+
+
+def check_tenant(campaign_id, org_unit):
+    """Refuse unless the campaign belongs to this client's org unit.
+
+    A lead belonging to another client cannot enter this client's campaign.
+    The campaign's `organizationUnitId` is checked against the configured
+    `org_unit`, and a mismatch REFUSES rather than warns.
+    """
+    row = campaign_read(campaign_id)
+    actual = str(row.get("organizationUnitId") or "")
+    wanted = str(org_unit or "")
+    if not wanted:
+        raise ProviderError(
+            "heyreach check_tenant: no org_unit was supplied. A lead write "
+            "without a tenant boundary is a write that cannot be scoped")
+    if actual != wanted:
+        raise ProviderError(
+            f"heyreach check_tenant: campaign {campaign_id} belongs to org "
+            f"unit {actual!r} and this client is configured for {wanted!r}. "
+            f"A lead belonging to another client cannot enter this client's "
+            f"campaign")
+    return True
 
 
 def campaigns_for_lead(profile_url=None, linkedin_id=None, offset=0,

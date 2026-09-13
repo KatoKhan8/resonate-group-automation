@@ -81,9 +81,14 @@ EMAIL_ACTIVATE = "bison.activate"
 OPERATIONS = {
     # operation: (channel, prospect_facing, why it is not supported yet)
     LINKEDIN_ADD_LEAD: ("linkedin", True,
-        "the URL is named in heyreach.add_leads_endpoint but no successful "
-        "response has ever been read; adding a lead to a RUNNING campaign is "
-        "prospect-facing because the sequence acts on it immediately"),
+        "the URL is named in heyreach.add_leads_endpoint and the route is on "
+        "WRITE_ROUTES, but no successful response has ever been read. The "
+        "request shape is established from build_lead_pairs and the readback "
+        "uses /campaign/GetLeadsFromCampaign, which is already wired. The "
+        "response body of AddLeadsToCampaignV2 itself is UNKNOWN. "
+        "NOT in SUPPORTED - Claude enables after review. "
+        "Adding a lead to a RUNNING campaign is prospect-facing because the "
+        "sequence acts on it immediately"),
     LINKEDIN_CREATE_LIST: ("linkedin", False,
         "no documented route; the list was created by hand in the vendor UI"),
     LINKEDIN_CREATE_CAMPAIGN: ("linkedin", False,

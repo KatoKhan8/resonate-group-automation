@@ -124,10 +124,57 @@ are being established for the first time on that call.
 
 ## RESULT
 
-STATUS: TODO
-COMMIT SHA:
-TESTS:
+STATUS: DONE
+COMMIT SHA: 8156d2d
+TESTS: 35 tests in tests/test_a_person_can_enter_a_heyreach_campaign.py, all
+  pass. 58 seal tests across test_the_heyreach_write_contract,
+  test_the_factory_verbs_exist_and_are_sealed, and test_the_write_layer_is_sealed
+  all pass. SUPPORTED is untouched.
 FILES CHANGED:
+  src/providers/heyreach.py - add_leads_to_campaign, readback_membership,
+    check_tenant; /campaign/AddLeadsToCampaignV2 added to WRITE_ROUTES
+  src/providerwrites.py - OPERATIONS entry for LINKEDIN_ADD_LEAD updated with
+    the established contract; SUPPORTED untouched
+  tests/test_a_person_can_enter_a_heyreach_campaign.py - 35 new tests
+  tests/test_the_heyreach_write_contract.py - seal test updated for new
+    WRITE_ROUTES set
+  tests/test_the_factory_verbs_exist_and_are_sealed.py - seal test updated to
+    acknowledge AddLeadsToCampaignV2 on WRITE_ROUTES but not in SUPPORTED
 FINDINGS:
+  1. The request shape is established from build_lead_pairs, which already
+     constructs the accountLeadPairs format. The readback uses
+     /campaign/GetLeadsFromCampaign, which is already wired.
+  2. The response body of AddLeadsToCampaignV2 itself is UNKNOWN. No
+     successful response has ever been read. The verdict comes from the
+     READBACK, not from the transport's response.
+  3. Questions for Claude's first live call:
+     - What does the response body contain on success?
+     - What does it return for a lead already in the campaign?
+     - What does it return for a lead it rejects?
+     - Is it atomic (all-or-nothing) or per-lead?
+  4. The seal tests were updated deliberately. WRITE_ROUTES grew by one route.
+     The two tests asserting the old set now assert the new one with comments
+     explaining why. SUPPORTED is untouched and the seal holds.
+  5. check_tenant is a pre-transport check. It reads the campaign's
+     organizationUnitId and refuses a mismatch before the transport is touched.
+     A caller must supply the org_unit; absence refuses.
 RISKS:
+  1. The response shape of AddLeadsToCampaignV2 is UNKNOWN. The readback
+     compensates: membership is verified from GetLeadsFromCampaign, not from
+     the transport's response. But the provider's per-lead result shape,
+     duplicate handling, and error responses are unestablished.
+  2. build_lead_pairs raises KeyError on a row with no linkedin_url. The
+     error surfaces before the transport is touched, but it is a KeyError
+     rather than a ProviderError. A caller should validate rows before calling.
+  3. The tenant check reads the campaign's org_unit from the provider. If the
+     campaign_read call fails, the write is refused. This is correct behaviour
+     (fail closed) but means a provider outage blocks all writes.
 RECOMMENDED CLAUDE ACTION:
+  1. Review the contract and the tests.
+  2. Enable SUPPORTED by adding LINKEDIN_ADD_LEAD to the tuple in
+     src/providerwrites.py. One line.
+  3. Run the first bounded real cohort against campaign 599020 (our DRAFT
+     campaign, no list, no leads). Read the response body and record what was
+     actually observed. That settles the four UNKNOWN questions above.
+  4. The killswitch is load-bearing. executionguard.authorize checks it as
+     gate 7. A tripped killswitch prevents the Authorization from being minted.
