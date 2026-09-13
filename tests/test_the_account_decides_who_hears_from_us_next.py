@@ -14,7 +14,7 @@ booby-trapped in one test precisely to prove that.
 """
 import unittest
 
-from src import (account, cadencearms, clients, collision, eligibility,
+from src import (account, cadence, cadencearms, clients, collision, eligibility,
                  events, fatigue, nextaction as na, store)
 from src import senderidentity as si
 from tests.campaignbase import CampaignTest
@@ -151,7 +151,16 @@ class AClearAccount(NextActionTest):
         decision = self.ask(self.record())
         self.assertEqual(decision["action"], na.ACT, decision["reason"])
         self.assertEqual(decision["person"], BROOKE)
-        self.assertEqual(decision["channel"], "email")
+        # THE FIRST STEP IS WHATEVER THE CADENCE SAYS IT IS. This asserted
+        # "email" against `productive_default`, whose day 1 was an email.
+        # Productive moved to `productive_li_heavy_v1` on 2026-09-13 and its
+        # day 1 opens on LinkedIn beside an email. Pinning the channel here
+        # asserted the client's cadence choice while claiming to test that a
+        # decision NAMES a channel, so it now asserts the naming and takes
+        # the channel from the sequence.
+        opening = cadence.steps_for(config=self.config)[0]
+        self.assertEqual(decision["channel"], opening["channel"])
+        self.assertIn(decision["channel"], ("email", "linkedin"))
         self.assertTrue(decision["sender"]["sender_id"])
         self.assertTrue(decision["copy"]["step_key"])
         self.assertTrue(decision["execute_after"])
@@ -430,10 +439,24 @@ class SequencingComesFromConfigurationNotFromCode(NextActionTest):
 
     def test_nobody_is_opened_simultaneously_by_default(self):
         """Six people at once is what four independently-correct plans
-        produce. The account gate is what stops it."""
-        rec = self.opened(self.record())
+        produce. The account gate is what stops it.
+
+        About a SECOND PERSON, which is what "opened simultaneously" means.
+        It used to pass with one contact because the cross-channel minimum
+        was 48 hours and refused the same person a second touch - a true
+        answer to a different question. That minimum is zero now, on purpose:
+        the LinkedIn-heavy cadence opens on both channels the same day, and
+        the stagger that matters is between PEOPLE.
+        """
+        rec = self.opened(self.record(contacts=[
+            self.person(BROOKE, "Brooke Baron", "Head of Production",
+                        primary=True),
+            self.person(JOSEPH, "Joseph O'Neill", "Design Director"),
+        ]))
         decision = self.ask(rec, at="2026-09-14T09:30:00+00:00")
-        self.assertNotEqual(decision["action"], na.ACT)
+        self.assertNotEqual(decision["person"], JOSEPH,
+                            "a second person was opened half an hour after "
+                            "the first")
 
 
 # ----------------------------------------------------------- the senders
@@ -443,9 +466,14 @@ class TheSenderIsAFactNotACalculation(NextActionTest):
     def test_a_stored_assignment_wins(self):
         rec = self.record()
         contact = rec["contacts"][0]
+        # The channel the CADENCE opens on, not a channel typed in here.
+        # Productive's day 1 is LinkedIn now, so an email assignment was
+        # being looked up for a step that is not on email.
+        opening = cadence.steps_for(config=clients.load("productive"))[0]
+        channel = opening["channel"]
         contact["sender_assignment"] = {
-            "email": {"sender_id": "mark", "account_id": "mark02",
-                      "channel": "email", "workspace": WS}}
+            channel: {"sender_id": "mark", "account_id": "mark02",
+                      "channel": channel, "workspace": WS}}
         store.save([rec])
         decision = self.ask(rec)
         self.assertEqual(decision["sender"]["sender_id"], "mark")
@@ -558,9 +586,15 @@ class ProductiveHasChosenItsNumbers(NextActionTest):
         week, and it is the number the account gate refuses on - at the
         library default of 8 this same record would be actionable."""
         rec = self.record()
-        for i in range(4):
+        # DERIVED, not typed. This filled the week with four touches because
+        # four was the configured cap when it was written; the cadence change
+        # of 2026-09-13 raised it to eight and the test then proved nothing.
+        # The number under test is the CONFIGURED one, so it is read.
+        config = clients.load("productive")
+        cap = fatigue.limits(config)["account.max_touches_per_week"]["value"]
+        for i in range(cap):
             self.touch(rec, BROOKE, "anna", "email", i + 1,
-                       f"2026-09-1{i}T09:00:00+00:00")
+                       f"2026-09-{10 + i:02d}T09:00:00+00:00")
         decision = na.next_best_action(
             rec, config=clients.load("productive"), workspace=WS,
             estate=clear_estate(), at="2026-09-14T09:00:00+00:00",
@@ -568,7 +602,7 @@ class ProductiveHasChosenItsNumbers(NextActionTest):
         self.assertEqual(decision["action"], na.WAIT)
         self.assertEqual(decision["reason_code"], na.WAIT_ACCOUNT_FATIGUE)
 
-        loose = self._config(**{"account.max_touches_per_week": 8})
+        loose = self._config(**{"account.max_touches_per_week": cap * 4})
         counterfactual = na.next_best_action(
             rec, config=loose, workspace=WS, estate=clear_estate(),
             at="2026-09-14T09:00:00+00:00", suppressed=set())
@@ -581,21 +615,28 @@ class ProductiveHasChosenItsNumbers(NextActionTest):
         step earlier - which is the default blocking this system's own
         shipped cadence at day 8."""
         rec = self.record()
-        for i, day in enumerate((1, 3, 5, 8)):
-            self.touch(rec, BROOKE, "anna", "email", day,
-                       f"2026-09-1{i}T09:00:00+00:00")
+        config = clients.load("productive")
+        cap = fatigue.limits(config)["contact.max_touches_per_week"]["value"]
+        for i in range(cap):
+            self.touch(rec, BROOKE, "anna", "email", i + 1,
+                       f"2026-09-{10 + i:02d}T09:00:00+00:00")
         decision = na.next_best_action(
             rec, config=clients.load("productive"), workspace=WS,
             estate=clear_estate(), at="2026-09-14T09:00:00+00:00",
             suppressed=set())
-        # The account week is what fires first at these numbers; the
-        # contact-level refusal is asserted against `fatigue` directly so
-        # this test fails for its own reason.
+        # The contact-level refusal, asserted against `fatigue` directly so
+        # this test fails for its own reason rather than for the account's.
         self.assertEqual(
             fatigue.contact_check(rec, BROOKE, at="2026-09-14T09:00:00+00:00",
                                   config=clients.load("productive"))["state"],
             fatigue.BLOCK)
-        self.assertNotEqual(decision["action"], na.ACT)
+        # AND THE PLANNER PASSES OVER THEM, which is not the same as
+        # stopping. This asserted the whole account waits, and that was only
+        # true because the account cap fired first at the old numbers. With
+        # the account week raised for the LinkedIn-heavy cadence the account
+        # still has room, so the right answer is that somebody ELSE is
+        # chosen - a person at their limit is skipped, not a company halted.
+        self.assertNotEqual(decision["person"], BROOKE, decision["reason"])
 
 
 if __name__ == "__main__":

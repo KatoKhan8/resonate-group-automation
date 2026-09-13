@@ -46,6 +46,15 @@ from . import account, store
 DEFAULTS = {
     # One person.
     "contact.min_hours_between_touches": 24,
+    # THE SAME CHANNEL, WHICH IS A DIFFERENT QUESTION. The rule above counts
+    # any touch, so any positive value forbids reaching somebody on email and
+    # LinkedIn on the same day - and a coordinated cross-channel cadence does
+    # that on purpose. What actually wears a prospect down is repetition on
+    # ONE channel, so that is paced separately and more strictly.
+    #
+    # Defaulting to 0 keeps existing behaviour exactly: with it unset the
+    # cross-channel rule is the only one, which is what every client had.
+    "contact.min_hours_between_same_channel_touches": 0,
     "contact.max_touches_per_week": 3,
     "contact.max_touches_total": 12,
     # One company, across every decision maker.
@@ -58,7 +67,9 @@ KEYS = tuple(DEFAULTS)
 
 LABELS = {
     "contact.min_hours_between_touches":
-        "Minimum hours between two touches to one person",
+        "Minimum hours between two touches to one person, any channel",
+    "contact.min_hours_between_same_channel_touches":
+        "Minimum hours between two touches to one person on the SAME channel",
     "contact.max_touches_per_week":
         "Maximum touches to one person in a rolling week",
     "contact.max_touches_total":
@@ -157,7 +168,7 @@ def _window_origin(at, touches):
     return at or store.now()
 
 
-def contact_check(rec, contact_key, at=None, config=None):
+def contact_check(rec, contact_key, at=None, config=None, channel=None):
     """Whether one more touch to this person is within policy.
 
     `at` is when the proposed touch would happen; without it the check is
@@ -179,6 +190,21 @@ def contact_check(rec, contact_key, at=None, config=None):
         findings.append((BLOCK,
                          f"only {gap:.0f}h since the last touch; the limit is "
                          f"{minimum}h"))
+
+    # Same channel, paced on its own. A planner that has not chosen a
+    # channel yet passes none and this is skipped, exactly as the gap above
+    # is skipped without a time.
+    same_channel_min = rules[
+        "contact.min_hours_between_same_channel_touches"]["value"]
+    if at and same_channel_min and channel:
+        same = [t for t in confirmed if t.get("channel") == channel]
+        if same:
+            since = _hours_between(same[-1].get("at"), at)
+            if since is not None and since < same_channel_min:
+                findings.append((BLOCK,
+                                 f"only {since:.0f}h since the last {channel} "
+                                 f"touch; the limit on one channel is "
+                                 f"{same_channel_min}h"))
 
     recent = _within_week(confirmed, _window_origin(at, confirmed))
     weekly = rules["contact.max_touches_per_week"]["value"]

@@ -276,19 +276,29 @@ def qualify_everything(status=None):
     return len(recs)
 
 
-def approve_everything(by="test-operator"):
+def approve_everything(by="test-operator", config=None):
     """Approve every currently approvable step in the queue.
 
     Approval is a human act, so tests that are about eligibility, payloads or
     the pause have to grant it explicitly, exactly as an operator would.
+
+    `config` is the one the caller is TESTING against. Without it this loads
+    the client's real file, and approval is per STEP KEY - so a test running
+    one cadence while this approved another left every step unapproved. That
+    is what happened when Productive moved to `productive_li_heavy_v1`: the
+    timelines under test used `day1`/`day3` and the approvals landed on
+    `em1`/`li1`, and the failure read `'unapproved' != 'eligible'`, which
+    names the symptom and hides the cause.
     """
     from src import approve, clients, store
     with store.transaction() as recs:
         results = []
         for rec in recs:
-            try:
-                config = clients.load(rec.get("client"))
-            except clients.ConfigError:
-                continue
-            results.append(approve.approve_record(rec, by=by, config=config))
+            settings = config
+            if settings is None:
+                try:
+                    settings = clients.load(rec.get("client"))
+                except clients.ConfigError:
+                    continue
+            results.append(approve.approve_record(rec, by=by, config=settings))
     return results

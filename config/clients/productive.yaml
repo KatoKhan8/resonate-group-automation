@@ -237,7 +237,16 @@ angle_labels:
   operations: utilisation and capacity
   resource_management: who is booked next week
   founder: profitability on Monday
-cadence: productive_default
+# THE LINKEDIN-HEAVY HYPOTHESIS, 2026-09-13: ~5 email touches and ~6 LinkedIn
+# activities over ~21 days. Defined in `src/cadencelibrary.py` rather than
+# here because a client file cannot hold a list of mappings - `clients.parse`
+# reads scalars and inline scalar lists, and an inline list of mappings comes
+# back split on its commas.
+#
+# Switching to `productive_balanced_v1` is how the two intensities get
+# compared, and it is this one line. That is the property that matters: the
+# alternative is a sequence pasted into several modules.
+cadence: productive_li_heavy_v1
 tone:
   email: polished, professional, no em dashes, no buzzwords, no fluff openers
   linkedin: casual, lowercase, human
@@ -367,57 +376,49 @@ budget:
 # consults `pilotcaps` at all. So the ceiling of 4 has no consumer on any
 # send path, and the number that decided how hard a company was worked was
 # the library default of 8. Writing 4 here is what makes 4 true.
+# PACED FOR THE LINKEDIN-HEAVY CADENCE, and every number is derived from it
+# rather than chosen. `productive_li_heavy_v1` is 11 touches over 21 days:
+# five in week one, three in each of weeks two and three.
+#
+# The previous values were set for the seven-step email-led shape and would
+# have collapsed this one to about three touches - the weekly cap blocking
+# day 6, the total blocking day 10 onward, and the cross-channel minimum
+# blocking the day-1 email because a LinkedIn action happens the same day. A
+# cadence that silently runs a third of itself is worse than one that
+# refuses, because it reports eleven touches and sends four.
 fatigue:
   contact:
-    # The tightest gap the shipped sequence asks for: day 3 to day 5, and
-    # day 8 to day 10. Lower would permit a pace nothing plans; higher
-    # would block this client's own cadence, which is what a guard must
-    # never do quietly.
-    min_hours_between_touches: 48
+    # ZERO, deliberately. Day one is a connection request AND an email: the
+    # point of a coordinated cadence is that the channels arrive together.
+    # Pacing lives on the per-channel rule below, which is what actually
+    # protects somebody from being worn down.
+    min_hours_between_touches: 0
 
-    # Days 1, 3, 5 and 8 of `cadence.STEPS` all fall inside one rolling
-    # seven-day window, so four is what the shipped sequence needs to reach
-    # its fourth step. MEASURED: at the default of 3, `contact_check`
-    # returns BLOCK on the day-8 step of the cadence this system ships -
-    # a limit that blocks the sequence it exists to pace is a number
-    # nobody chose deliberately.
-    max_touches_per_week: 4
+    # Two touches on ONE channel stay 48h apart. The tightest the sequence
+    # asks for is 72h (li2 day 3 -> li3 day 6), so this has headroom and
+    # still refuses a same-day repeat on the same channel.
+    min_hours_between_same_channel_touches: 48
 
-    # The sequence has exactly seven contacting steps. An eighth touch to
-    # one person is a step nobody wrote.
-    max_touches_total: 7
+    # Week one carries five - li1, em1, li2, em2, li3. Six leaves one touch
+    # of headroom for a rescheduled step without licensing a seventh.
+    max_touches_per_week: 6
+
+    # Eleven is the whole sequence. Twelve so a single replayed or
+    # rescheduled step does not terminate a contact mid-cadence.
+    max_touches_total: 12
 
   account:
-    # TWO, NOT THREE, AND THE REASON IS THE PROVIDER RATHER THAN TASTE.
-    #
-    # EmailBison refuses to attach a lead that is `in_sequence` in another
-    # campaign, and this system's own gate is stricter:
-    # `collision.account_policy` returns STOP for the WHOLE DOMAIN while
-    # anybody there is mid-sequence, and `executionguard` requires ALLOW.
-    # So two people at one company cannot be in live email sequences at the
-    # same time - not as a policy, as a fact about the estate.
-    #
-    # Two is therefore the honest maximum: one person carrying the email
-    # track and one carrying the LinkedIn track, which is a different
-    # provider and not subject to it. Configuring three would plan work
-    # that the send gate refuses, which is worse than planning less.
+    # Unchanged, and still the binding constraint: EmailBison 422s a lead
+    # that is `in_sequence` anywhere else, and `collision.account_policy`
+    # STOPs the whole domain while anybody there is mid-sequence. One email
+    # track plus one LinkedIn track is what the providers permit.
     max_active_contacts: 2
 
-    # The pilot ceiling, written where something reads it. Four touches to
-    # one company in a week reads as pressure however many people they are
-    # spread across - `pilotcaps.WHY` already says so, about a number
-    # nothing enforced.
-    #
-    # One contact running the full seven-step cadence uses all four in its
-    # first week (days 1, 3, 5, 8), so a second stakeholder opens in week
-    # two. That is not a side effect: sequenced rather than simultaneous is
-    # the decision, and this is where it is expressed.
-    max_touches_per_week: 4
+    # Two people at 11 touches each would be 22 in three weeks. Eight caps
+    # the COMPANY in any rolling week: roughly one fully-worked primary plus
+    # a staggered second.
+    max_touches_per_week: 8
 
-    # The operator's hypothesis is that the second contact opens on day
-    # 2-3. Seventy-two hours is day three. It is stated as a number rather
-    # than built into a planner so that testing the hypothesis is an edit
-    # to this line, and `nextaction` reads it rather than holding an
-    # opinion of its own. The default of 24 would let two strangers from
-    # one agency arrive at one company a day apart.
+    # The operator's day-2/3 stagger, as a number, so testing it is an edit
+    # to this line.
     min_hours_between_first_touches: 72

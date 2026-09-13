@@ -25,9 +25,18 @@ class CadenceTest(unittest.TestCase):
         shutil.copyfile(os.path.join(FIXTURES, "phase7.jsonl"), self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
-        CONFIG = clients.load("productive")
+        # THE MECHANICS, NOT THE CLIENT'S CURRENT CHOICE. These tests assert
+        # on step keys - day3, day8, day21 - which belong to the sequence
+        # `cadence.STEPS` defines, not to whatever cadence Productive happens
+        # to be running. When Productive moved to `productive_li_heavy_v1` on
+        # 2026-09-13 every one of them broke on a KeyError, having been
+        # testing the client's configuration while claiming to test the
+        # timeline. The config is taken and its cadence NAME dropped, so the
+        # constant applies and these keep testing what they are named for.
+        CONFIG = dict(clients.load("productive"))
+        CONFIG.pop("cadence", None)
         self.config = CONFIG
-        approve_everything()
+        approve_everything(config=self.config)
 
     def tearDown(self):
         if self._prev is None:

@@ -49,7 +49,22 @@ CEILING = {
     "email_per_day": 20,
     "linkedin_per_day": 10,
     "per_sender_per_day": 10,
-    "touches_per_account_per_week": 4,
+    # RAISED 4 -> 8 on 2026-09-13, which is the change-and-review this file
+    # asks for rather than a setting somebody turned up.
+    #
+    # The operator moved Productive to a LinkedIn-heavy cadence: eleven
+    # touches per person over 21 days, five of them in the first week. Four a
+    # week to a COMPANY was therefore incompatible with one fully-worked
+    # contact, never mind the staggered second one the account plan calls for
+    # - it would have blocked the primary on day 6 and admitted no secondary
+    # at all.
+    #
+    # Eight is one fully-worked primary (five in week one) plus a second
+    # stakeholder entering later at about three. It is not a number that
+    # licenses a third track: `fatigue.account.max_active_contacts` is two,
+    # and the providers enforce it independently - EmailBison 422s a lead
+    # that is `in_sequence` elsewhere.
+    "touches_per_account_per_week": 8,
     "new_accounts_per_day": 5,
 }
 

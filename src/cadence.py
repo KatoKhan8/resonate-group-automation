@@ -31,7 +31,8 @@ Nothing that fails lint is push eligible, whatever produced it.
 import argparse
 import re
 
-from . import approval, clients, events, lint, stepstate, store
+from . import (approval, clients, events, lint, linkedinstate, stepstate,
+               store)
 
 CHAMPION = "champion"
 BUYER = "economic_buyer"
@@ -133,6 +134,8 @@ def steps_for(campaign=None, config=None, rec=None, contact=None):
     if steps is None:
         steps = _named_sequence(config)
     if steps is None:
+        steps = _library_sequence(config)
+    if steps is None:
         return STEPS
     # Present and empty is not the same as absent. A campaign configured
     # with no steps meant something by it, and running seven instead is
@@ -160,6 +163,25 @@ def _named_sequence(config):
     if isinstance(entry, (list, tuple)):
         return entry
     return None
+
+
+def _library_sequence(config):
+    """A sequence from the shipped library, selected by the client's name.
+
+    The client file names its cadence and cannot hold the steps themselves:
+    `clients.parse` reads scalars and inline scalar lists, and a step is a
+    mapping - an inline list of mappings comes back split on its commas. So
+    the sequences live in `cadencelibrary` and the client file picks one,
+    which keeps cadence INTENSITY a one-line configuration change rather than
+    a sequence pasted into several modules.
+
+    A config that defines its own `cadences` entry still wins: this is the
+    fallback between that and the module constant.
+    """
+    from . import cadencelibrary
+
+    name = (config or {}).get("cadence")
+    return cadencelibrary.named(name) if isinstance(name, str) else None
 
 
 VARIANTS_KEY = "variants"
