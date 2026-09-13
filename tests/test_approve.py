@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 from src import approval, approve, cadence, clients, lint, push, store
-from tests.base import FIXTURES
+from tests.base import FIXTURES, pin_client_config
 
 
 @contextlib.contextmanager
@@ -42,7 +42,11 @@ class ApproveTest(unittest.TestCase):
         shutil.copyfile(os.path.join(FIXTURES, "phase7.jsonl"), self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
-        self.config = clients.load("productive")
+        # Pinned, not loaded: these tests are about approval, not about
+        # which cadence Productive currently runs. `push.run` and
+        # `approve.pending` load the config themselves, so passing one
+        # is not enough.
+        self.config = pin_client_config(self)
 
     def tearDown(self):
         if self._prev is None:

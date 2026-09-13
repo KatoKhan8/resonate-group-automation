@@ -14,6 +14,71 @@ import urllib.request
 from src import store
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
+
+
+def fixture_config(client="productive", **over):
+    """A client config pinned to the cadence the FIXTURES were built for.
+
+    THE FIXTURES AND THE LIVE CLIENT FILE ARE TWO DIFFERENT THINGS, and until
+    now a great many tests conflated them: `clients.load("productive")` reads
+    the config Productive actually runs, so the day that client switched to
+    `productive_li_heavy_v1` - steps `em1`..`em5`, `li1`..`li6` - every test
+    holding a fixture whose stored cadence is keyed `day1`, `day3`, `day5`
+    went red. Measured 2026-09-13, the first time the whole suite was ever
+    run to a verdict: 134 failures across 21 modules, and the commonest cause
+    by a distance was `NotApprovable: meridian:ivana-saric:day1: no such
+    step`.
+
+    None of those tests is about which cadence Productive runs. They are
+    about approval, about gates, about push. So they pin the sequence their
+    own fixtures were written against - `productive_balanced_v1`, whose keys
+    are exactly the `day1`..`day21` the fixture files carry and exactly the
+    module constant `cadence.STEPS` - and a client editing their own YAML
+    stops being able to turn the suite red.
+
+    It is the same precedent `test_staging_a_campaign_twice_builds_one`
+    already set for the EmailBison sequence: pin what the test is not about.
+
+    A test that IS about the live cadence should call `clients.load` directly
+    and say why.
+    """
+    from src import clients
+
+    config = dict(clients.load(client))
+    config["cadence"] = "productive_balanced_v1"
+    config.update(over)
+    return config
+
+
+def pin_client_config(test, client="productive", **over):
+    """Make every module that loads this client's config see the fixture one.
+
+    `fixture_config` is enough for anything that TAKES a config. It is not
+    enough for `push.run()` or `approve.pending()`, which load the client's
+    file themselves - so a test could pin the cadence it passed in and still
+    watch `push` build a timeline from the live one. Measured: after pinning
+    the passed config, `approve.pending()` still answered `li1` for every
+    contact because it had gone and read `productive.yaml`.
+
+    Patched on the `clients` module object, which is what every caller holds:
+    they all do `from . import clients` and then `clients.load(...)`.
+
+    Registers its own cleanup, so a caller writes one line in `setUp`.
+    """
+    from unittest import mock
+
+    from src import clients
+
+    pinned = fixture_config(client, **over)
+    real = clients.load
+
+    def load(name, *a, **kw):
+        return dict(pinned) if name == client else real(name, *a, **kw)
+
+    patch = mock.patch.object(clients, "load", load)
+    patch.start()
+    test.addCleanup(patch.stop)
+    return pinned
 CASSETTES = os.path.join(FIXTURES, "cassettes")
 
 # What `tests/fixtures/cassettes/bison.json` answers `GET /users` with, and

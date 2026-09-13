@@ -26,7 +26,7 @@ from src import (actionledger, approval, cadence, campaigns, clients,
                  collision, configdiff, eligibility, executionguard,
                  killswitch, store)
 
-from tests.base import QueueTest
+from tests.base import QueueTest, pin_client_config
 
 NOTE = ("hi Dana, i work with Design Services teams on utilisation. "
         "curious how Brightpath handles it at your size. happy to connect.")
@@ -64,7 +64,10 @@ class GuardTest(QueueTest):
     def setUp(self):
         super().setUp()
         self.spy = Provider()
-        self.config = clients.load("productive")
+        # Pinned, not loaded. These tests are about the gates, not about
+        # which cadence Productive currently runs, and several of the
+        # modules under test load the client file themselves.
+        self.config = pin_client_config(self)
         rec = store.new_record("rec-1", "domains", "productive",
                                "Brightpath", "brightpath.test")
         rec["state"] = "verified"
