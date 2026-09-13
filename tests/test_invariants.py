@@ -179,10 +179,17 @@ class TestTheQueueIsTheOnlyState(unittest.TestCase):
 
 
 class TestNothingCanSend(unittest.TestCase):
-    def test_no_module_issues_an_http_post_except_research_calls(self):
-        """AI Ark's RPC and Apify's actor start are the only issued POSTs, and
-        neither targets anything that could reach a person."""
-        allowed = ("aiark", "apify", "blitz", "contactout", "heyreach", "slack")
+    def test_no_module_issues_an_http_post_outside_the_named_ones(self):
+        """Which MODULES may post. What they may post to is the next test.
+
+        `bison` joined this list on 2026-09-13, when the routes this
+        repository had written off as absent turned out to answer. It posts
+        to create a campaign, cap it, schedule it, bind senders, write a
+        sequence, create and attach leads, and stop one person - all of which
+        build something that is left `paused`, or stop something.
+        """
+        allowed = ("aiark", "apify", "blitz", "bison", "contactout",
+                   "heyreach", "slack")
         issued = []
         for path in source_files():
             for i, line in enumerate(read(path).splitlines(), 1):
@@ -191,20 +198,29 @@ class TestNothingCanSend(unittest.TestCase):
         offenders = [f"{os.path.relpath(p, ROOT)}:{i}" for p, i, _ in issued
                      if not any(a in p for a in allowed)]
         self.assertEqual(offenders, [])
-        for path, i, line in issued:
-            for outbound in ("leads", "campaign", "AddLeads"):
-                self.assertNotIn(outbound, line, f"{path}:{i}")
 
-    def test_emailbison_issues_no_post_at_all(self):
-        """EmailBison is the module that could put mail on the wire, and its
-        whole confirmed surface is GET. HeyReach cannot have the same rule:
-        its read API is POST, so it is covered by a route allowlist instead."""
-        for path in source_files():
-            if "bison" not in path:
-                continue
-            for i, line in enumerate(read(path).splitlines(), 1):
-                self.assertIsNone(re.search(r"request\(\s*[\"']POST[\"']", line),
-                                  f"{os.path.relpath(path, ROOT)}:{i}")
+    def test_emailbison_posts_only_to_routes_it_declares(self):
+        """The guarantee moved from the verb to the route, and got stronger.
+
+        This used to require that `bison` issue no POST at all, which was
+        right while it had no proven write verbs. Keeping it would have meant
+        deleting it or working around it once it did.
+
+        The verb was never the safety property. A send on this provider is
+        started by `/campaigns/{id}/resume`, and what matters is that no code
+        path can reach it. `WRITE_ROUTES` is the allowlist - the same shape
+        `heyreach.READ_ROUTES` has always had - and `resume` is not in it.
+        """
+        from src.providers import bison
+        for route in bison.WRITE_ROUTES:
+            for starting in ("resume", "start", "launch", "activate",
+                             "send-test"):
+                self.assertNotIn(starting, route, route)
+        # And the operation that would start one is still unsupported, so
+        # even a route added by mistake could not be driven.
+        from src import providerwrites
+        self.assertFalse(
+            providerwrites.is_supported(providerwrites.EMAIL_ACTIVATE))
 
     def test_heyreachs_post_is_gated_on_an_allowlist(self):
         from src.providers import heyreach
@@ -235,13 +251,20 @@ class TestNothingCanSend(unittest.TestCase):
         with self.assertRaises(push.LiveSendNotEnabled):
             run.run(live=True)
 
-    def test_the_send_endpoints_exist_only_as_strings_to_review(self):
-        """Named so a human can check them, called by nothing."""
+    def test_neither_sender_exposes_a_verb_that_starts_anything(self):
+        """`create_campaign` left this list on 2026-09-13; `resume` did not.
+
+        A campaign EmailBison creates comes back `draft` and the provider
+        refuses to resume one without a sequence, a schedule, senders and
+        leads - in its own words. Creating is staging. Starting is the thing
+        that reaches a person, and neither module has a verb for it.
+        """
         self.assertIn("AddLeadsToCampaignV2", heyreach.add_leads_endpoint())
         self.assertIn("/leads", bison.leads_endpoint(1))
         for module in (bison, heyreach):
             names = [n for n in dir(module) if not n.startswith("_")]
-            for banned in ("send", "push", "add_leads", "create_campaign", "start"):
+            for banned in ("send", "push", "add_leads", "start", "resume",
+                           "activate", "launch"):
                 self.assertNotIn(banned, names, f"{module.__name__}.{banned}")
 
     def test_no_default_code_path_reaches_a_send(self):

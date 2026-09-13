@@ -420,7 +420,7 @@ def _readback(provider_id):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("campaign", help="campaign id in work/campaigns.jsonl")
+    parser.add_argument("campaign", help="a canonical campaign id")
     parser.add_argument("--live", action="store_true",
                         help="actually write to EmailBison")
     args = parser.parse_args(argv)

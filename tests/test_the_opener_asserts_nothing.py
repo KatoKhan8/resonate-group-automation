@@ -117,8 +117,24 @@ class StoredEvidenceStillWins(unittest.TestCase):
         step = cadence.expand_step(rec, c, DAY5, CONFIG)
         self.assertIn("you told us resourcing is the problem", step["body"])
 
-    def test_no_record_in_the_live_queue_has_that_key(self):
-        """Anchors why the fallback is the only text that has ever shipped."""
+    def test_every_record_that_now_has_evidence_still_renders_safely(self):
+        """This branch has started firing, and that is the point of it.
+
+        It used to assert that NO record carried `evidence`, which anchored
+        why the fallback was the only text anybody had ever received:
+        `generate.persona_angle` is the only writer, it needs a real model,
+        and the repository shipped only `NoModel` and `ScriptedModel`.
+
+        A real model is configured now, so the preferred branch fires and
+        records carry evidence. Asserting the key is absent would be asserting
+        the feature does not work.
+
+        What still matters is what this file is about - that the opener
+        asserts nothing about how somebody runs their company - so that is
+        what is checked, against the real rows rather than a fixture. A
+        sentence written by a model is exactly where an unfounded claim would
+        appear.
+        """
         import json
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -127,7 +143,16 @@ class StoredEvidenceStillWins(unittest.TestCase):
             self.skipTest("no live queue on this machine")
         with open(path, encoding="utf-8") as handle:
             rows = [json.loads(l) for l in handle if l.strip()]
-        self.assertEqual([r["id"] for r in rows if r.get("evidence")], [])
+        carrying = [r for r in rows if r.get("evidence")]
+        if not carrying:
+            self.skipTest("no record carries evidence yet")
+        for rec in carrying:
+            for contact_key, lines in (rec.get("evidence") or {}).items():
+                for line in lines or []:
+                    for phrase in ASSERTIONS:
+                        self.assertNotIn(
+                            phrase, str(line).lower(),
+                            f"{rec.get('id')}/{contact_key} asserts: {line!r}")
 
 
 class TheClaimCheckerCanNowSeeThisClass(unittest.TestCase):

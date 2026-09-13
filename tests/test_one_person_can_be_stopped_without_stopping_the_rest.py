@@ -19,7 +19,7 @@ recorded as a stop.
 import unittest
 
 from src import campaigns, events, leadstop, store
-from src.providers import ProviderError
+from src import providers
 from tests.base import QueueTest
 
 
@@ -54,11 +54,11 @@ class FakeBison:
         held = self.members[int(campaign_id)]
         absent = [int(i) for i in lead_ids if int(i) not in held]
         if absent:
-            raise ProviderError(
+            raise providers.ProviderError(
                 f"lead(s) {absent} are not in campaign {campaign_id}")
         self.writes += 1
         if not self.lands:
-            raise ProviderError(
+            raise providers.ProviderError(
                 "the provider accepted the request but the lead still does "
                 "not read as stopped. Provider state is UNKNOWN")
         for i in lead_ids:

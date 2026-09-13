@@ -351,12 +351,25 @@ class TestNothingSends(CampaignTest):
     def test_slack_posting_is_off_by_default(self):
         self.assertFalse(slack.live())
 
-    def test_no_module_calls_a_send_route(self):
+    def test_no_module_calls_a_route_that_starts_sending(self):
+        """`/leads` left this list on 2026-09-13. `/resume` did not.
+
+        Creating a lead and attaching it to a DRAFT campaign reaches nobody -
+        EmailBison refuses to resume a campaign without a sequence, a
+        schedule, senders and leads, and `bison.activate` is unsupported, so
+        nothing here can start one. What would reach somebody is the start
+        route, and that is what this now watches.
+
+        HeyReach's AddLeadsToCampaignV2 stays, because there it means adding
+        a lead to a RUNNING campaign - the sequence acts on it immediately.
+        """
+        starting = ("AddLeadsToCampaign", "/resume", "/StartCampaign",
+                    "send-test", "chat.postMessage")
         for path in source_files():
             for line in read(path).splitlines():
                 if "request(" not in line:
                     continue
-                for send in ("AddLeadsToCampaign", "/leads", "chat.postMessage"):
+                for send in starting:
                     if send in line and "slack.py" not in path:
                         self.fail(f"{path}: {line.strip()}")
 

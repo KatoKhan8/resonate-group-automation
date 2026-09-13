@@ -44,7 +44,7 @@ import unittest
 from unittest import mock
 
 from src import enrich, fieldplan, headcount, icpstructural, segments, store
-from src.providers import ProviderError
+from src import providers
 
 CLIENT = {
     "name": "Test Client",
@@ -169,13 +169,13 @@ class TheCallIsMadeAndItGoesThroughTheLedger(unittest.TestCase):
         # one call, and a real `people-count` would be a network call.
         self.patches = [
             mock.patch.object(enrich.contactout, "people_count",
-                              side_effect=ProviderError("offline")),
+                              side_effect=providers.ProviderError("offline")),
             mock.patch.object(enrich.contactout, "decision_makers",
-                              side_effect=ProviderError("offline")),
+                              side_effect=providers.ProviderError("offline")),
             mock.patch.object(enrich.contactout, "company_info",
-                              side_effect=ProviderError("offline")),
+                              side_effect=providers.ProviderError("offline")),
             mock.patch.object(enrich.aiark, "people_search",
-                              side_effect=ProviderError("offline")),
+                              side_effect=providers.ProviderError("offline")),
         ]
         for p in self.patches:
             p.start()

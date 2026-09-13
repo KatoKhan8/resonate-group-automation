@@ -18,7 +18,7 @@ everybody twice. Both failure modes in here were real:
 import unittest
 
 from src import bisonfactory, campaigns, store
-from src.providers import ProviderError
+from src import providers
 from tests.base import QueueTest
 
 
@@ -80,20 +80,20 @@ class FakeBison:
     def campaign(self, cid):
         row = self.campaigns.get(int(cid))
         if row is None:
-            raise ProviderError(f"no campaign {cid}")
+            raise providers.ProviderError(f"no campaign {cid}")
         return dict(row)
 
     def create_lead(self, fields):
         address = fields["email"].lower()
         if any(l["email"] == address for l in self.leads.values()):
-            raise ProviderError(
+            raise providers.ProviderError(
                 "emailbison create_lead: POST /leads -> 422 The email has "
                 "already been taken.")
         if not str(fields.get("first_name") or "").strip():
-            raise ProviderError("422 The first name field is required.")
+            raise providers.ProviderError("422 The first name field is required.")
         for variable in fields.get("custom_variables") or []:
             if variable["name"] not in self.declared:
-                raise ProviderError(
+                raise providers.ProviderError(
                     f"422 You do not have a custom variable named "
                     f"{variable['name']}. Please create one and try again")
         lid = self._id()

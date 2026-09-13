@@ -127,7 +127,10 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
 
     def test_the_write_layer_is_still_sealed(self):
         from src import providerwrites as pw
-        self.assertEqual(providerwrites.SUPPORTED, (pw.LINKEDIN_PAUSE,))
+        self.assertEqual(
+            providerwrites.SUPPORTED,
+            (pw.LINKEDIN_PAUSE, pw.EMAIL_PAUSE, pw.EMAIL_STOP_LEAD,
+             pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE))
         # `heyreach.pause` left this list on 2026-09-12: a live pause of
         # campaign 594061 returned 200 and read back PAUSED, so it is
         # live-validated and declared. It was never a campaign-BUILDING verb

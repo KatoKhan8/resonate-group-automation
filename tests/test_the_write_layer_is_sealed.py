@@ -19,10 +19,18 @@ import contextlib
 import unittest
 from unittest import mock
 
-from src import actionledger, executionguard, providerwrites, store
+from src import approval, actionledger, executionguard, providerwrites, store
 
 from tests.base import QueueTest
 
+
+
+# The approved words these tests transport. `perform` compares the payload it
+# is handed against the authorization's fingerprint, so the two must agree -
+# otherwise the words guard fires first and the behaviour under test never
+# runs.
+STEP = {"channel": "linkedin", "note": "a note somebody approved"}
+APPROVED = {"note": STEP["note"]}
 
 class Spy:
     """A transport that records and never reaches a network."""
@@ -74,8 +82,17 @@ class TheLayerIsSealed(unittest.TestCase):
         one verb moved.
         """
         from src import providerwrites as pw
-        self.assertEqual(providerwrites.SUPPORTED, (pw.LINKEDIN_PAUSE,),
-                         "the set of enabled provider writes changed")
+        self.assertEqual(
+            providerwrites.SUPPORTED,
+            (pw.LINKEDIN_PAUSE, pw.EMAIL_PAUSE, pw.EMAIL_STOP_LEAD,
+             pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE),
+            "the set of enabled provider writes changed")
+        # The condition restated as a property, so it survives the list
+        # growing: nothing that reaches a prospect is supported.
+        for operation, (_c, facing, _w) in providerwrites.OPERATIONS.items():
+            if facing:
+                self.assertFalse(providerwrites.is_supported(operation),
+                                 operation)
 
     def test_every_other_declared_operation_refuses(self):
         for operation in providerwrites.OPERATIONS:
@@ -207,6 +224,7 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(self.OP, authorization=auth,
+                                       step=STEP, payload=APPROVED,
                                        transport=spy, readback=lambda: {})
         self.assertEqual(spy.calls, [])
 
@@ -215,20 +233,24 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         spy = Spy()
         auth = executionguard.Authorization(
             key="rec:contact:day3:linkedin", channel="linkedin",
-            operation="linkedin_connection_request")
+            operation=providerwrites.LINKEDIN_ADD_LEAD,
+            fingerprint=approval.fingerprint(STEP))
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(self.OP, authorization=auth,
+                                       step=STEP, payload=APPROVED,
                                        transport=spy, readback=None)
         self.assertEqual(spy.calls, [])
 
     def test_a_missing_transport_refuses(self):
         auth = executionguard.Authorization(
             key="rec:contact:day3:linkedin", channel="linkedin",
-            operation="linkedin_connection_request")
+            operation=providerwrites.LINKEDIN_ADD_LEAD,
+            fingerprint=approval.fingerprint(STEP))
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(self.OP, authorization=auth,
+                                       step=STEP, payload=APPROVED,
                                        transport=None, readback=lambda: {})
 
     def test_an_authorization_with_no_reservation_is_refused(self):
@@ -243,6 +265,7 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(self.OP, authorization=auth,
+                                       step=STEP, payload=APPROVED,
                                        transport=spy,
                                        readback=lambda: {"leads": 1},
                                        expected={"leads": 1})
@@ -255,8 +278,9 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
                          contacts=[{"key": "contact", "name": "Dana"}])])
         auth = executionguard.Authorization(
             key="rec:contact:day3:linkedin", channel="linkedin",
-            operation="linkedin_connection_request",
-            rec_id="rec", contact_key="contact", step_key="day3")
+            operation=providerwrites.LINKEDIN_ADD_LEAD,
+            rec_id="rec", contact_key="contact", step_key="day3",
+            fingerprint=approval.fingerprint(STEP))
         actionledger.reserve(
             auth.key, channel="linkedin", workspace="productive",
             campaign_id="canary", sender_id=116968, rec_id="rec",
@@ -264,11 +288,13 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
             operation="linkedin_connection_request", fingerprint="fp")
         spy = Spy()
         with self.enabled():
-            providerwrites.perform(self.OP, authorization=auth, transport=spy,
+            providerwrites.perform(self.OP, authorization=auth,
+                                       step=STEP, payload=APPROVED, transport=spy,
                                    readback=lambda: {"leads": 1},
                                    expected={"leads": 1})
             with self.assertRaises(executionguard.NotAuthorized):
                 providerwrites.perform(self.OP, authorization=auth,
+                                       step=STEP, payload=APPROVED,
                                        transport=spy,
                                        readback=lambda: {"leads": 1},
                                        expected={"leads": 1})
@@ -295,8 +321,9 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
                          contacts=[{"key": "dana", "name": "Dana Oyelaran"}])])
         self.auth = executionguard.Authorization(
             key="rec-1:dana:day3:linkedin", channel="linkedin",
-            operation="linkedin_connection_request",
-            rec_id="rec-1", contact_key="dana", step_key="day3")
+            operation=self.OP,
+            rec_id="rec-1", contact_key="dana", step_key="day3",
+            fingerprint=approval.fingerprint(STEP))
         actionledger.reserve(
             self.auth.key, channel="linkedin", workspace="productive",
             campaign_id="canary", sender_id=116968, rec_id="rec-1",
@@ -329,6 +356,7 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(self.OP, authorization=self.auth,
+                                       step=STEP, payload=APPROVED,
                                        transport=spy, readback=lambda: {},
                                        expected={"leads": 1})
         self.assertEqual(actionledger.state_of(self.auth.key),
@@ -339,6 +367,7 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(self.OP, authorization=self.auth,
+                                       step=STEP, payload=APPROVED,
                                        transport=spy, readback=lambda: {},
                                        expected={"leads": 1})
         with self.assertRaises(actionledger.Unsettled):
@@ -351,6 +380,7 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(self.OP, authorization=self.auth,
+                                       step=STEP, payload=APPROVED,
                                        transport=Spy(), readback=boom,
                                        expected={"leads": 1})
         self.assertEqual(actionledger.state_of(self.auth.key),
@@ -360,6 +390,7 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(self.OP, authorization=self.auth,
+                                       step=STEP, payload=APPROVED,
                                        transport=Spy(),
                                        readback=lambda: {"leads": 2},
                                        expected={"leads": 1})
@@ -371,6 +402,7 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(self.OP, authorization=self.auth,
+                                       step=STEP, payload=APPROVED,
                                        transport=Spy(),
                                        readback=lambda: {"leads": 1},
                                        expected=None)
@@ -379,6 +411,7 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         with self.enabled():
             found = providerwrites.perform(
                 self.OP, authorization=self.auth, transport=Spy(),
+                step=STEP, payload=APPROVED,
                 readback=lambda: {"leads": 1}, expected={"leads": 1})
         self.assertEqual(found["class"], providerwrites.ACCEPTED)
         self.assertEqual(actionledger.state_of(self.auth.key),
