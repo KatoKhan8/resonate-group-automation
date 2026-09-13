@@ -375,6 +375,40 @@ a clean tree and no run in the previous session looked.
    company, and at least one mojibake character. Both passed lint.
 6. `sender_id` null on all sender rows blocks per-human attribution.
 
+## The runbook, for the moment credits exist
+
+Every link in this chain was verified offline on real estate data on
+2026-09-13, against the real client config and the real provider campaign.
+Only the model is missing.
+
+    1  py -3 -m src.generate --live --client productive            --id 16kagency-com --id 1gslab-com ... (the 20 cohort ids)
+
+       Reads the cohort from `campaigns.get("productive-email-liheavy-v1")`.
+       Asks for exactly the email steps the client's sequence marks
+       generated - em1..em5 - and re-plans any stored draft that FAILS lint,
+       which is what picks up the three that the typography rule now refuses.
+       A 429 stops the run and holds nobody.
+
+    2  approve each clean step. Proven on `16kagency-com` on 2026-09-13:
+       `approve.approve_step(rec, "izabelle-a", "em1", config=...)` writes a
+       fingerprint, and `bisonfactory._approved_copy` then reads back exactly
+       `['em1','em2','em3','em5']` and reports `['em4']` missing - em4 being
+       the one that fails lint. The chain is not theoretical.
+
+    3  py -3 -m src.bisonfactory productive-email-liheavy-v1 --live
+
+       Stages the leads into campaign 481. Refuses by name if any contact
+       still lacks a step. Leaves the campaign PAUSED - `bison.activate` is
+       not a supported operation and this factory cannot start sending.
+
+    4  read it back. `bison.campaign_lead_count(481)`,
+       `bison.sequence_steps(481)`, `bison.variables_of(bison.lead(id))` -
+       the last one is what proves each lead carries `subject_1`..`body_5`
+       and no unnumbered pair.
+
+Step 4 is the one that decides whether anything is true. A 200 is not a
+verdict anywhere on this provider.
+
 ## Next single best action
 
 Authorize the live write path, then stage `productive-email-liheavy-v1` and
