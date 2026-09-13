@@ -72,8 +72,15 @@ class FakeBison:
         return {name: i for i, name in enumerate(sorted(self.declared))}
 
     def ensure_custom_variables(self, names=None):
-        names = names or ("subject", "body", "record_id", "contact_key",
-                          "client")
+        # THE REAL DEFAULT, not a retyped subset of it. `_ensure_leads` calls
+        # this with no arguments, so a fixture with its own shorter list
+        # declares fewer variables than the provider would and then refuses a
+        # lead carrying one the real run would have declared - a failure that
+        # exists only in the test. Reading `LEAD_VARIABLES` means adding a
+        # variable to the engine cannot silently diverge from the fake.
+        from src.providers.bison import LEAD_VARIABLES
+
+        names = names or LEAD_VARIABLES
         fresh = [n for n in names if n not in self.declared]
         self.declared.update(fresh)
         return {"declared": sorted(self.declared), "created": fresh}
@@ -222,6 +229,22 @@ class FakeBison:
 
 CID = "camp-factory"
 
+# PINNED, NOT LOADED. These tests used to take whatever
+# `config/clients/productive.yaml` happened to hold, so editing a live
+# client's sending window or sequence broke an idempotency test that has
+# nothing to do with either. What is pinned here is the shape campaign 434
+# was actually proven against on 2026-09-13: one step, `{SUBJECT}`/`{BODY}`.
+CONFIG = {
+    "email_sequence": {"title": "Resonate generated cadence",
+                       "subject": "{SUBJECT}", "body": "<p>{BODY}</p>",
+                       "wait_in_days": 3},
+    "sending_window": {"days": ["monday", "tuesday", "wednesday", "thursday",
+                                "friday"],
+                       "start": "09:00", "end": "17:00",
+                       "timezone": "Europe/Zagreb"},
+    "providers": {"emailbison": {"workspace": 10}},
+}
+
 
 class StagingTwiceBuildsOne(QueueTest):
 
@@ -242,15 +265,27 @@ class StagingTwiceBuildsOne(QueueTest):
 
     @staticmethod
     def _record(rid, email, first):
+        # THE APPROVED WORDS ARE PART OF A STAGEABLE RECORD, and this fixture
+        # did not carry them. The sequence is a template of merge fields, so
+        # a contact with no approved email step is staged with an empty
+        # subject and an empty body and the readback agrees the campaign is
+        # correct - which is the failure `_variables_for` has always described
+        # and `_ensure_leads` now refuses. Without this the test asserted
+        # that two empty emails were staged idempotently.
+        key = f"{rid}-c1"
         return {"id": rid, "client": "productive", "domain": "example.com",
                 "company": "Example", "state": "ready",
-                "contacts": [{"key": f"{rid}-c1", "email": email,
+                "cadence": {key: {"day1": {
+                    "channel": "email", "subject": f"Hello {first}",
+                    "body": "<p>A real approved body.</p>",
+                    "approval": {"by": "operator", "at": "2026-09-13T00:00:00Z"}}}},
+                "contacts": [{"key": key, "email": email,
                               "first_name": first, "last_name": "Tester",
                               "sendable": True, "verified": True}]}
 
     def test_the_second_run_creates_nothing(self):
-        first = bisonfactory.stage(CID, live=True)
-        second = bisonfactory.stage(CID, live=True)
+        first = bisonfactory.stage(CID, config=CONFIG, live=True)
+        second = bisonfactory.stage(CID, config=CONFIG, live=True)
 
         self.assertEqual(self.bison.created_campaigns, 1,
                          "a second provider campaign was built")
@@ -273,7 +308,7 @@ class StagingTwiceBuildsOne(QueueTest):
 
     def test_the_provider_id_is_persisted_where_it_can_be_found(self):
         """An id the provider issued and we did not record is a duplicate."""
-        bisonfactory.stage(CID, live=True)
+        bisonfactory.stage(CID, config=CONFIG, live=True)
         row = campaigns.get(CID, campaigns.load())
         self.assertTrue(row.get("bison_campaign_id"),
                         "the campaign row does not name its provider campaign")
@@ -290,7 +325,7 @@ class StagingTwiceBuildsOne(QueueTest):
         stop nobody. The provider refuses undeclared variable names, which is
         why this also proves the declaration happened first.
         """
-        bisonfactory.stage(CID, live=True)
+        bisonfactory.stage(CID, config=CONFIG, live=True)
         self.assertEqual(len(self.bison.leads), 2)
         for lead in self.bison.leads.values():
             carried = {v["name"]: v["value"]
@@ -310,18 +345,18 @@ class StagingTwiceBuildsOne(QueueTest):
         with campaigns.transaction() as rows:
             campaigns.get(CID, rows)["daily_volume"] = {"email": 0}
         with self.assertRaises(bisonfactory.FactoryRefused) as caught:
-            bisonfactory.stage(CID, live=True)
+            bisonfactory.stage(CID, config=CONFIG, live=True)
         self.assertIn("1000", str(caught.exception))
 
     def test_the_cap_is_applied_before_anybody_is_attached(self):
         """A cap applied after the leads is a cap that was briefly absent."""
-        bisonfactory.stage(CID, live=True)
+        bisonfactory.stage(CID, config=CONFIG, live=True)
         cid = int(campaigns.get(CID, campaigns.load())["bison_campaign_id"])
         self.assertEqual(self.bison.campaigns[cid]["max_emails_per_day"], 5)
 
     def test_it_is_left_stopped(self):
         """A staged campaign that can send has not been staged."""
-        report = bisonfactory.stage(CID, live=True)
+        report = bisonfactory.stage(CID, config=CONFIG, live=True)
         self.assertEqual(report["provider"]["readback"]["status"], "paused")
 
     def test_re_staging_does_not_stop_a_running_campaign(self):
@@ -333,10 +368,10 @@ class StagingTwiceBuildsOne(QueueTest):
         direction - and a routine re-stage silently stopping a live campaign
         is its own kind of unsafe.
         """
-        bisonfactory.stage(CID, live=True)
+        bisonfactory.stage(CID, config=CONFIG, live=True)
         cid = int(campaigns.get(CID, campaigns.load())["bison_campaign_id"])
         self.bison.campaigns[cid]["status"] = "active"     # somebody started it
-        report = bisonfactory.stage(CID, live=True)
+        report = bisonfactory.stage(CID, config=CONFIG, live=True)
         self.assertEqual(self.bison.campaigns[cid]["status"], "active",
                          "re-staging stopped a running campaign")
         self.assertTrue(report["provider"].get("left_running"))
@@ -345,12 +380,12 @@ class StagingTwiceBuildsOne(QueueTest):
         """The credential's real estate must be the client's estate."""
         self.bison.bound_workspace = lambda: {"id": 25, "name": "Ironvault"}
         with self.assertRaises(bisonfactory.FactoryRefused) as caught:
-            bisonfactory.stage(CID, live=True)
+            bisonfactory.stage(CID, config=CONFIG, live=True)
         self.assertIn("25", str(caught.exception))
         self.assertEqual(self.bison.created_campaigns, 0)
 
     def test_a_dry_run_touches_nothing(self):
-        report = bisonfactory.stage(CID, live=False)
+        report = bisonfactory.stage(CID, config=CONFIG, live=False)
         self.assertFalse(report["live"])
         self.assertEqual(self.bison.created_campaigns, 0)
         self.assertEqual(self.bison.created_leads, 0)

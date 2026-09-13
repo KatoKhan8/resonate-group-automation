@@ -334,20 +334,65 @@ providers:
 # to the custom variables each staged lead carries - so the generated,
 # approved, lint-checked copy is what goes out.
 #
-# UNVERIFIED: that EmailBison renders `{SUBJECT}` from a custom variable named
-# `subject`. The provider accepts and stores the merge field, and proving it
-# RESOLVES requires a real send, which is blocked. Until then no campaign
-# built from this may be resumed.
-# One step, deliberately. This parser takes no block lists, and more
-# importantly a SECOND generated step would need its own merge fields
-# (`{SUBJECT_2}`, `{BODY_2}`) because a custom variable holds one value per
-# lead - which is a design decision nobody has taken yet. One step that
-# carries real approved copy beats five that carry a template.
+# VERIFIED 2026-09-13: EmailBison DOES render `{SUBJECT}` from a custom
+# variable named `subject`. Campaign 451's scheduled email reads back with
+# `email_subject: "Profitability visible on Monday, not two weeks late"` and a
+# fully rendered body - the approved copy, not the merge field. This was read
+# off `/scheduled-emails` before the send, so it needed no send to prove.
+# The line above used to say the opposite and gated resuming on it.
+#
+# FIVE STEPS, KEYED BY CADENCE STEP. Each key below names a step in
+# `productive_li_heavy_v1`, which is what lets `bisonfactory._sequence_steps`
+# check the declared delay against the cadence gap it claims to reproduce
+# rather than trusting it. Declaring a key the cadence does not have, or
+# omitting one it does, is refused.
+#
+# A CUSTOM VARIABLE HOLDS ONE VALUE PER LEAD, which is why the merge fields
+# are numbered. `{SUBJECT_3}` resolves to the variable `subject_3`, which
+# carries the words approved for `em3` on that contact - matched by step key,
+# never by position, because approvals are fingerprinted per step key.
+#
+# `wait_in_days` IS THE WAIT AFTER A STEP. Measured on the client's own live
+# campaign 352 on 2026-09-13 over 381 scheduled-email pairs whose two steps
+# declare different waits: the gap matches the EARLIER step's wait. So these
+# four numbers are the cadence's own gaps - em1 day 1 to em2 day 4 is 3, em2
+# to em3 is 4, em3 to em4 is 4, em4 day 12 to em5 day 21 is 9.
+#
+# THE FIFTH WAIT HAS NO SUCCESSOR and is checked against nothing. It is
+# written because the provider takes a number and "nobody chose" must not
+# look the same as a chosen one.
+#
+# The single-step shape - `subject`, `body`, `wait_in_days` at this level -
+# still works and is what campaign 451 was staged against. It is production
+# evidence with a scheduled send on it, so it is not migrated.
 email_sequence:
   title: Resonate generated cadence
-  subject: "{SUBJECT}"
-  body: "<p>{BODY}</p>"
-  wait_in_days: 3
+  steps:
+    em1:
+      order: 1
+      subject: "{SUBJECT_1}"
+      body: "<p>{BODY_1}</p>"
+      wait_in_days: 3
+    em2:
+      order: 2
+      subject: "{SUBJECT_2}"
+      body: "<p>{BODY_2}</p>"
+      wait_in_days: 4
+    em3:
+      order: 3
+      subject: "{SUBJECT_3}"
+      body: "<p>{BODY_3}</p>"
+      wait_in_days: 4
+    em4:
+      order: 4
+      subject: "{SUBJECT_4}"
+      body: "<p>{BODY_4}</p>"
+      wait_in_days: 9
+    em5:
+      order: 5
+      subject: "{SUBJECT_5}"
+      body: "<p>{BODY_5}</p>"
+      wait_in_days: 0
 
 sending_window:
   days: [monday, tuesday, wednesday, thursday, friday]

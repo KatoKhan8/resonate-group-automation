@@ -308,9 +308,24 @@ def build_leads(rows):
 # The variables a Productive lead carries. `record_id` and `contact_key` are
 # the load-bearing ones: `adapters.from_emailbison` reads them off an inbound
 # reply, and a reply that cannot name its person stops nobody.
-LEAD_VARIABLES = ("subject", "body", "title", "record_id", "contact_key",
-                  "client", "sender_id", "sender_account_id",
-                  "provider_account_id")
+# HOW MANY STEPS OF GENERATED COPY A LEAD CAN CARRY.
+#
+# A custom variable holds ONE value per lead, so a sequence of five generated
+# emails needs five pairs of them - `{SUBJECT_3}` in the template resolves to
+# the variable `subject_3`. The unnumbered `subject` and `body` stay for the
+# single-step shape campaign 451 is staged against.
+#
+# Five because that is the email half of `productive_li_heavy_v1`, plus room
+# for one more before the ceiling binds. Declaring a variable creates nothing
+# and reaches nobody, so an unused name costs a row in a settings table; a
+# missing one costs a refused staging run in the middle of a batch.
+MAX_SEQUENCE_STEPS = 6
+
+LEAD_VARIABLES = (("subject", "body", "title", "record_id", "contact_key",
+                   "client", "sender_id", "sender_account_id",
+                   "provider_account_id")
+                  + tuple(f"subject_{n}" for n in range(1, MAX_SEQUENCE_STEPS + 1))
+                  + tuple(f"body_{n}" for n in range(1, MAX_SEQUENCE_STEPS + 1)))
 
 
 def _variables(mapping_of):

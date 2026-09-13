@@ -34,6 +34,12 @@ import sys
 
 from . import campaigns, clients, providerwrites, store
 from .providers import ProviderError, bison
+# THE CONSTANT, NOT THE TRANSPORT. Tests swap `bison` for a fake provider,
+# and this number is not something a provider answers - it is how many pairs
+# of copy variables this engine declares. Reading it off the swapped module
+# made a fake without the attribute crash a check that has nothing to do
+# with the wire.
+from .providers.bison import MAX_SEQUENCE_STEPS
 
 
 class FactoryRefused(Exception):
@@ -139,6 +145,146 @@ def provider_campaign_name(campaign):
     return f"{human} [{campaign.get('client')}/{campaign.get('campaign_id')}]"
 
 
+# WHAT `wait_in_days` MEANS, MEASURED RATHER THAN ASSUMED.
+#
+# It is the wait AFTER the step that carries it, before the next one - not a
+# wait before it. Read off the client's own live campaign 352 on 2026-09-13:
+# 381 consecutive scheduled-email pairs whose two steps declare DIFFERENT
+# waits, which are the only pairs that can tell the two readings apart.
+#
+#     earlier wait 3, later wait 1  ->  delta 3 in 59 of 87 pairs
+#     earlier wait 3, later wait 4  ->  delta 3 in 115 of 168
+#     earlier wait 4, later wait 3  ->  delta 4 in 77 of 126
+#
+# The mode is the EARLIER step's wait in all three groups. The one-to-two day
+# spread around it is the sending window and the weekend, which is why the
+# mode is the evidence and an exact match is not: pairs whose two steps
+# declare the SAME wait cannot discriminate at all and are excluded.
+#
+# So a five-step cadence declares four meaningful waits and one that has no
+# successor to be a wait before. See `_sequence_steps`.
+
+
+def _sequence_steps(configured, cadence_steps):
+    """The provider sequence this campaign writes, declared and checked.
+
+    TWO SHAPES, AND THE OLD ONE IS NOT DEPRECATED. A client naming `subject`,
+    `body` and `wait_in_days` directly gets the single step it always got -
+    that is what EmailBison campaign 451 carries and it is production
+    evidence. A client naming a `steps` block gets one provider step per
+    entry, keyed BY CADENCE STEP KEY.
+
+    THE KEY IS THE WHOLE POINT. `em1: {...}` does not mean "the first step",
+    it means "the step `cadencelibrary` calls em1", and that is what lets the
+    declared delays be checked against the cadence instead of trusted. A
+    `steps` block naming keys the cadence does not have, or missing keys it
+    does, is refused: the alternative is a provider sending five emails on a
+    schedule the cadence never described, with every readback agreeing.
+
+    THE DELAYS ARE DECLARED AND VERIFIED, NOT DERIVED. `CAMPAIGN-FACTORY.md`
+    is explicit that a provider node delay is declared, because the cadence
+    day is a position in a schedule and a node delay is a property of the
+    provider graph - two different quantities that happen to agree. Deriving
+    one from the other would hide the day they stop agreeing. So the config
+    states the number and this refuses if it does not reproduce the cadence.
+
+    THE LAST STEP'S WAIT IS NOT CHECKED, because there is nothing after it to
+    wait for. A five-step cadence defines four gaps. That wait is carried to
+    the provider as declared and means nothing; saying so here is better than
+    a check that invents a fifth gap to validate against.
+    """
+    configured = configured or {}
+    block = configured.get("steps")
+    if not isinstance(block, dict) or not block:
+        if not (configured.get("subject") and configured.get("body")):
+            return []
+        return [{"order": 1,
+                 "email_subject": configured["subject"],
+                 "email_body": configured["body"],
+                 "wait_in_days": configured.get("wait_in_days") or 3}]
+
+    # The cadence's email steps, in the order the cadence runs them. `day` is
+    # the position; equal days are legal (day 1 carries both channels) and the
+    # key breaks the tie so the order is total rather than merely sorted.
+    email_days = [(s.get("day"), s.get("key")) for s in cadence_steps or ()
+                  if s.get("channel") == "email" and s.get("key")]
+    email_days.sort(key=lambda pair: (pair[0], pair[1]))
+    if not email_days:
+        raise FactoryRefused(
+            "`email_sequence.steps` names a multi-step sequence and the "
+            "client's cadence carries no email steps at all, so there is "
+            "nothing to check the declared delays against. A sequence nobody "
+            "can check is a sequence nobody knows the shape of")
+
+    if len(email_days) > MAX_SEQUENCE_STEPS:
+        raise FactoryRefused(
+            f"the cadence carries {len(email_days)} email steps and only "
+            f"{MAX_SEQUENCE_STEPS} pairs of copy variables are declared "
+            f"at the provider, so steps past the "
+            f"{MAX_SEQUENCE_STEPS}th would send with nothing in them. "
+            f"Raise `MAX_SEQUENCE_STEPS` and re-run "
+            f"`ensure_custom_variables` before lengthening the cadence")
+
+    wanted = [key for _day, key in email_days]
+    declared = sorted(block, key=lambda k: _order_of(block[k], k))
+    if declared != wanted:
+        raise FactoryRefused(
+            f"`email_sequence.steps` declares {declared} and the cadence's "
+            f"email steps are {wanted}. These must be the same keys in the "
+            f"same order: the key is how a declared delay is matched to the "
+            f"cadence gap it claims to reproduce, so a mismatch means the "
+            f"delays were checked against the wrong steps or against none")
+
+    steps = []
+    for position, (day, key) in enumerate(email_days, start=1):
+        entry = block[key] or {}
+        subject, body = entry.get("subject"), entry.get("body")
+        if not subject or not body:
+            raise FactoryRefused(
+                f"`email_sequence.steps.{key}` declares no "
+                f"{'subject' if not subject else 'body'}. A step staged "
+                f"without one sends an email that has none")
+        wait = entry.get("wait_in_days")
+        if wait is None:
+            raise FactoryRefused(
+                f"`email_sequence.steps.{key}` declares no `wait_in_days`. "
+                f"EmailBison takes whatever it defaults to, and 'nobody "
+                f"chose' must not look the same as a chosen delay")
+        # Every gap but the last, against the cadence that defines it.
+        if position < len(email_days):
+            gap = email_days[position][0] - day
+            if int(wait) != int(gap):
+                raise FactoryRefused(
+                    f"`email_sequence.steps.{key}` declares a "
+                    f"{int(wait)}-day wait and the cadence puts {key} on day "
+                    f"{day} and {email_days[position][1]} on day "
+                    f"{email_days[position][0]}, a gap of {gap}. `wait_in_days` "
+                    f"is the wait AFTER a step - measured on campaign 352, see "
+                    f"the note above - so this campaign would send on a "
+                    f"schedule the cadence does not describe")
+        steps.append({"order": position,
+                      "email_subject": subject,
+                      "email_body": body,
+                      "wait_in_days": int(wait),
+                      "step_key": key})
+    return steps
+
+
+def _order_of(entry, key):
+    """A declared step's position, for reporting a mismatch readably.
+
+    Only used to sort the declared keys into a stable order before comparing
+    them with the cadence's. A step that declares no `order` sorts by its key,
+    which keeps the refusal message deterministic rather than dependent on
+    dict insertion.
+    """
+    order = (entry or {}).get("order")
+    try:
+        return (0, int(order), key)
+    except (TypeError, ValueError):
+        return (1, 0, key)
+
+
 def _plan(campaign, recs, config):
     """What this campaign is, from canonical state. No provider call."""
     material = campaigns.material(campaign, recs=recs, config=config)
@@ -148,6 +294,12 @@ def _plan(campaign, recs, config):
     # we send - and a name is none of those. Reading names out of it silently
     # produced empty ones, which the provider then rejected.
     by_id = {r.get("id"): r for r in recs}
+    # THE SEQUENCE IS BUILT BEFORE THE LEADS, because it decides how many
+    # approved steps each lead has to carry. A lead is words plus an address;
+    # which words depends on how many the sequence will ask for.
+    from . import cadence as _cadence
+    sequence = _sequence_steps((config or {}).get("email_sequence"),
+                               _cadence.steps_for(campaign, config=config))
     leads = []
     for record in material.get("records") or []:
         if record.get("missing") or record.get("dropped") or record.get("paused"):
@@ -191,14 +343,17 @@ def _plan(campaign, recs, config):
             # is what `executionguard` checks a payload against, so shipping
             # words that carry no approval would put the gate and the wire
             # out of step.
-            approved = _approved_email(source, contact.get("key"))
+            copy, missing = _approved_copy(source, contact.get("key"),
+                                           sequence, record.get("id"))
             leads.append({"record_id": record.get("id"),
                           "contact_key": contact.get("key"),
                           "email": contact.get("email"),
                           "first_name": first,
-                          "step_key": (approved or {}).get("step_key"),
-                          "subject": (approved or {}).get("subject") or "",
-                          "body": (approved or {}).get("body") or "",
+                          "copy": copy,
+                          "missing_copy": missing,
+                          "step_key": copy[0]["step_key"] if copy else None,
+                          "subject": copy[0]["subject"] if copy else "",
+                          "body": copy[0]["body"] if copy else "",
                           "last_name": (
                               (person.get("last_name") or "").strip()
                               or " ".join(
@@ -219,26 +374,76 @@ def _plan(campaign, recs, config):
             # cohort that does not state one.
             "window": (campaign.get("sending_window")
                        or (config or {}).get("sending_window") or {}),
-            "sequence": (config or {}).get("email_sequence") or {},
+            "sequence": sequence,
+            "sequence_config": (config or {}).get("email_sequence") or {},
             "bison_campaign_id": campaign.get("bison_campaign_id")}
 
 
-def _approved_email(source, contact_key):
-    """The earliest APPROVED email step for this contact, or None.
+def _approved_copy(source, contact_key, sequence, record_id):
+    """The APPROVED words this contact carries, one entry per sequence step.
 
-    Earliest because the sequence this factory writes is one step: it is the
-    opener that goes out, and a later step's words in the opener's place
-    would be a message arriving out of order.
+    Returns `(copy, missing)`. It REPORTS rather than refuses, and
+    `_ensure_leads` is what refuses: this runs inside `_plan`, which is what
+    a dry run returns and which happens before the workspace check, so
+    raising here would mask a tenancy refusal with a copy complaint and would
+    leave an operator no way to ask "what is missing" without being stopped
+    at the first answer.
 
-    A record whose steps live under `cadence[contact_key]` is read directly
-    rather than through `cadence.build`, because the words that matter are
-    the ones a human approved and those are the ones stored.
+    WHY ANYTHING REFUSES AT ALL. The sequence written to the provider is a
+    template of merge fields, so every step's words travel with the lead. A
+    step whose variable is absent renders as nothing: the campaign is staged,
+    the sequence reads back correctly, the sender is bound, the membership is
+    right, and on day eight a real person receives an email with no subject
+    and no body. `_variables_for` already said this about the single-step
+    case; it was said and not enforced, and the code staged the lead with
+    `""` for both. Five steps make it five times as likely and no more
+    visible.
+
+    MATCHED BY STEP KEY, NOT BY POSITION. `_sequence_steps` keys each provider
+    step to the cadence step it came from, and the record's approvals are
+    stored under those same keys - `approval.fingerprint` is per step key and
+    `push_id` is `record:contact:step:channel`. Matching by position instead
+    would put a day-twelve approval into the day-one slot the first time a
+    contact was approved out of order, and the approval fingerprint on the
+    wire would still be the one the gate checked.
+
+    An EMPTY sequence reports nothing missing: a campaign the client has
+    configured no sequence for stages leads with attribution and no words,
+    which is what `_ensure_sequence` already reports and permits.
     """
+    if not sequence:
+        return [], []
     steps = ((source or {}).get("cadence") or {}).get(contact_key) or {}
-    if not steps:
-        return None
-    for step_key in sorted(steps):
-        step = steps[step_key] or {}
+    copy, missing = [], []
+    for node in sequence:
+        key = node.get("step_key")
+        if key is None:
+            # The single-step shape carries no cadence key, so the earliest
+            # approved email step is the opener, exactly as before.
+            found = _earliest_approved_email(steps)
+        else:
+            step = steps.get(key) or {}
+            found = ({"step_key": key, "subject": step.get("subject"),
+                      "body": step.get("body")}
+                     if step.get("channel") == "email" and step.get("approval")
+                     else None)
+        if not found or not found.get("subject") or not found.get("body"):
+            missing.append(str(key) if key is not None
+                           else f"step {node['order']}")
+            continue
+        copy.append(found)
+    return copy, missing
+
+
+def _earliest_approved_email(steps):
+    """The first APPROVED email step by key, or None.
+
+    Used only for the single-step sequence shape, where the one step that
+    goes out is the opener and a later step's words in its place would be a
+    message arriving out of order.
+    """
+    for step_key in sorted(steps or {}):
+        step = (steps or {})[step_key] or {}
         if step.get("channel") != "email" or not step.get("approval"):
             continue
         return {"step_key": step_key, "subject": step.get("subject"),
@@ -471,12 +676,13 @@ def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
     which agreed unconditionally. `bison.sequence_steps` answers the real
     question, so a write that did not take is visible.
     """
-    configured = plan.get("sequence") or {}
-    steps = ([{"order": 1,
-               "email_subject": configured["subject"],
-               "email_body": configured["body"],
-               "wait_in_days": configured.get("wait_in_days") or 3}]
-             if configured.get("subject") and configured.get("body") else [])
+    configured = plan.get("sequence_config") or {}
+    # `step_key` is this module's own bookkeeping - it is how a lead's
+    # approved words are matched to the step that will send them - and the
+    # provider has no field for it. Stripped here rather than never carried,
+    # because the readback compares what was asked for against what is held.
+    steps = [{k: v for k, v in node.items() if k != "step_key"}
+             for node in plan.get("sequence") or []]
     if not steps:
         report["did"].append(
             "no sequence staged: the client config names no `email_sequence`")
@@ -570,14 +776,35 @@ def _variables_for(lead, campaign):
     lead staged without them produces an email with an empty subject and an
     empty body, and nothing in the staging readback would have shown it: the
     campaign, the schedule, the sender and the membership would all look
-    exactly right.
+    exactly right. `_ensure_leads` refuses that case rather than trusting
+    this paragraph to be read.
+
+    ONE VARIABLE PER STEP, NUMBERED BY POSITION. A custom variable holds one
+    value per lead, so five steps of generated copy cannot share `subject`:
+    the template `{SUBJECT_3}` resolves to the variable `subject_3`, which is
+    the third step's approved words. The unnumbered `subject` and `body` are
+    still written for a single-step sequence, because campaign 451 is staged
+    against `{SUBJECT}` and is production evidence with a scheduled send on
+    it. A campaign built from the multi-step shape never reads them.
+
+    ONE SHAPE PER CAMPAIGN, NEVER BOTH. A single-step campaign carries
+    `subject` and `body` and no numbered pair; a multi-step one carries the
+    numbered pairs and neither unnumbered name. Writing both would leave
+    every lead holding a variable its own template never reads, and a reader
+    comparing two leads could not tell which shape the campaign was built in.
     """
-    return bison._variables({
-        "record_id": lead["record_id"],
-        "contact_key": lead["contact_key"],
-        "client": campaign.get("client") or "",
-        "subject": lead.get("subject") or "",
-        "body": lead.get("body") or ""})
+    values = {"record_id": lead["record_id"],
+              "contact_key": lead["contact_key"],
+              "client": campaign.get("client") or ""}
+    copy = lead.get("copy") or []
+    if len(copy) <= 1:
+        values["subject"] = lead.get("subject") or ""
+        values["body"] = lead.get("body") or ""
+    else:
+        for position, node in enumerate(copy, start=1):
+            values[f"subject_{position}"] = node.get("subject") or ""
+            values[f"body_{position}"] = node.get("body") or ""
+    return bison._variables(values)
 
 
 def _ensure_leads(provider_id, campaign, plan, report, by="system"):
@@ -587,11 +814,35 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     re-run costs reads and writes nothing. `bison.attach_leads` raises unless
     the readback contains what was asked for, which is what stops a partial
     attach being reported as a full one.
+
+    A LEAD WITHOUT THE WORDS ITS SEQUENCE WILL ASK FOR STOPS THE WHOLE RUN.
+    This is the last point at which nothing has reached a person: the
+    sequence is written, the campaign is stopped, and no lead exists yet. A
+    step whose copy variable is absent sends an email with an empty subject
+    and an empty body, and `_readback` would report that campaign correct -
+    the sequence, the schedule, the sender and the membership are all exactly
+    right. The whole run stops rather than the one lead being skipped,
+    because a campaign that quietly stages four of five people is a cohort
+    nobody can reason about afterwards. `_plan` lists them without raising,
+    so a dry run answers "which contacts, and which steps" in one pass.
     """
     wanted = plan.get("leads") or []
     if not wanted:
         report["did"].append("no leads staged: the plan carries none")
         return
+    short = [(lead["record_id"], lead["contact_key"], lead["missing_copy"])
+             for lead in wanted if lead.get("missing_copy")]
+    if short:
+        detail = "; ".join(f"{rid}/{key} missing {', '.join(steps)}"
+                           for rid, key, steps in short[:5])
+        raise FactoryRefused(
+            f"{len(short)} of {len(wanted)} contact(s) carry no approved copy "
+            f"for every step of this campaign's {len(plan.get('sequence') or [])}"
+            f"-step sequence: {detail}"
+            f"{' and more' if len(short) > 5 else ''}. Each missing step sends "
+            f"a real person an email with an empty subject and an empty body, "
+            f"and every readback would agree the campaign was correct. "
+            f"Generate and approve the missing steps, then stage again")
     # The variables must exist on the workspace before a lead may carry one:
     # the provider refuses an undeclared name outright. Idempotent, and it
     # creates nothing that can reach a person.
