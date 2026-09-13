@@ -379,7 +379,8 @@ a clean tree and no run in the previous session looked.
 
 `config/.env` is gitignored, so this is the only durable record of it.
 
-    LLM_MODEL = qwen/qwen3-235b-a22b-2507      (was: openrouter/free)
+    LLM_MODEL = openai/gpt-4o-mini
+              (was: openrouter/free, then qwen/qwen3-235b-a22b-2507)
 
 Changed late on 2026-09-13 for two reasons, measured rather than assumed.
 
@@ -399,6 +400,25 @@ honours the order.
 The whole twenty-record cohort is about eight cents against a $50 balance.
 That is why no cap was imposed on it: the runaway risk here is a retry loop,
 not the unit price.
+
+**The Qwen model was tried first and measured out.** The policy says
+Qwen-first, and `qwen/qwen3-235b-a22b-2507` answered a probe in 1.8s, so it
+went in. Over one twenty-record cohort it then failed hard:
+
+    records held by an upstream model failure    12 of 20
+    batches completing cleanly                    3 of 5
+    error                                        HTTP 400, `backend_error`,
+                                                 "Backend request failed"
+
+`openai/gpt-4o-mini` on the same account, same moment: **6 of 6 clean at
+1.49s per call**. So the switch is on measured reliability rather than on
+preference, and it is exactly the evidence the routing policy asks for -
+"QWEN EARNS DEFAULT THROUGH QUALITY", and on this endpoint tonight it did
+not. That says nothing about the local Qwen CLI in TASK-012, which is a
+different thing entirely and is still the right default to aim at.
+
+Those 12 records were released once the classifier was fixed. They had
+nothing wrong with them.
 
 The free tier is NOT the fallback to return to. It is capped at 50 requests a
 day and that cap is what blocked this pipeline for most of the evening.
