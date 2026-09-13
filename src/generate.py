@@ -548,9 +548,36 @@ def plan(rec, client=None, campaign=None):
         for spec in sequence:
             if spec.get("channel") != "email" or not spec.get("generated"):
                 continue
-            if not (stored.get(spec["key"]) or {}).get("body"):
+            step = stored.get(spec["key"]) or {}
+            if not step.get("body"):
                 ops.append({"step": "draft",
                             "why": f"{c['name']} has no {spec['key']} email",
+                            "contact": c.get("name"), "day": spec["key"]})
+                continue
+            # A DRAFT THAT DOES NOT PASS IS NOT A DRAFT. This asked only
+            # whether a body EXISTED, so a stored draft that fails lint was
+            # counted as work already done - and nothing else regenerates
+            # one. `cadence.status_for` blocks the step, `eligibility` refuses
+            # the payload, and the planner says there is nothing to do. The
+            # step never ships and never gets another attempt.
+            #
+            # It arises whenever a rule tightens. `SUBSTITUTED_PUNCTUATION`
+            # gained three characters on 2026-09-13 and three of the ten
+            # drafts in the estate went from clean to failed in that instant,
+            # with no path back. It also arises from an older cadence, an
+            # edited client tone, or a hand-edited record.
+            #
+            # ONLY WHEN THE WORDS ARE THE PROBLEM. `lint.classify` already
+            # separates the failure that is about this draft from the one
+            # that is about the recipient - `recipient_not_sendable` is in
+            # `HELD_CODES` and no rewrite fixes it. Regenerating for that
+            # would spend three attempts and then hold the record for a fact
+            # about an address.
+            failures = lint.check_step(rec, lint.contact_key(c), step)
+            if lint.classify(failures) == "failed":
+                ops.append({"step": "draft",
+                            "why": f"{c['name']}'s {spec['key']} email fails "
+                                   f"lint ({', '.join(failures)})",
                             "contact": c.get("name"), "day": spec["key"]})
     return ops
 

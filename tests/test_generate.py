@@ -363,6 +363,56 @@ class TestOnlyTwoEmailsAreGenerated(GenerateTest):
         self.assertEqual(planned, expected)
         self.assertTrue(expected, "the fixture's client generates no email at all")
 
+    def test_a_stored_draft_that_fails_lint_is_planned_again(self):
+        """A draft that does not pass is not a draft.
+
+        `plan` asked only whether a body EXISTED, so a stored draft that
+        fails lint counted as work already done - and nothing else
+        regenerates one. `cadence.status_for` blocks the step, `eligibility`
+        refuses the payload, and the planner says there is nothing to do, so
+        it never ships and never gets another attempt.
+
+        It arises every time a rule tightens. `SUBSTITUTED_PUNCTUATION`
+        gained three characters on 2026-09-13 and three of the ten drafts in
+        the estate went from clean to failed in that instant, with no path
+        back.
+        """
+        rec = self.rec("meridian")
+        contact = rec["contacts"][0]
+        key = lint.contact_key(contact)
+        spec = next(s for s in generate.sequence_for(rec, contact=contact)
+                    if s.get("channel") == "email" and s.get("generated"))
+        clean = json.loads(draft_answer(first=contact["name"].split()[0]))
+        rec.setdefault("cadence", {}).setdefault(key, {})[spec["key"]] = {
+            "channel": "email", "generated": True,
+            "subject": clean["subject"], "body": clean["body"]}
+        store.save([rec if r["id"] == "meridian" else r for r in store.load()])
+
+        rec = self.rec("meridian")
+        planned = [o["day"] for o in generate.plan(rec) if o["step"] == "draft"]
+        self.assertNotIn(spec["key"], planned,
+                         "a clean stored draft was planned again")
+
+        # Now break it the way a tightened rule breaks one: same words, one
+        # substituted character.
+        rec["cadence"][key][spec["key"]]["body"] += " you’re right"
+        store.save([rec if r["id"] == "meridian" else r for r in store.load()])
+        rec = self.rec("meridian")
+        self.assertEqual(
+            lint.classify(lint.check_step(rec, key,
+                                          rec["cadence"][key][spec["key"]])),
+            "failed", "the fixture did not actually break the draft")
+        ops = [o for o in generate.plan(rec) if o["step"] == "draft"]
+        self.assertIn(spec["key"], [o["day"] for o in ops])
+        self.assertIn("fails lint",
+                      next(o["why"] for o in ops if o["day"] == spec["key"]))
+
+    def test_a_draft_held_on_the_recipient_is_not_regenerated(self):
+        """No rewrite fixes an address. Three attempts then a hold, for a
+        fact about the contact rather than about the words."""
+        self.assertIn("recipient_not_sendable", lint.HELD_CODES)
+        self.assertEqual(lint.classify(["recipient_not_sendable"]), "held")
+
     def test_a_record_with_no_sendable_contact_is_never_drafted(self):
         self.assertEqual(generate.plan(self.rec("held-record")), [])
 
