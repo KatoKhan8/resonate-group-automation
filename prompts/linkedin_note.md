@@ -43,6 +43,21 @@ steps one to three arrived.
 Even when it is full, do not summarise or count our previous messages. "This
 is my third note" is pressure, not information.
 
+## `siblings` are other drafts in this sequence, not sent messages
+
+`siblings` shows the notes already written for other LinkedIn steps in this
+sequence. They are DRAFTS, not sent messages. Nothing in `siblings` licenses
+any reference to a previous message: "as I mentioned", "following up on my
+note", "my last message" are all false unless `already_sent` says otherwise.
+
+The only reason you see them is so you write something DIFFERENT. If a
+sibling already used an operational angle about their hiring pipeline, pick a
+different part of how the business runs.
+
+`siblings` and `already_sent` are separate blocks with separate meanings.
+`already_sent` is confirmed history. `siblings` is draft context. Neither
+licenses a claim of contact.
+
 ## Rules, all enforced before the note is stored
 
 - Under 300 characters. Every rung, not only the connection request.

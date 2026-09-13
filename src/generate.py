@@ -356,6 +356,44 @@ def history_block(rec, contact, sequence, step_key, channel):
     return out
 
 
+def siblings_block(rec, contact, sequence, step_key, channel):
+    """The OTHER generated steps for this contact on this channel.
+
+    These are drafts stored in `rec["cadence"]`, not confirmed sends. They
+    exist so the model writing step N can see what steps 1..N-1 already say
+    and avoid repeating them. They license NOTHING: no "as I mentioned", no
+    "following up on my note", no claim of contact. Their only job is to let
+    the model write something different.
+
+    Same channel only, for the same reason `history_block` does: a LinkedIn
+    message holding the text of an email is one careless sentence away from
+    "as I wrote to you".
+
+    Returns a list of dicts keyed by step, with subject+body (email) or
+    note (linkedin) and the step's purpose. Empty when there are no siblings.
+    """
+    key = lint.contact_key(contact or {})
+    cadence_rows = (rec.get("cadence") or {}).get(key) or {}
+    out = []
+    for sk, stored in cadence_rows.items():
+        if sk == step_key:
+            continue
+        if stored.get("channel") != channel:
+            continue
+        if not (stored.get("body") or stored.get("note")):
+            continue
+        _, ordinal, _ = position(sequence, sk)
+        entry = {"step": sk, "purpose": purpose_for(channel, ordinal)}
+        if channel == "email":
+            entry["subject"] = stored.get("subject", "")
+            entry["opening"] = _opening(stored)
+        else:
+            entry["note"] = stored.get("note", "")
+        out.append(entry)
+    out.sort(key=lambda r: r["step"])
+    return out
+
+
 def context_for(step, rec, contact=None, client=None, step_key=None,
                 sequence=None):
     """Assemble the smallest context that can answer the question."""
@@ -395,6 +433,8 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
             block["step"] = step_block(sequence, step_key, "linkedin")
             block["already_sent"] = history_block(rec, contact, sequence,
                                                   step_key, "linkedin")
+            block["siblings"] = siblings_block(rec, contact, sequence,
+                                               step_key, "linkedin")
     elif step == "draft":
         block["contact"] = contact_block(contact or {})
         block["angle"] = (contact or {}).get("angle")
@@ -434,6 +474,8 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
             block["step"] = step_block(sequence, step_key, "email")
             block["already_sent"] = history_block(rec, contact, sequence,
                                                   step_key, "email")
+            block["siblings"] = siblings_block(rec, contact, sequence,
+                                               step_key, "email")
         if rec.get("lane") == "revive":
             block["diagnosis"] = rec.get("diagnosis")
         if rec.get("lane") == "cold":

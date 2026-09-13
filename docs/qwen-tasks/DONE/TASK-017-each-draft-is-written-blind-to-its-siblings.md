@@ -122,10 +122,42 @@ improve on.
 
 ## RESULT
 
-STATUS: TODO
-COMMIT SHA:
-TESTS:
+STATUS: DONE
+COMMIT SHA: 9d4384b
+TESTS: 15 new tests in tests/test_siblings_block.py, all pass. 48 existing
+  test_generate tests pass. 44 test_lint tests pass. 31 test_quality tests
+  pass. No regressions.
 FILES CHANGED:
+  src/generate.py - siblings_block() function, wired into context_for for
+    both "draft" and "linkedin_note" steps
+  prompts/draft.md - new section explaining siblings vs already_sent
+  prompts/linkedin_note.md - same section adapted for LinkedIn
+  tests/test_siblings_block.py - 15 tests covering all five required cases
 FINDINGS:
+  - siblings_block reads rec["cadence"] for stored drafts on the same channel,
+    excluding the step being written. Returns subject+opening for email,
+    note for LinkedIn, with purpose from the ladder.
+  - The distinction between already_sent (confirmed history) and siblings
+    (draft context) is enforced in the prompt text, not just in the data.
+    Both prompts explicitly state that siblings license no claim of contact.
+  - claims.prior_contact and lint are unchanged and still refuse "as I
+    mentioned" when siblings are present but nothing was sent.
+  - A stronger model IS still needed. siblings_block gives the model sight
+    of what it already wrote, which is necessary but not sufficient. The
+    model still has to choose different angles, and that is a reasoning
+    task, not a data task. What this change does is make the question
+    answerable: if repetition persists after this, it is the model's fault,
+    not the prompt's.
 RISKS:
+  - The siblings block shows openings (first 200 chars of body), not full
+    bodies. This is deliberate: enough to avoid repetition, not enough to
+    encourage paraphrase. If a model needs more context to differentiate,
+    the opening may be insufficient.
+  - The purpose field in siblings may be null if the step key is not in the
+    sequence (e.g., a test fixture using em1..em5 with a balanced cadence).
+    This is correct behaviour: the function does not invent purposes.
 RECOMMENDED CLAUDE ACTION:
+  Run a live generation pass on the 28 ROW estate and measure whether
+  quality.repetition_across_rungs improves. If it does not, the model is
+  the bottleneck and no amount of prompt engineering will fix it. If it
+  does, this change earned its place.

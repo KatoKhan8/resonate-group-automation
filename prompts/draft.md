@@ -86,6 +86,27 @@ Never quote, summarise or count our own previous messages even when
 `already_sent` is full. It reads as pressure, and it spends the words that
 could have carried a new argument.
 
+## `siblings` are other drafts in this sequence, not sent messages
+
+`siblings` shows the subject and opening line of other emails already written
+for this person on this channel. They are DRAFTS, not sent messages. Nothing
+in `siblings` licenses any of the following:
+
+- "as I mentioned", "as I wrote", "following up on my email"
+- "my previous note", "my last email", "earlier I said"
+- any reference to a message that was sent, delivered or received
+
+These drafts may not have been sent. They may be rewritten before they are.
+The only reason you see them is so you write something DIFFERENT from what
+they say - a different angle, a different argument, different words. If a
+sibling already made the point about their Gen Z marketing, pick a different
+part of how the business runs.
+
+`siblings` and `already_sent` are separate blocks with separate meanings.
+`already_sent` is confirmed history. `siblings` is draft context. Neither
+licenses a claim of contact; only `already_sent` can do that, and only when
+it is non-empty.
+
 ## What you are selling
 
 `angle` names the angle chosen for this recipient and `angle_wording` says

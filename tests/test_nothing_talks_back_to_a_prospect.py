@@ -85,6 +85,8 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
           bison.stop_lead         halts ONE person's remaining emails
           bison.create_campaign   creates a DRAFT, which cannot send
           bison.set_sequence      writes copy into a campaign that is stopped
+          heyreach.set_sequence   writes copy into a campaign with no list,
+                                  no leads, and no verb that can start it
 
         Enumerated rather than derived, so adding one stays a decision. The
         assertion that actually guards this file is the loop below: nothing
@@ -94,7 +96,8 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
         self.assertEqual(
             providerwrites.SUPPORTED,
             (pw.LINKEDIN_PAUSE, pw.EMAIL_PAUSE, pw.EMAIL_STOP_LEAD,
-             pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE))
+             pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE,
+             pw.LINKEDIN_SET_SEQUENCE))
         for operation, (_channel, prospect_facing, _why) in                 providerwrites.OPERATIONS.items():
             if prospect_facing:
                 self.assertFalse(providerwrites.is_supported(operation),
