@@ -362,6 +362,15 @@ providers:
 # written because the provider takes a number and "nobody chose" must not
 # look the same as a chosen one.
 #
+# IT IS 1 AND NOT 0 BECAUSE THE PROVIDER REFUSED 0. Measured 2026-09-13:
+# staging campaign 481 with a terminal `wait_in_days: 0` was rejected by
+# `POST /campaigns/481/sequence-steps` and left the campaign holding zero
+# steps - so the whole payload is refused atomically, which is the only
+# reason this was safe to diagnose on an append-only route. The client's own
+# 44-step campaign 352 never stores 0 either: its waits are 1, 3 and 4, and
+# the minimum across all 44 is 1. The number still means nothing, because
+# nothing follows em5.
+#
 # The single-step shape - `subject`, `body`, `wait_in_days` at this level -
 # still works and is what campaign 451 was staged against. It is production
 # evidence with a scheduled send on it, so it is not migrated.
@@ -392,7 +401,7 @@ email_sequence:
       order: 5
       subject: "{SUBJECT_5}"
       body: "<p>{BODY_5}</p>"
-      wait_in_days: 0
+      wait_in_days: 1
 
 sending_window:
   days: [monday, tuesday, wednesday, thursday, friday]
