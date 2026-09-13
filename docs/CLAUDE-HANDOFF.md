@@ -423,6 +423,25 @@ nothing wrong with them.
 The free tier is NOT the fallback to return to. It is capped at 50 requests a
 day and that cap is what blocked this pipeline for most of the evening.
 
+## Two generation runs must not overlap
+
+`generate.run` loads the whole estate, works, and writes it back. A second
+run started while the first is still working holds a snapshot from before the
+first one's write, and `store.refuse_history_loss` correctly kills it:
+
+    HistoryLost: this write would forget what happened or lift a stop nobody
+    lifted: anewagencyworld-com: 3 event(s) dropped. Reload and re-apply
+    rather than writing a stale snapshot back over it.
+
+That is the guard working - nothing was corrupted and the stale run simply
+lost its own work. But it means generation does NOT parallelise by running
+several processes, and the batching workaround must be strictly sequential.
+It also means a batch script and an ad-hoc top-up run cannot overlap, which
+is how this was found.
+
+TASK-011's per-record persistence makes the window much smaller. It does not
+make two concurrent runs safe.
+
 ## Checkpoint, late 2026-09-13
 
 Things learned the expensive way tonight, recorded so nobody relearns them.
