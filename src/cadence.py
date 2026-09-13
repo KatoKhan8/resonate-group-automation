@@ -287,6 +287,29 @@ def validate_steps(steps):
                     f"step {key!r}: "
                     + "; ".join(f["why"] for f in blocking))
         out.append(dict(step, day=day, key=key))
+
+    # ONE CONNECTION REQUEST PER PERSON, PER SEQUENCE.
+    #
+    # `linkedinstate` refuses a second invitation at execution time - a
+    # request while one is outstanding is a wait, and a request to somebody
+    # who did not accept is a wait too - so a sequence carrying two of them
+    # would be a sequence whose second LinkedIn step can never run. That is
+    # the shape of a cadence that reports eleven touches and sends ten, and
+    # it is exactly what a denser LinkedIn cadence gets wrong: a message
+    # step that forgot to say `requires` reads as a second request.
+    #
+    # Checked here rather than at authoring time as well, because a sequence
+    # can arrive from a stored campaign written by an older build and the
+    # execution path is the one that must not be surprised.
+    requests = linkedinstate.connection_requests(out)
+    if len(requests) > 1:
+        raise BadCadence(
+            "this sequence sends "
+            + str(len(requests)) + " connection requests to one person ("
+            + ", ".join(str(s["key"]) for s in requests)
+            + "). A second invitation is not a retry, and a LinkedIn step "
+              "that meant to be a message has to say so - `linkedin_action: "
+              "message`, or `requires: connection_accepted`")
     return tuple(out)
 
 
@@ -771,18 +794,34 @@ def accepted_connection(rec, contact=None):
 def pause_state(rec, config=None):
     """Whether this whole account is stopped, and why.
 
-    Three sources, most final first:
+    Four sources, most final first:
 
       1. an account suppression - a company-wide do-not-contact, permanent
       2. `rec["paused"]` - the reversible hold `accountpolicy.apply_reply`
          writes when a reply's policy holds the account
-      3. a reply in the log that never went through that path
+      3. a booked meeting anywhere at this company
+      4. a reply in the log that never went through that path
 
-    (3) is a safety net, and it used to be the whole rule: *any* reply
+    (4) is a safety net, and it used to be the whole rule: *any* reply
     paused the company. It now asks the same policy, so a reply classified
     "not interested" no longer stops three colleagues who were never
     written to. An unclassified reply still resolves to a hold, so the net
     still catches everything it caught before that nobody has read.
+
+    (3) IS THE ACCOUNT, NOT THE PERSON, AND IT HAD NO CONSUMER AT ALL.
+    `events.MEETING_MARKED` was read by `hygiene`, `outcomes`, `report`,
+    `signals`, `tagsync` and `variants` - six reporting consumers - and by
+    nothing on any send or plan path. So a meeting booked with the COO did
+    not stop the cold sequence to the CFO, and the only thing that stopped
+    it was whatever the reply beside it happened to be classified as. A
+    meeting is the strongest possible statement that this account is being
+    worked by a human, and cold outreach continuing into one is the
+    "agency that does not talk to itself" failure at its most expensive.
+
+    Derived rather than written, for the same reason (4) is: nothing in
+    `src/` writes `MEETING_MARKED` today - a person or the UI does - so a
+    transition keyed to a writer would have no writer. `accountpolicy` stays
+    the authority on what an event MEANS; this reads the event.
     """
     from . import accountpolicy
 
@@ -800,6 +839,14 @@ def pause_state(rec, config=None):
         return {"since": review.get("since"), "reason": "review_required",
                 "outcome": review.get("reason"), "channel": None,
                 "by": review.get("by")}
+    for e in event_log(rec):
+        if e.get("type") != events.MEETING_MARKED:
+            continue
+        return {"since": e.get("at"), "reason": events.MEETING_MARKED,
+                "outcome": "meeting_booked", "channel": e.get("channel"),
+                "by": e.get("contact"),
+                "why": "a meeting is booked at this company, so nothing cold "
+                       "goes to anybody here"}
     # One classification per contact who replied, not one per reply event:
     # `classify_outcome` walks the log, so asking it inside a loop over the
     # log is quadratic on a record with a long history.
@@ -916,14 +963,14 @@ def build(rec, config=None, recs=None, paused_set=None, workspace=None,
             stored = ((rec.get("cadence") or {}).get(key) or {}).get(spec["key"]) or {}
             step["status"] = status_for(rec, contact, spec, step, stored,
                                         paused=paused, accepted=accepted,
-                                        config=config)
+                                        config=config, sequence=sequence)
             steps[spec["key"]] = step
         timeline[key] = steps
     return {"paused": paused, "contacts": timeline}
 
 
 def status_for(rec, contact, spec, step, stored, paused, accepted,
-               config=None):
+               config=None, sequence=None):
     # A terminal state is returned as it stands. Recomputing a status for a
     # step that has already been sent, confirmed or cancelled would let a
     # rebuild move it, and `stepstate.reconcile` documents that rule as the
@@ -945,8 +992,32 @@ def status_for(rec, contact, spec, step, stored, paused, accepted,
     # the cross-channel check agrees with.
     if spec["channel"] == "linkedin" and not contact.get("linkedin"):
         return "blocked"
-    if spec.get("requires") == ACCEPT_EVENT and not accepted:
-        return "waiting"
+    # THE LINKEDIN BRANCH, ASKED OF THE ONE MODULE THAT HOLDS IT.
+    #
+    # This was `spec["requires"] == ACCEPT_EVENT and not accepted` - a
+    # boolean, which cannot tell "they declined" from "nobody has read
+    # whether they accepted" and answers `waiting` to both. It also had no
+    # answer at all for the cadence this client now runs: an open profile
+    # that needs no request, a message that needs a connection the provider
+    # reports, and an InMail fallback that must be HELD rather than skipped
+    # while nothing can send one.
+    #
+    # `linkedinstate.plan_step` is that branch and is the only place it
+    # lives. `waiting` and `skipped` are the existing vocabulary and keep
+    # their meanings, so `eligibility._dependency` and
+    # `eligibility._linkedin_checks`, which both read `waiting`, are
+    # unchanged.
+    if spec["channel"] == "linkedin":
+        move = linkedinstate.plan_step(rec, contact, spec, steps=sequence,
+                                       config=config)
+        step["linkedin_state"] = move["state"]
+        step["linkedin_action"] = move["action"]
+        if move["status"] == linkedinstate.SKIP:
+            step["skipped_reason"] = move["why"]
+            return "skipped"
+        if move["status"] == linkedinstate.WAIT:
+            step["waiting_on"] = move["why"]
+            return "waiting"
     if spec["channel"] == "email":
         # MX policy suppresses the CHANNEL, not the contact: the step stays in
         # the timeline, named and auditable, and LinkedIn is untouched.

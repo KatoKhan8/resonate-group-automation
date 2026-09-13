@@ -27,6 +27,7 @@ Every verdict below is delegated:
     which human owns this contact          assignment.assigned / allocate
     which sequence does this account run   cadencearms + cadence.steps_for
     which wording                          cadence.variant_for
+    where this person stands on LinkedIn   linkedinstate.plan_step
     what has actually happened here        account.graph
 
 Nothing here re-derives any of those. Where a delegated authority says no,
@@ -82,8 +83,8 @@ import argparse
 import json
 
 from . import (account, assignment, cadence, cadencearms, channels, clients,
-               collision, eligibility, fatigue, personas, routing,
-               senderidentity as si, store)
+               collision, eligibility, fatigue, linkedinstate, personas,
+               routing, senderidentity as si, store)
 
 # ------------------------------------------------------------- the answers
 
@@ -118,6 +119,36 @@ WAIT_NO_SENDER = "wait:no_sender_available"
 WAIT_NO_CHANNEL = "wait:no_channel_open"
 WAIT_NO_STEP = "wait:no_step_left"
 WAIT_NO_CANDIDATE = "wait:no_contact_actionable_now"
+
+# The LinkedIn branch. Four codes rather than one, because they are four
+# different remedies and an operator acts on the remedy: wait for them to
+# accept, go and read the provider, get the capability validated, or nothing
+# - this person is not reachable on LinkedIn at all. `linkedinstate` decides;
+# these are the planner's names for what it decided, mapped once in
+# `_linkedin_reason` so there is one translation rather than one per branch.
+WAIT_CONNECTION_PENDING = "wait:connection_request_pending"
+WAIT_CONNECTION_UNREAD = "wait:connection_acceptance_unread"
+WAIT_LINKEDIN_CAPABILITY = "wait:linkedin_capability_unproven"
+WAIT_LINKEDIN_STATE = "wait:linkedin_state"
+
+_LINKEDIN_REASON = {
+    linkedinstate.HELD_REQUEST_OUTSTANDING: WAIT_CONNECTION_PENDING,
+    linkedinstate.HELD_ACCEPTANCE_UNREAD: WAIT_CONNECTION_UNREAD,
+    linkedinstate.HELD_CAPABILITY_UNPROVEN: WAIT_LINKEDIN_CAPABILITY,
+    linkedinstate.HELD_INMAIL_UNAVAILABLE: WAIT_LINKEDIN_CAPABILITY,
+    linkedinstate.HELD_ACTION_UNKNOWN: WAIT_LINKEDIN_CAPABILITY,
+}
+
+
+def _linkedin_reason(move):
+    """One of this module's codes for what the LinkedIn branch decided.
+
+    Unmapped is `WAIT_LINKEDIN_STATE` rather than a guess at a nearer code:
+    a branch this planner has no name for is reported as the branch, with
+    `linkedinstate`'s own sentence, exactly as an unmapped eligibility reason
+    is reported verbatim rather than translated.
+    """
+    return _LINKEDIN_REASON.get(move.get("code"), WAIT_LINKEDIN_STATE)
 
 # A bounce is a fact about one address. It closes that identity's email
 # channel and it closes nothing else - not their LinkedIn, and not the
@@ -175,6 +206,7 @@ def _decision(action, reason_code, reason, **fields):
         "copy": None,
         "execute_after": None,
         "experiment": None,
+        "linkedin": None,
         "considered": [],
     }
     out.update(fields)
@@ -365,14 +397,30 @@ def _channel_order(steps, contact_channels):
     return [c for c in order if c in contact_channels]
 
 
-def _next_step(rec, contact_key, steps, channel, graph):
-    """The first step on this channel this contact has not been sent.
+def _next_step(rec, contact, steps, channel, graph, config=None, at=None,
+               observed=None):
+    """The first step on this channel this contact may be sent. `(spec, move)`.
 
     Read from the confirmed and planned touches on the record, which is
     where "we already did that one" actually lives. A step already pushed
     is not offered again; `eligibility._already_pushed` says the same
     thing at the gate, and this is the plan-time half of it.
+
+    On LinkedIn the sequence position is not enough, because the cadence
+    BRANCHES: a connection request to somebody already connected is not the
+    next step, it is a step that no longer applies, and the messages behind
+    it are what is left. `linkedinstate.plan_step` is the authority on that
+    and is asked per candidate step.
+
+    The two answers it can give are not the same and the difference is the
+    point. `skip` advances - the step is pointless and the lane carries on.
+    `wait` stops - the lane is held, the step still belongs to the cadence,
+    and walking past it would send a later message claiming a conversation
+    the earlier one never opened. Nothing here silently drops a LinkedIn
+    step: a cadence that reports eleven touches and sends ten is what that
+    produces.
     """
+    contact_key = (contact or {}).get("key")
     done = {t.get("step") for t in graph["touches"]
             if t.get("contact_key") == contact_key}
     for spec in steps:
@@ -380,8 +428,16 @@ def _next_step(rec, contact_key, steps, channel, graph):
             continue
         if spec.get("key") in done:
             continue
-        return spec
-    return None
+        if channel != LINKEDIN:
+            return spec, None
+        move = linkedinstate.plan_step(rec, contact, spec, observed=observed,
+                                       steps=steps, config=config, at=at)
+        if move["status"] == linkedinstate.SKIP:
+            continue
+        if move["status"] == linkedinstate.WAIT:
+            return None, move
+        return spec, move
+    return None, None
 
 
 def _bounced_channels(rec, contact_key):
@@ -422,7 +478,7 @@ def _sender_for(rec, contact, channel, workspace, rows, config, campaign):
 
 
 def _consider(rec, entry, graph, steps, config, workspace, rows, campaign,
-              at, suppressed):
+              at, suppressed, linkedin_observed=None):
     """One contact, every per-person gate, in order of finality.
 
     Returns a candidate dict. `ok` says whether it can be acted on now;
@@ -434,7 +490,7 @@ def _consider(rec, entry, graph, steps, config, workspace, rows, campaign,
     out.pop("contact", None)
     out.update({"ok": False, "terminal": False, "channel": None,
                 "sender": None, "step": None, "execute_after": None,
-                "why": None, "reason_code": None})
+                "why": None, "reason_code": None, "linkedin": None})
 
     # 1. May this person hear anything at all.
     reasons = [r for r in eligibility.must_not_contact(
@@ -490,24 +546,46 @@ def _consider(rec, entry, graph, steps, config, workspace, rows, campaign,
     # 4. A channel with a step left, a sender, and a place in the sequence.
     problems = []
     for channel in _channel_order(steps, open_channels):
-        spec = _next_step(rec, key, steps, channel, graph)
+        spec, move = _next_step(rec, contact, steps, channel, graph,
+                                config=config, at=at,
+                                observed=linkedin_observed)
+        if spec is None and move is not None:
+            # The LinkedIn branch holds this lane. Its own sentence is
+            # reported verbatim and its `execute_after` travels with it -
+            # "they have not accepted yet" carries a window, and "nobody has
+            # read the provider" carries no clock at all, because no amount
+            # of waiting performs the read.
+            problems.append((_linkedin_reason(move), move["why"],
+                             move.get("execute_after")))
+            out["linkedin"] = {"state": move["state"],
+                               "action": move["action"],
+                               "code": move["code"], "why": move["why"]}
+            continue
         if spec is None:
             problems.append((WAIT_NO_STEP,
                              f"every {channel} step in this sequence has "
-                             f"already been sent to this person"))
+                             f"already been sent to this person", None))
             continue
         sender, refusal = _sender_for(rec, contact, channel, workspace, rows,
                                       config, campaign)
         if sender is None:
-            problems.append((WAIT_NO_SENDER, refusal))
+            problems.append((WAIT_NO_SENDER, refusal, None))
             continue
+        if move is not None:
+            out["linkedin"] = {"state": move["state"],
+                               "action": move["action"],
+                               "code": move["code"], "why": move["why"]}
         out.update({"ok": True, "channel": channel, "sender": sender,
                     "step": dict(spec),
                     "execute_after": _when(rec, graph, key, config, at)})
         return out
 
-    out["reason_code"], out["why"] = problems[0] if problems else (
-        WAIT_NO_CHANNEL, "no channel is open to this person")
+    if problems:
+        out["reason_code"], out["why"], due = problems[0]
+        out["execute_after"] = due
+    else:
+        out["reason_code"], out["why"] = (
+            WAIT_NO_CHANNEL, "no channel is open to this person")
     return out
 
 
@@ -590,12 +668,19 @@ def _experiment(campaign, rec, config):
 # --------------------------------------------------------- the whole thing
 
 def next_best_action(rec, *, config=None, campaign=None, workspace=None,
-                     estate=None, rows=None, at=None, suppressed=None):
+                     estate=None, rows=None, at=None, suppressed=None,
+                     linkedin=None):
     """The one thing to do next at this company, or why nothing may be done.
 
     `estate` is `collision.check_account(domain, expect_workspace=...)`,
     already paid for by the caller. This function performs no provider
     call of any kind, and `None` means WAIT rather than clear.
+
+    `linkedin` is the same arrangement for the other provider: a mapping of
+    contact key to `linkedinstate.observation`, built from a read the caller
+    has already performed. Absent is not "not connected" - it is the state
+    machine's own `UNKNOWN_ACCEPTANCE` wherever a request has gone out,
+    which is a WAIT naming the read that would settle it.
 
     Writes nothing. Reserves nothing. Returns a decision; acting on it
     still runs `eligibility.decide` and `executionguard.authorize`, both of
@@ -624,9 +709,10 @@ def next_best_action(rec, *, config=None, campaign=None, workspace=None,
         verdict.update(base)
         return verdict
 
+    linkedin = linkedin or {}
     considered = [
         _consider(rec, entry, graph, steps, config, workspace, rows,
-                  campaign, at, suppressed)
+                  campaign, at, suppressed, linkedin.get(entry["key"]))
         for entry in rank(rec, config)
     ]
     base["considered"] = considered
@@ -685,6 +771,7 @@ def next_best_action(rec, *, config=None, campaign=None, workspace=None,
         f"against step {spec.get('key')} now",
         person=best["key"], person_name=best["name"],
         channel=best["channel"], sender=best["sender"],
+        linkedin=best.get("linkedin"),
         angle=contact.get("angle"),
         copy=_copy(rec, contact, spec, config, campaign),
         execute_after=due or at)
@@ -725,14 +812,19 @@ def _copy(rec, contact, spec, config, campaign):
 # --------------------------------------------------------------- the plan
 
 def plan(recs, *, config=None, campaign=None, workspace=None, estates=None,
-         rows=None, at=None):
+         rows=None, at=None, observations=None):
     """`next_best_action` over a cohort, act-first.
 
     `estates` maps domain to a `collision.check_account` result. A record
     with no entry is planned as estate-unread, which is a WAIT with a named
     remedy rather than a silent omission.
+
+    `observations` maps record id to `{contact_key: linkedinstate.
+    observation}`, from a provider read the caller has already performed.
+    Absent is the LinkedIn branch's own unread state, not a clear one.
     """
     estates = estates or {}
+    observations = observations or {}
     rows = si.load() if rows is None else rows
     at = at or store.now()
     out = []
@@ -740,7 +832,8 @@ def plan(recs, *, config=None, campaign=None, workspace=None, estates=None,
         cfg = config or clients.load(rec.get("client"))
         out.append(next_best_action(
             rec, config=cfg, campaign=campaign, workspace=workspace,
-            estate=estates.get(rec.get("domain")), rows=rows, at=at))
+            estate=estates.get(rec.get("domain")), rows=rows, at=at,
+            linkedin=observations.get(rec.get("id"))))
     order = {ACT: 0, WAIT: 1, STOP: 2}
     out.sort(key=lambda d: (order.get(d["action"], 3),
                             str(d.get("execute_after") or ""),
