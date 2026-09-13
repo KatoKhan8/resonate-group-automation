@@ -7,9 +7,10 @@ this file is inferred from a plan.
 ## Repository
 
 - branch: `master`
-- HEAD: `fb1557d` "Stop naming state files and exception classes where they go stale"
+- HEAD: `7ff5a01` "Say what was verified, not what was assumed"
 - remote: `origin` https://github.com/KatoKhan8/resonate-group-automation.git
-- remote HEAD: same as HEAD after the push recorded at the end of this file
+- remote HEAD: `7ff5a01` on `origin/master`. Identical to HEAD.
+- last pushed commit: `7ff5a01`
 - worktree: clean
 - `work/` is gitignored. Queue and campaign state are NOT in git, by design.
 
