@@ -209,11 +209,31 @@ Provider quirks that still hold and still bite:
 
 ## HeyReach
 
-Unchanged this session; nothing was called.
+Read-only this session. Nothing was written. Two corrections.
 
-- **599020** RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1 - DRAFT, 0 users,
-  no sequence, list 933603, seat 174892, org unit 118832. An empty shell, and
-  it has NO canonical campaign row - it is an orphan at the provider.
+- **599020** RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1, **DRAFT**, seat
+  174892, `listId` **null** - not 933603, which the previous handoff recorded.
+
+  **It is NOT an empty shell.** It carries a full branching sequence:
+  connection request, messages, `VIEW_PROFILE` nodes, conditional `END`
+  branches and an **`INMAIL`** node. Every message payload reads
+  `NOT APPROVED COPY {NOT_APPROVED_COPY} - structural placeholder ... This
+  campaign carries no approved copy and must not be started` - 32 occurrences
+  of that marker across the tree. It is a deliberate proof of shape and it is
+  safe: no list, no leads, no approved words, and `StartCampaign` is not a
+  wired verb.
+
+  Two things to know before touching it. The `INMAIL` node depends on a
+  capability this system has NOT established - `cadencelibrary` holds any
+  step naming `CAP_INMAIL` for exactly that reason, so the provider campaign
+  contains a step the planner would refuse. And a sequence write APPENDS
+  nowhere here but `set_sequence` replaces, so re-writing it is possible in a
+  way EmailBison's is not.
+
+  It now has a canonical row: `productive-linkedin-production-v1`, `draft`,
+  no records, mapped to 599020. It had none, which is exactly how a second
+  campaign gets built for the same purpose - and HeyReach has no campaign
+  DELETE, so an orphan cannot be removed, only owned.
 - **594061** the earlier canary, paused.
 - 48 other campaigns belong to the client. Do not touch them.
 - `WRITE_ROUTES` is seven routes. Resume, StartCampaign and every
@@ -298,8 +318,10 @@ a clean tree and no run in the previous session looked.
 ## P1
 
 1. The full suite has never been observed to a verdict (TASK-001, running).
-2. HeyReach 599020 is an empty DRAFT with no canonical row. Give it a row or
-   delete it; an orphan at a provider is how two campaigns get built.
+2. HeyReach 599020 now has a canonical row, but its sequence carries an
+   `INMAIL` node whose capability is unproven and which the planner would
+   hold. Decide whether the shape is right before any copy is written into
+   it; `set_sequence` replaces, so it can be rewritten.
 3. Open Profile and InMail capability unmeasured (TASK-002).
 4. Four cost estimators multiply by `cadence.GENERATED_KEYS`, which still
    reads two generated emails while Productive generates five. Every LLM
