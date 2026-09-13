@@ -658,8 +658,17 @@ def draft(rec, contact, day, model, client=None):
     for attempt in range(1, MAX_DRAFT_ATTEMPTS + 1):
         prompt = render_prompt("draft", rec, contact, client, day)
         if rejected:
+            # THE REASON, NOT THE CODE. This fed back `filler_phrase`, and
+            # a model told `filler_phrase` three times has been told
+            # nothing three times - three uninformative retries is a step
+            # that never gets written. Measured 2026-09-13: `em5` failed
+            # exactly this way for six of twenty records across two full
+            # regeneration passes, and six contacts could not be staged
+            # for want of one message each. `lint.explain` names the
+            # offending phrase where it can.
             prompt += ("\n## Your previous draft failed lint\n\n"
-                       f"{'; '.join(rejected[-1])}\n\nWrite a new one. Do not patch the old one.\n")
+                       f"{rejected[-1]}\n\nWrite a new one. "
+                       "Do not patch the old one.\n")
         data, _, schema_errors = llm.ask(model, "draft", prompt)
         candidate = {"channel": "email", "generated": True,
                      "subject": data["subject"], "body": data["body"]}
@@ -678,7 +687,10 @@ def draft(rec, contact, day, model, client=None):
             events.record(rec, events.DRAFT_GENERATED, contact_key=key,
                           channel="email", step=day, generated=True)
             return candidate
-        rejected.append(content_failures)
+        rejected.append(lint.explain(
+            content_failures,
+            f"{candidate.get('subject') or ''} "
+            f"{candidate.get('body') or ''}"))
         events.record(rec, events.LINT_FAILED, contact_key=key, channel="email",
                       step=day, failures=content_failures, attempt=attempt)
     store.log(rec, "draft",

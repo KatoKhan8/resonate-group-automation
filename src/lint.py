@@ -70,6 +70,70 @@ PLACEHOLDER_RE = re.compile(r"[\[{<](?!http)[^\]}>\n]{2,40}[\]}>]")
 HELD_CODES = frozenset({"recipient_not_sendable"})
 
 
+# WHAT A FAILURE CODE MEANS, IN WORDS A WRITER CAN ACT ON.
+#
+# `generate.draft` regenerates a failing draft and feeds the reason back -
+# "Your previous draft failed lint: {reason}. Write a new one." It was
+# feeding back the CODE. A model told `filler_phrase` three times has been
+# told nothing three times, and three uninformative retries is a step that
+# never gets written.
+#
+# Measured 2026-09-13: `em5` - the step whose job is to close the loop -
+# failed on `filler_phrase` for six of twenty records across two full
+# regeneration passes, and the retry prompt said only "filler_phrase". Six
+# contacts could not be staged for want of one message each.
+#
+# The explanations live here rather than in the prompt because this module
+# owns the rules, and an explanation that drifts from the rule it explains is
+# worse than none.
+EXPLAIN = {
+    "filler_phrase": "you used a phrase that is banned outright. Remove it "
+        "and say the thing directly instead",
+    "em_dash": "you used an em dash, en dash, curly apostrophe or "
+        "non-breaking hyphen. Plain ASCII punctuation only",
+    "placeholder": "you left an unfilled placeholder in square, curly or "
+        "angle brackets",
+    "attachment": "you referred to an attachment. Nothing is attached",
+    "body_too_short": f"the body is under {MIN_WORDS} words",
+    "body_too_long": f"the body is over {MAX_WORDS} words",
+    "subject_too_long": f"the subject is {MAX_SUBJECT} characters or more",
+    "subject_missing": "there is no subject",
+    "body_missing": "there is no body",
+    "greets_the_wrong_person": "you greeted somebody who is not the "
+        "recipient. Use their name or no name at all",
+    # Not interpolated: `NOTE_MAX_CHARS` is defined below this table
+    # and a forward reference at module scope is a NameError.
+    "note_too_long": "the note is too long for a connection request",
+    "note_too_short": "the note is too short to say anything",
+    "mentions_the_email": "you referred to the other channel. Each "
+        "message stands alone",
+}
+
+
+def explain(codes, text=""):
+    """Failure codes as sentences a writer can act on.
+
+    `text` is optional and is used to NAME the offending phrase rather than
+    describe its category - "you used the phrase 'just following up'" is
+    actionable where "you used a banned phrase" is a guessing game. A code
+    with no entry is passed through unchanged rather than dropped: an
+    unexplained reason is still a reason, and silently losing one would make
+    a retry look unprompted.
+    """
+    said = str(text or "").lower()
+    out = []
+    for code in codes or ():
+        line = EXPLAIN.get(code, code)
+        if code == "filler_phrase":
+            found = [p for p in BANNED_PHRASES if p in said]
+            if found:
+                named = ", ".join(f"\"{p}\"" for p in found)
+                line = (f"you used {named}, which is banned outright. Remove "
+                        f"it and say the thing directly instead")
+        out.append(line)
+    return "; ".join(out)
+
+
 def sendable(contact):
     """Section 6.1, decided in one place.
 

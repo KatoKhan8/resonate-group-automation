@@ -126,6 +126,25 @@ class TestTheAcceptanceTest(GenerateTest):
         self.assertIn("placeholder", retry_prompt)
         self.assertIn("Do not patch the old one", retry_prompt)
 
+    def test_the_retry_names_the_banned_phrase_rather_than_the_code(self):
+        """A model told `filler_phrase` three times has been told nothing.
+
+        Measured 2026-09-13: `em5` - the step whose job is to close the loop -
+        failed on `filler_phrase` for six of twenty records across two full
+        regeneration passes, because the retry fed back the CODE. Six
+        contacts could not be staged for want of one message each.
+        """
+        filler = json.dumps({
+            "subject": "following up",
+            "body": "Rowan, just following up on this. " + good_body("Rowan")})
+        model = llm.ScriptedModel(diagnosis_answer(), filler,
+                                  draft_answer(), draft_answer())
+        generate.run(model=model, live=True, ids=["harbourline"])
+        retry = model.prompts[2]
+        self.assertIn("just following up", retry,
+                      "the retry did not name the phrase that failed")
+        self.assertIn("banned", retry)
+
     def test_a_draft_that_never_passes_is_not_stored(self):
         model = llm.ScriptedModel(diagnosis_answer(), *[draft_answer(BAD_BODY)] * 6)
         generate.run(model=model, live=True, ids=["harbourline"])
