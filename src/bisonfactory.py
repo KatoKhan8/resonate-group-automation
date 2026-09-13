@@ -110,25 +110,92 @@ def _plan(campaign, recs, config):
             if not contact.get("email") or not contact.get("sendable"):
                 continue
             person = names.get(contact.get("key")) or {}
+            # `name` is what this estate actually stores - the split fields
+            # are empty on every Productive contact - so the first token is
+            # taken from it, which is the convention `push.build_rows` has
+            # used since it was written. Following it rather than inventing a
+            # second one: two places splitting names differently is how the
+            # same person gets greeted two ways.
+            #
+            # Deriving a given name from a full name is not reliable for
+            # every name in the world. It is reading what is on the record
+            # rather than inventing anything, which is the line that matters,
+            # and a contact with no name at all is still refused below.
             first = (person.get("first_name") or "").strip()
+            if not first:
+                first = ((person.get("name") or "").split() or [""])[0].strip()
             if not first:
                 raise FactoryRefused(
                     f"contact {contact.get('key')!r} on record "
-                    f"{record.get('id')!r} has no first name, and EmailBison "
-                    f"requires one. Refusing to invent a name that will greet "
-                    f"a real person")
+                    f"{record.get('id')!r} has no name at all, and EmailBison "
+                    f"requires a first name. Refusing to invent one that will "
+                    f"greet a real person")
+            # THE WORDS, CARRIED WITH THE PERSON.
+            #
+            # The sequence written to the provider is a template of merge
+            # fields - `{SUBJECT}` and `{BODY}` - so the copy itself travels
+            # per lead in custom variables. Without this the template renders
+            # against nothing: the campaign would be staged, the readback
+            # would look right, and the email would go out empty.
+            #
+            # Only an APPROVED step's words are carried. An unapproved draft
+            # is not copy anybody has blessed, and the approval fingerprint
+            # is what `executionguard` checks a payload against, so shipping
+            # words that carry no approval would put the gate and the wire
+            # out of step.
+            approved = _approved_email(source, contact.get("key"))
             leads.append({"record_id": record.get("id"),
                           "contact_key": contact.get("key"),
                           "email": contact.get("email"),
                           "first_name": first,
-                          "last_name": (person.get("last_name") or "").strip()})
+                          "step_key": (approved or {}).get("step_key"),
+                          "subject": (approved or {}).get("subject") or "",
+                          "body": (approved or {}).get("body") or "",
+                          "last_name": (
+                              (person.get("last_name") or "").strip()
+                              or " ".join(
+                                  (person.get("name") or "").split()[1:]))})
     return {"fingerprint": campaigns.fingerprint(campaign, recs=recs,
                                                  config=config),
             "name": campaign.get("name") or f"resonate-{campaign.get('campaign_id')}",
             "leads": leads,
-            "window": (config or {}).get("sending_window") or {},
+            # THE CAMPAIGN'S OWN WINDOW WINS. EmailBison schedules ONE window
+            # per campaign, so the window is a property of the cohort rather
+            # than of the client: a Toronto prospect in a campaign on the
+            # client's Europe/Zagreb hours would be written to at 03:00 local.
+            #
+            # Which is why geography belongs in campaign grouping wherever
+            # provider scheduling is campaign-level - mixing timezones into
+            # one campaign guarantees somebody is mailed in the middle of
+            # their night. The client setting stays as the default for a
+            # cohort that does not state one.
+            "window": (campaign.get("sending_window")
+                       or (config or {}).get("sending_window") or {}),
             "sequence": (config or {}).get("email_sequence") or {},
             "bison_campaign_id": campaign.get("bison_campaign_id")}
+
+
+def _approved_email(source, contact_key):
+    """The earliest APPROVED email step for this contact, or None.
+
+    Earliest because the sequence this factory writes is one step: it is the
+    opener that goes out, and a later step's words in the opener's place
+    would be a message arriving out of order.
+
+    A record whose steps live under `cadence[contact_key]` is read directly
+    rather than through `cadence.build`, because the words that matter are
+    the ones a human approved and those are the ones stored.
+    """
+    steps = ((source or {}).get("cadence") or {}).get(contact_key) or {}
+    if not steps:
+        return None
+    for step_key in sorted(steps):
+        step = steps[step_key] or {}
+        if step.get("channel") != "email" or not step.get("approval"):
+            continue
+        return {"step_key": step_key, "subject": step.get("subject"),
+                "body": step.get("body")}
+    return None
 
 
 def _find_or_create(campaign, report, by="system"):
@@ -332,6 +399,31 @@ def _remember_lead(lead, lead_id):
                     contact["bison_lead_id"] = lead_id
 
 
+def _variables_for(lead, campaign):
+    """Everything this lead carries at the provider.
+
+    Two kinds, and both are load-bearing.
+
+    ATTRIBUTION. `adapters.from_emailbison` reads `record_id` and
+    `contact_key` back off an inbound reply. Without them a reply arrives
+    attached to an address and to nothing else, and reply-stop cannot find
+    the person it is supposed to stop.
+
+    THE COPY. The sequence is a template of merge fields - `{SUBJECT}` and
+    `{BODY}` - so the approved words travel per lead and render into it. A
+    lead staged without them produces an email with an empty subject and an
+    empty body, and nothing in the staging readback would have shown it: the
+    campaign, the schedule, the sender and the membership would all look
+    exactly right.
+    """
+    return bison._variables({
+        "record_id": lead["record_id"],
+        "contact_key": lead["contact_key"],
+        "client": campaign.get("client") or "",
+        "subject": lead.get("subject") or "",
+        "body": lead.get("body") or ""})
+
+
 def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     """Create the leads this campaign needs, then attach exactly those.
 
@@ -350,10 +442,25 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     bison.ensure_custom_variables()
     members = set(bison.campaign_lead_ids(provider_id))
     known = _known_lead_ids(campaign, wanted)
-    ids, created, reconciled = [], 0, 0
+    ids, created, reconciled, refreshed = [], 0, 0, 0
     for lead in wanted:
         existing = known.get(lead["contact_key"])
         if existing:
+            # THE COPY MAY HAVE CHANGED SINCE THIS LEAD WAS MADE. A
+            # regenerated draft, a fresh approval, a corrected angle - all
+            # change the words without changing who they go to, and a lead
+            # created before that still holds the old ones. Reconciled rather
+            # than assumed: the provider is asked what it has, and told only
+            # what differs.
+            wanted_vars = _variables_for(lead, campaign)
+            held = bison.variables_of(bison.lead(existing))
+            stale = [v for v in wanted_vars if held.get(v["name"]) != v["value"]]
+            if stale:
+                bison.update_lead(existing, {"custom_variables": stale})
+                refreshed += 1
+                report["did"].append(
+                    f"refreshed {len(stale)} variable(s) on lead {existing}: "
+                    f"{sorted(v['name'] for v in stale)}")
             ids.append(existing)
             continue
         try:
@@ -366,10 +473,7 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
                 # reply. Without them a reply arrives attached to an address
                 # and to nothing else, and reply-stop cannot find the person
                 # it is supposed to stop.
-                "custom_variables": bison._variables({
-                    "record_id": lead["record_id"],
-                    "contact_key": lead["contact_key"],
-                    "client": campaign.get("client") or ""})})
+                "custom_variables": _variables_for(lead, campaign)})
             created += 1
         except ProviderError as e:
             # ALREADY THERE, AND WE NEVER WROTE IT DOWN.
@@ -395,7 +499,8 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     # first and started relying on the second would still avoid duplicates -
     # and would be one indexing delay away from not avoiding them.
     report["provider"]["leads"] = {"created": created, "reused": len(known),
-                                   "reconciled": reconciled}
+                                   "reconciled": reconciled,
+                                   "refreshed": refreshed}
     report["did"].append(
         f"created {created} lead(s), reused {len(known)}, reconciled "
         f"{reconciled}; attached {len(outcome['attached'])}, "

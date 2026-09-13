@@ -212,12 +212,18 @@ class TestNothingCanSend(unittest.TestCase):
         `heyreach.READ_ROUTES` has always had - and `resume` is not in it.
         """
         from src.providers import bison
-        for route in bison.WRITE_ROUTES:
-            for starting in ("resume", "start", "launch", "activate",
-                             "send-test"):
-                self.assertNotIn(starting, route, route)
-        # And the operation that would start one is still unsupported, so
-        # even a route added by mistake could not be driven.
+        # EXACTLY ONE route here can start a send, it is named, and it was
+        # added on 2026-09-13 under explicit authorisation for a bounded
+        # canary. The guarantee is no longer "no route sends" - that would be
+        # false - but that the set is this one route and nothing else.
+        starting = [r for r in bison.WRITE_ROUTES
+                    if any(v in r for v in ("resume", "start", "launch",
+                                            "activate", "send-test"))]
+        self.assertEqual(starting, ["/campaigns/{campaign_id}/resume"],
+                         f"unexpected starting route(s): {starting}")
+        # And nothing gated can drive it: the operation that would start a
+        # campaign is absent from the supported set, so no cadence, runner or
+        # orchestrator can reach it.
         from src import providerwrites
         self.assertFalse(
             providerwrites.is_supported(providerwrites.EMAIL_ACTIVATE))

@@ -83,7 +83,19 @@ CLEAR = "clear"
 # word nobody here has verified the meaning of, and `touches_of` reports it
 # as unknown rather than assuming it is harmless. Adding a name to this set
 # is a claim that somebody checked what it means at the provider.
-KNOWN_STATUSES = frozenset({IN_SEQUENCE, "sequence_finished"})
+# `sending_paused` joined on 2026-09-13, measured rather than assumed: a lead
+# in a PAUSED campaign reads this, and it flips back to `in_sequence` the
+# moment somebody resumes. So it is a known word, and it is NOT a touch -
+# nothing has been sent - but it is also not `sequence_finished`, because the
+# campaign can start again. `touches_of` counts it as membership without
+# contact, which is what it is.
+#
+# It was found by the account gate holding on our own canary: staging one
+# lead into a paused campaign made this system's own work look like an
+# unverified status at the account. The gate was right to hold; the word
+# simply had no meaning yet.
+SENDING_PAUSED = "sending_paused"
+KNOWN_STATUSES = frozenset({IN_SEQUENCE, "sequence_finished", SENDING_PAUSED})
 UNKNOWN = "unknown"
 
 

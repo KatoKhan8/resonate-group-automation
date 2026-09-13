@@ -49,6 +49,24 @@ class FakeBison:
         return [{"name": k, "value": str(v)}
                 for k, v in sorted(mapping_of.items()) if str(v or "").strip()]
 
+    @staticmethod
+    def variables_of(row):
+        return {v["name"]: v["value"]
+                for v in (row or {}).get("custom_variables") or []}
+
+    def lead(self, lead_id):
+        return dict(self.leads[int(lead_id)])
+
+    def update_lead(self, lead_id, fields):
+        row = self.leads[int(lead_id)]
+        held = {v["name"]: v["value"]
+                for v in row.get("custom_variables") or []}
+        for v in fields.get("custom_variables") or []:
+            held[v["name"]] = v["value"]          # PATCH merges, per the API
+        row["custom_variables"] = [{"name": k, "value": v}
+                                   for k, v in sorted(held.items())]
+        return held
+
     def custom_variables(self):
         return {name: i for i, name in enumerate(sorted(self.declared))}
 
@@ -200,8 +218,13 @@ class StagingTwiceBuildsOne(QueueTest):
         # the test passes on the reconciliation path - create, get refused,
         # search - which avoids duplicates only while the provider's lead
         # search happens to be current.
+        # `refreshed: 0` matters as much as `created: 0`. The copy travels in
+        # custom variables and is reconciled against the provider on every
+        # run, so an unchanged campaign must rewrite nothing - otherwise a
+        # re-stage would churn every lead's words for no reason.
         self.assertEqual(second["provider"]["leads"],
-                         {"created": 0, "reused": 2, "reconciled": 0})
+                         {"created": 0, "reused": 2, "reconciled": 0,
+                          "refreshed": 0})
 
     def test_the_provider_id_is_persisted_where_it_can_be_found(self):
         """An id the provider issued and we did not record is a duplicate."""

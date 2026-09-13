@@ -354,19 +354,48 @@ class TestNoSendPathExists(unittest.TestCase):
                            "activate", "launch"):
                 self.assertNotIn(banned, names, f"{module.__name__}.{banned}")
 
-    def test_every_bison_write_route_is_staging_or_stopping(self):
-        """The allowlist is the guarantee, so it is read rather than trusted."""
-        for route in bison.WRITE_ROUTES:
-            for starting in ("resume", "start", "launch", "activate",
-                             "send-test"):
-                self.assertNotIn(starting, route,
-                                 f"a starting route is declared writable: {route}")
+    def test_exactly_one_bison_write_route_can_start_a_send(self):
+        """The resume route exists now. Everything else still stages or stops.
 
-    def test_the_send_route_is_absent_from_both_allowlists(self):
-        self.assertNotIn("/campaign/AddLeadsToCampaignV2", heyreach.READ_ROUTES)
+        It was added on 2026-09-13 under explicit operator authorisation for a
+        bounded canary, and the honest guarantee changed shape with it: not
+        "no route can send" - which would now be false - but that exactly ONE
+        can, that it is named, and that nothing gated can reach it.
+
+        Counted rather than merely checked for absence, so a second starting
+        route arriving quietly fails here.
+        """
+        starting = [r for r in bison.WRITE_ROUTES
+                    if any(verb in r for verb in
+                           ("resume", "start", "launch", "activate",
+                            "send-test"))]
+        self.assertEqual(starting, ["/campaigns/{campaign_id}/resume"],
+                         f"unexpected starting route(s): {starting}")
+
+    def test_nothing_gated_can_drive_the_send_route(self):
+        """The route is reachable by hand. It is not reachable by the system.
+
+        `providerwrites` is the door every automated write goes through, and
+        the operation that would start a campaign is not in its supported set
+        - so no cadence, no runner and no orchestrator can resume anything.
+        Exercising it takes somebody writing the call deliberately.
+        """
+        from src import providerwrites
         self.assertFalse(
-            [r for r in bison.WRITE_ROUTES if "resume" in r],
-            "EmailBison's start route is declared writable")
+            providerwrites.is_supported(providerwrites.EMAIL_ACTIVATE))
+        self.assertNotIn("/campaign/AddLeadsToCampaignV2", heyreach.READ_ROUTES)
+
+    def test_the_send_route_refuses_a_reach_it_was_not_told_to_expect(self):
+        """A resumed campaign sends to everybody it holds.
+
+        `expect_leads` is the containment: the caller states how many people
+        it believes are in the campaign, and a disagreement stops the send
+        rather than being discovered afterwards. There is no recalling the
+        difference.
+        """
+        import inspect
+        self.assertIn("expect_leads",
+                      inspect.signature(bison.resume_campaign).parameters)
 
     def test_no_prospect_facing_operation_is_supported_on_either(self):
         """The end of the chain: even a route that existed could not be used."""

@@ -69,6 +69,13 @@ work there.
 
 Do not attribute their facts to us. Their headcount is not "our team".
 
+Do not attribute our words to them, which is the same mistake pointing the
+other way. `angle_wording` is the CLIENT's phrasing of what they sell; it is
+not something the recipient has said, published or endorsed. "HSMG states that
+profitability visible on Monday not two weeks late drives its strategic focus"
+puts our sales line in their mouth and is false. Quote them only from
+`public_evidence`.
+
 ## Constraints, all enforced by lint.py before this ships
 
 - No em dashes or en dashes anywhere.

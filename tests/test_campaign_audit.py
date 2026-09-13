@@ -207,9 +207,14 @@ class TestNoDirectProviderMutation(CampaignTest):
         # EmailBison posts now, and every route it may post to is declared.
         # The one that starts a campaign is not among them, which is the
         # property this assertion used to get from banning POST outright.
-        for route in bison.WRITE_ROUTES:
-            self.assertNotIn("resume", route)
-            self.assertNotIn("activate", route)
+        # One route can start a send and it is named; nothing gated reaches
+        # it. See `test_providers` for the full statement.
+        starting = [r for r in bison.WRITE_ROUTES
+                    if "resume" in r or "activate" in r]
+        self.assertEqual(starting, ["/campaigns/{campaign_id}/resume"])
+        from src import providerwrites
+        self.assertFalse(
+            providerwrites.is_supported(providerwrites.EMAIL_ACTIVATE))
 
     def test_a_campaign_created_on_a_provider_cannot_send(self):
         """Creating one is allowed now. Starting one is still not.

@@ -401,6 +401,11 @@ WRITE_ROUTES = (
     "/campaigns/{campaign_id}/sequence-steps",      # copy, into a stopped campaign
     "/campaigns/{campaign_id}/leads/attach-leads",  # membership
     "/campaigns/{campaign_id}/pause",               # stop everybody
+    # THE ONE ROUTE HERE THAT REACHES A PERSON. Declared so it is visible
+    # rather than buried among the staging verbs. `resume_campaign` takes an
+    # expected lead count and refuses when the provider disagrees, because a
+    # resumed campaign sends to everybody it holds.
+    "/campaigns/{campaign_id}/resume",              # START SENDING
     "/campaigns/{campaign_id}/leads/stop-future-emails",   # stop ONE person
     "/campaigns/{campaign_id}/schedule",            # when it may send
     "/campaigns/{campaign_id}/attach-sender-emails",  # which inboxes
@@ -772,6 +777,44 @@ def campaign_senders(campaign_id):
     return [r.get("id") for r in rows if isinstance(r, dict) and r.get("id")]
 
 
+def lead(lead_id):
+    """One lead as the provider holds it, custom variables included."""
+    status, data = request("GET", f"{base()}/leads/{lead_id}", headers())
+    if not ok(status):
+        raise ProviderError(f"emailbison lead: GET -> {status}")
+    return mapping(data, "lead").get("data") or {}
+
+
+def update_lead(lead_id, fields):
+    """Change a lead, and confirm the change is what the provider now holds.
+
+    `PATCH /api/leads/{id}` MERGES custom variables rather than replacing the
+    set, so a partial update leaves the names it did not mention alone. That
+    is the behaviour wanted here - attribution is written once at creation and
+    the copy is what changes - but it also means a variable cannot be removed
+    by omitting it.
+
+    Raises unless every variable asked for reads back with the value asked
+    for. Copy that was updated and did not take is worse than copy that was
+    never updated: the readback would look right and the wrong words would
+    send.
+    """
+    status, data = request("PATCH", f"{base()}/leads/{lead_id}",
+                           _json_headers(), fields)
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison update_lead: PATCH -> {status} {_message(data)}")
+    held = variables_of(lead(lead_id))
+    for wanted in fields.get("custom_variables") or []:
+        got = held.get(wanted["name"])
+        if got != wanted["value"]:
+            raise ProviderError(
+                f"emailbison update_lead: asked for "
+                f"{wanted['name']}={wanted['value'][:40]!r} and lead "
+                f"{lead_id} reads back {str(got)[:40]!r}")
+    return held
+
+
 def campaign_lead_ids(campaign_id, per_page=200):
     """Which lead ids the PROVIDER says are in this campaign.
 
@@ -858,6 +901,73 @@ def campaign(campaign_id):
     if not ok(status):
         raise ProviderError(f"emailbison campaign: GET -> {status}")
     return mapping(data, "campaign").get("data") or {}
+
+
+def scheduled_emails(campaign_id, per_page=50):
+    """The pre-send queue for one campaign, AS THE PROVIDER WILL SEND IT.
+
+    The only place the RENDERED copy is visible. `email_subject` and
+    `email_body` here carry merge fields already resolved - measured against
+    the client's live campaign, where the stored template
+    `{me again, {FIRST_NAME}|...}` reads back as "me again, Matija". Rows go
+    `scheduled` -> `sent` | `bounced` | `stopped`.
+
+    So "did our copy render" is answerable BEFORE anybody receives anything,
+    which is the difference between proving a template was stored and proving
+    what a person will actually read.
+    """
+    status, data = request(
+        "GET",
+        f"{base()}/campaigns/{campaign_id}/scheduled-emails?per_page={per_page}",
+        headers())
+    if not ok(status):
+        raise ProviderError(f"emailbison scheduled_emails: GET -> {status}")
+    rows = mapping(data, "scheduled_emails").get("data")
+    if not isinstance(rows, list):
+        raise ProviderError(
+            "emailbison scheduled_emails: the queue is not a list; refusing "
+            "to read an unknown shape as an empty queue")
+    return rows
+
+
+def resume_campaign(campaign_id, expect_leads=None):
+    """Start a campaign sending, and confirm from the provider that it did.
+
+    THE ONE VERB IN THIS MODULE THAT REACHES A PERSON. Everything else here
+    stages or stops; this is what makes a staged sequence start emailing, and
+    it is why `WRITE_ROUTES` names the resume path explicitly rather than
+    letting it hide among the others.
+
+    `expect_leads` is the containment. A resumed campaign sends to EVERY lead
+    it holds, so the caller states how many it believes are in there and this
+    refuses if the provider disagrees. A canary that was meant to reach one
+    person and finds nine is stopped here rather than discovered afterwards -
+    there is no recalling the other eight.
+
+    The provider refuses an incomplete campaign in its own words: it wants a
+    sequence, a schedule, senders AND leads. So a 400 is a statement about the
+    campaign rather than a failed call.
+    """
+    if expect_leads is not None:
+        held = campaign_lead_ids(campaign_id)
+        if len(held) != int(expect_leads):
+            raise ProviderError(
+                f"emailbison resume_campaign: campaign {campaign_id} holds "
+                f"{len(held)} lead(s) and the caller expected "
+                f"{expect_leads}. Refusing to start a campaign whose reach is "
+                f"not what the caller thinks it is")
+    status, data = request("PATCH",
+                           f"{base()}/campaigns/{campaign_id}/resume",
+                           _json_headers(), {})
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison resume_campaign: PATCH -> {status} {_message(data)}")
+    state = str(campaign(campaign_id).get("status") or "").lower()
+    if state in ("draft", "paused"):
+        raise ProviderError(
+            f"emailbison resume_campaign: the provider answered {status} but "
+            f"campaign {campaign_id} still reads back as {state!r}")
+    return {"campaign_id": campaign_id, "status": state}
 
 
 def pause_campaign(campaign_id):
