@@ -111,6 +111,33 @@ class TestSendability(unittest.TestCase):
 
 
 class TestDashes(unittest.TestCase):
+    def test_the_draft_prompt_lists_every_banned_phrase(self):
+        """A rule lint enforces and the prompt never states is a coin flip.
+
+        Measured 2026-09-13 across the twenty-account cohort: `em5` - the
+        step whose job is to close the loop - failed lint three times on
+        `filler_phrase` for almost every record and was never stored, so no
+        contact could be staged. The model reached for "just following up"
+        and "circling back" because a closing message naturally does, and
+        the prompt said only "No filler openers".
+
+        The phrases are listed in `prompts/draft.md` rather than templated
+        in, which makes this a second representation of `BANNED_PHRASES`.
+        This test is what stops the two drifting - cheaper than a templating
+        change and it fails the moment somebody adds a phrase to one and not
+        the other.
+        """
+        import os
+
+        from src import generate
+
+        with open(os.path.join(generate.PROMPTS, "draft.md"),
+                  encoding="utf-8") as f:
+            prompt = f.read().lower()
+        for phrase in lint.BANNED_PHRASES:
+            self.assertIn(phrase, prompt,
+                          f"lint refuses {phrase!r} and the prompt never says so")
+
     def test_a_curly_apostrophe_fails(self):
         """Two of sixteen generated drafts carried one and passed.
 

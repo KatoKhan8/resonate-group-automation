@@ -142,7 +142,18 @@ instead, or say it about the teams we work with and leave them out of it.
 - No unfilled placeholders in the subject or the body.
 - Body 40 to 180 words. Subject under 60 characters.
 - One unbroken line per paragraph, a blank line between paragraphs.
-- No filler openers.
+- No filler openers, and none of these phrases ANYWHERE in the message:
+    "i hope this email finds you well"
+    "i wanted to reach out"
+    "circling back"
+    "just following up"
+    "touching base"
+    "as per my last email"
+    "synergy"
+    "game-changer"
+  lint refuses the draft outright if one appears, and the last step in
+  the sequence is the one that reaches for them - a message closing the
+  loop is not "just following up" or "circling back". Say the thing.
 - Never a calendar link as the ask.
 - Never a mention of LinkedIn, a connection request or anything that happened
   on another channel.
