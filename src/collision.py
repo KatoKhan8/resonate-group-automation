@@ -95,7 +95,36 @@ CLEAR = "clear"
 # unverified status at the account. The gate was right to hold; the word
 # simply had no meaning yet.
 SENDING_PAUSED = "sending_paused"
-KNOWN_STATUSES = frozenset({IN_SEQUENCE, "sequence_finished", SENDING_PAUSED})
+
+# The rest of the vocabulary, established on 2026-09-13 by reading every
+# membership status the Productive estate actually contains: `stopped` (8),
+# `sequence_finished` (19), `in_sequence` (7), `bounced` (1), `replied` (1).
+# Until then three of those were unread, and the accounts carrying them held
+# on "nobody has verified this word" rather than on what the word says.
+REPLIED = "replied"
+BOUNCED = "bounced"
+STOPPED = "stopped"
+
+# A REPLY IS A REPLY EVEN WHEN THE COUNTER SAYS ZERO.
+#
+# The status and the count disagree, and the status is the one to trust.
+# Measured: grayloon.com carries campaign 274 with status `replied` and
+# `replies: 0` on the same row. `account_policy` reads the COUNT, so simply
+# declaring `replied` a known word would have moved that account from HOLD to
+# ALLOW - emailing somebody at an account that had already answered, which is
+# the exact collision this module exists to prevent. Adding a word to the
+# known set is not the same as understanding it.
+ANSWERED_STATUSES = frozenset({REPLIED})
+
+# Terminal, and not an answer, but not nothing either. `stopped` means future
+# emails were cancelled for that person - by us, by an unsubscribe, or by the
+# provider on a reply - and the status does not say which. `bounced` means the
+# address failed. Neither is a live collision; both are a reason for somebody
+# to look before we spend again.
+SUSPECT_STATUSES = frozenset({STOPPED, BOUNCED})
+
+KNOWN_STATUSES = frozenset({IN_SEQUENCE, "sequence_finished", SENDING_PAUSED,
+                            REPLIED, BOUNCED, STOPPED})
 UNKNOWN = "unknown"
 
 
@@ -565,9 +594,18 @@ def account_policy(account):
     people = [p for p in (account.get("people") or []) if isinstance(p, dict)]
     if account.get("anyone_in_sequence"):
         return STOP, "somebody at this account is mid-sequence right now"
+    # THE STATUS AND THE COUNT DISAGREE, AND THE STATUS WINS.
+    #
+    # `replies` is a counter and `status: replied` is the membership's own
+    # verdict, and they are not always the same: grayloon.com carries campaign
+    # 274 with status `replied` and `replies: 0` on the same row. Reading only
+    # the counter would call that account unanswered and email somebody else
+    # there. A reply is a reply whichever field records it.
     answered = [p for p in people
                 if int(p.get("replies") or 0) > 0
-                or any(c.get("interested") for c in (p.get("campaigns") or []))]
+                or any(c.get("interested") for c in (p.get("campaigns") or []))
+                or any(_norm(c.get("status")) in ANSWERED_STATUSES
+                       for c in (p.get("campaigns") or []))]
     if answered:
         return STOP, (f"{len(answered)} person(s) at this account have already "
                       f"replied or been marked interested; the account is "
@@ -581,6 +619,17 @@ def account_policy(account):
                       f"right now, and an unread status is not a finished one")
     if account.get("any_bounce"):
         return HOLD, "an address at this account bounced; the data is suspect"
+    # Terminal, and the status does not say who ended it. A person should look
+    # before we spend again - this used to reach the same HOLD through not
+    # knowing the word at all, which said nothing useful to whoever read it.
+    suspect = sorted({_norm(c.get("status")) for p in people
+                      for c in (p.get("campaigns") or [])
+                      if _norm(c.get("status")) in SUSPECT_STATUSES})
+    if suspect:
+        return HOLD, (f"a campaign at this account ended early "
+                      f"({', '.join(suspect)}) and the status does not say "
+                      f"whether we stopped it, they unsubscribed, or the "
+                      f"provider stopped it on a reply")
     sent = int(account.get("emails_sent_total") or 0)
     if sent:
         return ALLOW, (f"{sent} email(s) were sent to this account in finished "

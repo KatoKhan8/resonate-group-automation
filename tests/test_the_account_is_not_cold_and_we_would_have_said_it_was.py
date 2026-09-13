@@ -78,11 +78,31 @@ class ThePolicyKeepsTheDistinctions(unittest.TestCase):
         self.assertEqual(self.decide(), collision.ALLOW)
 
     def test_a_finished_campaign_with_no_reply_is_history(self):
-        """THE LIVE CASE. Nine emails, two finished campaigns, no reply."""
+        """A campaign that RAN ITS COURSE is history, not a live conflict."""
+        self.assertEqual(
+            self.decide(verdict=collision.TOUCHED, sent=9,
+                        statuses=("sequence_finished",)),
+            collision.ALLOW)
+
+    def test_but_a_campaign_that_ended_early_is_not(self):
+        """This case used to assert ALLOW, and the live account did not.
+
+        It was written as "THE LIVE CASE" for an account carrying
+        `("stopped", "sequence_finished")` - which nineyards.ie really does -
+        and asserted ALLOW. The live account has always answered HOLD, because
+        `check_account` populates `unknown_statuses` and `stopped` was not a
+        word this system had verified. The fixture above simply omits that
+        field, so the branch never ran and the test agreed with nothing.
+
+        `stopped` is verified now, and it means the sequence ended EARLY
+        without saying who ended it - us, an unsubscribe, or the provider on a
+        reply. So the verdict is unchanged where it counts, and the reason it
+        gives is finally the real one.
+        """
         self.assertEqual(
             self.decide(verdict=collision.TOUCHED, sent=9,
                         statuses=("stopped", "sequence_finished")),
-            collision.ALLOW)
+            collision.HOLD)
 
     def test_somebody_mid_sequence_stops_it(self):
         self.assertEqual(
