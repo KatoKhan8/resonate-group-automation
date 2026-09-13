@@ -63,7 +63,9 @@ EMAIL_LADDER = (
     "New value. One concrete use case or consequence a team their size would "
     "recognise, and what changes when it is visible rather than reconstructed.",
     "A short bump that makes a DIFFERENT argument from every email before it. "
-    "Shortest message in the sequence. One idea, one question, no recap.",
+    "The shortest message in the sequence - and still a whole one: the "
+    "forty-word floor applies here exactly as it does everywhere else. "
+    "One idea, one question, no recap.",
     "Close the loop. Give them an easy no, make no new pitch, ask for nothing "
     "beyond permission to stop.",
 )
