@@ -375,6 +375,34 @@ a clean tree and no run in the previous session looked.
    company, and at least one mojibake character. Both passed lint.
 6. `sender_id` null on all sender rows blocks per-human attribution.
 
+## The model in use, and why
+
+`config/.env` is gitignored, so this is the only durable record of it.
+
+    LLM_MODEL = qwen/qwen3-235b-a22b-2507      (was: openrouter/free)
+
+Changed late on 2026-09-13 for two reasons, measured rather than assumed.
+
+**Throughput.** `openrouter/free` routes to free models that queue. One
+twenty-record cohort needs roughly 240 model calls once LinkedIn notes are
+generated, and the free router was taking long enough that a cohort was an
+overnight job on its own. The Qwen model answered a round trip in **1.8
+seconds**, which turns the same cohort into minutes.
+
+**Policy.** The operator's routing order is deterministic code, then Qwen,
+then OpenRouter as escalation. A Qwen model reached through OpenRouter is not
+the same thing as the local Qwen CLI that TASK-012 wires up - it is still a
+paid call - but it is the right default for semantic work today and it
+honours the order.
+
+**Cost.** $0.0875 per million prompt tokens and $0.35 per million completion.
+The whole twenty-record cohort is about eight cents against a $50 balance.
+That is why no cap was imposed on it: the runaway risk here is a retry loop,
+not the unit price.
+
+The free tier is NOT the fallback to return to. It is capped at 50 requests a
+day and that cap is what blocked this pipeline for most of the evening.
+
 ## Checkpoint, late 2026-09-13
 
 Things learned the expensive way tonight, recorded so nobody relearns them.
