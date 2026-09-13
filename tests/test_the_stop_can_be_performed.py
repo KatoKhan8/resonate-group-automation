@@ -173,7 +173,25 @@ class TheStartIsStillRefused(unittest.TestCase):
                     heyreach._write(route, {"campaignId": 1})
 
     def test_the_write_allowlist_is_exactly_the_stop(self):
-        self.assertEqual(set(heyreach.WRITE_ROUTES), {"/campaign/Pause"})
+        # STAGING AND STOPPING ONLY, and that is the property - not a count.
+        # The allowlist grew from one route to seven on 2026-09-13 when the
+        # LinkedIn lane gained a campaign factory: create (a DRAFT), create a
+        # list, write a sequence, add or remove a seat, stop one lead, pause.
+        #
+        # What is NOT there is what matters. `Resume` and `StartCampaign`
+        # both demonstrably exist on this vendor's API - an empty-body probe
+        # answers 400 for each, and 404 for names that do not - and so does
+        # `AddLeadsToCampaignV2`. None of the three is here. A system that
+        # can start an outreach campaign before it can reliably stop one has
+        # acquired exposure it cannot end.
+        forbidden = ("Resume", "StartCampaign", "AddLeadsToCampaign",
+                     "SendMessage")
+        reaching = [r for r in heyreach.WRITE_ROUTES
+                    if any(v.lower() in r.lower() for v in forbidden)]
+        self.assertEqual(reaching, [],
+                         f"a route that reaches a prospect is writable: {reaching}")
+        self.assertIn("/campaign/Pause", heyreach.WRITE_ROUTES)
+
 
 
 class TheCapLiftsWhenTheStopIsProven(unittest.TestCase):

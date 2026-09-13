@@ -182,9 +182,18 @@ READ_ROUTES = ("/campaign/GetAll", "/inbox/GetConversationsV2")
 # routes the inbound event contract rests on. These are lifecycle reads, which
 # is a different question. Both are POSTs that read, both are free, and both
 # were confirmed live on 2026-09-11.
+# `/list/GetAll` and `/campaign/GetCampaignsForLead` joined the list on
+# 2026-09-13, both measured. The first is the read-back for list creation -
+# `tests/test_the_factory_verbs_exist_and_are_sealed.py` recorded it as
+# present-but-unwired, and a write to a list route may not be enabled while
+# the route that verifies it is not. The second answers "is this person
+# already in another campaign", per campaign and per lead status, which is a
+# collision question nothing here could ask before.
 READ_ROUTES_ALL = READ_ROUTES + ("/lead/GetLead", "/li_account/GetAll",
                                  "/campaign/GetLeadsFromCampaign",
-                                 "/stats/GetOverallStats")
+                                 "/stats/GetOverallStats",
+                                 "/list/GetAll",
+                                 "/campaign/GetCampaignsForLead")
 
 # Read-only GETs. Separate from the POST allowlist above because these take
 # their argument in the query string, not a body.
@@ -196,7 +205,8 @@ READ_ROUTES_ALL = READ_ROUTES + ("/lead/GetLead", "/li_account/GetAll",
 # no way for this system to know what a lead it pushed would actually be sent.
 # A comment here previously said `POST /campaign/GetById` answers 405, which
 # is true and incomplete - it is a GET.
-READ_GET_ROUTES = ("/campaign/GetCampaignSequence", "/campaign/GetById")
+READ_GET_ROUTES = ("/campaign/GetCampaignSequence", "/campaign/GetById",
+                   "/list/GetById")
 
 # Confirmed live: limit=200 answers 400, limit=100 answers 200. Asking for
 # more than this does not return more, it returns nothing - and a lookup that
@@ -501,16 +511,131 @@ def note_matches(sequence, approved):
 # and SEND_LEAD_TO_BISON and is refused on the last of those. `FOLLOW` is the
 # provider's spelling - `FOLLOW_PROFILE` was inferred and is kept because it
 # costs nothing to accept both, but `FOLLOW` is the one that has been seen.
+#
+# INMAIL AND CHECK_IS_OPEN_PROFILE WERE ADDED ON 2026-09-13, and the first of
+# those was a live gap rather than an omission: `INMAIL` appears 15 times
+# across this workspace's 82 sequences and was NOT on this tuple, so every
+# InMail campaign in the client's estate answered "unrecognised node type" -
+# unprovable rather than cleared. An InMail is a LinkedIn message sent through
+# LinkedIn by the same seat; nothing about it leaves the channel.
+#
+# `FIND_EMAIL` is documented by the vendor and is deliberately NOT here. It
+# does not send anything, but what it exists to produce is an email address,
+# and a node whose output is an address is not something this check should
+# clear as LinkedIn-only on its own reading of the name.
 LINKEDIN_ONLY_NODES = (
     "CHECK_IS_CONNECTION",
+    "CHECK_IS_OPEN_PROFILE",
     "CONNECTION_REQUEST",
     "MESSAGE",
+    "INMAIL",
     "VIEW_PROFILE",
     "FOLLOW",
     "FOLLOW_PROFILE",
     "LIKE_POST",
     "END",
 )
+
+# ------------------------------------------------- the node vocabulary
+#
+# MEASURED 2026-09-13 by reading `GET /campaign/GetCampaignSequence` on every
+# one of the 82 campaigns in the client's workspace - 1194 nodes. Nine node
+# types appear, and their counts are recorded because the absence of a type is
+# the interesting half: END 396, LIKE_POST 300, MESSAGE 227, VIEW_PROFILE 135,
+# CONNECTION_REQUEST 39, CHECK_IS_CONNECTION 35, SEND_LEAD_TO_BISON 24,
+# FOLLOW 23, INMAIL 15.
+NODE_TYPES_OBSERVED = (
+    "CHECK_IS_CONNECTION", "CONNECTION_REQUEST", "MESSAGE", "INMAIL",
+    "VIEW_PROFILE", "FOLLOW", "LIKE_POST", "SEND_LEAD_TO_BISON", "END")
+
+# Named by the vendor's own `UpdateSequence` documentation and never seen in a
+# live graph here. Kept separate from the tuple above because "the provider
+# says this exists" and "this provider has done this for this client" are
+# different facts, and only the second is evidence.
+NODE_TYPES_DOCUMENTED_ONLY = (
+    "CHECK_IS_OPEN_PROFILE", "FIND_EMAIL", "SEND_LEAD_TO_INSTANTLY",
+    "SEND_LEAD_TO_SMARTLEAD")
+
+NODE_TYPES = NODE_TYPES_OBSERVED + NODE_TYPES_DOCUMENTED_ONLY
+
+# The only four nodes that may carry `conditionalNode`. Documented explicitly:
+# "All other non-END nodes must NOT set this field."
+#
+# THE LIVE GRAPHS DISAGREE WITH THAT SENTENCE and the disagreement is only in
+# one direction. Every MESSAGE and INMAIL node built in the vendor's own UI
+# carries `conditionalNode: END`, which is how the UI renders "a reply ends
+# this sequence". So a graph READ from the provider may legitimately carry the
+# key on a non-branching node; a graph this module WRITES must not, and
+# `validate_sequence_for_write` is where that asymmetry lives.
+BRANCHING_NODES = ("CONNECTION_REQUEST", "CHECK_IS_CONNECTION",
+                   "CHECK_IS_OPEN_PROFILE", "FIND_EMAIL")
+
+# Nodes that are rejected with 400 unless they carry a `payload`.
+PAYLOAD_REQUIRED = ("CONNECTION_REQUEST", "MESSAGE", "INMAIL", "LIKE_POST",
+                    "SEND_LEAD_TO_INSTANTLY", "SEND_LEAD_TO_SMARTLEAD",
+                    "SEND_LEAD_TO_BISON")
+
+# Parents after which every child - including an END - must wait at least
+# three hours. Documented, and the failure is a 400 reading
+# `Node at: ... has invalid delay: 00:00:00`.
+DELAY_PARENTS = ("CONNECTION_REQUEST", "MESSAGE", "INMAIL", "VIEW_PROFILE",
+                 "FOLLOW", "LIKE_POST")
+MIN_CHILD_DELAY_HOURS = 3
+DELAY_UNITS = ("HOUR", "DAY")
+
+# `actionDelay` is documented as 0-100 and the unit as HOUR or DAY, so the
+# longest wait any single node can express is 100 days. The vendor also
+# documents a 500-day ceiling; it is NOT checked here, because 100 days is the
+# most the other two rules permit and a guard that cannot fire is a guard
+# nobody can trust to fire.
+MAX_DELAY_AMOUNT = 100
+
+
+# ---------------------------- the two capability questions, answered
+#
+# OPEN PROFILE. `CHECK_IS_OPEN_PROFILE` is a real branching node type, so a
+# SEQUENCE can act on whether somebody is an Open Profile member. Nothing else
+# can. Measured 2026-09-13 across the whole documented surface - 82 requests -
+# and across every field the provider publishes about a person
+# (`/lead/GetLead`: 23 keys; `GetLeadsFromCampaign`'s `linkedInUserProfile`:
+# 16 keys): there is no `openProfile`, no `isOpenProfile`, no premium flag and
+# no connection-degree field anywhere, and no route asks the question.
+#
+# So open-profile status is decidable INSIDE a running graph and nowhere else.
+# A planner cannot know it in advance, a report cannot state it afterwards, and
+# any code that wants to say "this person is an Open Profile" has nothing to
+# read. The strongest supported design is therefore to branch rather than to
+# predict, which is what `linkedin_sequence` does.
+OPEN_PROFILE_DETECTABLE = False        # no route, no field. Branch only.
+OPEN_PROFILE_BRANCH_NODE = "CHECK_IS_OPEN_PROFILE"
+
+# INMAIL. Same answer, same shape. `INMAIL` is a real node type and is in live
+# use here, and a CONNECTION_REQUEST's `unconditionalNode` - the not-accepted
+# branch - can lead to it after a wait, which is exactly the escalation asked
+# for. What CANNOT be read is whether a given prospect can receive one: no
+# eligibility field exists at lead level, and the seat's `inMailLimit` /
+# `inMailLimitMax` / `inMailCooldown` describe OUR capacity, not their
+# reachability. A seat with InMail credit says nothing about whether this
+# person will accept an InMail.
+INMAIL_ELIGIBILITY_DETECTABLE = False   # capacity is readable; theirs is not.
+INMAIL_NODE = "INMAIL"
+
+# AN INMAIL IS NOT A MESSAGE WITH A DIFFERENT NODE TYPE, and the payload is
+# where that shows. A MESSAGE carries `messages: [str]` and
+# `fallbackMessage: str`. An INMAIL carries `messages: [{subject, message}]`
+# and `fallbackMessage: {subject, message}` - objects, because a LinkedIn
+# InMail has a subject line and an ordinary LinkedIn message does not.
+#
+# ESTABLISHED THE EXPENSIVE WAY, 2026-09-13. A first version of this comment
+# said an InMail had no subject field, having read the payload's KEY names and
+# not the types under them, and a sequence built on that belief was refused by
+# the provider: `Error converting value "..." to type
+# 'Spremo.DTOs.PublicApi.Campaigns.PublicInMailMessage'`. The live graphs
+# agree - all 15 INMAIL nodes in this workspace carry the object form.
+#
+# So a subject IS writable, it is a second piece of copy per InMail variant,
+# and anything approving InMail words has to approve both halves.
+INMAIL_MESSAGE_FIELDS = ("subject", "message")
 
 # The branch keys a node hands on through. Read from the shape
 # `tests/test_a_campaigns_own_copy_gates_the_push.py` builds, which is the
@@ -602,6 +727,372 @@ def linkedin_only(sequence):
                        f"it cannot classify")
     return True, (f"every node is LinkedIn-only: "
                   f"{', '.join(sorted(types))}")
+
+
+# ------------------------------------------- building a sequence to WRITE
+#
+# Reading a graph and writing one are different problems and this half is the
+# dangerous one. `walk_sequence` and `linkedin_only` above are tolerant on
+# purpose: they classify whatever the provider hands back, including the
+# `conditionalNode: END` the vendor's UI puts on every MESSAGE node. A graph
+# going the other way has to satisfy the server's own rules, and the server
+# answers 400 with a sentence rather than telling you which node it meant.
+
+
+class SequenceInvalid(ProviderError):
+    """This graph would be refused by the provider, or is unsafe to send."""
+
+
+def _delay_hours(node):
+    """A node's wait in hours, or None when it does not state one."""
+    value = node.get("actionDelay")
+    if value is None:
+        return None
+    unit = str(node.get("actionDelayUnit") or "").upper()
+    if unit not in DELAY_UNITS:
+        raise SequenceInvalid(
+            f"actionDelayUnit {node.get('actionDelayUnit')!r} on a "
+            f"{node.get('nodeType')!r} node is not one of "
+            f"{', '.join(DELAY_UNITS)}")
+    try:
+        amount = int(value)
+    except (TypeError, ValueError):
+        raise SequenceInvalid(
+            f"actionDelay {value!r} on a {node.get('nodeType')!r} node is not "
+            f"a number") from None
+    if not 0 <= amount <= MAX_DELAY_AMOUNT:
+        raise SequenceInvalid(
+            f"actionDelay {amount} is outside the documented range "
+            f"0-{MAX_DELAY_AMOUNT}")
+    return amount * (24 if unit == "DAY" else 1)
+
+
+def _words_of(kind, entry):
+    """Every piece of prospect-facing text in one message entry.
+
+    One place, because a MESSAGE entry is a string and an INMAIL entry is a
+    `{subject, message}` object, and every check that reads copy - emptiness
+    here, comparison in `sequence_matches` - has to agree about which is which.
+    """
+    if kind == INMAIL_NODE:
+        if not isinstance(entry, dict):
+            return None
+        return [str(entry.get(f) or "") for f in INMAIL_MESSAGE_FIELDS]
+    if isinstance(entry, dict):
+        return None
+    return [str(entry or "")]
+
+
+def _check_words(where, kind, payload):
+    """Refuse a step that would send a blank, or the wrong payload shape."""
+    entries = payload.get("messages")
+    entries = entries if isinstance(entries, list) else []
+    if not entries:
+        raise SequenceInvalid(
+            f"{where}: a {kind} with no `messages` sends nothing")
+    for entry in entries:
+        words = _words_of(kind, entry)
+        if words is None:
+            raise SequenceInvalid(
+                f"{where}: a {kind} message entry is a "
+                f"{type(entry).__name__}. An INMAIL entry is an object with "
+                f"{'/'.join(INMAIL_MESSAGE_FIELDS)}; every other node's is a "
+                f"string, and the provider rejects the wrong one")
+        blank = [f for f, w in zip(
+            INMAIL_MESSAGE_FIELDS if kind == INMAIL_NODE else ("message",),
+            words) if not w.strip()]
+        if blank:
+            raise SequenceInvalid(
+                f"{where}: a {kind} variant has an empty "
+                f"{', '.join(blank)} - that reaches a real person as a blank")
+    fallback = payload.get("fallbackMessage")
+    words = _words_of(kind, fallback)
+    if words is None or not all(w.strip() for w in words):
+        raise SequenceInvalid(
+            f"{where}: a {kind} needs a complete fallbackMessage. HeyReach "
+            f"sends the fallback whenever a personalisation variable cannot "
+            f"be filled, so an incomplete one is a blank rather than a safe "
+            f"default")
+
+
+def validate_sequence_for_write(sequence):
+    """Refuse a graph the provider would reject, or that we should not send.
+
+    Returns `(node_count, steps_carrying_words)` so a caller can state what it
+    built rather than assert it. The second number counts every node in the
+    whole tree that sends text - across ALL branches, not along one path - so
+    it is a description of the graph and never a claim about what one prospect
+    receives. Raises `SequenceInvalid` naming the node.
+
+    Every rule here is the vendor's own except the last, which is ours:
+
+      * only the four branching node types may carry `conditionalNode`;
+      * a branching node must carry one, or its true branch silently vanishes;
+      * a non-END node must carry `unconditionalNode`;
+      * every path terminates in an END;
+      * a child of an action node waits at least three hours, END included;
+      * a payload is mandatory on the seven nodes that take configuration, and
+        a MESSAGE/INMAIL/CONNECTION_REQUEST payload with no non-empty
+        `messages` entry is a step that sends a blank;
+      * and the true branch of `CHECK_IS_OPEN_PROFILE` must be an INMAIL.
+
+    The last one is the only opinion in the list and it is the one that stops a
+    quiet failure. `OPEN_PROFILE_DETECTABLE` is False: nothing here can read
+    whether a prospect is an Open Profile member, so nothing can verify what a
+    MESSAGE on that branch would do. LinkedIn's Open Profile channel is a free
+    InMail; a plain MESSAGE to a non-connection is the thing the platform does
+    not carry. Putting one there builds a sequence whose most promising branch
+    reaches nobody and reports nothing, which is indistinguishable from an
+    audience that did not answer.
+    """
+    if not isinstance(sequence, dict):
+        raise SequenceInvalid("a sequence must be a node object")
+    messages = 0
+    seen = set()
+    # `connected` is a TRI-STATE: None until a check settles it, then True or
+    # False along that branch. Unknown is not False - the root of a graph that
+    # never asks has not established that anybody is a stranger.
+    stack = [(sequence, None, "root", False, None)]
+    while stack:
+        node, parent, where, invited, connected = stack.pop()
+        if not isinstance(node, dict):
+            raise SequenceInvalid(f"{where}: a branch holds "
+                                  f"{type(node).__name__}, not a node")
+        if id(node) in seen:
+            raise SequenceInvalid(f"{where}: this graph is not a tree - the "
+                                  f"same node object is reachable twice")
+        seen.add(id(node))
+        kind = str(node.get("nodeType") or "")
+        if kind not in NODE_TYPES:
+            raise SequenceInvalid(
+                f"{where}: {kind!r} is not a node type this provider "
+                f"documents. Known: {', '.join(sorted(NODE_TYPES))}")
+
+        hours = _delay_hours(node)
+        if parent is not None:
+            if hours is None:
+                raise SequenceInvalid(
+                    f"{where}: a non-root node must state actionDelay and "
+                    f"actionDelayUnit")
+            if parent in DELAY_PARENTS and hours < MIN_CHILD_DELAY_HOURS:
+                raise SequenceInvalid(
+                    f"{where}: a child of a {parent} must wait at least "
+                    f"{MIN_CHILD_DELAY_HOURS} hours and this one waits "
+                    f"{hours}. The provider rejects it as 'invalid delay'")
+
+        conditional = node.get("conditionalNode")
+        unconditional = node.get("unconditionalNode")
+        if kind in BRANCHING_NODES:
+            if conditional is None:
+                raise SequenceInvalid(
+                    f"{where}: a {kind} branches, and this one has no "
+                    f"conditionalNode - the branch it exists to take would "
+                    f"not exist")
+        elif conditional is not None:
+            raise SequenceInvalid(
+                f"{where}: {kind} is not a branching node and must not carry "
+                f"conditionalNode. Only {', '.join(BRANCHING_NODES)} may")
+
+        if kind == "END":
+            if conditional is not None or unconditional is not None:
+                raise SequenceInvalid(f"{where}: an END has no children")
+            continue
+        if unconditional is None:
+            raise SequenceInvalid(
+                f"{where}: a {kind} must state unconditionalNode - every path "
+                f"has to terminate in an END and this one stops here")
+
+        payload = node.get("payload")
+        if kind in PAYLOAD_REQUIRED:
+            if not isinstance(payload, dict):
+                raise SequenceInvalid(
+                    f"{where}: a {kind} requires a payload and carries "
+                    f"{type(payload).__name__}")
+            if kind in ("MESSAGE", "INMAIL", "CONNECTION_REQUEST"):
+                _check_words(where, kind, payload)
+                messages += 1
+        elif payload is not None:
+            raise SequenceInvalid(
+                f"{where}: {kind} takes no payload and one was supplied")
+
+        # THE THREE GRAPH RULES THE PROVIDER ENFORCES, each measured by
+        # refusal against a real DRAFT campaign on 2026-09-13 and each quoting
+        # the sentence the provider answered with. Checked here so a bad graph
+        # is refused before a write rather than by a status code after one.
+
+        # "Cannot have a FOLLOW node after a CONNECTION_REQUEST node, because
+        # CONNECTION_REQUEST already follows the lead."
+        if kind == "FOLLOW" and invited:
+            raise SequenceInvalid(
+                f"{where}: a FOLLOW cannot appear after a CONNECTION_REQUEST - "
+                f"sending the invitation already follows the lead, and the "
+                f"provider rejects the graph. Put the FOLLOW before the "
+                f"invitation, where it is a warm-up rather than a no-op")
+
+        # "Cannot have 2 CONNECTION_REQUEST nodes in sequence."
+        if kind == "CONNECTION_REQUEST" and invited:
+            raise SequenceInvalid(
+                f"{where}: this path already sends a CONNECTION_REQUEST. The "
+                f"provider refuses two on one path, and a second invitation to "
+                f"somebody who ignored the first is not a cadence step")
+
+        # "Cannot have MESSAGE node on the 'Not Connected' side of
+        # IS_CONNECTION node."
+        #
+        # THIS IS THE ANSWER TO THE OPEN-PROFILE QUESTION, AND IT IS THE
+        # PROVIDER'S RATHER THAN AN OPINION HELD HERE. A first version of this
+        # check refused a MESSAGE on the open-profile branch on our own
+        # reasoning about LinkedIn. The server refuses it across the whole
+        # not-connected side, that branch included - so being an Open Profile
+        # buys a FREE INMAIL, not a different kind of message, and an InMail
+        # is the only node that reaches somebody who is not a connection.
+        if kind == "MESSAGE" and connected is False:
+            raise SequenceInvalid(
+                f"{where}: a MESSAGE cannot be sent on the not-connected side "
+                f"of a CHECK_IS_CONNECTION. LinkedIn carries no plain message "
+                f"to a stranger and the provider rejects the graph; an "
+                f"{INMAIL_NODE} is what reaches a non-connection, and an "
+                f"accepted CONNECTION_REQUEST is what makes a MESSAGE possible "
+                f"again")
+
+        below_invite = invited or kind == "CONNECTION_REQUEST"
+        if conditional is not None:
+            # Taking the true branch of either check, or of an invitation,
+            # establishes that this person IS a connection from here on.
+            stack.append((
+                conditional, kind, f"{where}/true:{kind}", below_invite,
+                True if kind in ("CHECK_IS_CONNECTION", "CONNECTION_REQUEST")
+                else connected))
+        # Only the false side of CHECK_IS_CONNECTION establishes a stranger.
+        # An unaccepted invitation does not - the provider's rule names
+        # IS_CONNECTION - and CHECK_IS_OPEN_PROFILE changes nobody's
+        # connection state at all.
+        stack.append((
+            unconditional, kind, f"{where}/next:{kind}", below_invite,
+            False if kind == "CHECK_IS_CONNECTION" else connected))
+    return len(seen), messages
+
+
+def _node(kind, delay=None, unit=None, payload=None, nxt=None, cond=None):
+    node = {"nodeType": kind}
+    if delay is not None:
+        node["actionDelay"] = int(delay)
+        node["actionDelayUnit"] = str(unit or "HOUR").upper()
+    if payload is not None:
+        node["payload"] = payload
+    if cond is not None:
+        node["conditionalNode"] = cond
+    if nxt is not None:
+        node["unconditionalNode"] = nxt
+    return node
+
+
+def _copy(step, copy, kind="MESSAGE"):
+    """One step's words as a payload, or a refusal naming the step.
+
+    `kind` decides the shape, because an INMAIL's entries are
+    `{subject, message}` objects and everything else's are strings. Validated
+    here rather than only at the graph level so the refusal names the STEP a
+    person can go and fix, not the node path it ended up at.
+    """
+    block = (copy or {}).get(step)
+    if not isinstance(block, dict):
+        shape = ("{'subject': ..., 'message': ...}" if kind == INMAIL_NODE
+                 else "'...'")
+        raise SequenceInvalid(
+            f"no copy supplied for step {step!r}. This builder never invents "
+            f"the words a prospect reads; supply "
+            f"{{'messages': [{shape}], 'fallbackMessage': {shape}}}")
+    entries = block.get("messages")
+    payload = {"messages": list(entries) if isinstance(entries, list) else [],
+               "fallbackMessage": block.get("fallbackMessage")}
+    try:
+        _check_words(f"step {step!r}", kind, payload)
+    except SequenceInvalid as e:
+        raise SequenceInvalid(f"{e}") from None
+    return payload
+
+
+# The steps `linkedin_sequence` needs words for. `messages` is a LIST on the
+# wire, which is where `COPY-EXPERIMENTS.md`'s five variants per step land:
+# the provider rotates them itself, so a variant is a graph fact rather than
+# something this system has to assign per contact.
+SEQUENCE_STEPS = ("connection_note", "connected_1", "message_2", "message_3",
+                  "message_4", "inmail")
+
+
+def linkedin_sequence(copy, withdraw_after_days=21):
+    """The LinkedIn-primary graph, branched on the prospect's actual state.
+
+    Six activities and four message opportunities on the main path, over about
+    three weeks, and every branch is taken on something the provider can
+    actually observe rather than on a guess this system made:
+
+        CHECK_IS_CONNECTION                     (free, instant, root)
+          already connected -> message straight away, four of them
+          not connected     -> CHECK_IS_OPEN_PROFILE
+              open profile  -> INMAIL now, then ask to connect anyway
+              not           -> view, then ask to connect
+                  accepted      -> the four-message chain
+                  not accepted  -> view, follow, and an INMAIL at the end
+
+    The not-accepted branch is the one the operator asked about by name: a
+    CONNECTION_REQUEST's `unconditionalNode` IS the "they did not accept"
+    branch, and it can lead to an INMAIL after a wait. What this cannot do is
+    check first - `INMAIL_ELIGIBILITY_DETECTABLE` is False, so the InMail is
+    attempted rather than targeted, and a seat out of InMail credit fails that
+    step rather than skipping it.
+
+    Pure. Sends nothing, and every word comes from `copy`.
+    """
+    def end(delay=3, unit="HOUR"):
+        return _node("END", delay, unit)
+
+    def chain(copy_block):
+        """message_2 -> view -> message_3 -> message_4 -> END."""
+        return _node("MESSAGE", 3, "HOUR", _copy("message_2", copy_block),
+                nxt=_node("VIEW_PROFILE", 3, "DAY",
+                     nxt=_node("MESSAGE", 2, "DAY", _copy("message_3", copy_block),
+                          nxt=_node("MESSAGE", 7, "DAY",
+                                    _copy("message_4", copy_block),
+                                    nxt=end()))))
+
+    invite = _copy("connection_note", copy)
+    invite["toBeWithdrawnAfterDays"] = int(withdraw_after_days)
+
+    # The not-accepted branch. A FOLLOW may NOT go here - the provider refuses
+    # a FOLLOW below a CONNECTION_REQUEST because the invitation already
+    # followed them - so the wait is a profile view and then the InMail.
+    not_accepted = _node("VIEW_PROFILE", 5, "DAY",
+                    nxt=_node("INMAIL", 5, "DAY",
+                              _copy("inmail", copy, INMAIL_NODE), nxt=end()))
+
+    ask_to_connect = _node("CONNECTION_REQUEST", 1, "DAY", dict(invite),
+                           nxt=not_accepted, cond=chain(copy))
+
+    open_profile = _node("INMAIL", 3, "HOUR", _copy("inmail", copy, INMAIL_NODE),
+                    nxt=_node("CONNECTION_REQUEST", 2, "DAY", dict(invite),
+                              cond=chain(copy),
+                              nxt=_node("VIEW_PROFILE", 5, "DAY", nxt=end())))
+
+    # The cold branch: look at them, follow them, then ask. Both warm-up steps
+    # sit BEFORE the invitation, which is the only place a FOLLOW is allowed.
+    cold = _node("CHECK_IS_OPEN_PROFILE", 3, "HOUR",
+                 cond=open_profile,
+                 nxt=_node("VIEW_PROFILE", 3, "HOUR",
+                      nxt=_node("FOLLOW", 3, "HOUR", nxt=ask_to_connect)))
+
+    already = _node("MESSAGE", 3, "HOUR", _copy("connected_1", copy),
+               nxt=_node("MESSAGE", 3, "DAY", _copy("message_2", copy),
+                    nxt=_node("VIEW_PROFILE", 2, "DAY",
+                         nxt=_node("MESSAGE", 5, "DAY", _copy("message_3", copy),
+                              nxt=_node("MESSAGE", 7, "DAY",
+                                        _copy("message_4", copy),
+                                        nxt=end())))))
+
+    sequence = _node("CHECK_IS_CONNECTION", 0, "HOUR", cond=already, nxt=cold)
+    validate_sequence_for_write(sequence)
+    return sequence
 
 
 class SequenceRefused(ProviderError):
@@ -727,7 +1218,84 @@ def refuse_unsupported_sequence(sequence, rows=None, campaign_id=None):
 # Pausing is also the safest possible first write to this vendor: it is not
 # prospect-facing, it is idempotent, and its worst case is that an outreach
 # campaign stops.
-WRITE_ROUTES = ("/campaign/Pause",)
+# WHAT WAS ADDED ON 2026-09-13, AND THE RULE THAT DECIDED EACH ONE.
+#
+# Every route below either STAGES something that cannot send, or STOPS
+# something. Nothing here starts outreach: `/campaign/StartCampaign` and
+# `/campaign/Resume` both exist, both were probed, and both are still absent
+# - the same order-of-operations argument that kept Pause alone up to now.
+#
+#   /list/CreateEmptyList      an empty list reaches nobody
+#   /campaign/Create           creates in DRAFT; a DRAFT sends nothing
+#   /campaign/UpdateSequence   configuration; 400 outside DRAFT/SCHEDULED/PAUSED
+#   /campaign/AddLinkedInAccountsToCampaign     additive seat assignment
+#   /campaign/RemoveLinkedInAccountsFromCampaign  removes a seat
+#   /campaign/StopLeadInCampaign                stops ONE person
+#
+# `/campaign/UpdateAccounts` IS DELIBERATELY NOT HERE and is the sharpest
+# omission on the list. It is a FULL REPLACE of a campaign's sender set, and
+# the vendor documents the consequence in its own words: on a PAUSED campaign,
+# leads assigned to a removed account are stopped and cannot be resumed. The
+# two routes above do the same job additively and subtractively, each reports
+# per-account success, and neither can erase a seat nobody mentioned. There is
+# no task that needs the replace verb and no undo if it is wrong.
+#
+# `/campaign/UpdateSchedule` IS NOT HERE EITHER, for a different reason
+# entirely - see `set_schedule` below. There is no route anywhere on this API
+# that reads a campaign's schedule back, so a write to it can never be
+# verified, and this module's whole write discipline is read-back.
+WRITE_ROUTES = (
+    "/campaign/Pause",
+    "/list/CreateEmptyList",
+    "/campaign/Create",
+    "/campaign/UpdateSequence",
+    "/campaign/AddLinkedInAccountsToCampaign",
+    "/campaign/RemoveLinkedInAccountsFromCampaign",
+    "/campaign/StopLeadInCampaign",
+)
+
+# The routes that take their argument in the query string rather than a body.
+# `_write` builds both forms and this is what tells them apart.
+WRITE_QUERY_ROUTES = ("/campaign/Pause",)
+
+
+def _write_body(path, body):
+    """A POST with a JSON body that changes something. Allowlisted.
+
+    Separate from `_write` only because `/campaign/Pause` takes its argument in
+    the query string and everything added since takes a body. Folding the two
+    into one function with a flag is how a body ends up on the wire as a query
+    string and a write silently acts on nothing.
+    """
+    if path not in WRITE_ROUTES:
+        raise ProviderError(
+            f"heyreach: {path} is not a write route. This module writes only "
+            f"to {', '.join(WRITE_ROUTES)}. Adding a route here is a decision "
+            f"about what this system may do to real campaigns.")
+    if path in WRITE_QUERY_ROUTES:
+        raise ProviderError(
+            f"heyreach: {path} takes its argument in the query string. "
+            f"Sending it a body would reach the provider as a call with "
+            f"nothing to act on")
+    status, data = request("POST", f"{BASE}{path}", headers(), body)
+    if not ok(status):
+        raise ProviderError(
+            f"heyreach {path}: HTTP {status} - {str(data)[:300]}")
+    if isinstance(data, dict):
+        return data
+    # AN EMPTY BODY IS A REAL ANSWER HERE. `/campaign/UpdateSequence` returns
+    # 200 with nothing at all, measured 2026-09-13, so refusing an empty body
+    # would make the one write on this provider with a perfect read-back
+    # unusable. Every caller reads the provider back anyway; none of them reads
+    # this return value for proof.
+    if data in (None, ""):
+        return {"status": status}
+    # A non-empty body that is not an object is a different thing: an HTML
+    # error page or a proxy notice arriving with a 2xx.
+    raise ProviderError(
+        f"heyreach {path}: HTTP {status} with a {type(data).__name__} body - "
+        f"{str(data)[:200]}. A write whose response is not the documented "
+        f"shape is a write nobody can classify")
 
 
 def _write(path, params):
@@ -773,6 +1341,548 @@ def campaign_status(campaign_id):
     The read-back for `pause_campaign`, kept beside it so the pair is obvious.
     """
     return (campaign_by_id(campaign_id) or {}).get("status")
+
+
+# ------------------------------------------------- the staging verbs
+#
+# Each one writes, then READS BACK, and raises unless the provider itself says
+# the thing happened. A 2xx is never the proof: `/campaign/Create` returning an
+# object is a claim, and `GET /campaign/GetById` finding that id is the fact.
+#
+# Two of these have no safe read-back and both are handled by refusing rather
+# than by hoping - see `set_schedule`.
+
+CAMPAIGN_FIELDS = ("id", "name", "status", "organizationUnitId",
+                   "linkedInUserListId", "linkedInUserListName",
+                   "campaignAccountIds", "creationTime", "startedAt")
+
+LIST_FIELDS = ("id", "name", "listType", "totalItemsCount", "campaignIds",
+               "creationTime")
+
+# The statuses in which the provider accepts a configuration change. Anything
+# else answers 400. Recorded here so a caller can refuse BEFORE writing rather
+# than discover it from a status code.
+MUTABLE_STATUSES = ("DRAFT", "SCHEDULED", "PAUSED")
+
+DRAFT = "DRAFT"
+
+
+def lists(offset=0, limit=MAX_PAGE, keyword=None, list_type=None):
+    """One page of lead/company lists. Read-only. Returns (items, total)."""
+    body = {"offset": int(offset), "limit": min(int(limit), MAX_PAGE)}
+    if keyword:
+        body["keyword"] = str(keyword)
+    if list_type:
+        body["listType"] = str(list_type)
+    data = _read("/list/GetAll", body)
+    return ([{k: row.get(k) for k in LIST_FIELDS}
+             for row in _collection(data, "/list/GetAll")],
+            data.get("totalCount"))
+
+
+def list_by_id(list_id):
+    """One list, read directly. The read-back for `create_list`."""
+    data = _read_get("/list/GetById", {"listId": int(list_id)})
+    return {k: data.get(k) for k in LIST_FIELDS}
+
+
+def campaign_read(campaign_id):
+    """One campaign, read directly by id. Trimmed.
+
+    `campaign_by_id` pages `/campaign/GetAll` up to ten times to find one row,
+    on a comment that predates the discovery that `GetById` answers as a GET.
+    It is left alone - it is what `campaign_status` and `configdiff` already
+    call, and replacing a working lookup was not this change's job. This is the
+    one-request form the write verbs read back through.
+    """
+    data = _read_get("/campaign/GetById", {"campaignId": int(campaign_id)})
+    return {k: data.get(k) for k in CAMPAIGN_FIELDS}
+
+
+def create_list(name, list_type="USER_LIST"):
+    """Create an empty lead list and prove it exists. Returns a trimmed row.
+
+    AN EMPTY LIST REACHES NOBODY, which is what makes this the safest write on
+    this provider after the pause. It is also PERMANENT: this vendor documents
+    no delete for a list, only `DeleteLeadsFromList`, so a list created here
+    stays in the client's estate for good and the name is not a detail.
+    """
+    name = str(name or "").strip()
+    if not name:
+        raise ProviderError("heyreach create_list: a name is required")
+    if list_type not in ("USER_LIST", "COMPANY_LIST"):
+        raise ProviderError(
+            f"heyreach create_list: {list_type!r} is not a list type. The "
+            f"provider defaults an empty one to a lead list, and a default "
+            f"nobody chose is how a campaign ends up bound to the wrong kind")
+    data = _write_body("/list/CreateEmptyList",
+                       {"name": name, "type": list_type})
+    list_id = data.get("id")
+    if not list_id:
+        raise ProviderError(
+            "heyreach create_list: the provider returned no id. A list may "
+            "exist that nothing here can name, and there is no delete verb; "
+            "read /list/GetAll before trying again")
+    found = list_by_id(list_id)
+    if str(found.get("name")) != name or str(found.get("listType")) != list_type:
+        raise ProviderError(
+            f"heyreach create_list: read-back disagrees with the request. "
+            f"asked for {name!r}/{list_type}, provider holds "
+            f"{found.get('name')!r}/{found.get('listType')}")
+    return found
+
+
+def create_campaign(name, list_id, account_ids, schedule=None, sequence=None,
+                    exclusions=None):
+    """Create a campaign in DRAFT and prove it exists. Returns a trimmed row.
+
+    A DRAFT SENDS NOTHING. Activation is `/campaign/StartCampaign`, which is
+    not on `WRITE_ROUTES` and is not implemented here, so nothing this function
+    builds can reach a person without a separate, deliberate act somewhere
+    else.
+
+    THE SEAT IS NOT OPTIONAL AND THAT IS THE PROVIDER'S RULE, measured
+    2026-09-13: an empty `linkedInAccountIds` answers 400,
+    "must be a string or array type with a minimum length of '1'", and an
+    omitted one answers 400 "field is required". A campaign cannot be created
+    unassigned. A caller that wants an unassigned campaign creates it with one
+    seat and then calls `remove_senders`, which is what the provider leaves
+    available; there is no single call that does it.
+
+    `schedule` is accepted here because Create is the ONLY place a schedule can
+    be set and then read back at all - see `set_schedule`. Omitting it does not
+    mean no schedule: the provider defaults to Mon-Fri 09:00-17:00 UTC, and a
+    default nobody chose is still a sending window.
+    """
+    name = str(name or "").strip()
+    if not 1 <= len(name) <= 50:
+        raise ProviderError(
+            f"heyreach create_campaign: the name must be 1-50 characters and "
+            f"{name!r} is {len(name)}. There is no campaign delete on this "
+            f"provider, so a rejected name is cheaper than a wrong one")
+    seats = [int(a) for a in (account_ids or [])]
+    if not 1 <= len(seats) <= 100:
+        raise ProviderError(
+            "heyreach create_campaign: the provider requires 1-100 sender "
+            "accounts and rejects an empty array. Create with the seat you "
+            "intend and call remove_senders if the campaign must hold none")
+    body = {"name": name, "linkedInAccountIds": seats}
+    if list_id is not None:
+        body["linkedInUserListId"] = int(list_id)
+    if schedule is not None:
+        body["schedule"] = _schedule_body(schedule)
+    if sequence is not None:
+        validate_sequence_for_write(sequence)
+        body["sequence"] = sequence
+    for flag in ("excludeContactedFromOtherCampaigns",
+                 "excludeHasOtherAccConversations",
+                 "excludeContactedFromSenderInOtherCampaign", "excludeListId"):
+        if (exclusions or {}).get(flag) is not None:
+            body[flag] = exclusions[flag]
+
+    # THE NAME IS THE RECOVERY KEY, so it has to be unique before the write.
+    # There is no campaign delete on this vendor: a create that is lost between
+    # the POST and the response can only be found again by name, and two
+    # campaigns sharing one is a state nobody can resolve afterwards.
+    if campaign_named(name):
+        raise ProviderError(
+            f"heyreach create_campaign: a campaign named {name!r} already "
+            f"exists. Creating a second one is permanent and would make the "
+            f"name useless as the only handle either can be found by")
+
+    data = _write_body("/campaign/Create", body)
+    # `campaignId`, NOT `id`. Measured 2026-09-13, and the first live create
+    # from this repository raised on a campaign that had in fact been made -
+    # which is exactly the failure the name lookup below now covers, because
+    # on this provider an unrecoverable id is an unrecoverable campaign.
+    campaign_id = data.get("campaignId")
+    if not campaign_id:
+        row = campaign_named(name)
+        if row is None:
+            raise ProviderError(
+                f"heyreach create_campaign: the provider returned no "
+                f"campaignId and no campaign named {name!r} can be found. "
+                f"Read /campaign/GetAll before any retry; this vendor "
+                f"documents no campaign delete")
+        campaign_id = row["id"]
+
+    found = campaign_read(campaign_id)
+    if str(found.get("name")) != name:
+        raise ProviderError(
+            f"heyreach create_campaign: read-back says the campaign is named "
+            f"{found.get('name')!r} and {name!r} was asked for")
+    if str(found.get("status")) != DRAFT:
+        raise ProviderError(
+            f"heyreach create_campaign: read-back says status "
+            f"{found.get('status')!r} and a created campaign must be {DRAFT}. "
+            f"Anything else is a campaign that may already be running")
+    if list_id is not None and str(found.get("linkedInUserListId")) != str(int(list_id)):
+        raise ProviderError(
+            f"heyreach create_campaign: the campaign is bound to list "
+            f"{found.get('linkedInUserListId')!r} and {list_id!r} was asked "
+            f"for. A campaign pointing at the wrong list is a campaign "
+            f"pointing at somebody else's people")
+    held = {int(a) for a in (found.get("campaignAccountIds") or [])}
+    if held != set(seats):
+        raise ProviderError(
+            f"heyreach create_campaign: the campaign holds seats "
+            f"{sorted(held)} and {sorted(seats)} was asked for")
+    return found
+
+
+def campaign_named(name):
+    """The one campaign with this exact name, or None. Raises if two share it.
+
+    Pages `/campaign/GetAll` rather than filtering, because that route honours
+    no name filter - the same trap the inbox sets. Bounded at 20 pages.
+    """
+    name, offset, found = str(name), 0, []
+    for _ in range(20):
+        items, total = campaigns(offset, MAX_PAGE)
+        found += [i for i in items if str(i.get("name")) == name]
+        offset += len(items)
+        if not items or (total is not None and offset >= int(total)):
+            break
+    if len(found) > 1:
+        raise ProviderError(
+            f"heyreach: {len(found)} campaigns are named {name!r} "
+            f"({[c.get('id') for c in found]}). A name that identifies more "
+            f"than one campaign identifies none of them")
+    return {k: found[0].get(k) for k in CAMPAIGN_FIELDS} if found else None
+
+
+def set_sequence(campaign_id, sequence):
+    """Replace a campaign's whole workflow, then read the graph back.
+
+    THE READ-BACK IS THE POINT. `GET /campaign/GetCampaignSequence` returns the
+    graph the provider will actually run, so this is one of the few writes on
+    either vendor that can be compared field for field with what was sent. It
+    is compared on the node SHAPE - types, delays and the message texts - and
+    not on raw equality, because the provider normalises: a UI-built graph
+    carries `conditionalNode: END` on message nodes and a written one does not.
+
+    Refuses outside DRAFT/SCHEDULED/PAUSED before writing rather than after,
+    and on a PAUSED campaign the vendor performs a "safe update" that remaps
+    existing leads into the new graph - so a caller changing a live campaign's
+    copy is moving real people between steps, which is why the status is read
+    first and reported in the refusal.
+    """
+    validate_sequence_for_write(sequence)
+    status = str(campaign_read(campaign_id).get("status") or "")
+    if status not in MUTABLE_STATUSES:
+        raise ProviderError(
+            f"heyreach set_sequence: campaign {campaign_id} is {status!r} and "
+            f"the provider accepts a sequence only in "
+            f"{', '.join(MUTABLE_STATUSES)}")
+    _write_body("/campaign/UpdateSequence",
+                {"campaignId": int(campaign_id), "sequence": sequence})
+    found = campaign_sequence(campaign_id)
+    same, why = sequence_matches(found, sequence)
+    if not same:
+        raise ProviderError(
+            f"heyreach set_sequence: the write returned 2xx and the graph the "
+            f"provider now holds is not the graph that was sent - {why}. The "
+            f"campaign is in an unknown configuration; do NOT retry blindly")
+    return found
+
+
+def _fingerprint(node):
+    """A node reduced to what a prospect experiences, in walk order.
+
+    `conditionalNode` is followed and `unconditionalNode` is followed, and the
+    presence of the first is recorded rather than its absence - so a provider
+    that adds `conditionalNode: END` to a message node reads as a difference
+    only where it changes what is sent, which it does not.
+    """
+    if not isinstance(node, dict):
+        return None
+    payload = node.get("payload")
+    payload = payload if isinstance(payload, dict) else {}
+    kind = str(node.get("nodeType") or "")
+    texts = payload.get("messages")
+    # `_words_of` so an INMAIL's subject is compared too. A read-back that
+    # ignored the subject would clear a graph whose subject lines the provider
+    # had silently dropped, and the subject is the half a prospect sees first.
+    out = [kind,
+           node.get("actionDelay"),
+           str(node.get("actionDelayUnit") or "").upper(),
+           [_words_of(kind, t) for t in texts] if isinstance(texts, list) else None,
+           _words_of(kind, payload.get("fallbackMessage"))]
+    return [out,
+            _fingerprint(node.get("conditionalNode")),
+            _fingerprint(node.get("unconditionalNode"))]
+
+
+# The node the provider inserts by itself, and the only difference between a
+# written graph and the graph that comes back that is not a difference.
+#
+# MEASURED 2026-09-13 on campaign 599020: 28 nodes were sent and 40 came back.
+# The twelve extra are all the same thing - a bare
+# `{"nodeType": "END", "actionDelay": 0, "actionDelayUnit": "HOUR"}` hung on
+# the `conditionalNode` of every MESSAGE and INMAIL node. The vendor documents
+# that a non-branching node must NOT set that field, and then sets it itself.
+#
+# IT IS THE REPLY-STOP, MADE STRUCTURAL. The true branch of a message node is
+# "they answered", and the provider ends the sequence there whether or not
+# anybody asked. That is worth knowing for its own sake: a LinkedIn reply
+# stops the remaining steps at the provider as well as in this system's own
+# `accountpolicy.apply_reply`, so the two agree by construction rather than by
+# a setting somebody has to remember.
+
+
+def _is_bare_end(node):
+    return (isinstance(node, dict)
+            and str(node.get("nodeType") or "") == "END"
+            and node.get("conditionalNode") is None
+            and node.get("unconditionalNode") is None)
+
+
+def _strip_added_ends(observed, sent):
+    """The observed graph minus the conditionals the provider added itself.
+
+    Walked against the graph that was SENT, so a bare END is only ignored
+    where we sent nothing at that position and the node is not one that
+    branches. A bare END on a CONNECTION_REQUEST, or one replacing a branch we
+    did send, stays and reads as the difference it is.
+    """
+    if not isinstance(observed, dict):
+        return observed
+    sent = sent if isinstance(sent, dict) else {}
+    out = dict(observed)
+    kind = str(out.get("nodeType") or "")
+    if (kind not in BRANCHING_NODES
+            and sent.get("conditionalNode") is None
+            and _is_bare_end(out.get("conditionalNode"))):
+        out.pop("conditionalNode", None)
+    for key in ("conditionalNode", "unconditionalNode"):
+        if isinstance(out.get(key), dict):
+            out[key] = _strip_added_ends(out[key], sent.get(key))
+    return out
+
+
+def sequence_matches(observed, sent):
+    """Does the provider's graph say the same thing as the one we sent?
+
+    `(bool, why)`. Compared on node type, delay and the actual words - the
+    three that decide what a person receives and when - after removing the
+    reply-stop ENDs the provider adds on its own. Everything else is a
+    difference, including one this system caused.
+    """
+    if not isinstance(observed, dict):
+        raise ProviderError(
+            "heyreach sequence_matches: the provider returned no graph to "
+            "compare, so nothing can be said about what it will send")
+    ours = _fingerprint(sent)
+    theirs = _fingerprint(_strip_added_ends(observed, sent))
+    if ours == theirs:
+        return True, "every node type, delay and message matches what was sent"
+    # Say WHERE, not just that. A diff nobody can locate produces a retry.
+    def flatten(node, path="root", out=None):
+        out = [] if out is None else out
+        if node is None:
+            return out
+        out.append((path, tuple(str(x) for x in node[0])))
+        flatten(node[1], path + "/true", out)
+        flatten(node[2], path + "/next", out)
+        return out
+    mine, yours = dict(flatten(ours)), dict(flatten(theirs))
+    for path in sorted(set(mine) | set(yours)):
+        if mine.get(path) != yours.get(path):
+            return False, (f"at {path}: sent {mine.get(path)!r}, provider "
+                           f"holds {yours.get(path)!r}")
+    return False, "the graphs differ in shape"
+
+
+def add_senders(campaign_id, account_ids):
+    """Add sender seats to a campaign WITHOUT disturbing the ones already on it.
+
+    THE ADDITIVE VERB, AND THE REASON `/campaign/UpdateAccounts` IS NOT ON THE
+    WRITE ALLOWLIST. UpdateAccounts is a full replacement: any seat missing
+    from the body is removed, and the vendor documents that on a PAUSED
+    campaign the leads belonging to a removed seat are stopped and cannot be
+    resumed. This route adds and reports per account, so a stale caller cannot
+    silently delete a seat it never knew about.
+
+    Read back against `campaignAccountIds` on the campaign itself, because the
+    per-account result in the response is the provider's claim and the campaign
+    row is the fact.
+    """
+    return _change_senders("/campaign/AddLinkedInAccountsToCampaign",
+                           campaign_id, account_ids, present=True)
+
+
+def remove_senders(campaign_id, account_ids):
+    """Take sender seats off a campaign. Read back the same way.
+
+    ON A CAMPAIGN THAT HOLDS LEADS THIS IS NOT A CONFIGURATION CHANGE. The
+    vendor's own words for the replacing verb apply here too: leads assigned to
+    a removed seat stop, and stopping is not reversible by putting the seat
+    back. This function does not refuse that - a stop is sometimes exactly what
+    is wanted - but it reads the campaign first and names the number of leads
+    in the refusal-free path so a caller cannot claim it did not know.
+    """
+    return _change_senders("/campaign/RemoveLinkedInAccountsFromCampaign",
+                           campaign_id, account_ids, present=False)
+
+
+def _change_senders(route, campaign_id, account_ids, present):
+    seats = [int(a) for a in (account_ids or [])]
+    if not 1 <= len(seats) <= 100:
+        raise ProviderError(
+            f"heyreach {route}: 1-100 accounts per request, {len(seats)} given")
+    before = campaign_read(campaign_id)
+    if str(before.get("status")) not in MUTABLE_STATUSES:
+        raise ProviderError(
+            f"heyreach {route}: campaign {campaign_id} is "
+            f"{before.get('status')!r}; seats may only be changed in "
+            f"{', '.join(MUTABLE_STATUSES)}")
+    _write_body(route, {"campaignId": int(campaign_id),
+                        "linkedInAccountIds": seats})
+    after = campaign_read(campaign_id)
+    held = {int(a) for a in (after.get("campaignAccountIds") or [])}
+    wrong = [a for a in seats if (a in held) != present]
+    if wrong:
+        raise ProviderError(
+            f"heyreach {route}: the write returned 2xx and the campaign's own "
+            f"campaignAccountIds still "
+            f"{'omits' if present else 'holds'} {wrong}. The provider reports "
+            f"per-account failures inside a successful response, so the "
+            f"status code proved nothing")
+    return after
+
+
+def _schedule_body(schedule):
+    """The schedule object, validated as far as anything here can validate it."""
+    schedule = mapping(schedule, "heyreach schedule")
+    for field in ("dailyStartTime", "dailyEndTime", "timeZoneId"):
+        if not str(schedule.get(field) or "").strip():
+            raise ProviderError(
+                f"heyreach schedule: {field} is required. There is no read "
+                f"route for a schedule on this API, so a field omitted here "
+                f"is a field nobody can ever check")
+    days = [k for k in schedule if k.startswith("enabled")]
+    if days and not any(schedule[k] for k in days):
+        raise ProviderError(
+            "heyreach schedule: at least one enabled day must be true")
+    return dict(schedule)
+
+
+def set_schedule(campaign_id, schedule):
+    """REFUSED. There is no route on this API that reads a schedule back.
+
+    This is not an omission and it is not a safety veto either - a sending
+    window is ordinary configuration. It is the one verb in this module whose
+    effect cannot be observed by any means the provider offers.
+
+    The whole documented surface is 82 requests. `UpdateSchedule` writes a
+    schedule; `GetById` and `GetAll` return fourteen campaign fields and none
+    of them is the schedule; `GetCampaignSequence` returns the node graph and
+    not the window. So after calling it, this system would hold exactly one
+    piece of evidence about when a campaign may contact people - its own memory
+    of what it asked for - and that is the definition of a second
+    representation of a truth that nothing can reconcile.
+
+    THE RULE IT BREAKS IS "READ BACK BEFORE DECIDING ANYTHING". `providerwrites`
+    refuses a write with no read-back for exactly this reason, and a verb that
+    can never supply one cannot be made to satisfy it by trying harder.
+
+    WHAT TO DO INSTEAD, and it is not a workaround. `/campaign/Create` takes
+    the schedule in the same shape, in the one call that also produces a
+    campaign id - so a campaign's window is chosen once, at creation, by
+    whoever creates it. That does not make it readable afterwards; it makes it
+    a decision recorded at a moment somebody owns, rather than a change nobody
+    can audit. An existing campaign's window is changed by a person in the
+    vendor's UI, where they can at least see it.
+    """
+    _schedule_body(schedule)          # so a bad body fails on the body, not here
+    raise ProviderError(
+        f"heyreach set_schedule: refusing to write a schedule to campaign "
+        f"{campaign_id}. POST /campaign/UpdateSchedule exists and no route on "
+        f"this API reads a schedule back, so the write could never be "
+        f"verified and this system would be the only record of when a "
+        f"campaign may contact people. Pass `schedule` to create_campaign, or "
+        f"change it by hand in HeyReach where a person can see it")
+
+
+# The lead statuses in which the provider is still going to act on somebody.
+# From `GetCampaignsForLead`'s own documented `LeadStatus` set: Pending,
+# InSequence, Finished, Paused, Failed, Excluded,
+# PendingOrExcludedToBeCalculated. An ALLOWLIST of the two that mean "more is
+# coming", so a value this system has never seen reads as still-running and a
+# stop that landed on an unknown state raises instead of being believed.
+RUNNING_LEAD_STATUSES = ("Pending", "InSequence",
+                         "PendingOrExcludedToBeCalculated")
+
+
+def stop_lead_in_campaign(campaign_id, member_id, profile_url):
+    """Stop ONE person's progression through a campaign. Read back per lead.
+
+    The LinkedIn counterpart of `bison.stop_lead`, and the reason it belongs on
+    the write allowlist despite never having succeeded: it can only ever mean
+    somebody receives less. After a reply, an unsubscribe, a suppression or an
+    account-level stop, this is what prevents the NEXT LinkedIn step to that
+    person without pausing the campaign everybody else is in.
+
+    NEVER LIVE-VALIDATED. No lead has ever been stopped from this repository,
+    because no lead has ever been added from it. The route was probed on an
+    empty campaign this system created and answers rather than 404ing; that is
+    existence, not a contract. The read-back below is therefore written to fail
+    closed: `GetCampaignsForLead` reports this person's `leadStatus` per
+    campaign, and a status that has not left the running set raises.
+    """
+    member_id = str(member_id or "").strip()
+    profile_url = str(profile_url or "").strip()
+    if not member_id or not profile_url:
+        raise ProviderError(
+            "heyreach stop_lead_in_campaign: both leadMemberId and leadUrl are "
+            "required. The provider matches on them and a partial body is a "
+            "call that stops nobody while returning success")
+    _write_body("/campaign/StopLeadInCampaign",
+                {"campaignId": int(campaign_id), "leadMemberId": member_id,
+                 "leadUrl": profile_url})
+    rows, _total = campaigns_for_lead(profile_url)
+    here = [r for r in rows if str(r.get("campaignId")) == str(campaign_id)]
+    if not here:
+        raise ProviderError(
+            f"heyreach stop_lead_in_campaign: after the write, "
+            f"GetCampaignsForLead does not list campaign {campaign_id} for "
+            f"{profile_url}. The stop cannot be confirmed and must not be "
+            f"retried")
+    state = str(here[0].get("leadStatus") or "")
+    if state in RUNNING_LEAD_STATUSES:
+        raise ProviderError(
+            f"heyreach stop_lead_in_campaign: the write returned 2xx and the "
+            f"provider still reports this lead as {state!r} in campaign "
+            f"{campaign_id}. The person is still in the sequence")
+    return {"campaign_id": campaign_id, "profile_url": profile_url,
+            "lead_status": state}
+
+
+def campaigns_for_lead(profile_url=None, linkedin_id=None, offset=0,
+                       limit=MAX_PAGE):
+    """Every campaign this person is in, with their status in each. Read-only.
+
+    Answers the one collision question `/inbox/GetConversationsV2` cannot: a
+    conversation exists only once somebody has been written to, and this lists
+    the campaigns holding a person who has not been reached yet. It is also the
+    read-back for `stop_lead_in_campaign`.
+    """
+    body = {"offset": int(offset), "limit": min(int(limit), MAX_PAGE)}
+    if profile_url:
+        body["profileUrl"] = str(profile_url)
+    if linkedin_id:
+        body["linkedinId"] = str(linkedin_id)
+    if not (profile_url or linkedin_id):
+        raise ProviderError(
+            "heyreach campaigns_for_lead: a profile url or a linkedin id is "
+            "required. An empty body is not a question about nobody, it is a "
+            "question the provider answers however it likes")
+    data = _read("/campaign/GetCampaignsForLead", body)
+    rows = _collection(data, "/campaign/GetCampaignsForLead")
+    return ([{k: r.get(k) for k in ("campaignId", "campaignName",
+                                    "campaignStatus", "leadStatus",
+                                    "creationTime")} for r in rows],
+            data.get("totalCount"))
 
 
 # ------------------------------------------------- what the provider DID

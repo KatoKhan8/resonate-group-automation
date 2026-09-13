@@ -123,7 +123,25 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
                     heyreach._write(route, {"campaignId": 1})
 
     def test_the_only_write_route_is_still_the_stop(self):
-        self.assertEqual(set(heyreach.WRITE_ROUTES), {"/campaign/Pause"})
+        # STAGING AND STOPPING ONLY, and that is the property - not a count.
+        # The allowlist grew from one route to seven on 2026-09-13 when the
+        # LinkedIn lane gained a campaign factory: create (a DRAFT), create a
+        # list, write a sequence, add or remove a seat, stop one lead, pause.
+        #
+        # What is NOT there is what matters. `Resume` and `StartCampaign`
+        # both demonstrably exist on this vendor's API - an empty-body probe
+        # answers 400 for each, and 404 for names that do not - and so does
+        # `AddLeadsToCampaignV2`. None of the three is here. A system that
+        # can start an outreach campaign before it can reliably stop one has
+        # acquired exposure it cannot end.
+        forbidden = ("Resume", "StartCampaign", "AddLeadsToCampaign",
+                     "SendMessage")
+        reaching = [r for r in heyreach.WRITE_ROUTES
+                    if any(v.lower() in r.lower() for v in forbidden)]
+        self.assertEqual(reaching, [],
+                         f"a route that reaches a prospect is writable: {reaching}")
+        self.assertIn("/campaign/Pause", heyreach.WRITE_ROUTES)
+
 
     def test_the_write_layer_is_still_sealed(self):
         from src import providerwrites as pw
@@ -142,16 +160,24 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
             with self.subTest(operation=operation):
                 self.assertFalse(providerwrites.is_supported(operation))
 
-    def test_the_discovered_read_route_is_not_wired_yet(self):
-        """`POST /list/GetAll` answers 200 and no code here may call it.
+    def test_the_discovered_read_routes_are_wired_now(self):
+        """They were recorded as unwired; the campaign factory needed them.
 
-        Recorded rather than fixed: it is the route that would let a list
-        binding be verified, and wiring a read is a separate change from
-        proving a write.
+        `/list/GetAll` is what lets a list binding be verified, and
+        `/campaign/GetCampaignsForLead` answers the question that had no
+        answer at all: whether a person is already a lead in one of the
+        client's other campaigns. Both are reads.
+
+        The seal is unaffected. A read route cannot reach anybody, which is
+        why `READ_ROUTES_ALL` and `WRITE_ROUTES` are separate lists rather
+        than one permission.
         """
-        self.assertNotIn("/list/GetAll", heyreach.READ_ROUTES_ALL)
+        for route in ("/list/GetAll", "/campaign/GetCampaignsForLead"):
+            self.assertIn(route, heyreach.READ_ROUTES_ALL)
+            self.assertNotIn(route, heyreach.WRITE_ROUTES)
+        # And a route on neither list is still refused by name.
         with self.assertRaises(Exception):
-            heyreach._read("/list/GetAll", {})
+            heyreach._read("/campaign/AddLeadsToCampaignV2", {})
 
     def test_no_body_was_ever_sent_to_the_create_verb(self):
         """The probe table is the evidence, so it has to stay honest.
