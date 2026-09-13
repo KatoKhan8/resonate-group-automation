@@ -24,7 +24,7 @@ WHAT `wait_in_days` MEANS was measured, not assumed - see the note above
 """
 import unittest
 
-from src import bisonfactory, cadencelibrary, campaigns, store
+from src import bisonfactory, cadencelibrary, campaigns, store, workspaces
 from tests.base import QueueTest
 from tests.test_staging_a_campaign_twice_builds_one import FakeBison
 
@@ -215,6 +215,12 @@ class TheWordsTravelWithThePerson(QueueTest):
         self._real = bisonfactory.bison
         bisonfactory.bison = self.bison
         self.addCleanup(setattr, bisonfactory, "bison", self._real)
+
+        # The workspace killswitch must be on for lead writes.
+        ws = workspaces.new_workspace("productive", "Productive",
+                                      client="productive")
+        ws["settings"] = {"policy": {"sending.live": "on"}}
+        workspaces.save([ws])
 
         store.save([record("rec-1", "one@example.com", "Ada"),
                     record("rec-2", "two@example.com", "Grace")])

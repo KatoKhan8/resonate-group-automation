@@ -95,6 +95,11 @@ STAGE         providerwrites.perform(op, …)      NON-prospect-facing ops only
                    (create_list / create_campaign / set_sequence / assign_sender
                     / set_limits are all `prospect_facing=False`, which is what
                     lets configuration be built and proven with nobody at risk)
+              _ensure_leads calls bison.create_lead / bison.attach_leads
+              DIRECTLY, bypassing providerwrites.perform. Two checks close
+              the gap: the workspace killswitch (sending.live) is consulted
+              before any lead is created, and the campaign's provider status
+              is re-read immediately before attach_leads.
 
 VERIFY        configdiff.compare_heyreach / compare_bison  → sealed Readback
                 └─ provider readback  built from canonical state ONLY
@@ -110,10 +115,18 @@ ACT           executionguard.authorize(readback=…) → Authorization
 
 Two properties of that shape matter more than the list:
 
-- **Nothing in STAGE can reach a prospect.** Every staging operation is
-  declared `prospect_facing=False` in `providerwrites.OPERATIONS`. The factory
-  therefore builds and proves a configuration with zero exposure, and the only
-  operations that need a full `Authorization` are `add_lead` and `activate`.
+- **Nothing in STAGE can reach a prospect.** Every staging operation that
+  goes through `providerwrites.perform` is declared `prospect_facing=False`
+  in `providerwrites.OPERATIONS`. The factory therefore builds and proves a
+  configuration with zero exposure. `_ensure_leads` does NOT go through
+  `providerwrites.perform` - it calls `bison.create_lead` and
+  `bison.attach_leads` directly - but the workspace killswitch is consulted
+  there before any lead is created, and the campaign's provider status is
+  re-read immediately before attach. The operations that need a full
+  `Authorization` through `executionguard.authorize()` are `add_lead` and
+  `activate` when they go through the write door; the factory's own lead
+  path is gated by the workspace killswitch and the provider status check
+  instead.
 - **The gates are not a convention.** They are the only way to obtain the thing
   the write layer requires. That is why the factory has no "call the guards"
   step: it cannot skip one.

@@ -17,7 +17,7 @@ everybody twice. Both failure modes in here were real:
 """
 import unittest
 
-from src import bisonfactory, campaigns, store
+from src import bisonfactory, campaigns, store, workspaces
 from src import providers
 from tests.base import QueueTest
 
@@ -255,6 +255,16 @@ class StagingTwiceBuildsOne(QueueTest):
         self._real = bisonfactory.bison
         bisonfactory.bison = self.bison
         self.addCleanup(setattr, bisonfactory, "bison", self._real)
+
+        # THE WORKSPACE KILLSWITCH MUST BE ON FOR LEAD WRITES. `_ensure_leads`
+        # consults `killswitch.workspace_state` before creating or attaching
+        # any lead, so a test whose workspace has no `sending.live` setting
+        # would be refused. Setting it on here is the test equivalent of an
+        # operator having switched the tenant on.
+        ws = workspaces.new_workspace("productive", "Productive",
+                                      client="productive")
+        ws["settings"] = {"policy": {"sending.live": "on"}}
+        workspaces.save([ws])
 
         store.save([self._record("rec-1", "one@example.com", "Ada"),
                     self._record("rec-2", "two@example.com", "Grace")])

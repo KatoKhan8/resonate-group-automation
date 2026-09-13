@@ -38,7 +38,7 @@ attacks, and what each one found:
 """
 import unittest
 
-from src import bisonfactory, campaigns, providers, providerwrites, store
+from src import bisonfactory, campaigns, providers, providerwrites, store, workspaces
 from src.providers import bison
 from tests.base import ProviderTest
 from tests.fakebison import FakeBison
@@ -85,6 +85,12 @@ class FactoryTest(ProviderTest):
         os.environ["BISON_BASE"] = "https://emailbison.invalid/api"
         self.bison = FakeBison()
         self.providers.set_transport(self.bison)
+        # The workspace killswitch must be on for lead writes. `_ensure_leads`
+        # consults `killswitch.workspace_state` before creating or attaching
+        # any lead. The client used in this test is "acme".
+        ws = workspaces.new_workspace("acme", "Acme", client="acme")
+        ws["settings"] = {"policy": {"sending.live": "on"}}
+        workspaces.save([ws])
 
     def estate(self, campaign_id="c1", name="A campaign", rids=("r1",),
                senders=(11,), records=None):

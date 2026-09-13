@@ -847,6 +847,24 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     # the provider refuses an undeclared name outright. Idempotent, and it
     # creates nothing that can reach a person.
     bison.ensure_custom_variables()
+    # THE KILLSWITCH IS CONSULTED BEFORE ANY LEAD IS CREATED OR ATTACHED.
+    # `_ensure_leads` does not go through `providerwrites.perform` - it calls
+    # `bison.create_lead` and `bison.attach_leads` directly - so the write
+    # door's killswitch gate does not cover it. The workspace layer is the
+    # meaningful control at staging time: `sending.live` is the tenant switch
+    # that says whether this workspace's outreach is active. A workspace that
+    # has never been switched on, or that has been switched off, must not have
+    # leads created for it. The GLOBAL layer is excluded because it refuses
+    # sending (which staging is not); the CAMPAIGN layer is excluded because
+    # the canonical campaign is not RUNNING during staging and that is the
+    # correct state for a campaign being built.
+    from . import killswitch
+
+    ws_state = killswitch.workspace_state(campaign.get("client"))
+    if not ws_state["sending"]:
+        raise FactoryRefused(
+            f"the killswitch for workspace {campaign.get('client')!r} is off: "
+            f"{ws_state['why']}. No leads were created or attached")
     before = bison.campaign_lead_count(provider_id)
     known = _known_lead_ids(campaign, wanted)
     ids, created, reconciled, refreshed = [], 0, 0, 0
@@ -909,6 +927,33 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             reconciled += 1
         _remember_lead(lead, row["id"])
         ids.append(row["id"])
+    # FRESH READ, NOT ASSUMED FROM `_ensure_stopped` FOUR CALLS AGO.
+    # The invariant that makes lead attachment safe is "the campaign is
+    # stopped at the provider". `_ensure_stopped` established that earlier,
+    # but the campaign's provider status is read from the provider, not
+    # assumed from local state, so it is re-confirmed here immediately
+    # before the attach. A campaign that became active between the two
+    # reads - resumed by hand in the provider UI, or by another process -
+    # is caught here rather than discovered from a readback that agrees
+    # with a send already in flight.
+    #
+    # SKIPPED WHEN `_ensure_stopped` DELIBERATELY LEFT THE CAMPAIGN RUNNING.
+    # Re-staging a live campaign reconciles material but does not stop the
+    # send - that is a deliberate design choice, not a race. The fresh read
+    # is there to catch a STATUS CHANGE between the two calls, not a status
+    # that was already active when `_ensure_stopped` saw it. The
+    # `left_running` flag in the report records that `_ensure_stopped`
+    # chose not to stop it, so the fresh read would be asking the wrong
+    # question.
+    if not report.get("provider", {}).get("left_running"):
+        pre_attach_status = str(bison.campaign(provider_id).get("status") or
+                                "").lower()
+        if pre_attach_status in bison.STARTED_STATES or pre_attach_status in bison.STARTING_STATES:
+            raise FactoryRefused(
+                f"EmailBison campaign {provider_id} is {pre_attach_status} "
+                f"and leads were about to be attached to a running campaign. "
+                f"Refusing: a lead attached to an active campaign is acted "
+                f"on immediately")
     outcome = bison.attach_leads(provider_id, ids)
     report["provider"]["attached"] = outcome
     # Counted, not just narrated. Which PATH found each lead matters: the
