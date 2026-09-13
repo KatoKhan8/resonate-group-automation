@@ -328,18 +328,90 @@ def same_company(person, rec, facts=None):
     So: a name match here is licensed by the caller's domain scoping, not by
     the name. A caller that searches any other way may not use this function
     without adding a domain check of its own.
+
+    AND THE DOMAIN SCOPING IS WEAKER THAN THE PARAGRAPH ABOVE ASSUMES.
+    `work/validation/decision-makers.json` is a recorded live response: the
+    call asked for `domain=resonategroup.co` and came back with a person whose
+    company object reads `{"name": "Resonate Group", "domain":
+    "resonategroup.com.au", "email_domain": "resonategroup.com.au"}` - a
+    different firm with the same name. So `?domain=` is a search term, not a
+    filter, and this branch is doing real work rather than seconding a
+    guarantee. Do not loosen it into "domain-scoped, therefore accept".
+
+    What would settle it is already in that payload and thrown away before
+    this function sees it: `providers/contactout._person` trims `company` to
+    its NAME and discards `company.domain` and `company.email_domain`.
+    Matching those against `rec["domain"]` is strong evidence where a name is
+    a guess. Until that lands, this compares names - and two things about how
+    it did that were wrong in the same direction, both measured on live
+    payloads after the exclusions started being kept whole:
+
+    A PERSONAL MAILBOX WAS READ AS A DIFFERENT EMPLOYER. The first branch
+    short-circuited on any address at all, so `cavleise@hotmail.com` answered
+    "not this domain" for a man whose payload `company` reads "&Partner ApS"
+    at the record for &Partner ApS. Five of the first eleven exclusions
+    measured this way were exactly that, every one of them at the right
+    company: a Partner, a Client Director, a VP. A webmail address says which
+    mailbox somebody uses and nothing whatever about who employs them, so
+    reading it as evidence of another employer is missing evidence used as
+    positive evidence - the error CLAUDE.md names in as many words. It now
+    falls through to the name rather than deciding.
+
+    AND THE NAME WAS COMPARED AGAINST A DOMAIN. `rec["company"]` holds the
+    DOMAIN STRING on 272 of the 300 records in this estate, so the comparison
+    was "academy xi" against "academyxi.com" and could not match however right
+    the person was. `company_facts["name"]` is ContactOut's own name for the
+    domain we asked about, which is the label a payload's `company` is spelled
+    in; both are consulted now.
+
+    Neither loosens what an ADDRESS decides. A work address at another domain
+    still excludes, even when the company name matches - that is real evidence
+    about where somebody works, and `test_trap_1_an_address_outranks_a_
+    matching_company_name` pins it. A mailbox provider this list does not know
+    falls through to the same exclusion as before, which is the safe way for
+    the list to be incomplete.
     """
+    facts = facts if facts is not None else (rec.get("company_facts") or {})
     domain = (rec.get("domain") or "").lower()
-    mail_domain = ((facts or rec.get("company_facts") or {}).get("email_domain") or "").lower()
+    mail_domain = (facts.get("email_domain") or "").lower()
     email = (person.get("email") or "").lower()
-    if email and "@" in email:
-        at = email.split("@")[-1]
-        return at == domain or (bool(mail_domain) and at == mail_domain)
+    at = email.split("@")[-1] if "@" in email else None
+    if at and (at == domain or (mail_domain and at == mail_domain)):
+        return True
+    if at and at not in FREE_MAIL:
+        return False    # a work address somewhere else answers the question
     company = (person.get("company") or "").lower().strip()
-    expected = (rec.get("company") or "").lower().strip()
-    if company and expected:
-        return company == expected
-    return False        # no evidence of identity is not evidence of a match
+    # No evidence of identity is still not evidence of a match: a row with no
+    # address and no company name leaves by the same door it always did.
+    return bool(company) and company in company_labels(rec, facts)
+
+
+# Mailbox providers that are not companies. An address here is not a work
+# domain, so it neither confirms nor contradicts an employer. Deliberately
+# short and deliberately not inferred: a provider missing from this set is
+# treated as a work domain, which excludes, which is the direction an
+# incomplete list should fail in.
+FREE_MAIL = frozenset({
+    "gmail.com", "googlemail.com", "hotmail.com", "hotmail.co.uk",
+    "outlook.com", "live.com", "msn.com", "yahoo.com", "yahoo.co.uk",
+    "ymail.com", "aol.com", "icloud.com", "me.com", "mac.com",
+    "protonmail.com", "proton.me", "gmx.com", "gmx.de", "gmx.net", "web.de",
+    "mail.com", "zoho.com", "yandex.com", "yandex.ru",
+})
+
+
+def company_labels(rec, facts=None):
+    """Every spelling of this company's name the record actually holds.
+
+    Two, because the record keeps the name in two places and which one is
+    populated varies: `company` is the label the batch was ingested with - a
+    domain string far more often than a name - and `company_facts["name"]` is
+    what the company-information call answered for that domain.
+    """
+    facts = facts if facts is not None else (rec.get("company_facts") or {})
+    return {name for name in ((rec.get("company") or "").lower().strip(),
+                              (facts.get("name") or "").lower().strip())
+            if name}
 
 
 # What a provider payload may fill in on somebody already here. Deliberately
@@ -395,6 +467,46 @@ def disagree(contact, person):
     return False
 
 
+# Why a payload row did not become a contact at this company. TWO FINDINGS,
+# and they were both recorded as the first of them.
+#
+# Measured on the Productive estate: 80 people sat in `excluded` under
+# "company name collision: not this domain", which reads as eighty people
+# discarded for working somewhere else. FIFTY of them are AI Ark rows in
+# which `name`, `title`, `email` and `linkedin` are ALL absent - a paid
+# fallback returned rows this system cannot read, on the two records whose
+# `decision-makers` call had timed out and sent it there. Nobody was at the
+# wrong company; nobody was identified at all, and `ai ark: 0 kept` is in
+# both logs beside twenty-five exclusions each.
+#
+# The distinction is not cosmetic. A collision count is read as evidence that
+# the identity check is working hard; "the fallback returns rows we cannot
+# parse" is a bug with a credit cost, and for a fortnight it wore the other
+# one's name.
+COLLISION = "company name collision: not this domain"
+UNIDENTIFIED = "the provider returned a row that identifies nobody"
+
+
+def identifies_nobody(person):
+    """Is there anything on this row that names a person at all?
+
+    `title` is deliberately not enough. A row carrying "CEO" and nothing else
+    is not somebody who could be contacted, looked up or de-duplicated, and
+    counting it as a person found at the wrong company is how a fallback that
+    returned nothing reported as an identity check doing its job.
+    """
+    return not any(person.get(field) for field in ("name", "email", "linkedin"))
+
+
+def exclusion_reason(person):
+    """What to write down when `same_company` says no.
+
+    Separate from `same_company`, which answers one question - does this
+    person belong here - and must keep answering exactly that.
+    """
+    return UNIDENTIFIED if identifies_nobody(person) else COLLISION
+
+
 def merge_contacts(rec, people, source):
     """Add people that belong to this company; fill in the ones already here.
 
@@ -445,8 +557,15 @@ def merge_contacts(rec, people, source):
     added, excluded = [], []
     for p in people:
         if not same_company(p, rec, facts):
-            excluded.append({"name": p.get("name"), "title": p.get("title"),
-                             "why": "company name collision: not this domain"})
+            # KEPT WHOLE, for the reason `personas.set_aside` states in its own
+            # docstring and this call site did not follow: an exclusion is a
+            # decision about a person, not a reason to forget them. This stored
+            # `{name, title, why}` and dropped the address, the profile, the
+            # location and - the one that matters most here - the COMPANY NAME
+            # the decision was actually made on. So the 80 exclusions on this
+            # estate cannot be audited: the field that decided each one is not
+            # on the record, and re-deriving it means buying the search again.
+            excluded.append(dict(p, why=exclusion_reason(p)))
             continue
         hit = match(p)
         if hit is not None:
@@ -480,6 +599,53 @@ def merge_contacts(rec, people, source):
     identity.assign_keys((rec.get("contacts") or []) + added
                          + (rec.get("excluded") or []) + excluded)
     return added, excluded
+
+
+def reconsider_exclusions(rec, source="provider"):
+    """Re-ask `same_company` about people already bought and set aside.
+
+    Without this the fix above changes NOTHING for anybody. `merge_contacts`
+    is the only caller of `same_company`, it runs only on a fresh payload, and
+    nothing anywhere reads an exclusion again - so a corrected identity check
+    would apply to future discoveries and leave every person it was corrected
+    for sitting in `excluded`, on an estate where the discovery has already
+    happened. `personas.readmit` exists for exactly this reason one stage
+    later, and states it: an exclusion is a decision about a person, not a
+    reason to forget them.
+
+    The payload is on the record, so this costs nothing. Re-buying it would
+    cost ten credits a company for people already paid for.
+
+    Routed back through `merge_contacts` rather than re-implemented: that is
+    the one door where `same_company` decides, identity de-duplicates and a
+    contact is minted in the right shape, and a second copy of that logic
+    would be the thing that drifts. Anybody it still rejects goes straight
+    back into `excluded` with the current reason.
+
+    Only exclusions THIS module made, and only the collision reason. A
+    persona exclusion and a cap exclusion are different decisions taken
+    further down the pipeline, and a row that identifies nobody has nothing to
+    reconsider.
+    """
+    held = [e for e in (rec.get("excluded") or []) if e.get("why") == COLLISION]
+    if not held:
+        return []
+    rec["excluded"] = [e for e in (rec.get("excluded") or [])
+                       if e.get("why") != COLLISION]
+    payload = [{k: v for k, v in entry.items() if k not in ("why", "key")}
+               for entry in held]
+    added, still_out = merge_contacts(rec, payload, source)
+    rec.setdefault("contacts", []).extend(added)
+    rec["excluded"].extend(still_out)
+    if added:
+        store.log(rec, "enrich",
+                  f"{len(added)} contact(s) set aside as a company-name "
+                  "collision are this company after all: returned to the "
+                  "record rather than re-bought")
+        for person in added:
+            events.record(rec, events.CONTACT_FOUND, source=source,
+                          name=person.get("name"))
+    return added
 
 
 # What a cap hit leaves behind. Not a drop reason: nothing here is a finding
@@ -751,6 +917,13 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
     # domain nobody works at. A parked domain goes straight to the rebrand check.
     staffed = (rec.get("company_facts") or {}).get("headcount_signal")
     unstaffed = staffed == 0
+
+    # 1a. FREE, AND BEFORE THE PAID SEARCH ON PURPOSE. People this record
+    # already bought and set aside as a company-name collision are re-asked
+    # against the current identity check. Placed above `usable_contacts`
+    # below, so a company whose only people are readmitted ones does not buy
+    # `decision-makers` again for a payload that is already on the record.
+    reconsider_exclusions(rec)
 
     # 2. ContactOut decision makers, only when there is no usable contact.
     if not usable_contacts(rec):
