@@ -375,6 +375,54 @@ a clean tree and no run in the previous session looked.
    company, and at least one mojibake character. Both passed lint.
 6. `sender_id` null on all sender rows blocks per-human attribution.
 
+## Model routing, decided 2026-09-13
+
+The operator's policy, and it is a policy rather than a preference:
+
+    DETERMINISTIC CODE  ->  QWEN  ->  OPENROUTER
+
+OpenRouter is a QUALITY ESCALATION layer, not the default processor. Code
+does code's job - headcount arithmetic, tolerances, ICP criteria, dedupe,
+collision, suppression, membership, scheduling, idempotency, capacity. Qwen
+is the default SEMANTIC worker. OpenRouter is called when Qwen's output fails
+a quality gate, and the escalation carries the original evidence pack, the
+Qwen attempt and the reason it failed - never a restarted research run.
+
+Cheaper does NOT lower the evidence standard. `UNKNOWN` may never become a
+fact whichever model is asked, and utilisation, profitability and resource
+planning remain PERSONALISATION dimensions rather than ICP criteria.
+
+### What was established about making Qwen reachable
+
+`qwen serve` is NOT the route. It is a session daemon with its own protocol,
+not an OpenAI-compatible `/chat/completions`, so `llm.OpenAICompatibleModel`
+cannot be pointed at it.
+
+The CLI is. `llm.py`'s whole design is "any object with
+`complete(prompt) -> str`", and `--json-schema` "registers a synthetic
+`structured_output` tool; the session ends on the first valid call" - which
+is exactly the strict-JSON contract `llm.ask` already enforces against
+`llm.SCHEMAS`. That is TASK-012, and it is one class rather than a refactor.
+
+The thing to remember when reading that task: **Qwen Code is an AGENT.** Left
+alone it narrates, uses tools and reads files. A model that opens
+`work/queue.jsonl` to be helpful has just put another client's data into a
+prompt.
+
+Measured CLI facts, so nobody re-derives them: the executable is at
+`C:\Users\Zvonimir\AppData\Local\qwen-code\bin\qwen.cmd` and is NOT on PATH; `--approval-mode auto` cannot run headless and
+says so; `-y` is what works; `--max-tool-calls` is a HARD per-turn cap that
+halted a run mid-task.
+
+### The economics this is meant to answer
+
+Nobody knows yet whether OpenRouter is necessary for this work. Tonight's run
+is the first data point and it is an OpenRouter one, because Qwen was not
+reachable when it started. The question to answer next is Qwen's first-pass
+acceptance rate per task category - draft, linkedin_note, persona_angle,
+hook - and to make Qwen the permanent default for every category where it
+passes.
+
 ## The runbook, for the moment credits exist
 
 Every link in this chain was verified offline on real estate data on
