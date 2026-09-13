@@ -159,6 +159,38 @@ class StoppingOnePerson(QueueTest):
             leadstop.stop_contact(rec, contact, "reply_received", live=True)
         self.assertEqual(self.bison.writes, 0)
 
+    def test_the_stop_event_goes_through_the_canonical_writer(self):
+        """A writer that goes round the door hides a locked door.
+
+        This appended to `rec["events"]` directly, and the bypass concealed a
+        bug in itself: `PROVIDER_STOP_CONFIRMED` was in neither `INTERNAL` nor
+        `EXTERNAL`, so it was absent from `events.KNOWN` and `events.record`
+        RAISED on it. Nothing noticed because nothing called `events.record`.
+        """
+        self.assertIn(events.PROVIDER_STOP_CONFIRMED, events.KNOWN)
+        rec, contact = self._subject()
+        leadstop.stop_contact(rec, contact, "reply_received", live=True)
+        saved = next(r for r in store.load() if r["id"] == "rec-subject")
+        stop = next(e for e in saved["events"]
+                    if e.get("type") == events.PROVIDER_STOP_CONFIRMED)
+        # The canonical writer stamps these. A hand-appended dict has neither,
+        # and an event with no id is an event nothing can deduplicate.
+        self.assertTrue(stop.get("id"), "no id: this bypassed events.record")
+        self.assertTrue(stop.get("provider_event_id"))
+
+    def test_recording_the_same_stop_twice_writes_one_event(self):
+        """A re-run, a retry, or a sweep crossing a reply."""
+        rec, contact = self._subject()
+        leadstop.stop_contact(rec, contact, "reply_received", live=True)
+        fresh = next(r for r in store.load() if r["id"] == "rec-subject")
+        leadstop._record(fresh, contact,
+                         {"lead_id": 11, "provider_campaign": 77,
+                          "why": "reply_received", "status_after": "stopped"})
+        saved = next(r for r in store.load() if r["id"] == "rec-subject")
+        stops = [e for e in saved["events"]
+                 if e.get("type") == events.PROVIDER_STOP_CONFIRMED]
+        self.assertEqual(len(stops), 1, stops)
+
     def test_the_record_says_when_and_why(self):
         rec, contact = self._subject()
         leadstop.stop_contact(rec, contact, "agency_dnc", live=True)

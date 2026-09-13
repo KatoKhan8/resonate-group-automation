@@ -215,7 +215,12 @@ INTERNAL = (CAMPAIGN_EVENTS + SLACK_EVENTS + MX_EVENTS +
              OUT_OF_OFFICE_RECORDED, NOT_NOW_RECORDED,
              REFERRAL_RECORDED, REFERRAL_MENTIONED,
              OWNER_ASSIGNED, SENDER_ASSIGNED, EXTERNAL_CAMPAIGN_MAPPED,
-             CAMPAIGN_MAPPING_VALIDATED, CAMPAIGN_MAPPING_FAILED) +
+             CAMPAIGN_MAPPING_VALIDATED, CAMPAIGN_MAPPING_FAILED,
+             # INTERNAL, not EXTERNAL: `EXTERNAL` is what a provider tells us
+             # about the PROSPECT - they replied, it bounced, they accepted.
+             # A stop is OUR action, which the provider then confirmed, and
+             # `leadstop` is the only thing that writes it.
+             PROVIDER_STOP_CONFIRMED) +
             (VERIFICATION_STARTED, VERIFICATION_DISAGREEMENT,
              EVIDENCE_RECONSTRUCTED,
              BATCH_INGESTED, RECORD_SUPPRESSED, RECORD_DROPPED,

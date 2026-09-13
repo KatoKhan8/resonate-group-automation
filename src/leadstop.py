@@ -189,19 +189,35 @@ def _campaign_of(rec, rows=None):
 
 
 def _record(rec, contact, report):
+    """Write the confirmed stop through the canonical writer.
+
+    This appended to `rec["events"]` directly, and the bypass hid a bug in
+    itself: `PROVIDER_STOP_CONFIRMED` was in neither `INTERNAL` nor
+    `EXTERNAL`, so it was not in `events.KNOWN` and `events.record` RAISED on
+    it. Nothing noticed, because nothing called `events.record`. A writer that
+    goes round the door is also the reason nobody finds the door locked.
+
+    The bypass cost more than tidiness. Events written that way carry no `id`
+    and get no idempotency, so the same stop recorded twice - a re-run, a
+    retry, a sweep crossing a reply - appended two identical rows that nothing
+    could collapse. `provider_event_id` keys this one to the exact provider
+    lead and campaign, which is what makes a repeat a no-op.
+    """
     with store.transaction() as rows:
         for row in rows:
             if row.get("id") != rec.get("id"):
                 continue
-            row.setdefault("events", []).append({
-                "type": events.PROVIDER_STOP_CONFIRMED,
-                "contact": contact.get("key"),
-                "channel": "email",
-                "lead_id": report["lead_id"],
-                "campaign": report["provider_campaign"],
-                "why": report["why"],
-                "status": report.get("status_after"),
-                "at": store.now()})
+            events.record(
+                row, events.PROVIDER_STOP_CONFIRMED,
+                contact_key=contact.get("key"), channel="email",
+                provider="emailbison",
+                provider_event_id=(f"emailbison:stop:"
+                                   f"{report['provider_campaign']}:"
+                                   f"{report['lead_id']}"),
+                lead_id=report["lead_id"],
+                campaign=report["provider_campaign"],
+                why=report["why"],
+                status=report.get("status_after"))
 
 
 def main(argv=None):
