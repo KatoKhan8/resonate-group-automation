@@ -1,18 +1,23 @@
 # RESONATE OS HANDOFF
 
-Written 2026-09-13 after a session-limit interruption. Everything here was
-read back from the repository or from a provider on that date. Nothing in
-this file is inferred from a plan.
+Rewritten 2026-09-13, later the same day than the previous version.
+Everything here was read back from the repository or from a provider on that
+date. Nothing in this file is inferred from a plan. Where it corrects the
+previous handoff the correction is marked, because the previous numbers were
+quoted and acted on.
 
 ## Repository
 
 - branch: `master`
-- HEAD: `7ff5a01` "Say what was verified, not what was assumed"
+- HEAD: `9605da0` "A missing model is not a bad record"
 - remote: `origin` https://github.com/KatoKhan8/resonate-group-automation.git
-- remote HEAD: `7ff5a01` on `origin/master`. Identical to HEAD.
-- last pushed commit: `7ff5a01`
-- worktree: clean
-- `work/` is gitignored. Queue and campaign state are NOT in git, by design.
+- remote HEAD: identical. Everything is pushed.
+- worktree: clean apart from `work/`, which is gitignored by design.
+
+Second worktree: `C:\Users\Zvonimir\Desktop\resonate-qwen-worker` on
+`qwen-worker`, for the parallel worker. It carries `QWEN.md`, its standing
+brief. It has NO `config/.env`, so it cannot reach a provider - that is
+structural rather than a promise.
 
 ## Canonical goal
 
@@ -20,131 +25,214 @@ Resonate OS is the internal multi-client outbound engine for Resonate Group.
 Current production client: Productive. Resonate admins operate it; clients
 receive reporting.
 
-## Productive ICP
+---
 
-V2 is STRUCTURAL ONLY. Five criteria, and pain signals are not among them.
+## What is BLOCKED and needs the operator
 
-    geography          DEFINING
-    company_type       DEFINING   agency / software agency
-    services_business
-    employees          20, with a 30% tolerance -> effective floor 14.0
-    tracks_time
+These are the only things stopping the mission, and none of them is a code
+defect.
 
-`ICP_PASS_WITH_UNCERTAINTY` is returned when both DEFINING criteria pass and
-others are unknown. UNKNOWN is not IRRELEVANT and it is not a failure.
+1. **Live provider writes are refused by the session's permission layer.**
+   `python -m src.bisonfactory <campaign> --live` and any script calling a
+   write verb were denied by the auto-mode classifier. Provider READS work
+   and were used throughout. Until a Bash permission rule allows the write
+   path, no campaign can be staged, no sequence written, no lead attached.
+   This is the single gate in front of everything under "Next actions".
 
-Time tracking, utilisation, profitability and resource planning are NOT ICP
-gates. They belong to research and personalisation. Do not move them.
+2. **`sender_id` is null on all 285 sender rows**, which blocks per-human
+   attribution (`assignment.py`). It does NOT block staging - corrected
+   below.
 
-Current replay over 300 records, all Productive:
+---
 
-    icp_pass_with_uncertainty   113
-    icp_fail                    121
-    icp_review                   66
+## Corrections to the previous handoff
 
-    record state: dropped 106, queued 99, verified 66, held 26, drafted 3
-    contacts held across all records: 92
+**The contact funnel is far healthier than recorded.** The previous handoff
+said "104 of 113 qualified accounts have ZERO contacts" and reasoned from
+"the 9 qualified accounts WITH contacts". Measured on the same estate:
 
-Fail reasons: employees 81, company_type 31, services_business 6, geography 3.
+    qualified (icp_pass*)                       113
+    of those, WITH at least one contact          74      (not 9)
+    contacts on qualified accounts               89
+    of those, verified AND sendable              55
+    accounts holding >=1 verified sendable       54
+    of those, persona economic_buyer             50 contacts
+                       champion                   5 contacts
 
-Known data-quality issues:
+The count that read zero was reading the top-level `contact["verified"]`
+field, which is null on all 89. The authority is
+`verification.is_sendable`, which recomputes from the evidence list, and it
+says 55. Contact discovery is NOT the bottleneck. Drafting was.
 
-- `tracks_time` is unknown on 294 of 300. It is a criterion almost nothing
-  can answer from a website. That is why it does not gate.
-- `services_business` unknown on 165, `employees` unknown on 105.
-- Headcount bands straddle the floor (11-50 against a floor of 14), and a
-  band is not a headcount. These resolve to unknown rather than to a guess.
-- Some records carry contradicting headcount sources, for example 23
-  profiles at a company whose own site states 11 staff.
-- 104 of 113 qualified accounts have ZERO contacts. This, not qualification,
-  is the funnel bottleneck.
+**`sender_id` null does not block staging.** The previous handoff filed this
+as a P0 against account-level execution, which is right, and it was being
+read as blocking the campaign. `bisonfactory._ensure_senders` reads
+`provider_account_id`, and 225 Productive EmailBison inboxes carry one, are
+active, and 222 report health `ok`. What `sender_id` blocks is which HUMAN
+owns a prospect, not which inbox sends.
+
+**`{SUBJECT}` rendering is VERIFIED, not unproven.** `config/clients/
+productive.yaml` carried a comment saying it was unproven and gated resuming
+on it. Campaign 451's scheduled email reads back from `/scheduled-emails`
+with `email_subject: "Profitability visible on Monday, not two weeks late"`
+and a fully rendered body - the approved copy, not the merge field, before
+any send. The comment is corrected.
+
+---
+
+## `wait_in_days`, measured
+
+It is the wait **AFTER** the step that declares it, before the next one.
+
+Read off the client's own live campaign 352 on 2026-09-13. 381 consecutive
+scheduled-email pairs whose two steps declare DIFFERENT waits - the only
+pairs that can tell the two readings apart, since equal waits discriminate
+nothing:
+
+    earlier wait 3, later wait 1   ->  delta 3 in 59 of 87 pairs
+    earlier wait 3, later wait 4   ->  delta 3 in 115 of 168
+    earlier wait 4, later wait 3   ->  delta 4 in 77 of 126
+
+The mode is the earlier step's wait in all three groups. The one-to-two day
+spread around it is the sending window and the weekend.
+
+So `productive_li_heavy_v1`'s email days 1, 4, 8, 12, 21 declare waits
+3, 4, 4, 9 and a fifth that has no successor and is checked against nothing.
+
+---
+
+## The five-step campaign
+
+**Shipped as capability. NOT yet staged at the provider** - blocked item 1.
+
+`config/clients/productive.yaml` now declares `email_sequence.steps`, keyed
+by cadence step key (`em1`..`em5`). The keys are the whole mechanism:
+`bisonfactory._sequence_steps` matches each declared delay to the cadence gap
+it claims to reproduce and refuses a mismatch, so the delays stay DECLARED
+(per `docs/CAMPAIGN-FACTORY.md`) and are nonetheless true.
+
+A custom variable holds one value per lead, so the merge fields are numbered:
+`{SUBJECT_3}` resolves to `subject_3`, carrying the words approved for `em3`
+on that contact. Matched by step key, never by position - approvals are
+fingerprinted per step key. `bison.LEAD_VARIABLES` declares six pairs;
+`MAX_SEQUENCE_STEPS` is 6 and a longer cadence is refused rather than
+silently truncated.
+
+**The refusal that matters:** a contact who cannot fill every step of the
+sequence is not staged, and the whole run stops rather than the one lead
+being skipped. A dry run lists exactly who and which steps without raising.
+Before this, a lead with no approved copy was staged with `""` for subject
+and body: the campaign, sequence, schedule, sender and membership all read
+back correct and the person received an empty email.
+
+The single-step shape still works and is what campaign 451 carries.
+
+## The production campaign row
+
+Created, not staged.
+
+    campaign_id   productive-email-liheavy-v1
+    client        productive
+    name          RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - BUYER - LIHEAVY-V1
+    records       20 accounts (the pilot ceiling; `pilotcaps.CEILING.companies`)
+    senders       EmailBison 2736 and 2737, both health ok, 15/day each
+    daily_volume  email 20 (the pilot ceiling), linkedin 0
+    window        Mon-Fri 09:00-17:00 Europe/Zagreb
+
+**Why the name says ZAGREB-HOURS and not a geography.** EmailBison schedules
+ONE window per campaign, so the window is the property the campaign actually
+determines. Country is `unknown` on 39 of the 54 candidate accounts, so a
+name claiming EU or US would be a claim the data does not support.
+
+The cohort was filtered on `cadence.company_name` succeeding as well as on
+ICP and verification: `automotiveonly-com` is qualified and has a verified
+sendable contact and its only company name is its own hostname, which the
+engine refuses to address a stranger by. That is the guard working.
+
+Dry run on 2026-09-13 returns the five steps with waits 3/4/4/9/0 and 20
+leads.
+
+## Drafting
+
+**This was the real bottleneck and it is now moving.**
+
+`python -m src.generate --live` could never reach a model. `main` never
+called `llm.from_env()`, so it ran with `NoModel`, and `NoModel` raised the
+same `ModelError` a real failure raises, so `generate_record` HELD the
+record - writing a configuration mistake into canonical state, once per
+record, under a banner printing "GENERATED". Measured: one such run moved
+`16kagency-com` from `verified` to `held` with no event. Fixed at all three
+points (`9605da0`), and `NoModelConfigured` now exists so the two cases
+cannot be confused again.
+
+With that fixed, `16kagency-com` generated five real lint-passing drafts
+against `openrouter/free`. A batch for the whole 20-account cohort was
+started the same session.
+
+Drafts are NOT approvals. `_approved_copy` requires `step["approval"]`, and
+nothing in this session approved anything.
+
+**Copy quality, observed and not fixed:** one generated body referred to the
+prospect's own company in the third person ("highlights their commitment"),
+and one contained a mojibake apostrophe. Both passed lint. Worth a pass
+before anything is approved.
+
+---
 
 ## EmailBison
 
-Campaigns created during the build: 434, 441, 447, 449, 450, 451.
+PROVIDER TRUTH, re-read 2026-09-13:
 
-PROVIDER TRUTH as of 2026-09-13: **434, 441, 447, 449 and 450 now return
-404.** The asynchronous DELETE issued earlier has landed. Only 451 exists.
-Do not treat the older IDs as live; they are gone.
+- workspace bound to this credential: **10, "PRODUCTIVE"**
+- **434, 441, 447, 449, 450 all return 404.** Deleted. Confirmed again today.
+- **451 EXISTS, status `active`**, name `RESONATE - PRODUCTIVE CANARY - Hot
+  Soup Group`, canonical row `productive-canary-email-2026-09-13`, one lead,
+  one scheduled email for 2026-09-14 13:19Z, one step, `wait_in_days` 3.
+  Do NOT mutate it. Re-staging pauses it.
+- campaign 352 is the client's own: 44 sequence steps, 95,340 scheduled
+  emails across 6,356 pages, 21,176 leads. Read-only, and the source of the
+  `wait_in_days` measurement.
 
-- canary: campaign **451**, canonical row `productive-canary-email-2026-09-13`,
-  1 lead (Bison lead 203657), 1 scheduled email, sender 3948, schedule id 400
-  reporting "Not Started". Scheduled to send Monday 2026-09-14 13:19Z
-  (09:19 EDT, Toronto). SUBJECT and BODY variable rendering was PROVEN
-  pre-send by reading `/scheduled-emails`.
-- production 5-step campaign: **NOT CREATED.** This is the largest open gap.
+Provider quirks that still hold and still bite:
 
-Implemented AND live-verified verbs: `create_campaign`, `create_lead`,
-`attach_leads`, `campaign_lead_ids`, `campaign_lead_count`, `set_sequence`,
-`sequence_steps`, `set_limits`, `set_schedule`, `schedule`, `attach_senders`,
-`campaign_senders`, `pause_campaign`, `resume_campaign`, `scheduled_emails`,
-`membership`, `stop_lead`, `find_lead_by_email`, `lead`, `update_lead`,
-`variables_of`, `ensure_custom_variables`, `find_campaigns_by_name`.
-
-Per-lead stop: implemented and verified. `membership(352, [148932])` returns
-`{148932: 'sequence_finished'}` against a 21,176-lead campaign.
-
-Current live actions: one scheduled email on campaign 451. Nothing sent.
-
-Blockers:
-
-- `sender_id` is null on all 257 senders. This blocks account-level
-  execution and is a business decision, not a code defect.
-- Staging invalidates approval, so the order must be stage THEN approve.
-  Undocumented provider behaviour; do not reorder.
+- `per_page` is ignored; every list route returns 15 rows. Count from
+  `meta.total`. `_paged` refuses a walk over 40 pages rather than returning a
+  page as an inventory - it did exactly that on 352 today.
+- `POST /campaigns` discards every field except `name`.
+- The sequence route APPENDS. No replace, no delete, no per-step route.
+- `GET .../schedule` and `attach-sender-emails` answer 200 with
+  `success: false`. The status code is not the verdict.
+- `?email=` is not a filter.
+- DELETE is asynchronous.
+- `custom_variables` must be a LIST of name/value objects, declared first.
+- Staging invalidates approval. Stage THEN approve.
 
 ## HeyReach
 
-- **599020** RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1 - **DRAFT**,
-  0 users, list 933603, seat 174892 attached, org unit 118832. Created
-  2026-09-13T10:33Z. Visible in the HeyReach UI. This one is ours.
-- **594061** - the earlier Productive canary, canonical row
-  `productive-canary-2026-09-09`, paused.
-- 50 campaigns total in the workspace; the rest are the client's own
-  pre-existing work and must not be touched.
+Unchanged this session; nothing was called.
 
-`WRITE_ROUTES` is now seven routes:
-
-    /campaign/Pause
-    /campaign/StopLeadInCampaign
-    /list/CreateEmptyList
-    /campaign/Create
-    /campaign/UpdateSequence
-    /campaign/AddLinkedInAccountsToCampaign
-    /campaign/RemoveLinkedInAccountsFromCampaign
-
-Deliberately ABSENT and asserted absent by the seals: Resume, StartCampaign,
-and every AddLeadsToCampaign spelling. A campaign can be built and left in
-DRAFT. It cannot be started, and no person can be put into one.
-
-Reads wired: `/campaign/GetAll`, `/inbox/GetConversationsV2`, `/lead/GetLead`,
-`/li_account/GetAll`, `/campaign/GetLeadsFromCampaign`, `/stats/GetOverallStats`,
-`/list/GetAll`, `/campaign/GetCampaignsForLead`.
-
-Blockers: Open Profile detection and InMail send are NOT established as
-provider capabilities. Steps naming them are HELD by the state machine,
-never silently skipped. Do not claim either works until measured.
+- **599020** RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1 - DRAFT, 0 users,
+  no sequence, list 933603, seat 174892, org unit 118832. An empty shell, and
+  it has NO canonical campaign row - it is an orphan at the provider.
+- **594061** the earlier canary, paused.
+- 48 other campaigns belong to the client. Do not touch them.
+- `WRITE_ROUTES` is seven routes. Resume, StartCampaign and every
+  `AddLeadsToCampaign` spelling are deliberately absent and asserted absent.
+- Open Profile detection and InMail send are NOT established capabilities.
+  Steps naming them are HELD, never silently skipped.
 
 ## Live execution
 
 - confirmed touches: 0
 - scheduled actions: 1 (EmailBison 451, Monday 2026-09-14 13:19Z)
-- sent actions: 0
-- replies: 0
-- ambiguous actions: 0
-- current live rung: ONE authorized canary. `UNSTOPPABLE_CHANNEL_CAP = 1`.
-- approval: the canary is approved and staged. No bulk authorization exists.
+- sent: 0. replies: 0. ambiguous: 0.
+- live rung: ONE authorized canary. `UNSTOPPABLE_CHANNEL_CAP = 1`.
 - killswitch: armed and untripped.
 
-Campaign rows in canonical state: 9. Six are `awaiting_approval`
-(three Productive, two ContactOut, one Demo Client); `productive-pilot-canary`
-is draft; `productive-canary-2026-09-09` is paused; the email canary is draft.
+## Cadence
 
-## ABM / cadence target
-
-`productive_li_heavy_v1` in `src/cadencelibrary.py`, selected by
-`config/clients/productive.yaml` via the `cadence:` key. The shape is
-asserted by test, not by hope: 5 email, 6 LinkedIn, 11 total, 21 days.
+`productive_li_heavy_v1` in `src/cadencelibrary.py`, selected by the `cadence:`
+key. 5 email, 6 LinkedIn, 11 touches, 21 days.
 
     day 1   li1 connect  + em1        day 12  em4
     day 3   li2 message               day 15  li5
@@ -153,113 +241,78 @@ asserted by test, not by hope: 5 email, 6 LinkedIn, 11 total, 21 days.
     day 8   em3
     day 10  li4
 
-Branches: OPEN PROFILE replaces the day-1 connection request with a direct
-message; CONNECTED gates every message step; CONNECTION_NOT_ACCEPTED turns
-li3 into the InMail fallback. The InMail branch runs ONLY where the provider
-supports it, which is currently unproven, so it is held.
+Event-driven, never calendar-driven. Time passing is not a decline.
 
-Event-driven, never calendar-driven. A clock never produces evidence: time
-passing is not a decline. One connection request per person per sequence,
-enforced at execution time as well as at authoring time.
+---
 
-Account saturation, from `config/clients/productive.yaml`: contact
-min_hours_between_touches 0 (a coordinated day is the point),
-min_hours_between_same_channel_touches 48, max_touches_per_week 6,
-max_touches_total 12; account max_active_contacts 2, max_touches_per_week 8,
-min_hours_between_first_touches 72.
+## Parallel worker
 
-## Current code work
+`docs/qwen-tasks/` holds the queue: `TODO/`, `RUNNING/`, `DONE/`, and a
+README describing the lifecycle. Six tasks are written, each stating its
+FILES FORBIDDEN, which matters more than its goal.
 
-- EmailBison production hardening - **COMPLETE**. Committed `3c8cff6`.
-  Paging fixed; a page is no longer read as an inventory.
-- HeyReach capability/sequence - **COMPLETE**. Committed `f1fd6c0`.
-  Campaign 599020 exists in DRAFT at the provider.
-- cross-channel state machine - **COMPLETE**. Committed `8990225`.
-  `src/linkedinstate.py`, wired into `cadence` and `nextaction`.
-- LinkedIn-heavy copy and red-team - **COMPLETE**. Committed `5614f1e`.
-  `step.purpose` and `already_sent` in the draft prompt.
-- Productive pipeline - **COMPLETE**. Committed `4cfe0a0`. Webmail domains
-  are no longer read as an employer.
-- outcomes / provenance fix - **COMPLETE**. Committed `fb1557d`.
-- safety-test failures: **none found.** Verified by running the 225 tests
-  that cover every file touched in this session - `test_audit`,
-  `test_invariants`, `test_the_stop_can_be_performed`,
-  `test_the_factory_verbs_exist_and_are_sealed`,
-  `test_a_refusal_is_not_a_purchase`,
-  `test_two_campaigns_do_not_collide_at_the_provider`,
-  `test_transport_audit` - all OK.
+    TASK-001  observable full-suite verdict        RUNNING
+    TASK-002  HeyReach capability contract         TODO
+    TASK-003  linkedinstate red-team               TODO
+    TASK-004  30k scale measurement                TODO
+    TASK-005  crash/restart idempotency seams      TODO
+    TASK-006  multi-client isolation               TODO
 
-  The WHOLE suite was NOT observed to completion. It runs longer than the
-  900-second watchdog and was killed at the limit (exit 124) on the one run
-  that captured its exit code honestly. Treat "full suite green" as
-  UNVERIFIED until somebody runs it without a timeout.
+The `qwen` CLI is at `C:\Users\Zvonimir\AppData\Local\qwen-code\bin\qwen.cmd`
+and is NOT on PATH. Headless needs `-y`; `--approval-mode auto` cannot run
+non-interactively and says so. `--max-tool-calls` is a HARD per-turn cap and
+halted the first run; `-c` resumes.
+
+Nothing Qwen produces has been reviewed or integrated yet.
+
+---
+
+## Test verdict
+
+`test_generate`, `test_invariants`, `test_a_model_is_configured_or_it_is_not`,
+`test_failure_injection`, `test_the_opener_asserts_nothing`,
+`test_nothing_talks_back_to_a_prospect`, `test_no_model_is_not_a_bad_record`:
+**206 tests, OK, exit 0**, read from unittest rather than from a pipe.
+
+The factory group - `test_a_five_step_campaign_sends_five_different_emails`,
+`test_staging_a_campaign_twice_builds_one`,
+`test_two_campaigns_do_not_collide_at_the_provider`,
+`test_no_activation_without_an_exact_match`: **130 tests, OK, exit 0.**
+
+The WHOLE suite still has no observed verdict. That is TASK-001.
+
+Two pre-existing failures were found and fixed this session, both stale
+constants in test form rather than product defects. They had been failing on
+a clean tree and no run in the previous session looked.
+
+---
 
 ## P0
 
-1. No EmailBison 5-step production campaign exists. The mission requires one
-   readable in the provider UI. Nothing blocks building it.
-2. `sender_id` null on all 257 EmailBison senders blocks account-level
-   execution. Needs an operator decision, not code.
+1. Authorize the live provider write path. Everything below waits on it.
+2. Stage `productive-email-liheavy-v1` and read it back: five steps, waits
+   3/4/4/9, two senders, the Zagreb window, the 20-lead membership.
+3. Approve the generated copy. Drafts exist; approvals do not, and
+   `_approved_copy` refuses without them - correctly.
 
 ## P1
 
-0. The full test suite exceeds 900 seconds and no run in this session
-   observed its verdict. Three earlier runs appeared to exit 0; that was the
-   exit code of `tail` at the end of the pipeline, not of unittest. Pipe
-   unittest through nothing, or the verdict line is lost and the exit code
-   is the filter's. Either split the suite or raise the watchdog.
-1. HeyReach 599020 has no sequence and no leads. It is an empty DRAFT shell.
-2. Open Profile and InMail capability unmeasured on HeyReach.
-3. 104 of 113 qualified accounts have no contacts; contact discovery is the
-   funnel bottleneck, not qualification.
-4. Of the 9 qualified accounts WITH contacts: 6 STOP (already mid-sequence in
-   the client's own campaigns 327 and 352), 1 HOLD, 2 ALLOW but only with
-   catch-all or unverified addresses.
-
-## Provider truth to re-check before ANY retry
-
-- EmailBison 434/441/447/449/450 are **404**. Deleted. Do not retry against
-  them and do not read their absence as an adapter fault.
-- Campaign 451 is production evidence. Do NOT cancel, duplicate, restage or
-  otherwise mutate it to test something. Re-staging pauses it.
-- `per_page` is ignored; every list route returns 15 rows. Count from
-  `meta.total` via `campaign_lead_count`, never from a returned list.
-- `POST /campaigns` discards every field except `name`.
-- The sequence route APPENDS; it does not replace.
-- `GET .../schedule` and `attach-sender-emails` can answer HTTP 200 with
-  `success: false`. The status code is not the verdict.
-- `?email=` is not a filter; it returns an unfiltered page.
-- DELETE is asynchronous.
-- `custom_variables` must be a LIST of name/value objects, with the names
-  declared in advance.
-- HeyReach Resume and StartCampaign are DIFFERENT verbs, neither wired.
-  StopLeadInCampaign is per-lead. No campaign or list DELETE exists.
-- Spend to date: 699 provider calls, 962 credits against a 50,000 ceiling.
-
-## Next 10 actions
-
-1. Observe the Monday 2026-09-14 13:19Z canary send on campaign 451 and
-   record the outcome. Do not mutate the campaign in order to observe it.
-2. Build the EmailBison 5-step production campaign through `bisonfactory`,
-   named on the RESONATE - PRODUCTIVE - EMAIL - GEO - PERSONA - LIHEAVY-V1
-   pattern, and leave it PAUSED.
-3. Read that campaign back from the provider and compare against the
-   canonical expected shape: 5 steps, delays, sender pool, schedule,
-   custom variables.
-4. Write the HeyReach sequence onto campaign 599020 via UpdateSequence.
-5. Read 599020 back and confirm the sequence matches the LinkedIn half of
-   `productive_li_heavy_v1`.
-6. Measure HeyReach Open Profile detection and InMail send. Report the exact
-   limitation if unsupported, and build the strongest supported fallback
-   rather than pretending it works.
-7. Resolve `sender_id` null with the operator. Nothing at account scale runs
-   until this is answered.
-8. Attack the contact bottleneck: 104 qualified accounts with no contacts.
-9. Stage accounts against both production campaigns, stage THEN approve.
-10. Only then propose widening the live rung past one action.
+1. The full suite has never been observed to a verdict (TASK-001, running).
+2. HeyReach 599020 is an empty DRAFT with no canonical row. Give it a row or
+   delete it; an orphan at a provider is how two campaigns get built.
+3. Open Profile and InMail capability unmeasured (TASK-002).
+4. Four cost estimators multiply by `cadence.GENERATED_KEYS`, which still
+   reads two generated emails while Productive generates five. Every LLM
+   estimate for this client is out by 2.5x, in the direction that matters.
+   See `PRODUCT-GAPS.md`.
+5. Generated copy quality: third-person references to the prospect's own
+   company, and at least one mojibake character. Both passed lint.
+6. `sender_id` null on all sender rows blocks per-human attribution.
 
 ## Next single best action
 
-Build the EmailBison 5-step production campaign and read it back from the
-provider. It is the largest open gap, nothing blocks it, and it does not
-touch the scheduled canary.
+Authorize the live write path, then stage `productive-email-liheavy-v1` and
+read it back. The capability, the configuration, the cohort, the senders and
+the schedule are all in place and verified offline; the only thing between
+this and a production campaign visible in the EmailBison UI is permission to
+make the call.
