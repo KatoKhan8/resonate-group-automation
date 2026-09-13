@@ -128,9 +128,16 @@ RELATIONSHIP = tuple(re.compile(p, re.I) for p in (
     # experience - and a guard that refuses honest copy gets switched off.
     r"\b(?:we|i|you)\s+(?:\w+\s+){0,2}"
     r"(?:spoke|spoken|talked|chatted|connected|met|corresponded)\b",
+    # THE PLURAL WAS A HOLE. These nouns were singular and the `\b` after
+    # "discussion" refuses to match inside "discussions", so "our previous
+    # discussions" passed while "our previous discussion" was refused - the
+    # same invented relationship, one letter apart. Measured 2026-09-14:
+    # that exact subject, "Final note on our previous discussions", was
+    # generated for a contact this system has never written to and reached
+    # EmailBison as a per-lead variable on lead 203708.
     r"\b(?:our|the|your|that|a)\s+(?:last|previous|recent|earlier|first|"
     r"initial|prior)\s+(?:conversation|call|chat|exchange|email|message|"
-    r"note|discussion|meeting|thread)\b",
+    r"note|discussion|meeting|thread)s?\b",
     r"\b(?:as|like)\s+(?:we\s+)?(?:discussed|mentioned|agreed|promised|"
     r"said|covered|noted)\b",
     # A DEFINITE REFERENCE TO A SHARED ARTEFACT. The first version of this
@@ -155,7 +162,7 @@ RELATIONSHIP = tuple(re.compile(p, re.I) for p in (
     # conversation, so it is matched separately below and tested against what
     # FOLLOWS the verb.
     r"\b(?:per|from)\s+(?:our|your)\s+(?:last\s+)?(?:conversation|call|"
-    r"email|note|message|chat|discussion)\b",
+    r"email|note|message|chat|discussion)s?\b",
     # an ongoing relationship or engagement
     r"\bwe(?:'ve| have)?\s+(?:\w+\s+){0,2}"
     r"(?:worked|partnered|collaborated|engaged)\s+(?:together|with you)\b",

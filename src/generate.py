@@ -678,7 +678,30 @@ def draft(rec, contact, day, model, client=None):
                             key: {**((rec.get("cadence") or {}).get(key) or {}),
                                   day: candidate}}
         failures = lint.check(trial, key, candidate)
+        # AND THE CLAIMS, HERE, NOT ONLY AT SEND TIME.
+        #
+        # `claims.check` was called in exactly one place - `executionguard`,
+        # at the moment of sending - so a draft asserting something the
+        # record does not support was generated, stored, approved, and
+        # carried to the provider as a per-lead variable before anything
+        # looked at it. Measured 2026-09-14 on EmailBison lead 203708: the
+        # em5 subject read "Final note on our previous discussions" for a
+        # contact this system has never written to.
+        #
+        # `claims.prior_contact` already exists to license exactly that
+        # phrase and reads confirmed touches from the event log. It was
+        # being used to TELL the prompt whether prior contact existed, and
+        # never to check whether the answer was respected.
+        #
+        # Checked against the same trial record lint sees, so a claim is
+        # judged against the record as it will be stored. A failing draft is
+        # regenerated, never patched.
+        unsupported = claims.check(
+            f"{candidate['subject']}\n{candidate['body']}", trial, contact)
         content_failures = [f for f in failures if f not in lint.HELD_CODES]
+        if unsupported:
+            content_failures = content_failures + [
+                f"unsupported claim: {c}" for c in unsupported[:3]]
         if not content_failures:
             rec.setdefault("cadence", {}).setdefault(key, {})[day] = candidate
             store.log(rec, "draft", f"{contact.get('name')} {day}: {data['subject']}",
