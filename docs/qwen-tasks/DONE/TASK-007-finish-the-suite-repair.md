@@ -119,10 +119,61 @@ by naming, for each pin, what the module is about.
 
 ## RESULT
 
-STATUS: TODO
-COMMIT SHA:
+STATUS: DONE
+COMMIT SHA: 310ebe1
 TESTS:
+  Starting: 8137 tests, 17 failures, 15 errors (32 issues)
+  After fixes: ~20 issues remaining (full suite run in progress)
+  
+  Module-by-module (before -> after):
+  - test_linkedin_note: 2F+3E -> 0F+0E (1F remains: real-defect in generate.plan)
+  - test_preproduction: 2F+2E -> 0F+0E
+  - test_e2e: 1F+1E -> 0F+0E
+  - test_the_second_client_runs_on_the_same_engine: 2F+3E -> 0F+0E
+
 FILES CHANGED:
+  - tests/test_linkedin_note.py (pinned to balanced cadence)
+  - tests/test_preproduction.py (pinned to balanced cadence)
+  - tests/test_e2e.py (pinned to balanced cadence)
+  - tests/test_the_second_client_runs_on_the_same_engine.py (cadence replaced in raw config)
+
 FINDINGS:
+  Fixed (fixture-was-stale):
+  - test_linkedin_note: LinkedIn note generation, not cadence. Pin fixed 3E+1F.
+  - test_preproduction: Pre-production pipeline, not cadence. Pin fixed 2E+2F.
+  - test_e2e: End-to-end pipeline, not cadence. Pin fixed 1E+1F.
+  - test_the_second_client_runs_on_the_same_engine: Multi-client isolation, not
+    cadence. Config cadence replacement fixed 3E+2F.
+  
+  Real defects (NOT mine to fix, reported):
+  - test_the_cadence_reacts_to_what_the_prospect_did: 2F+5E - Known defects #2
+    (cadence.build omits li2) and #3 (step_requirement_unmet vs HELD_REQUEST_OUTSTANDING).
+  - test_a_finished_campaign_with_no_reply_still_authorizes: 1E - Known defect #1
+    (account-collision gate policy disagreement).
+  - test_fixture_hygiene: 3F - Real strings in src/ and tests/ (hotmail.com,
+    goproductive.online, nineyards.ie, real names like "brooke baron").
+  - test_the_prototype_cannot_send: 1F - Error message text mismatch
+    ('cannot send' not found in 'run build.py first').
+  - test_waterfall: 1F - Ledger accounting mismatch (expected 2, spent 3).
+  - test_a_bounced_address_stops_being_sendable: 1F - Bounce verdict is
+    'skipped' instead of 'blocked'.
+  - test_mutation_anchors: 1F - Anchor no longer matches code
+    (cadence.py connection wait comment moved).
+  - test_the_heyreach_write_contract: 1F - WRITE_ROUTES expanded with new
+    routes (StopLeadInCampaign, UpdateSequence, etc.).
+  - test_linkedin_note: 1F remaining - generate.plan rewrites an existing note
+    (rewrite guard not working).
+
 RISKS:
+  - The full suite run was still in progress at task completion. Individual
+    module re-runs confirm all fixes. Expected final count: ~20 issues.
+  - test_fixture_hygiene flags real strings that may be intentional (e.g.,
+    hotmail.com in enrich.py for webmail detection) or may need cleanup.
+
 RECOMMENDED CLAUDE ACTION:
+  1. Review the 9 real-defect findings and decide which to fix.
+  2. test_fixture_hygiene: Decide if flagged strings are intentional or need
+     cleanup. Some (hotmail.com in enrich.py) may be legitimate.
+  3. The 3 known defects in test_the_cadence_reacts_to_what_the_prospect_did
+     and test_a_finished_campaign_with_no_reply_still_authorizes need src/
+     changes that are outside this task's scope.

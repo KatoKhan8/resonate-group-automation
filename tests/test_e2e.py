@@ -24,7 +24,7 @@ import unittest
 
 from src import cadence, ingest, lint, llm, push, run, store
 from tests.base import (FIXTURES, ProviderTest, approve_everything,
-                        qualify_everything)
+                        pin_client_config, qualify_everything)
 
 BATCH = os.path.join(FIXTURES, "e2e-batch.csv")
 SUPPRESS = os.path.join(FIXTURES, "e2e-suppress.txt")
@@ -116,6 +116,9 @@ class EndToEnd(ProviderTest):
 
     def setUp(self):
         super().setUp()
+        # Pinned: these tests are about the end-to-end pipeline, not about
+        # which cadence Productive currently runs.
+        pin_client_config(self)
         self.tmp = tempfile.mkdtemp(prefix="rga-e2e-run-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         self.out = os.path.join(self.tmp, "out")

@@ -19,7 +19,7 @@ from src.providers import bison
 
 from src import (approval, approve, cadence, clients, events, ingest, lint,
                  push, report, run, store)
-from tests.base import FIXTURES, ProviderTest, qualify_everything
+from tests.base import FIXTURES, ProviderTest, pin_client_config, qualify_everything
 
 BATCH = os.path.join(FIXTURES, "preprod-batch.csv")
 SUPPRESS = os.path.join(FIXTURES, "preprod-suppress.txt")
@@ -69,6 +69,9 @@ class FakeModel:
 class PreProduction(ProviderTest):
     def setUp(self):
         super().setUp()
+        # Pinned: these tests are about the pre-production pipeline, not about
+        # which cadence Productive currently runs.
+        pin_client_config(self)
         self.tmp = tempfile.mkdtemp(prefix="rga-preprod-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         self.out = os.path.join(self.tmp, "out")

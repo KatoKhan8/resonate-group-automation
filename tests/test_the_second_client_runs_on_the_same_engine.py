@@ -297,6 +297,10 @@ class Estate(unittest.TestCase):
 
         with open(REAL_CONFIG, encoding="utf-8") as f:
             raw = f.read()
+        # Pinned: these tests are about multi-client isolation, not about
+        # which cadence Productive currently runs. The fixtures use day1..day21
+        # step keys, so the config must match.
+        raw = raw.replace("productive_li_heavy_v1", "productive_balanced_v1")
         self.raw_config = raw
         self._write_config(A, _client_a_config(raw))
         self._write_config(B, _client_b_config(raw))

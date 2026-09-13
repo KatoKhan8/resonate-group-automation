@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 from src import cadence, clients, generate, llm, store
-from tests.base import FIXTURES
+from tests.base import FIXTURES, pin_client_config
 
 GOOD_NOTE = ("hi Ivana, i work with finance leads at multi office agencies on "
              "month end reconciliation. curious how you handle it. happy to connect.")
@@ -27,7 +27,14 @@ class NoteTest(unittest.TestCase):
         shutil.copyfile(os.path.join(FIXTURES, "phase7.jsonl"), self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
-        self.config = clients.load("productive")
+        # The note mode is REMOVED, not inherited. This module asks what
+        # the DEFAULT is - `TestTemplateModeIsTheDefault` is the class
+        # name - and Productive chose `llm` on 2026-09-13 so its five
+        # generated LinkedIn steps would have copy. A test about a
+        # default that reads a live client's choice is asking the wrong
+        # file. `llm_config()` below puts it back explicitly for the
+        # tests that are about the other mode.
+        self.config = pin_client_config(self, linkedin_connection_note=None)
         generate.reset_model_calls()
 
     def tearDown(self):
@@ -164,9 +171,22 @@ class TestLlmMode(NoteTest):
             rec = store.get("meridian", recs)
             generate.linkedin_note(rec, rec["contacts"][0], model, self.llm_config())
         ops = generate.plan(self.rec(), self.llm_config())
-        for op in ops:
-            self.assertNotEqual((op["step"], op.get("contact")),
-                                ("linkedin_note", "Ivana Šarić"))
+        # THE STEP THAT WAS WRITTEN, not every step this contact has.
+        #
+        # This asserted that no `linkedin_note` op mentioned Ivana at all,
+        # which was true only while a sequence had ONE LinkedIn step. Both
+        # the module constant and `productive_balanced_v1` carry two - day3
+        # connect and day8 message - and writing the day3 note does not and
+        # must not satisfy day8. A connection request and a follow-up message
+        # are different objects written from different rungs of
+        # `LINKEDIN_LADDER`.
+        #
+        # The claim is unchanged: a note already written is not written again.
+        written = [(op.get("contact"), op.get("day")) for op in ops
+                   if op["step"] == "linkedin_note"]
+        self.assertNotIn(("Ivana Šarić", "day3"), written)
+        self.assertIn(("Ivana Šarić", "day8"), written,
+                      "the step that was never written should still be asked for")
 
 
 class TestModeIsValidated(NoteTest):

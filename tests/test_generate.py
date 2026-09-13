@@ -14,7 +14,7 @@ import unittest
 from unittest import mock
 
 from src import generate, lint, llm, store
-from tests.base import FIXTURES
+from tests.base import FIXTURES, pin_client_config
 
 # "{first}" rather than a hard-coded name, which is the convention
 # `test_e2e.py` already uses. It said "Robert," while the two records here
@@ -64,6 +64,13 @@ class GenerateTest(unittest.TestCase):
         shutil.copyfile(os.path.join(FIXTURES, "phase5.jsonl"), self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
+        # Pinned, not loaded. This module is about EMAIL drafting, and
+        # `plan(rec)` with no config loads the live client file - so when
+        # Productive chose `linkedin_connection_note.mode: llm` on
+        # 2026-09-13, so its five generated LinkedIn steps would have copy,
+        # every test here started planning LinkedIn notes as well.
+        # `TestOnlyTwoEmailsAreGenerated` is not about LinkedIn.
+        pin_client_config(self, linkedin_connection_note=None)
 
     def tearDown(self):
         if self._prev is None:
