@@ -510,7 +510,31 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
 
 
 def _ensure_stopped(provider_id, report, by="system"):
-    """Leave it stopped. A staged campaign that can send is not staged."""
+    """Leave a staged campaign stopped. Do not stop a running one.
+
+    A campaign this factory builds must not be able to send, so it is paused -
+    that part is unchanged, and the factory still never STARTS anything.
+
+    What it must not do is pause a campaign that is ALREADY LIVE. Re-staging
+    is routine: it reconciles copy, limits and membership, and it is run again
+    whenever a draft changes. Pausing unconditionally meant a routine re-stage
+    silently stopped a running campaign - measured on 2026-09-13, when the
+    duplicate-refusal check re-staged the authorised canary and suspended the
+    send it had just committed. Nothing raised, because pausing looks like the
+    safe direction.
+
+    Stopping a live campaign is a decision somebody takes on purpose, through
+    `orchestrator.pause`, which records who and why. It is not a side effect
+    of reconciling a draft.
+    """
+    status = str(bison.campaign(provider_id).get("status") or "").lower()
+    if status not in ("draft", "paused", ""):
+        report["did"].append(
+            f"campaign is {status} and was LEFT RUNNING: re-staging "
+            f"reconciles material, it does not stop a live campaign. Use "
+            f"orchestrator.pause to stop it")
+        report["provider"]["left_running"] = True
+        return
     state = bison.pause_campaign(provider_id)
     report["did"].append(f"campaign left {state['status']}")
 

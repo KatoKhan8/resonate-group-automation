@@ -279,6 +279,23 @@ class StagingTwiceBuildsOne(QueueTest):
         report = bisonfactory.stage(CID, live=True)
         self.assertEqual(report["provider"]["readback"]["status"], "paused")
 
+    def test_re_staging_does_not_stop_a_running_campaign(self):
+        """Re-staging reconciles material. It is not a way to stop a send.
+
+        Measured on 2026-09-13: the duplicate-refusal check re-staged the
+        authorised canary and paused the campaign, suspending the send it had
+        just committed. Nothing raised, because pausing looks like the safe
+        direction - and a routine re-stage silently stopping a live campaign
+        is its own kind of unsafe.
+        """
+        bisonfactory.stage(CID, live=True)
+        cid = int(campaigns.get(CID, campaigns.load())["bison_campaign_id"])
+        self.bison.campaigns[cid]["status"] = "active"     # somebody started it
+        report = bisonfactory.stage(CID, live=True)
+        self.assertEqual(self.bison.campaigns[cid]["status"], "active",
+                         "re-staging stopped a running campaign")
+        self.assertTrue(report["provider"].get("left_running"))
+
     def test_a_foreign_workspace_is_refused(self):
         """The credential's real estate must be the client's estate."""
         self.bison.bound_workspace = lambda: {"id": 25, "name": "Ironvault"}
