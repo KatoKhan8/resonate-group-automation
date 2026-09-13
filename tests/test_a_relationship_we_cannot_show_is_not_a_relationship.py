@@ -105,6 +105,31 @@ NEUTRAL = (
     "I will keep the email short.",
     "The email below explains it.",
     "Would a short call this week work?",
+    "You mentioned in your talk that utilisation was the issue.",
+)
+
+# PUBLISHING IS NOT CORRESPONDING. These are not RELATIONSHIP claims - citing
+# what somebody published is the whole point of research-backed
+# personalisation, and a first version of the rule refused all of them, which
+# would have blocked the personalisation suite.
+#
+# They are still CLAIMS, and still need evidence: "nine days to three" is a
+# pair of figures like any other. So they are asserted against the detector
+# rather than against `check`, which is the layer that decides relationship
+# from publication.
+CITATIONS = (
+    "You wrote about cutting month-end reconciliation from nine days to three.",
+    "You wrote a post on resourcing.",
+    "You mentioned in your talk that utilisation was the issue.",
+    "You said in the podcast that margins were tight.",
+)
+
+# The same verbs pointed at US. Publication cannot explain these.
+CORRESPONDENCE = (
+    "You wrote to me last week.",
+    "You wrote back in March.",
+    "You told me your team was at capacity.",
+    "You mentioned that resourcing was the bottleneck.",
 )
 
 
@@ -203,6 +228,18 @@ class TheDetectorItself(unittest.TestCase):
                          "Since we connected, things have moved."):
             with self.subTest(sentence=sentence):
                 self.assertIsNotNone(claims.implies_prior_contact(sentence))
+
+    def test_a_citation_is_not_a_conversation(self):
+        """"You wrote about X" cites a publication. "You wrote to me" does not."""
+        for sentence in CITATIONS:
+            with self.subTest(sentence=sentence):
+                self.assertIsNone(claims.implies_prior_contact(sentence),
+                                  f"a citation read as correspondence: {sentence!r}")
+        for sentence in CORRESPONDENCE:
+            with self.subTest(sentence=sentence):
+                self.assertIsNotNone(
+                    claims.implies_prior_contact(sentence),
+                    f"correspondence read as a citation: {sentence!r}")
 
     def test_it_is_a_claim_before_any_exemption_applies(self):
         """The two exits that let this through: first person, and questions."""

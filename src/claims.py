@@ -150,10 +150,10 @@ RELATIONSHIP = tuple(re.compile(p, re.I) for p in (
     r"\b(?:circling|circle|looping|loop|checking|reaching)\s+back\b",
     r"\b(?:when|since|after|before)\s+we\s+(?:last\s+)?"
     r"(?:spoke|talked|met|connected|chatted)\b",
-    # things they are said to have told us
-    r"\byou\s+(?:\w+\s+){0,2}"
-    r"(?:mentioned|told|said|asked|replied|responded|wrote|confirmed|"
-    r"agreed|promised|requested|shared with)\b",
+    # NOTE: the "you told/said/wrote" group is NOT here. It is the only one
+    # where the same words can describe a publication rather than a
+    # conversation, so it is matched separately below and tested against what
+    # FOLLOWS the verb.
     r"\b(?:per|from)\s+(?:our|your)\s+(?:last\s+)?(?:conversation|call|"
     r"email|note|message|chat|discussion)\b",
     # an ongoing relationship or engagement
@@ -195,6 +195,41 @@ POPULATION = re.compile(
     r"(?:leads|clients|customers|agencies|studios|teams|companies|founders|"
     r"people|prospects|firms|partners|accounts)\s+$", re.I)
 
+# PUBLISHING IS NOT CORRESPONDING. "You wrote about cutting month-end
+# reconciliation from nine days to three" refers to something the prospect
+# PUBLISHED - a post, a talk, a case study - and citing it is the whole point
+# of research-backed personalisation. "You wrote to me" is a different claim
+# entirely, and only the second one asserts a history.
+#
+# The discriminator is what follows the verb: an object they addressed to US
+# (me, us, back) versus a topic or a public artefact. Looked for in the words
+# AFTER the phrase. Whether the publication itself is real is already the
+# evidence check's job - this only decides that it is not a relationship.
+#
+# Only a TOPIC or an ARTEFACT counts. A complement clause does not: "you
+# mentioned that resourcing was the bottleneck" names no publication and is
+# on the operator's own list of things that must be refused, so `that`, `how`
+# and `why` are deliberately absent here.
+PUBLIC_OBJECT = re.compile(
+    r"^\s*(?:about|on|in|regarding|re:)\b"
+    r"|^\s*(?:a|an|the|your|this)\s+"
+    r"(?:post|article|piece|blog|newsletter|talk|podcast|episode|thread|"
+    r"case\s+study|manifesto|paper|report|deck|video|interview)", re.I)
+
+# The same verbs, but pointed at us. These stay a relationship claim whatever
+# follows them.
+DIRECTED = re.compile(r"^\s*(?:to\s+(?:me|us)|me|us|back)\b", re.I)
+
+# The one ambiguous group. "You wrote about margins" cites a publication;
+# "you wrote to me" asserts a conversation. Matched on its own so the
+# publication test applies HERE and nowhere else - applying it to every
+# pattern let "circling back ON this" and "sorry for the delay ON our end"
+# read as publications, because both are followed by a preposition.
+SAID_TO_US = re.compile(
+    r"\byou\s+(?:\w+\s+){0,2}"
+    r"(?:mentioned|told|said|asked|replied|responded|wrote|confirmed|"
+    r"agreed|promised|requested|shared with)\b", re.I)
+
 
 def implies_prior_contact(sentence):
     """The phrase asserting a shared history WITH THIS PERSON, or None.
@@ -210,7 +245,14 @@ def implies_prior_contact(sentence):
         if POPULATION.search(sentence[:found.start()]):
             continue                 # "leads we spoke to", not "we spoke"
         return found.group(0)
-    return None
+
+    # The ambiguous group, decided on what follows the verb.
+    found = SAID_TO_US.search(sentence)
+    if found:
+        rest = sentence[found.end():]
+        if DIRECTED.match(rest) or not PUBLIC_OBJECT.match(rest):
+            return found.group(0)    # "you wrote to me" / "you mentioned that"
+    return None                      # "you wrote about margins" is a citation
 
 
 def prior_contact(rec, contact=None):
