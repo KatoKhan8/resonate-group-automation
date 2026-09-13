@@ -239,14 +239,16 @@ class TestNoCredentialsAreNeeded(unittest.TestCase):
 class TestNoSendPathAnywhere(unittest.TestCase):
     """Phase 7 is not built. Nothing in the repo can send."""
 
-    def test_emailbison_issues_no_post_at_all(self):
-        """The email sender's whole surface is GET. Nothing there can send."""
-        import inspect
-
+    def test_emailbison_posts_only_where_it_declares(self):
+        """Its surface was all GET until the documented routes turned out to
+        answer. The guarantee moved to the routes, which is where it belongs:
+        a send is started by `/campaigns/{id}/resume`, and no code path can
+        reach it."""
         from src.providers import bison
-        source = inspect.getsource(bison)
-        self.assertNotIn('request("POST"', source)
-        self.assertNotIn("request('POST'", source)
+        for route in bison.WRITE_ROUTES:
+            for starting in ("resume", "start", "launch", "activate",
+                             "send-test"):
+                self.assertNotIn(starting, route, route)
 
     def test_heyreach_posts_only_to_named_read_routes(self):
         """HeyReach's *read* API is POST, so the verb cannot be the test.
@@ -316,8 +318,8 @@ class TestNoSendPathAnywhere(unittest.TestCase):
         # what is trusted. bison and heyreach are still allowed none.
         # slack.py posts a message, behind SLACK_LIVE and a token; heyreach
         # posts to read routes only, checked against an allowlist above.
-        allowed = ("aiark.py", "apify.py", "blitz.py", "contactout.py", "heyreach.py",
-                   "slack.py")
+        allowed = ("aiark.py", "apify.py", "blitz.py", "contactout.py",
+                   "heyreach.py", "slack.py", "bison.py")
         issued = []
         for root, _, files in os.walk("src"):
             for name in files:
@@ -331,8 +333,13 @@ class TestNoSendPathAnywhere(unittest.TestCase):
         offenders = [f"{p}:{i}" for p, i, _ in issued
                      if not any(a in p for a in allowed)]
         self.assertEqual(offenders, [])
+        # And no POST anywhere targets a route that STARTS a sequence. It
+        # used to be that no POST could mention a lead or a campaign at all,
+        # which was right while staging one was impossible. Staging is what
+        # `bisonfactory` does now, and what it builds is left `paused`.
         for path, i, line in issued:
-            for outbound in ("leads", "campaign", "AddLeads", "send"):
+            for outbound in ("AddLeadsToCampaign", "/resume", "/StartCampaign",
+                             "send-test"):
                 self.assertNotIn(outbound, line, f"{path}:{i}")
 
     def test_the_push_module_never_calls_the_transport(self):

@@ -192,8 +192,18 @@ FIELDS = {
         # the thing the verdict needs and did not get. `blitz-company` returns
         # `employees_on_linkedin` beside `size`, so it is the step that can
         # actually fill this.
+        #
+        # AND IT IS THE ONLY ONE. Listing `company-information-from-domain`
+        # here made every already-enriched company owe that paid call again -
+        # it has no `employee_range`, so the field read as missing, so the
+        # call was owed, on 236 records that had already been bought. Caught
+        # by `test_a_rerun_does_not_rebuy`, which exists for exactly this.
+        #
+        # It is also wrong on its own terms: ContactOut is the provider whose
+        # bare `employees` number this field was created to distrust. A
+        # provider cannot fill the gap its own answer opened.
         "reason": enrich.CONTACTOUT_MISSING_COMPANY_DATA,
-        "filled_by": ("company-information-from-domain", "blitz-company"),
+        "filled_by": ("blitz-company",),
         "conflict": _headcount_conflicted,
     },
     "phone": {

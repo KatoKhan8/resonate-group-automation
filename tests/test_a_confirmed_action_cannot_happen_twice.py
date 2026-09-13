@@ -32,7 +32,7 @@ import datetime
 import unittest
 from unittest import mock
 
-from src import account, actionledger, collision, eligibility, events
+from src import approval, account, actionledger, collision, eligibility, events
 from src import executionguard, fatigue, linkedin, providerwrites, push, store
 from tests.base import QueueTest
 
@@ -43,6 +43,15 @@ PROFILE = "https://www.linkedin.com/in/dana-oyelaran"
 def utcnow():
     return datetime.datetime.now(datetime.timezone.utc)
 
+
+
+# `perform` refuses a prospect-facing write whose payload does not carry the
+# words the authorization approved. These tests are about the ACTION LEDGER -
+# that one confirmed action cannot happen twice - so they satisfy that check
+# rather than trip it, or the words guard fires first and the refusal being
+# measured never happens.
+STEP = {"channel": "linkedin", "note": "a note somebody approved"}
+APPROVED = {"note": STEP["note"]}
 
 class Spy:
     """A transport that records its calls and never reaches a network."""
@@ -95,9 +104,12 @@ class DuplicationTest(QueueTest):
     def authorization(self, key, rid=None, step=None):
         return executionguard.Authorization(
             key=key, channel="linkedin",
-            operation="linkedin_connection_request",
+            # The OPERATION this token drives, not the cadence step it came
+            # from. A token is proof of the action it names.
+            operation=OP,
             rec_id=rid or self.REC, contact_key=self.CONTACT,
-            step_key=step or self.STEP, sender_id=116968)
+            step_key=step or self.STEP, sender_id=116968,
+            fingerprint=approval.fingerprint(STEP))
 
     @contextlib.contextmanager
     def enabled(self):
@@ -119,7 +131,7 @@ class DuplicationTest(QueueTest):
         with self.enabled():
             result = providerwrites.perform(
                 OP, authorization=self.authorization(key, rid, step),
-                transport=spy,
+                transport=spy, step=STEP, payload=APPROVED,
                 readback=lambda: (readback if readback is not None
                                   else {"leads": 1}),
                 expected=expected if expected is not None else {"leads": 1})
@@ -223,7 +235,8 @@ class TheSecondAttemptIsRefused(DuplicationTest):
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(
                     OP, authorization=self.authorization(key),
-                    transport=spy, readback=lambda: {"leads": 1},
+                    transport=spy, step=STEP, payload=APPROVED,
+                    readback=lambda: {"leads": 1},
                     expected={"leads": 1})
         self.assertEqual(spy.calls, [], "the provider was called a second time")
 
@@ -236,7 +249,8 @@ class TheSecondAttemptIsRefused(DuplicationTest):
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(
                     OP, authorization=self.authorization(key),
-                    transport=spy, readback=lambda: {"leads": 1},
+                    transport=spy, step=STEP, payload=APPROVED,
+                    readback=lambda: {"leads": 1},
                     expected={"leads": 1})
         self.assertEqual(spy.calls, [])
 
@@ -400,7 +414,8 @@ class AnAmbiguousResultIsNotRetried(DuplicationTest):
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(
                     OP, authorization=self.authorization(key),
-                    transport=spy, readback=lambda: {"leads": 1},
+                    transport=spy, step=STEP, payload=APPROVED,
+                    readback=lambda: {"leads": 1},
                     expected={"leads": 1})
         self.assertEqual(spy.calls, [])
 

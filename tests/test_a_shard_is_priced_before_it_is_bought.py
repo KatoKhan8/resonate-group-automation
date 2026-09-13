@@ -195,28 +195,37 @@ class ThePreflightProducesTheThreeNumbers(QueueTest):
         self.assertGreater(out["estimated_maximum"], out["estimated_expected"])
 
 
-class RemainingBudgetIsUnobtainableForTheRealClient(QueueTest):
-    """Not an estimate problem. There is no ceiling to subtract from."""
+class TheRealClientNowDeclaresACeiling(QueueTest):
+    """This class used to document the absence of one, and said so.
 
-    def test_the_shipped_client_config_declares_no_ceiling(self):
+    Its message named its own remedy - "productive.yaml has grown a budget:
+    block - update this test and the preflight can report a real remaining
+    budget" - and that is what happened. The gap is closed, so the tests
+    assert the capability rather than the hole.
+    """
+
+    def test_the_shipped_client_config_declares_a_ceiling(self):
         caps = spendledger.caps(clients.load("productive"))
-        self.assertEqual(caps, dict.fromkeys(spendledger.SCOPES),
-                         "productive.yaml has grown a budget: block - update "
-                         "this test and the preflight can report a real "
-                         "remaining budget")
+        self.assertEqual(caps["per_day"], 5000)
+        self.assertEqual(caps["per_run"], 2000)
+        self.assertEqual(caps["total"], 50000)
 
-    def test_so_the_preflight_reports_unbounded_rather_than_a_number(self):
+    def test_so_the_preflight_reports_a_real_remaining_budget(self):
         out = preflight([a_domain(i) for i in range(250)],
                         clients.load("productive"), "productive")
-        self.assertIsNone(out["remaining"])
-        self.assertFalse(out["bounded"])
-        self.assertEqual(out["verdict"], "UNBOUNDED")
+        self.assertIsNotNone(out["remaining"])
+        self.assertTrue(out["bounded"])
+        self.assertNotEqual(out["verdict"], "UNBOUNDED")
 
-    def test_the_durable_check_cannot_refuse_anything_without_a_block(self):
-        """`check()` is the guard. With no ceiling it is a pass-through."""
+    def test_the_durable_check_now_refuses_an_absurd_call(self):
+        """`check()` is the guard, and it has something to guard with."""
+        with self.assertRaises(spendledger.BudgetExceeded):
+            spendledger.check("productive", clients.load("productive"),
+                              10 ** 9)
+        # And still passes something the ceiling allows, so the refusal above
+        # is the ceiling working rather than the guard refusing everything.
         self.assertTrue(spendledger.check("productive",
-                                          clients.load("productive"),
-                                          10 ** 9))
+                                          clients.load("productive"), 10))
 
     def test_one_declared_ceiling_is_all_it_takes_to_get_a_refusal(self):
         """The minimal fix, proven: a per_day key turns the guard on."""

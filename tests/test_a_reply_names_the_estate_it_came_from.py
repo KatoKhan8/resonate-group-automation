@@ -38,6 +38,17 @@ def payload(email="pat@acme.test", event_id="u1"):
 
 class ReplyTest(unittest.TestCase):
     def setUp(self):
+        # `use_directory` sets QUEUE and clears every STATE_OVERRIDE for the
+        # whole process, so a test that does not put them back hands its temp
+        # directory to whatever runs next. That is not cosmetic: it silently
+        # disarmed `TestTheBarrierCoversEveryWriter`, whose `spendledger` case
+        # resolves its path from `store.queue_path()` and so was writing to
+        # this leaked temp directory instead of being refused. The barrier
+        # test passed alone and failed only in a full run, which is exactly
+        # the shape of a guard that has stopped guarding.
+        self._env = {k: os.environ.get(k)
+                     for k in ("QUEUE", "OUT") + store.STATE_OVERRIDES}
+        self.addCleanup(self._restore_environment)
         store.use_directory(os.path.join(tempfile.mkdtemp(prefix="rga-ws-"),
                                          "work"))
         rec = store.new_record("r1", "domains", "productive", "Acme",
@@ -46,6 +57,14 @@ class ReplyTest(unittest.TestCase):
                             "email": "pat@acme.test"}]
         with store.transaction() as rows:
             rows.append(rec)
+
+
+    def _restore_environment(self):
+        for key, value in self._env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
     def stored(self, kind="reply_received", rid="r1"):
         return [e for e in (store.get(rid).get("events") or [])

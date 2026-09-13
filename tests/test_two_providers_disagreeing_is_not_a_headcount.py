@@ -91,11 +91,31 @@ BLITZ_ANSWER = {
 }
 
 
-def a_record(**facts_over):
+def a_record(asked_contactout=True, **facts_over):
+    """A company as it reaches the headcount question in production.
+
+    `asked_contactout` defaults to True because that is the only way a record
+    HAS a bare `employees` number in the first place - ContactOut returned it.
+    Blitz is the fallback for a stage whose primary has already answered, and
+    `next_step` walks the waterfall in declared order, so a record with no
+    history routes to ContactOut and stops there.
+
+    This used to be implicit and fragile: `headcount` listed
+    `company-information-from-domain` in `filled_by`, so an unasked record
+    owed that call, the call marked the stage asked, and blitz became
+    reachable as a side effect. It also meant every already-enriched company
+    owed a paid ContactOut call again - which `test_a_rerun_does_not_rebuy`
+    caught. ContactOut cannot fill this field: its own module says `size`
+    "is not a fallback for" `employees`.
+    """
     rec = store.new_record("acct", "domains", "test", "Acme", "acme.test")
     facts = dict(FACTS)
     facts.update(facts_over)
     rec["company_facts"] = {k: v for k, v in facts.items() if v is not None}
+    if asked_contactout:
+        rec["waterfall"] = [{"stage": "company_information",
+                             "provider": "contactout",
+                             "call": "company-information-from-domain"}]
     return rec
 
 
@@ -109,18 +129,12 @@ class TheProviderCanActuallyBeReached(unittest.TestCase):
 
     def test_the_field_routes_to_blitz(self):
         rec = a_record()
-        rec["waterfall"] = [{"stage": "company_information",
-                             "provider": "contactout",
-                             "call": "company-information-from-domain"}]
         step, _why = fieldplan.next_step(rec, "headcount")
         self.assertIsNotNone(step)
         self.assertEqual(step["call"], "blitz-company")
 
     def test_a_number_with_no_band_is_not_a_headcount(self):
         rec = a_record()
-        rec["waterfall"] = [{"stage": "company_information",
-                             "provider": "contactout",
-                             "call": "company-information-from-domain"}]
         self.assertEqual(fieldplan.state_of(rec, "headcount"),
                          fieldplan.MISSING_CONFIRMED)
 

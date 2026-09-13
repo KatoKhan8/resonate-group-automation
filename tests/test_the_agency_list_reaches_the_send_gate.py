@@ -25,6 +25,7 @@ suppression that arrived after the cache. Adding the reason to
 `eligibility.BLOCKED_*` puts it in `executionguard`'s suppression gate for
 free, because that tuple is built from these constants so the two cannot drift.
 """
+import os
 import tempfile
 import unittest
 
@@ -37,6 +38,22 @@ class TheSendGateHonoursTheAgencyList(unittest.TestCase):
     PROFILE = "https://www.linkedin.com/in/dana-reed"
 
     def setUp(self):
+        # `use_directory` sets QUEUE and clears every STATE_OVERRIDE for the
+        # whole process, so a test that does not put them back hands its temp
+        # directory to whatever runs next. That is not cosmetic: it silently
+        # disarmed `TestTheBarrierCoversEveryWriter`, whose `spendledger` case
+        # resolves its path from `store.queue_path()` and so was writing to
+        # this leaked temp directory instead of being refused. The barrier
+        # test passed alone and failed only in a full run, which is exactly
+        # the shape of a guard that has stopped guarding.
+        # ONCE, even though `test_every_reason_category_blocks` calls setUp
+        # again inside its loop. A second capture would record the temp
+        # directory the first one created and "restore" that, which is how
+        # this leaked even with a cleanup in place.
+        if not hasattr(self, "_env"):
+            self._env = {k: os.environ.get(k)
+                         for k in ("QUEUE", "OUT") + store.STATE_OVERRIDES}
+            self.addCleanup(self._restore_environment)
         store.use_directory(tempfile.mkdtemp(prefix="rga-dnc-"))
         rec = store.new_record("acme", "domains", "productive", "Acme",
                                "acme.test")
@@ -53,6 +70,14 @@ class TheSendGateHonoursTheAgencyList(unittest.TestCase):
                      "body": "I work with design teams on resourcing. " * 5},
             "day3": {"channel": "linkedin", "note": "hello, worth a word?"}}}
         store.save([rec])
+
+
+    def _restore_environment(self):
+        for key, value in self._env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
     def decide(self, step="day5", channel="email"):
         rec = store.load()[0]

@@ -4,11 +4,17 @@
 Base https://send.resonategroup.co/api (override with BISON_BASE),
 Authorization: Bearer <BISON_KEY>.
 
-Phase 3 is auth, health and the request builder only. There is deliberately no
-send function in this module: adding leads to a campaign is phase 7, where dry
-run is the default and --live is explicit. The builder puts the generated
-subject and body in custom_variables so the client's existing 5 to 7 step
-cadence continues after step one.
+This module can build a campaign and stop one. It cannot start one.
+
+Everything here is staging or stopping: create (a DRAFT), cap, schedule, bind
+senders, write a sequence, create and attach leads - or pause a campaign and
+stop one person's remaining emails. `WRITE_ROUTES` is the allowlist, and
+`/campaigns/{id}/resume` is deliberately not in it, which is what makes "this
+module cannot send" a fact about the code rather than a promise.
+
+The routes were established on 2026-09-13, against the vendor's own
+documentation, after three separate conclusions here that they did not exist -
+each reached by guessing a URL and reading the failure as absence.
 
   python -m src.providers.bison --check      read-only campaign list
 """
