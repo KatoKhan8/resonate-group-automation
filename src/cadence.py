@@ -647,14 +647,41 @@ def expand_step(rec, contact, spec, config, accepted=False, context=None,
     stored = ((rec.get("cadence") or {}).get(key) or {}).get(spec["key"]) or {}
 
     if spec.get("generated"):
-        if not stored.get("body"):
+        # A GENERATED STEP'S WORDS LIVE UNDER `body` ON EMAIL AND `note` ON
+        # LINKEDIN, and this asked only about `body`. So every generated
+        # LinkedIn step returned None however well written it was, and the
+        # branch below that DOES read a note was reachable only for the
+        # literal key `day3` - the old cadence's connection request.
+        #
+        # Under `productive_li_heavy_v1` the LinkedIn steps are `li1`..`li6`.
+        # `li1` survived because it names a template and falls through to the
+        # else branch; li2..li6 are generated and have no template, so they
+        # vanished from every timeline even with all six notes written on the
+        # record. Measured 2026-09-14 on `ogpartner-dk`: six notes stored,
+        # one step surfaced.
+        #
+        # That is what deadlocked HeyReach. The graph is written once and
+        # needs every message, `approve` walks the timeline, and the timeline
+        # had nothing to approve.
+        written = stored.get("body") if spec.get("channel") == "email" \
+            else stored.get("note")
+        if not (written or "").strip():
             return None                     # phase 5 has not written it yet
         step = dict(stored)
-        step.setdefault("channel", "email")
+        step.setdefault("channel", spec.get("channel") or "email")
         step["generated"] = True
-    elif (spec["key"] == "day3" and stored.get("generated")
-          and (stored.get("note") or "").strip()):
-        # The client asked for a written note and the model has produced one.
+    elif stored.get("generated") and (stored.get("note") or "").strip():
+        # A WRITTEN NOTE BEATS THE TEMPLATE IT WAS MEANT TO REPLACE, on a
+        # step the SEQUENCE calls a template. This is the client having asked
+        # for `linkedin_connection_note.mode: llm` against a step like the
+        # balanced cadence's `day3`, which names `linkedin_intro` and is not
+        # marked generated: the model wrote a note, and re-rendering the
+        # template over it would throw away the words somebody paid for.
+        #
+        # Previously spelled `spec["key"] == "day3"`, which was the old
+        # cadence's connection request and matched nothing under
+        # `productive_li_heavy_v1`. The condition is the stored note, not the
+        # key it happens to sit on.
         step = dict(stored)
         step["channel"] = spec["channel"]
         step["generated"] = True
@@ -955,7 +982,18 @@ def build(rec, config=None, recs=None, paused_set=None, workspace=None,
             step = expand_step(rec, contact, spec, config, accepted=accepted,
                                context=context, campaign=campaign)
             if step is None:
-                continue
+                # A generated step whose content has not been written yet.
+                # When the step carries a precondition (requires), the step
+                # must still appear in the timeline: a step whose requires
+                # is unmet is waiting, not absent. Omitting it hides the
+                # step from approval and from the campaign graph, which is
+                # the deadlock that blocks HeyReach staging.
+                if spec.get("requires"):
+                    step = {"channel": spec["channel"],
+                            "day": spec["day"] + track_offset(contact, config),
+                            "requires": spec["requires"]}
+                else:
+                    continue
             if step.get("cross_channel_applied"):
                 reference = (context or {}).get("reference") or {}
                 referenced.add(f"{reference.get('channel')}:"
