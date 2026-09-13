@@ -33,9 +33,9 @@ recomputed from what it was derived from, so tampering with a cached field
 upstream changes nothing. That is the whole point of `decide()` being called
 immediately before the payload is built rather than once at planning time.
 """
-from . import (approval, cadence, campaigns, claims, clients, dedupe, events,
-               evidence, ingest, lint, linkedin, mx, push, store,
-               verification)
+from . import (approval, cadence, campaigns, channels, claims, clients,
+               dedupe, events, evidence, ingest, lint, linkedin, mx, push,
+               store, verification)
 
 # ------------------------------------------------------------------ verdicts
 
@@ -66,6 +66,7 @@ BLOCKED_REVIEW_REQUIRED = "blocked:review_required"
 BLOCKED_DUPLICATE = "blocked:duplicate_identity"
 BLOCKED_ALREADY_PUSHED = "blocked:already_pushed"
 BLOCKED_NOT_SENDABLE = "blocked:verification_not_sendable"
+BLOCKED_BOUNCED = "blocked:address_bounced"
 BLOCKED_MX = "blocked:mx_security_provider"
 BLOCKED_LINT = "blocked:lint_failed"
 BLOCKED_UNSUPPORTED_CLAIM = "blocked:unsupported_claim"
@@ -146,6 +147,9 @@ HUMAN = {
         "this person is already being contacted under another record",
     BLOCKED_ALREADY_PUSHED:
         "this step was already handed to the provider once",
+    BLOCKED_BOUNCED:
+        "mail to this address has already bounced, and writing to it again is "
+        "how a sending domain gets blocked for everybody else",
     BLOCKED_NOT_SENDABLE:
         "the address did not clear double verification",
     BLOCKED_MX:
@@ -647,6 +651,19 @@ def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
 def _email_checks(rec, contact, step, step_key, config):
     if not contact.get("email"):
         return BLOCKED, [BLOCKED_NO_RECIPIENT]
+
+    # A BOUNCE CLOSES THIS ADDRESS AND ONLY THIS ADDRESS.
+    #
+    # `channels.email_verdict` learned this on 2026-09-13 and `eligibility`
+    # does not consult `channels`, so the gate existed and the send path did
+    # not read it - which is the same defect one layer along. Asked here,
+    # where the channel is known, because a dead mailbox says nothing about
+    # the same person's LinkedIn profile.
+    #
+    # Before MX and before verification: those two ask whether the address
+    # COULD receive mail, and this one knows that it did not.
+    if channels._bounced(rec, contact):
+        return BLOCKED, [BLOCKED_BOUNCED]
 
     # MX first: it is free, and a blocked gateway makes the rest moot.
     allowed, why = mx.allows_email(contact, config)

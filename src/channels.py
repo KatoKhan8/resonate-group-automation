@@ -26,7 +26,7 @@ returns.
 import argparse
 import json
 
-from . import clients, ingest, linkedin, lint, mx, store
+from . import clients, events, ingest, linkedin, lint, mx, store
 
 MULTICHANNEL = "multichannel"
 EMAIL_ONLY = "email_only"
@@ -43,13 +43,15 @@ NO_ADDRESS = "no_email_address"
 NOT_VERIFIED = "verification_not_sendable"
 UNSUBSCRIBED = "unsubscribed"
 SUPPRESSED = "suppressed"
+BOUNCED = "address_bounced"
 NO_PROFILE = "no_linkedin_profile"
 PROFILE_UNUSABLE = "linkedin_url_not_canonical"
 IDENTITY_UNCERTAIN = "identity_uncertain"
 DUPLICATE = "duplicate_identity"
 
 # MX supplies its own codes, already in the mx_protection:<vendor> form.
-REASONS = (NO_ADDRESS, NOT_VERIFIED, UNSUBSCRIBED, SUPPRESSED, NO_PROFILE,
+REASONS = (NO_ADDRESS, NOT_VERIFIED, UNSUBSCRIBED, SUPPRESSED, BOUNCED,
+           NO_PROFILE,
            PROFILE_UNUSABLE, IDENTITY_UNCERTAIN, DUPLICATE)
 
 HUMAN = {
@@ -57,6 +59,7 @@ HUMAN = {
     NOT_VERIFIED: "the address did not clear verification",
     UNSUBSCRIBED: "this person asked us to stop",
     SUPPRESSED: "this domain or address is on the suppression list",
+    BOUNCED: "mail to this address has already bounced",
     NO_PROFILE: "no LinkedIn profile was found",
     PROFILE_UNUSABLE: "the LinkedIn URL is not a usable profile URL",
     IDENTITY_UNCERTAIN: "we cannot say with confidence who this is",
@@ -90,6 +93,37 @@ def _unsubscribed(rec, contact):
                 or (rec.get("suppression") or {}).get("unsubscribed"))
 
 
+def _bounced(rec, contact):
+    """Has THIS address already bounced?
+
+    A bounce was recorded by `adapters`, counted by `cadencesafety` and
+    reported by `report.py`, and read by no gate at all - so a bounced
+    address was exactly as sendable the day after as the day before.
+    Measured 2026-09-13.
+
+    Writing again to an address that has already hard-bounced is how a
+    sending domain gets itself blocked, and the damage lands on every other
+    prospect in the estate rather than on this one.
+
+    Keyed to the CONTACT, not the account. One colleague's dead address says
+    nothing about anybody else's, and closing the whole company on it would
+    throw away good addresses. An event that names no contact is read as
+    being about this one only when the addresses match.
+    """
+    address = (contact.get("email") or "").strip().lower()
+    key = contact.get("key")
+    for entry in rec.get("events") or []:
+        if entry.get("type") != events.EMAIL_BOUNCED:
+            continue
+        named = entry.get("contact")
+        if named and named == key:
+            return True
+        if not named and address and str(
+                entry.get("email") or "").strip().lower() == address:
+            return True
+    return False
+
+
 def _suppressed(rec, suppressed=None):
     """The same domain-level check eligibility makes, asked the same way."""
     domain = (rec.get("domain") or "").lower()
@@ -107,6 +141,10 @@ def email_verdict(rec, contact, config=None, suppressed=None):
         return False, SUPPRESSED
     if not (contact.get("email") or "").strip():
         return False, NO_ADDRESS
+    # AFTER the address check, so a contact with no address is reported as
+    # having none rather than as having bounced.
+    if _bounced(rec, contact):
+        return False, BOUNCED
     # MX before verification, and in that order for a reason. It is the order
     # the pipeline spends in - a free DNS lookup gates two paid verifier calls
     # - so it is also the order that gives the honest reason. A contact behind
