@@ -180,7 +180,18 @@ min_hours_between_first_touches 72.
 - Productive pipeline - **COMPLETE**. Committed `4cfe0a0`. Webmail domains
   are no longer read as an employer.
 - outcomes / provenance fix - **COMPLETE**. Committed `fb1557d`.
-- safety-test failures: **none.** All seals green.
+- safety-test failures: **none found.** Verified by running the 225 tests
+  that cover every file touched in this session - `test_audit`,
+  `test_invariants`, `test_the_stop_can_be_performed`,
+  `test_the_factory_verbs_exist_and_are_sealed`,
+  `test_a_refusal_is_not_a_purchase`,
+  `test_two_campaigns_do_not_collide_at_the_provider`,
+  `test_transport_audit` - all OK.
+
+  The WHOLE suite was NOT observed to completion. It runs longer than the
+  900-second watchdog and was killed at the limit (exit 124) on the one run
+  that captured its exit code honestly. Treat "full suite green" as
+  UNVERIFIED until somebody runs it without a timeout.
 
 ## P0
 
@@ -191,6 +202,11 @@ min_hours_between_first_touches 72.
 
 ## P1
 
+0. The full test suite exceeds 900 seconds and no run in this session
+   observed its verdict. Three earlier runs appeared to exit 0; that was the
+   exit code of `tail` at the end of the pipeline, not of unittest. Pipe
+   unittest through nothing, or the verdict line is lost and the exit code
+   is the filter's. Either split the suite or raise the watchdog.
 1. HeyReach 599020 has no sequence and no leads. It is an empty DRAFT shell.
 2. Open Profile and InMail capability unmeasured on HeyReach.
 3. 104 of 113 qualified accounts have no contacts; contact discovery is the
