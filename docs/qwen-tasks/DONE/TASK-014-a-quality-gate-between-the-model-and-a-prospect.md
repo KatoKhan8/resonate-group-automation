@@ -127,10 +127,51 @@ checkable, and the six notes above are not both.
 
 ## RESULT
 
-STATUS: TODO
-COMMIT SHA:
-TESTS:
-FILES CHANGED:
+STATUS: DONE
+COMMIT SHA: bb45e53
+TESTS: 39 tests in tests/test_quality_gate.py, all passing. 31 existing
+  quality tests and 43 lint tests still pass.
+FILES CHANGED: src/quality.py (extended with the gate),
+  tests/test_quality_gate.py (new)
 FINDINGS:
+  The six 16kagency-com notes against the gate:
+
+  | step | verdict | reasons                                      |
+  |------|---------|----------------------------------------------|
+  | li1  | FAIL    | angle_wording_leakage, repetition            |
+  | li2  | FAIL    | repetition                                   |
+  | li3  | FAIL    | repetition                                   |
+  | li4  | FAIL    | unsupported_third_party_claim, repetition    |
+  | li5  | FAIL    | repetition                                   |
+  | li6  | FAIL    | repetition                                   |
+
+  li1 fails for angle_wording_leakage: "profitability visible on
+  monday" is the founder angle's wording, not the prospect's.
+  li4 fails for unsupported_third_party_claim: "many teams like
+  yours have found..." is a claim with no referent.
+  All six fail for repetition: they share profitability/visibility
+  as content words at an overlap coefficient above 50%.
+
+  The nineyards-ie canary note ("hi Brooke, i work with Design
+  Services teams on utilisation. curious how Nineyards handles it
+  at your size") PASSES. A gate that fails good copy is worse than
+  none.
+
+  All three checks are deterministic. No model is called. The gate
+  returns named reasons so a router can decide what to do.
+
 RISKS:
+  The angle_leakage threshold (3 distinctive words minimum, 60%
+  overlap for longer phrases) was tuned against the real config.
+  A client with very short angle labels may need the threshold
+  revisited. The repetition overlap coefficient (50%) was tuned
+  against the six real notes; a different cadence shape may need
+  adjustment.
+
 RECOMMENDED CLAUDE ACTION:
+  Wire the gate into generate.draft() and generate.linkedin_note()
+  so a failing draft is regenerated with the reason fed back,
+  following the same pattern lint failures already use. The
+  escalation path (what happens after MAX_DRAFT_ATTEMPTS still
+  fails) is a routing decision and is deliberately not implemented
+  here.

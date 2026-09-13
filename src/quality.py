@@ -411,6 +411,339 @@ def distribution(recs, config=None, selected_only=True):
     }
 
 
+# =====================================================================
+# THE QUALITY GATE
+#
+# lint.py checks length, typography, placeholders, attachments, greeting
+# and the banned-phrase list. Everything it checks, it checks well. None
+# of it can tell whether a message says anything meaningful, or whether
+# it says the same thing six times.
+#
+# This gate sits between the model and the prospect. A generated message
+# that FAILS is regenerated; if it still fails, it is marked for
+# escalation with the reason recorded. The gate is deterministic first
+# and reaches for semantic judgement only where a rule genuinely cannot
+# express the check.
+#
+# Three checks, each returning a named reason rather than a boolean:
+#
+#   angle_leakage          the client's own angle wording appearing
+#                          verbatim in a message. "profitability visible
+#                          on monday" is Productive's phrasing of what it
+#                          sells, not something to put in the prospect's
+#                          mouth.
+#
+#   repetition_across_rungs  two steps for the same contact making the
+#                            same point. The failure LINKEDIN_LADDER was
+#                            written to prevent.
+#
+#   unsupported_third_party  "many teams like yours have found..." is a
+#                            claim with no referent. claims.py checks
+#                            assertions about the prospect; this checks
+#                            assertions about populations the record
+#                            cannot support.
+
+import re as _re
+
+
+def _angle_phrases(config):
+    """Every phrase the client uses to describe what it sells.
+
+    Two sources, both the client's own words:
+
+      personas.*.angles    the argument a message makes per angle key.
+                           "profitability visible on Monday not two weeks
+                           late" is the founder angle's wording.
+
+      angle_labels         the short topic a subject line may name.
+                           "profitability on Monday" is the label form.
+
+    Both are the client's vocabulary, not the prospect's, and neither
+    belongs in a message addressed to a stranger.
+
+    Angles are comma-separated lists in the config ("utilisation,
+    capacity planning, one system not five"). Each comma-separated
+    fragment is a separate phrase, because the model may leak any one
+    of them.
+    """
+    phrases = []
+    for persona in (clients.personas(config) or {}).values():
+        for raw in ((persona or {}).get("angles") or {}).values():
+            for fragment in str(raw or "").split(","):
+                text = " ".join(fragment.split())
+                if text:
+                    phrases.append(text)
+    for raw in (clients.angle_labels(config) or {}).values():
+        for fragment in str(raw or "").split(","):
+            text = " ".join(fragment.split())
+            if text:
+                phrases.append(text)
+    return phrases
+
+
+def angle_leakage(text, config):
+    """The client's own angle wording appearing verbatim in a message.
+
+    Returns a list of the leaked phrases (lowered, stripped). An empty
+    list means nothing leaked.
+
+    The check is word overlap on normalised text: lowercased, collapsed
+    whitespace, punctuation stripped. A phrase leaks when enough of its
+    distinctive words (excluding articles, prepositions and pronouns)
+    appear in the message. The threshold is three distinctive words for
+    a phrase of four or more, or all distinctive words for shorter
+    phrases. This catches "profitability visible on monday" from the
+    phrase "profitability visible on Monday not two weeks late" without
+    requiring the full phrase to appear verbatim.
+    """
+    if not text or not config:
+        return []
+    low = " ".join(str(text).lower().split())
+    text_words = set(_re.findall(r"[a-z]+", low))
+    stopwords = {"a", "an", "the", "is", "are", "was", "were", "be",
+                 "been", "being", "have", "has", "had", "do", "does",
+                 "did", "will", "would", "could", "should", "may",
+                 "might", "can", "to", "of", "in", "for", "on", "with",
+                 "at", "by", "from", "as", "into", "through", "during",
+                 "before", "after", "and", "but", "or", "nor", "not",
+                 "so", "yet", "both", "either", "neither", "here",
+                 "there", "when", "where", "why", "how", "what", "which",
+                 "who", "whom", "this", "that", "these", "those", "i",
+                 "me", "my", "we", "our", "you", "your", "it", "its"}
+    leaked = []
+    for phrase in _angle_phrases(config):
+        normalised = " ".join(str(phrase).lower().split())
+        words = _re.findall(r"[a-z]+", normalised)
+        distinctive = [w for w in words if w not in stopwords and len(w) > 2]
+        # A phrase needs at least three distinctive words to be
+        # identifiable as the client's wording. "good morning" is two
+        # words and common vocabulary; flagging it would refuse every
+        # message ever written.
+        if len(distinctive) < 3:
+            continue
+        overlap = len([w for w in distinctive if w in text_words])
+        # A phrase leaks when enough of its distinctive words appear in
+        # the text. For short phrases (3-4 distinctive words), all must
+        # appear. For longer phrases, at least 60% must appear, with a
+        # minimum of 3.
+        threshold = max(3, int(len(distinctive) * 0.6)) if len(distinctive) > 4 else len(distinctive)
+        if overlap >= threshold:
+            leaked.append(normalised)
+    return leaked
+
+
+# Words that carry the substance of a message. Anything shorter is a
+# stopword or a fragment, and matching on it produces false positives
+# across steps that genuinely discuss different topics.
+_DISTINCTIVE_RE = _re.compile(r"\b[a-z][a-z\-]{4,}\b")
+
+# The overlap coefficient floor: two steps sharing this proportion of
+# their smaller set's content words are making the same point. An
+# absolute count does not work for short messages: a LinkedIn
+# connection note has at most 300 characters and maybe eight content
+# words, so five shared words would be impossible even when the notes
+# are transparently paraphrases. The overlap coefficient - intersection
+# divided by the size of the smaller set - catches this: two notes
+# that share 60% of their content words are saying the same thing
+# however many words each has.
+_REPETITION_OVERLAP = 0.50
+
+# An absolute floor as well: two two-word notes sharing both words is
+# not repetition, it is a greeting. At least three shared content
+# words are needed before the overlap coefficient is consulted.
+_REPETITION_MIN_SHARED = 3
+
+
+def _distinctive_words(text):
+    """The content words of a message, lowered and deduplicated."""
+    return set(_DISTINCTIVE_RE.findall(str(text or "").lower()))
+
+
+def repetition_across_rungs(steps):
+    """Pairs of steps that share too many distinctive words.
+
+    `steps` is a list of dicts, each with at least `key` (the step
+    identifier, e.g. "li1") and `text` (the message body). Returns a
+    list of (key_a, key_b, shared_count) tuples, sorted by shared_count
+    descending.
+
+    Two checks, both must pass for a collision to be reported:
+
+      absolute   at least three content words are shared. Two short
+                 notes sharing "hi" and "connect" is not repetition.
+
+      relative   the overlap coefficient (shared / smaller set) is at
+                 least 50%. Two long notes that happen to share a topic
+                 word are not repetition; two short notes where most of
+                 the content is the same word-for-word are.
+
+    The LinkedIn ladder has six rungs for six different arguments. Two
+    of them reading as paraphrases of the same idea is the failure the
+    ladder was written to prevent.
+    """
+    if not steps or len(steps) < 2:
+        return []
+    word_sets = [(s.get("key", ""), _distinctive_words(s.get("text", "")))
+                 for s in steps]
+    collisions = []
+    for i, (key_a, words_a) in enumerate(word_sets):
+        for key_b, words_b in word_sets[i + 1:]:
+            shared = words_a & words_b
+            count = len(shared)
+            if count < _REPETITION_MIN_SHARED:
+                continue
+            smaller = min(len(words_a), len(words_b))
+            if smaller == 0:
+                continue
+            overlap = count / smaller
+            if overlap >= _REPETITION_OVERLAP:
+                collisions.append((key_a, key_b, count))
+    collisions.sort(key=lambda t: -t[2])
+    return collisions
+
+
+# THIRD-PARTY CLAIM PATTERNS.
+#
+# "many teams like yours have found..." is a claim about a population.
+# The record holds facts about ONE company and ONE person; it cannot
+# support a statement about what "many teams" or "companies we work
+# with" have experienced. Each pattern below names the form; the check
+# is deterministic.
+#
+# Deliberately NOT every sentence about other people. "most operations
+# leads we speak to" is honest copy about our own experience and is
+# already in `claims.GENERIC_SUBJECTS`. What is caught here is the form
+# that asserts a specific outcome for a named population: "have found
+# that X can transform Y", "have seen a Y% improvement", "report that
+# X is the biggest challenge". A vague reference to what others do is
+# not the same as a claim about what they achieved.
+
+_THIRD_PARTY_OUTCOMES = (
+    _re.compile(r"\b(?:many|most|several|numerous)\s+"
+                r"(?:teams|companies|clients|customers|agencies|studios|"
+                r"founders|leads|organisations|organizations|businesses)"
+                r"(?:\s+like\s+yours)?\s+"
+                r"(?:have\s+)?(?:found|seen|reported|experienced|"
+                r"discovered|achieved|told\s+us)\b", _re.I),
+    _re.compile(r"\b(?:teams|companies|clients|customers|agencies)\s+"
+                r"(?:we\s+(?:work\s+)?with|like\s+yours)\s+"
+                r"(?:have\s+)?(?:found|seen|reported|experienced|"
+                r"discovered|achieved)\b", _re.I),
+    _re.compile(r"\b(?:many|most)\s+(?:teams|companies|clients|"
+                r"customers|agencies)\s+"
+                r"(?:have\s+)?(?:found|seen|reported)\s+that\b", _re.I),
+)
+
+
+def unsupported_third_party(text):
+    """Claims about third-party populations the record cannot support.
+
+    Returns a list of matched phrases. An empty list means no
+    unsupported third-party claim was found.
+
+    This is NOT the same as `claims.check`, which verifies assertions
+    about the prospect against stored evidence. This checks assertions
+    about OTHER people - "many teams like yours have found..." - where
+    the record holds no evidence about what those teams experienced.
+    """
+    if not text:
+        return []
+    found = []
+    for pattern in _THIRD_PARTY_OUTCOMES:
+        match = pattern.search(text)
+        if match:
+            found.append(match.group(0).strip())
+    return found
+
+
+# --------------------------------------------------------- the gate itself
+
+PASS = "pass"
+FAIL = "fail"
+
+# The named reasons a message can fail the gate. Each is returned by
+# exactly one check, so a failure can be traced to its source.
+REASON_ANGLE_LEAKAGE = "angle_wording_leakage"
+REASON_REPETITION = "repetition_across_rungs"
+REASON_UNSUPPORTED_CLAIM = "unsupported_third_party_claim"
+
+
+def gate(text, config, steps=None, channel="linkedin"):
+    """The quality gate for one message.
+
+    Returns a dict with:
+      verdict   PASS or FAIL
+      reasons   a list of named reasons (empty on PASS)
+      detail    a dict of check-specific findings
+
+    `steps` is optional and is the full set of steps for this contact.
+    When provided, the repetition check runs across the set. When
+    absent, only the single-message checks run.
+
+    THE ANGLE RULE IS NOT THE SAME ON BOTH CHANNELS, and applying the
+    LinkedIn one to email fails almost everything. `prompts/linkedin_note.md`
+    says of `angle_wording`: "Never put it in". `prompts/draft.md` says
+    something narrower and different - do not ATTRIBUTE our words to them:
+
+        "`angle_wording` is the CLIENT's phrasing of what they sell; it is
+        not something the recipient has said, published or endorsed. 'HSMG
+        states that profitability visible on Monday ... drives its strategic
+        focus' puts our sales line in their mouth and is false."
+
+    The same file tells the writer to USE the angle and not to invent a
+    different pitch. So an email carrying the client's own line as OUR claim
+    is correct copy, and an email attributing it to the prospect is not.
+
+    Measured 2026-09-14, with this check applied to email: 51 of 70 staged
+    steps failed, and so did the canary on campaign 451 - copy a human
+    reviewed, approved and scheduled. A gate that fails good copy is worse
+    than none.
+
+    The email half of the rule is already covered and needs nothing here:
+    `claims.check` flags exactly that attribution, in its own words,
+    "'profitability' is asserted about them and nothing stored supports it".
+    """
+    reasons = []
+    detail = {}
+
+    if str(channel or "").lower() != "email":
+        leaked = angle_leakage(text, config)
+        if leaked:
+            reasons.append(REASON_ANGLE_LEAKAGE)
+            detail["leaked_phrases"] = leaked
+
+    third_party = unsupported_third_party(text)
+    if third_party:
+        reasons.append(REASON_UNSUPPORTED_CLAIM)
+        detail["unsupported_claims"] = third_party
+
+    if steps is not None:
+        collisions = repetition_across_rungs(steps)
+        if collisions:
+            reasons.append(REASON_REPETITION)
+            detail["repetitions"] = [{"step_a": a, "step_b": b,
+                                      "shared_words": n}
+                                     for a, b, n in collisions]
+
+    return {"verdict": PASS if not reasons else FAIL,
+            "reasons": reasons,
+            "detail": detail}
+
+
+def gate_steps(steps, config):
+    """The quality gate for a whole set of steps for one contact.
+
+    `steps` is a list of dicts with `key` and `text`. Returns a dict
+    keyed by step key, each value being the gate result for that step
+    (including the cross-step repetition check).
+    """
+    results = {}
+    for step in steps:
+        result = gate(step.get("text", ""), config, steps=steps)
+        results[step.get("key", "")] = result
+    return results
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--client")
