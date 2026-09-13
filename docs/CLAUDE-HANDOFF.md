@@ -423,6 +423,44 @@ nothing wrong with them.
 The free tier is NOT the fallback to return to. It is capped at 50 requests a
 day and that cap is what blocked this pipeline for most of the evening.
 
+## The real campaign-ready inventory is 15 accounts, not 53
+
+Measured 2026-09-14 against the client's live EmailBison estate, one
+paginated search per domain, using `collision.check_account` and
+`collision.account_policy` - the same functions `executionguard` asks at send
+time.
+
+    qualified, verified-sendable contact, usable company name    53
+      CLEAN      collision ALLOW                                 15   (15 contacts)
+      BLOCKED    hold                                            16
+                 stop                                            22
+      ESTATE UNREADABLE                                           0
+
+**The client is already working 38 of the 53.** Reasons, in their own words:
+"somebody at this account is mid-sequence right now"; "a campaign at this
+account ended early (stopped) and the status does not say whether we stopped
+it, they unsubscribed, or the provider stopped it on a reply"; "an address at
+this account bounced; the data is suspect"; "1 person at this account have
+already replied or been marked".
+
+This reframes the whole funnel. The bottleneck was never ICP, contact
+discovery or drafting - all three now produce more than the estate can
+absorb. It is that Productive's own outbound already covers most of the
+accounts this engine qualifies. Any future "qualified accounts" figure that
+does not subtract the client's estate is describing inventory nobody may
+work.
+
+It is ACCOUNT-level, not address-level, because `ACCOUNT-OUTREACH.md` makes
+the account the unit of outreach: a fresh contact at an account somebody is
+mid-sequence with is still a second voice at the same company.
+
+The clean fifteen, at the time of measurement:
+
+    28row-com  acqcom-com  adcuratio-com  agency59-ca  anewagencyworld-com
+    csquaredsocial-com  ethoscreate-com  mischacommunications-com
+    mypersonalestatesale-com  ogpartner-dk  portsidemarketing-com
+    roaringmedia-co  savagebrands-com  semcasting-com  viralityllc-com
+
 ## Two generation runs must not overlap
 
 `generate.run` loads the whole estate, works, and writes it back. A second
