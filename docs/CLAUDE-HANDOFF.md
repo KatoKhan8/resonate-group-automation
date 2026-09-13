@@ -423,6 +423,47 @@ nothing wrong with them.
 The free tier is NOT the fallback to return to. It is capped at 50 requests a
 day and that cap is what blocked this pipeline for most of the evening.
 
+## Why campaign 481 is not activated, and what would activate it
+
+It is staged, verified and PAUSED. Nothing has been sent from it and nothing
+is scheduled on it.
+
+Three reasons, and the first is the one that decides it.
+
+**`EMAIL_ACTIVATE` is not in `providerwrites.SUPPORTED`.** The verb exists
+and is well guarded - `bison.resume_campaign` takes an `expect_leads` count
+and refuses if the provider disagrees, polls `queued` out rather than
+reporting it as started, and classifies `failed` rather than defaulting it.
+It is deliberately not enabled. The operator's authorisation tonight was
+specific: HeyReach `AddLeadsToCampaign`, for verified Productive leads, after
+review. It did not extend to starting an email campaign.
+
+**There is no completed send anywhere in this system.** Confirmed touches
+are zero. Promoting fifteen people onto a five-step sequence would make the
+first real send of this engine a batch of fifteen, which is not rung one of
+the ladder the operator described.
+
+**The canary will produce that evidence today without anybody doing
+anything.** Campaign 451 is `active` with one scheduled email at
+`2026-09-14T16:24Z`, carrying fully rendered approved copy. It sends on its
+own.
+
+WHAT WOULD ACTIVATE IT, stated so the decision is one line rather than an
+investigation:
+
+    src/providerwrites.py   add EMAIL_ACTIVATE to SUPPORTED
+    then                    bison.resume_campaign(481, expect_leads=15)
+
+`expect_leads` is the containment and it must be passed: a resumed campaign
+sends to EVERY lead it holds, and 481 holds fourteen older leads of which
+nine are deliberately `stopped`. Passing the wrong count is how a campaign
+meant for fifteen reaches twenty-nine.
+
+A smaller first rung is available without any code change:
+`bison.set_limits(481, name, emails_per_day=1)` paces the campaign to one
+person a day, so 1 -> 5 -> 10 happens by the clock rather than by a decision
+each time.
+
 ## The real campaign-ready inventory is 15 accounts, not 53
 
 Measured 2026-09-14 against the client's live EmailBison estate, one
