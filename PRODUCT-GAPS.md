@@ -3622,3 +3622,38 @@ It stayed 0 on a campaign carrying a sequence, a schedule and an attached
 sender. Do not read it as "ready to launch". The provider states the real
 precondition set in its own refusal: a campaign needs a completed sequence
 AND schedule AND leads AND sender emails before `resume` will do anything.
+
+### Every cost estimate assumes two generated emails. Productive generates five.
+
+`cadence.GENERATED_KEYS` is derived from `cadence.STEPS`, the module constant,
+and that constant is still the seven-step `day1`..`day21` shape. It reads
+`("day1", "day15")` - two generated emails per contact.
+
+Four modules multiply by it: `src/plan.py` (the priced estimate an operator
+reads before authorising a batch), `src/benchmark.py`, `src/synthetic.py` and
+`src/demo.py`.
+
+None of them asks which cadence the CLIENT runs. Productive runs
+`productive_li_heavy_v1`, whose email half is `em1`..`em5` - five generated
+emails, all five confirmed planned by `generate.plan` on 2026-09-13. So every
+model-call estimate for this client is out by a factor of 2.5, and it is out
+in the direction that matters: the estimate is lower than the truth, so a
+batch authorised on it spends more than it was authorised to.
+
+`generate.plan` itself is CORRECT - it resolves the client's own sequence
+through `cadence.steps_for` and asks for all five. The defect is entirely in
+the estimators, which is why nothing failed: the engine does the right thing
+and the number shown to the person approving it describes a different engine.
+
+`tests/test_invariants.py::test_only_two_of_the_cadence_emails_are_model_written`
+passes, and is consistent with itself: it reads the same stale constant. A
+test can only be as current as the constant it reads.
+
+**What it would take:** the estimators take a client or a config and resolve
+the sequence the way `generate.sequence_for` already does, rather than reading
+a module constant. Small, but it is four call sites and a shared invariant
+test, and it is not on the path of the change that found it.
+
+**Until then:** an LLM-call estimate for a client running a non-default
+cadence is a floor, not a forecast. Multiply by the client's own generated
+email count before quoting it.

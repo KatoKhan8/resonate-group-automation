@@ -79,13 +79,29 @@ class SchemaError(ModelError):
     """The answer did not match the contract."""
 
 
+class NoModelConfigured(ModelError):
+    """Nobody configured a model. NOT a fault of the record being drafted.
+
+    It is a subclass so every existing `except ModelError` still catches it,
+    and a distinct type so the one caller that must NOT treat it as a record
+    fault can say so. `generate.generate_record` holds a record when the
+    model fails on it, which is right - and it was holding records when no
+    model existed at all, writing a configuration mistake into canonical
+    state and blaming a company for it. Measured 2026-09-13: one `--live`
+    run with nothing configured moved `16kagency-com` from `verified` to
+    `held`, wrote no event saying so, and printed "GENERATED".
+    """
+
+
 class NoModel:
     """The default. Refuses, so no code path calls a model unintentionally."""
 
     name = "none"
 
     def complete(self, prompt):
-        raise ModelError("no model configured: pass a model or run with --dry-run")
+        raise NoModelConfigured(
+            "no model configured. Set LLM_API_KEY, LLM_BASE_URL and LLM_MODEL "
+            "in config/.env, or pass a model to run(model=...)")
 
 
 class ScriptedModel:

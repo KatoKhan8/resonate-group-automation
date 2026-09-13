@@ -5,15 +5,19 @@ Deterministic work happens here; only the reasoning happens in the model. The
 context handed to a prompt is assembled from trimmed record fields, never from
 a provider payload, and it is small on purpose (section 9, trap 8).
 
-Two of the six cadence emails are generated, day 1 and day 15 (section 7). The
-rest are templates the expander fills in phase 7, which is what makes the cost
-per lead workable at 500 domains.
+WHICH EMAILS ARE GENERATED IS THE CLIENT'S SEQUENCE, not a constant. This
+said "day 1 and day 15" and had not been true since `productive_li_heavy_v1`
+became Productive's cadence: that sequence generates all five of `em1`..`em5`,
+which is what `plan` actually asks for. The count matters for cost, so a
+stale one here is a stale estimate everywhere it is quoted.
 
 A generated draft is linted before it is stored. A draft that breaks a rule is
 regenerated, never patched, and never widened away (CLAUDE.md).
 
-  python -m src.generate                    dry run: what would be asked, and of what
-  python -m src.generate --live --model ... needs a model; none ships with the repo
+  python -m src.generate                dry run: what would be asked, and of what
+  python -m src.generate --live         uses the model in config/.env, and
+                                        refuses rather than holding records
+                                        when none is configured
 """
 import argparse
 import os
@@ -700,6 +704,14 @@ def generate_record(rec, model, client=None, campaign=None):
                 if not draft(rec, contact, op["day"], model, client):
                     continue
             done.append(op)
+        except llm.NoModelConfigured:
+            # A CONFIGURATION FAULT IS NOT A RECORD FAULT. Holding here wrote
+            # "nobody set LLM_API_KEY" into canonical state as though this
+            # company were the problem, once per record, with no event - and
+            # the run still printed GENERATED. Raising instead means the
+            # operator is told once, before anything is saved, and no record
+            # carries the blame.
+            raise
         except llm.ModelError as e:
             store.log(rec, op["step"], f"held: {e}")
             if rec.get("state") not in ("dropped", "pushed"):
@@ -748,9 +760,33 @@ def main(argv=None):
                    help="actually call the model (none is configured by default)")
     p.add_argument("--id", action="append", dest="ids")
     p.add_argument("--limit", type=int)
+    p.add_argument("--client", help="whose cadence and tone the drafts follow")
     a = p.parse_args(argv)
 
-    result = run(live=a.live, ids=a.ids, limit=a.limit)
+    # `client` IS A CONFIG, NOT A SLUG, everywhere below this line. `plan`
+    # hands it to `cadence.steps_for` as `config` and to
+    # `channels.linkedin_verdict`, both of which call `.get` on it - so a
+    # slug string reaches `_named_sequence` and raises `'str' object has no
+    # attribute 'get'`. The parameter is named `client` throughout the
+    # module and the loading belongs here, at the edge, once.
+    config = clients.load(a.client) if a.client else None
+
+    # THE CONFIGURED MODEL, WHICH THIS COMMAND NEVER REACHED FOR. `--live`
+    # called `run()` with no model, `run` fell back to `NoModel`, and the
+    # command printed "GENERATED" having asked nothing - while every record
+    # it touched was held for a model that was sitting in `config/.env` all
+    # along. `run` still defaults to `NoModel` so a library caller cannot
+    # turn a dry run into a paid one by accident; asking for a real model is
+    # what `--live` MEANS, and it now does it.
+    model = llm.from_env() if a.live else None
+    if a.live and isinstance(model, llm.NoModel):
+        print("no model configured: set LLM_API_KEY, LLM_BASE_URL and "
+              "LLM_MODEL in config/.env. Nothing was generated and no record "
+              "was changed.")
+        return 1
+
+    result = run(model=model, live=a.live, ids=a.ids, limit=a.limit,
+                 client=config)
     head = "GENERATED" if a.live else "DRY RUN, no model called"
     print(f"{head}: {len(result['records'])} record(s), model={result['model']}")
     for r in result["records"]:

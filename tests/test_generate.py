@@ -338,11 +338,30 @@ class TestHooksMustBeSpecific(GenerateTest):
 
 
 class TestOnlyTwoEmailsAreGenerated(GenerateTest):
-    def test_the_plan_asks_for_day1_and_day15_only(self):
-        days = [o.get("day") for o in generate.plan(self.rec("meridian"))
-                if o["step"] == "draft"]
-        self.assertEqual(days, ["day1", "day15"])
-        self.assertEqual(generate.GENERATED_DAYS, ("day1", "day15"))
+    def test_the_plan_asks_for_the_sequence_this_client_actually_runs(self):
+        """Which emails are generated is the CLIENT'S sequence, not a constant.
+
+        This asserted `["day1", "day15"]` and `generate.GENERATED_DAYS ==
+        ("day1", "day15")`, and had been failing since `productive_li_heavy_v1`
+        became Productive's cadence: the fixture's client is `productive`, so
+        `sequence_for` resolves five email steps and the plan correctly asks
+        for all five. The old assertion pinned the world before that change
+        rather than any property of the code.
+
+        So it asks the authority the same way the code does, and compares.
+        That is not circular: the claim is that `plan` asks for EVERY email
+        step the sequence marks generated and no others - a real property,
+        and the one that broke when a record on a five-email sequence got two
+        drafts and three templates with nothing saying so.
+        """
+        rec = self.rec("meridian")
+        planned = [o.get("day") for o in generate.plan(rec)
+                   if o["step"] == "draft"]
+        sequence = generate.sequence_for(rec, contact=rec["contacts"][0])
+        expected = [s["key"] for s in sequence
+                    if s.get("channel") == "email" and s.get("generated")]
+        self.assertEqual(planned, expected)
+        self.assertTrue(expected, "the fixture's client generates no email at all")
 
     def test_a_record_with_no_sendable_contact_is_never_drafted(self):
         self.assertEqual(generate.plan(self.rec("held-record")), [])
@@ -355,12 +374,22 @@ class TestOnlyTwoEmailsAreGenerated(GenerateTest):
         # `meridian`'s contact is Ivana, so the draft has to greet Ivana. With
         # the Rowan default it failed the greeting rule and was regenerated,
         # which is the rule working rather than a wrong count.
-        model = llm.ScriptedModel(draft_answer(first="Ivana"),
-                                  draft_answer(first="Ivana"))
+        #
+        # THE PROPERTY IS "THE SECOND RUN ASKS NOTHING", not "the first run
+        # asked exactly twice". The hard two was the count for a two-email
+        # cadence and broke the moment Productive ran five - the fixture's
+        # client - while the property it was reaching for never changed. A
+        # `ScriptedModel` with no answers raises if it is asked anything at
+        # all, so the second run's silence is what proves it.
+        answers = [draft_answer(first="Ivana") for _ in range(10)]
+        model = llm.ScriptedModel(*answers)
         generate.run(model=model, live=True, ids=["meridian"])
-        before = len(model.prompts)
-        generate.run(model=llm.ScriptedModel(), live=True, ids=["meridian"])
-        self.assertEqual(before, 2)
+        self.assertTrue(model.prompts, "the first run generated nothing")
+
+        second = llm.ScriptedModel()
+        generate.run(model=second, live=True, ids=["meridian"])
+        self.assertEqual(second.prompts, [],
+                         "an already-drafted record was sent to the model again")
 
 
 class TestDryRunAndDefaults(GenerateTest):
@@ -384,7 +413,22 @@ class TestDryRunAndDefaults(GenerateTest):
         self.assertTrue(all(why for _, why in steps))
 
     def test_a_model_failure_holds_the_record_rather_than_guessing(self):
-        generate.run(model=llm.NoModel(), live=True, ids=["harbourline"])
+        """A MODEL that fails, not the ABSENCE of one.
+
+        This used `llm.NoModel` as the stand-in, and the two are different
+        answers: one says this record could not be drafted, the other says
+        nobody configured a model. Holding for the second wrote a
+        configuration mistake into canonical state, once per record - see
+        `tests/test_no_model_is_not_a_bad_record.py`, where both sides are
+        pinned. The property this test is about is unchanged.
+        """
+        class Failing:
+            name = "failing"
+
+            def complete(self, prompt):
+                raise llm.ModelError("the endpoint returned 500")
+
+        generate.run(model=Failing(), live=True, ids=["harbourline"])
         self.assertEqual(self.rec("harbourline")["state"], "held")
         self.assertIsNone(self.rec("harbourline")["diagnosis"])
 
