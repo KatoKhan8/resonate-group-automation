@@ -350,3 +350,74 @@ budget:
   per_day: 5000
   per_run: 2000
   total: 50000
+
+# HOW OFTEN ONE PERSON, AND ONE COMPANY, MAY HEAR FROM PRODUCTIVE.
+#
+# Every number below was a library default until now. `fatigue.limits()`
+# reports whether a value was CONFIGURED or DEFAULTED precisely so that a
+# screen cannot present a fallback as a decision, and every one of these
+# read `configured: false` - including the two that decide whether
+# account-based outreach is possible at all.
+#
+# THE ONE THAT ACTUALLY BINDS. `pilotcaps.CEILING` carries
+# `touches_per_account_per_week: 4` and `pilotcaps.CONSTRAINS` points it at
+# `fatigue.account.max_touches_per_week`. Nothing joins them:
+# `executionguard` calls `pilotcaps.require` with `email_per_day`,
+# `linkedin_per_day` and `per_sender_per_day` only, and `fatigue` never
+# consults `pilotcaps` at all. So the ceiling of 4 has no consumer on any
+# send path, and the number that decided how hard a company was worked was
+# the library default of 8. Writing 4 here is what makes 4 true.
+fatigue:
+  contact:
+    # The tightest gap the shipped sequence asks for: day 3 to day 5, and
+    # day 8 to day 10. Lower would permit a pace nothing plans; higher
+    # would block this client's own cadence, which is what a guard must
+    # never do quietly.
+    min_hours_between_touches: 48
+
+    # Days 1, 3, 5 and 8 of `cadence.STEPS` all fall inside one rolling
+    # seven-day window, so four is what the shipped sequence needs to reach
+    # its fourth step. MEASURED: at the default of 3, `contact_check`
+    # returns BLOCK on the day-8 step of the cadence this system ships -
+    # a limit that blocks the sequence it exists to pace is a number
+    # nobody chose deliberately.
+    max_touches_per_week: 4
+
+    # The sequence has exactly seven contacting steps. An eighth touch to
+    # one person is a step nobody wrote.
+    max_touches_total: 7
+
+  account:
+    # TWO, NOT THREE, AND THE REASON IS THE PROVIDER RATHER THAN TASTE.
+    #
+    # EmailBison refuses to attach a lead that is `in_sequence` in another
+    # campaign, and this system's own gate is stricter:
+    # `collision.account_policy` returns STOP for the WHOLE DOMAIN while
+    # anybody there is mid-sequence, and `executionguard` requires ALLOW.
+    # So two people at one company cannot be in live email sequences at the
+    # same time - not as a policy, as a fact about the estate.
+    #
+    # Two is therefore the honest maximum: one person carrying the email
+    # track and one carrying the LinkedIn track, which is a different
+    # provider and not subject to it. Configuring three would plan work
+    # that the send gate refuses, which is worse than planning less.
+    max_active_contacts: 2
+
+    # The pilot ceiling, written where something reads it. Four touches to
+    # one company in a week reads as pressure however many people they are
+    # spread across - `pilotcaps.WHY` already says so, about a number
+    # nothing enforced.
+    #
+    # One contact running the full seven-step cadence uses all four in its
+    # first week (days 1, 3, 5, 8), so a second stakeholder opens in week
+    # two. That is not a side effect: sequenced rather than simultaneous is
+    # the decision, and this is where it is expressed.
+    max_touches_per_week: 4
+
+    # The operator's hypothesis is that the second contact opens on day
+    # 2-3. Seventy-two hours is day three. It is stated as a number rather
+    # than built into a planner so that testing the hypothesis is an edit
+    # to this line, and `nextaction` reads it rather than holding an
+    # opinion of its own. The default of 24 would let two strangers from
+    # one agency arrive at one company a day apart.
+    min_hours_between_first_touches: 72

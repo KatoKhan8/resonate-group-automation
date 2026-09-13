@@ -86,8 +86,15 @@ class ARealisticPlanPasses(QATest):
         self.assertEqual(self.blocking(result), [])
 
     def test_it_still_says_the_pacing_limits_are_defaults(self):
-        """Passing is not the same as configured."""
-        result = self.review(self.full())
+        """Passing is not the same as configured.
+
+        `config={}` rather than the workspace's own file. This asserted a
+        property of `config/clients/productive.yaml` - which configured
+        nothing, so the warning fired - and stopped asserting anything the
+        day that client chose its numbers. The question is what the module
+        says about an unconfigured workspace, so the fixture states one.
+        """
+        result = self.review(self.full(), config={})
         self.assertTrue(any("defaults are in force" in f["why"]
                             for f in result["findings"]))
 
@@ -181,7 +188,15 @@ class WhatBlocks(QATest):
                  for n in (3, 2, 1)], start=1):
             events.record(rec, events.PUSH_MARKED, contact_key="john",
                           channel="email", day=day, at=at, sender_id="anna")
-        blocking = self.blocking(self.review(self.full(), rec=rec))
+        # The limit under test is stated rather than borrowed from the
+        # client file. Three touches was "past the limit" only while
+        # `productive.yaml` configured nothing and the module default of 3
+        # applied; a client raising its own number must not silently turn
+        # this into a test of nothing.
+        config = {"fatigue": {"contact": {"max_touches_per_week": 3},
+                              "account": {"max_touches_per_week": 3}}}
+        blocking = self.blocking(self.review(self.full(), rec=rec,
+                                             config=config))
         self.assertTrue(any("pacing limit" in why for why in blocking))
 
 

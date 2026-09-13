@@ -168,6 +168,43 @@ def replies(rec, contact_key=None):
     return found
 
 
+def bounces(rec, contact_key=None):
+    """Addresses at this company that came back, per contact.
+
+    A bounce is a fact about ONE ADDRESS. It is not a fact about the person
+    - their LinkedIn profile is untouched by it - and it is emphatically not
+    a fact about the company: a colleague's address is a different address,
+    and refusing the account on one bounce would throw away the company
+    because one record was stale.
+
+    Recorded as its own projection because nothing on the send path read it.
+    `cadencesafety` counts bounces for a report and `collision` reads the
+    PROVIDER's bounce flag at account level; neither closes the channel on
+    the identity that actually bounced, so a bounced address stayed as
+    sendable as it was the day before it bounced. `nextaction` is the
+    consumer; `eligibility.must_not_contact` still does not read it, which
+    is reported rather than fixed here.
+    """
+    found = []
+    for entry in rec.get("events") or []:
+        if entry.get("type") != events.EMAIL_BOUNCED:
+            continue
+        if contact_key and entry.get("contact") != contact_key:
+            continue
+        found.append({
+            "contact_key": entry.get("contact"),
+            # A bounce is an email fact. The channel is read from the event
+            # rather than assumed, so an event that named another channel is
+            # reported as what it said rather than relabelled.
+            "channel": entry.get("channel") or touch.EMAIL,
+            "at": entry.get("at"),
+            "provider": entry.get("provider"),
+            "provider_event_id": entry.get("provider_event_id"),
+        })
+    found.sort(key=lambda b: str(b.get("at") or ""))
+    return found
+
+
 def contact_name(rec, contact_key):
     """This decision maker's display name, falling back to their key.
 
@@ -238,6 +275,7 @@ def graph(rec, workspace=None, rows=None, config=None):
     names = _sender_names(workspace, rows)
     every_touch = touches(rec)
     every_reply = replies(rec)
+    every_bounce = bounces(rec)
     edges = referrals(rec)
     paused = rec.get("paused") or {}
 
@@ -260,6 +298,9 @@ def graph(rec, workspace=None, rows=None, config=None):
             "touches": mine,
             "confirmed_touches": confirmed,
             "replies": theirs,
+            # Per contact, never rolled up to the account: one bounced
+            # address says nothing about a colleague's.
+            "bounces": [b for b in every_bounce if b["contact_key"] == key],
             "positive": any(r["positive"] for r in theirs),
             "senders": senders,
             "sender_names": sorted({names.get(t["sender_id"], t["sender_id"])
