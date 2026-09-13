@@ -12,12 +12,16 @@ import unittest
 from src.providers import bison
 
 from src import cadence, lint, push, store
-from tests.base import FIXTURES, ProviderTest, approve_everything
+from tests.base import FIXTURES, ProviderTest, approve_everything, pin_client_config
 
 
 class PushTest(ProviderTest):
     def setUp(self):
         super().setUp()
+        # Pinned, not loaded. These tests are about what reaches a push
+        # payload, not about which cadence Productive currently runs, and
+        # `push.run` loads the client file itself.
+        pin_client_config(self)
         self.tmp = tempfile.mkdtemp(prefix="rga-push-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)

@@ -338,12 +338,16 @@ class AProviderWordIsTranslatedOrRefused(ConnectionAxis):
 
     def test_it_imports_no_provider(self):
         """A state machine that fetched its own provider evidence would
-        spend on every screen refresh and make an offline plan impossible."""
-        import sys
+        spend on every screen refresh and make an offline plan impossible.
 
+        `ls` IS the module. `sys.modules[ls.__module__]` asked a module for
+        an attribute only classes and functions carry, so this raised
+        `AttributeError` before it checked anything - and nobody saw it,
+        because the suite had never been run to a verdict. The claim is
+        unchanged; it is now made against the module itself.
+        """
         self.assertNotIn("providers", ls.__dict__)
-        module = sys.modules[ls.__module__]
-        for name, value in vars(module).items():
+        for name, value in vars(ls).items():
             if getattr(value, "__name__", "").startswith("src.providers"):
                 self.fail(f"linkedinstate imports {name}")
 
@@ -382,6 +386,17 @@ class AnActionNobodyCanNameProvesNothing(ConnectionAxis):
 
 class TheTimelineReadsTheBranch(CampaignTest):
 
+    def setUp(self):
+        super().setUp()
+        # NOT pinned, and deliberately so. `CampaignTest` loads
+        # client `demo`, whose cadence resolves to the default
+        # `day1`..`day21` - while every record here is Productive's
+        # and every assertion names `li1`, `li2`, `em1`. This module
+        # is ABOUT the LinkedIn-heavy branch, so it reads the client
+        # that actually runs it. `KeyError: 'li2'` was the timeline
+        # correctly having no such step.
+        self.config = clients.load(WS)
+
     def record(self):
         from tests.campaignbase import contact
 
@@ -393,6 +408,13 @@ class TheTimelineReadsTheBranch(CampaignTest):
         rec["contacts"] = [contact(KEY, "Brooke Baron", f"{KEY}@acme.test",
                                    angle="operations")]
         rec["cadence"] = {}
+        # `store.new_record` creates no `events` key - a record grows one the
+        # first time `events.record` writes to it - and every test below does
+        # `rec["events"].append(...)`. That raised `KeyError: 'events'` on
+        # five of them, and nobody saw it because the suite had never been
+        # run to a verdict. The module's own `a_record` helper above already
+        # starts an empty list for exactly this reason.
+        rec["events"] = []
         store.save([rec])
         return rec
 
@@ -430,6 +452,14 @@ class ThePlannerReadsTheBranch(CampaignTest):
 
     def setUp(self):
         super().setUp()
+        # NOT pinned, and deliberately so. `CampaignTest` loads
+        # client `demo`, whose cadence resolves to the default
+        # `day1`..`day21` - while every record here is Productive's
+        # and every assertion names `li1`, `li2`, `em1`. This module
+        # is ABOUT the LinkedIn-heavy branch, so it reads the client
+        # that actually runs it. `KeyError: 'li2'` was the timeline
+        # correctly having no such step.
+        self.config = clients.load(WS)
         si.install([
             si.new_sender(WS, "anna", "Anna Novak", team="growth"),
             si.new_sender(WS, "petar", "Petar Horvat", team="growth"),
@@ -455,6 +485,9 @@ class ThePlannerReadsTheBranch(CampaignTest):
                     title="Design Director", angle="operations"),
         ]
         rec["cadence"] = {}
+        # Same as the timeline builder above: `store.new_record` creates no
+        # `events` key, and every test below appends to one.
+        rec["events"] = []
         store.save([rec])
         return rec
 
