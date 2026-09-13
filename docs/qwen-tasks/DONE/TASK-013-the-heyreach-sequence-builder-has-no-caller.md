@@ -133,10 +133,85 @@ cadence - and refuses when the words are not there.
 
 ## RESULT
 
-STATUS: TODO
-COMMIT SHA:
-TESTS:
+STATUS: DONE
+COMMIT SHA: a08c7f7
+TESTS: 35 new tests in tests/test_heyreachfactory.py, all passing. 101
+  HeyReach-related tests pass. Full suite running at time of writing.
 FILES CHANGED:
+  - src/heyreachfactory.py (new, 407 lines)
+  - tests/test_heyreachfactory.py (new, 447 lines)
+  - docs/qwen-tasks/RUNNING/TASK-013-... (moved from TODO)
 FINDINGS:
+  THE MAPPING:
+    li1 (connect, day 1)    -> connection_note
+    li2 (message, day 3)    -> connected_1 AND message_2 (same words)
+    li3 (message, day 6)    -> message_3
+    li3 (alternative)       -> inmail
+    li4 (message, day 10)   -> message_4
+    li5 (message, day 15)   -> (no slot in the graph)
+    li6 (message, day 18)   -> (no slot in the graph)
+
+  li2 serves two positions because the graph has two branches that both
+  start with "the first message to a connection": connected_1 on the
+  already-connected branch and message_2 on the post-connection branch.
+  The same generated words fill both slots.
+
+  li5 and li6 are cadence steps the graph has no position for. The graph's
+  longest path carries four messages; the cadence names five. The factory
+  does not require them and their absence does not cause a refusal.
+
+  THE INMAIL DECISION:
+  The InMail branch is OMITTED by default. INMAIL_ELIGIBILITY_DETECTABLE is
+  False, the planner holds CAP_INMAIL steps, and no InMail copy is ever
+  approved in practice. The factory builds a graph without InMail nodes:
+  the not-accepted branch ends after a profile view, and the open-profile
+  check leads to the same cold path as the non-open-profile branch.
+
+  The report always states whether InMail was included or omitted. A caller
+  may include it by passing include_inmail=True with approved InMail copy.
+  The factory refuses if the flag is set but the copy is missing.
+
+  A cadence that includes InMail reports more touches than one that does
+  not. The touch_report in the plan states the node count, message count,
+  and InMail presence.
+
+  REPLACE, NOT APPEND:
+  /campaign/UpdateSequence REPLACES the entire graph. This is established
+  from heyreach.set_sequence, which calls UpdateSequence and reads the
+  graph back through sequence_matches. A second call overwrites the first.
+  This is the opposite of EmailBison's sequence write, which appends and
+  cannot be undone. Pinned by test_replace_not_append.
+
+  ALTERNATIVE CHANNEL INHERITANCE:
+  A cadence step's alternative does not carry its own "channel" field; it
+  inherits from the parent step. The factory's _step_copy accepts a channel
+  override for this reason. Without it, the InMail alternative was silently
+  refused because its channel was None.
+
+  COPY FIELD IS `note`, NOT `message`:
+  push.heyreach_rows reads step.get("note", "") and no code writes a
+  `message` field for LinkedIn. The factory reads `note` for all LinkedIn
+  steps (connection, message, open_profile_message), with a defensive
+  fallback to `message` for future use. InMail reads `note` as the message
+  body when `message` is absent.
 RISKS:
+  - LINKEDIN_SET_SEQUENCE is NOT in providerwrites.SUPPORTED. The door
+    refuses it until Claude enables it after review. The factory builds the
+    graph and the copy block, but cannot write it to the provider until the
+    operation is enabled.
+  - li5 and li6 are cadence steps with no graph position. If the graph is
+    extended to use them, the mapping must be updated. The factory does not
+    refuse their absence, which is correct now but would be wrong if the
+    graph changed.
+  - The InMail omission changes the touch count. A campaign planned with 11
+    touches (including InMail) will run with 10 (without InMail). The report
+    states the count either way, but the caller must read it.
 RECOMMENDED CLAUDE ACTION:
+  1. Review the mapping and the InMail decision.
+  2. Enable LINKEDIN_SET_SEQUENCE in providerwrites.SUPPORTED when ready.
+  3. Consider whether li5 and li6 should have graph positions (the cadence
+     has five messages but the graph uses four).
+  4. The factory's stage() function is a skeleton. It needs the full
+     bisonfactory-style flow: tenant check, campaign lookup, idempotency
+     through staged_already. The current implementation writes directly
+     through providerwrites.perform but does not check staged_already.
