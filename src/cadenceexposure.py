@@ -165,6 +165,25 @@ def _termination(rec, contact, replies):
     return None
 
 
+def termination(rec, contact, replies=None):
+    """Why this contact's sequence will not continue, or None if it may.
+
+    Public because it is the only vocabulary in the codebase for that
+    question, and the outcome record needs the same words. A second stop
+    reason list computed somewhere else is how two answers to "why did we
+    stop writing to Sarah" start disagreeing - and unlike most duplication,
+    that one is visible to a client.
+
+    Independent of any experiment: a contact in no arm still stopped for a
+    reason, and `contact_exposure` is unreachable for them.
+    """
+    from . import account
+
+    if replies is None:
+        replies = account.replies(rec, contact.get("key"))
+    return _termination(rec, contact, replies)
+
+
 def contact_exposure(exp, rec, contact, campaign=None):
     """What this one person received of the arm they are in.
 
