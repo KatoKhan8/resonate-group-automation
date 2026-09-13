@@ -943,11 +943,36 @@ def run(model=None, live=False, ids=None, limit=None, client=None):
 
     report = []
     for rec in targets:
-        ops = generate_record(rec, model, client) if live else plan(rec, client)
+        if live:
+            # CHECKPOINT PER RECORD. This loaded the estate, worked, and saved
+            # ONCE at the end - so a run across eighteen records that died
+            # fifty minutes in wrote nothing at all, and every model call in
+            # that window had been paid for. Measured 2026-09-13: no log, no
+            # exit code, no drafts.
+            #
+            # Same argument and same shape as `bisonfactory._remember_lead`,
+            # which writes the provider's lead id in its own transaction
+            # immediately. Through `store.transaction` so the evidence and
+            # history loss guards still run - durability bought by defeating
+            # them would be one loss traded for another.
+            #
+            # No resume flag, no checkpoint file, no new state. The estate IS
+            # the checkpoint, because `plan` declines to re-draft a record
+            # that already carries a clean one, so re-running the command is
+            # the resume.
+            #
+            # This does NOT make two concurrent runs safe. A second run holds
+            # a snapshot from before the first one's write and
+            # `refuse_history_loss` correctly kills it. Runs are sequential.
+            with store.transaction() as rows:
+                target = next(r for r in rows if r["id"] == rec["id"])
+                ops = generate_record(target, model, client)
+                state = target.get("state")
+        else:
+            ops = plan(rec, client)
+            state = rec.get("state")
         report.append({"id": rec["id"], "lane": rec.get("lane"),
-                       "state": rec.get("state"), "ops": ops})
-    if live:
-        store.save(recs)
+                       "state": state, "ops": ops})
     return {"live": live, "model": getattr(model, "name", "unknown"), "records": report}
 
 

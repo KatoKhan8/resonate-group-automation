@@ -98,10 +98,20 @@ proves it.
 
 ## RESULT
 
-STATUS: TODO
-COMMIT SHA:
-TESTS:
-FILES CHANGED:
-FINDINGS:
-RISKS:
-RECOMMENDED CLAUDE ACTION:
+STATUS: DONE
+COMMIT SHA: 2574b04
+TESTS: 52 pass in tests/test_generate.py (48 existing + 4 new in
+  TestCrashRecovery). All existing tests unchanged and green.
+FILES CHANGED: src/generate.py (run() per-record checkpoint via
+  store.transaction(), module docstring note), tests/test_generate.py
+  (TestCrashRecovery with 4 tests), task file moved TODO → RUNNING → DONE.
+FINDINGS: None. The store.transaction() API expressed this cleanly; no
+  change to src/store.py was needed. The _remember_lead precedent in
+  bisonfactory was the right pattern to follow.
+RISKS: Each record now acquires and releases the queue lock individually,
+  so a 500-record batch takes 500 lock cycles instead of 1. Measured
+  impact should be small (the lock is advisory and uncontended in normal
+  operation), but a heavily concurrent setup would see more contention.
+  The Snapshot three-way merge handles concurrent edits correctly.
+RECOMMENDED CLAUDE ACTION: Merge to master. The change is confined to
+  generate.run() and adds tests; no store.py or provider changes.
