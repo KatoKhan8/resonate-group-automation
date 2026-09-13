@@ -320,3 +320,46 @@ these is a human decision.
 UNVERIFIED and needed before an email send: that EmailBison resolves
 `{SUBJECT}` from a lead's `subject` custom variable. Proving it requires a
 real send.
+
+---
+
+## 2026-09-13 (later) — the email lane is blocked by our own prior outreach
+
+A live canary is scheduled. The obvious next step is a second cohort, and
+there is not one. Measured across the nine ICP-qualified accounts that have
+any contact at all:
+
+| account policy | count | why |
+|---|---|---|
+| STOP | 6 | somebody is mid-sequence RIGHT NOW in the client's own campaigns 327/352 - or, for hotsoupgroup, in our canary |
+| HOLD | 1 | a campaign ended early and the status does not say who ended it |
+| ALLOW | 2 | tractorbeam.com, cyclonesocial.com |
+
+And the two ALLOW accounts have no email-reachable person:
+
+    tractorbeam   michelle  unverified      audrey  accept_all
+    cyclonesocial andrew    unverified      ryan    accept_all
+
+`accept_all` is a catch-all domain: the verifier cannot confirm the mailbox
+exists, and the client's policy requires double confirmation. That is a
+deliverability judgement, not a bug.
+
+So the second email cohort is EMPTY, for two independent reasons, and neither
+is a capability gap. The factory works; there is nobody to point it at.
+
+### What that means for where the work goes
+
+The binding constraint is PEOPLE AT UNBURNED ACCOUNTS. 104 of the 113
+qualified accounts have no contact at all, and the nine that do are mostly
+accounts the client has already worked. Person discovery at the other 104 is
+worth more than any further provider engineering.
+
+The LinkedIn lane is not blocked the same way: tractorbeam and cyclonesocial
+both carry LinkedIn-reachable contacts at ALLOW accounts.
+
+### A reply that the counter did not count
+
+Clearing these accounts turned up `status: replied` with `replies: 0` on the
+same row (grayloon.com, campaign 274). `account_policy` read the counter, so
+recognising the word without reading it would have moved that account from
+HOLD to ALLOW. The status is the one to trust.
