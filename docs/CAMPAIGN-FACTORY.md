@@ -96,10 +96,13 @@ STAGE         providerwrites.perform(op, …)      NON-prospect-facing ops only
                     / set_limits are all `prospect_facing=False`, which is what
                     lets configuration be built and proven with nobody at risk)
               _ensure_leads calls bison.create_lead / bison.attach_leads
-              DIRECTLY, bypassing providerwrites.perform. Two checks close
-              the gap: the workspace killswitch (sending.live) is consulted
-              before any lead is created, and the campaign's provider status
-              is re-read immediately before attach_leads.
+              DIRECTLY, bypassing providerwrites.perform. Three checks close
+              the gap: the collision check (collision.check_account +
+              collision.account_policy) refuses leads whose account the
+              client's estate says STOP or HOLD before any lead is created;
+              the workspace killswitch (sending.live) is consulted before any
+              lead is created; and the campaign's provider status is re-read
+              immediately before attach_leads.
 
 VERIFY        configdiff.compare_heyreach / compare_bison  → sealed Readback
                 └─ provider readback  built from canonical state ONLY
@@ -120,13 +123,26 @@ Two properties of that shape matter more than the list:
   in `providerwrites.OPERATIONS`. The factory therefore builds and proves a
   configuration with zero exposure. `_ensure_leads` does NOT go through
   `providerwrites.perform` - it calls `bison.create_lead` and
-  `bison.attach_leads` directly - but the workspace killswitch is consulted
-  there before any lead is created, and the campaign's provider status is
+  `bison.attach_leads` directly - but three checks close the gap: the
+  collision check refuses leads whose account the client's estate says STOP
+  or HOLD (using `collision.check_account` + `collision.account_policy`, the
+  same gates `executionguard` runs at send time); the workspace killswitch is
+  consulted before any lead is created; and the campaign's provider status is
   re-read immediately before attach. The operations that need a full
   `Authorization` through `executionguard.authorize()` are `add_lead` and
   `activate` when they go through the write door; the factory's own lead
-  path is gated by the workspace killswitch and the provider status check
-  instead.
+  path is gated by the collision check, the workspace killswitch and the
+  provider status check instead.
+
+  **WHY NOT A FULL AUTHORIZATION FOR STAGING.** `Authorization` is per-action
+  with a 60-second TTL and a ledger reservation. Staging twenty leads is not
+  twenty actions - it is one batch operation. A token minted for the batch
+  re-opens the window `revalidate()` exists to close: the gap between the
+  last gate and the transport, in which a reply can land and change the
+  person. The collision check at staging time is the right scope: it answers
+  "is this person already being emailed by the client" using the same verdict
+  the send gate will re-check, without reserving ledger capacity or minting a
+  token whose TTL outlives the batch.
 - **The gates are not a convention.** They are the only way to obtain the thing
   the write layer requires. That is why the factory has no "call the guards"
   step: it cannot skip one.

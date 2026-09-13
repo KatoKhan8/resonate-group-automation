@@ -20,6 +20,7 @@ import unittest
 from src import bisonfactory, campaigns, store, workspaces
 from src import providers
 from tests.base import QueueTest
+from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
 
 
 class FakeBison:
@@ -255,6 +256,7 @@ class StagingTwiceBuildsOne(QueueTest):
         self._real = bisonfactory.bison
         bisonfactory.bison = self.bison
         self.addCleanup(setattr, bisonfactory, "bison", self._real)
+        patch_collision_empty(self)
 
         # THE WORKSPACE KILLSWITCH MUST BE ON FOR LEAD WRITES. `_ensure_leads`
         # consults `killswitch.workspace_state` before creating or attaching

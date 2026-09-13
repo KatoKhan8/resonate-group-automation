@@ -807,6 +807,64 @@ def _variables_for(lead, campaign):
     return bison._variables(values)
 
 
+def _refuse_colliding_leads(wanted, workspace_id):
+    """Refuse leads whose account the client's estate says STOP or HOLD.
+
+    Uses `collision.check_account` and `collision.account_policy` - the same
+    gates `executionguard` runs at send time. Fetched per domain and cached
+    for the duration of this call: a campaign's leads typically span a small
+    number of domains, and each `check_account` costs one paginated search.
+
+    WHICH STATES BLOCK AND WHICH MAY PASS, per `account_policy`:
+      - `in_sequence`   -> STOP  -> block. A second channel now is the
+                        collision this module exists to prevent.
+      - `stopped`       -> HOLD  -> block. The status does not say who ended
+                        it; it is the state a reply or unsubscribe leaves.
+      - `bounced`       -> HOLD  -> block. The data is suspect; a person
+                        should look before we spend more.
+      - `sequence_finished` -> ALLOW -> may pass. A campaign that ran its
+                        course with no reply is history, not a live conflict.
+                        It is still REPORTED in the account check, so "cold
+                        outreach" is never claimed about a worked account.
+
+    An UNREADABLE estate is refused. "We could not check" and "there is
+    nothing there" are the two answers this module exists to keep apart.
+    """
+    from . import collision
+
+    by_domain = {}
+    for lead in wanted:
+        domain = str(lead["email"]).rsplit("@", 1)[-1].strip().lower()
+        if domain:
+            by_domain.setdefault(domain, []).append(lead)
+
+    refused = []
+    for domain, leads in by_domain.items():
+        try:
+            account = collision.check_account(
+                domain, expect_workspace=workspace_id)
+        except collision.CollisionUnknown as e:
+            raise FactoryRefused(
+                f"the provider estate could not be read for {domain}: {e}. "
+                f"Refusing to stage leads at an unreadable account: a lead "
+                f"that cannot be checked cannot be cleared") from None
+        verdict, why = collision.account_policy(account)
+        if verdict in (collision.STOP, collision.HOLD):
+            for lead in leads:
+                refused.append((lead, verdict, why))
+
+    if refused:
+        detail = "; ".join(
+            f"{lead['contact_key']} ({lead['email']}): {v} - {w}"
+            for lead, v, w in refused[:5])
+        raise FactoryRefused(
+            f"{len(refused)} contact(s) collided with the client's own estate: "
+            f"{detail}"
+            f"{' and more' if len(refused) > 5 else ''}. "
+            f"A contact the client is already emailing or whose data is "
+            f"suspect must not be staged into a Resonate campaign")
+
+
 def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     """Create the leads this campaign needs, then attach exactly those.
 
@@ -843,6 +901,28 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             f"a real person an email with an empty subject and an empty body, "
             f"and every readback would agree the campaign was correct. "
             f"Generate and approve the missing steps, then stage again")
+    # THE ESTATE IS CHECKED BEFORE ANY LEAD IS CREATED OR ATTACHED.
+    # `_ensure_leads` calls `bison.create_lead` and `bison.attach_leads`
+    # directly, bypassing `executionguard.authorize()` and every gate it
+    # runs. The killswitch check below closes the tenant-level half of that
+    # gap; this closes the person-level half. A contact already mid-sequence,
+    # stopped, bounced or replied in the client's own estate must not be
+    # staged into a Resonate campaign. Measured 2026-09-13: nineteen contacts
+    # were staged into EmailBison campaign 481, nine of them already in the
+    # client's own campaigns, and nothing objected.
+    #
+    # THE CHECK IS ACCOUNT-LEVEL, USING `collision.check_account` AND
+    # `collision.account_policy`. The account is the unit of outreach per
+    # `ACCOUNT-OUTREACH.md`, and `account_policy` already draws the line
+    # between what blocks and what is history. This does not invent a new
+    # verdict; it applies the existing one at the staging boundary.
+    #
+    # CACHED PER DOMAIN. A campaign's leads typically span a small number of
+    # domains, and each `check_account` costs one paginated provider search.
+    # The cache lives for the duration of this call only.
+    workspace_id = (report.get("workspace") or {}).get("id")
+    if workspace_id:
+        _refuse_colliding_leads(wanted, workspace_id)
     # The variables must exist on the workspace before a lead may carry one:
     # the provider refuses an undeclared name outright. Idempotent, and it
     # creates nothing that can reach a person.

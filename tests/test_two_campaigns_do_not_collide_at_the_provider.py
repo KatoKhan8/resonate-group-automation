@@ -41,6 +41,8 @@ import unittest
 from src import bisonfactory, campaigns, providers, providerwrites, store, workspaces
 from src.providers import bison
 from tests.base import ProviderTest
+from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
+from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
 from tests.fakebison import FakeBison
 
 CONFIG = {
@@ -85,6 +87,15 @@ class FactoryTest(ProviderTest):
         os.environ["BISON_BASE"] = "https://emailbison.invalid/api"
         self.bison = FakeBison()
         self.providers.set_transport(self.bison)
+        # The collision check added by TASK-015 walks the provider estate per
+        # domain before staging any lead. This module's fake answers that
+        # search with one row and no readable `last_page`, which the walker
+        # correctly refuses to read as a whole estate - "a lead that cannot
+        # be checked cannot be cleared". These tests are about campaign
+        # collision AT THE PROVIDER, not about account collision in the
+        # client's estate, so the estate is patched empty here rather than
+        # the fake being taught a search it was never about.
+        patch_collision_empty(self)
         # The workspace killswitch must be on for lead writes. `_ensure_leads`
         # consults `killswitch.workspace_state` before creating or attaching
         # any lead. The client used in this test is "acme".

@@ -27,6 +27,7 @@ import unittest
 from src import bisonfactory, cadencelibrary, campaigns, store, workspaces
 from tests.base import QueueTest
 from tests.test_staging_a_campaign_twice_builds_one import FakeBison
+from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
 
 CID = "camp-five-step"
 
@@ -215,6 +216,7 @@ class TheWordsTravelWithThePerson(QueueTest):
         self._real = bisonfactory.bison
         bisonfactory.bison = self.bison
         self.addCleanup(setattr, bisonfactory, "bison", self._real)
+        patch_collision_empty(self)
 
         # The workspace killswitch must be on for lead writes.
         ws = workspaces.new_workspace("productive", "Productive",

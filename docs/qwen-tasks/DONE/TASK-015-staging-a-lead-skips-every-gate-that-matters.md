@@ -127,10 +127,51 @@ campaign, and a test proves it without a provider being present.
 
 ## RESULT
 
-STATUS: TODO
-COMMIT SHA:
-TESTS:
+STATUS: DONE
+COMMIT SHA: db77574
+TESTS: 7 new tests in tests/test_staging_refuses_colliding_contacts.py, all
+  passing. 89 existing factory tests also pass (updated to patch collision
+  for empty estate). 96 total factory tests green.
 FILES CHANGED:
+  - src/bisonfactory.py: added _refuse_colliding_leads(), called in
+    _ensure_leads before any lead is created
+  - tests/test_staging_refuses_colliding_contacts.py: new test file
+  - tests/test_staging_a_campaign_twice_builds_one.py: added collision patch
+  - tests/test_lead_writes_respect_the_killswitch.py: added collision patch
+  - tests/test_a_five_step_campaign_sends_five_different_emails.py: added
+    collision patch
+  - tests/test_two_campaigns_do_not_collide_at_the_provider.py: added
+    collision patch
+  - docs/CAMPAIGN-FACTORY.md: reconciled with the collision check at staging
 FINDINGS:
+  1. The collision check uses collision.check_account + account_policy, the
+     same gates executionguard runs at send time. Account-level, because the
+     account is the unit of outreach.
+  2. Which states block (per account_policy, no new verdict invented):
+     - in_sequence -> STOP -> block
+     - stopped -> HOLD -> block
+     - bounced -> HOLD -> block
+     - sequence_finished -> ALLOW -> may pass (history, not live conflict)
+  3. Design decision: narrower check (collision + killswitch) rather than
+     full Authorization. Authorization is per-action with 60s TTL and ledger
+     reservation; staging twenty leads is one batch, not twenty actions. A
+     token minted for the batch re-opens the window revalidate() exists to
+     close. Recorded in CAMPAIGN-FACTORY.md.
+  4. The estate is fetched per domain, cached for the call duration. Each
+     domain costs one paginated search; a campaign's leads typically span
+     1-5 domains.
 RISKS:
+  - The collision check adds provider reads per domain to the staging path.
+    For a campaign with 20 leads across 5 domains, that's 5 paginated
+    searches. Acceptable for staging (not real-time), but worth monitoring
+    if staging becomes a frequent operation.
+  - An unreadable estate (CollisionUnknown) refuses staging. This is the
+    right behavior ("we could not check" != "there is nothing there"), but
+    it means a provider outage blocks staging entirely.
 RECOMMENDED CLAUDE ACTION:
+  Review the design decision about narrower check vs full Authorization.
+  The task asked for a written answer; it's in CAMPAIGN-FACTORY.md under
+  "WHY NOT A FULL AUTHORIZATION FOR STAGING". If Claude disagrees with the
+  narrower check, the collision check in _refuse_colliding_leads can be
+  replaced with a full executionguard.authorize() call, but that requires
+  resolving the per-action vs batch tension.

@@ -28,6 +28,7 @@ from src import providers
 from tests.base import QueueTest
 from tests.test_staging_a_campaign_twice_builds_one import (
     CONFIG, FakeBison, CID)
+from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
 
 
 class KillswitchStopsLeadWrites(QueueTest):
@@ -39,6 +40,7 @@ class KillswitchStopsLeadWrites(QueueTest):
         self._real = bisonfactory.bison
         bisonfactory.bison = self.bison
         self.addCleanup(setattr, bisonfactory, "bison", self._real)
+        patch_collision_empty(self)
 
         store.save([self._record("rec-1", "one@example.com", "Ada"),
                     self._record("rec-2", "two@example.com", "Grace")])

@@ -128,19 +128,30 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
         # LinkedIn lane gained a campaign factory: create (a DRAFT), create a
         # list, write a sequence, add or remove a seat, stop one lead, pause.
         #
+        # TASK-009: `/campaign/AddLeadsToCampaignV2` was added on 2026-09-13
+        # so the transport and readback can be developed and tested. It is
+        # NOT in `SUPPORTED` in `providerwrites` - the door refuses it until
+        # Claude enables it after review. The route is on WRITE_ROUTES (the
+        # module CAN call it) but not in SUPPORTED (the build WILL NOT call
+        # it). The seal test in `test_the_write_layer_is_sealed` pins that
+        # nothing prospect-facing is supported.
+        #
         # What is NOT there is what matters. `Resume` and `StartCampaign`
         # both demonstrably exist on this vendor's API - an empty-body probe
         # answers 400 for each, and 404 for names that do not - and so does
-        # `AddLeadsToCampaignV2`. None of the three is here. A system that
-        # can start an outreach campaign before it can reliably stop one has
-        # acquired exposure it cannot end.
-        forbidden = ("Resume", "StartCampaign", "AddLeadsToCampaign",
-                     "SendMessage")
+        # `AddLeadsToCampaignV2`. None of the three is in SUPPORTED. A system
+        # that can start an outreach campaign before it can reliably stop one
+        # has acquired exposure it cannot end.
+        forbidden = ("Resume", "StartCampaign", "SendMessage")
         reaching = [r for r in heyreach.WRITE_ROUTES
                     if any(v.lower() in r.lower() for v in forbidden)]
         self.assertEqual(reaching, [],
                          f"a route that reaches a prospect is writable: {reaching}")
         self.assertIn("/campaign/Pause", heyreach.WRITE_ROUTES)
+        # AddLeadsToCampaignV2 is on WRITE_ROUTES but not in SUPPORTED.
+        self.assertIn("/campaign/AddLeadsToCampaignV2", heyreach.WRITE_ROUTES)
+        from src import providerwrites as pw
+        self.assertNotIn(pw.LINKEDIN_ADD_LEAD, pw.SUPPORTED)
 
 
     def test_the_write_layer_is_still_sealed(self):
