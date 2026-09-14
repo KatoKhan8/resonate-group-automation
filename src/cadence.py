@@ -938,7 +938,17 @@ def record_event(rec, kind, contact_key=None, at=None):
         # Same policy, same single entry point. A reply recorded by hand is
         # unclassified like one from a webhook, so it holds the company -
         # and if somebody classifies it later, `replies.apply` narrows it.
-        events.apply_reply_policy(rec, entry, contact_key)
+        #
+        # TASK-030 moved the provider-webhook path to `inbound.handle`
+        # (classify first, then pause), so `events.apply_reply_policy`
+        # returns None. But the hand-recorded path is NOT a webhook: an
+        # operator recording a reply is saying "this is a real reply," so
+        # the conservative UNKNOWN outcome applies immediately.
+        from . import accountpolicy
+        accountpolicy.apply_reply(
+            rec, contact_key, accountpolicy.UNKNOWN, config=None,
+            at=entry.get("at"), channel=entry.get("channel"),
+            reason=entry.get("type"), workspace=rec.get("client"))
     else:
         store.log(rec, "event", f"{kind} from {contact_key or 'someone'}")
     return entry

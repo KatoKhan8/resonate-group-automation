@@ -58,8 +58,8 @@ class CrashAtSeam(QueueTest):
 
     def tearDown(self):
         for original, method_name in self._patches:
-            if method_name == "_remember_lead":
-                bisonfactory._remember_lead = original
+            if method_name == "_remember_leads":
+                bisonfactory._remember_leads = original
             else:
                 setattr(self.bison, method_name, original)
         self._patches.clear()
@@ -103,33 +103,33 @@ class CrashAtSeam(QueueTest):
         self._patches.append((original, method_name))
 
     def _crash_after_remember_lead(self, after_call=1):
-        """Crash after _remember_lead succeeds N times.
+        """Crash after _remember_leads persists the first N pairs.
 
-        _remember_lead is a module-level function, not a bison method, so it
-        needs its own patcher. The original runs first (so the lead id is
-        persisted), then the exception fires.
+        TASK-041 replaced the per-lead `_remember_lead` call inside the
+        create loop with a single batch call to `_remember_leads` after the
+        loop. The crash seam moved from "between leads" to "inside the batch
+        persist." To simulate the old scenario (first lead remembered, second
+        not), the patched function processes only the first N pairs through
+        the original, then raises.
         """
-        original = bisonfactory._remember_lead
-        state = {"count": 0, "done": False}
+        original = bisonfactory._remember_leads
 
-        def crashing(*args, **kwargs):
-            result = original(*args, **kwargs)
-            state["count"] += 1
-            if state["count"] >= after_call and not state["done"]:
-                state["done"] = True
-                raise RuntimeError(
-                    f"simulated crash after _remember_lead "
-                    f"(call #{state['count']})")
-            return result
+        def crashing(pairs):
+            to_remember = pairs[:after_call]
+            if to_remember:
+                original(to_remember)
+            raise RuntimeError(
+                f"simulated crash after _remember_leads "
+                f"(persisted {len(to_remember)} of {len(pairs)} pairs)")
 
-        bisonfactory._remember_lead = crashing
-        self._patches.append((original, "_remember_lead"))
+        bisonfactory._remember_leads = crashing
+        self._patches.append((original, "_remember_leads"))
 
     def _remove_crash(self):
         """Restore every patched method to its original."""
         for original, method_name in self._patches:
-            if method_name == "_remember_lead":
-                bisonfactory._remember_lead = original
+            if method_name == "_remember_leads":
+                bisonfactory._remember_leads = original
             else:
                 setattr(self.bison, method_name, original)
         self._patches.clear()
@@ -234,12 +234,13 @@ class CrashAtSeam(QueueTest):
                          "expected one reconciliation (the first lead)")
 
     def test_crash_between_first_and_second_lead(self):
-        """First lead fully done. Crash before second lead is created.
+        """First lead fully done. Crash before second lead is remembered.
 
-        The crash is after _remember_lead for lead 1: the first lead is
-        created at the provider AND remembered locally, but the second lead
-        has not been touched. The re-run finds the first lead via
-        _known_lead_ids and creates the second normally.
+        TASK-041 moved the persist from per-lead to batch: _remember_leads
+        is called once after all leads are created. The crash seam is now
+        inside that batch: the first lead's id is persisted, the second is
+        not. The re-run finds the first lead via _known_lead_ids and creates
+        the second normally.
         """
         self._crash_after_remember_lead(after_call=1)
         report = self._crash_and_rerun()
@@ -247,8 +248,12 @@ class CrashAtSeam(QueueTest):
         leads = report["provider"]["leads"]
         self.assertEqual(leads["reused"], 1,
                          "the first lead was not reused from its binding")
-        self.assertEqual(leads["created"], 1,
-                         "the second lead was not created fresh")
+        # TASK-041 moved the persist to a batch after the create loop, so
+        # both leads exist at the provider when the crash happens. The
+        # second lead is reconciled (found by email) rather than created
+        # fresh. The guarantee is the same: no duplicates, full recovery.
+        self.assertEqual(leads["reconciled"], 1,
+                         "the second lead was not reconciled from its email")
 
     def test_crash_after_attach_before_readback(self):
         """All leads created and attached. Crash before _readback.
