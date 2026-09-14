@@ -149,6 +149,10 @@ approval before the factory will consider them.
   from this branch, the queue divergence must be reconciled.
 - The generation process stalled after 23 records. The cause is unknown
   (possible API timeout or model rate limit).
+- `work/queue.jsonl.lock` named dead PID 65548 (the killed generation
+  process). Removed per task instructions. A second generation attempt
+  (via the monitor) failed with FileExistsError on this lock before it
+  was cleaned up.
 
 **RECOMMENDED CLAUDE ACTION**:
 
