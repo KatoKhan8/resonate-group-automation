@@ -150,3 +150,24 @@ So the state today is:
 The diagnostic is genuinely useful and is integrated - it turns an invisible
 problem into a number. But nothing yet causes the copy to be rebuilt, and
 anyone reading "TASK-079 DONE" should not infer otherwise.
+
+---
+
+## CORRECTION - THE LADDER TEXT DOES NOT MOVE THE COUNT YET
+
+TASK-087 rewrote the LinkedIn rungs, and the commit warned that this would
+shift the TASK-083 staleness numbers. Re-run afterwards:
+
+    steps to re-plan:              560     unchanged
+    approvals that would be revoked: 83     unchanged
+
+**Because every stored step has NO fingerprint at all.** All 686 predate the
+mechanism, so they are stale under the flag regardless of what the current
+ladder says. The fingerprint comparison has nothing to compare against yet.
+
+The ladder text will start moving this number only AFTER the first
+fingerprinted generation, when stored steps carry a fingerprint that a later
+edit can disagree with. Until then 560/83 is a count of "everything that
+predates the mechanism", not a count of "everything the current ladder
+invalidates", and those become different numbers the moment anything is
+regenerated.
