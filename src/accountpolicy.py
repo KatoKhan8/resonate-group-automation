@@ -152,6 +152,13 @@ CLASSIFIER_OUTCOME = {
     "referral": REFERRAL,
     "not_relevant": NOT_ICP,
     "unknown": UNKNOWN,
+    # TASK-074: analysis categories for the learning dataset.  Every one
+    # maps to UNKNOWN so an analysis label can never widen what automation
+    # is allowed to do.  Promoting one to POSITIVE or NEGATIVE is a
+    # separate, deliberate decision with its own evidence.
+    "interested": UNKNOWN,
+    "meeting_intent": UNKNOWN,
+    "objection": UNKNOWN,
 }
 
 # Which policy each outcome consults.

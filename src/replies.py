@@ -61,9 +61,20 @@ REFERRAL = "referral"
 NOT_RELEVANT = "not_relevant"
 UNKNOWN = "unknown"
 
+# TASK-074: finer-grained analysis categories for the learning dataset.
+# These sub-classify replies that production rules leave as UNKNOWN so
+# cadence and copy analysis can distinguish curiosity from a concrete
+# meeting step from a stated constraint.  They are analysis labels, not
+# policy outcomes: every one maps to UNKNOWN in
+# `accountpolicy.CLASSIFIER_OUTCOME`, so an analysis category can never
+# widen what automation is allowed to do.
+INTERESTED = "interested"
+MEETING_INTENT = "meeting_intent"
+OBJECTION = "objection"
+
 CATEGORIES = (POSITIVE, NEUTRAL, NEGATIVE, UNSUBSCRIBE, ACCOUNT_DNC,
               OUT_OF_OFFICE, NOT_NOW, REFERRAL, NOT_RELEVANT,
-              UNKNOWN)
+              UNKNOWN, INTERESTED, MEETING_INTENT, OBJECTION)
 
 # Only `positive` is worth waking someone for.
 ALERTING = (POSITIVE,)
@@ -397,6 +408,153 @@ RULES = (
     (REFERRAL, REFERRAL_PATTERNS, 0.8),
 )
 
+# ---------------------------------------------------------------------------
+# TASK-074: a finer taxonomy for the learning dataset.
+#
+# Three analysis categories that sub-classify what production rules leave
+# as UNKNOWN.  They exist so cadence and copy analysis can distinguish
+# curiosity from a concrete meeting step from a stated constraint.
+#
+# Three rules make them safe:
+#
+#   1. Negation first.  No pattern fires when the same clause negates it.
+#      "Not intriguing" must not become INTERESTED.  The guard is clause-
+#      based: a negator in a different clause ("I am not sure, but it is
+#      intriguing") does not block, because the "not" modifies "sure",
+#      not "intriguing".
+#
+#   2. Ambiguity stays UNKNOWN.  A bare question with no commitment signal
+#      is UNKNOWN.  Context may only move UNKNOWN to a named category when
+#      the reply itself carries the signal - never when the signal comes
+#      only from what we said.
+#
+#   3. Nothing new maps to POSITIVE.  Every new category maps to UNKNOWN
+#      in accountpolicy.CLASSIFIER_OUTCOME.  An analysis label can never
+#      widen what automation is allowed to do.
+#
+# These patterns run ONLY when production rules return nothing.  A message
+# that production rules already classify is never reclassified here.
+# ---------------------------------------------------------------------------
+
+# Clause boundaries for the negation guard.  A negator in one clause does
+# not block a pattern in another: "I am not sure, but it is intriguing"
+# has "not" in the first clause and "intriguing" in the second.
+_CLAUSE_BOUNDARY = re.compile(r"[,;:!?]|\b(?:but|and|or|yet|however)\b")
+
+# Words that negate the next content word in the same clause.
+_NEGATOR = re.compile(
+    r"\b(?:not|n'?t|never|neither|nor|no|hardly|barely|scarcely)\b", re.I)
+
+# What the taxonomy considers when deciding interest.  Each pattern is
+# guarded by `_is_negated` before it fires.  Bare adjectives
+# ("interesting", "curious") are included because the negation guard is
+# the safety net - production rules do not catch "not intriguing" or
+# "curious about your platform", and the taxonomy must handle both.
+INTERESTED_PATTERNS = (
+    r"\b(?:interesting|intriguing|intrigued)\b",
+    r"\b(?:curious|curiosity)\b",
+    r"\b(?:fascinating|intriguing)\b",
+    r"\bi (?:find|found|am) (?:this|it|that) (?:interesting|intriguing|curious)\b",
+    r"\b(?:that|this) is (?:interesting|intriguing|curious)\b",
+    r"\bi(?:'d| would) like to know more\b",
+    r"\btell me (?:about|something|everything|why)\b",
+    r"\bgo on\b",
+    r"\bshow me\b",
+)
+
+# A concrete step towards a meeting: proposing a time, asking for
+# availability, or naming a scheduling action.  Distinct from POSITIVE
+# because these are the messages where the prospect is not just warm but
+# actively trying to set up a meeting.  Production rules catch many of
+# these already ("book a time", "set up a call"); the taxonomy catches
+# the ones that slip through.
+MEETING_INTENT_PATTERNS = (
+    r"\blet'?s (?:meet|book|schedule|set up)\b",
+    r"\bcan we (?:meet|talk|chat)\b",
+    r"\bhow about (?:a call|meeting|we (?:talk|chat|meet))\b",
+    r"\b(?:next|this) (?:monday|tuesday|wednesday|thursday|friday)\b",
+    r"\b(?:what|when) (?:time|day) works\b",
+    r"\b(?:send|share) (?:me )?(?:a )?(?:calendar|invite)\b",
+    r"\bi (?:am|'m) (?:free|available) (?:on|next|this|tomorrow)\b",
+    r"\b(?:pick|choose|suggest) (?:a )?(?:time|slot|day)\b",
+)
+
+# A specific stated constraint, not a blanket refusal.  "Too expensive"
+# is an objection that a future pricing conversation could address; "not
+# interested" is a refusal.  The distinction matters for the learning
+# dataset because objections signal a negotiable barrier while refusals
+# signal a closed door.
+OBJECTION_PATTERNS = (
+    r"\btoo (?:expensive|costly|pricey|cheap)\b",
+    r"\b(?:no|not enough) budget\b",
+    r"\b(?:no|not enough) (?:time|resources|bandwidth)\b",
+    r"\b(?:too|too many|too few) (?:people|staff|team members)\b",
+    r"\bour team is too (?:small|large)\b",
+    r"\b(?:we|I) (?:do not|don'?t) have (?:the |a )?(?:budget|time|resources)\b",
+    r"\bnot (?:in |within )?(?:our |the )?budget\b",
+    r"\b(?:above|beyond|outside) (?:our |the )?budget\b",
+    r"\bwe(?:'re| are) (?:too small|too big|not big enough)\b",
+)
+
+TAXONOMY_RULES = (
+    (MEETING_INTENT, MEETING_INTENT_PATTERNS, 0.7),
+    (OBJECTION, OBJECTION_PATTERNS, 0.7),
+    (INTERESTED, INTERESTED_PATTERNS, 0.6),
+)
+
+
+def _is_negated(text, match_start):
+    """Whether the match position is negated within its own clause.
+
+    Splits the text at clause boundaries (commas, semicolons, question
+    marks, and coordinating conjunctions) and checks whether the clause
+    containing the match also contains a negator before the match
+    position.  A negator in a different clause does not block:
+
+        "I am not sure, but it is intriguing"
+            -> 'not' is in the first clause, 'intriguing' in the second
+            -> NOT negated (the 'not' modifies 'sure', not 'intriguing')
+
+        "not intriguing at all"
+            -> 'not' and 'intriguing' in the same clause
+            -> IS negated
+    """
+    clause_start = 0
+    for boundary in _CLAUSE_BOUNDARY.finditer(text):
+        if boundary.end() <= match_start:
+            clause_start = boundary.end()
+        else:
+            break
+    clause = text[clause_start:match_start]
+    return bool(_NEGATOR.search(clause))
+
+
+def classify_taxonomy(text):
+    """The analysis pass.  Runs only when production rules return nothing.
+
+    Returns a verdict dict for INTERESTED, MEETING_INTENT, or OBJECTION,
+    or None if no taxonomy pattern matched (after negation filtering).
+
+    Every category the taxonomy produces maps to UNKNOWN in
+    accountpolicy, so a taxonomy verdict can never widen what automation
+    is allowed to do.
+    """
+    body = normalise(text)
+    if not body:
+        return None
+    for category, patterns, confidence in TAXONOMY_RULES:
+        for pattern in patterns:
+            match = re.search(pattern, body, re.I)
+            if match and not _is_negated(body, match.start()):
+                return {
+                    "classification": category,
+                    "confidence": confidence,
+                    "reason": f"taxonomy: matched {category} phrase",
+                    "evidence": [match.group(0).strip().lower()],
+                    "classifier": VERSION,
+                }
+    return None
+
 
 def normalise(text):
     # TASK-066: LinkedIn (and many mobile clients) use the Unicode right
@@ -660,6 +818,13 @@ def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD):
     cleaned = extracted["text"]
 
     verdict = classify_rules(cleaned)
+    # TASK-074: the analysis taxonomy runs after production rules and
+    # before the model.  It sub-classifies UNKNOWN into INTERESTED,
+    # MEETING_INTENT, or OBJECTION for the learning dataset.  Every new
+    # category maps to UNKNOWN in accountpolicy, so this can never widen
+    # what automation is allowed to do.
+    if verdict is None:
+        verdict = classify_taxonomy(cleaned)
     if verdict is None and model is not None:
         try:
             answer = model(normalise(cleaned)) or {}
