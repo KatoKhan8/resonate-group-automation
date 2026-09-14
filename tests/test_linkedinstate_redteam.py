@@ -12,7 +12,7 @@ import unittest
 from src import cadence, cadencelibrary as cl, events
 from src import linkedinstate as ls
 
-KEY = "brooke"
+KEY = "pat"
 REQUEST_AT = "2026-09-01T09:00:00+00:00"
 PAST_WINDOW = "2026-09-20T09:00:00+00:00"
 INSIDE_WINDOW = "2026-09-03T09:00:00+00:00"
@@ -24,7 +24,7 @@ FORK_STEP = next(s for s in LI_STEPS if s["key"] == "li3")
 
 def _record(events_=(), contact_key=KEY):
     return {"id": "acme", "client": "productive", "domain": "acme.test",
-            "contacts": [{"key": contact_key, "name": "Brooke Baron",
+            "contacts": [{"key": contact_key, "name": "Pat Morgan",
                           "linkedin": f"https://www.linkedin.com/in/{contact_key}"}],
             "events": list(events_)}
 

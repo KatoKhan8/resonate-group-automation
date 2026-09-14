@@ -62,10 +62,10 @@ class TheGraphCarriesNobodysWords(unittest.TestCase):
 
     def test_no_contacts_sentence_appears_in_the_sequence(self):
         """THE REGRESSION. This is the whole incident in one assertion."""
-        rec = _full_record("brooke")
+        rec = _full_record("pat")
         built = plan([rec])
         blob = json.dumps(built["sequence"])
-        for step_key, step in rec["cadence"]["brooke"].items():
+        for step_key, step in rec["cadence"]["pat"].items():
             note = (step.get("note") or "").strip()
             if not note:
                 continue
@@ -85,7 +85,7 @@ class TheGraphCarriesNobodysWords(unittest.TestCase):
 
     def test_two_contacts_share_one_graph_and_keep_their_own_words(self):
         """The property that makes a campaign-level sequence safe at all."""
-        first = _full_record("brooke")
+        first = _full_record("pat")
         second = _full_record("carla")
         second["id"] = "beta"
         second["cadence"]["carla"]["li1"]["note"] = "Hi Carla, quite different."
@@ -93,19 +93,19 @@ class TheGraphCarriesNobodysWords(unittest.TestCase):
         built = plan([first, second])
         fields = {c["contact_key"]: c["custom_fields"]
                   for c in built["contacts"]}
-        self.assertEqual(set(fields), {"brooke", "carla"})
-        self.assertNotEqual(fields["brooke"]["connection_note"],
+        self.assertEqual(set(fields), {"pat", "carla"})
+        self.assertNotEqual(fields["pat"]["connection_note"],
                             fields["carla"]["connection_note"])
         self.assertEqual(fields["carla"]["connection_note"],
                          "Hi Carla, quite different.")
         # And exactly one graph, mentioning neither of them.
         blob = json.dumps(built["sequence"])
         self.assertNotIn("Carla", blob)
-        self.assertNotIn("Brooke", blob)
+        self.assertNotIn("Pat", blob)
 
     def test_the_graph_does_not_change_when_the_first_contact_changes(self):
         """`complete[0]` was the bug. Reordering must be a no-op now."""
-        first = _full_record("brooke")
+        first = _full_record("pat")
         second = _full_record("carla")
         second["id"] = "beta"
         second["cadence"]["carla"]["li1"]["note"] = "Totally different words."
@@ -117,19 +117,19 @@ class TheGraphCarriesNobodysWords(unittest.TestCase):
 class AnIncompleteContactDoesNotDecideWhatTheCampaignSays(unittest.TestCase):
 
     def test_an_incomplete_contact_is_reported_and_not_pushable(self):
-        good = _full_record("brooke")
+        good = _full_record("pat")
         bad = _record_missing_step("li3", "carla")
         bad["id"] = "beta"
         built = plan([good, bad])
         pushable = {c["contact_key"] for c in built["pushable"]}
-        self.assertEqual(pushable, {"brooke"})
+        self.assertEqual(pushable, {"pat"})
         self.assertTrue(any(m[0] == "carla" for m in built["missing"]))
 
     def test_the_sequence_is_unaffected_by_an_incomplete_contact(self):
         """Before this change an incomplete contact could not be tolerated at
         all: the graph came from a contact, so a missing step was a campaign
         problem. Now it is only that lead's problem."""
-        good = _full_record("brooke")
+        good = _full_record("pat")
         bad = _record_missing_step("li3", "carla")
         bad["id"] = "beta"
         alone = plan([good])["sequence"]
@@ -228,13 +228,13 @@ class OnlyTheCampaignsOwnRecordsAreConsidered(unittest.TestCase):
     """
 
     def test_a_record_the_campaign_does_not_name_is_not_considered(self):
-        inside = _full_record("brooke")
+        inside = _full_record("pat")
         outside = _full_record("carla")
         outside["id"] = "not-in-this-campaign"
         built = heyreachfactory._plan(
             campaign_row(["acme"]), [inside, outside], config_with_fallbacks())
         self.assertEqual([c["contact_key"] for c in built["contacts"]],
-                         ["brooke"])
+                         ["pat"])
         self.assertEqual(built["missing"], [])
 
     def test_a_record_belonging_to_another_client_refuses(self):
@@ -246,7 +246,7 @@ class OnlyTheCampaignsOwnRecordsAreConsidered(unittest.TestCase):
         other["client"] = "contactout"
         with self.assertRaises(heyreachfactory.FactoryRefused) as caught:
             heyreachfactory._plan(campaign_row(["acme", "beta"]),
-                                  [_full_record("brooke"), other],
+                                  [_full_record("pat"), other],
                                   config_with_fallbacks())
         self.assertIn("tenancy", str(caught.exception))
 
@@ -277,8 +277,8 @@ class LinkedInCopyIsClaimCheckedBeforeItCanBePushed(unittest.TestCase):
     def test_a_contact_claiming_prior_contact_cannot_be_pushed(self):
         """With one contact and that contact unsafe, the whole plan refuses -
         there is nobody left to build a campaign for."""
-        rec = _full_record("brooke")
-        rec["cadence"]["brooke"]["li2"]["note"] = (
+        rec = _full_record("pat")
+        rec["cadence"]["pat"]["li2"]["note"] = (
             "Following up on our previous discussions about your delivery "
             "pipeline.")
         with self.assertRaises(heyreachfactory.FactoryRefused) as caught:
@@ -290,8 +290,8 @@ class LinkedInCopyIsClaimCheckedBeforeItCanBePushed(unittest.TestCase):
         copy" is a generation job and "asserts something unsupported" is a
         regeneration job on copy that already exists; one message covering
         both sends a reader to the wrong place."""
-        rec = _full_record("brooke")
-        rec["cadence"]["brooke"]["li2"]["note"] = (
+        rec = _full_record("pat")
+        rec["cadence"]["pat"]["li2"]["note"] = (
             "Following up on our previous discussions.")
         with self.assertRaises(heyreachfactory.FactoryRefused) as caught:
             plan([rec])
@@ -310,16 +310,16 @@ class LinkedInCopyIsClaimCheckedBeforeItCanBePushed(unittest.TestCase):
         that will actually be SENT. Three contacts in the real cohort are
         pushable precisely because their only bad step is li6.
         """
-        rec = _full_record("brooke")
-        rec["cadence"]["brooke"]["li6"]["note"] = (
+        rec = _full_record("pat")
+        rec["cadence"]["pat"]["li6"]["note"] = (
             "As we discussed on our previous call about your margins.")
         built = plan([rec])
         self.assertEqual(built["unsupported"], [])
         self.assertEqual([c["contact_key"] for c in built["pushable"]],
-                         ["brooke"])
+                         ["pat"])
 
     def test_one_bad_contact_does_not_stop_a_clean_one(self):
-        good = _full_record("brooke")
+        good = _full_record("pat")
         bad = _full_record("carla")
         bad["id"] = "beta"
         bad["cadence"]["carla"]["li2"]["note"] = (
@@ -328,12 +328,12 @@ class LinkedInCopyIsClaimCheckedBeforeItCanBePushed(unittest.TestCase):
             campaign_row(["acme", "beta"]), [good, bad],
             config_with_fallbacks())
         self.assertEqual([c["contact_key"] for c in built["pushable"]],
-                         ["brooke"])
+                         ["pat"])
 
     def test_the_sequence_is_unaffected_by_an_unsupported_claim(self):
         """The graph carries variables, so one contact's bad words cannot
         change what the campaign says - only whether they are in it."""
-        good = _full_record("brooke")
+        good = _full_record("pat")
         bad = _full_record("carla")
         bad["id"] = "beta"
         bad["cadence"]["carla"]["li2"]["note"] = "As per our previous call."

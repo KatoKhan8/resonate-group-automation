@@ -61,6 +61,16 @@ class FakeModel:
                 if token in prompt:
                     first = token
                     break
+            # Each step key gets distinct copy so the repetition gate does
+            # not refuse the second draft as a copy of the first.
+            if "day15" in prompt or "em5" in prompt:
+                return json.dumps({
+                    "subject": "the cost of waiting one more month",
+                    "body": (f"{first}, the teams I hear from describe the "
+                             f"same pattern: month end arrives and the numbers "
+                             f"still live in three spreadsheets. Happy to "
+                             f"share what two similar firms changed in their "
+                             f"first thirty days.\n\nWorth a short call?")})
             return json.dumps({"subject": "one week of month end, every month",
                                "body": BODY.format(first=first)})
         raise AssertionError(f"unexpected prompt: {prompt[:60]}")

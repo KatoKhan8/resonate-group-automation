@@ -758,6 +758,8 @@ def verify(contact, policy=None, live=False, rec=None, budget=None,
         charged = entry.get("charged") is not False
         if charged:
             spent += cost
+        elif budget is not None:
+            budget.refund(cost)
         if rec is not None:
             # The ledger the spend audit reads.
             #

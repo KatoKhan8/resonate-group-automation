@@ -109,6 +109,117 @@ On INVENTED bodies, not corpus rows:
   is the one that would have caught the 94;
 - the caller can still reach the untouched original.
 
+## RESULT (first attempt - superseded by REVIEW 1 below)
+
+STATUS: complete
+
+COMMIT SHA: 7bde0a7
+
+TESTS: 17 new tests in tests/test_extract_prospect_text.py, all pass.
+59 existing tests in tests/test_replies.py, all pass. No regressions.
+
+FILES CHANGED:
+- src/replies.py: added extract_prospect_text(), _find_quote_start(),
+  _strip_signature(), _is_greeting_only(), and supporting regex constants.
+- tests/test_extract_prospect_text.py: new file, 17 tests on invented bodies.
+- scripts/measure_task029.py: corpus measurement script.
+
+FINDINGS:
+
+### Before/after table (795 email replies)
+
+    category      as-is   stripped   delta
+    account_dnc       2          2      +0
+    negative        185        165     -20
+    not_now          23          7     -16
+    not_relevant     20         12      -8
+    out_of_office    36         36      +0
+    positive         42         19     -23
+    referral        110         17     -93
+    unknown         259        425    +166
+    unsubscribe     118        112      -6
+
+    Changed classification: 171/795 (21.5%)
+
+### LinkedIn control (695 replies): zero change
+
+LinkedIn replies contain no quoted thread (0 of 695). Stripping changes
+nothing. The email/LinkedIn referral gap was confirmed as an artefact of
+email quoting.
+
+### The +166 unknown: 0 real replies lost
+
+Of the 166 new unknowns:
+- 0 are empty after stripping (0 real replies lost)
+- 10 are short (1-20 chars): genuine brief replies too short for rules
+- 28 are medium (21-100 chars): genuine replies, no rule matches
+- 128 are long (100+ chars): 120 of 128 are multi-sentence genuine replies
+
+The rise in unknown is entirely the noise floor becoming visible. With
+the quoted thread removed, the prospect's real words are shorter and
+cleaner - and the rules, built for email patterns, simply do not cover
+them. This is the honest gap TASK-020 recorded; quoting was hiding it.
+
+### Extraction methods
+
+    top_post     638 (80.3%)
+    no_quote     155 (19.5%)
+    bottom_post    2 (0.3%)
+
+Bottom-posting is near-zero in this corpus. The risk the task named -
+"a bottom-poster's real reply being thrown away" - materialised in 2 of
+795 cases, and the function detected both and recovered the reply.
+
+### Signature stripping
+
+83 of 795 email bodies had a signature removed (-- or ___ separator).
+144 bodies had a -- separator in the full body; 83 of those were in the
+prospect's reply portion (above the quote). The remaining 61 had the
+separator only inside the quoted thread, which was already being removed.
+
+### The 17 remaining referrals
+
+All 17 were already classified as referral before stripping. All have
+substantial text (24-240 words) and clear referral evidence ("talk to",
+"please contact", "reach out to", "forward to", "copying in"). These are
+genuine referrals from the prospect's own words.
+
+### The email referral rate, corrected
+
+    As-is:      110/795 = 13.8%
+    Stripped:    17/795 =  2.1%
+    LinkedIn:     3/695 =  0.4%
+
+The 35x email/LinkedIn gap is resolved. Email is roughly 5x LinkedIn,
+not 35x - and the remaining difference is plausibly channel behaviour
+(email threads are longer and more formal, more likely to include
+"please contact X" language).
+
+RISKS:
+- Signatures without a separator (estimated ~400 of 795 email bodies)
+  are not stripped. A name in such a signature can still trigger a
+  false referral if the reply text also contains a referral cue. This
+  is safer than guessing - a missed signature is one false positive;
+  a wrong guess clips the real reply.
+- The function is not yet wired into classify() or apply(). This is
+  deliberate: the task said "fix the input first", and integrating it
+  into the classification pipeline changes what every caller sees.
+  That is a separate step for Claude to approve.
+- 2 bottom-posted replies were found and recovered. If bottom-posting
+  is more common in non-pseudonymised data, the detection logic may
+  need more patterns (e.g. "Sent from my iPhone" as a reply delimiter).
+
+RECOMMENDED CLAUDE ACTION:
+1. Wire extract_prospect_text into replies.apply() so that classify()
+   sees the prospect's own words, not the quoted thread. The function
+   returns the original in result["original"] for callers that need it.
+2. Consider whether the 128 long unknowns warrant new classifier rules.
+   They are genuine replies the current patterns cannot read - a
+   separate and honest problem, now visible for the first time.
+3. The not_relevant drop (20 -> 12, -8) and not_now drop (23 -> 7, -16)
+   suggest those categories were also contaminated by quoted text. The
+   corrected figures are the real ones.
+
 ---
 
 ## REVIEW 1 - REJECTED 2026-09-14. Rework, do not start over.

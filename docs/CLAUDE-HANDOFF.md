@@ -597,7 +597,7 @@ mid-sequence with is still a second voice at the same company.
 
 The clean fifteen, at the time of measurement:
 
-    28row-com  acqcom-com  adcuratio-com  agency59-ca  anewagencyworld-com
+    account-a  acqcom-com  account-b  agency59-ca  account-c
     csquaredsocial-com  ethoscreate-com  mischacommunications-com
     mypersonalestatesale-com  ogpartner-dk  portsidemarketing-com
     roaringmedia-co  savagebrands-com  semcasting-com  viralityllc-com
@@ -609,7 +609,7 @@ run started while the first is still working holds a snapshot from before the
 first one's write, and `store.refuse_history_loss` correctly kills it:
 
     HistoryLost: this write would forget what happened or lift a stop nobody
-    lifted: anewagencyworld-com: 3 event(s) dropped. Reload and re-apply
+    lifted: account-c: 3 event(s) dropped. Reload and re-apply
     rather than writing a stale snapshot back over it.
 
 That is the guard working - nothing was corrupted and the stale run simply

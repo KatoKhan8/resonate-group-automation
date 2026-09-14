@@ -182,9 +182,9 @@ collision-clean subset of them anyway.
 The seven records ready on both channels are the natural first account-based
 cohort, since `ACCOUNT-OUTREACH.md` makes the account the unit:
 
-    acqcom-com  adcuratio-com  mischacommunications-com
-    mypersonalestatesale-com  ogpartner-dk  portsidemarketing-com
-    savagebrands-com
+    (the seven account ids are in `work/queue.jsonl`, which is
+    gitignored. A client's prospect list does not belong in a tracked
+    file - `tests/test_fixture_hygiene` enforces that and caught this.)
 
 A caution on one number: "usable company name" here is `name != domain
 prefix`, which is close to but not identical with `cadence.company_name`'s own

@@ -229,6 +229,177 @@ def normalise(text):
     return re.sub(r"\s+", " ", (text or "")).strip()
 
 
+# ---------------------------------------------------------------------------
+# TASK-029: extracting the prospect's own words from a raw email body.
+#
+# 85% of email replies carry the quoted original message below the reply.
+# The classifier was handed the whole body, so it matched patterns in our
+# own outreach copy and in the sender's signature block, and reported the
+# result as the prospect's sentiment. 94 of 110 "referrals" were our own
+# words quoted below the reply.
+#
+# The function below returns only what the prospect typed. It handles:
+#   - top-posting (reply above the quote) - the 85% case;
+#   - bottom-posting (reply below the quote) - detected, not assumed away;
+#   - inline replies (text interleaved with quote lines) - text above the
+#     first quote marker is kept, which is the recoverable portion;
+#   - signature blocks after -- or ___ separators;
+#   - bodies with no quote at all - returned byte for byte.
+#
+# This does NOT retune any classifier pattern. It fixes the input.
+# ---------------------------------------------------------------------------
+
+# Quote-header patterns: the line that introduces a quoted block.
+_ON_WROTE = re.compile(
+    r"^On .+\bwrote:", re.M)
+_OUTLOOK_SEP = re.compile(
+    r"^-{5,}Original Message-+$", re.M | re.I)
+
+# Signature separators.
+_SIG_DASH = re.compile(r"^--\s*$", re.M)
+_SIG_UNDERSCORE = re.compile(r"^_{3,}\s*$", re.M)
+
+# Greeting-only text: a line that is just a salutation or very short.
+_GREETING = re.compile(
+    r"^(?:hi|hey|hello|dear|good\s+(?:morning|afternoon|evening)|"
+    r"thanks|thank\s+you|regards|cheers|greetings|"
+    r"good\s+day|hiya|morning|afternoon)\b[.,:!]*\s*$",
+    re.I)
+
+
+def _find_quote_start(lines):
+    """Line index where the quoted thread begins, or None.
+
+    Checks three marker families in order of specificity:
+    1. Outlook ``-----Original Message-----`` separator
+    2. ``On <date> … wrote:`` header (Apple Mail, Gmail mobile)
+    3. First line starting with ``>``
+
+    Returns the index of the marker line itself. The caller decides
+    whether to keep text above or below it.
+    """
+    joined = "\n".join(lines)
+    outlook = _OUTLOOK_SEP.search(joined)
+    if outlook:
+        prefix = joined[:outlook.start()]
+        return prefix.count("\n")
+
+    on_match = _ON_WROTE.search(joined)
+    if on_match:
+        prefix = joined[:on_match.start()]
+        return prefix.count("\n")
+
+    for i, line in enumerate(lines):
+        if line.startswith(">"):
+            return i
+
+    return None
+
+
+def _strip_signature(text):
+    """Remove the signature block from the end of a text.
+
+    Returns ``(cleaned, was_stripped)``.  Recognises ``-- `` and ``___``
+    separators.  A signature without a separator is left in place -
+    guessing where a signature starts without a delimiter is where false
+    positives live, and a missed signature is safer than a clipped reply.
+    """
+    for pattern in (_SIG_DASH, _SIG_UNDERSCORE):
+        match = pattern.search(text)
+        if match:
+            before = text[:match.start()].rstrip()
+            if before:
+                return before, True
+    return text, False
+
+
+def _is_greeting_only(text):
+    """Whether every non-empty line in *text* is just a salutation."""
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    if not lines:
+        return True
+    return all(_GREETING.match(l) or len(l) <= 2 for l in lines)
+
+
+def extract_prospect_text(body):
+    """The prospect's own words from a raw email body.
+
+    85% of email replies carry the quoted original message below the
+    reply.  Classifying the whole body matches patterns in our own
+    outreach copy and reports the result as the prospect's sentiment.
+    This function returns only what the prospect typed.
+
+    Handles top-posting (reply above, quote below) as the default.
+    Detects bottom-posting: if stripping leaves nothing or only a
+    greeting, the reply is below the quote and is recovered.
+
+    Returns a dict:
+
+    ``text``
+        The prospect's words, signatures removed.
+    ``original_length``
+        Character count of the raw input.
+    ``stripped_length``
+        Character count of ``text``.
+    ``had_quote``
+        Whether a quoted thread was found.
+    ``had_signature``
+        Whether a signature block was removed.
+    ``method``
+        How the reply was located: ``"top_post"``, ``"bottom_post"``,
+        ``"no_quote"``, or ``"empty"``.
+    ``original``
+        The untouched input, so a caller that needs the whole body
+        can still reach it.
+    """
+    if not body:
+        return {"text": "", "original_length": 0, "stripped_length": 0,
+                "had_quote": False, "had_signature": False,
+                "method": "empty", "original": body or ""}
+
+    lines = body.split("\n")
+    quote_idx = _find_quote_start(lines)
+
+    if quote_idx is None:
+        cleaned, had_sig = _strip_signature(body)
+        return {"text": cleaned, "original_length": len(body),
+                "stripped_length": len(cleaned),
+                "had_quote": False, "had_signature": had_sig,
+                "method": "no_quote", "original": body}
+
+    before = "\n".join(lines[:quote_idx]).strip()
+    after_lines = []
+    for i in range(quote_idx, len(lines)):
+        if not lines[i].startswith(">"):
+            after_lines.append(lines[i])
+    after = "\n".join(after_lines).strip()
+
+    if before and not _is_greeting_only(before):
+        reply_text = before
+        method = "top_post"
+    elif after:
+        reply_text = after
+        method = "bottom_post"
+    elif before:
+        reply_text = before
+        method = "top_post"
+    else:
+        return {"text": "", "original_length": len(body),
+                "stripped_length": 0,
+                "had_quote": True, "had_signature": False,
+                "method": "empty", "original": body}
+
+    cleaned, had_sig = _strip_signature(reply_text)
+    if not cleaned.strip():
+        cleaned = reply_text
+        had_sig = False
+
+    return {"text": cleaned, "original_length": len(body),
+            "stripped_length": len(cleaned),
+            "had_quote": True, "had_signature": had_sig,
+            "method": method, "original": body}
+
+
 def _hits(text, patterns):
     found = []
     for pattern in patterns:
@@ -301,11 +472,20 @@ def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD):
     `classification`; anything it raises, and anything it returns that this
     module does not recognise, becomes `unknown`. It is never called in tests
     and never called for a message the rules already settled.
+
+    TASK-029 rework: the prospect's own words are extracted before
+    classification. 85% of email replies carry the quoted original below
+    the reply, and classifying the whole body matched patterns in our own
+    outreach copy. The verdict carries ``extract_method`` and
+    ``extract_stripped_length`` so a caller can tell what was judged.
     """
-    verdict = classify_rules(text)
+    extracted = extract_prospect_text(text)
+    cleaned = extracted["text"]
+
+    verdict = classify_rules(cleaned)
     if verdict is None and model is not None:
         try:
-            answer = model(normalise(text)) or {}
+            answer = model(normalise(cleaned)) or {}
             category = str(answer.get("classification") or "").lower()
             if category in CATEGORIES:
                 verdict = {
@@ -337,7 +517,9 @@ def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD):
                    "reason": (f"{verdict['classification']} below the "
                               f"{threshold} threshold: manual review"),
                    "needs_review": True}
-    verdict["excerpt"] = _excerpt(text)
+    verdict["extract_method"] = extracted["method"]
+    verdict["extract_stripped_length"] = extracted["stripped_length"]
+    verdict["excerpt"] = _excerpt(cleaned)
     return verdict
 
 
@@ -443,8 +625,12 @@ def apply(rec, contact_key, text, at=None, model=None, channel=None,
     # Except for a removal request. "Remove our company - talk to Sarah" is
     # a company-wide stop, and a queue item naming a colleague inside one
     # is the single worst thing this could produce.
+    # TASK-029 rework: check referral cues on the prospect's own words,
+    # not the raw body. A referral phrase in the quoted thread is our own
+    # outreach copy, not the prospect handing somebody on.
+    _cleaned = extract_prospect_text(text)["text"]
     if (verdict["classification"] not in (UNSUBSCRIBE, ACCOUNT_DNC)
-            and mentions_referral(text)):
+            and mentions_referral(_cleaned)):
         pointed = referral.read(rec, text, referrer=contact_key)
         events.record(
             rec, events.REFERRAL_MENTIONED, contact_key=contact_key,

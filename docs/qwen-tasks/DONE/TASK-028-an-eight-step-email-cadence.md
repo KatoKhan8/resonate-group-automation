@@ -116,6 +116,15 @@ Claude's.
 Then break each guard deliberately and confirm the intended test fails for
 the intended reason.
 
+## RESULT (v1 - SUPERSEDED BY REWORK)
+
+STATUS: rejected
+
+COMMIT SHA: 2faacad
+
+The ladder registry was keyed by `id()` which did not survive `validate_steps`.
+Fixed in the rework below.
+
 ---
 
 ## REVIEW 1 - REJECTED 2026-09-14. Rework, do not start over.
@@ -178,3 +187,49 @@ the five-step cadence, driven the same way, still gets the breakup at em5.
 
 If a test passes a constant from `cadencelibrary` straight into
 `purpose_for`, it is not testing the path.
+
+---
+
+## RESULT (v2 - REWORK)
+
+STATUS: done
+
+TESTS: 23 tests in `tests/test_eight_step_cadence.py`, all passing.
+- 19 original tests (unchanged, all pass)
+- 4 new tests in TestPurposeSurvivesValidateSteps that drive purpose_for
+  through cadence.steps_for() exactly as generate does:
+  - test_eight_step_rungs_6_7_8_have_purpose_through_steps_for
+  - test_five_step_em5_is_breakup_through_steps_for
+  - test_steps_for_result_is_not_the_library_tuple
+  - test_ladder_name_for_survives_steps_for
+New tests confirmed to FAIL with the old id()-keyed code (2 failures:
+em6 rung 6 None, ladder_name_for None != 'email_eight') and PASS with
+the name-keyed fix. 294 cadence tests and 48 generate tests all pass.
+
+FILES CHANGED:
+- `src/cadencelibrary.py`: _SEQUENCE_LADDERS rekeyed from id() to cadence
+  name; ladder_name_for() matches by step keys (the one thing that survives
+  validate_steps)
+- `tests/test_eight_step_cadence.py`: 4 new tests in
+  TestPurposeSurvivesValidateSteps
+
+FINDINGS:
+- The defect was exactly as the review described: `cadence.steps_for()` calls
+  `validate_steps()` which returns `tuple(dict(step, ...) for ...)` - new
+  dicts in a new tuple. `id()` never matches. The five-step cadence was
+  silently protected by the default ladder fallback in `_resolve_ladder`,
+  which is `EMAIL_LADDER` (five rungs). The eight-step cadence had no such
+  fallback and got None for rungs 6, 7, 8.
+- The fix matches by step keys, which ARE preserved through validate_steps.
+  SEQUENCES is iterated to find a match; the name is then looked up in
+  _SEQUENCE_LADDERS. This is O(n) in the number of sequences (3) and the
+  number of steps per sequence (max 11), which is negligible.
+
+RISKS:
+- If two sequences ever share the same step keys, the first match in
+  SEQUENCES iteration order wins. This is safe today (all three sequences
+  have distinct key sets) and would be caught by the test suite.
+
+RECOMMENDED CLAUDE ACTION:
+- Same as v1: review the ladder content, add email_sequence block when
+  staging, consider switching the client file for the E1 experiment arm.

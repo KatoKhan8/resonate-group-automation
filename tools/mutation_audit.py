@@ -1233,8 +1233,8 @@ MUTATIONS = [
 
     ("cadence: report waiting for a connection nobody can accept",
      "src/cadence.py",
-     '    if spec["channel"] == "linkedin" and not contact.get("linkedin"):\n        return "blocked"\n    if spec.get("requires") == ACCEPT_EVENT and not accepted:',
-     '    if spec.get("requires") == ACCEPT_EVENT and not accepted:',
+     '    # the cross-channel check agrees with.\n    if spec["channel"] == "linkedin" and not contact.get("linkedin"):\n        return "blocked"',
+     '    # the cross-channel check agrees with.\n    if spec["channel"] == "linkedin" and not contact.get("linkedin"):\n        return "waiting"',
      "tests.test_demo_outreach tests.test_cadence"),
 
     ("push: stop sending our identifiers to EmailBison",
@@ -2943,8 +2943,13 @@ MUTATIONS = [
 
     ('replies: a removal request records a mention naming a colleague',
      'src/replies.py',
-     '    if (verdict["classification"] not in (UNSUBSCRIBE, ACCOUNT_DNC)\n            and mentions_referral(text)):',
-     '    if mentions_referral(text):',
+     # `_cleaned` and not `text` since TASK-029: the referral check reads
+     # the prospect's own words, because a referral phrase in the quoted
+     # thread is our own outreach copy. The guard being mutated is
+     # unchanged - a removal request must not also record a referral
+     # mention - only the argument was renamed under it.
+     '    if (verdict["classification"] not in (UNSUBSCRIBE, ACCOUNT_DNC)\n            and mentions_referral(_cleaned)):',
+     '    if mentions_referral(_cleaned):',
      'tests.test_referral'),
 
     ('referral: a name becomes an identity',
