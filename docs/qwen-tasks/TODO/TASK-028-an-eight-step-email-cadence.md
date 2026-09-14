@@ -115,3 +115,66 @@ Claude's.
 
 Then break each guard deliberately and confirm the intended test fails for
 the intended reason.
+
+---
+
+## REVIEW 1 - REJECTED 2026-09-14. Rework, do not start over.
+
+The eight rungs are right, the cadence is right, the em5 regression test is
+right and passes, and the decision to make the eight-step cadence email-led
+with zero LinkedIn steps - so it fits the existing fatigue caps without
+touching config - is a good one. Keep all of it.
+
+**The ladder registry is keyed by `id()` and it does not survive the real call
+path.**
+
+    _SEQUENCE_LADDERS = {
+        id(PRODUCTIVE_LI_HEAVY_V1): {"email": "email_five"},
+        ...
+    }
+
+`cadence.steps_for()` does not return the library tuple. It returns a new
+object built from it, so `id()` never matches and `ladder_name_for` answers
+None - which means "use the default ladder". Measured:
+
+    steps_for(...) is cadencelibrary.named(...)   ->  False
+    ladder_name_for(steps_for result, "email")    ->  None
+    ladder_name_for(the library tuple, "email")   ->  "email_eight"
+    purpose_for("email", 8, sequence=steps_for)   ->  None
+    purpose_for("email", 8, sequence=library)     ->  the breakup rung
+
+So through the path production actually uses, **steps 6, 7 and 8 of the
+eight-step cadence have NO PURPOSE AT ALL**, and the model would be asked to
+write them with no brief. The nineteen tests pass because every one of them
+hands `purpose_for` the library tuple directly. That is the defect this
+repository keeps finding: correct at the seam, absent at the caller.
+
+`id()` is the wrong key for a second reason even where it matches. It is a
+memory address - not stable across processes, reused after garbage collection,
+and meaningless for a sequence that was copied, sliced, or rebuilt from
+config. A cadence silently resolving to another cadence's ladder is a prospect
+reading the wrong rung.
+
+### What to do
+
+Key it by the CADENCE NAME. `SEQUENCES` is already a name -> sequence mapping
+and `named()` already reads it, so the name is the canonical identity this
+system already has - CLAUDE.md's "prefer canonical state to a second
+representation of it" points straight at it.
+
+Then make the name reach `purpose_for`. Whatever route you choose, the test
+below is what decides it.
+
+### The test that decides the rework
+
+Drive it through `cadence.steps_for()`, exactly as `generate` does - never by
+passing a library constant in:
+
+    seq = cadence.steps_for(record_selecting_the_eight_step_cadence, config)
+    assert purpose_for("email", 8, sequence=seq) is not None
+
+and the same assertion for rungs 6 and 7. Then the mirror: a record selecting
+the five-step cadence, driven the same way, still gets the breakup at em5.
+
+If a test passes a constant from `cadencelibrary` straight into
+`purpose_for`, it is not testing the path.
