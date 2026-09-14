@@ -793,6 +793,44 @@ def plan(rec, client=None, campaign=None):
                                f"regenerating {len(keys_to_regen)} notes "
                                f"as a set",
                         "contact": c.get("name")})
+
+    # VARIANT SETS.
+    #
+    # After all drafts are planned, check whether any generated step needs
+    # a set of five approach-labelled variants. A step with `generated: True`
+    # and fewer than five active variants on its spec is a candidate.
+    # The variant set is generated as a separate op so it can be run
+    # independently of the single-draft path.
+    from . import variantgen as vg
+    from . import variants as V
+
+    for c in workable:
+        sequence = sequence_for(rec, client, c, campaign)
+        for spec in sequence:
+            if not spec.get("generated"):
+                continue
+            existing = spec.get("variants") or []
+            active = [v for v in existing
+                      if v.get("status") == V.ACTIVE]
+            if len(active) >= V.MINIMUM_VARIANTS:
+                continue
+            # Only plan variant generation when the step already has a draft
+            key = lint.contact_key(c)
+            stored = (rec.get("cadence") or {}).get(key, {}).get(spec["key"])
+            if not stored:
+                continue
+            channel = spec.get("channel", "email")
+            written = stored.get("body") if channel == "email" \
+                else stored.get("note")
+            if not (written or "").strip():
+                continue
+            ops.append({"step": "variant_set",
+                        "why": (f"{c['name']}'s {spec['key']} has "
+                                f"{len(active)} variant(s); needs "
+                                f"{V.MINIMUM_VARIANTS}"),
+                        "contact": c.get("name"),
+                        "day": spec["key"],
+                        "channel": channel})
     return ops
 
 
@@ -1323,6 +1361,57 @@ def size(rec, live=False):
 
 # ---------------------------------------------------------------- runner
 
+def generate_variants(rec, contact, model, spec, client=None, campaign=None):
+    """Generate five approach-labelled variants for one step.
+
+    Wires `variantgen` into the production path. Each variant is generated
+    against the ladder's purpose for the rung, gated by claims, and stored
+    on the step spec with its approach recorded as the style.
+
+    Returns the list of variant entries on success, None on failure.
+    """
+    from . import variantgen, lint
+
+    key = lint.contact_key(contact)
+    node_type = spec.get("channel", "email")
+    sequence = sequence_for(rec, client, contact, campaign)
+
+    result = variantgen.build_variant_set(
+        rec, contact, node_type, spec["key"],
+        sequence=sequence, config=client,
+        llm_ask=llm.ask, model=model)
+
+    variant_entries = result.get("variants") or []
+    skipped = result.get("skipped") or []
+
+    if not variant_entries:
+        store.log(rec, "variant_set",
+                  f"{spec['key']}: no variants passed the gates",
+                  rejected=[s.get("why", "") for s in skipped])
+        return None
+
+    # Check differentiation
+    if not result.get("different", True):
+        problems = result.get("problems") or []
+        store.log(rec, "variant_set",
+                  f"{spec['key']}: variants are not materially different",
+                  rejected=[p.get("why", "") for p in problems])
+        return None
+
+    # Store the variants on the step spec
+    spec.setdefault("variants", [])
+    for entry in variant_entries:
+        spec["variants"].append(entry)
+
+    count_model_call("variant_set",
+                     sum(1 for _ in variant_entries) + len(skipped))
+    store.log(rec, "variant_set",
+              f"{spec['key']}: {len(variant_entries)} variants generated, "
+              f"{len(skipped)} skipped",
+              approaches=[v.get("style") for v in variant_entries])
+    return variant_entries
+
+
 def generate_record(rec, model, client=None, campaign=None):
     """Every step this record needs, in order, stopping at the first that fails.
 
@@ -1351,6 +1440,12 @@ def generate_record(rec, model, client=None, campaign=None):
                     continue
             elif op["step"] == "draft" and contact:
                 if not draft(rec, contact, op["day"], model, client):
+                    continue
+            elif op["step"] == "variant_set" and contact:
+                spec = _step_spec(rec, client, contact, op.get("day"),
+                                  campaign)
+                if spec and not generate_variants(rec, contact, model, spec,
+                                                  client, campaign):
                     continue
             done.append(op)
         except (llm.NoModelConfigured, llm.ModelUnavailable):
@@ -1394,6 +1489,17 @@ def _opener_written(rec, contact, client=None, campaign=None):
         if spec.get("channel") == "email":
             return bool(stored.get(spec["key"]))
     return False
+
+
+def _step_spec(rec, client, contact, step_key, campaign=None):
+    """Find the sequence spec for a given step key."""
+    if not step_key:
+        return None
+    sequence = sequence_for(rec, client, contact, campaign)
+    for spec in sequence:
+        if spec.get("key") == step_key:
+            return spec
+    return None
 
 
 def run(model=None, live=False, ids=None, limit=None, client=None):
