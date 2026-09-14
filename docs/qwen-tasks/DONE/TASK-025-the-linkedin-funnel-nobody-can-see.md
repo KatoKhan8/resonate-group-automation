@@ -81,7 +81,7 @@ Behavioural, on invented fixtures. Zero network.
 
 STATUS: done
 
-COMMIT SHA: 7200499
+COMMIT SHA: 9293599
 
 TESTS:
   9 tests in tests/test_task025_funnel_unproven_held.py - all pass.
