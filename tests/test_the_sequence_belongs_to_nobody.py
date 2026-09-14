@@ -150,6 +150,62 @@ class TheFallbackIsTheClientsAndNotThisModules(unittest.TestCase):
         with self.assertRaises(heyreachfactory.FactoryRefused):
             plan([_full_record()], {"name": "Test"})
 
+    def test_the_configured_fallbacks_pass_lint_and_claims(self):
+        """THE FALLBACKS ARE PROSPECT-FACING COPY AND NOTHING GUARDED THEM.
+
+        Every other word this system sends is generated, linted, claim-checked
+        and approved. These are typed into a YAML file by a human and go
+        straight to a real person the moment HeyReach cannot fill a variable -
+        which is precisely the moment something has already gone wrong.
+
+        So they are held to the same two gates as generated copy. `quality` is
+        not applied: it asks whether a message repeats its siblings, and these
+        deliberately share wording across the two branches because the same
+        rung means the same thing on both.
+        """
+        from src import claims, clients, lint
+
+        config = clients.load("productive")
+        fallbacks = (config.get("linkedin_sequence") or {}).get("fallbacks")
+        self.assertTrue(fallbacks, "the client config declares no fallbacks")
+
+        rec = {"id": "probe", "client": "productive", "company": "Example",
+               "state": "approved", "company_facts": {"name": "Example"},
+               "contacts": [{"key": "c1", "name": "Ada Tester",
+                             "first_name": "Ada", "title": "Founder",
+                             "linkedin": "https://www.linkedin.com/in/ada"}]}
+        contact = rec["contacts"][0]
+        for role in heyreachfactory.REQUIRED_ROLES:
+            text = fallbacks.get(role)
+            with self.subTest(role=role):
+                self.assertTrue(text, f"no fallback declared for {role}")
+                action = "connect" if role == "connection_note" else "message"
+                step = {"channel": "linkedin", "linkedin_action": action,
+                        "note": text}
+                self.assertEqual(sorted(lint.check_linkedin(rec, "c1", step)),
+                                 [])
+                self.assertEqual(claims.check(text, rec, contact), [])
+
+    def test_the_fallbacks_claim_no_prior_contact(self):
+        """The one claim a fallback could most easily make by accident.
+
+        A fallback fires when personalisation failed, so it is read by
+        somebody this system may never have written to. Stated separately
+        from the gate above because it is the specific failure that reached a
+        provider once already - lead 203708's "Final note on our previous
+        discussions"."""
+        from src import clients
+
+        fallbacks = ((clients.load("productive").get("linkedin_sequence")
+                      or {}).get("fallbacks") or {})
+        for role, text in sorted(fallbacks.items()):
+            with self.subTest(role=role):
+                low = str(text).lower()
+                for phrase in ("previous", "as discussed", "as i mentioned",
+                               "following up on our", "last time we",
+                               "great speaking", "thanks for your time"):
+                    self.assertNotIn(phrase, low)
+
     def test_the_fallback_reaches_the_graph(self):
         """It has to be IN the graph, not merely configured - HeyReach reads
         `fallbackMessage` off the node when a variable will not fill."""
