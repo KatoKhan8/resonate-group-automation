@@ -144,6 +144,21 @@ about our own software is grounded in nothing either of them reads.
 
 ## Never, in any case
 
+Do not describe the SEQUENCE. `step.number` and `step.of` tell you which rung
+you are writing so that this message can do a different job from the others.
+They are not information for the recipient, and nothing licenses a sentence
+about them.
+
+"I understand this is my final message in this sequence" was generated for
+`em5` on 2026-09-14 and it is wrong twice over: it tells a stranger they have
+been walked through an automated sequence, and it counts our messages at
+them, which is pressure rather than information. `prompts/linkedin_note.md`
+has refused the same thing for as long as it has existed - "This is my third
+note is pressure, not information" - and this file never said it.
+
+The breakup rung gives somebody an easy no. It does that by asking whether to
+stop, not by announcing that the machine has reached the end of its list.
+
 Do not describe our own records, evidence, pipeline or research. The recipient
 has no idea we keep any, and no interest in them. "The September 10 website
 record says", "the current company record lists", "we do not yet have
