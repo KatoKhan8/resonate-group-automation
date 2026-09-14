@@ -211,3 +211,103 @@ not verdict 1.
 
 Still no performance findings. That is TASK-070, and what you conclude here
 decides what TASK-070 is allowed to claim.
+
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** (see git log on qwen-worker-3)
+
+**TESTS:** No code changes. Read-only provider probe. Existing test suite
+not run (no code modified). The truth map is verified against real provider
+responses from the live estate at `https://send.resonategroup.co/api` and
+against the code in `src/providers/bison.py`.
+
+**FILES CHANGED:**
+- `docs/BISON-PROVIDER-TRUTH-2026-09-14.md` — revised with A/B/C/D verdicts,
+  three-kind labelling, corrected D from NOT AVAILABLE to DIRECTLY SUPPORTED
+- `docs/qwen-tasks/REVIEW/TASK-069-*.md` — result block updated
+
+**FINDINGS:**
+
+A: **DIRECTLY SUPPORTED BY PROVIDER.** Historical per-lead/per-step sends
+with timestamps exist. `GET /api/campaigns/{id}/scheduled-emails` returns
+rows for archived campaign 274 (30,411 rows, oldest sent_at 2026-05-15),
+completed campaign 335 (10,173 rows, oldest sent_at 2026-04-28), and
+completed campaign 451 (1 row). 61 rows checked directly across 3 campaigns;
+`meta.total` confirms full estate availability. Campaign 335's data reaches
+back 4.5 months.
+
+B: **DIRECTLY SUPPORTED BY PROVIDER.** A reply carries `scheduled_email_id`
+(674/674 inbound replies; 100%). Through `scheduled_email_id` →
+`scheduled_email.sequence_step_id`, the exact step — including the variant
+step — is reachable. Verified end-to-end on reply id=1609175: campaign 327,
+lead 146592, step 3738 (order=7), sent_at=2026-09-14T16:09:20. 750 reply
+rows checked spanning 2026-07-19 to 2026-09-14.
+
+C: **RECONSTRUCTABLE FROM PROVIDER DATA.** When B is absent, sequence
+position can be reconstructed from `scheduled_emails` per lead: sort by
+`sent_at`, read `sequence_step_id` from each row. This is a RESONATE
+RECONSTRUCTION, not a provider fact. It determines how far a lead got, not
+which step caused a reply. Last-touch attribution if used must be labelled
+as such in the same sentence as any number.
+
+D: **DIRECTLY SUPPORTED BY PROVIDER.** CORRECTION from earlier map: the
+`sequence_step_id` on the scheduled email IS the variant identifier.
+EmailBison models variants as first-class sequence steps, each with its own
+unique `id`. Campaign 352 has 5 parent steps and 39 variant steps. Checked
+60 scheduled emails across pages 1, 10, 100, 1000: 42/60 (70%) reference a
+variant step ID directly, 18/60 (30%) reference a parent step, 0/60 unknown.
+The variant step's template copy matches the rendered copy on the scheduled
+email (verified on 3 rows). The earlier map concluded NOT AVAILABLE from
+campaigns 274, 335, 451 — none of which use variants. Campaign 352, the
+estate's largest at 92,800 emails sent, proves the identifier exists.
+
+**No experiment ledger needed.** D is verdict 1, so the provider carries the
+variant identifier through send and readback. The existing event log,
+extended with `sequence_step_id` (which already resolves to a variant step),
+is sufficient for variant-level experiment evaluation.
+
+**Critical finding carried forward:** `open_tracking` is false on ALL 22
+campaigns. Zero opens across the entire estate is an absent measurement,
+not an absent outcome. Any open-rate analysis is fiction.
+
+**Critical finding on attribution:** `scheduled_email_id` on a reply is the
+provider's association, not a causal claim. A reply may have been triggered
+by an earlier email or by a LinkedIn touch. Every attribution number must
+label itself as PROVIDER FACT, RESONATE RECONSTRUCTION, or ATTRIBUTION
+HYPOTHESIS. Where last-touch is used because nothing better exists, say so
+in the same sentence as the number.
+
+**Code gap found:** `bison.sequence_steps()` trims variant fields
+(`variant`, `variant_from_step`, `thread_reply`) from the raw step data.
+The provider carries them; the code discards them. This is a code gap, not
+a provider gap.
+
+**RISKS:**
+- The `scheduled_email_id` semantics are not documented by the provider.
+  It may mean "reply in this thread" or "most recent email to this lead."
+  The join works; the causation is an ATTRIBUTION HYPOTHESIS.
+- Large campaign reads are expensive (15 rows/page). Campaign 352 needs
+  ~6,363 pages for scheduled emails.
+- `parent_id` on replies is always null (750/750). Threading cannot be
+  reconstructed from this field.
+- The reply feed has finite depth: 750 rows span back to 2026-07-19 only.
+  Older campaigns' replies may not be available through cursor pagination.
+- Older campaign leads (335, 274, 327, 328, 352) lack `record_id` and
+  `contact_key` in custom_variables (0/37 reply leads checked). Only
+  campaign 451 carries our identifiers.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Accept the truth map as the basis for TASK-070.
+2. TASK-070 may claim step-level AND variant-level attribution (A, B, D are
+   verdict 1) but must label every causation claim as ATTRIBUTION HYPOTHESIS
+   and must not claim open-rate anything.
+3. Fix the `bison.sequence_steps()` trimmer to preserve `variant`,
+   `variant_from_step`, and `thread_reply` — the provider carries them and
+   the code discards them.
+4. The reply feed's finite depth means historical reply analysis may need
+   an alternative route or a stored snapshot.
