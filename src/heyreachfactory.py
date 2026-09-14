@@ -63,7 +63,7 @@ import argparse
 import sys
 
 from . import (cadence, cadencelibrary, campaigns, clients, configdiff,
-               collision, eligibility, executionguard, killswitch,
+               collision, eligibility, executionguard, killswitch, lint,
                providerwrites, store)
 from .providers import ProviderError, heyreach
 
@@ -741,15 +741,32 @@ def _plan(campaign, recs, config, *, include_inmail=False,
             return paths
 
         all_paths = _extract_paths(sequence)
+        # REVERSE MAPPING: role -> step_key. A step that fails lint is not
+        # valid copy and must not participate in repetition comparisons.
+        # See TASK-062: a stored step that fails the gates cannot ship, so
+        # it is a draft that did not make it, not a sibling.
+        _role_to_step = {}
+        for sk, m in COPY_MAPPING.items():
+            r = m["role"]
+            for role in (r if isinstance(r, tuple) else (r,)):
+                _role_to_step[role] = sk
         offender = None
         collisions = []
         for entry in complete:
+            rec_for_entry = by_id.get(str(entry["record_id"]))
+            contact_key = entry["contact_key"]
+            cadence_for_contact = ((rec_for_entry or {}).get("cadence") or {}).get(contact_key) or {}
             for path_roles in all_paths:
                 steps_for_check = []
                 for role in path_roles:
                     text = (entry["custom_fields"] or {}).get(role)
-                    if isinstance(text, str) and text.strip():
-                        steps_for_check.append({"key": role, "text": text})
+                    if not isinstance(text, str) or not text.strip():
+                        continue
+                    step_key = _role_to_step.get(role)
+                    step = cadence_for_contact.get(step_key) or {} if step_key else {}
+                    if step and lint.classify(lint.check_step(rec_for_entry, contact_key, step)) == "failed":
+                        continue
+                    steps_for_check.append({"key": role, "text": text})
                 if len(steps_for_check) < 2:
                     continue
                 found = quality.campaign_repetition(

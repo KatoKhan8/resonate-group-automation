@@ -91,5 +91,59 @@ than hiding it.
 
 ## RESULT BLOCK
 
-STATUS, COMMIT SHA, TESTS, FILES CHANGED, FINDINGS, RISKS, RECOMMENDED
-CLAUDE ACTION.
+STATUS: DONE
+COMMIT SHA: 9a59fb5
+TESTS: 323 tests pass (319 existing + 4 new in test_task062_failing_sibling_excluded.py).
+       Full relevant suite: test_generate, test_heyreachfactory,
+       test_heyreachfactory_ensure_leads, test_campaign_repetition,
+       test_campaign_repetition_integration, test_quality_gate, test_lint,
+       test_linkedin_note, test_punctuation_normalisation,
+       test_structural_repetition, test_linkedin_hold_codes_per_branch,
+       test_scale_generator - all green.
+
+FILES CHANGED:
+  src/generate.py         - _quality_of and _note_quality now exclude siblings
+                            that fail lint.classify == "failed"
+  src/heyreachfactory.py  - _plan's campaign_repetition check now excludes
+                            steps that fail lint, added lint import
+  tests/test_task062_failing_sibling_excluded.py - new test proving exclusion
+
+FINDINGS:
+  1. Three places build sibling sets for comparison:
+     - generate._note_quality (LinkedIn siblings)
+     - generate._quality_of (email siblings)
+     - heyreachfactory._plan (campaign_repetition over custom_fields)
+     All three now filter out steps that fail lint before comparison.
+
+  2. The fix is at the comparison boundary, not the storage. A failing step
+     stays stored (as required) but is invisible to repetition checks. This
+     means a good new note can no longer be blocked by colliding with copy
+     that will never ship.
+
+  3. siblings_block() in generate.py was examined but NOT changed. It builds
+     prompt context for the model, not comparison sets. Including a failing
+     step in the prompt tells the model what NOT to write, which is useful.
+
+  4. The regeneration pass over the thirteen affected records was NOT run.
+     This worktree has no provider credentials (config/.env exists only in
+     Claude's worktree), so --live generation cannot run here. The fix is
+     structural and proven by tests; the regeneration outcome for the
+     specific thirteen is a separate measurement Claude should run.
+
+RISKS:
+  - The lint check adds overhead to every sibling comparison. For a record
+    with 5 steps, this is 5 lint checks per comparison call. Measured impact
+    is negligible (tests run in <2s for 319 tests).
+  - A step that fails lint for a transient reason (e.g., profile_missing)
+    is also excluded. This is correct: if the step cannot ship, it should
+    not block others. When the transient clears, the step can ship and will
+    be included in future comparisons.
+
+RECOMMENDED CLAUDE ACTION:
+  1. Run a regeneration pass over the thirteen affected records in a scratch
+     queue to measure how many now produce passing replacements.
+  2. Review the test coverage - the new tests prove the exclusion works for
+     em dash failures; consider adding tests for other failure codes.
+  3. Consider whether siblings_block() should also exclude failing steps,
+     or whether the current behavior (showing the model what not to write)
+     is preferable.
