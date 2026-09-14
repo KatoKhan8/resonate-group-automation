@@ -155,25 +155,66 @@ EMAIL_EIGHT_LADDER = (
 # improved their project visibility" - rather than an explanation. It is now
 # the rung that names the product, and it consumes the client config's
 # `product:` block.
+#
+# RUNGS 1-6 REWRITTEN, 2026-09-14, TASK-075. Two defects measured by TASK-064's
+# human read of all 15 contacts:
+#
+#   1. The connection note never said who is writing. No sender name, no
+#      company, no role. A stranger received an anonymous compliment and an
+#      invitation. The operator's hand-written fallback - "i work with agencies
+#      on project profitability" - was better, and it is the floor to beat.
+#      Rung 1 now REQUIRES sender identity: who you are and what you do. The
+#      prompt passes `sender_identity` from the client config; when it is
+#      empty the note must still say what the sender does, never emit an empty
+#      slot, and never invent a name.
+#
+#   2. The sequence did not progress. All six rungs collapsed into one: ask
+#      about profitability. Three pushable contacts each received four
+#      messages asking variations of the same question. Each rung now says
+#      what the PREVIOUS rung established so the next one can build on it. A
+#      rung whose brief can be satisfied by "ask a discovery question" will
+#      be, and the ladder now prevents that by naming what is already spent.
 LINKEDIN_DEFAULT_LADDER = (
-    "A connection request note. One line on why you are writing to them "
-    "specifically, in the operational language of their angle. No ask beyond "
-    "connecting, and no question that needs a considered answer.",
-    "A short first message. One operational angle, put as a question about "
-    "how they handle it today. Different words and a different angle from "
-    "the connection note.",
-    "A second, different operational angle. Name the consequence of not "
-    "having it rather than the feature that provides it.",
-    "SAY WHAT THE PRODUCT IS. Use the product's name in the message, and "
-    "say in one line what it joins up, choosing only the capabilities in "
-    "`product.capabilities` that fit this person's angle. This is the rung "
-    "the recipient learns what they are being offered on, and it is a "
-    "statement, not a question: by now they have been asked two and told "
-    "nothing. Evidence belongs here if there is any; if there is none, "
-    "describe the pattern as ours rather than theirs.",
-    "A concise final follow-up. One line, one question, no new argument and "
-    "no summary of the previous ones.",
-    "Close the loop. An easy no, and leave it there.",
+    # RUNG 1: THE CONNECTION REQUEST. Must say WHO is writing.
+    "A connection request note. Say who you are in one clause - your name "
+    "and what you do, or what you work on if no sender detail is available. "
+    "Then one line on why you are writing to them specifically, in the "
+    "operational language of their angle. No ask beyond connecting, and no "
+    "question that needs a considered answer. The recipient must learn WHO "
+    "is contacting them from this note alone.",
+    # RUNG 2: FIRST MESSAGE. Builds on the connection note.
+    "A short first message. The connection note said who you are and why you "
+    "connected; this message asks a question about how they handle one "
+    "specific part of their operation today. Pick an angle DIFFERENT from the "
+    "one the connection note used. If the note named their hiring pipeline, "
+    "ask about their project margin; if it named profitability, ask about "
+    "resourcing visibility.",
+    # RUNG 3: SECOND MESSAGE. Builds on both previous messages.
+    "A second message on a DIFFERENT operational angle from both the "
+    "connection note and the first message. The first message asked how they "
+    "handle something; this one names the consequence of not having "
+    "visibility - what goes wrong, what gets rebuilt after the fact rather "
+    "than seen during the work. Do not repeat the angle either previous step "
+    "used.",
+    # RUNG 4: THE PRODUCT RUNG. The recipient learns what is being offered.
+    "SAY WHAT THE PRODUCT IS. The previous three messages asked questions and "
+    "named problems; this one gives the answer. Use the product's name in the "
+    "message, and say in one line what it joins up, choosing only the "
+    "capabilities in `product.capabilities` that fit this person's angle. "
+    "This is the rung the recipient learns what they are being offered on, "
+    "and it is a statement, not a question: by now they have been asked three "
+    "times and told nothing. Evidence belongs here if there is any; if there "
+    "is none, describe the pattern as ours rather than theirs.",
+    # RUNG 5: FINAL FOLLOW-UP. Different from everything before.
+    "A concise final follow-up. The sequence has introduced you, asked two "
+    "operational questions, named a problem, and said what the product is. "
+    "This message adds one new angle no previous step touched - a different "
+    "part of the business, or a different consequence - in one line and one "
+    "question. No recap of the previous messages.",
+    # RUNG 6: THE CLOSE.
+    "Close the loop. The sequence has done its work; this message asks for "
+    "nothing beyond an easy no. No new pitch, no summary of what was said, "
+    "just permission to stop.",
 )
 
 LADDER_REGISTRY = {

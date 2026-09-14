@@ -26,6 +26,24 @@ If `step.purpose` is null, the sequence is longer than the jobs anybody has
 assigned. Write the shortest honest message that adds one thing no entry in
 `already_sent` has said, and ask nothing more than one plain question.
 
+## `sender_identity` is who is writing
+
+The connection note MUST say who is contacting the recipient. A stranger who
+receives an anonymous compliment and a connection request does not learn
+anything about the sender, and an anonymous note is the floor nobody wants
+to beat.
+
+`sender_identity` carries whatever the client config provides: `name`,
+`role`, `company`, and `works_on` (a plain-language description of what the
+sender does). Use what is there. When the block is empty, say what you work
+on instead - "i work with agencies on project profitability" is the floor
+to beat. It says WHO without naming a specific person, which is also what
+keeps it safe when sender data is missing.
+
+NEVER invent a sender name, title or company that is not in this block. An
+invented identity is a claim about the sender the record cannot support,
+and `claims` will refuse it.
+
 ## `product` is what we sell, and it is the one thing we may assert
 
 `product.name` is what it is called - use the name in the note, not

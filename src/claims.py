@@ -218,6 +218,28 @@ RELATIONSHIP = tuple(re.compile(p, re.I) for p in (
     r"\b(?:i|we)\s+(?:have\s+not|haven't|hadn't|had\s+not|did\s+not|didn't)"
     r"\s+(?:yet\s+)?hear(?:d)?\s+(?:back\s+)?from\s+you\b",
     r"\b(?:no|any)\s+(?:response|reply|word)\s+from\s+you\b",
+    # ASSERTIONS ABOUT THE SENDER'S IDENTITY OR SHARED CATEGORY.
+    #
+    # TASK-075: `portsidemarketing-com` carried "as a fellow founder" - an
+    # assertion about the SENDER that may be false. The unsupported-claim gate
+    # watched claims about the PROSPECT, and this one pointed the other way.
+    # It was the fourth phrase this rule turned out to be short of. Checkpoint
+    # C predicted there would be a fourth. There was.
+    #
+    # "as a fellow founder", "as someone who also runs an agency", "speaking
+    # as a fellow X" - these assert a shared identity or category with the
+    # recipient. If the record does not support the sender being a founder,
+    # an agency owner, or whatever the phrase claims, the sentence is an
+    # unsupported assertion about the relationship between sender and prospect.
+    #
+    # Added to the EXISTING rule; not a second one. The task said so, and a
+    # second tuple would need its own `implies_prior_contact` branch, its own
+    # tests, and its own place in the check flow - all for the same question:
+    # does the record support what this sentence asserts?
+    r"\bas\s+a\s+fellow\s+\w+\b",
+    r"\bas\s+someone\s+who\s+(?:also\s+)?(?:runs?|owns?|manages?|leads?|"
+    r"founded|built|works?|operates)\b",
+    r"\bspeaking\s+as\s+a\s+fellow\s+\w+\b",
 ))
 
 # What the record must show before any of the above may ship. Deliberately
