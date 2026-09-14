@@ -237,9 +237,22 @@ def step_block(sequence, step_key, channel=None):
     """What the prompt is told about the step it is writing."""
     found, ordinal, total = position(sequence, step_key)
     channel = found or channel
-    return {"key": step_key, "channel": channel,
-            "number": ordinal, "of": total,
-            "purpose": purpose_for(channel, ordinal, sequence=sequence)}
+    base_purpose = purpose_for(channel, ordinal, sequence=sequence)
+    # THREAD-REPLY: when the ladder says this rung is a same-thread follow-up,
+    # the purpose must tell the model it is continuing a conversation, not
+    # starting one. Without this the model writes another cold open and the
+    # `thread_reply` flag is the only thing that changed.
+    ladder_name = cadencelibrary.ladder_name_for(sequence, channel) if sequence else None
+    thread_reply = cadencelibrary.thread_reply_for(ladder_name, ordinal) \
+        if ladder_name else None
+    purpose = cadencelibrary.purpose_with_thread(
+        ladder_name, ordinal, base_purpose=base_purpose) if ladder_name else base_purpose
+    block = {"key": step_key, "channel": channel,
+             "number": ordinal, "of": total,
+             "purpose": purpose}
+    if thread_reply is not None:
+        block["thread_reply"] = thread_reply
+    return block
 
 
 def _day_of(sequence, step_key):

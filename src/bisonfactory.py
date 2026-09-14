@@ -192,6 +192,12 @@ def _sequence_steps(configured, cadence_steps):
     wait for. A five-step cadence defines four gaps. That wait is carried to
     the provider as declared and means nothing; saying so here is better than
     a check that invents a fifth gap to validate against.
+
+    THREAD-REPLY: each step carries `thread_reply` from the ladder's pattern,
+    or from the client config's `email_sequence.thread_reply_pattern` override.
+    A follow-up step STILL CARRIES `email_subject` - the flag is the mechanism,
+    not subject omission. The pattern is configurable per client or campaign
+    because TASK-080 is measuring whether the shape is right.
     """
     configured = configured or {}
     block = configured.get("steps")
@@ -235,6 +241,12 @@ def _sequence_steps(configured, cadence_steps):
             f"cadence gap it claims to reproduce, so a mismatch means the "
             f"delays were checked against the wrong steps or against none")
 
+    # THREAD-REPLY PATTERN: the client config may override the ladder's
+    # default. The override is a list of booleans, one per email step in
+    # cadence order. When absent, the ladder's pattern is used; when the
+    # ladder has none, every step is a new thread (False).
+    thread_pattern = _resolve_thread_pattern(configured, cadence_steps)
+
     steps = []
     for position, (day, key) in enumerate(email_days, start=1):
         entry = block[key] or {}
@@ -262,12 +274,44 @@ def _sequence_steps(configured, cadence_steps):
                     f"is the wait AFTER a step - measured on campaign 352, see "
                     f"the note above - so this campaign would send on a "
                     f"schedule the cadence does not describe")
-        steps.append({"order": position,
-                      "email_subject": subject,
-                      "email_body": body,
-                      "wait_in_days": int(wait),
-                      "step_key": key})
+        step = {"order": position,
+                "email_subject": subject,
+                "email_body": body,
+                "wait_in_days": int(wait),
+                "step_key": key}
+        # A follow-up step STILL CARRIES email_subject - the flag is the
+        # mechanism, not subject omission. The provider stores both.
+        tr = thread_pattern[position - 1] if position <= len(thread_pattern) \
+            else False
+        step["thread_reply"] = bool(tr)
+        steps.append(step)
     return steps
+
+
+def _resolve_thread_pattern(configured, cadence_steps):
+    """The thread_reply pattern for this campaign's email steps.
+
+    The client config's `email_sequence.thread_reply_pattern` wins when
+    present: it is the per-client override TASK-080 needs. When absent, the
+    ladder's default pattern is used. When the ladder has none, every step
+    is a new thread (all False).
+
+    Returns a tuple of bools, one per email step in cadence order.
+    """
+    from . import cadencelibrary
+
+    override = (configured or {}).get("thread_reply_pattern")
+    if isinstance(override, (list, tuple)) and override:
+        return tuple(bool(v) for v in override)
+    ladder_name = cadencelibrary.ladder_name_for(cadence_steps, "email")
+    if ladder_name:
+        pattern = cadencelibrary.THREAD_REPLY_PATTERNS.get(ladder_name)
+        if pattern:
+            return tuple(pattern)
+    email_count = sum(1 for s in (cadence_steps or ())
+                      if isinstance(s, dict) and s.get("channel") == "email"
+                      and s.get("key"))
+    return tuple(False for _ in range(email_count))
 
 
 def _order_of(entry, key):
@@ -901,8 +945,10 @@ def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
         return
     held = bison.sequence_steps(provider_id)
     if held:
-        wanted = [(s["email_subject"], s["email_body"]) for s in steps]
-        got = [(s.get("email_subject"), s.get("email_body")) for s in held]
+        wanted = [(s["email_subject"], s["email_body"], s.get("thread_reply"))
+                  for s in steps]
+        got = [(s.get("email_subject"), s.get("email_body"),
+                s.get("thread_reply")) for s in held]
         if got == wanted:
             report["did"].append(
                 f"sequence already staged ({len(held)} step(s)); unchanged")
@@ -936,9 +982,11 @@ def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
         transport=lambda p: bison.set_sequence(provider_id, p["title"],
                                                p["sequence_steps"]),
         readback=lambda: {"steps": [
-            (s.get("email_subject"), s.get("email_body"))
+            (s.get("email_subject"), s.get("email_body"),
+             s.get("thread_reply"))
             for s in bison.sequence_steps(provider_id)]},
-        expected={"steps": [(s["email_subject"], s["email_body"])
+        expected={"steps": [(s["email_subject"], s["email_body"],
+                            s.get("thread_reply"))
                             for s in steps]}, by=by)
     report["did"].append(f"staged a {len(steps)}-step sequence")
 

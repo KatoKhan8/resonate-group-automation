@@ -223,6 +223,69 @@ LADDER_REGISTRY = {
     "linkedin_default": LINKEDIN_DEFAULT_LADDER,
 }
 
+# ----------------------------------------- thread-reply patterns per ladder
+#
+# Each ladder may state which of its rungs are same-thread follow-ups. A
+# follow-up uses the provider's `thread_reply` flag rather than a new subject:
+# the step carries an `email_subject` EVEN WHEN `thread_reply` is True, so
+# the flag is the mechanism and omitting the subject is NOT how follow-up is
+# expressed.
+#
+# THE STARTING HYPOTHESIS, read off campaign 352 (the estate's largest at
+# 92,806 sent): F, T, F, T, F across five parents. TASK-080 measures whether
+# this shape actually performs, so these patterns are CONFIGURABLE and must
+# not be hardcoded as universal. A client config's `email_sequence` block may
+# override with its own `thread_reply_pattern` list.
+#
+# A follow-up rung's brief must ALSO tell the model it is continuing a
+# thread, or it writes another cold open and the flag is the only thing that
+# changed. `FOLLOWUP_ADDENDUM` is appended to the rung's purpose in the
+# prompt when `thread_reply` is True.
+THREAD_REPLY_PATTERNS = {
+    "email_five": (False, True, False, True, False),
+    "email_eight": (False, True, False, True, False, True, False, True),
+}
+
+FOLLOWUP_ADDENDUM = (
+    " THIS IS A SAME-THREAD FOLLOW-UP: you are continuing an existing "
+    "conversation, not starting a new one. Be short. Add one thought. Do "
+    "not repeat what the earlier email said. Do not re-introduce the sender "
+    "from scratch. The email subject is carried for the provider's threading "
+    "mechanism but this message lands in the same thread as the previous one."
+)
+
+
+def thread_reply_for(ladder_name, ordinal):
+    """Whether this rung is a same-thread follow-up, or None when unknown.
+
+    None when the ladder has no declared pattern or the ordinal is past its
+    end. A rung past the ladder is nobody's decision and must not be guessed.
+    """
+    if not ladder_name or not ordinal:
+        return None
+    pattern = THREAD_REPLY_PATTERNS.get(ladder_name)
+    if not pattern or ordinal > len(pattern):
+        return None
+    return bool(pattern[ordinal - 1])
+
+
+def purpose_with_thread(ladder_name, ordinal, base_purpose=None):
+    """The rung's brief, with the follow-up addendum when it is a follow-up.
+
+    Returns the base purpose unchanged for new-thread rungs. For follow-ups,
+    appends `FOLLOWUP_ADDENDUM` so the model knows it is continuing a thread.
+    `base_purpose` may be supplied when the caller already resolved it; when
+    absent, the ladder is looked up directly.
+    """
+    if base_purpose is None:
+        ladder = LADDER_REGISTRY.get(ladder_name or "") or ()
+        base_purpose = ladder[ordinal - 1] if ordinal and ordinal <= len(ladder) else None
+    if not base_purpose:
+        return base_purpose
+    if thread_reply_for(ladder_name, ordinal):
+        return base_purpose + FOLLOWUP_ADDENDUM
+    return base_purpose
+
 
 # The operator's initial production hypothesis, 2026-09-13: roughly five email
 # touches and six LinkedIn activities - four of them messages - across three
