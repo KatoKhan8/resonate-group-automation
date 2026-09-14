@@ -6,7 +6,9 @@
 
 This worktree has no credentials (`config/.env` exists only in Claude's worktree). Reading HeyReach campaign 599020 is permitted but requires provider credentials. This analysis uses the fixture data from `scripts/render_preview.py heyreach`, which demonstrates both branches with invented records. Production record analysis requires Claude to run the preview or grant provider read access.
 
-**Records analyzed**: 2 fixture records (Maia Torres, Declan Reilly), both branches each = 4 branch walks. Production campaign `productive-linkedin-production-v1` holds 14 records; analyzing all of them requires provider credentials or Claude running the preview.
+**Records analyzed**: 3 fixture records (Maia Torres, Declan Reilly, Rachel Okafor), both branches each = 6 branch walks. Production campaign `productive-linkedin-production-v1` holds 14 records; analyzing all of them requires provider credentials or Claude running the preview.
+
+**The task asks for "at least eight records"**. The fixtures provide 3. This is a boundary: I cannot generate more fixture records without modifying the render_preview script, and I cannot access production records without credentials. The 3 records analyzed demonstrate both branches and answer the six questions, but a full production analysis requires Claude to run `py -3 scripts/render_preview.py productive-linkedin-production-v1`.
 
 ---
 
@@ -256,6 +258,40 @@ message_4: we built productive so budgets, time tracking and resourcing talk to 
 
 **Verdict for Declan Reilly**: Generated copy beats the fallback on 4 of 5 steps. Step connected_3 is a tie (identical).
 
+### Record: Rachel Okafor (Delivery Director, delivery angle) - THE HI-JACOB DEFECT
+
+This record demonstrates the hi-jacob defect class: Rachel's copy contains "Declan" (another contact's name at the same company). The render_preview script flags this:
+
+```
+!!! LITERAL NAME: lead 'rachel-okafor', role 'connection_note' contains name 'Declan' from another contact - the hi-jacob defect class
+!!! LITERAL NAME: lead 'rachel-okafor', role 'connected_1' contains name 'Declan' from another contact - the hi-jacob defect class
+!!! LITERAL NAME: lead 'rachel-okafor', role 'message_2' contains name 'Declan' from another contact - the hi-jacob defect class
+```
+
+| Role | Fallback | Generated (with defect) | Better? |
+|------|----------|-----------|---------|
+| connection_note | "hi, i work with agencies on project profitability and thought it would be good to connect." | "hi Declan, i work with consulting teams on budget burn visibility. curious how Keystone Partners handles it. happy to connect." | **NO - DEFECT**. Rachel receives "hi Declan" - wrong name. The fallback is generic but correct. |
+| connected_1 | "how do you currently get visibility on whether a project is making money while it is still running?" | "thanks for connecting Declan. no pitch. if budget visibility is on your list, happy to share what similar teams did." | **NO - DEFECT**. Rachel receives "thanks for connecting Declan" - wrong name. The fallback is a contextless discovery question, but at least it does not misname the recipient. |
+| connected_2 | "most agencies i speak to find that out at the end of a project rather than during it. is that how it works for you?" | "most consulting leads i speak to find out about scope creep at month end. is that how it works at Keystone Partners?" | **YES**. No name in this message, and the generated copy is angle-specific. |
+| connected_3 | "we built productive so budgets, time tracking and resourcing talk to each other. worth a look?" | "we built productive so budgets, time tracking and resourcing talk to each other. worth a look?" | **TIE**. Identical. |
+| connected_4 | "happy to leave it here if the timing is wrong. is there someone else who owns this?" | "happy to leave it here if the timing is wrong. is there someone else who owns this?" | **TIE**. Identical. |
+
+**Verdict for Rachel Okafor**: Generated copy is DEFEATED by the fallback on 2 of 5 steps because of the hi-jacob defect. The fallback, despite being generic and carrying a contextless discovery question, is CORRECT because it does not misname the recipient.
+
+**This is the defect class the task is checking for.** A prospect who receives "hi Declan" when their name is Rachel will immediately know this is a mass message, and the sequence is dead on arrival. The fallback, despite its flaws, does not make this mistake.
+
+### UPDATED FINDING
+
+**The generated copy DOES NOT beat the hand-written fallbacks, record by record, when the generated copy carries a defect.**
+
+- Record 1 (Maia Torres): Generated beats fallback on 4 of 5 steps, 1 tie
+- Record 2 (Declan Reilly): Generated beats fallback on 4 of 5 steps, 1 tie
+- Record 3 (Rachel Okafor): Generated is DEFEATED by fallback on 2 of 5 steps (hi-jacob defect), 2 ties, 1 win
+
+**Overall**: 9 of 15 steps are better, 4 are ties, 2 are worse (defect).
+
+**The defect is not in the generation logic; it is in the copy that was generated.** The model was given Rachel's evidence but wrote "Declan" into her copy. This is the hi-jacob defect class documented in `scripts/render_preview.py` and `src/heyreachfactory.py`. The detection caught it; the generation should not have produced it.
+
 ### FINDING
 
 **The generated copy DOES beat the hand-written fallbacks, record by record.**
@@ -291,7 +327,15 @@ message_4: we built productive so budgets, time tracking and resourcing talk to 
 **YES**. Steps li2..li4 are identical across both branches. The already-connected branch gets one additional step (li5) as the easy-out.
 
 ### Question 6: Does the generated copy beat the fallbacks?
-**YES**. 8 of 10 steps are better, 2 are ties. The generated copy personalises (names person, company, angle) and avoids the contextless discovery question that the fallback carries.
+**MIXED**. When the generated copy is correct, it beats the fallback on personalisation and angle-specificity. When the generated copy carries the hi-jacob defect, the fallback wins because it does not misname the recipient.
+
+- Record 1 (Maia Torres): Generated beats fallback on 4 of 5 steps, 1 tie
+- Record 2 (Declan Reilly): Generated beats fallback on 4 of 5 steps, 1 tie  
+- Record 3 (Rachel Okafor): Generated is DEFEATED by fallback on 2 of 5 steps (hi-jacob defect), 2 ties, 1 win
+
+**Overall**: 9 of 15 steps are better, 4 are ties, 2 are worse (defect).
+
+**The fallback is the floor, and the generated copy usually clears it - but not always.** When the generation produces a defect (wrong name), the fallback is the safer choice. The fallback's flaw (contextless discovery question) is less damaging than the generated copy's flaw (wrong name).
 
 ---
 
@@ -312,10 +356,14 @@ message_4: we built productive so budgets, time tracking and resourcing talk to 
 
 ## RECOMMENDED CLAUDE ACTION
 
-1. **Run the preview on production records**: `py -3 scripts/render_preview.py productive-linkedin-production-v1` to see all 14 records and verify the fixture analysis holds.
+1. **Run the preview on production records**: `py -3 scripts/render_preview.py productive-linkedin-production-v1` to see all 14 records and verify the fixture analysis holds. The task asks for "at least eight records"; the fixtures provide 3.
 
-2. **Check for the four-profitability-questions defect**: The task description says this was found in production. The fixtures do not show it. If it exists in production, identify which records carry it and regenerate.
+2. **Check for the hi-jacob defect in production**: The Rachel Okafor fixture demonstrates the defect class. If production records carry this defect, the generated copy is defeated by the fallback on those records. The detection caught it in the fixture; verify it catches it in production.
 
-3. **The fallback is the floor, and it has a crack**: connected_1 / message_2 fallback is a contextless discovery question. If a lead's copy fails, they receive this. Consider whether the fallback should be rewritten to match the generated copy's pattern (soft offer, no question).
+3. **Check for the four-profitability-questions defect**: The task description says this was found in production. The fixtures do not show it (except in the fallback for connected_1/message_2). If it exists in production generated copy, identify which records carry it and regenerate.
 
-4. **The generated copy clears the floor**: In these fixtures, the generated copy is better than the fallback on 8 of 10 steps. This is the intended outcome. The generation pipeline is working.
+4. **The fallback is the floor, and it has a crack**: connected_1 / message_2 fallback is a contextless discovery question. If a lead's copy fails or carries a defect, HeyReach sends this fallback. The fallback's flaw (contextless question) is less damaging than a hi-jacob defect (wrong name), but it is still a flaw. Consider whether the fallback should be rewritten to match the generated copy's pattern (soft offer, no question).
+
+5. **The generated copy usually clears the floor**: In 2 of 3 fixture records, the generated copy is better than the fallback on 4 of 5 steps. This is the intended outcome. The generation pipeline is working when it does not produce defects.
+
+6. **The two branches are different lengths, and that is correct**: The already-connected branch has 4 messages; the not-yet-connected branch has 3 messages after connection. Both branches share li2..li4. This is intentional per the graph structure.
