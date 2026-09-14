@@ -801,36 +801,47 @@ def plan(rec, client=None, campaign=None):
     # and fewer than five active variants on its spec is a candidate.
     # The variant set is generated as a separate op so it can be run
     # independently of the single-draft path.
-    from . import variantgen as vg
+    #
+    # OPT-IN: variant generation is only planned when the campaign or client
+    # config has `generate_variants: true`. This keeps the existing single-draft
+    # path unchanged and lets Claude run variant generation explicitly.
     from . import variants as V
 
-    for c in workable:
-        sequence = sequence_for(rec, client, c, campaign)
-        for spec in sequence:
-            if not spec.get("generated"):
-                continue
-            existing = spec.get("variants") or []
-            active = [v for v in existing
-                      if v.get("status") == V.ACTIVE]
-            if len(active) >= V.MINIMUM_VARIANTS:
-                continue
-            # Only plan variant generation when the step already has a draft
-            key = lint.contact_key(c)
-            stored = (rec.get("cadence") or {}).get(key, {}).get(spec["key"])
-            if not stored:
-                continue
-            channel = spec.get("channel", "email")
-            written = stored.get("body") if channel == "email" \
-                else stored.get("note")
-            if not (written or "").strip():
-                continue
-            ops.append({"step": "variant_set",
-                        "why": (f"{c['name']}'s {spec['key']} has "
-                                f"{len(active)} variant(s); needs "
-                                f"{V.MINIMUM_VARIANTS}"),
-                        "contact": c.get("name"),
-                        "day": spec["key"],
-                        "channel": channel})
+    want_variants = False
+    if campaign and campaign.get("generate_variants"):
+        want_variants = True
+    elif client and (client.get("generate_variants") or
+                     (client.get("experiments") or {}).get("generate_variants")):
+        want_variants = True
+
+    if want_variants:
+        for c in workable:
+            sequence = sequence_for(rec, client, c, campaign)
+            for spec in sequence:
+                if not spec.get("generated"):
+                    continue
+                existing = spec.get("variants") or []
+                active = [v for v in existing
+                          if v.get("status") == V.ACTIVE]
+                if len(active) >= V.MINIMUM_VARIANTS:
+                    continue
+                # Only plan variant generation when the step already has a draft
+                key = lint.contact_key(c)
+                stored = (rec.get("cadence") or {}).get(key, {}).get(spec["key"])
+                if not stored:
+                    continue
+                channel = spec.get("channel", "email")
+                written = stored.get("body") if channel == "email" \
+                    else stored.get("note")
+                if not (written or "").strip():
+                    continue
+                ops.append({"step": "variant_set",
+                            "why": (f"{c['name']}'s {spec['key']} has "
+                                    f"{len(active)} variant(s); needs "
+                                    f"{V.MINIMUM_VARIANTS}"),
+                            "contact": c.get("name"),
+                            "day": spec["key"],
+                            "channel": channel})
     return ops
 
 
