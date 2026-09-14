@@ -4,8 +4,14 @@ Supersedes `CONTEXT-RESET-2026-09-14.md` and `-B.md` where they disagree.
 Everything here was READ from git or from a provider today. Nothing is
 inferred from a plan.
 
-**The single most important line in this file:** the first real send happened
-today, and the HeyReach campaign is still NOT updated at the provider.
+**THE TWO MOST IMPORTANT LINES IN THIS FILE, and both are now good news:**
+
+    campaign 451 SENT 2026-09-14T16:24:20Z - the first real send, 0 bounced
+    HeyReach 599020 UPDATED - 27/27 provider readback PASS
+
+Sections 3 and 4 below were written BEFORE the HeyReach write and are left in
+place because the before-state matters. **Section 19 is the current truth for
+HeyReach and supersedes section 3.**
 
 ---
 
@@ -540,3 +546,75 @@ a comparison over a biased sample.
 TASK-066 is queued and running against it, with the rule that outranks the
 number: do not reduce `unknown` by guessing. An UNKNOWN pauses the account; a
 wrong POSITIVE lets automation continue at somebody who said no.
+
+
+---
+
+## 19. HEYREACH IS UPDATED - THIS SUPERSEDES SECTION 3
+
+    py -3 scripts/heyreach_readback.py productive-linkedin-production-v1 --expect
+    REAL EXIT CODE = 0
+    27 passed, 0 failed     VERDICT: PASS     sequence_matches: MATCH
+
+Full evidence: `docs/HEYREACH-599020-UPDATED-2026-09-14.md` and
+`docs/evidence-heyreach-readback-2026-09-14.txt`.
+
+    nodes              24 -> 17
+    merge variables     0 -> 8
+    'jacob'        PRESENT -> absent
+    '&Partner'     PRESENT -> absent
+    repeated msg on a path  YES -> none
+
+    UNCHANGED, deliberately: DRAFT, 0 leads, no schedule, one seat 174892.
+
+**Nothing has been sent and nobody has been added.** `LINKEDIN_ADD_LEAD` is
+still not in `providerwrites.SUPPORTED`; the start verbs are still absent from
+`heyreach.WRITE_ROUTES`.
+
+### What cleared it
+
+TASK-068. `plan` regenerated ONE note at a time, so a contact whose notes were
+mutually repetitive could never escape - each candidate was compared against
+the five stale notes still saying the same thing. Now a colliding set is
+regenerated AS A SET, transactionally: build the whole replacement, gate it
+together, commit only if every member passes, keep the originals on failure.
+
+**Do not weaken `SUBJECT_VOCABULARY` or any repetition gate.** It was measured
+and rejected: discounting the client's angle vocabulary clears the collisions
+and passes four identical questions. See
+`docs/WHY-REGENERATION-CANNOT-CONVERGE-2026-09-14.md`.
+
+## 20. THE NEXT PRODUCTION DECISION IS NOT "ADD LEADS"
+
+    pushable   3 of 15 contacts        (was 10 before the gates tightened)
+
+The sequence write did not depend on that number - the graph carries merge
+fields. **A lead add does.** Three is a thin cohort and the other twelve are
+blocked by unsupported claims or copy that still fails a gate. Raising it is
+regeneration work, not a permission change.
+
+And the product is still named in only 42% of `li4` notes and 29% of `em3`
+bodies. TASK-065 is measuring it per SEQUENCE rather than per step, which is
+the right question: does a person who receives the whole cadence learn what
+Productive is?
+
+**Order stands: sequence first, leads second, and leads only when the cohort
+is worth sending to.**
+
+## 21. WHAT MUST NOT BE REPEATED AFTER THE RESET
+
+- **Do not re-run the HeyReach write to "make sure".** It is done and proven.
+  Re-read it with `heyreach_readback.py --expect` if in doubt; that is free.
+- **Do not widen any repetition gate**, `SUBJECT_VOCABULARY` included.
+  Measured, rejected, and the reasoning is written down.
+- **Do not conclude Qwen is unavailable from one quota error.** It was
+  recorded as dead for six days and was Pro hours later.
+- **Do not read a test verdict through a pipe.** A pipe reports the filter's
+  status; `EXIT=0` from `tail` hid a real failure once today.
+- **Do not trust a Qwen result block's "tests pass"** without running the
+  NEIGHBOURS of what changed. Four of today's results needed correction and
+  three of those passed their own new tests.
+- **Do not treat `opened: 0` as a signal** on a campaign with
+  `open_tracking: False`.
+- **Do not count an UNKNOWN reply as negative.** 73.6% of LinkedIn replies
+  are unreadable; that is a measurement gap, not a finding about prospects.
