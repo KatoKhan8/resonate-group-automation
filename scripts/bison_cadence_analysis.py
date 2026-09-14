@@ -219,19 +219,18 @@ def _build_step_info_map(conn):
     return order_map, wait_map
 
 
-def collect_scheduled_emails(conn, campaigns, sample_stride=20):
-    """Sample scheduled emails at every sample_stride-th page.
+def collect_scheduled_emails(conn, campaigns, max_pages=100):
+    """Collect scheduled emails using offset pagination with a page cap.
 
-    Full collection at 15 rows/page would take ~15 hours for the estate.
-    Sampling every 20th page gives ~5% coverage — enough for step-level
-    attribution and copy analysis — in ~30 minutes.
+    The API refuses offset pagination beyond a threshold for large campaigns
+    (422: 'too many pages'). We cap at max_pages per campaign. At 15
+    rows/page, max_pages=100 gives up to 1,500 rows per campaign — a
+    representative sample for step distribution and copy analysis.
 
     The authoritative sent count per campaign comes from `emails_sent` on
-    the campaign row (collected separately), NOT from counting scheduled
-    email rows. This is the correction from TASK-069: meta.total counts
-    scheduled rows, sent and unsent alike.
+    the campaign row (PROVIDER FACT), NOT from counting scheduled email rows.
     """
-    print(f"Collecting scheduled emails (sampling every {sample_stride}th page)...")
+    print(f"Collecting scheduled emails (offset pagination, max {max_pages} pages/campaign)...")
     sys.stdout.flush()
     total_inserted = 0
     for camp in campaigns:
@@ -244,44 +243,20 @@ def collect_scheduled_emails(conn, campaigns, sample_stride=20):
 
         order_map, wait_map = _build_step_info_map(conn)
 
-        # First, determine total pages
-        data = get(f"/campaigns/{cid}/scheduled-emails", {"page": 1})
-        chunk = data.get("data")
-        if not isinstance(chunk, list) or not chunk:
-            print(f"  Campaign {cid}: no scheduled emails")
-            sys.stdout.flush()
-            continue
-        meta = data.get("meta") or {}
-        try:
-            last_page = int(meta.get("last_page", 1))
-        except (TypeError, ValueError):
-            last_page = 1
-        total_rows = meta.get("total", "?")
-
-        # Process page 1 always
         camp_inserted = 0
-        for se in chunk:
-            sent_at = se.get("sent_at")
-            if not sent_at:
-                continue
-            step_id = se.get("sequence_step_id")
-            conn.execute(
-                "INSERT INTO scheduled_emails VALUES (?,?,?,?,?,?,?,?,?)",
-                (se.get("id"), cid, step_id,
-                 order_map.get(step_id),
-                 str(sent_at), str(se.get("status", "")),
-                 _trunc(se.get("email_subject"), 300),
-                 _trunc(_strip_html(se.get("email_body", "")), 500),
-                 wait_map.get(step_id)))
-            camp_inserted += 1
-
-        # Sample remaining pages at stride
-        pages_fetched = 1
-        for page in range(1 + sample_stride, last_page + 1, sample_stride):
-            data = get(f"/campaigns/{cid}/scheduled-emails", {"page": page})
+        pages_fetched = 0
+        stopped_early = False
+        for page in range(1, max_pages + 1):
+            try:
+                data = get(f"/campaigns/{cid}/scheduled-emails", {"page": page})
+            except RuntimeError as e:
+                if "too many" in str(e).lower():
+                    stopped_early = True
+                    break
+                raise
             chunk = data.get("data")
             if not isinstance(chunk, list) or not chunk:
-                continue
+                break
             pages_fetched += 1
             for se in chunk:
                 sent_at = se.get("sent_at")
@@ -297,14 +272,23 @@ def collect_scheduled_emails(conn, campaigns, sample_stride=20):
                      _trunc(_strip_html(se.get("email_body", "")), 500),
                      wait_map.get(step_id)))
                 camp_inserted += 1
+            if page % 20 == 0:
+                conn.commit()
+            meta = data.get("meta") or {}
+            try:
+                last = int(meta.get("last_page"))
+            except (TypeError, ValueError):
+                break
+            if page >= last:
+                break
             time.sleep(0.1)
-
         conn.commit()
         total_inserted += camp_inserted
-        print(f"  Campaign {cid}: {camp_inserted} sent rows sampled "
-              f"({pages_fetched} pages of {last_page}, meta.total={total_rows})")
+        note = " (stopped early)" if stopped_early else ""
+        print(f"  Campaign {cid}: {camp_inserted} sent rows "
+              f"({pages_fetched} pages){note}")
         sys.stdout.flush()
-    print(f"  Total: {total_inserted} sent rows sampled")
+    print(f"  Total: {total_inserted} sent rows collected")
     sys.stdout.flush()
 
 
