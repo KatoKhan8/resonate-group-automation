@@ -83,5 +83,71 @@ including the ones that do not move.
 
 ## RESULT BLOCK
 
-STATUS, COMMIT SHA, TESTS, FILES CHANGED, FINDINGS, RISKS, RECOMMENDED
-CLAUDE ACTION. FINDINGS must carry the per-SEQUENCE rate with n as records.
+STATUS: DONE
+COMMIT SHA: 3aa1a57
+TESTS: tests.test_generate 51/51 pass. tests.test_invariants 79/80 pass
+  (one failure: work/ directory absent in this worktree - structural, not
+  caused by this task).
+FILES CHANGED: scripts/task065_measure.py, scripts/task065_run.py,
+  scripts/task065_run_bcd.py (measurement harness, not production code)
+
+FINDINGS:
+
+  The defect is FIXED. The ladder changes in cadencelibrary.py (rung 3 for
+  email: "SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH", rung 4 for LinkedIn:
+  "SAY WHAT THE PRODUCT IS") already produce 100% on the product rungs.
+
+  Per-SEQUENCE rate (does ANY message in this contact's cadence name the
+  product), n = number of RECORDS:
+
+  STORED BASELINE (old data, before ladder changes):
+    54/80 contact-sequences (68%) across 68 records
+    Per-step: li4=21/50 (42%), em3=11/38 (29%)
+
+  VARIANT A - baseline (current code, 15 records, 2 passes):
+    Pass 1: 16/17 sequences (94%) n=15 records
+    Pass 2: 16/17 sequences (94%) n=15 records
+    Per-step: em3=100%, li4=100% in both passes
+    em1=100%, em2=100%, em4=100%, li1=71-88%
+    li2=0%, li3=0-20%, li5=6-20%, li6=24-50%, em5=33-75%
+
+  VARIANT B - product rung brief made more concrete (15 records, 1 pass):
+    17/17 sequences (100%) n=15 records
+    Per-step: em3=100%, li4=100%
+    em1=100%, em2=100%, em4=100%, li1=71%, li6=65%
+    li2=0%, li3=14%, li5=7%, em5=33%
+
+  VARIANT C - product block carries example sentence (15 records, 1 pass):
+    17/17 sequences (100%) n=15 records
+    Per-step: em3=100%, li4=100%
+    em1=100%, em2=100%, em4=100%, li1=62%, li6=47%
+    li2=0%, li3=12%, li5=13%, em5=55%
+
+  VARIANT D - sequence integrity instruction (15 records, 1 pass):
+    14/17 sequences (82%) n=15 records
+    Per-step: em3=100%, li4=100%
+    em1=100%, em4=83%
+    em2=50%, li1=14%, li6=40%
+    li2=0%, li3=0%, li5=8%, em5=9%
+
+  KEY FINDING: The product rungs (em3, li4) are at 100% across ALL variants.
+  The ladder changes fixed the core defect. Variants B and C show marginal
+  per-sequence improvement (94% -> 100%). Variant D REGRESSES (82%) - the
+  sequence integrity instruction confused the model on non-product rungs.
+
+  The stored baseline (68%) reflects the OLD behavior. Fresh generation with
+  the current code achieves 94% per-sequence and 100% on product rungs.
+
+RISKS:
+  - Variant D's regression suggests that adding meta-instructions about
+    sequence integrity can distract the model from its primary task.
+  - The non-product rungs (li2, li3, li5) remain low (0-20%), which is
+    CORRECT - they are not the product rung and should not name it.
+  - em5 and li6 show variable rates (33-75% and 24-65%), which is expected
+    for closing messages that should not always repeat the product name.
+
+RECOMMENDED CLAUDE ACTION:
+  The defect is fixed by the existing ladder changes. No further code changes
+  are needed. The stored cadence data reflects old behavior and will be
+  updated when records are regenerated. Variants B and C show marginal
+  improvement but are not necessary. Variant D should NOT be adopted.
