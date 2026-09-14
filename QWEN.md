@@ -142,3 +142,25 @@ and in each case the test suite was green.
 CLAUDE.md already says this - "Existence is not function... trace the whole
 chain and prove every link is consumed" - and it is repeated here because
 three tasks in one day read it and shipped anyway.
+
+## NEVER COMMIT A CONFLICT MARKER, AND RUN THE WHOLE SUITE BEFORE SAYING DONE
+
+On 2026-09-14 a rebase committed `<<<<<<< HEAD` into two Python files. In
+Python a conflict marker is a SyntaxError, so those files could not be parsed
+at all - and the way it surfaced was two failures in `test_invariants`, a
+module with nothing to do with either file, because its AST walk could not
+read them.
+
+That is the shape of the damage: a conflict marker does not fail where it is,
+it fails wherever something reads the file.
+
+So, after any merge or rebase:
+
+    grep -rn "^<<<<<<< \|^======= $\|^>>>>>>> " src/ tests/ scripts/
+
+must return nothing, and the FULL suite must run - not only the module your
+task touched. A task that reports DONE on a green run of its own tests, while
+another module cannot parse a file it committed, has reported the wrong thing.
+
+`scripts/run_suite.py` exists for this and reads the exit code from unittest
+rather than from a pipe.
