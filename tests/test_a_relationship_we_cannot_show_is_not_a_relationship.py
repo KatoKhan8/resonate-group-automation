@@ -302,3 +302,51 @@ class TheBarePossessiveIsAlreadyAClaim(unittest.TestCase):
                 self.assertIsNone(
                     claims.implies_prior_contact(sentence),
                     f"honest copy was refused: {sentence!r}")
+
+
+class SilenceIsOnlyEvidenceIfSomethingWasSent(unittest.TestCase):
+    """"Since you have not replied" was refused. "I have not heard from you"
+    was not, and it says the same thing from the other end.
+
+    Measured 2026-09-14 on a live regeneration of `ogpartner-dk`, a record
+    with `prior_contact` False and zero confirmed touches. em5 was STORED
+    with "I have not heard from you regarding how &Partner ApS approaches
+    campaign measurement".
+
+    This is the THIRD phrasing of this rule found in one day, after the
+    plural `discussions` and the bare possessive `our conversation`. The
+    rule keeps being one phrase short, which is the finding worth recording
+    as much as the fix.
+    """
+
+    INVENTED = (
+        "I have not heard from you regarding campaign measurement.",
+        "I haven't heard back from you.",
+        "We have not yet heard from you.",
+        "No response from you so far.",
+    )
+
+    # The FUTURE conditional asserts nothing: "if I do not hear back" is a
+    # statement about what happens next, not a claim that we already wrote.
+    # A rule that swallowed it would refuse the breakup rung, whose whole
+    # job is to give somebody an easy no.
+    STILL_CLEAN = (
+        "if I do not hear back I will assume the timing is wrong",
+        "I would be glad to hear from you",
+        "I have not heard that agencies your size do this differently.",
+        "most agencies we speak to have not heard of it",
+    )
+
+    def test_implied_prior_outreach_is_caught(self):
+        for sentence in self.INVENTED:
+            with self.subTest(sentence=sentence):
+                self.assertIsNotNone(
+                    claims.implies_prior_contact(sentence),
+                    f"an implied prior send passed: {sentence!r}")
+
+    def test_the_future_conditional_is_not_a_claim(self):
+        for sentence in self.STILL_CLEAN:
+            with self.subTest(sentence=sentence):
+                self.assertIsNone(
+                    claims.implies_prior_contact(sentence),
+                    f"honest copy was refused: {sentence!r}")

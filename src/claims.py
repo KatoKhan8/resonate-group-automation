@@ -200,6 +200,24 @@ RELATIONSHIP = tuple(re.compile(p, re.I) for p in (
     r"\b(?:as\s+)?promised\b",
     r"\b(?:my|our)\s+(?:last|previous|earlier)\s+(?:email|message|note)\b",
     r"\bdid\s+you\s+(?:get|receive|see)\s+(?:my|our)\b",
+    # SILENCE IS ONLY EVIDENCE IF SOMETHING WAS SENT.
+    #
+    # "Since you have not replied" was already refused. "I have not heard
+    # from you" was not, and it says the same thing from the other end: it
+    # asserts we wrote and they did not answer. On a record with zero
+    # confirmed touches both are false.
+    #
+    # Measured 2026-09-14 on a live regeneration of `ogpartner-dk`,
+    # `prior_contact` False. em5 was STORED with "I have not heard from you
+    # regarding how &Partner ApS approaches campaign measurement".
+    #
+    # Third phrasing of this same rule found in one day - after the plural
+    # `discussions` and the bare possessive `our conversation`. The rule is
+    # right and keeps turning out to be one phrase short, which is worth
+    # saying plainly here rather than discovering a fourth time.
+    r"\b(?:i|we)\s+(?:have\s+not|haven't|hadn't|had\s+not|did\s+not|didn't)"
+    r"\s+(?:yet\s+)?hear(?:d)?\s+(?:back\s+)?from\s+you\b",
+    r"\b(?:no|any)\s+(?:response|reply|word)\s+from\s+you\b",
 ))
 
 # What the record must show before any of the above may ship. Deliberately

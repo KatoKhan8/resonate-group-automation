@@ -621,3 +621,98 @@ class TheRunnerActuallyBuildsAModel(unittest.TestCase):
                                               "LLM_BASE_URL": ""}):
                 self.run.main(["--stage", "generate"])
         self.assertIsNone(self.seen.get("model"))
+
+
+class TestRungFourIsWritten(GenerateTest):
+    """TASK-048. em4 must be stored for every record where the other four are.
+
+    The old rung 4 asked for "the shortest message in the sequence" and the
+    forty-word floor refused what that produced. The fix is in the brief:
+    rung 4 now asks for a focused follow-up with a distinct argument rather
+    than the shortest message. The floor is untouched.
+
+    The test drives through generate.run -> generate_record -> draft, which
+    is the production path. The ScriptedModel returns realistic ~45-word
+    bodies - realistic in the sense that they are what a model would write
+    for a rung that does not invite brevity below the floor.
+    """
+
+    def test_em4_is_stored_when_all_five_pass_lint(self):
+        pin_client_config(self, cadence="productive_li_heavy_v1")
+
+        bodies = [
+            "Ivana, your scheduling runs through one spreadsheet that three "
+            "people edit across offices, and nobody can say on Tuesday "
+            "whether Friday is already full. What decides today whether a "
+            "new project can start next week without pushing something else "
+            "out of the queue?",
+
+            "Ivana, month end reconciliation takes four days here and most "
+            "of it is chasing which hours belong to which client project. "
+            "How long after the last working day do you actually know what "
+            "each account earned, and who assembles that answer?",
+
+            "Ivana, a studio your size usually discovers a budget overrun "
+            "when the invoice is drafted rather than while the work is "
+            "happening on the ground. What would have to change for an "
+            "overrun to surface in week two instead of week six on your "
+            "active projects?",
+
+            "Ivana, when a project slips you hear about it on Friday instead "
+            "of Tuesday because the weekly status report is assembled by "
+            "hand not observed in real time. What would change for your "
+            "team if project status were visible while the work was "
+            "actually running?",
+
+            "Ivana, if none of this is a priority right now, just say so "
+            "and I will close the file and stop writing. If it is, the one "
+            "thing worth knowing is where your current answer comes from "
+            "today and how much reconstruction sits behind it every single "
+            "reporting month.",
+        ]
+        subjects = [
+            "friday capacity",
+            "month end reconstruction",
+            "overrun timing",
+            "status visibility",
+            "closing the file",
+        ]
+
+        answers = [
+            json.dumps({"subject": subjects[i], "body": bodies[i]})
+            for i in range(5)
+        ]
+        model = llm.ScriptedModel(*answers)
+        generate.run(model=model, live=True, ids=["meridian"])
+
+        rec = self.rec("meridian")
+        cadence_rows = rec.get("cadence", {}).get("ivana-saric", {})
+
+        for key in ("em1", "em2", "em3", "em4", "em5"):
+            self.assertIn(key, cadence_rows,
+                          f"{key} was not stored - the rung that writes it "
+                          f"did not produce a storable draft")
+            body = cadence_rows[key]["body"]
+            self.assertGreaterEqual(len(body.split()), 40,
+                                    f"{key} body is under 40 words")
+
+    def test_the_rung_four_prompt_no_longer_says_shortest(self):
+        """The phrase that caused the failure must not appear in the prompt."""
+        pin_client_config(self, cadence="productive_li_heavy_v1")
+        rec = self.rec("meridian")
+        contact = rec["contacts"][0]
+        sequence = generate.sequence_for(rec, contact=contact)
+
+        prompt = generate.render_prompt("draft", rec, contact,
+                                        step_key="em4", sequence=sequence)
+        self.assertNotIn("shortest message", prompt)
+        self.assertNotIn("short bump", prompt)
+
+    def test_rung_five_is_unchanged(self):
+        """EmailBison campaign 481 has nine leads with approved em5."""
+        from src import cadencelibrary
+
+        breakup = ("Close the loop. Give them an easy no, make no new pitch, "
+                   "ask for nothing beyond permission to stop.")
+        self.assertEqual(cadencelibrary.EMAIL_FIVE_LADDER[4], breakup)
+        self.assertEqual(cadencelibrary.EMAIL_EIGHT_LADDER[7], breakup)

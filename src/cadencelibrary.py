@@ -66,18 +66,20 @@ CAP_MESSAGE = "linkedin.message"
 # is staged with nine real leads carrying approved subject_5/body_5, and
 # changing rung 5 would silently rewrite the final email of a live sequence.
 #
-# RUNGS 1 AND 3 DID CHANGE, 2026-09-14, deliberately. Rung 3 had no way to do
-# its job: measured by rendering the real prompt, the word "Productive" did
+# RUNGS 1, 3 AND 4 DID CHANGE, 2026-09-14, deliberately. Rung 3 had no way to
+# do its job: measured by rendering the real prompt, the word "Productive" did
 # not appear in it once, so "new value" could only be argued from
 # `angle_wording` and the model reached for the same phrase every rung. The
 # `product:` block in the client config is the missing input and these two
 # rungs are what consume it - rung 1 says who is writing, rung 3 says what
-# the thing is.
+# the thing is. Rung 4 asked for "the shortest message in the sequence" and
+# the forty-word floor refused what that produced; em4 was NOT WRITTEN for
+# several records across multiple regeneration attempts.
 #
 # CONSEQUENCE, STATED RATHER THAN DISCOVERED: 481's nine leads carry copy
-# generated against the OLD rungs 1 and 3. They are not rewritten by this
+# generated against the OLD rungs 1, 3 and 4. They are not rewritten by this
 # change - stored copy is stored - but regenerating them will now produce
-# materially different em1 and em3, and it must happen before 481 sends.
+# materially different em1, em3 and em4, and it must happen before 481 sends.
 # The campaign is paused and `EMAIL_ACTIVATE` is not in
 # `providerwrites.SUPPORTED`, so nothing can send in the meantime.
 EMAIL_FIVE_LADDER = (
@@ -92,10 +94,14 @@ EMAIL_FIVE_LADDER = (
     "fit this person's angle - and give one concrete consequence a team their "
     "size would recognise: what changes when this is visible while the work "
     "is running rather than reconstructed afterwards.",
-    "A short bump that makes a DIFFERENT argument from every email before it. "
-    "The shortest message in the sequence - and still a whole one: the "
-    "forty-word floor applies here exactly as it does everywhere else. "
-    "One idea, one question, no recap.",
+    # RUNG 4 CHANGED, 2026-09-14. "The shortest message in the sequence"
+    # invited a twenty-word body and the forty-word floor refused it. em4
+    # was NOT WRITTEN for several records across multiple regeneration
+    # attempts. The fix is in the brief, not the floor: ask for a focused
+    # follow-up with a distinct argument rather than the shortest message.
+    "A follow-up that makes a DIFFERENT argument from every email before it. "
+    "One focused idea and one question - no recap of earlier messages and no "
+    "new pitch beyond the single point this message carries.",
     "Close the loop. Give them an easy no, make no new pitch, ask for nothing "
     "beyond permission to stop.",
 )
@@ -115,10 +121,11 @@ EMAIL_EIGHT_LADDER = (
     "fit this person's angle - and give one concrete consequence a team their "
     "size would recognise: what changes when this is visible while the work "
     "is running rather than reconstructed afterwards.",
-    "A short bump that makes a DIFFERENT argument from every email before it. "
-    "The shortest message in the sequence - and still a whole one: the "
-    "forty-word floor applies here exactly as it does everywhere else. "
-    "One idea, one question, no recap.",
+    # RUNG 4 CHANGED, 2026-09-14. Same fix as EMAIL_FIVE_LADDER rung 4:
+    # "shortest message" invited a body under the forty-word floor.
+    "A follow-up that makes a DIFFERENT argument from every email before it. "
+    "One focused idea and one question - no recap of earlier messages and no "
+    "new pitch beyond the single point this message carries.",
     "The cost of the current way of doing it. What the existing approach "
     "actually spends in time, risk or reconstruction - not a feature pitch, "
     "a number they can recognise.",
