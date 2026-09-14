@@ -89,7 +89,7 @@ class TestUnapprovedWork(ApproveTest):
         self.assertTrue(any(s.get("why") == "unapproved" for s in skipped))
 
     def test_pending_lists_what_a_human_has_to_look_at(self):
-        result = approve.pending()
+        result = approve.pending(store.load())
         self.assertTrue(result["waiting"])
         waiting = {(w["id"], w["contact"], w["step"]) for w in result["waiting"]}
         self.assertIn(("meridian", "ivana-saric", "day1"), waiting)
@@ -210,7 +210,7 @@ class TestWhatCannotBeApproved(ApproveTest):
         self.assertIsNone(approval.approval_of(self.rec(), "ivana-saric", "day1"))
 
     def test_blocked_steps_are_reported_with_their_reason(self):
-        result = approve.pending()
+        result = approve.pending(store.load())
         blocked = {(b["id"], b["contact"], b["step"]): b["why"]
                    for b in result["blocked"]}
         self.assertTrue(blocked)

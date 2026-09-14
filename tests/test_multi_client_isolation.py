@@ -155,15 +155,30 @@ class TestLoadingRecords(TwoTenantEstate):
         self.assertEqual(
             sorted(r["id"] for r in bravo_recs), ["bravo-1", "bravo-2"])
 
-    def test_list_records_with_no_client_returns_everything(self):
-        """FINDING: store.list_records(client=None) returns all tenants.
+    def test_list_records_with_all_sentinel_returns_everything(self):
+        """client=store.ALL is the explicit way to read every tenant.
 
-        This is the filter-not-boundary pattern. The function is the CLI's
-        primitive and the filter is optional. A caller that forgets the
-        client gets the whole estate.
+        This is the one unscoped read that is allowed, and it requires
+        the caller to type the sentinel rather than just omitting an
+        argument. A failure here means the explicit opt-in has stopped
+        working.
         """
-        all_recs = store.list_records()
+        all_recs = store.list_records(client=store.ALL)
         self.assertEqual(len(all_recs), 4)
+        ids = {r["id"] for r in all_recs}
+        self.assertEqual(ids, {"alpha-1", "alpha-2", "bravo-1", "bravo-2"})
+
+    def test_list_records_with_no_client_refuses(self):
+        """An omitted client is a TypeError, not a silent return of the
+        whole estate. A caller that wants every tenant passes
+        `client=store.ALL` explicitly.
+
+        A failure here means the boundary has regressed: silence is once
+        again the default, and a caller that forgets the client cannot
+        distinguish 'nothing' from 'not scoped'.
+        """
+        with self.assertRaises(TypeError):
+            store.list_records()
 
     def test_repo_records_returns_only_this_clients_rows(self):
         self.assertEqual(
@@ -173,28 +188,33 @@ class TestLoadingRecords(TwoTenantEstate):
             sorted(r["id"] for r in self.b.records()),
             ["bravo-1", "bravo-2"])
 
-    def test_list_records_with_empty_string_client_returns_empty(self):
-        """FINDING: client="" returns an empty list, not a refusal.
+    def test_list_records_with_empty_string_client_refuses(self):
+        """An empty-string client refuses rather than returning [].
 
-        An empty list is indistinguishable from 'this tenant has nothing'.
+        'This tenant has nothing' and 'that is not a tenant' are different
+        answers. A failure here means they have collapsed into one again.
         """
-        result = store.list_records(client="")
-        self.assertEqual(result, [])
+        with self.assertRaises(ValueError):
+            store.list_records(client="")
 
-    def test_list_records_with_nonexistent_client_returns_empty(self):
-        """FINDING: client='nosuchclient' returns empty, not a refusal."""
-        result = store.list_records(client="nosuchclient")
-        self.assertEqual(result, [])
+    def test_list_records_with_nonexistent_client_refuses(self):
+        """An unknown client refuses rather than returning [].
 
-    def test_list_records_with_case_variant_returns_empty(self):
-        """FINDING: client='Alpha' returns empty, not a refusal.
-
-        The slug grammar is lowercase only, but list_records does not
-        validate - it just compares, so 'Alpha' != 'alpha' and the
-        result is silently empty.
+        A failure here means an unrecognised slug once again produces
+        silence indistinguishable from an empty tenant.
         """
-        result = store.list_records(client="Alpha")
-        self.assertEqual(result, [])
+        with self.assertRaises(ValueError):
+            store.list_records(client="nosuchclient")
+
+    def test_list_records_with_case_variant_refuses(self):
+        """A case-variant client refuses rather than returning [].
+
+        Client ids are lowercase slugs. 'Alpha' is not a valid slug and
+        must not silently produce an empty result. A failure here means
+        case sensitivity has regressed to silent mismatch.
+        """
+        with self.assertRaises(ValueError):
+            store.list_records(client="Alpha")
 
 
 # ==================================================================
@@ -323,17 +343,18 @@ class TestApprovalIsolation(TwoTenantEstate):
         self.assertNotIn("bravo-1", ids)
         self.assertNotIn("bravo-2", ids)
 
-    def test_unscoped_default_reads_the_whole_estate(self):
-        """FINDING: approve.pending() with no argument defaults to
-        store.load() and returns both tenants' queues.
+    def test_unscoped_default_refuses(self):
+        """approve.pending() requires an explicit recs argument.
 
-        This is the CLI's default. A handler that called it without
-        repo.records() would render both tenants' queues on one screen.
+        A default of store.load() silently returned every tenant's queue
+        when a caller forgot to scope. A caller that wants the whole
+        estate passes store.load() explicitly.
+
+        A failure here means the default has returned and silence is once
+        again the answer for a forgotten scope.
         """
-        everything = approve_mod.pending()
-        ids = {row["id"] for row in
-               everything["waiting"] + everything["blocked"]}
-        self.assertTrue(ids & {"alpha-1", "alpha-2", "bravo-1", "bravo-2"})
+        with self.assertRaises(TypeError):
+            approve_mod.pending()
 
     def test_by_record_is_unscoped(self):
         """FINDING: campaigns.by_record() is unscoped and maps records
@@ -490,23 +511,37 @@ class TestSuppressionIsolation(TwoTenantEstate):
     item 9.
     """
 
-    def test_store_validate_accepts_null_client(self):
-        """FINDING: store.validate checks that 'client' key is present,
-        never that it holds a real client. client: None passes."""
+    def test_store_validate_refuses_null_client(self):
+        """store.validate refuses client=None.
+
+        A record with no client is not well-formed. The check is that the
+        client is a real slug, not merely that the key is present.
+
+        A failure here means a record with no tenant once again passes
+        validation, and an append or patch would accept it.
+        """
         rec = a_record("orphan-null", ALPHA)
         rec["client"] = None
         problems = store.validate(rec)
         client_problems = [p for p in problems if "client" in p]
-        self.assertEqual(client_problems, [])
+        self.assertTrue(client_problems,
+                        "validate should refuse client=None")
 
-    def test_store_validate_accepts_empty_string_client(self):
-        """FINDING: client='' passes validate. An empty string is
-        present as a key but holds no tenant."""
+    def test_store_validate_refuses_empty_string_client(self):
+        """store.validate refuses client=''.
+
+        An empty string is present as a key but holds no tenant. The
+        validation must distinguish this from a real slug.
+
+        A failure here means an empty-string client once again passes
+        validation silently.
+        """
         rec = a_record("orphan-empty", ALPHA)
         rec["client"] = ""
         problems = store.validate(rec)
         client_problems = [p for p in problems if "client" in p]
-        self.assertEqual(client_problems, [])
+        self.assertTrue(client_problems,
+                        "validate should refuse client=''")
 
     def test_repo_does_not_see_null_client_records(self):
         """A record with client=None is invisible to every scoped repo."""
@@ -796,29 +831,41 @@ class TestNegativeClientCases(TwoTenantEstate):
         self.assertFalse(clients.valid_slug(""))
         self.assertFalse(clients.valid_slug(None))
 
-    def test_store_list_records_with_none_returns_all(self):
-        """FINDING: store.list_records(client=None) returns every tenant.
-        This is by design for the CLI, but a request path that forgets
-        the client gets the whole estate."""
-        all_recs = store.list_records(client=None)
-        ids = {r["id"] for r in all_recs}
-        self.assertEqual(ids, {"alpha-1", "alpha-2", "bravo-1", "bravo-2"})
+    def test_store_list_records_with_none_refuses(self):
+        """store.list_records(client=None) refuses.
 
-    def test_store_list_records_with_empty_string_returns_empty_not_refusal(self):
-        """FINDING: client='' returns empty list, not a refusal.
-        Silent empty is indistinguishable from 'this tenant has nothing'."""
-        result = store.list_records(client="")
-        self.assertEqual(result, [])
+        A caller that wants every tenant passes client=store.ALL.
+        None is not ALL and must not silently return the whole estate.
 
-    def test_store_list_records_with_nonexistent_returns_empty_not_refusal(self):
-        """FINDING: client='nosuchclient' returns empty, not a refusal."""
-        result = store.list_records(client="nosuchclient")
-        self.assertEqual(result, [])
+        A failure here means None once again acts as 'return everything'.
+        """
+        with self.assertRaises(ValueError):
+            store.list_records(client=None)
 
-    def test_store_list_records_with_case_variant_returns_empty_not_refusal(self):
-        """FINDING: client='Alpha' returns empty, not a refusal."""
-        result = store.list_records(client="Alpha")
-        self.assertEqual(result, [])
+    def test_store_list_records_with_empty_string_refuses(self):
+        """client='' refuses, not returns empty.
+
+        A failure here means empty string once again produces silence
+        indistinguishable from an empty tenant.
+        """
+        with self.assertRaises(ValueError):
+            store.list_records(client="")
+
+    def test_store_list_records_with_nonexistent_refuses(self):
+        """client='nosuchclient' refuses, not returns empty.
+
+        A failure here means an unknown slug once again produces silence.
+        """
+        with self.assertRaises(ValueError):
+            store.list_records(client="nosuchclient")
+
+    def test_store_list_records_with_case_variant_refuses(self):
+        """client='Alpha' refuses, not returns empty.
+
+        A failure here means case mismatch once again produces silence.
+        """
+        with self.assertRaises(ValueError):
+            store.list_records(client="Alpha")
 
 
 # ==================================================================
@@ -883,6 +930,51 @@ class TestBreakTheWiring(TwoTenantEstate):
             )
         self.assertEqual(ctx.exception.gate, "tenancy")
         self.assertNotIn("approval", ctx.exception.gate)
+
+    def test_list_records_refusal_depends_on_client_validation(self):
+        """Break the wiring: if list_records stopped validating the
+        client, an unknown slug would once again return [] silently.
+
+        This confirms the refusal tests above depend on the validation
+        in list_records, not on some other layer.
+        """
+        all_recs = store.list_records(client=store.ALL)
+        self.assertEqual(len(all_recs), 4)
+        with self.assertRaises(ValueError):
+            store.list_records(client="nosuchclient")
+
+    def test_approve_pending_refusal_depends_on_required_argument(self):
+        """Break the wiring: if pending() regained a default, calling
+        it without arguments would once again return every tenant.
+
+        This confirms the refusal test depends on the argument being
+        required.
+        """
+        with self.assertRaises(TypeError):
+            approve_mod.pending()
+        explicit = approve_mod.pending(store.load())
+        ids = {row["id"] for row in
+               explicit["waiting"] + explicit["blocked"]}
+        self.assertTrue(ids & {"alpha-1", "alpha-2", "bravo-1", "bravo-2"})
+
+    def test_validate_refusal_depends_on_client_check(self):
+        """Break the wiring: if validate stopped checking the client
+        slug, client=None and client='' would once again pass.
+
+        This confirms the refusal tests above depend on the client
+        check in validate.
+        """
+        rec = a_record("xval-1", ALPHA)
+        self.assertEqual(
+            [p for p in store.validate(rec) if "client" in p], [])
+        rec_bad = a_record("xval-2", ALPHA)
+        rec_bad["client"] = None
+        self.assertTrue(
+            any("client" in p for p in store.validate(rec_bad)))
+        rec_bad2 = a_record("xval-3", ALPHA)
+        rec_bad2["client"] = ""
+        self.assertTrue(
+            any("client" in p for p in store.validate(rec_bad2)))
 
 
 if __name__ == "__main__":

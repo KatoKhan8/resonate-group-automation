@@ -93,8 +93,14 @@ class TestReads(QueueTest):
         store.append([rec(), rec("lumen", company="Lumen", domain="lumen.test"),
                       rec("five", company="Five", domain="fivepoint.test", lane="cold")])
         store.drop("five", "no signal")
-        self.assertEqual(len(store.list_records(state="queued")), 2)
-        self.assertEqual(len(store.list_records(lane="cold")), 1)
+        # `client` is now REQUIRED - TASK-032 made the tenant a boundary
+        # rather than an optional filter, so an unscoped read has to say so.
+        # `store.ALL` is that saying-so, and this test genuinely wants every
+        # tenant: it is asserting the state and lane filters, not tenancy.
+        self.assertEqual(
+            len(store.list_records(client=store.ALL, state="queued")), 2)
+        self.assertEqual(
+            len(store.list_records(client=store.ALL, lane="cold")), 1)
         s = store.stats()
         self.assertEqual(s["records"], 3)
         self.assertEqual(s["states"], {"queued": 2, "dropped": 1})
