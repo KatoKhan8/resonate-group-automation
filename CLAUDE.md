@@ -1,5 +1,5 @@
 # Resonate Group Automation
-docs/CONTEXT-RESET-2026-09-14-C.md is the current state: read it first.
+docs/CONTEXT-RESET-2026-09-15-D.md is the current state: read it first.
 Read BUILD-SPEC.md before changing anything. PLAYBOOK.md is the operating
 contract: the rules that outrank convenience, including the ones the LLM steps
 work to. SLACK-NOTIFICATIONS.md is the same for the notification layer: two
