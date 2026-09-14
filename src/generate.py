@@ -730,6 +730,40 @@ def _quality_of(rec, contact, stored, step_key, config):
     return (found or {}).get("reasons") or []
 
 
+def _note_quality(rec, contact, stored, step_key, config):
+    """The quality gate's reasons for one stored LinkedIn note.
+
+    The LinkedIn twin of `_quality_of`, and it is a separate function for the
+    same reason `quality.gate` takes a `channel`: the two channels do not
+    share a rule set. `_quality_of` reads `body`, filters siblings to email
+    and passes `channel="email"`; a note has no body and no subject, and its
+    siblings are the other notes.
+
+    `quality.gate` DEFAULTS to `channel="linkedin"`. It was written for this
+    channel and, until now, was only ever called for the other one.
+
+    The company's own name is discounted here too. Every message in a
+    sequence to one company names that company, and counting those tokens as
+    shared content makes relevance look like duplication.
+    """
+    import re as _re
+
+    from . import quality
+
+    step = (stored or {}).get(step_key) or {}
+    note = (step.get("note") or "").strip()
+    if not note:
+        return []
+    siblings = [{"key": k, "text": s.get("note") or ""}
+                for k, s in sorted((stored or {}).items())
+                if s.get("channel") == "linkedin" and (s.get("note") or "").strip()]
+    name = (rec.get("company_facts") or {}).get("name") or rec.get("company") or ""
+    ignore = {w for w in _re.findall(r"[a-z]+", str(name).lower()) if len(w) > 2}
+    found = quality.gate(note, config, steps=siblings, channel="linkedin",
+                         ignore=ignore)
+    return (found or {}).get("reasons") or []
+
+
 def diagnose(rec, model):
     data, attempts, errors = llm.ask(model, "diagnose", render_prompt("diagnose", rec))
     rec["diagnosis"] = {"died_on": data.get("died_on"),
@@ -776,21 +810,59 @@ def linkedin_note(rec, contact, model, client=None, step_key="day3"):
     llm mode is visible before it is turned on for 500 domains.
     """
     key = lint.contact_key(contact)
-    data, attempts, errors = llm.ask(
-        model, "linkedin_note",
-        render_prompt("linkedin_note", rec, contact, client, step_key))
-    note = data["note"].strip()
-    step = {"channel": "linkedin", "generated": True, "note": note}
-    leaks = [w for w in NOTE_MUST_NOT_MENTION if w in note.lower()]
-    if leaks:
-        store.log(rec, "linkedin_note", f"rejected, mentions {leaks[0]}")
-        return None
-    rec.setdefault("cadence", {}).setdefault(key, {})[step_key] = step
-    count_model_call("linkedin_note", attempts)
-    store.log(rec, "linkedin_note", note[:80], attempts=attempts, rejected=errors)
-    events.record(rec, events.DRAFT_GENERATED, contact_key=key,
-                  channel="linkedin", step=step_key, generated=True)
-    return step
+    rejected = []
+    total_attempts = 0
+    for attempt in range(1, MAX_DRAFT_ATTEMPTS + 1):
+        prompt = render_prompt("linkedin_note", rec, contact, client, step_key)
+        if rejected:
+            prompt += ("\n## Your previous note was refused\n\n"
+                       f"{rejected[-1]}\n\nWrite a new one. "
+                       "Do not patch the old one.\n")
+        data, attempts, errors = llm.ask(model, "linkedin_note", prompt)
+        total_attempts += attempts
+        note = data["note"].strip()
+        step = {"channel": "linkedin", "generated": True, "note": note}
+        leaks = [w for w in NOTE_MUST_NOT_MENTION if w in note.lower()]
+        if leaks:
+            # Unchanged, and still first: a note that mentions the email is
+            # refused outright rather than regenerated, because the prompt
+            # already states the rule plainly and a retry teaches nothing.
+            store.log(rec, "linkedin_note", f"rejected, mentions {leaks[0]}")
+            return None
+        trial = dict(rec)
+        trial["cadence"] = {**(rec.get("cadence") or {}),
+                            key: {**((rec.get("cadence") or {}).get(key) or {}),
+                                  step_key: step}}
+        failures = [f for f in lint.check_step(trial, key, step)
+                    if f not in lint.LINKEDIN_HELD_CODES]
+        for problem in claims.check(note, trial, contact)[:3]:
+            failures.append(f"unsupported claim: {problem['why']}")
+        for invented in claims.foreign_product(
+                note, clients.product(client or {}), rec):
+            failures.append(invented["why"])
+        repeats = _note_quality(trial, contact,
+                                (trial.get("cadence") or {}).get(key) or {},
+                                step_key, client)
+        if repeats:
+            failures.append(f"this repeats another LinkedIn step in the "
+                            f"sequence; say something the others do not "
+                            f"({', '.join(repeats)})")
+        if not failures:
+            rec.setdefault("cadence", {}).setdefault(key, {})[step_key] = step
+            count_model_call("linkedin_note", total_attempts)
+            store.log(rec, "linkedin_note", note[:80],
+                      attempts=total_attempts, rejected=rejected)
+            events.record(rec, events.DRAFT_GENERATED, contact_key=key,
+                          channel="linkedin", step=step_key, generated=True)
+            return step
+        rejected.append(lint.explain(failures, note))
+        events.record(rec, events.LINT_FAILED, contact_key=key,
+                      channel="linkedin", step=step_key, failures=failures,
+                      attempt=attempt)
+    store.log(rec, "linkedin_note",
+              f"{step_key}: no note passed the gates, nothing stored",
+              attempts=total_attempts, rejected=rejected)
+    return None
 
 
 def draft(rec, contact, day, model, client=None):

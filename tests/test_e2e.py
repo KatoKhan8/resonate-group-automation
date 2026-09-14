@@ -91,9 +91,18 @@ class E2EModel:
             return json.dumps({"hook": "tried three outbound agencies before "
                                        "building the function in house"})
         if "# linkedin_note" in prompt:
+            # One note per rung, not one note repeated - the quality gate now
+            # runs before a note is stored and refuses the second copy. See
+            # the same branch in `tests/test_preproduction.py`.
+            if '"key": "day8"' in prompt or '"key": "li' in prompt:
+                return json.dumps({"note": "the part most teams find hardest "
+                                           "is knowing which work paid for "
+                                           "itself while it is still running. "
+                                           "is that where it bites for you?"})
             return json.dumps({"note": "hi, i work with services teams on "
-                                       "project profitability and thought it "
-                                       "would be good to connect"})
+                                       "how their delivery and their numbers "
+                                       "line up. thought it would be good to "
+                                       "connect"})
         if "# draft" in prompt:
             first = "there"
             for token in ("Ćuk", "Ana", "Iris", "Otto", "Sanne", "Frank", "Mira",
@@ -365,11 +374,35 @@ class TestGenerationAndLint(EndToEnd):
         self.assertIn("three outbound agencies", self.rec("skyline")["hook"])
 
     def test_exactly_two_emails_per_contact_are_model_written(self):
+        # EMAIL ONLY, WHICH IS WHAT THE NAME SAYS. `productive_balanced_v1`
+        # marks exactly `day1` and `day15` `generated`; the other email steps
+        # name templates and cost nothing. Counting every channel also
+        # asserted that no LinkedIn note is model-written, which the pinned
+        # config contradicts on purpose - Productive sets
+        # `linkedin_connection_note.mode: llm`. It passed only while the fake
+        # model raised on `# linkedin_note` and `stage_generate` swallowed it,
+        # so nothing was generated at all and the empty set satisfied both
+        # assertions. The same defect stood in `tests/test_preproduction.py`.
         for rec in store.load():
             for key, steps in (rec.get("cadence") or {}).items():
-                generated = [k for k, s in steps.items() if s.get("generated")]
+                generated = {k for k, s in steps.items()
+                             if s.get("generated") and s.get("channel") == "email"}
                 self.assertLessEqual(len(generated), 2, f"{rec['id']}:{key}")
-                self.assertTrue(set(generated) <= {"day1", "day15"})
+                self.assertTrue(generated <= {"day1", "day15"},
+                                f"{rec['id']}:{key}")
+
+    def test_the_linkedin_notes_are_model_written_because_the_client_asked(self):
+        # The half the assertion above used to make implicitly, stated.
+        seen = 0
+        for rec in store.load():
+            for key, steps in (rec.get("cadence") or {}).items():
+                for step_key, step in steps.items():
+                    if step.get("channel") != "linkedin":
+                        continue
+                    self.assertTrue(step.get("generated"),
+                                    f"{rec['id']}:{key}:{step_key}")
+                    seen += 1
+        self.assertTrue(seen, "no linkedin step was written at all")
 
     def test_the_record_whose_drafts_never_pass_lint_ships_nothing(self):
         csv_text = self.out_file("emailbison.csv")

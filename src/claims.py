@@ -138,6 +138,25 @@ RELATIONSHIP = tuple(re.compile(p, re.I) for p in (
     r"\b(?:our|the|your|that|a)\s+(?:last|previous|recent|earlier|first|"
     r"initial|prior)\s+(?:conversation|call|chat|exchange|email|message|"
     r"note|discussion|meeting|thread)s?\b",
+    # AND THE ADJECTIVE WAS THE HOLE, exactly as it was for the email thread
+    # four rules down - whose comment already records that "the first version
+    # of this rule wanted an adjective" and was beaten by copy that did not
+    # supply one. The lesson was not carried up here.
+    #
+    # "our previous conversation" was refused and "our conversation" was not.
+    # Measured 2026-09-14, on a live regeneration of `ogpartner-dk` - a record
+    # with `prior_contact` False and zero confirmed touches - em5 came back
+    # with the subject "Closing the loop on our conversation with &Partner
+    # ApS" and passed every gate.
+    #
+    # `our` ONLY, and the nouns that cannot be shared without a history. "the
+    # conversation" is a thing that can happen in somebody's blog post and
+    # "your call" is a thing they can make to somebody else; "our call" is a
+    # claim about us and them. `email`, `message` and `note` stay OUT of this
+    # list - "our email" is how somebody refers to the one they are writing,
+    # and "I will keep the email short" is already pinned as clean.
+    r"\bour\s+(?:conversation|call|chat|exchange|discussion|meeting|"
+    r"thread)s?\b",
     r"\b(?:as|like)\s+(?:we\s+)?(?:discussed|mentioned|agreed|promised|"
     r"said|covered|noted)\b",
     # A DEFINITE REFERENCE TO A SHARED ARTEFACT. The first version of this
@@ -514,6 +533,95 @@ def check(text, rec, contact=None, chosen=()):
         if not ok:
             problems.append({"sentence": sentence[:160], "why": why})
     return problems
+
+
+# --------------------------------------------------- a product of our own
+#
+# THE ONE CLAIM NOTHING ABOVE CAN CATCH.
+#
+# Everything in this module judges a sentence against the RECORD: what we
+# know about their company, and what we have confirmed doing to this person.
+# "our software, ProjectSync, joins up creative project tracking" asserts
+# nothing about them, so `is_claim` passes it, `check_sentence` never sees it,
+# `lint` has no rule for it and `quality` is about repetition. It shipped
+# clean through all four.
+#
+# Measured 2026-09-14, on the first live regeneration after the client config
+# gained a `product:` block: the prompt carried `"name": "Productive"` and the
+# model returned `ProjectSync`. It is not a product. It does not exist.
+#
+# WHAT THIS CATCHES, STATED NARROWLY: a self-referential product phrase -
+# "our software", "we built", "we call it" - followed closely by a capitalised
+# token that is not the client's own product name. That is the shape the
+# failure took and the shape a reviewer can reason about. It is NOT a general
+# hallucination detector, and nothing here should be read as one: a model that
+# invents a capability rather than a name still passes this.
+#
+# A client with no stated product is not checked. There is nothing to compare
+# against, and a rule that guesses what somebody sells would refuse correct
+# copy for every client who has not filled the block in.
+OUR_PRODUCT = re.compile(
+    r"\b(?:our|the)\s+(?:software|product|platform|tool|app|system|solution)"
+    r"\b|\bwe\s+(?:built|call\s+it|make|created|named\s+it)\b", re.I)
+
+# A capitalised token that could be a name. Two or more characters so an
+# initial does not count, and it may carry internal capitals - `ProjectSync`
+# is exactly that shape.
+CAPITALISED = re.compile(r"\b[A-Z][A-Za-z0-9]{1,}\b")
+
+# How far after the phrase a name still counts as attached to it. Beyond this
+# a capitalised word is more likely the next sentence's first word.
+PRODUCT_NAME_WINDOW = 60
+
+# Capitalised words that begin sentences or name nothing. Kept short on
+# purpose: every entry is a word this rule would otherwise report, and a long
+# list is how a check quietly stops checking.
+NOT_A_PRODUCT_NAME = frozenset((
+    "i", "it", "we", "our", "the", "this", "that", "they", "you", "your",
+    "a", "an", "and", "but", "for", "if", "in", "is", "of", "on", "or",
+    "so", "to", "with", "what", "when", "where", "which", "who", "why",
+    "how", "there", "these", "those", "monday", "tuesday", "wednesday",
+    "thursday", "friday", "saturday", "sunday",
+))
+
+
+def foreign_product(text, product, rec=None):
+    """Names of products we do not sell, asserted as ours. Empty means clean.
+
+    `product` is `clients.product(config)`. A falsy one, or one with no
+    `name`, disables the check rather than guessing - see the note above.
+
+    `rec` supplies the prospect's own company name, which is the one
+    capitalised token that legitimately appears beside a sentence about our
+    software ("our platform, used by agencies like Acme"). It is discounted
+    rather than reported.
+    """
+    name = (product or {}).get("name") or ""
+    if not str(name).strip():
+        return []
+    allowed = {w.lower() for w in CAPITALISED.findall(str(name))}
+    allowed |= NOT_A_PRODUCT_NAME
+    if rec:
+        for source in ((rec.get("company_facts") or {}).get("name"),
+                       rec.get("company"), rec.get("domain")):
+            allowed |= {w.lower() for w in CAPITALISED.findall(str(source or ""))}
+            # A domain and a company name are frequently lowercase in the
+            # record and capitalised in the copy, so both cases are taken.
+            allowed |= {w.lower()
+                        for w in re.findall(r"[A-Za-z0-9]{2,}", str(source or ""))}
+    found = []
+    for match in OUR_PRODUCT.finditer(text):
+        window = text[match.end():match.end() + PRODUCT_NAME_WINDOW]
+        for token in CAPITALISED.findall(window):
+            if token.lower() in allowed:
+                continue
+            found.append({
+                "name": token,
+                "why": (f"{token!r} is named as our own software and this "
+                        f"client sells {name!r}. A product we do not sell "
+                        f"cannot be described to a prospect")})
+            break
+    return found
 
 
 def verify(step, rec, contact=None, chosen=()):

@@ -15,8 +15,20 @@ import unittest
 from src import cadence, clients, generate, llm, store
 from tests.base import FIXTURES, pin_client_config
 
-GOOD_NOTE = ("hi Ivana, i work with finance leads at multi office agencies on "
-             "month end reconciliation. curious how you handle it. happy to connect.")
+# "month end reconciliation" was in here and it is `personas.champion.angles`
+# `finance` VERBATIM - the client's own sales phrasing, which
+# `quality.angle_leakage` refuses on LinkedIn. It went unnoticed while
+# `generate.linkedin_note` ran no gate at all; it stored whatever the model
+# returned after one cross-channel word check. Now that the note goes through
+# the same door the email does, a fixture carrying the client's angle wording
+# is a fixture that cannot pass.
+#
+# Measured before changing it: all eight of the operator's hand-written
+# LinkedIn fallback lines in `config/clients/productive.yaml` pass this rule.
+# The gate is not too strict - this note was.
+GOOD_NOTE = ("hi Ivana, i work with finance leads at agencies running several "
+             "offices, usually around how long the numbers take to settle. "
+             "curious how you handle it. happy to connect.")
 
 
 class NoteTest(unittest.TestCase):
@@ -210,3 +222,89 @@ class TestModeIsValidated(NoteTest):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheNoteGoesThroughTheSameDoorTheEmailDoes(NoteTest):
+    """`linkedin_note` stored whatever the model returned.
+
+    It checked one thing - that the note did not mention the email - and then
+    wrote it to the record. It did not call `lint`, `claims` or the quality
+    gate, all three of which `generate.draft` has run inside its attempt loop
+    since the em5 "Final note on our previous discussions" defect.
+
+    `lint.check_step` is documented as "the single door every step goes
+    through" and the LinkedIn generator walked past it. `quality.gate` even
+    DEFAULTS to `channel="linkedin"` and had only ever been called with
+    `channel="email"`.
+
+    Measured 2026-09-14 on a live regeneration of `ogpartner-dk`: six notes
+    written, two of them carrying an em dash that `lint.check_linkedin` names
+    `em_dash` and refuses, and one asserting a product that does not exist.
+    All six stored clean.
+    """
+
+    def write(self, *answers):
+        model = llm.ScriptedModel(*[json.dumps({"note": a}) for a in answers])
+        with store.transaction() as recs:
+            rec = store.get("meridian", recs)
+            return generate.linkedin_note(rec, rec["contacts"][0], model,
+                                          self.llm_config())
+
+    def test_an_em_dash_is_refused_and_the_note_regenerated(self):
+        step = self.write("hi Ivana, i work with finance leads at agencies "
+                          "running several offices\u2014curious how you handle "
+                          "it. happy to connect.", GOOD_NOTE)
+        self.assertEqual(step["note"], GOOD_NOTE)
+
+    def test_a_note_that_never_passes_stores_nothing(self):
+        # Three attempts, all refused, and NOTHING is written. The old path
+        # had no way to express this: it stored on the first answer.
+        bad = "hi Ivana, settling up\u2014every month.-- and again."
+        self.assertIsNone(self.write(bad, bad, bad))
+        self.assertNotIn("day3", (self.rec().get("cadence") or {}).get(
+            "ivana-saric", {}))
+
+    def test_a_product_we_do_not_sell_is_refused(self):
+        # The defect this gate was built for, and the one nothing else could
+        # see: `claims.check` judges sentences against the RECORD, and an
+        # invented product name asserts nothing about the prospect.
+        step = self.write("hi Ivana, our software, ProjectSync, joins up "
+                          "budgets and resourcing for agencies. worth a look?",
+                          GOOD_NOTE)
+        self.assertEqual(step["note"], GOOD_NOTE)
+
+    def test_the_clients_own_product_name_is_not_refused(self):
+        # The other half. A rule that cannot tell Productive from ProjectSync
+        # would refuse the rung whose whole job is to name the product.
+        note = ("hi Ivana, we built Productive so budgets and resourcing talk "
+                "to each other for agencies running several offices. worth a "
+                "look?")
+        self.assertEqual(self.write(note)["note"], note)
+
+    def test_the_refusal_reason_reaches_the_model(self):
+        # A model told a code three times has been told nothing three times.
+        # `draft` feeds the reason back and so must this.
+        model = llm.ScriptedModel(
+            json.dumps({"note": "hi Ivana, our software, ProjectSync, joins "
+                                "up budgets and resourcing. worth a look?"}),
+            json.dumps({"note": GOOD_NOTE}))
+        with store.transaction() as recs:
+            rec = store.get("meridian", recs)
+            generate.linkedin_note(rec, rec["contacts"][0], model,
+                                   self.llm_config())
+        second = model.prompts[-1] if hasattr(model, "prompts") else ""
+        if second:
+            self.assertIn("ProjectSync", second)
+            self.assertIn("previous note was refused", second)
+
+    # THE CROSS-CHANNEL CHECK IS NOT RE-TESTED HERE, DELIBERATELY.
+    #
+    # A note containing "email" never reaches the storer's check at all:
+    # `llm.validate` refuses it at the schema layer and `llm.ask` retries
+    # inside one call. The storer's fuller word list is reached only by a
+    # note that passes the schema, and
+    # `TestLlmMode.test_a_note_that_slips_past_the_schema_is_still_not_stored`
+    # already drives exactly that case with "you replied to my earlier one".
+    # A test written here asserting the outright refusal passed for the wrong
+    # reason - the model's second answer was stored - which is what a
+    # redundant test at the wrong layer looks like.

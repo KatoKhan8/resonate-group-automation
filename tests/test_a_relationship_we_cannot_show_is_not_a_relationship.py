@@ -250,3 +250,55 @@ class TheDetectorItself(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheBarePossessiveIsAlreadyAClaim(unittest.TestCase):
+    """"our previous conversation" was refused and "our conversation" was not.
+
+    The rule wanted an adjective - last, previous, recent, earlier - and copy
+    that supplied none walked through it. The rule four entries below it in
+    `RELATIONSHIP` carries a comment recording that it lost the same argument
+    once already, over "The 2026-09-10 email thread": an adjective is not what
+    makes the claim, the possessive is.
+
+    Measured 2026-09-14 on a live regeneration of `ogpartner-dk`, a record
+    with `prior_contact` False and zero confirmed touches. em5 came back with
+    the subject "Closing the loop on our conversation with &Partner ApS" and
+    passed lint, claims and the quality gate.
+    """
+
+    INVENTED = (
+        "Closing the loop on our conversation with the team",
+        "further to our call",
+        "picking up our discussion from where it stopped",
+        "our chat was useful",
+        "our meeting raised a good question",
+        "our exchange on this",
+    )
+
+    # `email`, `message` and `note` are deliberately NOT in the pattern.
+    # "our email" is what somebody calls the one they are writing, and
+    # "I will keep the email short" is pinned as clean elsewhere in this file.
+    STILL_CLEAN = (
+        "I will keep the email short.",
+        "our platform connects budgets and time tracking",
+        "our product joins up budgets, time tracking and resourcing",
+        "the conversation in your latest blog post was interesting",
+        "would you be open to a call next week",
+        "most agencies we speak to are running this in spreadsheets",
+        "our note on this is short",
+    )
+
+    def test_the_bare_possessive_is_caught(self):
+        for sentence in self.INVENTED:
+            with self.subTest(sentence=sentence):
+                self.assertIsNotNone(
+                    claims.implies_prior_contact(sentence),
+                    f"an invented history passed: {sentence!r}")
+
+    def test_it_does_not_swallow_copy_about_our_own_product(self):
+        for sentence in self.STILL_CLEAN:
+            with self.subTest(sentence=sentence):
+                self.assertIsNone(
+                    claims.implies_prior_contact(sentence),
+                    f"honest copy was refused: {sentence!r}")

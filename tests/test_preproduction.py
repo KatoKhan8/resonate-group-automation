@@ -57,9 +57,21 @@ class FakeModel:
                     break
             return json.dumps({"angle": "finance", "evidence": [title]})
         if "# linkedin_note" in prompt:
+            # A DIFFERENT NOTE PER RUNG, because the notes now go through the
+            # quality gate on the way to being stored and one note repeated is
+            # exactly what that gate refuses. The fixture returned the same
+            # sentence for every LinkedIn step and day8 was refused as a copy
+            # of day3 - the gate being right about a fixture, which is the
+            # same thing that happened to the day15 draft body.
+            if '"key": "day8"' in prompt or '"key": "li' in prompt:
+                return json.dumps({"note": "the part most teams find hardest "
+                                           "is knowing which work paid for "
+                                           "itself while it is still running. "
+                                           "is that where it bites for you?"})
             return json.dumps({"note": "hi, i work with services teams on "
-                                       "project profitability and thought it "
-                                       "would be good to connect"})
+                                       "how their delivery and their numbers "
+                                       "line up. thought it would be good to "
+                                       "connect"})
         if "# draft" in prompt:
             first = "there"
             for token in ("Ćuk", "Ana", "Iris", "Petra", "梁伟"):
