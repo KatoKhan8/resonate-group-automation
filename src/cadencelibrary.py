@@ -261,9 +261,17 @@ THREAD_REPLY_PATTERNS = {
     "email_eight": (False, True, False, True, False, True, False, True),
 }
 
+# "Be short." WAS HERE AND IS DELIBERATELY GONE. TASK-080 measured the
+# estate: same-thread follow-ups that earned replies average 857 characters
+# against 571 for new threads - the follow-ups that worked are LONGER, not
+# shorter. That is survivorship (it is measured on emails that GOT replies,
+# so it does not show that length CAUSES replies), which is exactly why the
+# instruction is removed rather than inverted. We do not tell the model to be
+# long either. "Add one thought" carries the intent without asserting a
+# length nobody has evidence for.
 FOLLOWUP_ADDENDUM = (
     " THIS IS A SAME-THREAD FOLLOW-UP: you are continuing an existing "
-    "conversation, not starting a new one. Be short. Add one thought. Do "
+    "conversation, not starting a new one. Add one thought. Do "
     "not repeat what the earlier email said. Do not re-introduce the sender "
     "from scratch. The email subject is carried for the provider's threading "
     "mechanism but this message lands in the same thread as the previous one."

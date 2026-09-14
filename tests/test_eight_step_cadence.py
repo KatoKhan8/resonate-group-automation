@@ -179,15 +179,58 @@ class TestBothCadencesSelectableByName(unittest.TestCase):
         self.assertEqual(len(email_steps), 5)
 
     def test_five_step_purposes_unchanged(self):
-        """Every email purpose of the five-step cadence is exactly what
-        it was before the eight-step cadence was added."""
+        """Every email purpose of the five-step cadence still STARTS WITH
+        exactly what it was before the eight-step cadence was added.
+
+        This used to assert equality. TASK-081 appends
+        `cadencelibrary.FOLLOWUP_ADDENDUM` to a rung whose `thread_reply` is
+        True, which is a deliberate channel-mechanics instruction telling the
+        model it is continuing a thread - not a change to the rung's JOB.
+
+        The invariant this test exists for is that adding another cadence
+        must not alter the five-step one, so it is asserted as a prefix: the
+        rung's own words are untouched and anything after them is the thread
+        addendum, which the next test pins separately. Equality would forbid
+        a change that was made on purpose; a prefix still catches a rung
+        being reworded, reordered or dropped.
+        """
         seq = cadencelibrary.named("productive_li_heavy_v1")
         email_steps = [s for s in seq if s.get("channel") == "email"]
         for step in email_steps:
             block = generate.step_block(seq, step["key"])
             expected = generate.EMAIL_LADDER[block["number"] - 1]
-            self.assertEqual(block["purpose"], expected,
-                             f"{step['key']} purpose changed")
+            self.assertTrue(
+                block["purpose"].startswith(expected),
+                f"{step['key']} purpose changed: its own rung text no longer "
+                f"leads the purpose")
+            extra = block["purpose"][len(expected):]
+            self.assertIn(
+                extra, ("", cadencelibrary.FOLLOWUP_ADDENDUM),
+                f"{step['key']} purpose carries text that is neither its rung "
+                f"nor the follow-up addendum: {extra!r}")
+
+    def test_only_a_followup_rung_carries_the_addendum(self):
+        """The addendum appears on exactly the rungs marked thread_reply."""
+        seq = cadencelibrary.named("productive_li_heavy_v1")
+        email_steps = [s for s in seq if s.get("channel") == "email"]
+        for step in email_steps:
+            block = generate.step_block(seq, step["key"])
+            carries = cadencelibrary.FOLLOWUP_ADDENDUM in block["purpose"]
+            expected = bool(block.get("thread_reply"))
+            self.assertEqual(
+                carries, expected,
+                f"{step['key']}: thread_reply={expected} but addendum "
+                f"present={carries}")
+
+    def test_the_addendum_does_not_assert_a_length(self):
+        """TASK-080 measured follow-ups that got replies at 857 chars against
+        571 for new threads - LONGER, not shorter. "Be short." was in this
+        addendum and is removed. It is not replaced with "be long" either;
+        the measurement is survivorship and supports neither instruction.
+        """
+        low = cadencelibrary.FOLLOWUP_ADDENDUM.lower()
+        for phrase in ("be short", "keep it short", "be brief", "be long"):
+            self.assertNotIn(phrase, low)
 
     def test_eight_step_does_not_alter_five_step_ladder(self):
         """The EMAIL_LADDER constant itself must not change."""
