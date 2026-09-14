@@ -759,6 +759,40 @@ def plan(rec, client=None, campaign=None):
                                    f"repeats another step "
                                    f"({', '.join(quality_out)})",
                             "contact": c.get("name"), "day": spec["key"]})
+
+    # SET REGENERATION DETECTION.
+    #
+    # A contact whose LinkedIn notes pass the intrinsic gates individually
+    # but collide on campaign_repetition cannot be fixed one note at a time:
+    # whichever note is rewritten is compared against the old siblings that
+    # still say the same thing, so the replacement collides and the old note
+    # stays. The stale siblings are why regeneration cannot converge.
+    #
+    # When this condition is detected, the individual linkedin_note ops for
+    # that contact are replaced with a single linkedin_set op that
+    # regenerates ALL LinkedIn notes as a transaction: fresh candidates into
+    # memory, the whole set gated together, committed only if every member
+    # passes. If it fails, nothing is lost.
+    #
+    # The trigger is established from the data: campaign_repetition
+    # collisions among steps that all pass lint, claims and foreign_product.
+    # No threshold is picked; the collision set IS the condition.
+    if note_mode(rec, client) == "llm":
+        for c in workable:
+            keys_to_regen = _needs_set_regeneration(rec, c, client)
+            if keys_to_regen is None:
+                continue
+            contact_li_ops = [i for i, o in enumerate(ops)
+                             if o.get("step") == "linkedin_note"
+                             and o.get("contact") == c.get("name")]
+            for i in reversed(contact_li_ops):
+                ops.pop(i)
+            ops.append({"step": "linkedin_set",
+                        "why": f"{c['name']}'s notes pass individually but "
+                               f"collide on campaign_repetition; "
+                               f"regenerating {len(keys_to_regen)} notes "
+                               f"as a set",
+                        "contact": c.get("name")})
     return ops
 
 
@@ -873,6 +907,190 @@ def _note_quality(rec, contact, stored, step_key, config):
             shared = ", ".join(collision.get("shared", [])[:5])
             reasons.append(f"says the same thing as {other} ({shared})")
     return reasons
+
+
+def _needs_set_regeneration(rec, contact, client=None):
+    """Does this contact's LinkedIn set need set-level regeneration?
+
+    Returns the list of LinkedIn step keys to regenerate, or None.
+
+    A set needs regeneration when multiple notes PASS the intrinsic gates
+    (lint, claims, foreign_product) but COLLIDE on campaign_repetition.
+    That is the state one-at-a-time regeneration cannot escape: each
+    replacement is compared against old siblings that still say the same
+    thing, so a new note that addresses the same topic collides with four
+    others that have not changed.
+
+    The trigger is established from the data: campaign_repetition collisions
+    among steps that individually pass. No threshold is picked; the
+    collision set IS the condition.
+    """
+    from . import quality
+
+    key = lint.contact_key(contact)
+    stored = (rec.get("cadence") or {}).get(key) or {}
+
+    li_steps = {}
+    for sk, step in stored.items():
+        if step.get("channel") == "linkedin" and (step.get("note") or "").strip():
+            li_steps[sk] = step
+
+    if len(li_steps) < 2:
+        return None
+
+    passing = {}
+    for sk, step in li_steps.items():
+        failures = [f for f in lint.check_step(rec, key, step)
+                    if f not in lint.LINKEDIN_HELD_CODES]
+        if lint.classify_linkedin(failures) == "failed":
+            continue
+        note_text = step.get("note") or ""
+        unsupported = claims.check(note_text, rec, contact)
+        if unsupported:
+            continue
+        invented = claims.foreign_product(
+            note_text, clients.product(client or {}), rec)
+        if invented:
+            continue
+        passing[sk] = step
+
+    if len(passing) < 2:
+        return None
+
+    company = (rec.get("company_facts") or {}).get("name") or rec.get("company")
+    steps_for_check = [{"key": sk, "text": s.get("note") or ""}
+                       for sk, s in sorted(passing.items())]
+    collisions = quality.campaign_repetition(steps_for_check,
+                                             company_name=company)
+    if not collisions:
+        return None
+
+    return sorted(li_steps.keys())
+
+
+def _regenerate_linkedin_set(rec, contact, model, client=None):
+    """Regenerate ALL LinkedIn notes for a contact as one transaction.
+
+    Generates fresh candidates into memory, gates the complete set, and
+    commits only if every member passes. If any step fails, nothing is
+    stored and the original notes are preserved.
+
+    Returns the list of new step dicts on success, None on failure.
+
+    THE COST IS HIGHER than one-at-a-time: N model calls instead of one.
+    The whole point is that it terminates where the cheap version cannot.
+    Model calls are counted through count_model_call for reporting.
+    """
+    from . import quality
+
+    key = lint.contact_key(contact)
+    sequence = sequence_for(rec, client, contact)
+    li_specs = [spec for spec in sequence if spec.get("channel") == "linkedin"]
+    if not li_specs:
+        return None
+
+    generated = {}
+    total_calls = 0
+
+    for spec in li_specs:
+        step_key = spec["key"]
+        best_note = None
+        rejected = []
+        step_calls = 0
+
+        for attempt in range(1, MAX_DRAFT_ATTEMPTS + 1):
+            prompt = render_prompt("linkedin_note", rec, contact, client,
+                                   step_key)
+            if rejected:
+                prompt += ("\n## Your previous note was refused\n\n"
+                           f"{rejected[-1]}\n\nWrite a new one. "
+                           "Do not patch the old one.\n")
+            data, attempts, errors = llm.ask(model, "linkedin_note", prompt)
+            step_calls += attempts
+            note = data["note"].strip()
+            note = lint.normalise_punctuation(note)
+
+            leaks = [w for w in NOTE_MUST_NOT_MENTION if w in note.lower()]
+            if leaks:
+                rejected.append(
+                    f"rejected: mentions {leaks[0]}, which references email")
+                continue
+
+            trial = dict(rec)
+            trial["cadence"] = {**(rec.get("cadence") or {}),
+                                key: {}}
+            failures = [f for f in lint.check_step(trial, key,
+                                                   {"channel": "linkedin",
+                                                    "generated": True,
+                                                    "note": note})
+                        if f not in lint.LINKEDIN_HELD_CODES]
+            for problem in claims.check(note, trial, contact)[:3]:
+                failures.append(
+                    f"unsupported claim: {problem['why']}")
+            for invented in claims.foreign_product(
+                    note, clients.product(client or {}), rec):
+                failures.append(invented["why"])
+
+            prev_steps = [{"key": k, "text": v}
+                          for k, v in sorted(generated.items())]
+            if prev_steps:
+                company = ((rec.get("company_facts") or {}).get("name")
+                           or rec.get("company"))
+                for collision in quality.campaign_repetition(
+                        prev_steps + [{"key": step_key, "text": note}],
+                        company_name=company):
+                    involved = (collision.get("step_a"),
+                                collision.get("step_b"))
+                    if step_key not in involved:
+                        continue
+                    shared = ", ".join(
+                        collision.get("shared", [])[:5])
+                    failures.append(
+                        f"says the same thing as "
+                        f"{collision['step_a'] if involved[0] != step_key else collision['step_b']} "
+                        f"({shared})")
+
+            if not failures:
+                best_note = note
+                break
+            rejected.append(lint.explain(failures, note))
+
+        if best_note is None:
+            total_calls += step_calls
+            count_model_call("linkedin_set", total_calls)
+            return None
+
+        generated[step_key] = best_note
+        total_calls += step_calls
+
+    if len(generated) != len(li_specs):
+        count_model_call("linkedin_set", total_calls)
+        return None
+
+    all_steps = [{"key": k, "text": v} for k, v in sorted(generated.items())]
+    company = (rec.get("company_facts") or {}).get("name") or rec.get("company")
+    final_collisions = quality.campaign_repetition(all_steps,
+                                                   company_name=company)
+    if final_collisions:
+        count_model_call("linkedin_set", total_calls)
+        return None
+
+    committed = []
+    for spec in li_specs:
+        step_key = spec["key"]
+        step = {"channel": "linkedin", "generated": True,
+                "note": generated[step_key]}
+        rec.setdefault("cadence", {}).setdefault(key, {})[step_key] = step
+        committed.append(step)
+
+    count_model_call("linkedin_set", total_calls)
+    store.log(rec, "linkedin_set",
+              f"{contact.get('name')}: {len(committed)} notes regenerated "
+              f"as a set")
+    for spec in li_specs:
+        events.record(rec, events.DRAFT_GENERATED, contact_key=key,
+                      channel="linkedin", step=spec["key"], generated=True)
+    return committed
 
 
 def diagnose(rec, model):
@@ -1127,6 +1345,9 @@ def generate_record(rec, model, client=None, campaign=None):
                 persona_angle(rec, contact, model, client)
             elif op["step"] == "linkedin_note" and contact:
                 if not linkedin_note(rec, contact, model, client, op["day"]):
+                    continue
+            elif op["step"] == "linkedin_set" and contact:
+                if not _regenerate_linkedin_set(rec, contact, model, client):
                     continue
             elif op["step"] == "draft" and contact:
                 if not draft(rec, contact, op["day"], model, client):
