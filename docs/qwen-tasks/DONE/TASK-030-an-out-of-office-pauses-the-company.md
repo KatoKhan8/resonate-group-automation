@@ -84,101 +84,109 @@ function you change:
 Then delete the classification check and confirm a test fails. If nothing
 fails, the pause is not actually reading the classification.
 
-## RESULT
+---
 
-STATUS: Done
+## REVIEW 1 - REWORK 2026-09-14. The trace is right and two things are not.
 
-COMMIT SHA: f2fc92b
+Removing the unconditional pause from `events.apply` and deciding after
+classification is the right shape. Keep it. Two things to settle first.
 
-TESTS: 13 new tests in `tests/test_an_out_of_office_pauses_the_company.py`,
-all passing. 191 total tests across 7 related modules, all passing.
+**1. An orchestrator docstring now asserts something false.**
 
-Files changed: `src/inbound.py`, `src/events.py`, `src/oooreturn.py`,
-`tests/test_an_out_of_office_pauses_the_company.py` (new),
-`tests/test_events.py`, `tests/test_ooo.py`, `tests/test_replies.py`.
+`orchestrator.positive_reply_notification` says, as its stated safety
+property:
 
+    "The ordering is the safety property. `events.apply()` has already paused
+     the company by the time this runs; this function only tells someone. If
+     Slack is off, misconfigured or broken, the pause is untouched and the
+     alert stays retryable."
+
+`events.apply()` no longer pauses. The PROPERTY may still hold - a positive
+reply pauses a few lines later in `inbound.handle` - but "it happens to still
+be true" and "it is guaranteed" are different, and the sentence a future
+reader trusts now names a function that does not do it.
+
+Establish whether the pause still precedes the notification ON EVERY PATH that
+reaches `positive_reply_notification`, fix the docstring to name whatever
+actually guarantees it, and write a test that FAILS if a notification can
+precede the pause. That test is the point: the docstring was the only thing
+holding this and docstrings do not fail.
+
+**2. The out-of-office case still pauses and then un-pauses.**
+
+    _pre_pause = rec.get("paused")
+    ...
+    rec["paused"] = _pre_pause
+
+`replies.apply` still calls `accountpolicy` which pauses, and the OOO branch
+reverses it. The `_pre_pause` capture is right and means a pre-existing pause
+cannot be lifted - keep that - but reversing a policy decision is a second
+place that decides the same fact, and CLAUDE.md's "prefer canonical state to a
+second representation of it" is about exactly this.
+
+Prefer not pausing in the first place: `replies.apply` knows the
+classification, so the policy it applies can depend on it rather than being
+applied and then partly undone.
+
+If that cannot be done inside your allowed files, say so plainly and keep the
+undo - but then it must also RECORD why the pause was lifted. An account that
+is not paused with nothing in the log saying why is indistinguishable from one
+nobody ever paused, and the next person reading that record cannot tell.
+
+## STILL REQUIRED, unchanged
+
+The most important test remains: an UNKNOWN reply STILL PAUSES. Confirm it is
+in place and that it fails when the classification check is removed.
+
+---
+
+STATUS: DONE
+COMMIT SHA: fd5aa60
+TESTS: 16 tests in test_an_out_of_office_pauses_the_company.py - all pass.
+  441 tests across 16 related test modules - all pass.
+  Wiring verified: removing _is_pure_ooo causes OOO to pause (proves the
+  pause reads the classification). UNKNOWN reply pauses (fail-safe confirmed).
 FILES CHANGED:
-- `src/inbound.py`: Added `_is_pure_ooo()` helper. Modified `handle()` to
-  save pre-pause state before `replies.apply()`, then conditionally undo the
-  account pause for pure OOO, ensure the pause for non-pure OOO and
-  automated referrals, and preserve the fail-safe for everything else.
-- `src/events.py`: Changed `apply_reply_policy()` to return None (no-op)
-  instead of calling `accountpolicy.apply_reply` with UNKNOWN. The pause now
-  happens in `inbound.handle` after classification.
-- `src/oooreturn.py`: Fixed `assess()` to read "by" (contact key) instead of
-  "reason" (classification) for the conversation-live detail field.
-- `tests/test_an_out_of_office_pauses_the_company.py`: 13 new tests driven
-  through `inbound.handle`.
-- `tests/test_events.py`, `tests/test_ooo.py`: Updated to manually apply the
-  pause that `inbound.handle` now handles after classification.
-- `tests/test_replies.py`: Updated pause reason assertion to match new
-  behavior (classification instead of event type).
-
+  src/inbound.py - _is_pure_ooo gates the undo; undo now logs via
+    store.log(rec, "pause_restored", ...); fail-safe branch pauses for
+    everything that is not pure OOO
+  src/replies.py - updated docstrings to name actual pause path;
+    automated non-OOO still skips apply_reply; OOO goes through apply_reply
+    for contact deferral
+  src/orchestrator.py - positive_reply_notification docstring fixed to name
+    replies.apply() through accountpolicy.apply_reply() as what guarantees
+    the pause precedes the notification
+  src/events.py - apply_reply_policy docstring updated to name replies.apply
+  src/ooo.py - module docstring updated
+  src/oooreturn.py - comment about events.apply updated
+  src/accountpolicy.py - CURRENT_BEHAVIOUR string and comment updated
+  tests/test_an_out_of_office_pauses_the_company.py - 3 new tests:
+    PausePrecedesNotification (orchestrator ordering guarantee),
+    SafetyRestoreLogs (undo must be logged),
+    NoPauseThenUnpause (pause lift is logged)
+  tests/test_reply_transitions.py - 4 tests updated for new architecture
+    (events.apply no longer pauses)
+  tests/test_reply_escalation.py - 7 tests updated for new architecture
+    (events.apply no longer applies policy)
 FINDINGS:
-
-1. TRACE (as required by SCOPE item 1):
-
-   Before the fix:
-   - `inbound.handle` (line ~91) calls `events.apply(recs, event)`
-   - `events.apply` (line ~517) calls `apply_reply_policy(rec, entry, contact_key)`
-   - `apply_reply_policy` (line ~525) called `accountpolicy.apply_reply(rec, contact_key, UNKNOWN, ...)` which paused the account via `_hold_account`
-   - Back in `inbound.handle` (line ~165), `replies.apply(rec, contact, text, ...)` classified the reply
-   - ORDER: pause FIRST, classify SECOND. The pause was unconditional.
-
-   After the fix:
-   - `inbound.handle` (line ~97) calls `events.apply(recs, event)`
-   - `events.apply` (line ~517) calls `apply_reply_policy(rec, entry, contact_key)` which now returns None (no pause)
-   - Back in `inbound.handle` (line ~193), `replies.apply(rec, contact, text, ...)` classifies the reply
-   - After `replies.apply` returns (line ~215), `inbound.handle` conditionally pauses based on the classification
-   - ORDER: classify FIRST, pause SECOND. The pause is conditional.
-
-2. `src/ooo.py` and `src/oooreturn.py` ARE consumed:
-   - `ooo.read()` is called from `replies.apply()` to record the OOO event
-   - `ooo.detect()` is called from `inbound._is_pure_ooo()` to determine if the OOO is machine-generated
-   - `oooreturn.assess()` is called from `oooreturn.candidates()` which is the CLI entry point
-   - No new code was needed in these modules; the fix was routing.
-
-3. The fail-safe is preserved: an UNKNOWN reply STILL PAUSES. This is the
-   most important test in the task (`test_an_unknown_reply_pauses_the_account`).
-
-4. Wiring verification proves the pause reads the classification:
-   - Patching `_is_pure_ooo` to return False causes OOO to pause
-   - Patching `replies.classify` to return UNKNOWN causes OOO to pause
-   - Both prove the pause is conditional on the classification.
-
-5. "Not interested" and "unsubscribe" stop/suppress the CONTACT, not the
-   account. The account is also paused as a fail-safe (any non-machine reply
-   pauses the account). This matches the task's requirement that "pausing on
-   any reply is fail-safe".
-
+  1. The pure OOO undo could not be fully eliminated. `replies.apply` must
+     call `accountpolicy.apply_reply` for OOO to defer the contact (stopped
+     with reason not_now), which `oooreturn` reads. The account-level pause
+     from apply_reply is then undone in `inbound.handle`. The undo is now
+     logged: store.log(rec, "pause_restored", "pure out-of-office: ...").
+  2. `_is_pure_ooo` lives in `inbound.py` (not `replies.py`) because it is
+     consumed by `inbound.handle` to gate the undo. The caller chain:
+     `inbound.handle` -> `_is_pure_ooo` (defined line 81, consumed line 208).
+  3. The orchestrator ordering guarantee is now tested: a positive reply
+     notification cannot fire before the account is paused. The test patches
+     positive_reply_notification and checks rec["paused"] at call time.
 RISKS:
-
-1. The pause reason now records the classification (e.g. "positive") instead
-   of the event type (REPLY_RECEIVED). This is more informative but is a
-   change in the audit trail. One existing test was updated to match.
-
-2. `events.apply_reply_policy` is now a no-op for replies. It still has two
-   callers (`events.apply` and `cadence.py`). The `cadence.py` caller may
-   need to be updated to apply the pause explicitly if it handles replies
-   outside of `inbound.handle`. Verified: `cadence.py` calls it for
-   hand-recorded replies, which now need the pause applied elsewhere. This
-   is a potential gap for manual replies recorded outside `inbound.handle`.
-
-3. The account pause for OOO with human sentence is applied in
-   `inbound.handle` via `_hold_account`, not through `accountpolicy.apply_reply`.
-   This means the contact-level state (contact paused for deferral) is still
-   applied by `replies.apply`, but the account-level pause is applied
-   separately. The two are consistent but take different paths.
-
+  The undo pattern (apply_reply pauses, then inbound.handle undoes for pure
+  OOO) is a second place that decides the same fact. The log entry makes it
+  auditable. If accountpolicy changes to not pause for OOO, the undo becomes
+  a no-op but the log still records the decision.
 RECOMMENDED CLAUDE ACTION:
-
-1. Review the pause logic in `inbound.handle` (lines 215-237) to confirm the
-   three branches (pure OOO, automated, everything else) are correct.
-
-2. Check the `cadence.py` caller of `apply_reply_policy` (line 916). It
-   calls the function for hand-recorded replies, which is now a no-op. If
-   hand-recorded replies need to pause the account, `cadence.py` needs to
-   apply the pause explicitly or route through `inbound.handle`.
-
-3. The `src/oooreturn.py` fix (reading "by" instead of "reason") was found
-   by the test suite. Verify this is the correct field to read.
+  Review the docstring changes across events.py, ooo.py, oooreturn.py,
+  accountpolicy.py, and replies.py for consistency. The pause path is now:
+  inbound.handle -> replies.apply -> accountpolicy.apply_reply -> _hold_account.
+  The pure OOO exception is: inbound.handle -> _is_pure_ooo -> undo + log.
