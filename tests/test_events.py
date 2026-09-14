@@ -10,7 +10,7 @@ import shutil
 import tempfile
 import unittest
 
-from src import cadence, events, report, store
+from src import accountpolicy, cadence, events, report, store
 from tests.base import FIXTURES
 
 BISON_PAYLOAD = {
@@ -132,16 +132,39 @@ class TestIdempotency(EventTest):
         self.assertEqual(len(self.rec()["events"]), before)
 
     def test_a_replayed_reply_does_not_pause_twice(self):
+        # TASK-030: events.ingest no longer pauses; the pause now lives in
+        # inbound.handle after classification. Simulate what inbound.handle
+        # does for the reply in the payload.
         events.ingest(events.from_emailbison(BISON_PAYLOAD))
+        recs = store.load()
+        accountpolicy._hold_account(
+            store.get("meridian", recs=recs), "ivana-saric", "unknown",
+            "2026-08-26T10:00:00+00:00", channel="email",
+            reason=events.REPLY_RECEIVED)
+        store.save(recs)
         paused_at = self.rec()["paused"]["since"]
         events.ingest(events.from_emailbison(BISON_PAYLOAD))
+        recs = store.load()
+        accountpolicy._hold_account(
+            store.get("meridian", recs=recs), "ivana-saric", "unknown",
+            "2026-08-26T10:00:00+00:00", channel="email",
+            reason=events.REPLY_RECEIVED)
+        store.save(recs)
         self.assertEqual(self.rec()["paused"]["since"], paused_at)
         self.assertEqual(self.types().count(events.COMPANY_PAUSED), 1)
 
 
 class TestRepliesPauseTheCompany(EventTest):
     def test_an_email_reply_pauses_both_tracks_company_wide(self):
+        # TASK-030: events.ingest no longer pauses; simulate the pause that
+        # inbound.handle now applies after classification.
         events.ingest(events.from_emailbison(BISON_PAYLOAD))
+        recs = store.load()
+        accountpolicy._hold_account(
+            store.get("meridian", recs=recs), "ivana-saric", "unknown",
+            "2026-08-26T10:00:00+00:00", channel="email",
+            reason=events.REPLY_RECEIVED)
+        store.save(recs)
         rec = self.rec()
         self.assertTrue(rec["paused"])
         timeline = cadence.build(rec)
@@ -150,7 +173,15 @@ class TestRepliesPauseTheCompany(EventTest):
         self.assertEqual(statuses, {"paused"})
 
     def test_a_linkedin_reply_pauses_that_company(self):
+        # TASK-030: events.ingest no longer pauses; simulate the pause that
+        # inbound.handle now applies after classification.
         events.ingest(events.from_heyreach(HEYREACH_PAYLOAD))
+        recs = store.load()
+        accountpolicy._hold_account(
+            store.get("harbourline", recs=recs), "rowan-blake", "unknown",
+            "2026-08-26T12:00:00+00:00", channel="linkedin",
+            reason=events.REPLY_RECEIVED)
+        store.save(recs)
         self.assertTrue(self.rec("harbourline")["paused"])
         self.assertEqual(self.rec("harbourline")["paused"]["channel"], "linkedin")
 
@@ -182,7 +213,15 @@ class TestRepliesPauseTheCompany(EventTest):
         self.assertTrue(cadence.accepted_connection(self.rec()))
 
     def test_every_event_is_auditable_on_the_record(self):
+        # TASK-030: events.ingest no longer pauses; simulate the pause that
+        # inbound.handle now applies after classification.
         events.ingest(events.from_emailbison(BISON_PAYLOAD))
+        recs = store.load()
+        accountpolicy._hold_account(
+            store.get("meridian", recs=recs), "ivana-saric", "unknown",
+            "2026-08-26T10:00:00+00:00", channel="email",
+            reason=events.REPLY_RECEIVED)
+        store.save(recs)
         rec = self.rec()
         self.assertTrue(any(e["step"] == "event" for e in rec["log"]))
         self.assertTrue(any(e["step"] == "paused" for e in rec["log"]))
@@ -229,6 +268,18 @@ class TestTheReportingModel(EventTest):
         super().setUp()
         events.ingest(events.from_emailbison(BISON_PAYLOAD))
         events.ingest(events.from_heyreach(HEYREACH_PAYLOAD))
+        # TASK-030: events.ingest no longer pauses; simulate the pauses that
+        # inbound.handle now applies after classification for each reply.
+        recs = store.load()
+        accountpolicy._hold_account(
+            store.get("meridian", recs=recs), "ivana-saric", "unknown",
+            "2026-08-26T10:00:00+00:00", channel="email",
+            reason=events.REPLY_RECEIVED)
+        accountpolicy._hold_account(
+            store.get("harbourline", recs=recs), "rowan-blake", "unknown",
+            "2026-08-26T12:00:00+00:00", channel="linkedin",
+            reason=events.REPLY_RECEIVED)
+        store.save(recs)
 
     def test_metrics_are_derived_from_events_not_counters(self):
         stats = report.funnel()

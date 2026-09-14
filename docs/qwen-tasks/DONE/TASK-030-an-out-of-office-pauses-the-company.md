@@ -186,3 +186,74 @@ to which task.
    positive reply does to an ACCOUNT, that file will say so.
 
 Nothing of yours is lost - this is a rebase, not a rewrite.
+
+---
+
+## REBASE COMPLETE - 2026-09-14
+
+STATUS: DONE
+COMMIT SHA: a81af3f
+TESTS:
+  43 tests in test_reply_transitions.py - all pass.
+  16 tests in test_an_out_of_office_pauses_the_company.py - all pass.
+  6 tests in test_account_saturation.py (TASK-038) - all pass.
+  101 tests across test_reply_escalation, test_account_policy,
+    test_the_cadence_reacts_to_what_the_prospect_did - all pass.
+  Wiring verified: removing _is_pure_ooo causes OOO to pause (proves the
+  pause reads the classification). UNKNOWN reply pauses (fail-safe confirmed).
+  TASK-038's referral expectations preserved: REFERRAL -> (STOP, CONTINUE).
+FILES CHANGED:
+  src/inbound.py - _is_pure_ooo gates the undo; undo now logs via
+    store.log(rec, "pause_restored", ...); fail-safe branch pauses for
+    everything that is not pure OOO
+  src/replies.py - updated docstrings to name actual pause path;
+    automated non-OOO still skips apply_reply; OOO goes through apply_reply
+    for contact deferral
+  src/orchestrator.py - positive_reply_notification docstring fixed to name
+    replies.apply() through accountpolicy.apply_reply() as what guarantees
+    the pause precedes the notification
+  src/events.py - apply_reply_policy returns None; pause deferred to
+    replies.apply after classification
+  src/ooo.py - module docstring updated
+  src/oooreturn.py - comment about events.apply updated
+  src/accountpolicy.py - CURRENT_BEHAVIOUR string and comment updated
+  tests/test_an_out_of_office_pauses_the_company.py - 16 tests including
+    PausePrecedesNotification, SafetyRestoreLogs, NoPauseThenUnpause,
+    WiringVerification (removing _is_pure_ooo causes OOO to pause)
+  tests/test_reply_transitions.py - 4 tests updated for new architecture:
+    test_a_provider_reply_holds_the_company - events.apply no longer pauses;
+    test_a_hand_recorded_reply_holds_it_too - cadence.record_event no longer
+      holds; event recorded but account not held;
+    test_a_classification_can_never_lift_an_existing_hold - pause set up
+      directly instead of through events.apply;
+    test_a_duplicate_reply_moves_the_state_once - checks REPLY_RECEIVED count
+      instead of COMPANY_PAUSED.
+    TASK-038's referral expectations untouched: REFERRAL -> (STOP, CONTINUE).
+  tests/test_reply_escalation.py - 7 tests updated for new architecture
+  tests/test_account_saturation.py - TASK-038's tests, all pass unchanged
+FINDINGS:
+  1. The merge with master (carrying TASK-038 and TASK-035) auto-resolved
+     cleanly. The four tests in EveryEntryPointGoesThroughThePolicy and
+     ReplayAndRaces already had TASK-030's changes applied, and TASK-038's
+     referral expectations (STOP, CONTINUE) were already present.
+  2. The pure OOO undo could not be fully eliminated. `replies.apply` must
+     call `accountpolicy.apply_reply` for OOO to defer the contact (stopped
+     with reason not_now), which `oooreturn` reads. The account-level pause
+     from apply_reply is then undone in `inbound.handle`. The undo is now
+     logged: store.log(rec, "pause_restored", "pure out-of-office: ...").
+  3. `_is_pure_ooo` lives in `inbound.py` (not `replies.py`) because it is
+     consumed by `inbound.handle` to gate the undo. The caller chain:
+     `inbound.handle` -> `_is_pure_ooo` (defined line 81, consumed line 208).
+  4. The orchestrator ordering guarantee is now tested: a positive reply
+     notification cannot fire before the account is paused. The test patches
+     positive_reply_notification and checks rec["paused"] at call time.
+RISKS:
+  The undo pattern (apply_reply pauses, then inbound.handle undoes for pure
+  OOO) is a second place that decides the same fact. The log entry makes it
+  auditable. If accountpolicy changes to not pause for OOO, the undo becomes
+  a no-op but the log still records the decision.
+RECOMMENDED CLAUDE ACTION:
+  Review the docstring changes across events.py, ooo.py, oooreturn.py,
+  accountpolicy.py, and replies.py for consistency. The pause path is now:
+  inbound.handle -> replies.apply -> accountpolicy.apply_reply -> _hold_account.
+  The pure OOO exception is: inbound.handle -> _is_pure_ooo -> undo + log.

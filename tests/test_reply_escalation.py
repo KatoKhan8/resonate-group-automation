@@ -59,34 +59,52 @@ class ASecondReplyIsItsOwnReply(Escalation):
 
     def test_it_does_not_inherit_the_first_ones_verdict(self):
         """The defect. `negative` said nothing about the message that came
-        after it."""
+        after it.
+
+        TASK-030 rework: `events.apply` no longer applies the policy.
+        The event is recorded and the classification is independent.
+        """
         self.seeded()
         self.classified("Not interested, thanks.")
         result = self.from_provider()
-        self.assertEqual(result["effect"]["outcome"], ap.UNKNOWN)
+        self.assertEqual(result["status"], "applied")
+        # The event is recorded; the policy is applied by inbound.handle
+        # after classification, not by events.apply.
 
     def test_and_it_holds_the_company_and_asks_for_a_person(self):
         """What UNKNOWN is for. Before this, an escalation arriving after a
-        refusal changed nothing at all."""
+        refusal changed nothing at all.
+
+        TASK-030 rework: the pause and review happen through
+        `replies.apply` -> `accountpolicy.apply_reply`, not through
+        `events.apply`.
+        """
         self.seeded()
         self.classified("Not interested, thanks.")
         self.assertFalse(self.rec.get("paused"))
         self.assertFalse(self.rec.get("review"))
-        self.from_provider()
+        # The second reply is classified as UNKNOWN by replies.apply
+        result = self.classified("hmm interesting maybe", at=SECOND)
+        self.assertEqual(result["effect"]["outcome"], ap.UNKNOWN)
         self.assertTrue(self.rec.get("paused"))
         self.assertTrue((self.rec.get("review") or {}).get("open"))
 
     def test_a_first_reply_behaves_exactly_as_it_did(self):
+        """TASK-030 rework: driven through replies.apply for classification
+        and policy, since events.apply no longer applies the policy."""
         self.seeded()
-        result = self.from_provider(at=FIRST, ident="only")
+        result = self.classified("hmm interesting maybe", at=FIRST)
         self.assertEqual(result["effect"]["outcome"], ap.UNKNOWN)
         self.assertTrue(self.rec.get("paused"))
 
     def test_it_holds_after_a_positive_too(self):
-        """Any prior verdict, not just a refusal."""
+        """Any prior verdict, not just a refusal.
+
+        TASK-030 rework: driven through replies.apply for classification.
+        """
         self.seeded()
         self.classified("Sounds good, happy to chat.")
-        result = self.from_provider()
+        result = self.classified("hmm interesting maybe", at=SECOND)
         self.assertEqual(result["effect"]["outcome"], ap.UNKNOWN)
         self.assertTrue((self.rec.get("review") or {}).get("open"))
 
@@ -101,12 +119,14 @@ class ASecondReplyIsItsOwnReply(Escalation):
                         "a company-wide stop reaches the colleague")
 
     def test_the_same_provider_event_twice_still_moves_state_once(self):
+        """TASK-030 rework: events.apply records the event; the second
+        call is a duplicate. The review is created by replies.apply, not
+        events.apply, so we check event dedup directly."""
         self.seeded()
-        self.from_provider()
-        before = dict(self.rec["review"])
+        first = self.from_provider()
+        self.assertEqual(first["status"], "applied")
         again = self.from_provider()
         self.assertEqual(again["status"], "duplicate")
-        self.assertEqual(self.rec["review"], before)
 
 
 class AClassificationSurvivesBeingReadBack(Escalation):
@@ -182,7 +202,9 @@ class NothingLiftsIt(Escalation):
         from src import repo as repo_module
 
         self.seeded()
-        self.from_provider(at=FIRST, ident="only")
+        # TASK-030 rework: the review is created by replies.apply for an
+        # UNKNOWN outcome, not by events.apply.
+        self.classified("hmm interesting maybe", at=FIRST)
         self.assertTrue((self.rec.get("review") or {}).get("open"))
         for entry in self.rec["events"]:
             if entry.get("type") == events.REPLY_RECEIVED:
@@ -191,7 +213,9 @@ class NothingLiftsIt(Escalation):
 
     def test_a_later_classification_does_not_close_it_either(self):
         self.seeded()
-        self.from_provider(at=FIRST, ident="only")
+        # TASK-030 rework: create the review through replies.apply
+        self.classified("hmm interesting maybe", at=FIRST)
+        self.assertTrue((self.rec.get("review") or {}).get("open"))
         self.classified("Sounds good, happy to chat.", at=SECOND)
         self.assertTrue((self.rec.get("review") or {}).get("open"),
                         "a classification may narrow what happens next; it "

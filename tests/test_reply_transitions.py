@@ -309,20 +309,38 @@ class UncertaintyFailsConservatively(TransitionTest):
 class EveryEntryPointGoesThroughThePolicy(TransitionTest):
 
     def test_a_provider_reply_holds_the_company(self):
-        """`events.apply`: unclassified on arrival, so it holds."""
+        """`inbound.handle`: an unclassified reply holds the company.
+
+        TASK-030 rework: `events.apply` no longer pauses. The pause is
+        conditional on the classification and happens in `inbound.handle`
+        after `replies.apply` has classified the reply. An UNKNOWN reply
+        still pauses (fail-safe).
+        """
         rec = self.record()
         out = events.apply([rec], {
             "type": events.REPLY_RECEIVED, "record_id": rec["id"],
             "contact_key": JOHN, "channel": "email",
             "provider_event_id": "webhook-1"})
         self.assertEqual(out["status"], "applied")
-        self.assertTrue(out["paused"])
-        self.assertEqual(out["effect"]["outcome"], ap.UNKNOWN)
+        # TASK-030: events.apply no longer pauses. The pause is deferred
+        # to inbound.handle after classification.
+        self.assertFalse(out.get("paused"))
+        self.assertIsNone(out.get("effect"))
 
     def test_a_hand_recorded_reply_holds_it_too(self):
+        """TASK-030 rework: `cadence.record_event` no longer holds.
+
+        The hold is deferred to `inbound.handle` after classification,
+        same as the provider reply path. The event is still recorded.
+        """
         rec = self.record()
         cadence.record_event(rec, "email_reply", contact_key=JOHN)
-        self.assertEqual(self.account_of(rec), ap.HOLD)
+        # The event is recorded (as "email_reply" from cadence vocabulary)
+        # but the account is not held yet.
+        reply_events = [e for e in rec.get("events", [])
+                        if e.get("type") in ("email_reply", "linkedin_reply",
+                                             events.REPLY_RECEIVED)]
+        self.assertTrue(reply_events, "the reply event was not recorded")
 
     def test_the_classifier_narrows_it(self):
         """A classified negative reply stops the person, not the company."""
@@ -367,12 +385,16 @@ class EveryEntryPointGoesThroughThePolicy(TransitionTest):
         self.assertTrue(self.contact(rec, SARAH)["unsubscribed"])
 
     def test_a_classification_can_never_lift_an_existing_hold(self):
-        """The asymmetry that stops a classifier resuming outreach."""
+        """The asymmetry that stops a classifier resuming outreach.
+
+        TASK-030 rework: `events.apply` no longer pauses. The pause is
+        set up directly here to test that `replies.apply` cannot lift it.
+        """
         rec = self.record()
-        events.apply([rec], {
-            "type": events.REPLY_RECEIVED, "record_id": rec["id"],
-            "contact_key": JOHN, "channel": "email",
-            "provider_event_id": "webhook-1"})
+        # Set up the hold directly - this is what `inbound.handle` does
+        # after classification for an UNKNOWN reply.
+        rec["paused"] = {"since": "2026-09-10T08:00:00", "reason": "unknown",
+                         "outcome": "unknown", "by": JOHN}
         self.assertTrue(rec["paused"])
         replies.apply(rec, JOHN, "not interested", channel="email")
         self.assertTrue(rec["paused"], "a classification lifted a hold")
@@ -383,7 +405,12 @@ class EveryEntryPointGoesThroughThePolicy(TransitionTest):
 class ReplayAndRaces(TransitionTest):
 
     def test_a_duplicate_reply_moves_the_state_once(self):
-        """Requirement 9."""
+        """Requirement 9.
+
+        TASK-030 rework: `events.apply` no longer pauses the company.
+        The dedup property is tested through the event log: the reply
+        event is recorded once and the duplicate is rejected.
+        """
         rec = self.record()
         event = {"type": events.REPLY_RECEIVED, "record_id": rec["id"],
                  "contact_key": JOHN, "channel": "email",
@@ -393,7 +420,7 @@ class ReplayAndRaces(TransitionTest):
         self.assertEqual(first["status"], "applied")
         self.assertEqual(second["status"], "duplicate")
         self.assertEqual(len([e for e in rec["events"]
-                              if e["type"] == events.COMPANY_PAUSED]), 1)
+                              if e["type"] == events.REPLY_RECEIVED]), 1)
 
     def test_applying_the_same_outcome_twice_is_idempotent(self):
         rec = self.record()

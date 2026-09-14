@@ -583,7 +583,9 @@ class TestTheCompanyWidePause(InboundTest):
         recs = self.seed_records()
         self.run_bison("Interested.", recs=recs)
         paused = recs[0]["paused"]
-        self.assertEqual(paused["reason"], events.REPLY_RECEIVED)
+        # TASK-030: the pause now records the classification as the reason,
+        # not just the event type. This is more informative.
+        self.assertEqual(paused["reason"], "positive")
         self.assertIn("since", paused)
 
     def test_a_linkedin_reply_pauses_the_email_track_too(self):

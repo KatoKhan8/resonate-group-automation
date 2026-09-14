@@ -754,10 +754,11 @@ def positive_reply_notification(rec, contact_key, verdict, config, campaign=None
                                 source=None, step=None, post=None):
     """The full path for a positive reply: pause first, notify second.
 
-    The ordering is the safety property. `events.apply()` has already paused the
-    company by the time this runs; this function only tells someone. If Slack
-    is off, misconfigured or broken, the pause is untouched and the alert stays
-    retryable.
+    The ordering is the safety property. `replies.apply()` has already paused
+    the account through `accountpolicy.apply_reply()` (a positive reply maps
+    to HOLD at ACCOUNT scope) before this function runs; this function only
+    tells someone. If Slack is off, misconfigured or broken, the pause is
+    untouched and the alert stays retryable.
 
     Where it goes is the workspace's decision, not the client config's. When
     the record's client resolves to exactly one workspace, that workspace's
