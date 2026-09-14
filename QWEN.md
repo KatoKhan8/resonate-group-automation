@@ -61,16 +61,34 @@ must never be drawn again.
                                    ("reply READY", no file reads)
     either way                     queued work STAYS QUEUED
 
-### What you cannot do here, and it is structural rather than a rule
+### YOU HAVE CREDENTIALS. This section used to say the opposite.
 
-`config/.env` lives only in Claude's worktree and holds `LLM_API_KEY`
-alongside the provider keys. So this worktree has no MODEL access either, and
-`py -3 -m src.generate --live` cannot run in it.
+**Corrected 2026-09-14 after it cost real work.** This file told workers that
+`config/.env` lived only in Claude's worktree and that `py -3 -m src.generate
+--live` could not run here. That was true in the morning and false by the
+evening, and TASK-075 deferred its regeneration on the strength of the stale
+paragraph while holding all three `LLM_*` variables the whole time.
 
-If a task needs generation or a provider read, say so under FINDINGS and take
-the next task. Do not attempt it, and do not fabricate a result. Qwen did
-exactly the right thing on TASK-052: it reported that it had no credentials
-and asked Claude to run the measurement rather than claiming a number.
+    config/.env   present in ALL EIGHT worktrees, 14 variables
+    model         LLM_API_KEY, LLM_BASE_URL, LLM_MODEL - generation WORKS
+    providers     BISON, HEYREACH, CONTACTOUT, APIFY, REOON, DELIVERABLE,
+                  BLITZ, and the workspace pin
+
+Check before you conclude you cannot: `ls config/.env` and read the variable
+NAMES. Never print a value. If a task says you have model access, you have it.
+
+**READS ONLY at every provider, and that is now a RULE rather than a
+property.** You hold real EmailBison and HeyReach keys. No write, no send, no
+campaign mutation, no lead added, no sequence replaced, no resume, no pause.
+The old protection was that the keys were absent; that protection is gone and
+was traded deliberately for throughput. Calling the MODEL is allowed and is
+the point of most generation tasks.
+
+If a task genuinely needs something you do not have, say so under FINDINGS
+and take the next task. Do not fabricate a result. Qwen did exactly the right
+thing on TASK-052: it reported that it had no credentials and asked Claude to
+run the measurement rather than claiming a number. Do that - but check first,
+because this paragraph was wrong once already.
 
 ### The queue has six states
 
