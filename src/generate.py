@@ -450,6 +450,13 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
         # and the prompt's rule for an absent block is to say nothing about
         # the product rather than invent one.
         block["product"] = clients.product(client or {})
+        # WHO IS WRITING. TASK-075: all 15 generated connection notes were
+        # anonymous - no sender name, no company, no role. The recipient
+        # received an anonymous compliment and an invitation. The sender
+        # block in the client config carries whatever detail is available;
+        # when it is empty the prompt must degrade safely and say what the
+        # sender does (from the product block) rather than invent a name.
+        block["sender_identity"] = clients.sender_identity(client or {})
         block["tone"] = ((client or {}).get("tone") or {}).get("linkedin")
         block["prior_contact"] = bool(claims.prior_contact(rec, contact))
         if step_key:
@@ -1394,6 +1401,50 @@ def _opener_written(rec, contact, client=None, campaign=None):
         if spec.get("channel") == "email":
             return bool(stored.get(spec["key"]))
     return False
+
+
+def generate_step_variants(step_key, rec, contact, model, client=None,
+                           campaign=None, n=5):
+    """Generate N materially different variants for one step.
+
+    The caller that proves this is connected: `plan` does not call this
+    directly yet (Claude owns live generation), but the function is
+    reachable from `generate` and the tests drive it through here, not
+    through `variantgen` directly.
+
+    Returns the result dict from `variantgen.generate_variants`:
+      - `variants`: list of variant dicts with recorded approaches
+      - `skipped`: list of (style, reason) for unavailable approaches
+      - `diversity_collisions`: synonym-swap pairs caught by the check
+      - `approaches_recorded`: list of style keys that were generated
+    """
+    from . import variantgen
+
+    config = client if isinstance(client, dict) else None
+    if client is not None and not isinstance(client, dict):
+        try:
+            config = clients.load(client)
+        except clients.ConfigError:
+            config = None
+
+    sequence = sequence_for(rec, config, contact, campaign)
+    channel = None
+    purpose = None
+    for spec in sequence or ():
+        if spec.get("key") == step_key:
+            channel = spec.get("channel")
+            _, ordinal, _ = position(sequence, step_key)
+            purpose = purpose_for(channel, ordinal, sequence=sequence)
+            break
+    if channel is None:
+        return {"variants": [], "skipped": [],
+                "diversity_collisions": [], "approaches_recorded": [],
+                "error": f"step {step_key!r} not found in sequence"}
+
+    step_context = {"key": step_key, "channel": channel, "purpose": purpose}
+    return variantgen.generate_variants(
+        step_context, rec, contact, model, channel=channel,
+        client=config, campaign=campaign, config=config, n=n)
 
 
 def run(model=None, live=False, ids=None, limit=None, client=None):

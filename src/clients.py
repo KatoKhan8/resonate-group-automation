@@ -399,6 +399,35 @@ def product(config):
     return out
 
 
+def sender_identity(config):
+    """Who is writing, for the connection note and the prompt.
+
+    TASK-075: all 15 generated connection notes were anonymous - no sender
+    name, no company, no role. The recipient received an anonymous compliment
+    and an invitation. The operator's hand-written fallback - "i work with
+    agencies on project profitability" - was better, and it is the floor.
+
+    Returns a dict with whatever sender detail the config provides. An empty
+    dict means the prompt must degrade safely: say what the sender does
+    (from the product block), never emit an empty slot, never invent a name.
+
+    The `sender:` block in the client config carries `mode` (already parsed
+    elsewhere) and may carry `name`, `role`, `company` and `works_on` - a
+    plain-language description of what the sender does, suitable for a
+    connection note. `works_on` is the load-bearing field for degradation:
+    when name and role are absent it is what the note says instead.
+    """
+    block = (config or {}).get("sender")
+    if not isinstance(block, dict):
+        return {}
+    out = {}
+    for key in ("name", "role", "company", "works_on"):
+        value = " ".join(str(block.get(key) or "").split())
+        if value:
+            out[key] = value
+    return out
+
+
 def cap_for(config, persona, default=1):
     value = (personas(config).get(persona) or {}).get("cap_per_domain", default)
     return int(value) if value is not None else default

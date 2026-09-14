@@ -5,6 +5,14 @@ domain: productive.test
 booking_link: https://productive.test/get-started/
 sender:
   mode: client_rep          # engine writes no signature, sending inbox adds it
+  # TASK-075: the connection note must say who is writing. These fields reach
+  # the prompt via `clients.sender_identity` and `generate.context_for`.
+  # `works_on` is the load-bearing fallback: when name and role are absent
+  # the note says what the sender does rather than inventing a name.
+  name: Ivan                # client representative
+  role: founder
+  company: Productive
+  works_on: project profitability for agencies
 market:
   must: services business that tracks time
   size_min_employees: 20
