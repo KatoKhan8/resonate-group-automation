@@ -176,6 +176,9 @@ EMAIL_EIGHT_LADDER = (
 #      be, and the ladder now prevents that by naming what is already spent.
 LINKEDIN_DEFAULT_LADDER = (
     # RUNG 1: THE CONNECTION REQUEST. Must say WHO is writing.
+    # TASK-087: The connection request is a fixed form (LinkedIn constrains
+    # it), so the brief describes the form AND the job together. Variant
+    # generation does not apply to connection requests.
     "A connection request note. Say who you are in one clause - your name "
     "and what you do, or what you work on if no sender detail is available. "
     "Then one line on why you are writing to them specifically, in the "
@@ -183,38 +186,50 @@ LINKEDIN_DEFAULT_LADDER = (
     "question that needs a considered answer. The recipient must learn WHO "
     "is contacting them from this note alone.",
     # RUNG 2: FIRST MESSAGE. Builds on the connection note.
-    "A short first message. The connection note said who you are and why you "
-    "connected; this message asks a question about how they handle one "
-    "specific part of their operation today. Pick an angle DIFFERENT from the "
-    "one the connection note used. If the note named their hiring pipeline, "
-    "ask about their project margin; if it named profitability, ask about "
-    "resourcing visibility.",
+    # TASK-087: The brief used to say "this message asks a question about
+    # how they handle one specific part of their operation today". That
+    # prescribed the FORM (a question) and every variant approach collapsed
+    # to the same structure: opening=question, cta=question. The fix
+    # separates the JOB (establish their current approach to X) from the
+    # FORM (which the variant approach controls).
+    "Establish how they handle one specific part of their operation today. "
+    "Pick an angle DIFFERENT from the one the connection note used. If the "
+    "note named their hiring pipeline, pick their project margin; if it "
+    "named profitability, pick resourcing visibility. The connection note "
+    "already said who you are and why you connected.",
     # RUNG 3: SECOND MESSAGE. Builds on both previous messages.
-    "A second message on a DIFFERENT operational angle from both the "
-    "connection note and the first message. The first message asked how they "
-    "handle something; this one names the consequence of not having "
-    "visibility - what goes wrong, what gets rebuilt after the fact rather "
-    "than seen during the work. Do not repeat the angle either previous step "
-    "used.",
+    # TASK-087: The brief used to say "this one names the consequence"
+    # (prescriptive) and referenced the previous rung's form ("The first "
+    # message asked how they handle something"). Now describes only the job.
+    "Name the consequence of not having visibility - what goes wrong, what "
+    "gets rebuilt after the fact rather than seen during the work. Pick a "
+    "DIFFERENT operational angle from both the connection note and the "
+    "first message.",
     # RUNG 4: THE PRODUCT RUNG. The recipient learns what is being offered.
-    "SAY WHAT THE PRODUCT IS. The previous three messages asked questions and "
-    "named problems; this one gives the answer. Use the product's name in the "
-    "message, and say in one line what it joins up, choosing only the "
-    "capabilities in `product.capabilities` that fit this person's angle. "
-    "This is the rung the recipient learns what they are being offered on, "
-    "and it is a statement, not a question: by now they have been asked three "
-    "times and told nothing. Evidence belongs here if there is any; if there "
-    "is none, describe the pattern as ours rather than theirs.",
+    # TASK-087: The brief used to say "it is a statement, not a question: "
+    # "by now they have been asked three times and told nothing". That "it "
+    # "is a statement" prescribed the form. The job is to name the product.
+    # The reference to the PREVIOUS steps is deliberate and is TASK-075's
+    # progression fix - it is what stops all six rungs collapsing into one
+    # discovery question. TASK-087 removed form instructions from the rungs so
+    # a variant approach could control structure, and stripped this reference
+    # with them. It is restored here WITHOUT a form instruction: it says what
+    # the earlier steps ESTABLISHED, not what shape this one must take.
+    "The previous steps established the problem and have named no solution. "
+    "Use the product's name and say in one line what it joins up, choosing "
+    "only the capabilities in `product.capabilities` that fit this person's "
+    "angle. This is the rung where the recipient learns what they are being "
+    "offered. Evidence belongs here if there is any; if there is none, "
+    "describe the pattern as ours rather than theirs.",
     # RUNG 5: FINAL FOLLOW-UP. Different from everything before.
-    "A concise final follow-up. The sequence has introduced you, asked two "
-    "operational questions, named a problem, and said what the product is. "
-    "This message adds one new angle no previous step touched - a different "
-    "part of the business, or a different consequence - in one line and one "
-    "question. No recap of the previous messages.",
+    # TASK-087: The brief used to say "in one line and one question" "
+    # (prescribing the form). Now describes only the job.
+    "Add one new angle no previous step touched - a different part of the "
+    "business, or a different consequence. No recap of the previous "
+    "messages.",
     # RUNG 6: THE CLOSE.
-    "Close the loop. The sequence has done its work; this message asks for "
-    "nothing beyond an easy no. No new pitch, no summary of what was said, "
-    "just permission to stop.",
+    "Close the loop. The sequence has done its work. No new pitch, no "
+    "summary of what was said.",
 )
 
 LADDER_REGISTRY = {

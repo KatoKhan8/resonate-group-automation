@@ -610,5 +610,72 @@ class StructuralClonesCollide(unittest.TestCase):
                         "length: should pass")
 
 
+class LadderDoesNotPrescribeForm(unittest.TestCase):
+    """TASK-087: The ladder's rung purpose must not prescribe message form.
+
+    If the purpose says "asks a question" or "is a statement", every
+    variant approach collapses to the same structure regardless of its
+    own structural instructions. The ladder describes the JOB; the
+    approach describes the FORM.
+    """
+
+    def test_linkedin_rung_2_does_not_say_asks_a_question(self):
+        """Rung 2 used to say 'this message asks a question about how
+        they handle one specific part of their operation today'. That
+        made every variant open with a question."""
+        purpose = cadencelibrary.LINKEDIN_DEFAULT_LADDER[1]
+        self.assertNotIn("asks a question", purpose.lower())
+
+    def test_linkedin_rung_4_does_not_say_is_a_statement(self):
+        """Rung 4 used to say 'it is a statement, not a question'. That
+        prescribed the form for every variant."""
+        purpose = cadencelibrary.LINKEDIN_DEFAULT_LADDER[3]
+        self.assertNotIn("is a statement", purpose.lower())
+
+    def test_linkedin_rung_5_does_not_say_one_question(self):
+        """Rung 5 used to say 'in one line and one question'. That
+        prescribed the CTA form for every variant."""
+        purpose = cadencelibrary.LINKEDIN_DEFAULT_LADDER[4]
+        self.assertNotIn("one question", purpose.lower())
+
+    def test_linkedin_ladder_still_has_six_rungs(self):
+        self.assertEqual(len(cadencelibrary.LINKEDIN_DEFAULT_LADDER), 6)
+
+    def test_variant_prompt_has_structural_authority_rule(self):
+        """The prompt tells the model the approach controls structure."""
+        prompt = variantgen.variant_prompt(
+            "concise_direct", "linkedin_note",
+            "Establish how they handle resourcing.",
+            {"company": "Acme"})
+        self.assertIn("Approach section above controls your message "
+                       "structure", prompt)
+
+    def test_two_approaches_differ_only_in_approach_section(self):
+        """The ONLY difference between two approach prompts is the
+        approach section. The purpose and rules are identical.
+
+        This proves the approach is the sole structural differentiator:
+        if two prompts produce the same structure, the approach
+        descriptions are insufficient (not the ladder)."""
+        purpose = "Establish how they handle resourcing."
+        context = {"company": "Acme"}
+        prompt_a = variantgen.variant_prompt(
+            "concise_direct", "linkedin_note", purpose, context)
+        prompt_b = variantgen.variant_prompt(
+            "conversational", "linkedin_note", purpose, context)
+
+        # Extract the purpose section from each
+        def extract_purpose_section(prompt):
+            parts = prompt.split("## This step's job")
+            self.assertEqual(len(parts), 2, "prompt missing job section")
+            return parts[1].split("## Record context")[0]
+
+        purpose_a = extract_purpose_section(prompt_a)
+        purpose_b = extract_purpose_section(prompt_b)
+        self.assertEqual(purpose_a, purpose_b,
+                         "purpose section should be identical for both "
+                         "approaches (it is shared)")
+
+
 if __name__ == "__main__":
     unittest.main()

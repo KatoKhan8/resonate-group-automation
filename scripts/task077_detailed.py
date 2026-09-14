@@ -283,9 +283,15 @@ def main():
 
     # Check the prompt format issue
     print("\n1. PROMPT FORMAT BUG:")
-    prompt = variantgen.variant_prompt("concise_direct", "test purpose", {
-        "company": "Test", "facts": {"name": "Test"},
-    })
+    # TASK-084 gave variant_prompt a `step` argument when it started reusing
+    # the real prompt template for the JSON contract. This diagnostic still
+    # called the three-argument form and died at the very end of an otherwise
+    # complete run, which is a stale caller rather than a product defect.
+    prompt = variantgen.variant_prompt(
+        "concise_direct",
+        {"key": "li2", "channel": "linkedin", "purpose": "test purpose"},
+        "test purpose",
+        {"company": "Test", "facts": {"name": "Test"}})
     has_json = "json" in prompt.lower()
     has_return = "return" in prompt.lower()
     print(f"   variant_prompt mentions 'json': {has_json}")
