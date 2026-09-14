@@ -84,3 +84,63 @@ this copy is four askings of the same question.
 
 A gate that passes it is not a better gate. It is the defect returning with
 the alarm switched off.
+
+---
+
+## THE COUNTER-ARGUMENT, AND WHY IT IS REJECTED
+
+TASK-061 reached the opposite conclusion and it deserves answering in full,
+because it is a reasonable argument that happens to be wrong:
+
+> "The shared words are SUBJECT words, not STRUCTURAL. Every message in this
+> sequence is ABOUT capacity and utilisation because that is the
+> conversation. The model is being asked to write four messages about
+> capacity management without using the words 'capacity', 'projects' or
+> 'utilisation' - which is the entire subject. The model is not paraphrasing
+> the same idea four times."
+
+**It is paraphrasing the same idea four times.** Here is the stored copy:
+
+    li2  "how do you currently track utilisation and capacity across your
+          live projects?"
+    li3  "how are you currently managing capacity across your teams?"
+    li4  "challenges in tracking utilisation and capacity across your
+          projects?"
+    li5  "any thoughts on improving utilisation and capacity across your
+          live projects?"
+
+Four questions. One question.
+
+**And the ladder never asked for four messages about capacity.** What it
+actually asks:
+
+    li2  a first message, one operational angle, put as a question
+    li3  a SECOND, DIFFERENT operational angle, naming the consequence
+    li4  SAY WHAT THE PRODUCT IS - name it, say what it joins up
+    li5  a concise final follow-up, no new argument
+    li6  close the loop, an easy no
+
+`li4`'s job is the product. `li6`'s job is an exit. Neither is a capacity
+question. The model collapsed five different jobs into one subject, and the
+gate noticed. That is the gate doing exactly what it exists for.
+
+Widening `SUBJECT_VOCABULARY` would make the gate accept this. It would not
+make the copy better; it would remove the only thing currently reporting that
+the copy is bad. Measured: discounting the client's angle vocabulary takes
+this contact from five collisions to zero, and the copy it then passes is the
+four questions above.
+
+**REJECTED. The vocabulary stays narrow.**
+
+## WHAT TASK-061 GOT RIGHT, AND IT IS THE IMPORTANT HALF
+
+Eighteen model calls - six steps, three attempts each - ALL FAILED, and
+nothing was stored. Two full passes produced an identical blocker.
+
+That is the real finding, and it is not about vocabulary. Each fresh
+candidate is compared against the five stale notes that are still there, so a
+new `li2` must differ from four messages about capacity at once. It cannot,
+and the one it replaces stays. The loop cannot escape its own starting state.
+
+The fix is TASK-068: regenerate the colliding set AS A SET, so no member of
+the old set constrains the new one.

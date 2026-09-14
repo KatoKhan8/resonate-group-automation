@@ -7,6 +7,60 @@ campaign -> lead -> step -> reply can be joined. Read its output first. If
 per-step attribution turns out to be unavailable, this task still runs -
 at campaign level - and says so rather than inventing the step.
 
+## STEP-LEVEL WHEREVER PROVIDER TRUTH ALLOWS IT
+
+**Do not only compare whole campaigns.** A campaign-level reply rate cannot
+tell anybody what to change. The row this analysis is built on is one
+OUTBOUND EMAIL, not one campaign:
+
+    campaign -> lead -> email step -> delay -> subject/body/variant
+             -> send timestamp -> reply -> classified outcome
+
+Build that join as far as TASK-069 establishes it is possible, and where it
+breaks, say where. If the step cannot be determined for a reply, report what
+CAN be determined rather than inventing the step - campaign and lead may
+still carry cadence-shape learning.
+
+### The specific question: does a later follow-up earn its place?
+
+    email 1 vs 2 vs 3 vs 4 vs 5+
+
+For each position: how many sent, how many replied, how many POSITIVE.
+
+And the one that actually decides cadence length - **INCREMENTAL
+contribution**. Not "email 4 has a 3% reply rate", but "of the leads who had
+not replied by email 3, X% replied to email 4". A late step that only
+collects replies from people who would have replied anyway is not earning its
+place; a late step that reaches people the earlier ones did not is.
+
+Report both, because they are different numbers and the second is the one
+nobody has.
+
+### Segment where the sample supports it, and only then
+
+By ICP, title family, seniority, company type, size, geography. **State n for
+every cut and refuse the cut when n is too small** rather than reporting a
+percentage of eleven. `docs/COPY-EXPERIMENTS.md` records why.
+
+## UNKNOWN IS NOT NEGATIVE - CROSS-REFERENCE TASK-066/067
+
+This is a correctness requirement, not a preference.
+
+TASK-058 measured that **73.6% of LinkedIn replies are unreadable** to the
+classifier, and TASK-067 is establishing the same figure for email - the
+earlier estimate was 46.5%. A reply the classifier cannot read is UNKNOWN.
+
+**An UNKNOWN must never be counted as a negative, and never dropped
+silently.** Both turn a measurement gap into a finding about prospects.
+Carry `unknown` as its own column in every table, with its count, and say
+explicitly what fraction of each cell it represents. A positive rate computed
+over the readable subset is a rate over a BIASED SAMPLE and must be labelled
+as such wherever it appears.
+
+Where TASK-067's thread-context classifier has landed, use it and say so.
+Where it has not, use what exists and report the unreadable fraction beside
+every number.
+
 ## THE QUESTIONS, IN PRIORITY ORDER
 
 1. **How many steps did the campaigns that produced POSITIVE replies use?**
