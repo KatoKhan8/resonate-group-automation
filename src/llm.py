@@ -19,6 +19,8 @@ contact. `check_evidence` enforces that before anything is stored.
 import json
 import os
 import re
+import subprocess
+import tempfile
 import time
 
 MAX_ATTEMPTS = 3
@@ -311,15 +313,173 @@ class OpenAICompatibleModel:
         return text
 
 
+def _qwen_json_schema():
+    """Derive a JSON Schema from `SCHEMAS` for the CLI's `--json-schema` flag.
+
+    Every step's required and optional fields become properties of one object.
+    The real per-step validation happens in `ask` via `validate(step, ...)`;
+    this schema only constrains the CLI's output to be a JSON object with
+    known-shaped values, so the agent cannot return prose.
+
+    Derived from `SCHEMAS` rather than restated: if a step gains a field,
+    this gains it too, and the two cannot drift.
+    """
+    properties = {}
+    for spec in SCHEMAS.values():
+        for field in spec["required"]:
+            if field not in properties:
+                properties[field] = _schema_type_for(field)
+        for field in spec["optional"]:
+            if field not in properties:
+                properties[field] = _schema_type_for(field)
+    return {"type": "object", "properties": properties}
+
+
+def _schema_type_for(field):
+    if field == "evidence":
+        return {"type": "array", "items": {"type": "string"}}
+    if field == "died_on":
+        return {"type": ["string", "null"]}
+    return {"type": "string"}
+
+
+_DEFAULT_CLI_PATH = r"C:\Users\Zvonimir\AppData\Local\qwen-code\bin\qwen.cmd"
+_CLI_WALL_TIME = 120
+
+
+class QwenCliModel:
+    """Qwen Code CLI behind the same `complete(prompt) -> str` seam.
+
+    THE CLI IS AN AGENT, NOT A COMPLETION API. Left alone it narrates, uses
+    tools and reads files. A model that opens `work/queue.jsonl` to "help"
+    has just put another client's data into a prompt. So:
+
+    - `--bare` suppresses the welcome banner and reduces tool noise.
+    - `--json-schema` registers a synthetic `structured_output` tool; the
+      session ends on the first valid call, which is exactly the strict-JSON
+      contract `llm.ask` already enforces.
+    - `-y` is the headless flag. `--approval-mode auto` CANNOT run headless -
+      it warns "requires user approval but cannot execute in non-interactive
+      mode" and does nothing. Measured 2026-09-13.
+    - The prompt is passed as an argument-list element, never through a shell.
+      The prompt contains untrusted record data by construction (`llm.fence`
+      exists for exactly that reason) and must never reach `shell=True`.
+    - `--max-wall-time` bounds the subprocess. Exit 55 is a wall-time abort
+      and is classified as `ModelUnavailable`, not `ModelError`: the record
+      did nothing wrong.
+
+    `qwen serve` is NOT the route. It is a session daemon with its own
+    protocol, not an OpenAI-compatible `/chat/completions`, so
+    `OpenAICompatibleModel` cannot be pointed at it. Measured 2026-09-13.
+    """
+
+    name = "qwen-cli"
+
+    def __init__(self, exe=None, timeout=None):
+        self._exe = (exe or os.environ.get("QWEN_CLI_PATH")
+                     or _DEFAULT_CLI_PATH)
+        self._timeout = timeout or _CLI_WALL_TIME
+        self.calls = []
+
+    def configured(self):
+        return os.path.isfile(self._exe)
+
+    def why_not(self):
+        if self.configured():
+            return ""
+        return (f"Qwen CLI not found at {self._exe}. Set QWEN_CLI_PATH to "
+                f"the absolute path of the qwen executable.")
+
+    def complete(self, prompt, temperature=0):
+        if not self.configured():
+            raise ModelError(self.why_not())
+
+        schema = json.dumps(_qwen_json_schema())
+        argv = [
+            self._exe,
+            "-y",
+            "--bare",
+            "--json-schema", schema,
+            "--max-wall-time", str(self._timeout),
+            "-o", "text",
+            "--",
+            prompt,
+        ]
+
+        started = time.monotonic()
+        try:
+            # RUN IT SOMEWHERE WITH NOTHING IN IT.
+            #
+            # `-y` auto-approves every tool call, and Qwen Code is an AGENT:
+            # left alone it reads files to be helpful. Without `cwd` it starts
+            # in the repository root, two directories above `work/queue.jsonl`
+            # - so a model asked to write one prospect's email could open the
+            # whole estate, and `docs/CLAUDE-HANDOFF.md` warned about exactly
+            # this: "a model that opens work/queue.jsonl to be helpful has
+            # just put another client's data into a prompt".
+            #
+            # A fresh empty directory per call is the cheapest isolation that
+            # actually isolates. It is not a sandbox - the process could still
+            # walk upwards - but it removes the accident, which is the failure
+            # this guards against. A real sandbox is `--sandbox`, which the
+            # CLI warns is absent and which is a separate decision.
+            with tempfile.TemporaryDirectory(prefix="qwen-cli-") as empty:
+                proc = subprocess.run(
+                    argv,
+                    capture_output=True,
+                    text=True,
+                    timeout=self._timeout + 15,
+                    cwd=empty,
+                )
+        except subprocess.TimeoutExpired:
+            raise ModelUnavailable(
+                f"qwen cli timed out after {self._timeout}s")
+        elapsed = time.monotonic() - started
+
+        if proc.returncode == 55:
+            raise ModelUnavailable(
+                f"qwen cli hit its wall-time limit ({self._timeout}s)")
+        if proc.returncode != 0:
+            stderr_tail = (proc.stderr or "").strip()[-200:]
+            raise ModelUnavailable(
+                f"qwen cli exited {proc.returncode}: {stderr_tail}")
+
+        text = (proc.stdout or "").strip()
+        if not text:
+            raise ModelError(
+                "qwen cli produced no output. Refusing rather than returning "
+                "'', which would be retried as a schema error and reported "
+                "as the wrong fault")
+
+        self.calls.append({
+            "model": "qwen-cli",
+            "seconds": round(elapsed, 3),
+            "chars": len(text),
+        })
+        return text
+
+
 def from_env():
     """The configured model, or `NoModel` if nothing is configured.
 
     A helper rather than a default: `generate.run` still falls back to
     `NoModel`, so a credential sitting in the environment never silently turns
     a dry run into a paid one.
+
+    Selection order: OpenAI-compatible endpoint first (the paid path, which
+    needs a key and an endpoint), then Qwen CLI (the local path, which needs
+    an executable). `NoModel` is the default: a credential or an executable
+    being present must never turn a dry run into a paid or a long one. A
+    caller has to call `from_env()` explicitly, which keeps "a configuration
+    exists" and "this run may spend time or money" as two separate decisions.
     """
     model = OpenAICompatibleModel()
-    return model if model.configured() else NoModel()
+    if model.configured():
+        return model
+    qwen = QwenCliModel()
+    if qwen.configured():
+        return qwen
+    return NoModel()
 
 
 # ---------------------------------------------------------------- schemas

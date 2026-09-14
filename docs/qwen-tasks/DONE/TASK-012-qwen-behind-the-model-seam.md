@@ -131,10 +131,56 @@ alone, and no caller changed.
 
 ## RESULT
 
-STATUS: TODO
-COMMIT SHA:
-TESTS:
+STATUS: DONE
+COMMIT SHA: e78b863
+TESTS: 25 new tests in tests/test_qwen_cli_model.py, all passing. 144 broader
+  tests (test_generate, test_run, test_linkedin_note, test_validate,
+  test_a_model_is_configured_or_it_is_not, test_no_model_is_not_a_bad_record)
+  all passing. One existing test updated: test_from_env_falls_back_to_nomodel
+  now also mocks os.path.isfile since from_env() checks for the CLI too.
 FILES CHANGED:
+  src/llm.py - added QwenCliModel class, _qwen_json_schema(), _schema_type_for(),
+    updated from_env() to select Qwen CLI when OpenAI-compatible is not configured
+  tests/test_qwen_cli_model.py - new, 25 tests
+  tests/test_a_model_is_configured_or_it_is_not.py - one test updated
 FINDINGS:
+  1. Caller chain proven:
+     grep -rn "QwenCliModel" src/ -> llm.py:349 (definition), llm.py:461 (from_env)
+     grep -rn "_qwen_json_schema" src/ -> llm.py:315 (definition), llm.py:396 (complete)
+     from_env() is consumed by generate.main, the real entry point.
+  2. No test spawns a real CLI: every test mocks subprocess.run, which is the
+     function QwenCliModel.complete calls. The mock intercepts before any
+     process is spawned. tests/offline.py blocks sockets as a second layer,
+     but the subprocess mock is the primary proof.
+  3. CLI flags used and why:
+     - `-y` headless mode. `--approval-mode auto` cannot run headless - it
+       warns and does nothing. Measured 2026-09-13.
+     - `--bare` suppresses the welcome banner and reduces tool noise.
+     - `--json-schema <derived>` registers a synthetic structured_output tool;
+       the session ends on the first valid call. Schema derived from
+       llm.SCHEMAS, not restated.
+     - `--max-wall-time 120` bounds the subprocess. Exit 55 is wall-time abort.
+     - `-o text` returns plain text output (the JSON string).
+     - `--` separates CLI flags from the positional prompt.
+     - The prompt is passed as an argument-list element, never shell=True.
+  4. Failure classification:
+     - subprocess.TimeoutExpired -> ModelUnavailable
+     - exit 55 (wall-time abort) -> ModelUnavailable
+     - non-zero exit (process failure) -> ModelUnavailable
+     - empty stdout -> ModelError
+     - generate_record raises on ModelUnavailable (does not hold the record)
+     - generate_record holds on ModelError (the record's business)
 RISKS:
+  - The CLI executable path is hardcoded as a default. QWEN_CLI_PATH env var
+    overrides it. If the CLI moves, the default must be updated.
+  - The JSON schema is a union of all step schemas. Per-step validation still
+    happens in llm.ask via validate(step, ...). The CLI schema only ensures
+    the output is a JSON object with known-shaped values.
+  - The subprocess timeout is 15s longer than --max-wall-time to allow for
+    CLI startup overhead. If the CLI is very slow to start, this may need
+    tuning.
 RECOMMENDED CLAUDE ACTION:
+  Review the implementation and tests. The done condition is met: `python -m
+  src.generate --live` can be pointed at Qwen by configuration alone (set
+  QWEN_CLI_PATH or ensure the default path exists), and no caller changed.
+  TASK-013 (routing and QA) can now build on this foundation.
