@@ -234,15 +234,18 @@ def main(argv=None):
                    help="Output JSON instead of text")
     args = p.parse_args(argv)
 
-    if not os.path.exists(store.queue_path()):
-        print(f"ERROR: queue not found at {store.queue_path()}",
+    qpath = store.queue_path()
+    if not os.path.exists(qpath):
+        print(f"ERROR: queue not found at {qpath}",
               file=sys.stderr)
-        print("This script must be run from a worktree with work/ present.",
+        print("This script must be run from a worktree with work/ present,",
               file=sys.stderr)
+        print("or set QUEUE=/path/to/queue.jsonl", file=sys.stderr)
         return 1
 
-    with store.transaction() as recs:
-        result = analyze_queue(recs)
+    # READ ONLY - no transaction, no lock, no write-back.
+    recs = store.read_jsonl(qpath)
+    result = analyze_queue(recs)
 
     if args.json:
         print(json.dumps(result, indent=2, default=str))
