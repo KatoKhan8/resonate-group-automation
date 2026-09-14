@@ -387,7 +387,7 @@ def audit_meeting():
         ),
         "cheapest_read": (
             "Scan the 30 positive LinkedIn reply bodies in "
-            "replies_linkedin.jsonl for calendar-link patterns (Calendly, "
+            "replies_linkedin.jsonl for calendar-link patterns (a booking link, "
             "cal.com, etc.). If any carry a calendar link, the classifier "
             "could be extended with a MEETING category triggered by URL "
             "pattern rather than text pattern. Cost: one grep over 30 "
@@ -500,7 +500,7 @@ def quantify_costs():
                     "Design decision: what counts as a meeting? Calendar "
                     "link in reply body is detectable but does not prove "
                     "the meeting happened. A calendar integration "
-                    "(Calendly API, Google Calendar) is a new provider "
+                    "(a booking-tool API, a calendar API) is a new provider "
                     "entirely."
                 ),
             },
