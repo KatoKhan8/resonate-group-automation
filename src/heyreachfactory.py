@@ -657,6 +657,126 @@ def _plan(campaign, recs, config, *, include_inmail=False,
     # contact no longer decides what the whole campaign says.
     complete = [c for c in per_contact
                 if not c["missing"] and not c["unsupported"]]
+
+    # SEMANTIC DUPLICATE DETECTION. A sequence whose steps rephrase one
+    # another cannot be written. The operator observed "how do you currently
+    # ensure profitability is visible in your projects?" appearing repeatedly
+    # in the real campaign - not as an exact repeat (the existing path test
+    # catches that) but as paraphrases wearing different words.
+    #
+    # EVERY COMPLETE CONTACT, NOT THE FIRST ONE.
+    #
+    # This ran on `complete[0]` and justified it: "all contacts share the same
+    # sequence structure, so if one contact's copy is progressive, every
+    # contact's is". MEASURED on the real cohort 2026-09-14 and it is false -
+    # 2 of the 10 pushable contacts carry copy that repeats itself, and
+    # NEITHER of them is the first. `ranjan-damodar` has seven collisions and
+    # the campaign was accepted because `jacob-faertz` sorted ahead of him.
+    #
+    # Copy is generated PER CONTACT, against that contact's own evidence, in
+    # three attempts that can each fail differently. Structure is shared;
+    # words are not, and it is the words that repeat.
+    #
+    # This is the same defect `4f93f2f` was written about - one contact
+    # deciding what the whole campaign does - reappearing inside the checker
+    # meant to prevent it. The refusal names WHICH contact, because "the
+    # sequence repeats itself" with ten contacts in the plan sends a reader
+    # to the wrong one.
+    #
+    # `quality.campaign_repetition` discounts the company name and the
+    # subject vocabulary (profitability, margin, etc.) because every message
+    # in a Productive sequence names the company and argues the subject.
+    # Those are what the conversation IS, not what it says.
+    if complete:
+        from . import quality
+        # `first_fields` is gone: the loop below reads each contact's own.
+        # THE PER-LEAD COPY IS WHAT IS COMPARED, NOT THE GRAPH'S MERGE
+        # VARIABLES. The graph carries placeholders ({connection_note},
+        # {connected_1}, ...) and comparing those would find nothing,
+        # every time, forever - the "evaluator reporting INSUFFICIENT_DATA
+        # because nothing writes the field it reads" defect. The real words
+        # travel in custom_fields, one dict per contact, keyed by role.
+        #
+        # THE CHECK IS PATH-BASED, NOT GLOBAL. A prospect walks one
+        # execution path through the graph. connected_1 and message_2
+        # sit on different branches (already-connected vs cold), and a
+        # prospect receives one or the other, never both. A global
+        # comparison would flag them as duplicates (they share the same
+        # source step, li2), but no prospect sees both. So the check
+        # walks the sequence graph, extracts the MESSAGE roles from each
+        # root-to-leaf path, and checks repetition within each path.
+        #
+        # The previous wiring mapped roles back to step keys, so li2
+        # appeared twice with identical text and was compared against
+        # itself - a guaranteed false positive that refused every plan.
+        company_name = None
+        for rec in recs:
+            if str(rec.get("id")) in wanted:
+                company_name = rec.get("company")
+                break
+
+        def _extract_paths(node):
+            """MESSAGE roles along each root-to-leaf path in the graph."""
+            if not isinstance(node, dict):
+                return [[]]
+            roles = []
+            if node.get("nodeType") == "MESSAGE":
+                payload = node.get("payload") or {}
+                messages = payload.get("messages") or []
+                if messages and isinstance(messages[0], str):
+                    step = messages[0].strip("{}")
+                    if step:
+                        roles = [step]
+            children = []
+            for branch_key in ("conditionalNode", "unconditionalNode"):
+                child = node.get(branch_key)
+                if isinstance(child, dict):
+                    children.append(child)
+            if not children:
+                return [roles]
+            paths = []
+            for child in children:
+                for sub in _extract_paths(child):
+                    paths.append(roles + sub)
+            return paths
+
+        all_paths = _extract_paths(sequence)
+        offender = None
+        collisions = []
+        for entry in complete:
+            for path_roles in all_paths:
+                steps_for_check = []
+                for role in path_roles:
+                    text = (entry["custom_fields"] or {}).get(role)
+                    if isinstance(text, str) and text.strip():
+                        steps_for_check.append({"key": role, "text": text})
+                if len(steps_for_check) < 2:
+                    continue
+                found = quality.campaign_repetition(
+                    steps_for_check, company_name=company_name)
+                if found:
+                    offender, collisions = entry, found
+                    break
+            if collisions:
+                break
+        if collisions:
+            parts = []
+            for c in collisions[:6]:
+                shared = ", ".join(c["shared"][:5])
+                parts.append(
+                    f"{c['step_a']!r} and {c['step_b']!r} share "
+                    f"{c['shared_words']} words ({shared})")
+            who = (f"{offender['record_id']}/{offender['contact_key']}"
+                   if offender else "a contact")
+            raise FactoryRefused(
+                f"{who}'s copy repeats itself: "
+                f"{'; '.join(parts)}"
+                f"{' ...' if len(collisions) > 6 else ''}. "
+                f"Each step must make a different argument; paraphrases "
+                f"of the same idea are not progression. Regenerate that "
+                f"contact's cadence steps so each one argues a different "
+                f"angle.")
+
     if not complete:
         # THREE DIFFERENT REFUSALS, because they are three different problems
         # and one message covering all of them sends a reader to the wrong

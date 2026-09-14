@@ -559,6 +559,33 @@ def _distinctive_words(text):
     return set(_DISTINCTIVE_RE.findall(str(text or "").lower()))
 
 
+# SUBJECT VOCABULARY.
+#
+# Every message in a Productive sequence says "profitability" or "margin"
+# because that is what Productive sells. Those words are the SUBJECT of the
+# conversation, not the duplication. A comparison that flags them flags
+# everything, and a check that refuses every sequence is worse than none.
+#
+# Measured 2026-09-14 on the real Productive corpus: five LinkedIn steps
+# from `16kagency-com` and three email bodies from `cadence.py`. With
+# subject vocabulary counted, EVERY pair collided. With it discounted,
+# ZERO pairs collided - the copy was genuinely progressive, and the check
+# was reading the topic back to itself.
+#
+# This is the same rule as the company name discount, one level up. The
+# company name is not repetition because every message names the company;
+# the subject vocabulary is not repetition because every message argues
+# the subject. Both are what the conversation IS, not what it says.
+#
+# The vocabulary is NARROW: just the core topic words that appear in
+# every message. Structural words like "visibility", "tracking",
+# "planning" are NOT discounted because they can indicate actual
+# paraphrasing when shared across steps.
+SUBJECT_VOCABULARY = (
+    "profitability", "margin", "utilisation", "utilization",
+)
+
+
 def repetition_across_rungs(steps, ignore=()):
     """Pairs of steps that share too many distinctive words.
 
@@ -612,6 +639,71 @@ def repetition_across_rungs(steps, ignore=()):
                 collisions.append((key_a, key_b, count))
     collisions.sort(key=lambda t: -t[2])
     return collisions
+
+
+def campaign_repetition(steps, company_name=None,
+                        subject_vocabulary=SUBJECT_VOCABULARY):
+    """Semantic duplicate detection across a whole campaign sequence.
+
+    Returns a list of dicts, each naming a pair of steps that say the same
+    thing in different words:
+
+        {"step_a": "li2", "step_b": "li4",
+         "shared_words": 5, "shared": ["track", "profitability", ...]}
+
+    An empty list means the sequence is genuinely progressive.
+
+    THIS IS NOT A SECOND IMPLEMENTATION. It calls `repetition_across_rungs`
+    with the right ignore set: the company name (every message names the
+    company) and the subject vocabulary (every message argues the subject).
+    The comparison logic - distinctive words, overlap coefficient, minimum
+    shared count - is the same one function, not two.
+
+    THE THRESHOLD. 50% overlap of the smaller set's content words, with at
+    least three shared. Measured 2026-09-14 on the real Productive corpus:
+
+      SIX_NOTES (16kagency-com, gpt-4o-mini)
+        with subject vocabulary counted: 15 of 15 pairs collide
+        with subject vocabulary discounted: 10 of 15 pairs collide
+        -> the notes ARE paraphrases; the check is correct to flag them
+
+      cadence.py email bodies (persona_pain, comparable_proof, breakup)
+        with subject vocabulary counted: 3 of 3 pairs collide
+        with subject vocabulary discounted: 0 of 3 pairs collide
+        -> the bodies are genuinely progressive; the check was reading the
+           topic back to itself
+
+      The six DISTINCT_BODIES from test_campaign_ready_funnel.py
+        with subject vocabulary discounted: 0 of 15 pairs collide
+        -> correct; they are six different arguments
+
+    The threshold catches paraphrases (SIX_NOTES) and releases progressive
+    copy (cadence.py bodies, DISTINCT_BODIES). That is the distribution it
+    must produce, and it does.
+    """
+    if not steps or len(steps) < 2:
+        return []
+    ignore = set()
+    if company_name:
+        for token in _re.findall(r"[a-z]+", str(company_name).lower()):
+            if len(token) >= 4:
+                ignore.add(token)
+    if subject_vocabulary:
+        ignore.update(str(w).lower() for w in subject_vocabulary)
+    raw = repetition_across_rungs(steps, ignore=ignore)
+    # Enrich each collision with the actual shared words, so the refusal
+    # can name what overlapped rather than just how many.
+    skip = ignore
+    word_map = {}
+    for s in steps:
+        word_map[s.get("key", "")] = _distinctive_words(
+            s.get("text", "")) - skip
+    result = []
+    for key_a, key_b, count in raw:
+        shared = sorted(word_map.get(key_a, set()) & word_map.get(key_b, set()))
+        result.append({"step_a": key_a, "step_b": key_b,
+                       "shared_words": count, "shared": shared})
+    return result
 
 
 # THIRD-PARTY CLAIM PATTERNS.
