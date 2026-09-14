@@ -304,3 +304,68 @@ process 32172 is long gone - an interrupted write from an earlier session.
 died mid-write, NOT that the queue is damaged. The queue parses cleanly. It
 was left in place rather than deleted because `work/` is production state and
 a handoff is not the moment to tidy it.
+
+---
+
+## 12. WORKER MAPPING AT CHECKPOINT TIME
+
+Dispatched 2026-09-14 evening, after credentials reached the worktrees. All
+running concurrently; none had reached REVIEW when this was written.
+
+    worker    worktree                  branch          task
+    1         resonate-qwen-worker      qwen-worker     TASK-054 product name
+    2         resonate-qwen-2           qwen-worker-2   TASK-060 credential
+                                                        verification
+    3         resonate-qwen-3           qwen-worker-3   TASK-058 HeyReach
+                                                        touch -> reply
+    4         resonate-qwen-4           qwen-worker-4   TASK-059 Bison
+                                                        email -> reply
+    5         resonate-qwen-5           qwen-worker-5   TASK-057 five-email
+                                                        preview
+    6         resonate-qwen-6           qwen-worker-6   TASK-042 no real name
+                                                        in campaign copy
+    7         resonate-qwen-7           qwen-worker-7   TASK-041 two quadratics
+    8         resonate-qwen-8           qwen-worker-8   TASK-039 what the model
+                                                        actually gets
+
+    still in TODO   TASK-061 (drive the regeneration to a passing dry run),
+                    TASK-036, 037, 040, 044
+
+**A WORKER'S OUTPUT IS NOT FINISHED WORK.** Each was told to move its task to
+`REVIEW/`, not `DONE/`. Claude reviews, then moves it to `DONE` or back to
+`REWORK` with precise feedback. Four of the six Qwen tasks integrated earlier
+today needed correction; the reasons are in §8 and are worth reading before
+trusting any of the above.
+
+**HOW TO DISPATCH**, because it is not obvious and two workers were killed by
+getting it wrong today:
+
+    C:\Users\Zvonimir\AppData\Local\qwen-code\bin\qwen.cmd
+        --approval-mode yolo
+        "<the task prompt>"
+
+Absolute path - `qwen` is NOT on PATH. Do NOT pass `--max-tool-calls`; a 400
+cap killed two workers mid-task. Run each from inside its own worktree.
+
+## 13. REGENERATION - WHERE IT ACTUALLY GOT TO
+
+The full pass COMPLETED (exit 0). 619 generation steps across 64 records of
+the 300 in the queue; the rest answered "nothing to generate", which is the
+planner correctly finding no failing step.
+
+The dry run still refuses, and **the blocker MOVED**, which is what
+convergence looks like when the refusal names one contact at a time:
+
+    before   acqcom-com/brian-price        connected_1 vs connected_4
+    after    adcuratio-com/ranjan-damodar  five colliding pairs, all sharing
+                                           "across", "capacity", "projects"
+
+`brian-price` is fixed. `ranjan-damodar` is worse than he was: four messages
+arguing capacity in four different sentences, which is precisely the defect
+the operator named at the start of the day.
+
+TASK-061 drives this loop, caps it at five passes, and asks the question that
+decides what to fix next - whether the shared words are SUBJECT words
+(capacity, profitability, utilisation) or STRUCTURAL ones. Subject words mean
+`SUBJECT_VOCABULARY` needs widening; structural ones mean the ladder does.
+**That call is Claude's, not Qwen's.**
