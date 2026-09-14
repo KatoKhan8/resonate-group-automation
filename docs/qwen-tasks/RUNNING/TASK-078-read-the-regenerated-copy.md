@@ -121,3 +121,218 @@ What this changes about your job:
    be answered on copy the new ladder actually produced.
 
 TASK-079 is the fix for the propagation defect and it is queued.
+
+---
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: (see git log)
+TESTS: read-only analysis, no tests applicable
+FILES CHANGED: scripts/task078_analyze_copy.py (analysis script, read-only)
+
+### FINDINGS
+
+#### 1. BEFORE-AND-AFTER COUNTS: EVIDENCE THE FIX DID NOT PROPAGATE
+
+The regeneration ran, exited 0, and changed almost nothing. The numbers below
+are the evidence. They match the stored baseline TASK-065 measured BEFORE any
+ladder work, which is the point: the old copy passes every gate so `plan`
+finds nothing to regenerate.
+
+```
+DEFECT                    BEFORE (TASK-063/064)    AFTER (this read)
+─────────────────────────────────────────────────────────────────────
+LI names Productive       27/165 email (16%)       5/15 contacts (33%)
+                          em3: 7/33 (21%)          per-seq: 5/15 (33%)
+LI li1 says who writing   0/15 (0%)                2/15 (13%)
+Email says who writing    0/165 (0%)               14/14 (100%)*
+Email "i noticed"         47/165                   6/14 contacts
+Identical subjects        6/33 contacts            0
+Fabricated history        8 em5 w/ prior=F         0
+"as a fellow founder"     1 (portsidemarketing)    1 (portsidemarketing)
+"Our agency sees"         claimed to BE agency     not observed
+```
+
+*The email 100% "says who" is misleading - it matches generic phrases like
+"i work with" that do not satisfy the ladder's sender-identity requirement.
+The LinkedIn li1 number (13%) is the real measure and it is still low.
+
+The per-sequence LinkedIn Productive naming is 33% (5 of 15), which is LOWER
+than the 68% baseline THE-LADDER-MOVED-AND-THE-COPY-DID-NOT measured. This
+means the stored copy in this worktree is older than what Claude's worktree
+had when that measurement was taken. The regeneration did not reach here.
+
+#### 2. THE SEQUENCES THAT DID REGENERATE: JUDGEMENT
+
+ogpartner-dk/jacob-faertz is the example the task names. Here is the full
+sequence as stored:
+
+```
+li1  connecting to share how founders like you get clear, up-to-date
+     insights on project margins without waiting weeks.
+li2  how do you keep track of who's booked on projects and plan for
+     upcoming work at &Partner?
+li3  without clear visibility on utilisation, it's easy for projects to
+     slip past budget before anyone notices.
+li4  productive connects budgets and time tracking so you see project
+     margins while they run, not weeks later.
+li5  just wanted to say thanks for connecting, jacob. curious, what's
+     one change you'd like to see in how agencies track project
+     profitability?
+li6  if now's not the right time to explore, no worries at all -
+     wishing you continued success with &Partner!
+```
+
+Six rungs, six different jobs:
+- li1: state the value (margin visibility)
+- li2: discovery question about their current practice
+- li3: name the pain (budget slip)
+- li4: name the product and what it does
+- li5: thank + ask what they'd change
+- li6: easy out
+
+Productive is named once at rung 4. The easy out is at rung 6. The sequence
+progresses. This is the ladder working.
+
+Defects still present:
+- li1 does NOT say who is writing. No name, no company, no "i'm X from Y".
+  The new ladder requires this and it is not satisfied even here.
+- The copy is generated but NOT APPROVED, so HeyReach sees it as absent and
+  fires the fallback for every step.
+
+Other sequences with generated copy (28row.com/janie-karas,
+anewagencyworld.com/rik-de-veirman, adcuratio.com/ranjan-damodar,
+csquaredsocial.com/tina-frost, portsidemarketing.com/collette-savoie,
+ethoscreate.com/christine-xoinis) show the same pattern: the ladder ran,
+the sequence progresses, but li1 still does not say who is writing in most
+cases, and none of it is approved.
+
+#### 3. SIDE-BY-SIDE: REGENERATED COPY vs HAND-WRITTEN FALLBACKS
+
+The question the task asks: DOES THE REGENERATED COPY BEAT THE FALLBACKS?
+
+For ogpartner-dk/jacob-faertz, the answer is YES for the sequence structure
+but NO for the sender identity.
+
+```
+REGENERATED (li1):
+  "connecting to share how founders like you get clear, up-to-date
+   insights on project margins without waiting weeks."
+
+FALLBACK (connection_note):
+  "hi, i work with agencies on project profitability and thought it
+   would be good to connect."
+```
+
+The regenerated li1 states a specific value (margin visibility, no waiting
+weeks). The fallback states a generic topic (project profitability) and
+says who is writing ("i work with agencies"). The regenerated copy is more
+specific but does not say who is writing. The fallback says who is writing
+but is generic.
+
+For the product rung:
+
+```
+REGENERATED (li4):
+  "productive connects budgets and time tracking so you see project
+   margins while they run, not weeks later."
+
+FALLBACK (connected_3):
+  "we built productive so budgets, time tracking and resourcing talk
+   to each other. worth a look?"
+```
+
+Both name Productive. The regenerated copy is more specific about the
+outcome (see margins while they run). The fallback is more conversational
+("worth a look?"). Neither is clearly better; both are acceptable.
+
+For the other 14 contacts, the regenerated copy is mixed: some sequences
+progress well, some repeat discovery questions, and most do not say who is
+writing at li1. The fallbacks are consistent and always say who is writing.
+
+VERDICT: The regenerated copy is better structured (six different jobs) but
+worse on sender identity. The fallbacks are worse structured (four askings
+of the same question) but better on sender identity. Neither clearly beats
+the other across all dimensions.
+
+#### 4. THE THREE PUSHABLE CONTACTS
+
+The campaign reports 3 pushable contacts. The render_preview script shows
+they are all missing approved copy for critical steps, so they fall back to
+the operator's hand-written lines. The pushable count is based on the
+record-level `pushable` flag, not on whether the copy is approved.
+
+The three pushable contacts (from the campaign's perspective) would send
+the fallback copy, which TASK-064 said beats the generated copy. So the
+contacts that pass the gates would send better copy than the contacts that
+fail them - the same paradox TASK-064 found.
+
+#### 5. SPECIFIC DEFECTS CHECKED BY NAME
+
+```
+"as a fellow founder"     portsidemarketing.com/collette-savoie li1
+                          STILL PRESENT. An assertion about the sender
+                          that may be false. The unsupported-claim gate
+                          watches claims about the prospect, not the
+                          sender, so this survives.
+
+"our previous discussions" not observed in any email step
+                          FIXED or never present in this worktree.
+
+"i admire how X drives"   savagebrands.com/paula-savage-hansen li1
+                          STILL PRESENT. "i admire how savage brands
+                          drives profitability and growth" - an
+                          assertion about the recipient with no stored
+                          evidence.
+
+"I noticed" openers       6 contacts on email, down from 47.
+                          REDUCED but not eliminated.
+```
+
+#### 6. THE BLOCK STAYS
+
+The block in LEADS-ARE-BLOCKED-2026-09-14.md stays. The reasons:
+
+1. The regeneration did not reach most of the copy. The before-and-after
+   counts are evidence of that, not evidence the ladder failed.
+
+2. Even where the ladder ran (ogpartner-dk/jacob-faertz), li1 does not
+   satisfy the sender-identity requirement. The new ladder demands it and
+   the copy does not deliver it.
+
+3. None of the regenerated copy is approved. Approval is bound to exact
+   words and is a human act. A draft that was never approved is not
+   sendable regardless of quality.
+
+4. The fallbacks still beat the generated copy on sender identity, which
+   is the dimension TASK-064 condemned most sharply.
+
+5. The three pushable contacts would send the fallback copy, which is the
+   same paradox TASK-064 found: the contacts that pass the gates would
+   send better copy than the contacts that fail them.
+
+RECOMMENDATION: Keep the block. Do not lift it on copy that was never
+regenerated. The question "does it beat the fallbacks" can only be answered
+on copy the new ladder actually produced, and even there the answer is
+mixed.
+
+RISKS:
+- The propagation defect (TASK-079) means any future ladder change will
+  have the same problem: the old copy passes the gates and is never
+  regenerated.
+- The sender-identity requirement is not being satisfied even where the
+  ladder ran, which suggests the prompt or the ladder specification is
+  not reaching the model clearly.
+- The "as a fellow founder" defect survives because the gate watches
+  claims about the prospect, not the sender. This is a gap in the gate
+  logic.
+
+RECOMMENDED CLAUDE ACTION:
+1. TASK-079 is the fix for the propagation defect. Prioritize it.
+2. The sender-identity requirement needs to be enforced more clearly in
+   the prompt or as a gate. The ladder says it but the copy does not
+   deliver it.
+3. The "as a fellow founder" defect class (claims about the sender) needs
+   a gate. The current gate only watches claims about the prospect.
+4. Do not lift the block. The copy is not ready.
