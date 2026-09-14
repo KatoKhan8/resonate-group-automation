@@ -163,7 +163,8 @@ def _step_copy(step, *, channel=None):
     return text or None
 
 
-def assemble_linkedin_copy(source, contact_key, *, include_inmail=False):
+def assemble_linkedin_copy(source, contact_key, *, include_inmail=False,
+                           cadence_steps=None, campaign=None, config=None):
     """The copy block `linkedin_sequence` needs, from a record's approved steps.
 
     Returns `(copy_block, missing)`. `copy_block` is a dict keyed by role.
@@ -177,14 +178,45 @@ def assemble_linkedin_copy(source, contact_key, *, include_inmail=False):
     `bisonfactory._approved_copy`: the caller needs to know what is missing
     before deciding whether to proceed. A dry run returns the missing list;
     the live path refuses on it.
+
+    VARIANTS ARE RESOLVED HERE, the same way as the email factory. A LinkedIn
+    step carrying five variants assigns one per contact deterministically,
+    and the variant's note - not the base template's - is what the provider
+    receives. Each variant must be approved independently.
     """
+    from . import cadence as _cadence
+    from . import variants
+
     steps = ((source or {}).get("cadence") or {}).get(contact_key) or {}
+    spec_by_key = {}
+    for spec in (cadence_steps or ()):
+        if spec.get("key"):
+            spec_by_key[spec["key"]] = spec
     copy = {}
     missing = []
 
     for step_key, mapping in COPY_MAPPING.items():
         step = steps.get(step_key) or {}
-        text = _step_copy(step)
+        spec = spec_by_key.get(step_key) or {}
+        # Resolve variant if present.
+        entry = None
+        if spec.get(_cadence.VARIANTS_KEY):
+            recorded = step.get("variant_id")
+            entry = _cadence.variant_for(spec, campaign, contact_key,
+                                         recorded=recorded, config=config)
+        if entry is not None:
+            stepped = variants.apply_to_step(dict(step), entry)
+            if stepped.get("approval"):
+                from . import approval
+                if approval.fingerprint(stepped) == stepped["approval"].get(
+                        "fingerprint"):
+                    text = _step_copy(stepped)
+                else:
+                    text = None
+            else:
+                text = None
+        else:
+            text = _step_copy(step)
         roles = mapping["role"]
         if isinstance(roles, str):
             roles = (roles,)
@@ -409,7 +441,8 @@ def unsupported_claims(rec, contact, fields):
     return found
 
 
-def custom_fields_for(source, contact_key, *, include_inmail=False):
+def custom_fields_for(source, contact_key, *, include_inmail=False,
+                      cadence_steps=None, campaign=None, config=None):
     """One contact's approved words, keyed by the variable that carries them.
 
     Returns `(fields, missing)` with the same `missing` shape
@@ -417,7 +450,8 @@ def custom_fields_for(source, contact_key, *, include_inmail=False):
     per lead instead of per campaign.
     """
     copy, missing = assemble_linkedin_copy(
-        source, contact_key, include_inmail=include_inmail)
+        source, contact_key, include_inmail=include_inmail,
+        cadence_steps=cadence_steps, campaign=campaign, config=config)
     fields = {}
     for role, block in (copy or {}).items():
         entries = (block or {}).get("messages") or []
@@ -601,7 +635,9 @@ def _plan(campaign, recs, config, *, include_inmail=False,
             if not contact.get("linkedin"):
                 continue
             key = contact.get("key")
-            fields, missing = custom_fields_for(rec, key)
+            fields, missing = custom_fields_for(
+                rec, key, cadence_steps=cadence_steps, campaign=campaign,
+                config=config)
             if missing:
                 all_missing.extend(missing)
             unsupported = unsupported_claims(rec, contact, fields)
@@ -671,6 +707,45 @@ def _plan(campaign, recs, config, *, include_inmail=False,
 # is approved, and the leads are ready - but nobody put them in. The only
 # thing between a real lead and this function is `LINKEDIN_ADD_LEAD` not
 # being in `providerwrites.SUPPORTED`, which is an operator decision.
+
+def _seat_for(campaign, provider_id, config):
+    """The LinkedIn account this campaign sends from. Refuses rather than 0.
+
+    This read `(config.get("heyreach") or {}).get("default_account_id", 0)`,
+    and that key does not exist: the client config carries the HeyReach block
+    under `providers.heyreach`, and it holds `org_unit` rather than a seat at
+    all. So every lead would have gone to the wire with
+    `linkedInAccountId: 0` - a lead assigned to nobody, on a provider where
+    the seat is WHO THE PROSPECT SEES the message come from.
+
+    Zero is the worst possible default here, which is why there is no default.
+    The seat comes from canonical state where it is recorded, and from the
+    provider campaign itself otherwise - `campaignAccountIds` is what HeyReach
+    already believes, and disagreeing with it silently is how a lead ends up
+    sending from the wrong person.
+    """
+    recorded = ((campaign.get("senders") or {}).get("linkedin") or [])
+    for sender in recorded:
+        seat = (sender or {}).get("provider_account_id")
+        if seat:
+            return int(seat)
+
+    row = heyreach.campaign_read(provider_id) or {}
+    bound = [a for a in (row.get("campaignAccountIds") or []) if a]
+    if len(bound) == 1:
+        return int(bound[0])
+    if len(bound) > 1:
+        raise FactoryRefused(
+            f"HeyReach campaign {provider_id} has {len(bound)} LinkedIn "
+            f"accounts bound to it ({bound}) and this campaign's canonical "
+            f"row names none, so which human a prospect hears from would be "
+            f"decided by list order. Record the seat in `senders.linkedin`")
+    raise FactoryRefused(
+        f"no LinkedIn seat for campaign {campaign.get('campaign_id')!r}: the "
+        f"canonical row names none and HeyReach campaign {provider_id} has "
+        f"none bound. A lead pushed without a seat is a lead assigned to "
+        f"nobody, and the seat is who the prospect sees the message from")
+
 
 def _first_linkedin_step(campaign, config):
     """The key of the first LinkedIn step in this campaign's cadence.
@@ -838,23 +913,61 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
                 f"The transport was not reached")
 
     # Gate 3: account collision.
+    #
+    # `expect_workspace` IS THE EMAILBISON WORKSPACE ID, NOT THE CLIENT SLUG.
+    # This passed `client` - "productive" - and every call refused:
+    #
+    #   WorkspaceMismatch: this credential is bound to workspace 10
+    #   ('PRODUCTIVE'), not productive
+    #
+    # which is the tenancy guard working, and it meant the collision gate
+    # could never pass rather than never fire. `bisonfactory` reads the id
+    # from `bison.bound_workspace()` for the same call, because `workspace_id`
+    # is ignored by every route on that API and a read taken against the wrong
+    # binding cannot be told apart from a correct one afterwards.
+    #
+    # The collision estate is EmailBison's even when the campaign is HeyReach:
+    # `ACCOUNT-OUTREACH.md` makes the ACCOUNT the unit, so a person already
+    # mid-sequence by email is a reason not to open a second channel at that
+    # company.
+    from .providers import bison as _bison
+
+    workspace_id = (_bison.bound_workspace() or {}).get("id")
+    if not workspace_id:
+        raise FactoryRefused(
+            "the EmailBison credential reports no bound workspace, so the "
+            "client's own estate cannot be read and no account can be "
+            "cleared. A lead that cannot be checked cannot be cleared")
+
+    colliding = []
     for row in enriched:
         domain = row.get("domain")
         if not domain:
             continue
         try:
             account = collision.check_account(
-                domain, expect_workspace=client)
+                domain, expect_workspace=workspace_id)
         except collision.CollisionUnknown as e:
             raise FactoryRefused(
                 f"the provider estate could not be read for {domain!r}: "
                 f"{e}. Refusing to add a lead at an unreadable account")
         verdict, why = collision.account_policy(account)
         if verdict in (collision.STOP, collision.HOLD):
-            raise FactoryRefused(
-                f"contact {row['contact_key']!r} (domain {domain!r}): "
-                f"account verdict is {verdict} - {why}. The transport was "
-                f"not reached")
+            colliding.append((row, verdict, why))
+
+    # COLLECTED, THEN RAISED ONCE - the shape `bisonfactory` already uses.
+    # Raising on the first collision means an operator clearing a cohort
+    # discovers it one contact at a time, one provider round trip each.
+    if colliding:
+        detail = "; ".join(
+            f"{row['contact_key']} ({row.get('domain')}): {v} - {w}"
+            for row, v, w in colliding[:5])
+        raise FactoryRefused(
+            f"{len(colliding)} of {len(enriched)} contact(s) collided with "
+            f"the client's own estate: {detail}"
+            f"{' and more' if len(colliding) > 5 else ''}. A contact at an "
+            f"account the client is already working must not be opened on a "
+            f"second channel. The transport was not reached")
 
     # Gate 4: tenant check.
     provider_id = campaign.get("heyreach_campaign_id")
@@ -890,14 +1003,20 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
             "all pushable contacts are already members; nothing to push")
         return report
 
+    # RESOLVED BEFORE THE DRY RUN, because the dry run REPORTS it. A dry run
+    # that cannot say which seat a lead would send from is not answering the
+    # question an operator is asking it, and resolving it here also means a
+    # campaign with no seat refuses in a dry run rather than at the write.
+    linkedin_account_id = _seat_for(campaign, provider_id, config)
+
     if not live:
         report["did"].append(
             f"dry run: would push {len(new_contacts)} contact(s) to "
             f"HeyReach campaign {provider_id}")
         for row in new_contacts:
             report["did"].append(
-                f"  {row['contact_key']} from seat "
-                f"{row.get('domain', '?')}: "
+                f"  {row['contact_key']} ({row.get('domain', '?')}) "
+                f"from seat {linkedin_account_id}: "
                 f"variables="
                 f"{sorted(row.get('custom_fields', {}).keys())}")
         return report
@@ -911,8 +1030,6 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
     # obtained once before the loop and passed to each authorize() call.
     # authorize() runs gates the five pre-filters do not, starting with `copy`
     # which asks whether the step actually renders for this contact.
-    linkedin_account_id = (config.get("heyreach") or {}).get(
-        "default_account_id", 0)
 
     # Obtain a sealed Readback for the authorization gate. This is a provider
     # comparison that stamps its own timestamp after the last provider read.

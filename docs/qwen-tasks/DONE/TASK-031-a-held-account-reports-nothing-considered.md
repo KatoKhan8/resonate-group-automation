@@ -64,3 +64,27 @@ are the input to this, not something to adjust to make a test pass.
 
 Then empty the list again and confirm the intended test fails for the
 intended reason.
+
+## RESULT
+
+STATUS: done
+COMMIT SHA: e48b562
+TESTS: All 56 tests in test_the_cadence_reacts_to_what_the_prospect_did.py pass.
+       The two previously erroring tests (test_an_email_reply_stops_the_linkedin_follow_ups
+       and test_a_linkedin_reply_stops_the_email_follow_ups) now pass. Three new tests
+       verify the fix: test_a_held_account_carries_a_non_empty_considered,
+       test_a_held_account_considered_has_the_same_keys_as_a_working_one, and
+       test_the_decision_is_unchanged_the_account_is_still_held. Verified that reverting
+       the fix causes the intended StopIteration failures.
+FILES CHANGED: src/nextaction.py, tests/test_the_cadence_reacts_to_what_the_prospect_did.py
+FINDINGS: The defect was exactly as described. When _account_verdict returned a non-None
+          verdict (account held, suppressed, etc.), next_best_action returned early without
+          populating the considered list. The fix moves the considered computation before
+          the early return, so held accounts report what was on the table. The decision
+          itself is unchanged - a held account stays held with the same reason code. The
+          considered entries carry per-contact reasons (e.g., BLOCKED_REPLIED) from the
+          full _consider evaluation, not just the account-level hold reason.
+RISKS: Low. The fix only affects what the decision reports about itself, not what is
+       decided. All existing tests pass, and the new tests verify the structural integrity
+       of the considered entries.
+RECOMMENDED CLAUDE ACTION: Review and merge. The fix is minimal, focused, and verified.

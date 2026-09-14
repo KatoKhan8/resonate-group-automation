@@ -218,11 +218,15 @@ def _opening(note, width=60):
     return text if len(text) <= width else text[:width - 1].rstrip() + "…"
 
 
-def pending(recs=None, config_cache=None, campaign_rows=None):
-    """Every step waiting on a human, and every step that cannot wait on one."""
-    from . import campaigns
+def pending(recs, config_cache=None, campaign_rows=None):
+    """Every step waiting on a human, and every step that cannot wait on one.
 
-    recs = recs if recs is not None else store.load()
+    `recs` is required. A default of `store.load()` silently returned every
+    tenant's queue when a caller forgot to scope, and silence was
+    indistinguishable from an empty tenant. A caller that wants the whole
+    estate passes `store.load()` explicitly - the CLI handler does.
+    """
+    from . import campaigns
     config_cache = config_cache if config_cache is not None else {}
     # Which sequence each record is in. A record in no campaign, or in two
     # live ones, resolves to None and is judged against the default - the
@@ -288,7 +292,7 @@ def main(argv=None):
     a = p.parse_args(argv)
 
     if a.cmd == "pending":
-        result = pending()
+        result = pending(store.load())
         print(f"{len(result['waiting'])} step(s) waiting for approval")
         for entry in result["waiting"]:
             print(f"  {entry['id']}:{entry['contact']}:{entry['step']:<6} "

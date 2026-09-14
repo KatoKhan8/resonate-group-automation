@@ -18,6 +18,7 @@ import contextlib
 import datetime
 import json
 import os
+import re
 import sys
 import time
 from collections import Counter
@@ -800,6 +801,11 @@ def validate(rec):
     for key in REQUIRED:
         if key not in rec:
             problems.append(f"missing field: {key}")
+    client = rec.get("client")
+    if not client or not isinstance(client, str) \
+            or not re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", client):
+        problems.append(
+            f"client must be a non-empty lowercase slug, got {client!r}")
     if rec.get("lane") not in LANES:
         problems.append(f"unknown lane: {rec.get('lane')}")
     if rec.get("state") not in STATES:
@@ -871,11 +877,40 @@ def get(rid, recs=None):
     return None
 
 
-def list_records(state=None, lane=None, client=None, recs=None):
+ALL = object()
+
+
+def list_records(state=None, lane=None, client=MISSING, recs=None):
+    """Filter the queue. `client` is explicit and never implicit.
+
+    A caller that wants every tenant's records passes `client=ALL`. A caller
+    that names a client gets that client's rows. An empty string, a string
+    that is not a valid slug, or a string that does not name a known client
+    refuses rather than returning silence: "nothing" and "not a tenant" are
+    different answers, and conflating them is the bug this fixes.
+
+    `client` has no default. Omitting it is a TypeError, not a silent return
+    of the whole estate. The CLI passes `ALL` explicitly; a request path
+    passes a slug.
+    """
+    if client is MISSING:
+        raise TypeError(
+            "list_records requires an explicit client argument. "
+            "Pass client=store.ALL for every tenant, or a client slug.")
+    if client is not ALL:
+        if not client or not isinstance(client, str):
+            raise ValueError(
+                f"client must be a non-empty string or store.ALL, got {client!r}")
+        if not re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", client):
+            raise ValueError(
+                f"not a valid client slug: {client!r}")
+        from . import repo as _repo
+        if client not in _repo.known_clients():
+            raise ValueError(f"unknown client: {client!r}")
     return [r for r in (recs if recs is not None else load())
             if (state is None or r.get("state") == state)
             and (lane is None or r.get("lane") == lane)
-            and (client is None or r.get("client") == client)]
+            and (client is ALL or r.get("client") == client)]
 
 
 def append(records, note="ingested"):
@@ -969,7 +1004,7 @@ def main(argv=None):
 
     if a.cmd == "list":
         fields = a.fields.split(",")
-        rows = list_records(a.state, a.lane, a.client)
+        rows = list_records(a.state, a.lane, a.client or ALL)
         widths = [max(len(f), max((len(str(r.get(f, ""))) for r in rows), default=0))
                   for f in fields]
         print("  ".join(f.ljust(widths[i]) for i, f in enumerate(fields)))

@@ -704,11 +704,6 @@ def next_best_action(rec, *, config=None, campaign=None, workspace=None,
     experiment, steps = _experiment(campaign, rec, config)
     base["experiment"] = experiment
 
-    verdict = _account_verdict(rec, graph, estate, config, at)
-    if verdict is not None:
-        verdict.update(base)
-        return verdict
-
     linkedin = linkedin or {}
     considered = [
         _consider(rec, entry, graph, steps, config, workspace, rows,
@@ -716,6 +711,15 @@ def next_best_action(rec, *, config=None, campaign=None, workspace=None,
         for entry in rank(rec, config)
     ]
     base["considered"] = considered
+
+    verdict = _account_verdict(rec, graph, estate, config, at)
+    if verdict is not None:
+        # Populate `considered` so the decision reports what was on the table.
+        # A held account stays held; this is about what the decision reports
+        # about itself, not about changing what is decided.
+        verdict["considered"] = considered
+        verdict.update(base)
+        return verdict
 
     for candidate in considered:
         if candidate.get("account_terminal"):

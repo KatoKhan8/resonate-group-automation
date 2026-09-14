@@ -298,8 +298,9 @@ def _plan(campaign, recs, config):
     # approved steps each lead has to carry. A lead is words plus an address;
     # which words depends on how many the sequence will ask for.
     from . import cadence as _cadence
+    cadence_steps = _cadence.steps_for(campaign, config=config)
     sequence = _sequence_steps((config or {}).get("email_sequence"),
-                               _cadence.steps_for(campaign, config=config))
+                               cadence_steps)
     leads = []
     for record in material.get("records") or []:
         if record.get("missing") or record.get("dropped") or record.get("paused"):
@@ -344,7 +345,10 @@ def _plan(campaign, recs, config):
             # words that carry no approval would put the gate and the wire
             # out of step.
             copy, missing = _approved_copy(source, contact.get("key"),
-                                           sequence, record.get("id"))
+                                           sequence, record.get("id"),
+                                           cadence_steps=cadence_steps,
+                                           campaign=campaign,
+                                           config=config)
             leads.append({"record_id": record.get("id"),
                           "contact_key": contact.get("key"),
                           "email": contact.get("email"),
@@ -450,7 +454,8 @@ def _unsupported_copy(rec, contact, copy):
     return found
 
 
-def _approved_copy(source, contact_key, sequence, record_id):
+def _approved_copy(source, contact_key, sequence, record_id, *,
+                   cadence_steps=None, campaign=None, config=None):
     """The APPROVED words this contact carries, one entry per sequence step.
 
     Returns `(copy, missing)`. It REPORTS rather than refuses, and
@@ -481,10 +486,23 @@ def _approved_copy(source, contact_key, sequence, record_id):
     An EMPTY sequence reports nothing missing: a campaign the client has
     configured no sequence for stages leads with attribution and no words,
     which is what `_ensure_sequence` already reports and permits.
+
+    VARIANTS ARE RESOLVED HERE, not downstream. A step carrying five variants
+    assigns one per contact deterministically (see `cadence.variant_for`),
+    and the variant's words - not the base template's - are what the provider
+    receives. Each variant is approved independently: five variants means
+    five approvals, not one stretched over five. A variant whose words have
+    not been approved is treated the same as a step with no approval at all:
+    it is reported missing and the stage refuses on it.
     """
     if not sequence:
         return [], []
     steps = ((source or {}).get("cadence") or {}).get(contact_key) or {}
+    # Index cadence step specs by key so variant lookup is O(1).
+    spec_by_key = {}
+    for spec in (cadence_steps or ()):
+        if spec.get("key"):
+            spec_by_key[spec["key"]] = spec
     copy, missing = [], []
     for node in sequence:
         key = node.get("step_key")
@@ -494,16 +512,58 @@ def _approved_copy(source, contact_key, sequence, record_id):
             found = _earliest_approved_email(steps)
         else:
             step = steps.get(key) or {}
-            found = ({"step_key": key, "subject": step.get("subject"),
-                      "body": step.get("body")}
-                     if step.get("channel") == "email" and step.get("approval")
-                     else None)
+            spec = spec_by_key.get(key) or {}
+            found = _resolve_step_copy(step, spec, key, contact_key,
+                                       campaign, config)
         if not found or not found.get("subject") or not found.get("body"):
             missing.append(str(key) if key is not None
                            else f"step {node['order']}")
             continue
         copy.append(found)
     return copy, missing
+
+
+def _resolve_step_copy(stored_step, spec, key, contact_key, campaign, config):
+    """The approved words for one step, resolving variants when present.
+
+    When the step spec carries variants, the assigned variant's words are
+    used and the variant_id is recorded on the result. The variant is
+    resolved deterministically so the same contact always gets the same arm.
+
+    Every variant must be approved independently. The approval fingerprint
+    covers the variant's words because `variants.apply_to_step` puts them
+    into the step before `approval.fingerprint` hashes it. A variant whose
+    words do not match any stored approval is not copy anybody has blessed.
+    """
+    from . import cadence as _cadence
+    from . import variants
+
+    entry = None
+    if spec.get(_cadence.VARIANTS_KEY):
+        recorded = (stored_step or {}).get("variant_id")
+        entry = _cadence.variant_for(spec, campaign, contact_key,
+                                     recorded=recorded, config=config)
+    if entry is not None:
+        # The variant's words, applied to the stored step so the approval
+        # fingerprint covers them.
+        stepped = variants.apply_to_step(dict(stored_step or {}), entry)
+        if not stepped.get("approval"):
+            return None
+        from . import approval
+        if approval.fingerprint(stepped) != stepped["approval"].get(
+                "fingerprint"):
+            return None
+        return {"step_key": key, "subject": stepped.get("subject"),
+                "body": stepped.get("body"),
+                "variant_id": entry.get("variant_id"),
+                "variant_style": entry.get("style"),
+                "variant_version": entry.get("version")}
+    # No variant: the stored step's own words, as before.
+    if (stored_step.get("channel") == "email"
+            and stored_step.get("approval")):
+        return {"step_key": key, "subject": stored_step.get("subject"),
+                "body": stored_step.get("body")}
+    return None
 
 
 def _earliest_approved_email(steps):

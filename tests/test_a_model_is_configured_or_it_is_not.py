@@ -78,6 +78,7 @@ class ConfiguredMeansAllThree(unittest.TestCase):
         """So a credential sitting in the environment never silently turns a
         dry run into a paid one - a caller still has to pass a model."""
         with mock.patch.object(providers, "load_env", return_value={}), \
+             mock.patch("os.path.isfile", return_value=False), \
              mock.patch.dict("os.environ", {}, clear=True):
             self.assertIsInstance(llm.from_env(), llm.NoModel)
 
