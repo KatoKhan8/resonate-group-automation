@@ -92,6 +92,87 @@ addresses.
 
 ## RESULT BLOCK
 
-STATUS, COMMIT SHA, TESTS, FILES CHANGED, FINDINGS, RISKS, RECOMMENDED
-CLAUDE ACTION. FINDINGS leads with any endpoint that answers A/B/C/D and is
-not currently implemented.
+**STATUS:** DONE
+
+**COMMIT SHA:** (see final commit)
+
+**TESTS:** No code changes — this is a documentation and discovery task. Three
+probe scripts were written, executed against the live API, and deleted. No
+test suite run needed.
+
+**FILES CHANGED:**
+- `docs/BISON-API-CAPABILITY-MAP-2026-09-14.md` — the deliverable
+
+**FINDINGS:**
+
+**A. Historical per-lead / per-step SENDS with timestamps: VERDICT 1 — DIRECTLY SUPPORTED**
+
+`GET /campaigns/{id}/scheduled-emails` returns rows for COMPLETED campaigns
+with `sent_at`, `sequence_step_id`, rendered `email_subject` and `email_body`.
+Campaign 335 (completed, 9,759 sent) returns 10,173 rows. Campaign 352
+(active) returns 95,439 rows. Historical data is fully available.
+
+**B. Reply joined to a step: VERDICT 2 — RECONSTRUCTABLE (two-hop)**
+
+Reply carries `scheduled_email_id` but NOT `sequence_step_id`. The join is:
+`reply → GET /scheduled-emails/{id} → sequence_step_id`. Verified live:
+reply 1609175 → scheduled_email 22303789 → sequence_step_id 3738.
+
+**C. Sequence position reconstructable: VERDICT 1 — DIRECTLY SUPPORTED**
+
+`GET /events` payload carries `sequence_step_order` AND
+`sequence_step_variant` directly in `payload.data.scheduled_email`. The
+scheduled-email object carries `sequence_step_id`. Both paths give the
+position without reconstruction.
+
+**D. Variant identifier: VERDICT 1 — DIRECTLY SUPPORTED**
+
+`sequence_step_variant` in EMAIL_SENT events is the step `id` of the variant.
+Sequence steps carry `variant` (bool) and `variant_from_step` (parent id).
+Campaign 352 has 44 steps with 8 parent positions and ~36 variants. The step
+id is persistent across send and readback.
+
+**ENDPOINTS ANSWERING A/B/C/D NOT IMPLEMENTED IN `bison.py`:**
+
+1. `GET /scheduled-emails/{id}` — single scheduled email with step id (B hop)
+2. `GET /leads/{id}/replies` — per-lead reply feed (B, C)
+3. `GET /leads/{id}/sent-emails` — per-lead send history with step id (A, C)
+4. `GET /events` — EMAIL_SENT with step order + variant (A, C, D)
+
+All four are verified live and documented in the capability map.
+
+**OTHER KEY FINDINGS:**
+- `per_page` is ignored on most routes (always 15 rows)
+- `workspace_id` is accepted and discarded on every list route
+- Sequence steps append only — no replace, no per-step delete
+- `open_tracking` defaults to false (campaign 451 has it false)
+- Events have 10-day history only — not suitable for full historical analysis
+- Reply feed carries outbound mail as `Outgoing Email` in `Sent` folder
+- No `/statistics`, `/reports`, `/analytics`, `/variants`, `/ab-test` endpoints
+  exist (all 404)
+- No `/conversations`, `/threads`, `/messages` endpoints exist (all 404)
+- `/webhooks` is 404 — polling is the only transport
+- 19 write endpoints documented; 12 are in `WRITE_ROUTES`, 7 are not
+
+**RISKS:**
+- The capability map records field names and shapes from live responses. If
+  the provider changes a contract, the field names may shift. The map is a
+  snapshot dated 2026-09-14.
+- The `sequence_step_variant` value in events is the step `id`, not a
+  sequential index. A consumer must not assume it is 1-based or contiguous.
+- Events are limited to 10 days. Historical step-level analysis must go
+  through `/campaigns/{id}/scheduled-emails`, which has no time limit.
+
+**RECOMMENDED CLAUDE ACTION:**
+
+1. The four unimplemented read endpoints (`/scheduled-emails/{id}`,
+   `/leads/{id}/replies`, `/leads/{id}/sent-emails`, `/events`) are the
+   foundation for TASK-070's step-level analysis. They should be added to
+   `bison.py` before TASK-070 begins.
+2. The `sequence_step_variant` field in event payloads is the most valuable
+   discovery — it gives variant-level attribution that the existing code does
+   not extract. The event payload reader should be written to capture it.
+3. The two-hop reply→step join (B) is workable but costs one extra GET per
+   reply. A batch form or a join endpoint would be valuable if the provider
+   adds one.
+4. The capability map is at `docs/BISON-API-CAPABILITY-MAP-2026-09-14.md`.
