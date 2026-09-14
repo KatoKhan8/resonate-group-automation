@@ -48,16 +48,38 @@ That last one is not hypothetical. Establish whether it is happening.
 4. If it does, find a real case where a failing sibling blocks a passing
    replacement. That is the finding that decides the fix.
 
-## THE FIX IS CLAUDE'S CALL
+## FIX THE ROOT CAUSE, NOT THE THIRTEEN STRINGS
 
-Report what you find and RECOMMEND. Do not implement a removal of stored
-copy without Claude's decision - deleting generated work is not reversible
-and `CLAUDE.md` is explicit that a record is dropped with a reason rather
-than deleted.
+The operator's instruction, and it decides the shape of this task:
 
-A patch that only EXCLUDES failing steps from the sibling comparisons, while
-leaving them stored, is a much smaller change than deleting them and may be
-the whole answer. Consider it.
+    "A generated candidate that fails lint/claims/quality must not remain as
+     a valid sibling capable of contaminating later comparison or blocking
+     good copy. Remove the ROOT CAUSE, not merely those 13 stored strings."
+
+So rewriting or deleting the thirteen notes is NOT the deliverable. The
+deliverable is that a stored step which fails the gates can never again be
+treated as valid copy by anything that reads siblings.
+
+**IMPLEMENT THE EXCLUSION.** Every place that builds a sibling set for
+comparison must skip a step that does not currently pass the gates:
+
+    generate._note_quality          LinkedIn siblings
+    generate._quality_of            email siblings
+    heyreachfactory._plan           campaign_repetition over custom_fields
+
+Find them all by reading the code; the three above are what a first pass
+finds and there may be more. A step that fails is not a sibling - it is a
+draft that did not make it.
+
+**KEEP THE STORED COPY.** Do not delete it. `CLAUDE.md` is explicit that a
+record is dropped with a reason rather than deleted, and a failing draft is
+still the best starting point the next regeneration has.
+
+**THEN PROVE THE THIRTEEN CLEAR.** With the exclusion in place, run a
+regeneration pass over the affected records in a SCRATCH queue and report how
+many of the thirteen now produce a passing replacement. If some still do not,
+say which and why - that is a different defect and naming it is worth more
+than hiding it.
 
 ## WHAT YOU MAY NOT DO
 
