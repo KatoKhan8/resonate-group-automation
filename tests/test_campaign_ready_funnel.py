@@ -83,6 +83,46 @@ def _make_record(rid, domain, company="Acme", client="productive",
     return rec
 
 
+<<<<<<< HEAD
+=======
+# SIX WHOLLY DIFFERENT BODIES, one per rung. Prefixing a shared paragraph was
+# not enough: `quality.repetition_across_rungs` counts distinctive words shared
+# between steps, so a common tail still collided. Every fixture contact failed
+# repetition, and any test asserting a blocker that comes AFTER it got
+# `step_fails_repetition` instead.
+#
+# Invented, and long enough to clear the word floor lint applies.
+DISTINCT_BODIES = (
+    "A question about how delivery gets planned where you are. Most teams "
+    "your size decide allocation weekly and discover the consequences "
+    "monthly, and the gap between those two is where the surprises live. "
+    "How does that sequencing work for you today, or has it already been "
+    "solved somewhere upstream of the schedule?",
+    "A different angle entirely. Where does the month actually go once "
+    "everything is booked? The teams we talk to find the answer sits in "
+    "three systems that do not reconcile, and nobody owns the join. Is that "
+    "roughly the shape of it there, or does one of them already win?",
+    "One concrete example from an agency of about your headcount. They "
+    "stopped reconstructing margin after delivery and started watching it "
+    "during, which changed which projects got attention rather than which "
+    "got explained. What would have to be true for that to be useful to "
+    "you rather than merely interesting?",
+    "A short note and a single question, because the last few have been "
+    "long. When a project drifts, who notices first, and roughly how many "
+    "days later than you would want? That number is usually the whole "
+    "argument, and it is the only thing worth knowing here.",
+    "Closing the loop and leaving it there. No new pitch and nothing to "
+    "read. If this is not the year for it, an easy no is genuinely useful "
+    "and I will stop. If it is worth revisiting later, say when and I will "
+    "come back then rather than sooner.",
+    "A last thought about resourcing before I stop writing. The constraint "
+    "is rarely the tooling and almost always who is available in the week "
+    "the work lands. If that is familiar, there may be something here; if "
+    "not, I have misread it and will leave you alone.",
+)
+
+
+>>>>>>> master
 def _approved_email_steps(contact_key, n, body="Hi there, I noticed your "
                           "company runs delivery across several teams and "
                           "the pattern we see in teams that size is that "
@@ -100,8 +140,22 @@ def _approved_email_steps(contact_key, n, body="Hi there, I noticed your "
     steps = {}
     for i, key in enumerate(EMAIL_KEYS):
         if i < n:
+<<<<<<< HEAD
             step = {"channel": "email", "subject": "Test subject",
                     "body": body, "generated": True}
+=======
+            # EACH STEP GETS ITS OWN WORDS. Every step carried the identical
+            # body, so the moment the funnel started applying the repetition
+            # gate - which is the gate that decides this cohort - every
+            # fixture contact failed it, and tests asserting a LATER blocker
+            # got `step_fails_repetition` instead. A fixture that repeats
+            # itself cannot exercise anything downstream of the repetition
+            # check.
+            step = {"channel": "email",
+                    "subject": f"Test subject {i + 1}",
+                    "body": DISTINCT_BODIES[i % len(DISTINCT_BODIES)],
+                    "generated": True}
+>>>>>>> master
             fp_material = " ".join([
                 str(step.get("channel") or ""),
                 str(step.get("subject") or ""),

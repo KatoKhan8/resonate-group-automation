@@ -43,7 +43,12 @@ CONTACT_NOT_VERIFIED = "contact_not_verified"
 NO_USABLE_COMPANY = "no_usable_company"
 MISSING_EMAIL_STEPS = "missing_email_steps"
 MISSING_LI_STEPS = "missing_li_steps"
+<<<<<<< HEAD
 STEP_FAILS_LINT = "step_fails_repetition"
+=======
+STEP_FAILS_LINT = "step_fails_lint"
+STEP_FAILS_REPETITION = "step_fails_repetition"
+>>>>>>> master
 STEP_FAILS_CLAIMS = "step_fails_claims"
 NOT_SENDABLE = "not_sendable"
 NO_LINKEDIN_URL = "no_linkedin_url"
@@ -75,8 +80,43 @@ def _is_sendable(contact):
 
 
 def _has_usable_company(rec):
+<<<<<<< HEAD
     company = (rec.get("company") or "").strip()
     return bool(company)
+=======
+    """Ask the engine's own gate, not whether a string is non-empty.
+
+    `cadence.company_name` REFUSES a name that is domain-shaped - "refusing to
+    address a prospect by their own hostname" - and that refusal is what keeps
+    a real campaign from opening with the recipient's own hostname. A truthiness
+    check here counted every record with any company string at all and reported
+    54 where the real gate refuses some of them.
+    """
+    from src import cadence
+
+    try:
+        return bool(cadence.company_name(rec))
+    except Exception:
+        # `CompanyNameUnusable` is the expected one; anything else that stops
+        # the name rendering is equally a record we cannot address.
+        return False
+
+
+def _email_step_repetition_failures(rec, contact, contact_key):
+    """How many email steps repeat another step in the same sequence."""
+    from src import clients, generate
+
+    config = clients.load(rec.get("client") or "productive")
+    stored = (rec.get("cadence") or {}).get(contact_key) or {}
+    n = 0
+    for key, step in stored.items():
+        if (step or {}).get("channel") != "email" or not step.get("body"):
+            continue
+        if generate._quality_of(rec, {"name": contact_key}, stored, key,
+                                config):
+            n += 1
+    return n
+>>>>>>> master
 
 
 def _approved_steps_for_contact(rec, contact_key, keys):
@@ -175,6 +215,20 @@ def _contact_blocker(rec, contact, config=None):
     if lint_fails:
         return (STEP_FAILS_LINT, f"{lint_fails} email step(s) fail lint")
 
+<<<<<<< HEAD
+=======
+    # THE REPETITION GATE, which is a different question from lint and is the
+    # one that actually decides this cohort. The constant was named
+    # `step_fails_repetition` and ran lint only, so the funnel reported 13
+    # email-ready contacts where applying repetition gives 8. `quality`
+    # discounts the company's own name, which is why it is asked through
+    # `generate._quality_of` rather than called directly.
+    repeats = _email_step_repetition_failures(rec, contact, key)
+    if repeats:
+        return (STEP_FAILS_REPETITION,
+                f"{repeats} email step(s) repeat another step in the sequence")
+
+>>>>>>> master
     claims_fails = _email_step_claims_failures(rec, contact, key)
     if claims_fails:
         return (STEP_FAILS_CLAIMS,
@@ -246,6 +300,10 @@ def _record_blocker(rec, config=None):
 
 _BLOCKER_RANK = {
     STEP_FAILS_LINT: 0,
+<<<<<<< HEAD
+=======
+    STEP_FAILS_REPETITION: 0,
+>>>>>>> master
     STEP_FAILS_CLAIMS: 1,
     MISSING_EMAIL_STEPS: 2,
     MISSING_LI_STEPS: 3,
@@ -300,16 +358,42 @@ def compute_funnel(recs, client=None, config=None):
             n_email = _approved_steps_for_contact(r, key, EMAIL_KEYS)
             n_li = _approved_steps_for_contact(r, key, LI_KEYS)
 
+<<<<<<< HEAD
             if n_email == len(EMAIL_KEYS):
                 email_steps_approved += 1
                 lint_fails = _email_step_lint_failures(r, key)
                 claims_fails = _email_step_claims_failures(r, c, key)
                 if lint_fails == 0 and claims_fails == 0 and _is_sendable(c):
+=======
+            # THE COUNTERS ASK `_contact_blocker`, THEY DO NOT RE-DERIVE IT.
+            #
+            # They used to inline their own version of the gates and had
+            # already drifted from the real one: the email counter checked
+            # lint and claims but not REPETITION or the usable company name,
+            # and the LinkedIn counter checked nothing at all beyond the
+            # approvals and a URL. The report said 13 email-ready and 10
+            # LinkedIn-ready where `_contact_blocker` says 9 and 8.
+            #
+            # A second representation of the same decision is how the two
+            # drift, and a funnel that overstates readiness is the one number
+            # in this script nobody can afford to have wrong.
+            ready = (_is_sendable(c) and _has_usable_company(r)
+                     and _contact_blocker(r, c, config) is None)
+
+            if n_email == len(EMAIL_KEYS):
+                email_steps_approved += 1
+                if ready:
+>>>>>>> master
                     email_ready += 1
 
             if n_li == len(LI_KEYS) and c.get("linkedin"):
                 li_steps_approved += 1
+<<<<<<< HEAD
                 linkedin_ready += 1
+=======
+                if ready:
+                    linkedin_ready += 1
+>>>>>>> master
 
     for r in recs:
         result = _record_blocker(r, config)
@@ -352,7 +436,12 @@ def _generation_priority(blocked_accounts):
     pass is the fix), then missing_email_steps and missing_li_steps (a
     generation pass fills them), then the rest (need more than generation).
     """
+<<<<<<< HEAD
     gen_blockers = {STEP_FAILS_LINT, STEP_FAILS_CLAIMS,
+=======
+    gen_blockers = {STEP_FAILS_LINT, STEP_FAILS_REPETITION,
+                    STEP_FAILS_CLAIMS,
+>>>>>>> master
                     MISSING_EMAIL_STEPS, MISSING_LI_STEPS}
     gen = []
     non_gen = []
