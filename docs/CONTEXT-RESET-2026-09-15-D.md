@@ -431,3 +431,115 @@ operator has to decide, and it would have made a destructive run look free.
 **So the decision now has real numbers on it: regenerating costs 560 steps
 and 83 human approvals.** That is the operator's call, not Claude's, and it
 is why the flag is opt-in and reports before it acts.
+
+---
+
+## 16. THE SUITE INVESTIGATION - WHAT THE SEVENTEEN RED TESTS TURNED OUT TO BE
+
+All resolved. Two different answers, which is why each was asked separately.
+
+### The three TENANCY failures were STALE TESTS. No leak.
+
+Production had got STRICTER and the tests were never updated. Checked rather
+than taken at the worker's word:
+
+    store.validate({... client: None ...})
+      -> ['client must be a non-empty lowercase slug, got None']
+    store.validate({... client: 'productive' ...})
+      -> that problem absent
+    approve.pending()  -> TypeError; the unscoped estate read no longer exists
+
+ZERO production changes in that fix - tests only. The replacements assert the
+STRONGER behaviour and `test_the_unscoped_default_is_gone` also asserts the
+scoped path STAYS scoped, so it cannot pass by everything being refused.
+
+**Two of Claude's own probes were wrong on the way to this**, and both would
+have raised a false alarm. One called the validation through the wrong
+function. The other expected `store.validate` to RAISE when it RETURNS a
+problems list - so "no exception" read as "accepted a null client", which is
+indistinguishable from a leak if you only watch for exceptions. Worth
+remembering: a guard that reports by return value and a guard that is absent
+look the same from the outside.
+
+### One was a REAL SAFETY REGRESSION, introduced the day before
+
+`test_the_pause_is_recorded_with_its_cause_and_is_auditable`.
+
+TASK-030 changed `events.apply_reply_policy` to return None, deferring the
+pause to `inbound.handle` after classification. Correct for the
+provider-webhook path. But `cadence.record_event`'s HAND-RECORDED path relied
+on it and **silently lost its pause**, so an operator recording a reply by
+hand stopped pausing the company.
+
+Fixed and verified on a real record:
+
+    cadence.record_event(rec, 'email_reply', contact_key='pat')
+    -> paused {'reason': 'email_reply', 'outcome': 'unknown',
+               'channel': 'email', 'by': 'pat'}
+
+**A reply that stops pausing a company is invisible until somebody is
+contacted after saying no.** It was caught only because the full suite was
+finally run end to end.
+
+### And the crash-seam test had been proving nothing
+
+TASK-041 replaced a per-lead `_remember_lead` with a batch `_remember_leads`.
+The crash test still patched the per-lead function, which had become DEAD
+CODE with no callers - so the crash it simulates never happened and the test
+asserted against an event that did not occur. Now patches the real batch
+function. Verified non-inert.
+
+Both regressions date from 2026-09-14, hours apart.
+
+## 17. THE EMAILBISON REQUIREMENTS - STATE AT HANDOFF
+
+`docs/EMAILBISON-COPY-REQUIREMENTS.md` is the standing contract, set by the
+operator mid-session and referenced from `CLAUDE.md`.
+
+    same-thread follow-ups   BUILT. THREAD_REPLY_PATTERNS email_five =
+                             (F, T, F, T, F), carried through ladder ->
+                             factory -> payload -> readback, and the
+                             follow-up rung TELLS THE MODEL it is continuing
+                             a thread rather than only flipping a flag
+    greeting guard           BUILT. "Hey ,", "Hi undefined,", "Hi null," and
+                             a planted cohort name are refused before the
+                             write. Proven non-inert.
+    bison readback           BUILT, scripts/bison_readback.py. NOT yet run
+                             against a live campaign. Owed.
+    variant machinery        LinkedIn went ZERO -> FOUR arms. The structural
+                             diversity check then correctly refuses them as
+                             four copies of one message. TASK-087 open.
+
+### Two provider facts that changed the requirements
+
+**There is no `first_name` and no `company` merge variable.** The whole body
+travels as `body_N`, so the greeting cannot be delegated to EmailBison and a
+bad one goes straight out. That is why the guard runs before the write.
+`headline`, `industry` and `location` are the three fields that can travel.
+
+**"Short follow-up" is NOT supported and the requirements doc was corrected
+against itself.** Same-thread follow-ups that got replies average 857 chars
+against 571 for new threads - LONGER. Survivorship-caveated: measured on
+emails that got replies, so it does not say length causes replies.
+
+### The alternating structure is a BET, not evidence
+
+The estate has NO CONTROL GROUP. Every campaign with sends uses
+`thread_reply=True` at step 2, and campaign 481 - the only one with False
+there - has zero sends. Answering it needs an experiment nobody has run.
+
+## 18. COVERAGE, FOR ANY VARIABLE SOMEBODY WANTS TO PERSONALISE WITH
+
+Over the 92 contacts on not-dropped records:
+
+    first name, title, company, domain, industry, headcount, persona   100%
+    email 94%, angle 88%, specialties 73%    SAFE FALLBACK REQUIRED
+    employee_range 19%                       EXCLUDE THE RECORD
+
+But headcount is contested on the full estate: **7 conflicts and 64
+range/value disagreements** across 300 records. It is not safe on those.
+
+A first pass reported industry and headcount at 0% and was wrong - it read
+`sizing`, which is null everywhere, where the data lives in `company_facts`.
+A zero and a wrong lookup are indistinguishable from the outside, and that
+mistake was made three separate times in this session.
