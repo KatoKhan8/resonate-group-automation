@@ -48,6 +48,9 @@ POSITIVE = "positive"
 # not what rules do. The Slack alert already offers MARK_MEETING as an
 # action, which is where the distinction belongs: in a person's decision,
 # not in a pattern match.
+# TASK-067: the analysis layer splits further (interested, meeting_intent,
+# objection) for the learning dataset. Those are analysis categories, not
+# policy categories - they map to existing outcomes in accountpolicy.
 NEUTRAL = "neutral"
 NEGATIVE = "negative"
 UNSUBSCRIBE = "unsubscribe"
@@ -57,8 +60,15 @@ NOT_NOW = "not_now"
 REFERRAL = "referral"
 NOT_RELEVANT = "not_relevant"
 UNKNOWN = "unknown"
+# TASK-067: analysis-only categories for the learning dataset. These give
+# finer-grained reporting without changing production behaviour. Each maps
+# to an existing outcome in accountpolicy.CLASSIFIER_OUTCOME.
+INTERESTED = "interested"
+MEETING_INTENT = "meeting_intent"
+OBJECTION = "objection"
 
-CATEGORIES = (POSITIVE, NEUTRAL, NEGATIVE, UNSUBSCRIBE, ACCOUNT_DNC,
+CATEGORIES = (POSITIVE, INTERESTED, MEETING_INTENT, NEUTRAL, NEGATIVE,
+              OBJECTION, UNSUBSCRIBE, ACCOUNT_DNC,
               OUT_OF_OFFICE, NOT_NOW, REFERRAL, NOT_RELEVANT,
               UNKNOWN)
 
@@ -184,6 +194,13 @@ NEGATIVE_PATTERNS = (
     r"\bnot (?:looking|shopping) (?:for|at) (?:this|that|a)\b",
     r"\b(?:not |un)(?:likely|likely) to (?:be|work|help)\b",
     r"\bno (?:interest|need) (?:at this time|right now|currently|for now)\b",
+    # TASK-067: standalone short refusals that were outright misses on
+    # LinkedIn. Anchored to the whole message so they cannot fire inside
+    # a sentence. "No" alone is a refusal; "No, but..." is not caught here
+    # because the sentence continues and needs the full patterns.
+    r"^no[.?!]*$",
+    r"^nope[.?!]*$",
+    r"^nah[.?!]*$",
     # TASK-035: grouped from the unmatched 53%. "Not a priority" is a
     # refusal, not a delay - the sender is saying this does not rank high
     # enough to act on, not naming a later time. ~15 replies across both
@@ -292,6 +309,74 @@ POSITIVE_PATTERNS = (
     # happened. "Pitch deck" is a specific material request.
     r"\byes please\b",
     r"\bsend (?:me )?(?:a )?(?:pitch deck|deck|one[- ]pager)\b",
+    # TASK-067: short LinkedIn replies that were outright misses. "Show me"
+    # is a clear request for more information - warmer than neutral.
+    # Anchored variants so they do not fire inside longer sentences.
+    r"^show me[.?!]*$",
+    r"^i'?m interested[.?!]*$",
+    r"^yes please[.?!]*$",
+    r"^yes,? please[.?!]*$",
+    r"^sure thing[.?!]*$",
+    r"^sure[.?!]*$",
+)
+
+# TASK-067: analysis-only pattern sets for the richer taxonomy. These do
+# not change production behaviour - they classify into INTERESTED,
+# MEETING_INTENT and OBJECTION for the learning dataset. Each maps to an
+# existing outcome in accountpolicy.
+
+# Expressing curiosity without committing. Warmer than NEUTRAL, not yet
+# POSITIVE. "Show me", "Go on", "What do you have?"
+INTERESTED_PATTERNS = (
+    r"\bshow me\b", r"\bgo on\b", r"\btell me\b",
+    r"\bwhat (?:do you have|have you got|is this|are you offering)\b",
+    r"\bi'?m (?:listening|curious|all ears)\b",
+    r"\b(?:yes|sure|ok|okay|alright),?\s+(?:what|how|tell)\b",
+    r"\b(?:interesting|intriguing|curious)\b",
+)
+
+# A concrete step towards a meeting. Stronger than POSITIVE - the person
+# is naming a time, asking for a calendar link, or proposing a call.
+MEETING_INTENT_PATTERNS = (
+    r"\b(?:let'?s|lets) (?:do|have|schedule|book|set up|arrange) (?:a )?(?:call|meeting|chat)\b",
+    r"\b(?:what|how) (?:about|does) (?:next|this|tomorrow)\b",
+    r"\b(?:send|share) (?:me )?(?:a )?(?:calendar|calendly|booking) (?:link|url)\b",
+    r"\b(?:i'?m|iam) (?:free|available) (?:on|next|this|tomorrow| monday|tuesday|wednesday|thursday|friday)\b",
+    r"\b(?:monday|tuesday|wednesday|thursday|friday) (?:works|is good|sounds good)\b",
+    r"\b(?:what time|when) (?:works|are you free|shall we)\b",
+)
+
+# A specific reason for declining. Not a blanket "not interested" but a
+# stated constraint: budget, authority, timing, fit.
+OBJECTION_PATTERNS = (
+    r"\b(?:no position|not in a position|unable|cannot|can'?t) (?:to|to roll|to consider)\b",
+    r"\b(?:no budget|budget is|no (?:funds|spending|money) (?:for|right|now))\b",
+    r"\b(?:too (?:expensive|costly|pricey|early)|not worth|overpriced)\b",
+    r"\b(?:already (?:have|use|bought|purchased|signed) (?:a |something|another))\b",
+    r"\b(?:not (?:a |the )?(?:fit|match|priority|need))\b",
+    r"\b(?:we(?:'re| are) (?:all )?(?:set|sorted|covered|good))\b",
+)
+
+# TASK-067: context-dependent patterns. These need the outbound message
+# to classify the reply. "Doing what?" is UNKNOWN alone but NEGATIVE when
+# the outbound said "We help companies with X" (sceptical challenge) or
+# INTERESTED when the outbound said "I have some ideas for your team"
+# (genuine question). The patterns match the REPLY and require a
+# corresponding cue in the OUTBOUND message.
+CONTEXT_QUESTION_PATTERNS = (
+    # "Doing what?" / "A fit for what exactly?" / "What is it you are offering?"
+    # These are questions about the value proposition. Classified as
+    # INTERESTED when the outbound carried a specific claim, UNKNOWN when
+    # it did not (the question has nothing to latch onto).
+    r"\b(?:doing|mean) what\b",
+    r"\bfit for what\b",
+    r"\bwhat (?:is it you are|are you) offering\b",
+    r"\bwhat (?:exactly|specifically) (?:do you|does that|is this|mean)\b",
+    r"\bhow (?:does|do you|would|does that) (?:work|help|fit)\b",
+    r"\bwhat (?:kind|type|sort) of\b",
+    # TASK-067: more context-dependent questions from the live estate.
+    r"\bnot sure I understand\b",
+    r"\bwhat is the meaning (?:of|for)\b",
 )
 
 RULES = (
@@ -563,6 +648,118 @@ def classify_rules(text):
                     "reason": f"matched {len(hits)} {category} phrase(s)",
                     "evidence": hits[:4], "classifier": VERSION}
     return None
+
+
+# ---------------------------------------------------------------------------
+# TASK-067: classifying with the thread, not the sentence alone.
+#
+# 73.6% of LinkedIn replies were unreadable to the rule-based classifier.
+# Claude's probe showed the text IS present and correctly extracted - the
+# defect is that short, casual LinkedIn replies like "Doing what?" or
+# "A fit for what exactly?" are genuinely ambiguous without the outbound
+# message they answer. Their meaning lives in the thread.
+#
+# This function takes the reply text AND the outbound message it replies to.
+# It first runs the existing rules (which catch clear cases). If those
+# return nothing, it runs the analysis-only patterns (INTERESTED,
+# MEETING_INTENT, OBJECTION). If still unknown, it runs context-dependent
+# patterns that need the outbound message to resolve ambiguity.
+#
+# The richer taxonomy (INTERESTED, MEETING_INTENT, OBJECTION) is for the
+# learning dataset and analysis. Production behaviour is unchanged - those
+# categories map to existing outcomes in accountpolicy.CLASSIFIER_OUTCOME.
+# ---------------------------------------------------------------------------
+
+# Analysis-only rules, checked after the production RULES. They do not
+# override production categories - they only fire when nothing in RULES
+# matched. Ordered by specificity.
+ANALYSIS_RULES = (
+    (MEETING_INTENT, MEETING_INTENT_PATTERNS, 0.8),
+    (OBJECTION, OBJECTION_PATTERNS, 0.75),
+    (INTERESTED, INTERESTED_PATTERNS, 0.7),
+)
+
+
+def _outbound_has_substance(outbound_text):
+    """Whether the outbound message carries a specific claim or offer.
+
+    Context-dependent questions like "Doing what?" are INTERESTED when the
+    outbound named a specific capability, and UNKNOWN when it did not.
+    A generic "I'd love to connect" has nothing for the question to latch
+    onto, so the reply remains ambiguous.
+    """
+    if not outbound_text:
+        return False
+    low = outbound_text.lower()
+    substance_cues = [
+        r"\b(?:help|assist|support|enable)\b",
+        r"\b(?:automat|streamlin|optimi|simplif)\b",
+        r"\b(?:platform|solution|tool|software|service)\b",
+        r"\b(?:increas|reduc|improv|boost|grow|cut|save)\b",
+        r"\b(?:speciali|focus|experti)\b",
+        r"\b(?:offer|provid|deliver)\b",
+    ]
+    return any(re.search(cue, low) for cue in substance_cues)
+
+
+def classify_with_context(reply_text, outbound_text, thread=None):
+    """Classify a reply using the outbound message it answers.
+
+    Three layers:
+    1. Production rules on the reply alone (existing behaviour).
+    2. Analysis-only patterns (INTERESTED, MEETING_INTENT, OBJECTION).
+    3. Context-dependent patterns that need the outbound message.
+
+    ``thread`` is an optional list of preceding messages (dicts with
+    ``sender`` and ``body`` keys) for future use. Currently unused - the
+    outbound message being directly answered is the context that matters.
+
+    Returns a verdict dict with the same shape as ``classify``.
+    """
+    reply_clean = normalise(reply_text)
+    outbound_clean = normalise(outbound_text) if outbound_text else ""
+
+    # Layer 1: production rules. If these fire, the answer is the same as
+    # classify() without a model. No change to production behaviour.
+    rules_verdict = classify_rules(reply_clean)
+    if rules_verdict is not None and rules_verdict["classification"] != UNKNOWN:
+        return rules_verdict
+
+    # Layer 2: analysis-only patterns. These catch "Show me" (INTERESTED),
+    # "Let's talk Thursday" (MEETING_INTENT), "I have no budget" (OBJECTION)
+    # - replies that are clear but did not match any production pattern.
+    for category, patterns, confidence in ANALYSIS_RULES:
+        hits = _hits(reply_clean, patterns)
+        if hits:
+            return {"classification": category, "confidence": confidence,
+                    "reason": f"matched {len(hits)} {category} phrase(s)",
+                    "evidence": hits[:4], "classifier": VERSION}
+
+    # Layer 3: context-dependent patterns. These need the outbound message.
+    # "Doing what?" is only classifiable when the outbound said something
+    # specific. If the outbound was generic, the reply stays UNKNOWN.
+    if outbound_clean and _outbound_has_substance(outbound_clean):
+        context_hits = _hits(reply_clean, CONTEXT_QUESTION_PATTERNS)
+        if context_hits:
+            return {"classification": INTERESTED, "confidence": 0.65,
+                    "reason": ("context-dependent question with substantive "
+                               "outbound; matched context patterns"),
+                    "evidence": context_hits[:4],
+                    "classifier": VERSION}
+
+    # "Hi <name>, A fit for what exactly?" - the greeting + question form.
+    # If the outbound had substance, this is INTERESTED. If not, UNKNOWN.
+    if outbound_clean and _outbound_has_substance(outbound_clean):
+        if re.search(r"\bfit for what\b", reply_clean, re.I):
+            return {"classification": INTERESTED, "confidence": 0.65,
+                    "reason": "context-dependent fit question",
+                    "evidence": ["fit for what"],
+                    "classifier": VERSION}
+
+    # Nothing matched. Same as classify() with no model.
+    return {"classification": UNKNOWN, "confidence": 0.0,
+            "reason": "no rule matched (with context)",
+            "evidence": [], "classifier": VERSION}
 
 
 def _excerpt(text, limit=200):

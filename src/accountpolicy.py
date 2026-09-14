@@ -152,6 +152,12 @@ CLASSIFIER_OUTCOME = {
     "referral": REFERRAL,
     "not_relevant": NOT_ICP,
     "unknown": UNKNOWN,
+    # TASK-067: analysis-only categories. They map to existing outcomes so
+    # the learning dataset can use a richer taxonomy without changing
+    # production behaviour.
+    "interested": POSITIVE,
+    "meeting_intent": POSITIVE,
+    "objection": NEGATIVE,
 }
 
 # Which policy each outcome consults.

@@ -668,5 +668,107 @@ class TestNothingResumes(InboundTest):
         self.assertNotIn("mobile is on my card", blob)
 
 
+class TestTask067ShortReplies(unittest.TestCase):
+    """TASK-067: short LinkedIn replies that were outright misses."""
+
+    def verdict(self, text):
+        return replies.classify(text)["classification"]
+
+    def test_standalone_no_is_negative(self):
+        for text in ("No", "No.", "No!", "No?", "no"):
+            self.assertEqual(self.verdict(text), replies.NEGATIVE, text)
+
+    def test_standalone_nope_is_negative(self):
+        for text in ("Nope", "Nope.", "nope"):
+            self.assertEqual(self.verdict(text), replies.NEGATIVE, text)
+
+    def test_standalone_nah_is_negative(self):
+        for text in ("Nah", "Nah.", "nah"):
+            self.assertEqual(self.verdict(text), replies.NEGATIVE, text)
+
+    def test_no_inside_a_sentence_is_not_caught_by_short_pattern(self):
+        """The anchored pattern must not fire inside a longer sentence."""
+        self.assertNotEqual(self.verdict("No, but maybe later"),
+                            replies.NEGATIVE)
+
+    def test_show_me_is_positive(self):
+        for text in ("Show me", "Show me.", "show me"):
+            self.assertEqual(self.verdict(text), replies.POSITIVE, text)
+
+    def test_im_interested_is_positive(self):
+        for text in ("I'm interested", "I am interested.", "im interested"):
+            self.assertEqual(self.verdict(text), replies.POSITIVE, text)
+
+
+class TestTask067ClassifyWithContext(unittest.TestCase):
+    """TASK-067: classifying with the outbound message as context."""
+
+    SUBSTANTIVE_OUTBOUND = (
+        "We help companies automate their outreach and streamline their "
+        "sales process with our platform."
+    )
+    GENERIC_OUTBOUND = "Hi John, would love to connect."
+
+    def ctx_verdict(self, reply, outbound):
+        return replies.classify_with_context(reply, outbound)
+
+    def test_production_rules_still_fire_first(self):
+        """Layer 1: clear cases are unchanged by context."""
+        v = self.ctx_verdict("Not interested.", self.SUBSTANTIVE_OUTBOUND)
+        self.assertEqual(v["classification"], replies.NEGATIVE)
+        v = self.ctx_verdict("Unsubscribe me.", self.SUBSTANTIVE_OUTBOUND)
+        self.assertEqual(v["classification"], replies.UNSUBSCRIBE)
+
+    def test_context_question_with_substantive_outbound_is_interested(self):
+        """'Doing what?' after a specific claim is INTERESTED, not UNKNOWN."""
+        for text in ("Doing what?", "A fit for what exactly?",
+                     "What is it you are offering?"):
+            v = self.ctx_verdict(text, self.SUBSTANTIVE_OUTBOUND)
+            self.assertEqual(v["classification"], replies.INTERESTED, text)
+
+    def test_context_question_with_generic_outbound_stays_unknown(self):
+        """'Doing what?' after 'would love to connect' has nothing to latch onto."""
+        for text in ("Doing what?", "A fit for what exactly?"):
+            v = self.ctx_verdict(text, self.GENERIC_OUTBOUND)
+            self.assertEqual(v["classification"], replies.UNKNOWN, text)
+
+    def test_context_question_without_outbound_stays_unknown(self):
+        v = self.ctx_verdict("Doing what?", "")
+        self.assertEqual(v["classification"], replies.UNKNOWN)
+
+    def test_interested_pattern_fires_without_context(self):
+        """'Go on' is caught by analysis INTERESTED patterns without context."""
+        v = self.ctx_verdict("Go on", "")
+        self.assertEqual(v["classification"], replies.INTERESTED)
+
+    def test_meeting_intent_pattern(self):
+        v = self.ctx_verdict("Let's schedule a call", "")
+        self.assertEqual(v["classification"], replies.MEETING_INTENT)
+
+    def test_objection_pattern(self):
+        for text in ("I am in no position to roll out such platform.",
+                     "We have no budget for this.",
+                     "Too expensive for us."):
+            v = self.ctx_verdict(text, "")
+            self.assertEqual(v["classification"], replies.OBJECTION, text)
+
+    def test_new_categories_are_in_categories_tuple(self):
+        self.assertIn(replies.INTERESTED, replies.CATEGORIES)
+        self.assertIn(replies.MEETING_INTENT, replies.CATEGORIES)
+        self.assertIn(replies.OBJECTION, replies.CATEGORIES)
+
+    def test_new_categories_map_in_accountpolicy(self):
+        from src import accountpolicy as ap
+        self.assertIn("interested", ap.CLASSIFIER_OUTCOME)
+        self.assertIn("meeting_intent", ap.CLASSIFIER_OUTCOME)
+        self.assertIn("objection", ap.CLASSIFIER_OUTCOME)
+
+    def test_every_classifier_category_is_mapped(self):
+        """The existing invariant still holds with new categories."""
+        from src import accountpolicy as ap
+        for category in replies.CATEGORIES:
+            self.assertIn(category, ap.CLASSIFIER_OUTCOME, category)
+
+
 if __name__ == "__main__":
     unittest.main()
