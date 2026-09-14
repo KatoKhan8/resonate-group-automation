@@ -595,10 +595,19 @@ def plan(rec, client=None, campaign=None):
         ops.append({"step": "diagnose", "why": "revive record with no diagnosis"})
     if rec.get("lane") == "cold" and not rec.get("hook"):
         ops.append({"step": "hook", "why": "cold record with no hook"})
+    # ANGLES FIRST, BEFORE ANY DRAFTS. The lint rule `domains_contact_no_angle`
+    # checks ALL contacts in the record, not just the one being drafted. So a
+    # draft for contact 1 fails lint if contact 2 has no angle, even though
+    # contact 1's angle was just set. Processing all persona_angle ops before
+    # any draft ops ensures every contact has an angle before any draft is
+    # attempted. Measured 2026-09-14: every email draft in the e2e and
+    # preproduction tests failed lint with `domains_contact_no_angle` because
+    # the plan interleaved persona_angle and draft ops per contact.
     for c in workable:
         if rec.get("lane") == "domains" and not c.get("angle"):
             ops.append({"step": "persona_angle", "why": f"{c['name']} has no angle",
                         "contact": c.get("name")})
+    for c in workable:
         sequence = sequence_for(rec, client, c, campaign)
         stored = (rec.get("cadence") or {}).get(lint.contact_key(c), {})
         if note_mode(rec, client) == "llm" and c in on_linkedin:

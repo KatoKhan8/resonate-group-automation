@@ -24,7 +24,8 @@ import unittest
 
 from src import cadence, ingest, lint, llm, push, run, store
 from tests.base import (FIXTURES, ProviderTest, approve_everything,
-                        pin_client_config, qualify_everything)
+                        mx_cache_entries, pin_client_config,
+                        qualify_everything)
 
 BATCH = os.path.join(FIXTURES, "e2e-batch.csv")
 SUPPRESS = os.path.join(FIXTURES, "e2e-suppress.txt")
@@ -89,6 +90,10 @@ class E2EModel:
         if "# hook" in prompt:
             return json.dumps({"hook": "tried three outbound agencies before "
                                        "building the function in house"})
+        if "# linkedin_note" in prompt:
+            return json.dumps({"note": "hi, i work with services teams on "
+                                       "project profitability and thought it "
+                                       "would be good to connect"})
         if "# draft" in prompt:
             first = "there"
             for token in ("Ćuk", "Ana", "Iris", "Otto", "Sanne", "Frank", "Mira",
@@ -151,9 +156,7 @@ class EndToEnd(ProviderTest):
                    "fallback.test", "collision.test", "redwood.test",
                    "skyline.test", "rebrand.test", "unsubscribed.test",
                    "replied.test", "invalid.test", "nomx.test"]
-        cache = {domain: {"mx_records": ["aspmx.l.google.com"],
-                          "status": "ok", "checked_at": "2026-09-07T00:00:00+00:00"}
-                 for domain in allowed}
+        cache = mx_cache_entries(allowed)
         io.open(self.mx_cache, "w", encoding="utf-8").write(json.dumps(cache))
 
     def tearDown(self):

@@ -8,12 +8,34 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import unittest
 import urllib.request
 
 from src import store
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
+
+
+def mx_cache_entries(domains):
+    """A seeded MX cache that says "checked just now", not "checked on a date".
+
+    `mx.settings` carries `cache_days: 7` and `mx._fresh` compares
+    `checked_at` against the wall clock, so a fixture stamped with a literal
+    date stops being fresh on its seventh day and the resolver is consulted
+    for real. A fictional `.test` domain publishes no MX, so the stored
+    decision flips to `no_mx` and every email step is refused as
+    `mx_no_mx` - which is what happened on 2026-09-14 to a fixture stamped
+    2026-09-07. The tests had been passing for six days and failed on the
+    seventh with no commit in between.
+
+    Stamping `checked_at` at call time is the fixture saying what it means:
+    this domain was checked recently and accepts mail.
+    """
+    now = time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime())
+    return {domain: {"mx_records": ["aspmx.l.google.com"], "status": "ok",
+                     "checked_at": now}
+            for domain in domains}
 
 
 def fixture_config(client="productive", **over):

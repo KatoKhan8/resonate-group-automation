@@ -19,7 +19,8 @@ from src.providers import bison
 
 from src import (approval, approve, cadence, clients, events, ingest, lint,
                  push, report, run, store)
-from tests.base import FIXTURES, ProviderTest, pin_client_config, qualify_everything
+from tests.base import (FIXTURES, ProviderTest, mx_cache_entries,
+                        pin_client_config, qualify_everything)
 
 BATCH = os.path.join(FIXTURES, "preprod-batch.csv")
 SUPPRESS = os.path.join(FIXTURES, "preprod-suppress.txt")
@@ -55,6 +56,10 @@ class FakeModel:
                     title = line.split(":", 1)[1].strip().strip(",").strip('"')
                     break
             return json.dumps({"angle": "finance", "evidence": [title]})
+        if "# linkedin_note" in prompt:
+            return json.dumps({"note": "hi, i work with services teams on "
+                                       "project profitability and thought it "
+                                       "would be good to connect"})
         if "# draft" in prompt:
             first = "there"
             for token in ("Ćuk", "Ana", "Iris", "Petra", "梁伟"):
@@ -68,9 +73,14 @@ class FakeModel:
                     "subject": "the cost of waiting one more month",
                     "body": (f"{first}, the teams I hear from describe the "
                              f"same pattern: month end arrives and the numbers "
-                             f"still live in three spreadsheets. Happy to "
-                             f"share what two similar firms changed in their "
-                             f"first thirty days.\n\nWorth a short call?")})
+                             f"still live in three spreadsheets, so the "
+                             f"argument about which engagement paid for "
+                             f"itself happens weeks after anybody could have "
+                             f"acted on it. Two similar firms changed that "
+                             f"inside their first thirty days and I am happy "
+                             f"to say what they did differently.\n\n"
+                             f"Worth a short call, or is this someone "
+                             f"else's call to make?")})
             return json.dumps({"subject": "one week of month end, every month",
                                "body": BODY.format(first=first)})
         raise AssertionError(f"unexpected prompt: {prompt[:60]}")
@@ -96,16 +106,22 @@ class PreProduction(ProviderTest):
         os.environ["MX_CACHE"] = self.mx_cache
         import json as _json
         io.open(self.mx_cache, "w", encoding="utf-8").write(_json.dumps(
-            {d: {"mx_records": ["aspmx.l.google.com"], "status": "ok",
-                 "checked_at": "2026-09-07T00:00:00+00:00"}
-             for d in ("clean.test", "catchall-safe.test", "fallback.test",
-                       "collision.test", "redwood.test", "skyline.test",
-                       "rebrand.test", "replied.test", "unsubscribed.test",
-                       "catchall-unsafe.test", "invalid.test")}))
+            mx_cache_entries(
+                ("clean.test", "catchall-safe.test", "fallback.test",
+                 "collision.test", "redwood.test", "skyline.test",
+                 "rebrand.test", "replied.test", "unsubscribed.test",
+                 "catchall-unsafe.test", "invalid.test"))))
         self.model = FakeModel()
 
     def tearDown(self):
-        for name, value in zip(("QUEUE", "OUT"), self._prev):
+        # MX_CACHE is restored here too. It was saved into `self._prev_mx` and
+        # never put back, so this module left a path to a deleted temp
+        # directory in the environment for every test that ran after it -
+        # `mx.load_cache` reads it, finds nothing, and returns `{}`. That is
+        # the "passes alone, fails in the suite" shape this repository has
+        # been bitten by before; `tests/test_e2e.py` already restores it.
+        for name, value in zip(("QUEUE", "OUT", "MX_CACHE"),
+                               self._prev + (self._prev_mx,)):
             if value is None:
                 os.environ.pop(name, None)
             else:
@@ -208,7 +224,7 @@ class TestApprovalIsRequired(PreProduction):
         self.assertEqual(prepared["counts"]["linkedin"], 0)
 
     def test_the_operator_sees_exactly_what_is_waiting(self):
-        waiting = approve.pending()["waiting"]
+        waiting = approve.pending(store.load())["waiting"]
         self.assertTrue(waiting)
         for entry in waiting:
             self.assertIn(entry["channel"], ("email", "linkedin"))
@@ -253,10 +269,36 @@ class TestTheCadenceIsPrepared(PreProduction):
                              key)
 
     def test_only_two_emails_per_contact_were_written_by_the_model(self):
+        # EMAIL ONLY, AND THAT IS THE POINT. `productive_balanced_v1` marks
+        # exactly `day1` and `day15` `generated`; every other email step names
+        # a template and costs nothing. This asked about every channel, and so
+        # it also asserted that no LinkedIn note is model-written - which the
+        # pinned config contradicts on purpose, because Productive sets
+        # `linkedin_connection_note.mode: llm`. It passed only while nothing
+        # was generated at all: the model raised on `# linkedin_note`, the
+        # stage swallowed it, and an empty set is a subset of anything.
         for rec in store.load():
             for key, steps in (rec.get("cadence") or {}).items():
-                generated = [k for k, s in steps.items() if s.get("generated")]
-                self.assertTrue(set(generated) <= {"day1", "day15"}, f"{rec['id']}:{key}")
+                generated = {k for k, s in steps.items()
+                             if s.get("generated") and s.get("channel") == "email"}
+                self.assertTrue(generated <= {"day1", "day15"}, f"{rec['id']}:{key}")
+
+    def test_the_linkedin_notes_are_model_written_because_the_client_asked(self):
+        # The other half of the assertion above, stated rather than implied.
+        # `mode: llm` is what makes `day3` and `day8` carry a written note in
+        # place of `linkedin_intro` and `linkedin_followup`, and `expand_step`
+        # prefers that note over the template it replaces.
+        seen = 0
+        for rec in store.load():
+            for key, steps in (rec.get("cadence") or {}).items():
+                for step_key, step in steps.items():
+                    if step.get("channel") != "linkedin":
+                        continue
+                    self.assertTrue(step.get("generated"), f"{rec['id']}:{key}:{step_key}")
+                    self.assertTrue((step.get("note") or "").strip(),
+                                    f"{rec['id']}:{key}:{step_key}")
+                    seen += 1
+        self.assertTrue(seen, "no linkedin step was written at all")
 
     def test_the_buyer_starts_behind_the_champion(self):
         timeline = cadence.build(self.rec("clearwater"))
@@ -362,11 +404,33 @@ class TestAReplyStopsTheCompany(PreProduction):
         self.assertFalse(any(i["record"]["id"] == "clearwater" for i in prepared["ready"]))
 
     def test_the_pause_is_reportable(self):
+        # THROUGH `replies.apply`, WHICH IS THE PATH A REAL REPLY TAKES.
+        #
+        # The sibling tests above ingest a bare REPLY_RECEIVED, and that is
+        # still enough to pause the timeline: `cadence.build` asks
+        # `accountpolicy.classify_outcome` about the reply itself. It is NOT
+        # enough to produce a COMPANY_PAUSED event, which is what
+        # `report.funnel` counts - and since TASK-030 that is deliberate.
+        # `events.apply_reply_policy` returns None on purpose so an
+        # out-of-office autoresponder cannot hold a whole company before
+        # anybody has read it; the pause moved to `replies.apply`, after
+        # classification.
+        #
+        # So this test ingested an event, watched no pause get recorded, and
+        # reported the gap as a defect in the report. Asserting the pause is
+        # reportable means classifying a reply, which is what happens when
+        # one actually arrives.
+        from src import inbound
+
         key = self.rec("clearwater")["contacts"][0]["key"]
-        events.ingest([events.neutral(
-            record_id="clearwater", contact_key=key, channel="email",
-            type=events.REPLY_RECEIVED, provider="emailbison",
-            provider_event_id="eb-preprod-3")])
+        event = dict(inbound.manual("clearwater", key,
+                                    "thanks for reaching out, who else "
+                                    "should I loop in on this?",
+                                    channel="email"),
+                     provider="emailbison",
+                     provider_event_id="eb-preprod-3")
+        with store.transaction() as recs:
+            inbound.handle(event, recs, model=self.model)
         stats = report.funnel()
         self.assertEqual(stats["replies"], 1)
         self.assertEqual(stats["companies_paused"], 1)
