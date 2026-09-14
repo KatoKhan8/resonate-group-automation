@@ -62,7 +62,9 @@ performs this comparison through `sequence_matches`.
 import argparse
 import sys
 
-from . import cadence, cadencelibrary, campaigns, clients, providerwrites, store
+from . import (actionledger, cadence, cadencelibrary, campaigns, clients,
+               collision, eligibility, executionguard, killswitch,
+               providerwrites, store)
 from .providers import ProviderError, heyreach
 
 
@@ -653,3 +655,240 @@ def _plan(campaign, recs, config, *, include_inmail=False,
         "merge_variables": [merge_variable_of(r) for r in REQUIRED_ROLES],
         "inmail_included": False,
     }
+
+
+# --------------------------------------------------------- ensure_leads
+#
+# THE CALLER THAT PUTS A REAL LEAD INTO A HEYREACH CAMPAIGN.
+#
+# `stage` writes the SEQUENCE (the graph). `ensure_leads` writes the LEADS
+# (the people). The sequence carries variables; each lead carries its own
+# words in `customUserFields`. The two together make a working campaign:
+# a graph that says what happens and people who bring the words.
+#
+# Nothing calls `heyreach.add_leads_to_campaign` today. That is the defect
+# this function closes: the transport exists, the graph is built, the copy
+# is approved, and the leads are ready - but nobody put them in. The only
+# thing between a real lead and this function is `LINKEDIN_ADD_LEAD` not
+# being in `providerwrites.SUPPORTED`, which is an operator decision.
+
+def _mint_authorization(campaign_id, client, rec, contact):
+    """One Authorization per contact, with a ledger reservation behind it.
+
+    A batch authorization would let one gate cover every person, and a gate
+    that covers a batch cannot refuse by name. The authorization is per
+    person because the gates are per person: a suppression that fires for
+    one contact must not be bypassed by another contact's clean record.
+    """
+    key = (f"heyreach-add-lead:{campaign_id}:"
+           f"{rec.get('id')}:{contact.get('key')}")
+    actionledger.reserve(
+        key, channel="linkedin", workspace=client,
+        campaign_id=str(campaign_id), sender_id="0",
+        rec_id=str(rec.get("id")), contact_key=contact.get("key"),
+        step_key="add_lead",
+        operation=providerwrites.LINKEDIN_ADD_LEAD,
+        fingerprint="lead-add")
+    return executionguard.Authorization(
+        key=key, operation=providerwrites.LINKEDIN_ADD_LEAD,
+        channel="linkedin", workspace=client,
+        campaign_id=str(campaign_id), sender_id="0",
+        rec_id=str(rec.get("id")), contact_key=contact.get("key"),
+        step_key="add_lead")
+
+
+def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
+                 by="system"):
+    """Put a campaign's pushable contacts into the HeyReach campaign.
+
+    Returns a report: who was pushed, who was already there, who was refused.
+    Dry run by default.
+
+    THE GATES, IN ORDER, AND EACH ONE REFUSING RATHER THAN SKIPPING:
+      1. killswitch workspace state - is this workspace allowed to send
+      2. suppression and DNC - may this person be contacted
+      3. account collision - is this account already being worked
+      4. tenant check - does the campaign belong to this client
+      5. unsupported sequence - can every row fill every variable
+
+    A contact who fails any gate is refused BY NAME and the transport is
+    never reached. A batch where one lead cannot fill one variable refuses
+    the WHOLE push.
+
+    THE READBACK DECIDES. The response body of AddLeadsToCampaignV2 has
+    never been read, so nothing may be concluded from it. The readback is
+    `heyreach.readback_membership`, which reads the campaign's actual
+    membership and compares it to what was asked for.
+
+    IDEMPOTENT: reads membership first and pushes only the difference.
+    A re-run costs reads and writes nothing.
+    """
+    rows = campaigns.load()
+    campaign = campaigns.require(str(campaign_id), rows)
+    client = campaign.get("client")
+    if not client:
+        raise FactoryRefused(
+            f"campaign {campaign_id} names no client; every provider write "
+            f"is tenant-bound")
+    if config is None:
+        config = clients.load(client)
+    recs = store.load() if recs is None else recs
+
+    report = {"campaign": str(campaign_id), "client": client,
+              "live": bool(live), "did": [], "refused": [], "provider": {}}
+
+    # Gate 1: killswitch workspace state.
+    ws_state = killswitch.workspace_state(client)
+    if not ws_state["sending"]:
+        raise FactoryRefused(
+            f"the killswitch for workspace {client!r} is off: "
+            f"{ws_state['why']}. No leads were added")
+
+    plan = _plan(campaign, recs, config)
+    pushable = plan.get("pushable") or []
+    sequence = plan["sequence"]
+
+    # Build enriched rows for the sequence check and the transport.
+    rec_map = {r.get("id"): r for r in recs}
+    enriched = []
+    for contact in pushable:
+        rec = rec_map.get(contact["record_id"])
+        if not rec:
+            continue
+        linkedin_url = None
+        for c in rec.get("contacts") or []:
+            if c.get("key") == contact["contact_key"]:
+                linkedin_url = c.get("linkedin")
+                break
+        if not linkedin_url:
+            continue
+        enriched.append({
+            "record_id": contact["record_id"],
+            "contact_key": contact["contact_key"],
+            "linkedin_url": linkedin_url,
+            "first_name": (contact.get("contact_key") or "").split("_")[0],
+            "last_name": "",
+            "company": rec.get("company", ""),
+            "title": "",
+            "custom_fields": dict(contact.get("custom_fields") or {}),
+            "domain": rec.get("domain", ""),
+        })
+
+    # Gate 2: suppression and DNC, by name.
+    for row in enriched:
+        rec = rec_map.get(row["record_id"])
+        contact_obj = None
+        for c in (rec.get("contacts") or []):
+            if c.get("key") == row["contact_key"]:
+                contact_obj = c
+                break
+        reasons = eligibility.must_not_contact(rec, contact_obj, config=config)
+        fired = [r for r in reasons if r]
+        if fired:
+            raise FactoryRefused(
+                f"contact {row['contact_key']!r} (record "
+                f"{row['record_id']!r}) is blocked: {', '.join(fired)}. "
+                f"The transport was not reached")
+
+    # Gate 3: account collision.
+    for row in enriched:
+        domain = row.get("domain")
+        if not domain:
+            continue
+        try:
+            account = collision.check_account(
+                domain, expect_workspace=client)
+        except collision.CollisionUnknown as e:
+            raise FactoryRefused(
+                f"the provider estate could not be read for {domain!r}: "
+                f"{e}. Refusing to add a lead at an unreadable account")
+        verdict, why = collision.account_policy(account)
+        if verdict in (collision.STOP, collision.HOLD):
+            raise FactoryRefused(
+                f"contact {row['contact_key']!r} (domain {domain!r}): "
+                f"account verdict is {verdict} - {why}. The transport was "
+                f"not reached")
+
+    # Gate 4: tenant check.
+    provider_id = campaign.get("heyreach_campaign_id")
+    if not provider_id:
+        raise FactoryRefused(
+            f"campaign {campaign_id!r} carries no `heyreach_campaign_id`")
+    provider_id = int(provider_id)
+    org_unit = (config.get("heyreach") or {}).get("org_unit_id")
+    if org_unit:
+        heyreach.check_tenant(provider_id, org_unit)
+
+    # Gate 5: refuse_unsupported_sequence against the rows actually pushed.
+    if enriched:
+        heyreach.refuse_unsupported_sequence(
+            sequence, rows=enriched, campaign_id=str(campaign_id))
+
+    # Read current membership for idempotency.
+    expected_urls = [r["linkedin_url"] for r in enriched]
+    if expected_urls:
+        membership = heyreach.readback_membership(
+            provider_id, expected_urls)
+        already_member = membership.get("found") or set()
+    else:
+        membership = {"found": set(), "missing": set(), "total": 0,
+                      "per_lead": []}
+        already_member = set()
+
+    new_contacts = [r for r in enriched
+                    if r["linkedin_url"].lower() not in already_member]
+
+    if not new_contacts:
+        report["did"].append(
+            "all pushable contacts are already members; nothing to push")
+        return report
+
+    if not live:
+        report["did"].append(
+            f"dry run: would push {len(new_contacts)} contact(s) to "
+            f"HeyReach campaign {provider_id}")
+        for row in new_contacts:
+            report["did"].append(
+                f"  {row['contact_key']} from seat "
+                f"{row.get('domain', '?')}: "
+                f"variables="
+                f"{sorted(row.get('custom_fields', {}).keys())}")
+        return report
+
+    # THE PROVIDER WRITE. One authorization per contact, one perform call.
+    # The transport is heyreach.add_leads_to_campaign; the readback is
+    # heyreach.readback_membership. THE READBACK DECIDES.
+    linkedin_account_id = (config.get("heyreach") or {}).get(
+        "default_account_id", 0)
+
+    def _transport(payload):
+        return heyreach.add_leads_to_campaign(
+            provider_id, new_contacts, linkedin_account_id)
+
+    def _readback():
+        return heyreach.readback_membership(provider_id, expected_urls)
+
+    for row in new_contacts:
+        rec = rec_map.get(row["record_id"])
+        contact_obj = None
+        for c in (rec.get("contacts") or []):
+            if c.get("key") == row["contact_key"]:
+                contact_obj = c
+                break
+        auth = _mint_authorization(str(campaign_id), client, rec, contact_obj)
+        providerwrites.perform(
+            providerwrites.LINKEDIN_ADD_LEAD,
+            authorization=auth,
+            campaign=str(campaign_id), tenant=client,
+            payload={"campaignId": provider_id,
+                     "contact": row["contact_key"]},
+            transport=_transport, readback=_readback,
+            expected={"missing": set()}, by=by)
+        report["did"].append(
+            f"pushed {row['contact_key']} to HeyReach campaign "
+            f"{provider_id}")
+
+    report["provider"]["campaign_id"] = provider_id
+    report["provider"]["pushed"] = len(new_contacts)
+    report["provider"]["already_member"] = len(already_member)
+    return report
