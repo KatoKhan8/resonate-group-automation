@@ -522,40 +522,24 @@ def apply(recs, event):
 
 
 def apply_reply_policy(rec, entry, contact_key=None):
-    """Hand a reply to the policy, which is the only thing that moves state.
+    """Deferred to `inbound.handle` after classification.
 
-    A reply arriving from a provider is unclassified - the classifier has
-    not run yet - so the outcome here is UNKNOWN, which the policy resolves
-    to a review at account scope: the whole company holds, exactly as it
-    always has. `replies.apply` comes back through the policy once the
-    classification exists, and only then can the effect narrow.
+    TASK-030: pausing here, before the reply is classified, meant an
+    out-of-office autoresponder held the whole company. The pause now
+    happens in `inbound.handle` AFTER `replies.apply` has classified the
+    reply, so the pause is conditional on the classification rather than
+    on the existence of a reply.
 
-    "Almost always", as this used to read, was the bug. The outcome was
-    left to `apply_reply`'s fallback, which reads the contact's last
-    recorded classification - so only a contact's *first* reply was
-    uncertain and every later one inherited an answer given to a different
-    message.
+    The fail-safe is preserved there: an UNKNOWN reply still pauses,
+    because the uncertain case is the one that must not narrow. Only a
+    positively identified machine reply (a pure out-of-office, or a
+    provider-flagged automated non-committal reply) skips the pause.
 
-    Imported late. `accountpolicy` reads the event log to classify an
-    outcome, so it depends on this module; a module-level import here would
-    close the circle.
+    This function returns None to signal that no policy has been applied
+    yet. `inbound.handle` reads the classification and applies the
+    appropriate policy through `accountpolicy.apply_reply`.
     """
-    from . import accountpolicy
-
-    # UNKNOWN, said rather than derived. `apply_reply` falls back to
-    # `classify_outcome`, which returns whatever this contact's *last*
-    # reply was classified as - so a second reply arriving here inherited
-    # the first one's verdict instead of being uncertain. "Not
-    # interested" followed by "remove our whole company" re-applied
-    # `negative`: nothing held, no review opened, and the escalation was
-    # swallowed until something classified it.
-    #
-    # This reply is unclassified. That is a fact about this reply, not a
-    # question to answer from history.
-    return accountpolicy.apply_reply(
-        rec, contact_key, accountpolicy.UNKNOWN, config=None,
-        at=entry.get("at"), channel=entry.get("channel"),
-        reason=entry.get("type"), workspace=rec.get("client"))
+    return None
 
 
 # `pause_company` lived here and is deleted rather than left. It was a second
