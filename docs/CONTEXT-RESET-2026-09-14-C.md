@@ -50,29 +50,38 @@ old "Qwen is unavailable" conclusion forward. The recovery policy is in §8.
     BLOCKED     empty
     TODO        TASK-036, 037, 039, 040, 041, 042, 044, 054, 057, 058, 059
 
-**THE CONSTRAINT THAT DECIDES WHAT MAY BE DELEGATED**, and it is structural
-rather than a quota:
+**CREDENTIALS ARE NOW IN EVERY WORKTREE.** The operator authorised full
+credential access for Qwen on 2026-09-14, superseding the narrow `LLM_*`-only
+proposal in `docs/DELEGATION-BOUNDARY-2026-09-14.md`. That document is
+retained for its argument about WHY the seam mattered; its recommendation is
+overtaken by a broader grant.
 
-`config/.env` exists ONLY in Claude's worktree and holds `LLM_API_KEY`
-ALONGSIDE `BISON_KEY`, `HEYREACH_KEY` and the rest. So a Qwen worktree has
-neither provider access nor MODEL access, and **`py -3 -m src.generate
---live` cannot run there at all.**
+    mechanism   scripts/sync_worker_env.py
+                plain file copies. No symlink, no junction, no admin rights,
+                nothing that can break on this Windows box.
+    safety      it REFUSES to write into any worktree whose git does not
+                ignore `config/.env`, and it prints variable NAMES with
+                AVAILABLE/MISSING and never a value.
+    rotation    re-run with `--write`. Copies do not propagate on their own.
 
-Consequences, and they are not opinions:
+Verified after the write, in all eight worktrees:
 
-    bulk copy regeneration      NOT delegable today
-    live variant generation     NOT delegable today
-    live prompt measurement     NOT delegable today (TASK-054 is blocked on
-                                exactly this and was handed back once)
-    provider-data analysis      delegable ONLY from an export Claude produces
-    everything else             delegable now
+    config/.env    IGNORED (.gitignore line 5), untracked,
+                   zero dirty .env entries
+    verdict        NO WORKTREE CAN COMMIT config/.env
 
-`docs/DELEGATION-BOUNDARY-2026-09-14.md` carries the full argument and the
-recommended fix: an `.env` in the Qwen worktrees carrying ONLY the three
-`LLM_*` variables, provider keys staying exclusively in Claude's. A model
-call cannot email a stranger; a provider call can. **That is an operator
-decision and it has been asked for and not yet granted.** An attempt to copy
-the file was refused by the Claude Code permission classifier, correctly.
+14 variables available in each: the three `LLM_*`, plus BISON, HEYREACH,
+CONTACTOUT, APIFY, REOON, DELIVERABLE, BLITZ and the workspace pin.
+
+**THE PROHIBITION THAT NOW MATTERS MORE THAN IT DID THIS MORNING.** Qwen
+worktrees hold real EmailBison and HeyReach keys. Every task file dispatched
+since carries it explicitly: **READS ONLY.** No write, no send, no campaign
+mutation, no lead added, no sequence replaced. `QWEN.md`'s old claim that
+"there are no credentials in this worktree - so this is structural, not a
+promise" is NO LONGER TRUE, and the protection is now a rule rather than a
+property. That is a real reduction in safety margin, bought deliberately for
+throughput, and the next session should know it was a trade and not an
+oversight.
 
 ## 3. HEYREACH - THE P0
 
