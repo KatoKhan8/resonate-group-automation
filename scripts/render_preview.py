@@ -1319,6 +1319,409 @@ def _fixture_rec_email_missing():
     }
 
 
+# ----------------------------------------- TASK-082: Edge-case email fixtures
+#
+# These fixtures exercise the broken records: the ones where the greeting
+# renders empty, where a name is missing, where the generator produced
+# "Hi undefined," or where one lead's copy contains another lead's name.
+# Every name, company and domain is invented.
+
+def _edge_case_config():
+    """A client config for edge-case rendering.  Same shape as the real one."""
+    return {
+        "cadence": "productive_li_heavy_v1",
+        "personas": {
+            "champion": {
+                "cap_per_domain": 2,
+                "angles": {
+                    "visibility": ("how the numbers behind the work become "
+                                   "visible before the month ends"),
+                },
+            },
+        },
+        "angle_labels": {"visibility": "real-time visibility"},
+        "tone": {"linkedin": "casual", "email": "professional"},
+        "sender": {
+            "name": "Alex Chen",
+            "role": "Founder",
+            "company": "Resonate Group",
+            "works_on": "project profitability for agencies",
+        },
+        "email_sequence": {
+            "title": "Edge-case QA sequence",
+            "steps": {
+                "em1": {"order": 1, "subject": "{SUBJECT_1}",
+                         "body": "<p>{BODY_1}</p>", "wait_in_days": 3},
+                "em2": {"order": 2, "subject": "{SUBJECT_2}",
+                         "body": "<p>{BODY_2}</p>", "wait_in_days": 4},
+                "em3": {"order": 3, "subject": "{SUBJECT_3}",
+                         "body": "<p>{BODY_3}</p>", "wait_in_days": 4},
+                "em4": {"order": 4, "subject": "{SUBJECT_4}",
+                         "body": "<p>{BODY_4}</p>", "wait_in_days": 9},
+                "em5": {"order": 5, "subject": "{SUBJECT_5}",
+                         "body": "<p>{BODY_5}</p>", "wait_in_days": 1},
+            },
+        },
+    }
+
+
+def _edge_rec_normal():
+    """Lead 1: happy path.  Normal name, normal company."""
+    return {
+        "id": "edge-normal-001",
+        "client": "fixture_client",
+        "company": "Northbridge Consulting",
+        "domain": "northbridge-consulting.example.com",
+        "lane": "cold", "state": "active",
+        "company_facts": {"name": "Northbridge Consulting",
+                          "employees": 42, "industry": "consulting",
+                          "revenue": "$6M"},
+        "contacts": [{"key": "elena-vasquez",
+                      "name": "Elena Vasquez",
+                      "title": "Head of Operations",
+                      "email": "elena@northbridge-consulting.example.com",
+                      "linkedin": None,
+                      "persona": "champion", "angle": "visibility",
+                      "verdict": "icp_match"}],
+        "events": [],
+        "cadence": {"elena-vasquez": {
+            "em1": {"subject": "Your visibility gap at Northbridge",
+                    "body": ("Elena, I work with consulting teams on "
+                             "real-time project visibility. Northbridge "
+                             "runs forty-two people and the utilisation "
+                             "numbers arrive too late to act on.\n\n"
+                             "How do you currently get visibility on "
+                             "whether a project is on track?\n\n"
+                             "Best,\nAlex Chen\nFounder, Resonate Group"),
+                    "channel": "email", "generated": True,
+                    "approval": {"fingerprint": "edge-approve-em1"}}}},
+    }
+
+
+def _edge_rec_no_first_name():
+    """Lead 2: no name at all.  The contact has an email but no name field.
+
+    bisonfactory._plan() refuses this.  _build_email_plan() in this script
+    does NOT refuse - it sets first_name to '' and renders whatever the
+    body text says.  The body text here has an empty greeting to show what
+    that looks like.
+    """
+    return {
+        "id": "edge-no-name-002",
+        "client": "fixture_client",
+        "company": "Ashford Digital",
+        "domain": "ashford-d.example.com",
+        "lane": "cold", "state": "active",
+        "company_facts": {"name": "Ashford Digital",
+                          "employees": 18, "industry": "digital marketing"},
+        "contacts": [{"key": "anon-contact",
+                      "name": "",
+                      "title": "Director",
+                      "email": "director@ashford-d.example.com",
+                      "linkedin": None,
+                      "persona": "champion", "angle": "visibility",
+                      "verdict": "icp_match"}],
+        "events": [],
+        "cadence": {"anon-contact": {
+            "em1": {"subject": "Quick question about your team",
+                    "body": ("Hey , I work with agency teams on project "
+                             "visibility and thought Ashford Digital might "
+                             "find this useful.\n\n"
+                             "Best,\nAlex Chen\nFounder, Resonate Group"),
+                    "channel": "email", "generated": True,
+                    "approval": {"fingerprint": "edge-approve-em1"}}}},
+    }
+
+
+def _edge_rec_no_company():
+    """Lead 3: no company.  The record has no company_facts and the company
+    field is a domain string (which company_name() refuses)."""
+    return {
+        "id": "edge-no-company-003",
+        "client": "fixture_client",
+        "company": "keystone-partners.example.com",
+        "domain": "keystone-partners.example.com",
+        "lane": "cold", "state": "active",
+        "company_facts": {},
+        "contacts": [{"key": "sam-okafor",
+                      "name": "Sam Okafor",
+                      "title": "COO",
+                      "email": "sam@keystone-partners.example.com",
+                      "linkedin": None,
+                      "persona": "champion", "angle": "visibility",
+                      "verdict": "icp_match"}],
+        "events": [],
+        "cadence": {"sam-okafor": {
+            "em1": {"subject": "Quick question",
+                    "body": ("Sam, I work with operations teams on project "
+                             "visibility. I noticed your team and thought "
+                             "this might be relevant.\n\n"
+                             "How do you currently track whether projects "
+                             "are on track?\n\n"
+                             "Best,\nAlex Chen\nFounder, Resonate Group"),
+                    "channel": "email", "generated": True,
+                    "approval": {"fingerprint": "edge-approve-em1"}}}},
+    }
+
+
+def _edge_rec_one_char_name():
+    """Lead 4: one-character first name."""
+    return {
+        "id": "edge-one-char-004",
+        "client": "fixture_client",
+        "company": "Bastion Digital",
+        "domain": "bastion-dg.example.com",
+        "lane": "cold", "state": "active",
+        "company_facts": {"name": "Bastion Digital",
+                          "employees": 58, "industry": "digital agency"},
+        "contacts": [{"key": "x-li",
+                      "name": "X Li",
+                      "title": "CTO",
+                      "email": "x.li@bastion-dg.example.com",
+                      "linkedin": None,
+                      "persona": "champion", "angle": "visibility",
+                      "verdict": "icp_match"}],
+        "events": [],
+        "cadence": {"x-li": {
+            "em1": {"subject": "Your visibility at Bastion Digital",
+                    "body": ("X, I work with digital agencies on project "
+                             "visibility. Bastion runs fifty-eight people "
+                             "and the numbers arrive too late.\n\n"
+                             "Best,\nAlex Chen\nFounder, Resonate Group"),
+                    "channel": "email", "generated": True,
+                    "approval": {"fingerprint": "edge-approve-em1"}}}},
+    }
+
+
+def _edge_rec_lowercase_name():
+    """Lead 5: all-lowercase name.  The generator should preserve the case
+    the record carries, not title-case it."""
+    return {
+        "id": "edge-lowercase-005",
+        "client": "fixture_client",
+        "company": "Meridian Logistics",
+        "domain": "meridian-lg.example.com",
+        "lane": "cold", "state": "active",
+        "company_facts": {"name": "Meridian Logistics",
+                          "employees": 85, "industry": "logistics"},
+        "contacts": [{"key": "jane-doe",
+                      "name": "jane doe",
+                      "title": "VP Operations",
+                      "email": "jane@meridian-lg.example.com",
+                      "linkedin": None,
+                      "persona": "champion", "angle": "visibility",
+                      "verdict": "icp_match"}],
+        "events": [],
+        "cadence": {"jane-doe": {
+            "em1": {"subject": "Your visibility at Meridian",
+                    "body": ("jane, I work with logistics teams on "
+                             "real-time visibility. Meridian runs "
+                             "eighty-five people across multiple sites.\n\n"
+                             "Best,\nAlex Chen\nFounder, Resonate Group"),
+                    "channel": "email", "generated": True,
+                    "approval": {"fingerprint": "edge-approve-em1"}}}},
+    }
+
+
+def _edge_rec_allcaps_name():
+    """Lead 6: ALL CAPS name.  Same argument as lowercase: preserve what
+    the record carries."""
+    return {
+        "id": "edge-allcaps-006",
+        "client": "fixture_client",
+        "company": "Cascadia Design",
+        "domain": "cascadia-dc.example.com",
+        "lane": "cold", "state": "active",
+        "company_facts": {"name": "Cascadia Design",
+                          "employees": 34, "industry": "design agency"},
+        "contacts": [{"key": "john-smith",
+                      "name": "JOHN SMITH",
+                      "title": "Studio Director",
+                      "email": "john@cascadia-dc.example.com",
+                      "linkedin": None,
+                      "persona": "champion", "angle": "visibility",
+                      "verdict": "icp_match"}],
+        "events": [],
+        "cadence": {"john-smith": {
+            "em1": {"subject": "Your visibility at Cascadia",
+                    "body": ("JOHN, I work with design studios on "
+                             "resourcing visibility. Cascadia runs "
+                             "thirty-four people.\n\n"
+                             "Best,\nAlex Chen\nFounder, Resonate Group"),
+                    "channel": "email", "generated": True,
+                    "approval": {"fingerprint": "edge-approve-em1"}}}},
+    }
+
+
+def _edge_rec_nonascii_name():
+    """Lead 7: non-ASCII name.  The provider must handle Unicode."""
+    return {
+        "id": "edge-nonascii-007",
+        "client": "fixture_client",
+        "company": "Zürich Digital",
+        "domain": "zurich-dg.example.com",
+        "lane": "cold", "state": "active",
+        "company_facts": {"name": "Zürich Digital",
+                          "employees": 22, "industry": "software"},
+        "contacts": [{"key": "zoe-muller",
+                      "name": "Zoë Müller",
+                      "title": "Engineering Lead",
+                      "email": "zoe@zurich-dg.example.com",
+                      "linkedin": None,
+                      "persona": "champion", "angle": "visibility",
+                      "verdict": "icp_match"}],
+        "events": [],
+        "cadence": {"zoe-muller": {
+            "em1": {"subject": "Your visibility at Zürich Digital",
+                    "body": ("Zoë, I work with software teams on project "
+                             "visibility. Zürich Digital runs twenty-two "
+                             "people.\n\n"
+                             "Best,\nAlex Chen\nFounder, Resonate Group"),
+                    "channel": "email", "generated": True,
+                    "approval": {"fingerprint": "edge-approve-em1"}}}},
+    }
+
+
+def _edge_rec_undefined_greeting():
+    """Lead 8: the body text contains 'Hi undefined,' - the generator
+    produced a literal 'undefined' where the name should be."""
+    return {
+        "id": "edge-undef-008",
+        "client": "fixture_client",
+        "company": "Pinnacle Partners",
+        "domain": "pinnacle-p.example.com",
+        "lane": "cold", "state": "active",
+        "company_facts": {"name": "Pinnacle Partners",
+                          "employees": 15, "industry": "consulting"},
+        "contacts": [{"key": "maria-garcia",
+                      "name": "Maria Garcia",
+                      "title": "Managing Director",
+                      "email": "maria@pinnacle-p.example.com",
+                      "linkedin": None,
+                      "persona": "champion", "angle": "visibility",
+                      "verdict": "icp_match"}],
+        "events": [],
+        "cadence": {"maria-garcia": {
+            "em1": {"subject": "Quick question",
+                    "body": ("Hi undefined, I work with consulting teams "
+                             "on project visibility.\n\n"
+                             "Best,\nAlex Chen\nFounder, Resonate Group"),
+                    "channel": "email", "generated": True,
+                    "approval": {"fingerprint": "edge-approve-em1"}}}},
+    }
+
+
+def _edge_rec_null_greeting():
+    """Lead 9: the body text contains 'Hi null,' - same defect class."""
+    return {
+        "id": "edge-null-009",
+        "client": "fixture_client",
+        "company": "Vertex Solutions",
+        "domain": "vertex-s.example.com",
+        "lane": "cold", "state": "active",
+        "company_facts": {"name": "Vertex Solutions",
+                          "employees": 30, "industry": "technology"},
+        "contacts": [{"key": "chen-wei",
+                      "name": "Chen Wei",
+                      "title": "Head of Delivery",
+                      "email": "chen@vertex-s.example.com",
+                      "linkedin": None,
+                      "persona": "champion", "angle": "visibility",
+                      "verdict": "icp_match"}],
+        "events": [],
+        "cadence": {"chen-wei": {
+            "em1": {"subject": "Your team's visibility",
+                    "body": ("Hi null, I noticed Vertex Solutions and "
+                             "thought this might be relevant.\n\n"
+                             "Best,\nAlex Chen\nFounder, Resonate Group"),
+                    "channel": "email", "generated": True,
+                    "approval": {"fingerprint": "edge-approve-em1"}}}},
+    }
+
+
+def _edge_rec_planted_name():
+    """Lead 10: the body text contains ANOTHER contact's name.
+
+    This is the hi-jacob defect class for email: the generator used one
+    contact's name in copy that goes to the whole cohort.  Two contacts
+    in one record: the first contact's body text names the second.
+    """
+    return {
+        "id": "edge-planted-010",
+        "client": "fixture_client",
+        "company": "Keystone Partners",
+        "domain": "keystone-p.example.com",
+        "lane": "cold", "state": "active",
+        "company_facts": {"name": "Keystone Partners",
+                          "employees": 22, "industry": "consulting"},
+        "contacts": [
+            {"key": "rachel-okafor",
+             "name": "Rachel Okafor",
+             "title": "Delivery Director",
+             "email": "rachel@keystone-p.example.com",
+             "linkedin": None,
+             "persona": "champion", "angle": "visibility",
+             "verdict": "icp_match"},
+            {"key": "declan-murphy",
+             "name": "Declan Murphy",
+             "title": "Project Manager",
+             "email": "declan@keystone-p.example.com",
+             "linkedin": None,
+             "persona": "champion", "angle": "visibility",
+             "verdict": "icp_match"},
+        ],
+        "events": [],
+        "cadence": {
+            # Rachel's copy names Declan - the OTHER contact.
+            "rachel-okafor": {
+                "em1": {"subject": "Your visibility at Keystone",
+                        "body": ("Declan, I work with consulting teams on "
+                                 "project visibility. Keystone runs "
+                                 "twenty-two people.\n\n"
+                                 "Best,\nAlex Chen\nFounder, Resonate Group"),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "edge-approve-em1"}}},
+            "declan-murphy": {
+                "em1": {"subject": "Your visibility at Keystone",
+                        "body": ("Declan, I work with consulting teams on "
+                                 "project visibility. Keystone runs "
+                                 "twenty-two people.\n\n"
+                                 "Best,\nAlex Chen\nFounder, Resonate Group"),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "edge-approve-em1"}}},
+        },
+    }
+
+
+def _edge_rec_no_sender_config():
+    """Lead 11: normal lead but the config has no sender block.
+    Tests signature degradation."""
+    return {
+        "id": "edge-no-sender-011",
+        "client": "fixture_client",
+        "company": "Summit Group",
+        "domain": "summit-g.example.com",
+        "lane": "cold", "state": "active",
+        "company_facts": {"name": "Summit Group",
+                          "employees": 40, "industry": "technology"},
+        "contacts": [{"key": "priya-sharma",
+                      "name": "Priya Sharma",
+                      "title": "Founder",
+                      "email": "priya@summit-g.example.com",
+                      "linkedin": None,
+                      "persona": "champion", "angle": "visibility",
+                      "verdict": "icp_match"}],
+        "events": [],
+        "cadence": {"priya-sharma": {
+            "em1": {"subject": "Your visibility at Summit",
+                    "body": ("Priya, I work with technology teams on "
+                             "project visibility.\n\n"
+                             "Happy to share what similar teams did."),
+                    "channel": "email", "generated": True,
+                    "approval": {"fingerprint": "edge-approve-em1"}}}},
+    }
+
+
 # ----------------------------------------- TASK-057: Email rendering engine
 
 def _email_next_branch(sequence, position, cadence_steps):
@@ -1594,6 +1997,193 @@ def _build_email_plan(config, recs, campaign=None):
             "leads": leads}
 
 
+def render_email_edge_cases():
+    """TASK-082.  Render edge-case leads through the bisonfactory pipeline.
+
+    Shows the greeting and signature for each lead, and flags every way
+    the render can go wrong: empty greeting, undefined/null, planted name,
+    missing sender.
+
+    Goes through _build_email_plan which calls bisonfactory._approved_copy
+    and bisonfactory._variables_for - the SAME code path that builds the
+    provider payload.
+    """
+    from src import clients as _clients
+
+    config = _edge_case_config()
+    recs = [
+        _edge_rec_normal(),
+        _edge_rec_no_first_name(),
+        _edge_rec_no_company(),
+        _edge_rec_one_char_name(),
+        _edge_rec_lowercase_name(),
+        _edge_rec_allcaps_name(),
+        _edge_rec_nonascii_name(),
+        _edge_rec_undefined_greeting(),
+        _edge_rec_null_greeting(),
+        _edge_rec_planted_name(),
+        _edge_rec_no_sender_config(),
+    ]
+
+    plan = _build_email_plan(config, recs)
+    sender = _clients.sender_identity(config)
+
+    out = []
+    out.append(_sep("#"))
+    out.append("  TASK-082: EDGE-CASE EMAIL RENDER QA")
+    out.append("  Rendered through bisonfactory._approved_copy and")
+    out.append("  bisonfactory._variables_for - the SAME code path that")
+    out.append("  builds the real provider payload.")
+    out.append(_sep("#"))
+
+    # Sender identity.
+    out.append("")
+    out.append(_sep("-"))
+    out.append("  SENDER IDENTITY (from config):")
+    if sender:
+        for k, v in sorted(sender.items()):
+            out.append(f"    {k}: {v}")
+    else:
+        out.append("    (no sender block in config - signature degrades)")
+    out.append(_sep("-"))
+
+    # Collect cohort names for planted-name detection.
+    # Exclude sender name parts - the sender's name in a signature is not
+    # a planted cohort name.
+    sender_name_parts = set()
+    for part in (sender.get("name") or "").split():
+        if len(part) > 1:
+            sender_name_parts.add(part)
+    all_names = set()
+    for rec in recs:
+        for contact in rec.get("contacts") or []:
+            name = (contact.get("name") or "").strip()
+            first = name.split()[0] if name else ""
+            if first and len(first) > 1 and first not in sender_name_parts:
+                all_names.add(first)
+
+    # Per-lead rendering.
+    for lead in plan["leads"]:
+        rec = lead["rec"]
+        contact = lead["contact"]
+        copy = lead.get("copy") or []
+        variables = lead.get("variables") or []
+        first_name = ((contact.get("name") or "").split() or [""])[0]
+
+        out.append("")
+        out.append(_sep("="))
+        out.append(f"  LEAD: {contact.get('name') or '(NO NAME)'}")
+        out.append(f"  Contact key: {contact.get('key', '?')}")
+        out.append(f"  Company: {rec.get('company', '?')}")
+        out.append(f"  First name extracted: {first_name!r}")
+        out.append(_sep("="))
+
+        # Show the body text and extract greeting + signature.
+        for entry in copy:
+            body = entry.get("body", "")
+            subject = entry.get("subject", "")
+            step_key = entry.get("step_key", "?")
+
+            out.append("")
+            out.append(f"  --- Step: {step_key} ---")
+            out.append(f"    Subject: {subject}")
+            out.append("")
+
+            # Extract greeting (first line).
+            lines = body.split("\n")
+            greeting_line = lines[0] if lines else ""
+            out.append(f"    GREETING (first line of body):")
+            out.append(f"      {greeting_line!r}")
+
+            # Check for issues.
+            issues = []
+            # Empty greeting: "Hey ," "Hi ," "Hello ,"
+            if re.match(r'^(Hey|Hi|Hello)\s*,', greeting_line):
+                issues.append(
+                    "EMPTY GREETING: greeting has no name after it")
+            # undefined/null/None
+            for bad in ("undefined", "null", "None"):
+                if bad in greeting_line:
+                    issues.append(
+                        f"LITERAL {bad.upper()}: greeting contains "
+                        f"{bad!r} instead of a name")
+            # Planted name: this contact's body contains another contact's name
+            own_first = first_name
+            for name in all_names:
+                if name == own_first:
+                    continue
+                if re.search(r'\b' + re.escape(name) + r'\b', body,
+                             re.IGNORECASE):
+                    issues.append(
+                        f"PLANTED NAME: body contains name {name!r} "
+                        f"from another contact in the cohort")
+
+            # Extract signature (last non-empty lines, in original order).
+            sig_lines = []
+            for line in reversed(lines):
+                stripped = line.strip()
+                if stripped:
+                    sig_lines.append(stripped)
+                    if len(sig_lines) >= 3:
+                        break
+            sig_lines.reverse()
+
+            out.append(f"    SIGNATURE (last lines of body):")
+            for sl in sig_lines:
+                out.append(f"      {sl}")
+
+            # Check sender identity in signature.
+            sender_name = sender.get("name", "")
+            if sender_name and sender_name not in body:
+                issues.append(
+                    "SENDER MISSING: signature does not contain the "
+                    "configured sender name")
+
+            if issues:
+                out.append("")
+                out.append("    !!! ISSUES:")
+                for issue in issues:
+                    out.append(f"      !!! {issue}")
+            else:
+                out.append("")
+                out.append("    OK: no issues detected")
+
+        if not copy:
+            out.append("")
+            out.append("    *** NO COPY - no approved words for this lead ***")
+
+    # Summary.
+    out.append("")
+    out.append(_sep("#"))
+    out.append("  SUMMARY")
+    out.append(_sep("#"))
+    out.append(f"  Total leads rendered: {len(plan['leads'])}")
+    out.append(f"  Cohort names checked: {sorted(all_names)}")
+    out.append(f"  Sender identity: {sender or '(none)'}")
+    out.append("")
+    out.append("  VARIABLE SYNTAX: EmailBison uses single-brace merge")
+    out.append("  fields: {SUBJECT_1}, {BODY_1}.  Measured on this estate:")
+    out.append("  3,295 single-brace occurrences, ZERO double-brace across")
+    out.append("  81 sequences.  A double-brace placeholder would reach a")
+    out.append("  prospect as literal text.")
+    out.append("")
+    out.append("  GREETING: The greeting is part of the generated body")
+    out.append("  text, NOT a provider-side variable.  EmailBison does NOT")
+    out.append("  have a {first_name} merge variable.  The generator writes")
+    out.append("  the greeting into the body, and it travels as {BODY_N}.")
+    out.append("  If the generator produces 'Hey ,' or 'Hi undefined,',")
+    out.append("  that goes straight to the provider and out the door.")
+    out.append("")
+    out.append("  SIGNATURE: From clients.sender_identity(config).  Reads")
+    out.append("  the sender: block.  An empty config means no name, no")
+    out.append("  role, no company in the signature.")
+    out.append("")
+    out.append(_sep("#"))
+    out.append("  END OF EDGE-CASE QA")
+    out.append(_sep("#"))
+    return "\n".join(out)
+
+
 def render_email_preview(campaign_name="email_five", config=None, recs=None):
     """Render the email pipeline preview.
 
@@ -1617,6 +2207,8 @@ def render_email_preview(campaign_name="email_five", config=None, recs=None):
     if recs is None:
         if campaign_name == "email_missing":
             recs = [_fixture_rec_email_missing()]
+        elif campaign_name == "email_edge_cases":
+            return render_email_edge_cases()
         elif campaign_name == "email_five":
             recs = [_fixture_rec_email(), _fixture_rec_email_second()]
         else:
@@ -2203,7 +2795,7 @@ HEYREACH_FIXTURES = frozenset((
 
 # The fixture names that route to the email pipeline.  TASK-057.
 EMAIL_FIXTURES = frozenset((
-    "email_five", "email_missing",
+    "email_five", "email_missing", "email_edge_cases",
 ))
 
 

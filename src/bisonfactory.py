@@ -417,6 +417,87 @@ def _refuse_unsupported(plan):
         f"widen the claim rules to let them through")
 
 
+def _refuse_bad_greetings(plan):
+    """TASK-082. Refuse if any lead's body text has a broken greeting.
+
+    THE DEFECT THIS PREVENTS. EmailBison does NOT have a {first_name} merge
+    variable. The greeting is part of the generated body text that travels
+    as {BODY_N}. If the generator produces "Hey ," or "Hi undefined," that
+    goes straight to the provider and out the door. There is no provider-side
+    substitution to save it.
+
+    THREE CLASSES OF DEFECT:
+    1. Empty greeting: "Hey ," "Hi ," "Hello ," - name is missing
+    2. Literal placeholder: "Hi undefined," "Hi null," "Hi None,"
+    3. Planted cohort name: one contact's body contains another contact's
+       first name (the hi-jacob defect class for email)
+
+    CALLED BY _ensure_leads, which is called by stage(). Deleting the call
+    makes the test fail - that is the wiring proof.
+    """
+    import re as _re
+
+    wanted = plan.get("leads") or []
+    if not wanted:
+        return
+
+    # Collect cohort first names for planted-name detection.
+    cohort_names = set()
+    for lead in wanted:
+        first = (lead.get("first_name") or "").strip()
+        if first and len(first) > 1:
+            cohort_names.add(first)
+
+    problems = []
+    for lead in wanted:
+        contact_key = lead.get("contact_key", "?")
+        record_id = lead.get("record_id", "?")
+        own_first = (lead.get("first_name") or "").strip()
+        copy = lead.get("copy") or []
+
+        for entry in copy:
+            body = entry.get("body") or ""
+            step_key = entry.get("step_key", "?")
+            if not body:
+                continue
+            first_line = body.split("\n")[0] if body else ""
+
+            # Check 1: empty greeting.
+            if _re.match(r'^(Hey|Hi|Hello)\s*,', first_line):
+                problems.append(
+                    f"{record_id}/{contact_key} step {step_key}: "
+                    f"empty greeting - {first_line[:50]!r}")
+
+            # Check 2: literal placeholder.
+            for bad in ("undefined", "null", "None"):
+                if bad in first_line:
+                    problems.append(
+                        f"{record_id}/{contact_key} step {step_key}: "
+                        f"greeting contains literal {bad!r} - "
+                        f"{first_line[:50]!r}")
+
+            # Check 3: planted cohort name.
+            for name in cohort_names:
+                if name == own_first:
+                    continue
+                if _re.search(r'\b' + _re.escape(name) + r'\b', body,
+                              _re.IGNORECASE):
+                    problems.append(
+                        f"{record_id}/{contact_key} step {step_key}: "
+                        f"body contains cohort name {name!r} "
+                        f"(hi-jacob defect class)")
+
+    if problems:
+        detail = "; ".join(problems[:4])
+        raise FactoryRefused(
+            f"{len(problems)} greeting/copy defect(s) detected: {detail}"
+            f"{' and more' if len(problems) > 4 else ''}. "
+            f"EmailBison has no provider-side variable for first name - "
+            f"the greeting is baked into the body text and travels as "
+            f"{{BODY_N}}. A broken greeting reaches the prospect as-is. "
+            f"REGENERATE the affected steps")
+
+
 def _unsupported_copy(rec, contact, copy):
     """Every approved step whose words assert something the record cannot
     support. Returns `(step_key, why)` pairs.
@@ -1041,6 +1122,7 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
         report["did"].append("no leads staged: the plan carries none")
         return
     _refuse_unsupported(plan)
+    _refuse_bad_greetings(plan)
     short = [(lead["record_id"], lead["contact_key"], lead["missing_copy"])
              for lead in wanted if lead.get("missing_copy")]
     if short:
