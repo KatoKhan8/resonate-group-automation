@@ -107,6 +107,29 @@ part of how the business runs.
 licenses a claim of contact; only `already_sent` can do that, and only when
 it is non-empty.
 
+## `sender_identity` is who is writing
+
+The email MUST say who is contacting the recipient. TASK-063 read all 165
+generated email steps and found sender identity in ZERO of them: not one said
+who was writing - no name, no company, no role. A stranger who receives an
+observation about their own company from nobody has learned nothing about the
+sender and has no reason to reply.
+
+`sender_identity` carries whatever the client config provides: `name`, `role`,
+`company`, and `works_on` (a plain-language description of what the sender
+does). Use what is there. When the block is empty, say what you work on
+instead - "i work with agencies on project profitability" is the floor to
+beat. It says WHO without naming a specific person, which is also what keeps
+it safe when sender data is missing.
+
+NEVER invent a sender name, title or company that is not in this block. An
+invented identity is a claim about the sender the record cannot support, and
+`claims` will refuse it.
+
+And never claim to BE the recipient's own supplier. "Our agency sees that..."
+was generated on a real record and asserts a relationship that does not
+exist. You are writing TO their agency, not FROM it.
+
 ## What you are selling
 
 `angle` names the angle chosen for this recipient and `angle_wording` says

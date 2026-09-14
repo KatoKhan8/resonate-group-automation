@@ -498,6 +498,14 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
         # named the product, which is the email half of the same defect the
         # LinkedIn ladder shows more plainly.
         block["product"] = clients.product(client or {})
+        # AND WHO IS WRITING IT. TASK-063 read all 165 generated email steps
+        # and found sender identity in ZERO of them - not one email says who
+        # is writing, with no name, no company and no role. TASK-075 fixed
+        # exactly this for `linkedin_note` and stopped here, so the email half
+        # of the defect survived its own fix. Same call, same degradation
+        # rule: when the block is empty the prompt says what the sender DOES
+        # rather than inventing a name.
+        block["sender_identity"] = clients.sender_identity(client or {})
         block["evidence"] = (rec.get("evidence") or {}).get(
             lint.contact_key(contact or {}), [])
         block["tone"] = (client or {}).get("tone")
