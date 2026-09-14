@@ -702,6 +702,16 @@ class TheFactoryStillCannotSend(FactoryTest):
     """None of the above may have widened what this module is allowed to do."""
 
     def test_the_write_routes_are_unchanged(self):
+        """`/leads/{lead_id}` was ADDED on 2026-09-14, and the module's write
+        surface did not grow by adding it.
+
+        `update_lead` has always written `PATCH /leads/{id}`; the tuple simply
+        never named it, and nothing compared the two. So this row records a
+        write that was already happening rather than permitting a new one -
+        the direction that matters, and the opposite of widening a seal to
+        make a change pass. The enforcement that makes the drift impossible
+        from now on is `bison._allow`, exercised below.
+        """
         self.assertEqual(set(bison.WRITE_ROUTES), {
             "/campaigns",
             "/campaigns/{campaign_id}/update",
@@ -713,6 +723,7 @@ class TheFactoryStillCannotSend(FactoryTest):
             "/campaigns/{campaign_id}/schedule",
             "/campaigns/{campaign_id}/attach-sender-emails",
             "/leads",
+            "/leads/{lead_id}",
             "/custom-variables",
         })
 

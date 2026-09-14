@@ -381,8 +381,7 @@ def ensure_custom_variables(names=LEAD_VARIABLES):
     for name in names:
         if name in have:
             continue
-        status, data = request("POST", f"{base()}/custom-variables",
-                               _json_headers(), {"name": name})
+        status, data = _post("/custom-variables", {"name": name})
         if not ok(status):
             raise ProviderError(
                 f"emailbison ensure_custom_variables: POST {name!r} -> "
@@ -428,8 +427,80 @@ WRITE_ROUTES = (
     "/campaigns/{campaign_id}/schedule",            # when it may send
     "/campaigns/{campaign_id}/attach-sender-emails",  # which inboxes
     "/leads",                                       # create a lead
+    # UPDATE ONE LEAD'S FIELDS. Staging, and of the narrowest kind: the only
+    # caller is `update_lead`, which rewrites the custom variables carrying
+    # approved copy onto a lead that already exists. It was being written to
+    # while absent from this tuple, which is how the enforcement below came to
+    # be written - a declared allowlist that nothing consults cannot tell
+    # anybody it has been left behind.
+    "/leads/{lead_id}",                             # correct a staged lead
     "/custom-variables",                            # declare a variable name
 )
+
+# ------------------------------------------------------------------- the door
+#
+# THIS TUPLE WAS A COMMENT UNTIL 2026-09-14. It claimed "the same guarantee
+# `heyreach.WRITE_ROUTES` gives", and HeyReach earns that claim with a
+# chokepoint - its `_write` refuses a path not on its list before the request
+# is built. Here every write called `request()` directly with an f-string URL,
+# so the tuple above documented an intention and enforced nothing.
+#
+# It was already wrong when this was written. `update_lead` writes
+# `PATCH /leads/{id}`, which the tuple did not name, and nothing anywhere
+# noticed. That is the whole argument for a door: the list drifts from the code
+# silently until something compares the two on every call.
+#
+# THE VERB STAYS A LITERAL IN EACH OF THE THREE FUNCTIONS BELOW, on purpose.
+# `tests/test_nothing_writes_to_a_provider` reads this repository's source for
+# `request("POST", ...)` and reports a `request(verb, ...)` as DYNAMIC -
+# unreadable, and exactly the shape a deliberate bypass would have. A single
+# `_write(method, ...)` helper would have made every EmailBison write invisible
+# to that audit, trading a static guarantee for a runtime one. Three small
+# functions keep both.
+
+WRITE_METHODS = ("POST", "PATCH", "PUT")
+
+
+def route_of(path):
+    """Which `WRITE_ROUTES` template a concrete path matches, or None.
+
+    A braced template segment matches exactly one concrete segment, and the
+    segment COUNT must agree - so `/leads` never matches `/leads/{lead_id}`,
+    and no longer path can smuggle itself in behind a shorter template.
+    """
+    parts = [p for p in str(path).split("?")[0].split("/") if p]
+    for template in WRITE_ROUTES:
+        wanted = [p for p in template.split("/") if p]
+        if len(wanted) != len(parts):
+            continue
+        if all((w.startswith("{") and w.endswith("}")) or w == p
+               for w, p in zip(wanted, parts)):
+            return template
+    return None
+
+
+def _allow(verb, path):
+    """Refuse any write to a path `WRITE_ROUTES` does not name."""
+    if route_of(path) is None:
+        raise ProviderError(
+            f"emailbison: {verb} {path} is not a write route. This module "
+            f"writes only to {', '.join(WRITE_ROUTES)}. Adding a route there "
+            f"is a decision about what this system may do to real campaigns")
+
+
+def _post(path, body):
+    _allow("POST", path)
+    return request("POST", base() + path, _json_headers(), body)
+
+
+def _patch(path, body):
+    _allow("PATCH", path)
+    return request("PATCH", base() + path, _json_headers(), body)
+
+
+def _put(path, body):
+    _allow("PUT", path)
+    return request("PUT", base() + path, _json_headers(), body)
 
 
 def _json_headers():
@@ -456,7 +527,7 @@ def create_lead(fields):
     """
     if not isinstance(fields, dict) or not fields.get("email"):
         raise ProviderError("emailbison create_lead: an email is required")
-    status, data = request("POST", f"{base()}/leads", _json_headers(), fields)
+    status, data = _post("/leads", fields)
     if not ok(status):
         raise ProviderError(
             f"emailbison create_lead: POST /leads -> {status} {_message(data)}")
@@ -477,8 +548,7 @@ def create_campaign(name):
     """
     if not str(name or "").strip():
         raise ProviderError("emailbison create_campaign: a name is required")
-    status, data = request("POST", f"{base()}/campaigns", _json_headers(),
-                           {"name": name})
+    status, data = _post("/campaigns", {"name": name})
     if not ok(status):
         raise ProviderError(
             f"emailbison create_campaign: POST -> {status} {_message(data)}")
@@ -616,9 +686,8 @@ def set_limits(campaign_id, name, emails_per_day, new_leads_per_day=None):
         raise ProviderError(
             f"emailbison set_limits: new leads per day ({leads}) exceeds "
             f"emails per day ({emails_per_day}); the provider refuses this")
-    status, data = request(
-        "PATCH", base() + UPDATE_PATH.format(campaign_id=campaign_id),
-        _json_headers(),
+    status, data = _patch(
+        UPDATE_PATH.format(campaign_id=campaign_id),
         {"name": name, "max_emails_per_day": emails_per_day,
          "max_new_leads_per_day": leads})
     if not ok(status):
@@ -877,9 +946,8 @@ def stop_lead(campaign_id, lead_ids, attempts=8, interval=2.0):
             f"happen")
     total = campaign_lead_count(campaign_id)
     sample_before = _sample(campaign_id)
-    status, data = request(
-        "POST", base() + STOP_PATH.format(campaign_id=campaign_id),
-        _json_headers(), {"lead_ids": wanted})
+    status, data = _post(STOP_PATH.format(campaign_id=campaign_id),
+                         {"lead_ids": wanted})
     if not ok(status):
         raise ProviderError(
             f"emailbison stop_lead: POST -> {status} {_message(data)}")
@@ -988,13 +1056,13 @@ def set_schedule(campaign_id, days, start, end, timezone):
     # `tests/test_nothing_writes_to_a_provider` refuses a `request(verb, ...)`
     # outright - because a verb decided at runtime is a write no static read
     # can name. Two branches is the price of that, and it is worth it.
-    url = base() + SCHEDULE_PATH.format(campaign_id=campaign_id)
+    url = SCHEDULE_PATH.format(campaign_id=campaign_id)
     if schedule(campaign_id):
         verb = "PUT"
-        status, data = request("PUT", url, _json_headers(), body)
+        status, data = _put(url, body)
     else:
         verb = "POST"
-        status, data = request("POST", url, _json_headers(), body)
+        status, data = _post(url, body)
     if not ok(status):
         raise ProviderError(
             f"emailbison set_schedule: {verb} -> {status} {_message(data)}")
@@ -1052,9 +1120,8 @@ def attach_senders(campaign_id, sender_email_ids):
     wanted = [int(i) for i in (sender_email_ids or [])]
     if not wanted:
         raise ProviderError("emailbison attach_senders: no sender ids given")
-    status, data = request(
-        "POST", base() + SENDERS_PATH.format(campaign_id=campaign_id),
-        _json_headers(), {"sender_email_ids": wanted})
+    status, data = _post(SENDERS_PATH.format(campaign_id=campaign_id),
+                         {"sender_email_ids": wanted})
     if not ok(status):
         raise ProviderError(
             f"emailbison attach_senders: POST -> {status} {_message(data)}")
@@ -1107,8 +1174,7 @@ def update_lead(lead_id, fields):
     never updated: the readback would look right and the wrong words would
     send.
     """
-    status, data = request("PATCH", f"{base()}/leads/{lead_id}",
-                           _json_headers(), fields)
+    status, data = _patch(f"/leads/{lead_id}", fields)
     if not ok(status):
         raise ProviderError(
             f"emailbison update_lead: PATCH -> {status} {_message(data)}")
@@ -1247,9 +1313,8 @@ def attach_leads(campaign_id, lead_ids):
         return {"attached": [], "already": list(wanted),
                 "members": sorted(before),
                 "count": campaign_lead_count(campaign_id)}
-    status, data = request(
-        "POST", base() + ATTACH_PATH.format(campaign_id=campaign_id),
-        _json_headers(), {"lead_ids": missing})
+    status, data = _post(ATTACH_PATH.format(campaign_id=campaign_id),
+                         {"lead_ids": missing})
     if not ok(status):
         if REFUSED_ATTACH in _message(data).lower():
             raise LeadsNotAttachable(_attach_refusal(campaign_id, missing,
@@ -1336,9 +1401,8 @@ def set_sequence(campaign_id, title, steps):
     """
     if not steps:
         raise ProviderError("emailbison set_sequence: no steps given")
-    status, data = request(
-        "POST", f"{base()}/campaigns/{campaign_id}/sequence-steps",
-        _json_headers(), {"title": title, "sequence_steps": list(steps)})
+    status, data = _post(f"/campaigns/{campaign_id}/sequence-steps",
+                         {"title": title, "sequence_steps": list(steps)})
     if not ok(status):
         raise ProviderError(
             f"emailbison set_sequence: POST -> {status} {_message(data)}")
@@ -1449,9 +1513,7 @@ def resume_campaign(campaign_id, expect_leads=None, attempts=8, interval=2.0):
                 f"{held} lead(s) and the caller expected "
                 f"{expect_leads}. Refusing to start a campaign whose reach is "
                 f"not what the caller thinks it is")
-    status, data = request("PATCH",
-                           f"{base()}/campaigns/{campaign_id}/resume",
-                           _json_headers(), {})
+    status, data = _patch(f"/campaigns/{campaign_id}/resume", {})
     if not ok(status):
         raise ProviderError(
             f"emailbison resume_campaign: PATCH -> {status} {_message(data)}")
@@ -1492,8 +1554,7 @@ def pause_campaign(campaign_id):
     status string and raises when that status is not `paused`, so a local
     record can never say PAUSED while EmailBison is still sending.
     """
-    status, data = request("PATCH", f"{base()}/campaigns/{campaign_id}/pause",
-                           _json_headers(), {})
+    status, data = _patch(f"/campaigns/{campaign_id}/pause", {})
     if not ok(status):
         raise ProviderError(
             f"emailbison pause_campaign: PATCH -> {status} {_message(data)}")
