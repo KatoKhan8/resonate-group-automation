@@ -708,6 +708,45 @@ def _plan(campaign, recs, config, *, include_inmail=False,
 # thing between a real lead and this function is `LINKEDIN_ADD_LEAD` not
 # being in `providerwrites.SUPPORTED`, which is an operator decision.
 
+def _seat_for(campaign, provider_id, config):
+    """The LinkedIn account this campaign sends from. Refuses rather than 0.
+
+    This read `(config.get("heyreach") or {}).get("default_account_id", 0)`,
+    and that key does not exist: the client config carries the HeyReach block
+    under `providers.heyreach`, and it holds `org_unit` rather than a seat at
+    all. So every lead would have gone to the wire with
+    `linkedInAccountId: 0` - a lead assigned to nobody, on a provider where
+    the seat is WHO THE PROSPECT SEES the message come from.
+
+    Zero is the worst possible default here, which is why there is no default.
+    The seat comes from canonical state where it is recorded, and from the
+    provider campaign itself otherwise - `campaignAccountIds` is what HeyReach
+    already believes, and disagreeing with it silently is how a lead ends up
+    sending from the wrong person.
+    """
+    recorded = ((campaign.get("senders") or {}).get("linkedin") or [])
+    for sender in recorded:
+        seat = (sender or {}).get("provider_account_id")
+        if seat:
+            return int(seat)
+
+    row = heyreach.campaign_read(provider_id) or {}
+    bound = [a for a in (row.get("campaignAccountIds") or []) if a]
+    if len(bound) == 1:
+        return int(bound[0])
+    if len(bound) > 1:
+        raise FactoryRefused(
+            f"HeyReach campaign {provider_id} has {len(bound)} LinkedIn "
+            f"accounts bound to it ({bound}) and this campaign's canonical "
+            f"row names none, so which human a prospect hears from would be "
+            f"decided by list order. Record the seat in `senders.linkedin`")
+    raise FactoryRefused(
+        f"no LinkedIn seat for campaign {campaign.get('campaign_id')!r}: the "
+        f"canonical row names none and HeyReach campaign {provider_id} has "
+        f"none bound. A lead pushed without a seat is a lead assigned to "
+        f"nobody, and the seat is who the prospect sees the message from")
+
+
 def _first_linkedin_step(campaign, config):
     """The key of the first LinkedIn step in this campaign's cadence.
 
@@ -964,14 +1003,20 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
             "all pushable contacts are already members; nothing to push")
         return report
 
+    # RESOLVED BEFORE THE DRY RUN, because the dry run REPORTS it. A dry run
+    # that cannot say which seat a lead would send from is not answering the
+    # question an operator is asking it, and resolving it here also means a
+    # campaign with no seat refuses in a dry run rather than at the write.
+    linkedin_account_id = _seat_for(campaign, provider_id, config)
+
     if not live:
         report["did"].append(
             f"dry run: would push {len(new_contacts)} contact(s) to "
             f"HeyReach campaign {provider_id}")
         for row in new_contacts:
             report["did"].append(
-                f"  {row['contact_key']} from seat "
-                f"{row.get('domain', '?')}: "
+                f"  {row['contact_key']} ({row.get('domain', '?')}) "
+                f"from seat {linkedin_account_id}: "
                 f"variables="
                 f"{sorted(row.get('custom_fields', {}).keys())}")
         return report
@@ -985,8 +1030,6 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
     # obtained once before the loop and passed to each authorize() call.
     # authorize() runs gates the five pre-filters do not, starting with `copy`
     # which asks whether the step actually renders for this contact.
-    linkedin_account_id = (config.get("heyreach") or {}).get(
-        "default_account_id", 0)
 
     # Obtain a sealed Readback for the authorization gate. This is a provider
     # comparison that stamps its own timestamp after the last provider read.

@@ -177,6 +177,17 @@ class _EnsureLeadsTestBase(_NoPatchOutlivesItsTest):
                                                     "name": "PRODUCTIVE"})
         self._ws_patch.start()
         self.addCleanup(self._ws_patch.stop)
+        # THE LINKEDIN SEAT. `_seat_for` reads the canonical row first and
+        # falls back to the provider's `campaignAccountIds`, because a lead
+        # pushed without a seat is a lead assigned to nobody - and the seat is
+        # who the prospect sees the message come from. Both are reads these
+        # tests have no credentials for.
+        self._seat_patch = mock.patch.object(
+            heyreach, "campaign_read",
+            return_value={"id": 599020, "campaignAccountIds": [174892],
+                          "organizationUnitId": 118832})
+        self._seat_patch.start()
+        self.addCleanup(self._seat_patch.stop)
         # addCleanup, NOT tearDown. `unittest` does not call tearDown when a
         # setUp raises, and an inline `.stop()` never runs if the test fails
         # before it - either way the mock stays installed for the rest of the
