@@ -270,17 +270,20 @@ class WiringVerification(_OOOTestBase):
 
     def test_removing_the_ooo_check_causes_ooo_to_pause(self):
         """If _is_pure_ooo always returns False, OOO pauses - proving the
-        pause is conditional on the classification."""
+        pause is conditional on the classification.
+
+        We don't pass automated=True here, because the automated flag
+        takes a separate path. Without it, patching _is_pure_ooo to False
+        sends the OOO through the 'ensure pause' branch.
+        """
         from unittest.mock import patch
 
         recs = store.load()
         text = ("Automatic reply: I am out of the office until September 20 "
                 "with limited access to email.")
         with patch.object(inbound, "_is_pure_ooo", return_value=False):
-            outcome = inbound.handle(_event(text, automated=True), recs)
+            outcome = inbound.handle(_event(text), recs)
         rec = self._rec(recs)
-        # With the OOO check disabled, the OOO is treated as non-pure and
-        # the account pauses (via the OOO-with-human-sentence branch).
         self.assertTrue(rec.get("paused"),
                         "with the OOO check disabled, the account should "
                         "pause - if it does not, the pause is not reading "
