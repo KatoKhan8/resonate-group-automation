@@ -103,6 +103,14 @@ UNSUBSCRIBE_PATTERNS = (
     r"\b(?:remove|delete) me from (?:your|this|the) (?:list|database|mailing)\b",
     r"\bplease (?:do not|don'?t) (?:send|write) (?:me |any )?(?:more |any )?(?:emails?|messages?|mail)\b",
     r"\b(?:do not|don'?t) (?:send|write) me (?:any )?(?:more |any )?(?:emails?|messages?|mail)\b",
+    # TASK-035: standalone "stop" - the one-word unsubscribe. 15+ replies
+    # across the email corpus that are just "Stop" or "stop" with nothing
+    # else. The existing patterns require "stop" to be followed by a
+    # gerund ("stop emailing") or preceded by "please" ("please stop");
+    # the bare word was not caught. Gated on NOT being followed by words
+    # that change the meaning: "stop by" is a visit, "stop the" is about
+    # an object.
+    r"\bstop\b(?! (?:by|the|it|this|that|your?|my|our|a |an ))",
 )
 OUT_OF_OFFICE_PATTERNS = (
     r"\bout of (?:the )?office\b", r"\bautomatic reply\b", r"\bauto[- ]?reply\b",
@@ -145,6 +153,21 @@ NEGATIVE_PATTERNS = (
     r"\bnot (?:looking|shopping) (?:for|at) (?:this|that|a)\b",
     r"\b(?:not |un)(?:likely|likely) to (?:be|work|help)\b",
     r"\bno (?:interest|need) (?:at this time|right now|currently|for now)\b",
+    # TASK-035: grouped from the unmatched 53%. "Not a priority" is a
+    # refusal, not a delay - the sender is saying this does not rank high
+    # enough to act on, not naming a later time. ~15 replies across both
+    # corpora. "Not interesting for" is the polite-cousin of "not
+    # interested" - 10+ replies that say "not interesting for us" and
+    # slipped through because the existing pattern matches "not interested"
+    # but not "not interesting." The "for" gate keeps it away from the
+    # positive "sounds interesting" group. "No longer interested" catches
+    # the tense shift: "we are no longer interested" did not match "not
+    # interested." ~5 replies. "Not for us" is the plural of the existing
+    # "not for me" - 5+ replies, especially LinkedIn.
+    r"\bnot (?:a |the )?priority\b",
+    r"\bnot interesting for\b",
+    r"\bno longer interested\b",
+    r"\bnot for us\b",
 )
 # Handing somebody on.
 #
@@ -174,6 +197,13 @@ NOT_RELEVANT_PATTERNS = (
     r"\bnot relevant (?:for|to|at)\b",
     r"\b(?:doesn'?t|does not|won'?t) (?:apply|work|help) (?:for |to |us)\b",
     r"\bnot (?:something|anything) (?:we|I) (?:need|use|want)\b",
+    # TASK-035: the first-person variant of "wrong person." The existing
+    # pattern catches "not the right person" but misses "not be the right
+    # person" - common when somebody says "I wouldn't be the right person"
+    # or "I may not be the right person." The referral guard in
+    # `classify_rules` still requires a named person for REFERRAL; this
+    # catches the same phrase when it points at nobody. ~5 replies.
+    r"\bnot (?:be )?(?:the )?right person\b",
 )
 POSITIVE_PATTERNS = (
     r"\binterested\b", r"\bsounds (?:good|interesting|great)\b",
@@ -193,6 +223,18 @@ POSITIVE_PATTERNS = (
     r"\b(?:that|this) (?:would be|sounds) (?:great|helpful|useful)\b",
     r"\bsend (?:me )?(?:a |over )?(?:demo|proposal|quote|estimate)\b",
     r"\bcan we (?:schedule|arrange|organise|set up)\b",
+    # TASK-035: "I'd like to learn more" and close variants. Grouped from
+    # ~20 replies across both corpora that express curiosity without
+    # committing. The existing "would like to (know|hear) more" catches
+    # the formal version; this catches the contracted one and adds
+    # "learn" and "see" which the original missed. "Interesting" alone
+    # is NOT here - it is too ambiguous between "sounds interesting"
+    # (positive) and just acknowledging the word. ~20 replies.
+    r"\bi'?d (?:like|love) to (?:know|hear|learn|see) more\b",
+    # TASK-035: "send me a video" / "can you send a video" - a specific
+    # information request that signals engagement. 4-5 replies. Added to
+    # the existing send-me-X pattern rather than as a separate line.
+    r"\bsend (?:me )?(?:a )?video\b",
 )
 
 RULES = (
