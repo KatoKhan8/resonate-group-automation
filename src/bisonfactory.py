@@ -351,6 +351,8 @@ def _plan(campaign, recs, config):
                           "first_name": first,
                           "copy": copy,
                           "missing_copy": missing,
+                          "unsupported_copy": _unsupported_copy(
+                              source, person, copy),
                           "step_key": copy[0]["step_key"] if copy else None,
                           "subject": copy[0]["subject"] if copy else "",
                           "body": copy[0]["body"] if copy else "",
@@ -377,6 +379,75 @@ def _plan(campaign, recs, config):
             "sequence": sequence,
             "sequence_config": (config or {}).get("email_sequence") or {},
             "bison_campaign_id": campaign.get("bison_campaign_id")}
+
+
+def _refuse_unsupported(plan):
+    """Refuse the whole stage if any lead's approved copy asserts something
+    the record does not support.
+
+    A separate function from `_ensure_leads` so it can be exercised without a
+    provider, an estate or a campaign row - the refusal is the part that has
+    to be right, and a guard only reachable through four other guards is a
+    guard nobody tests.
+
+    IT STOPS THE WHOLE STAGE rather than skipping the lead. `bisonfactory`
+    already takes that position for missing copy and for the same reason: a
+    campaign meant for nine that quietly stages eight is a campaign whose
+    reach nobody stated, and `resume_campaign`'s `expect_leads` count is
+    built on the caller knowing that number.
+    """
+    wanted = plan.get("leads") or []
+    untrue = [(lead["record_id"], lead["contact_key"], lead["unsupported_copy"])
+              for lead in wanted if lead.get("unsupported_copy")]
+    if not untrue:
+        return
+    detail = "; ".join(f"{rid}/{key} {steps[0][0]}: {steps[0][1]}"
+                       for rid, key, steps in untrue[:4])
+    raise FactoryRefused(
+        f"{len(untrue)} of {len(wanted)} contact(s) carry approved copy that "
+        f"asserts something the record does not support: {detail}"
+        f"{' and more' if len(untrue) > 4 else ''}. An approval proves a human "
+        f"blessed these words, not that they are true of this person, and "
+        f"after staging the provider sends on its own - there is no later "
+        f"gate. REGENERATE the affected steps; do not edit them and do not "
+        f"widen the claim rules to let them through")
+
+
+def _unsupported_copy(rec, contact, copy):
+    """Every approved step whose words assert something the record cannot
+    support. Returns `(step_key, why)` pairs.
+
+    AN APPROVAL IS NOT A FACT-CHECK. `_approved_copy` proves a human blessed
+    these exact words - the fingerprint is per step key and the gate checks
+    the payload against it - and that is a different question from whether
+    the words are true of this person. This module checked the first and
+    never the second, so the only thing standing between a stored draft and
+    a real person was whoever clicked approve.
+
+    It matters because `_ensure_leads` writes the words into per-lead
+    variables and the campaign then sends on its own. `executionguard` runs
+    `claims.check` before a SEND, but it never sees these: staging is not a
+    send, and after staging the provider does the sending. So for email there
+    is no later gate at all - this is the last one.
+
+    Measured 2026-09-14: the 9 live leads on campaign 481 are CLEAN, checked
+    against the words actually held at the provider rather than the local
+    store. They are clean because they were regenerated after `claims.check`
+    was added to `generate.draft`, not because anything here checked. 17
+    stored email steps elsewhere in the estate still assert something
+    unsupported, and the only reason they cannot be staged is a collision
+    gate that is answering a different question.
+    """
+    from . import claims
+
+    found = []
+    for entry in copy or []:
+        text = f"{entry.get('subject') or ''} {entry.get('body') or ''}"
+        for problem in claims.check(text, rec, contact) or []:
+            found.append((entry.get("step_key"),
+                          problem.get("why") or "unsupported"))
+            break
+    return found
 
 
 def _approved_copy(source, contact_key, sequence, record_id):
@@ -888,6 +959,7 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     if not wanted:
         report["did"].append("no leads staged: the plan carries none")
         return
+    _refuse_unsupported(plan)
     short = [(lead["record_id"], lead["contact_key"], lead["missing_copy"])
              for lead in wanted if lead.get("missing_copy")]
     if short:
