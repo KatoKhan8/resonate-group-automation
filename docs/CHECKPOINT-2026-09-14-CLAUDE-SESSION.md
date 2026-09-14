@@ -149,6 +149,47 @@ no model) says the 4.40% reply rate is not what it looks like: 35% match no
 rule at all, 22% are negative, 13% are unsubscribe requests in words, 14% are
 referrals, and 5% are positive.
 
+## THE CAMPAIGN-READY FUNNEL, recomputed with today's gates
+
+Measured across all 300 Productive records, applying the gates as they now
+stand - including the two added today:
+
+    productive domains                       300
+    icp_pass*                                113
+    + a verified sendable contact             54
+    + a usable company name                   45
+    contacts with 5 approved email steps      20
+      EMAIL-READY (no repeat, no claim)        8
+    contacts with li1-li5 approved + URL      13
+      LINKEDIN-READY (no claim)                9
+
+    ready on BOTH channels                     7 records
+
+**The bottleneck is copy, and copy is the thing that cannot be generated in
+this session.** Forty-five accounts are qualified, have a verified sendable
+contact and a usable company name. Twenty of them have five approved email
+steps. Eight survive the quality gates.
+
+So the gap between 45 and 8 is entirely generation and regeneration:
+
+    25 qualified accounts have no five-step email copy at all
+    12 of the 20 that do have copy fail repetition or claims
+
+That is what unblocking `generate --live` is worth - roughly 45 email-ready
+accounts instead of 8, against a client estate that will only absorb the
+collision-clean subset of them anyway.
+
+The seven records ready on both channels are the natural first account-based
+cohort, since `ACCOUNT-OUTREACH.md` makes the account the unit:
+
+    acqcom-com  adcuratio-com  mischacommunications-com
+    mypersonalestatesale-com  ogpartner-dk  portsidemarketing-com
+    savagebrands-com
+
+A caution on one number: "usable company name" here is `name != domain
+prefix`, which is close to but not identical with `cadence.company_name`'s own
+test. The readiness counts below it are exact; that one is indicative.
+
 ## OPEN, IN ORDER
 
 1. **Campaign 451 sends at 16:24Z.** Do not mutate it. Record `sent_at`,
