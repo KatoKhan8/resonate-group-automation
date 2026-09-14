@@ -99,6 +99,65 @@ Behavioural, against a fake transport. At minimum:
 Then break each guard deliberately and confirm the INTENDED test fails for
 the INTENDED reason - and that a different guard did not fire first.
 
+STATUS: done (rework after REVIEW 1 rejection)
+COMMIT SHA: pending
+TESTS: 18 tests in tests/test_heyreachfactory_ensure_leads.py, all passing.
+  16 original behavioural tests + 2 new authorization gate tests.
+  36 existing tests in tests/test_heyreachfactory.py still pass.
+  54 total heyreachfactory tests green.
+FILES CHANGED:
+  src/heyreachfactory.py - _mint_authorization now calls
+    executionguard.authorize() instead of constructing Authorization directly.
+    Removed actionledger import (no longer needed). Added configdiff import.
+  tests/test_heyreachfactory_ensure_leads.py - added configdiff and
+    executionguard imports. Updated _patch_external to mock
+    configdiff.compare_heyreach and executionguard.authorize. Added
+    AuthorizationGateRefuses class with two tests.
+FINDINGS:
+  REWORK: _mint_authorization CONSTRUCTED Authorization(...) directly.
+    providerwrites.perform checks with isinstance, so a hand-built object
+    passed while having passed NO gate. executionguard.authorize() is now
+    the ONLY construction site in src/ (grep confirms: one match at
+    executionguard.py:658). The five pre-filter gates remain as a cheap
+    pre-filter that refuses by name before the expensive path.
+  _mint_authorization now calls executionguard.authorize() with:
+    operation=LINKEDIN_ADD_LEAD, channel="linkedin", campaign, rec, contact,
+    step_key="day3" (a LinkedIn step in cadence.STEPS), workspace=client,
+    config, readback (from configdiff.compare_heyreach), by.
+  Each contact gets its own Readback from configdiff.compare_heyreach()
+    because authorize() spends it. This is expensive but correct: each
+    authorization gets its own sealed, timestamped provider comparison.
+  NEW TEST: test_authorize_refuses_on_approval_gate_write_never_happens
+    drives ensure_leads through a contact that passes all five pre-filters
+    but fails the "approval" gate (which the five do not check). Mocks
+    authorize() to raise NotAuthorized("approval", ...). Asserts the
+    transport is never reached. If the implementation constructed
+    Authorization directly (bypassing authorize()), this test FAILS.
+  NEW TEST: test_authorize_must_be_called_not_constructed asserts that
+    authorize() is actually called. If the implementation constructs
+    Authorization directly, the mock is never called and the assertion
+    fails. This is the test the review demands.
+  LINKEDIN_ADD_LEAD remains NOT in SUPPORTED. The only thing between a
+    real lead and this function is a human deciding.
+RISKS:
+  configdiff.compare_heyreach() is called once per contact in the live
+    path. This is expensive (provider reads) but correct: each authorization
+    needs its own sealed Readback. If this becomes a bottleneck, the
+    Readback TTL could be leveraged to reuse within the 15-minute window,
+    but that would require changes to authorize() to accept pre-spent
+    Readbacks, which is out of scope.
+  The step_key="day3" is a LinkedIn step from cadence.STEPS. The
+    authorize() copy gate checks if the step renders for this contact.
+    For LinkedIn lead addition, we are not sending a specific message but
+    adding a person to a campaign sequence. The copy gate may refuse if
+    the contact does not have a "day3" step in their cadence. This is
+    correct behaviour: if the step does not render, the contact should
+    not be added.
+RECOMMENDED CLAUDE ACTION:
+  Review the rework. The authorization now goes through the canonical
+  gate. When ready to enable the route, add LINKEDIN_ADD_LEAD to
+  providerwrites.SUPPORTED and run a canary with one contact.
+
 ---
 
 ## REVIEW 1 - REJECTED 2026-09-14. Rework, do not start over.
