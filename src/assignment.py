@@ -50,6 +50,7 @@ import hashlib
 import json
 
 from . import senderidentity as si
+from . import senderownership as so
 from . import store
 
 EMAIL = si.EMAIL
@@ -117,12 +118,21 @@ def eligible_senders(workspace, channel, rows=None, config=None,
     """
     rows = si.load() if rows is None else rows
     out = []
+    all_accounts = si.accounts_for(workspace, channel, rows)
     for person in si.senders(workspace, rows, active_only=True):
-        accounts = [a for a in si.accounts_for(workspace, channel, rows,
-                                               sender_id=person["sender_id"])
-                    if a.get("active") and usable_health(a)]
-        if accounts:
-            out.append({"sender": person, "accounts": accounts})
+        sid = person["sender_id"]
+        mine = []
+        for a in all_accounts:
+            if not a.get("active") or not usable_health(a):
+                continue
+            if a.get("sender_id") == sid:
+                mine.append(a)
+            elif not a.get("sender_id"):
+                owner = so.resolve_owner(a, rows)
+                if owner == sid:
+                    mine.append(a)
+        if mine:
+            out.append({"sender": person, "accounts": mine})
     return out
 
 
@@ -377,6 +387,45 @@ def _pair_label(key, workspace, rows):
         return entry.get("display_name") or sender_id
 
     return f"{named(email)} + {named(linkedin)}"
+
+
+def resolve_reply_owner(workspace, channel, provider_account_id, rows=None):
+    """Who did this prospect talk to? From a provider account to a human.
+
+    The reply routing chain: a reply arrives with a provider account id (the
+    inbox or LinkedIn profile the prospect is replying to). This function
+    resolves that back to the human whose name was on the message.
+
+    Returns a dict with `sender_id`, `display_name`, `account_id` and
+    `source` (either "sender_id" or "attestation") when the owner is known.
+    Returns a dict with `sender_id: UNKNOWN` and a reason when it is not.
+    Never returns None - a caller that gets a result can always check
+    `sender_id` to see whether routing is possible.
+    """
+    rows = si.load() if rows is None else rows
+    if not provider_account_id:
+        return {"sender_id": so.UNKNOWN,
+                "reason": "no provider account id was supplied"}
+    acct = si.by_provider_account(workspace, channel, provider_account_id,
+                                  rows)
+    if acct is None:
+        return {"sender_id": so.UNKNOWN,
+                "reason": (f"no {channel} account with provider id "
+                           f"{provider_account_id!r} in {workspace}")}
+    owner = so.resolve_owner(acct, rows)
+    if owner is None:
+        return {"sender_id": so.UNKNOWN,
+                "account_id": acct.get("account_id"),
+                "reason": ("account has no sender_id and no attestation "
+                           "records an owner")}
+    person = si.sender(workspace, owner, rows)
+    return {
+        "sender_id": owner,
+        "display_name": (person or {}).get("display_name") or owner,
+        "account_id": acct.get("account_id"),
+        "source": ("sender_id" if acct.get("sender_id")
+                   else "attestation"),
+    }
 
 
 def main(argv=None):
