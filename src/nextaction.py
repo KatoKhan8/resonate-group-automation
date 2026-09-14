@@ -82,9 +82,9 @@ this account may be mid-sequence right now and nobody has looked.
 import argparse
 import json
 
-from . import (account, assignment, cadence, cadencearms, channels, clients,
-               collision, eligibility, fatigue, linkedinstate, personas,
-               routing, senderidentity as si, store)
+from . import (account, accountsaturation, assignment, cadence, cadencearms,
+               channels, clients, collision, eligibility, fatigue,
+               linkedinstate, personas, routing, senderidentity as si, store)
 
 # ------------------------------------------------------------- the answers
 
@@ -101,6 +101,8 @@ ACTIONS = (ACT, WAIT, STOP)
 STOP_ANSWERED = "stop:account_answered"
 STOP_SUPPRESSED = "stop:account_suppressed"
 STOP_NO_WORKABLE_CONTACT = "stop:no_contact_can_be_worked"
+STOP_SATURATED_UNSUBSCRIBED = "stop:contact_unsubscribed_stops_account"
+STOP_SATURATED_POSITIVE = "stop:positive_reply_stops_account"
 
 WAIT_ESTATE_UNREAD = "wait:provider_estate_unread"
 WAIT_ESTATE_HOLD = "wait:provider_estate_hold"
@@ -317,6 +319,22 @@ def _account_verdict(rec, graph, estate, config, at):
         why = rec.get("drop_reason") or "no reason recorded"
         return _decision(STOP, STOP_SUPPRESSED,
                          f"the record is dropped: {why}")
+
+    # 1b. Account saturation: a contact-level event that reaches the whole
+    #     account. An unsubscribe from one person stops the account -
+    #     continuing to contact their colleagues reads as one organisation
+    #     that does not talk to itself. A positive reply stops the account
+    #     too - the conversation is starting and cold outreach to colleagues
+    #     would undermine it.
+    saturation = accountsaturation.verdict(rec, config=config, at=at)
+    if saturation["state"] == accountsaturation.STOP:
+        if saturation["reason"] == accountsaturation.UNSUBSCRIBED:
+            return _decision(
+                STOP, STOP_SATURATED_UNSUBSCRIBED, saturation["why"])
+        if saturation["reason"] == accountsaturation.POSITIVE_REPLY:
+            return _decision(
+                STOP, STOP_SATURATED_POSITIVE, saturation["why"])
+        return _decision(STOP, STOP_SUPPRESSED, saturation["why"])
 
     # 2. The provider estate. Absent is not clear.
     if estate is None:

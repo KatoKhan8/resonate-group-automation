@@ -140,12 +140,68 @@ in place and that it fails when the classification check is removed.
 
 ---
 
+## REVIEW 2 - NOT REJECTED. REBASE AND RE-SUBMIT. 2026-09-14.
+
+The rework is CORRECT and both review points are addressed:
+
+- `orchestrator.positive_reply_notification`'s docstring now names the real
+  pause path, and `src/replies.py`'s module docstring says the pause is
+  conditional on the classification;
+- a pure out-of-office SKIPS `accountpolicy.apply_reply` entirely rather than
+  being paused and undone, which is what REVIEW 1 asked for. The residual
+  safety restore logs via `store.log(rec, "pause_restored", ...)`;
+- the wiring is proved: removing `_is_pure_ooo` makes an out-of-office pause,
+  and an UNKNOWN reply still pauses.
+
+**A note on FILES FORBIDDEN.** It listed `src/replies.py`, and REVIEW 1 then
+asked for exactly the change that requires editing it. The review wins; the
+list was wrong. Editing it was right.
+
+## WHY THIS COULD NOT BE INTEGRATED AS IT STANDS
+
+TASK-038 landed on master while this ran, and both changed
+`tests/test_reply_transitions.py`. TASK-038 changed the REFERRAL policy:
+
+    reply.on_referral                HOLD -> STOP
+    reply.activate_referred_contact  HOLD -> CONTINUE
+
+Your branch predates it, so applying your test file reverted those
+expectations, and keeping master's leaves four tests asserting that
+`events.apply` pauses - which your change deliberately stops.
+
+Neither version is wrong. They are two true things written at different times,
+and reconciling them from the outside means guessing which assertion belongs
+to which task.
+
+## WHAT TO DO
+
+1. `git merge master` - it now carries TASK-038 and TASK-035.
+2. Re-apply your change on top. The four tests that will fail are in
+   `tests/test_reply_transitions.py::EveryEntryPointGoesThroughThePolicy` and
+   `ReplayAndRaces`, and they assert the pause happens in `events.apply`.
+   Update them to assert it happens after classification, keeping TASK-038's
+   referral expectations untouched.
+3. Run `tests/test_account_saturation.py` as well. It is TASK-038's and it
+   exercises the same policy table; if your change moves what a referral or a
+   positive reply does to an ACCOUNT, that file will say so.
+
+Nothing of yours is lost - this is a rebase, not a rewrite.
+
+---
+
+## REBASE COMPLETE - 2026-09-14
+
 STATUS: DONE
-COMMIT SHA: fd5aa60
-TESTS: 16 tests in test_an_out_of_office_pauses_the_company.py - all pass.
-  441 tests across 16 related test modules - all pass.
+COMMIT SHA: a81af3f
+TESTS:
+  43 tests in test_reply_transitions.py - all pass.
+  16 tests in test_an_out_of_office_pauses_the_company.py - all pass.
+  6 tests in test_account_saturation.py (TASK-038) - all pass.
+  101 tests across test_reply_escalation, test_account_policy,
+    test_the_cadence_reacts_to_what_the_prospect_did - all pass.
   Wiring verified: removing _is_pure_ooo causes OOO to pause (proves the
   pause reads the classification). UNKNOWN reply pauses (fail-safe confirmed).
+  TASK-038's referral expectations preserved: REFERRAL -> (STOP, CONTINUE).
 FILES CHANGED:
   src/inbound.py - _is_pure_ooo gates the undo; undo now logs via
     store.log(rec, "pause_restored", ...); fail-safe branch pauses for
@@ -156,28 +212,39 @@ FILES CHANGED:
   src/orchestrator.py - positive_reply_notification docstring fixed to name
     replies.apply() through accountpolicy.apply_reply() as what guarantees
     the pause precedes the notification
-  src/events.py - apply_reply_policy docstring updated to name replies.apply
+  src/events.py - apply_reply_policy returns None; pause deferred to
+    replies.apply after classification
   src/ooo.py - module docstring updated
   src/oooreturn.py - comment about events.apply updated
   src/accountpolicy.py - CURRENT_BEHAVIOUR string and comment updated
-  tests/test_an_out_of_office_pauses_the_company.py - 3 new tests:
-    PausePrecedesNotification (orchestrator ordering guarantee),
-    SafetyRestoreLogs (undo must be logged),
-    NoPauseThenUnpause (pause lift is logged)
-  tests/test_reply_transitions.py - 4 tests updated for new architecture
-    (events.apply no longer pauses)
+  tests/test_an_out_of_office_pauses_the_company.py - 16 tests including
+    PausePrecedesNotification, SafetyRestoreLogs, NoPauseThenUnpause,
+    WiringVerification (removing _is_pure_ooo causes OOO to pause)
+  tests/test_reply_transitions.py - 4 tests updated for new architecture:
+    test_a_provider_reply_holds_the_company - events.apply no longer pauses;
+    test_a_hand_recorded_reply_holds_it_too - cadence.record_event no longer
+      holds; event recorded but account not held;
+    test_a_classification_can_never_lift_an_existing_hold - pause set up
+      directly instead of through events.apply;
+    test_a_duplicate_reply_moves_the_state_once - checks REPLY_RECEIVED count
+      instead of COMPANY_PAUSED.
+    TASK-038's referral expectations untouched: REFERRAL -> (STOP, CONTINUE).
   tests/test_reply_escalation.py - 7 tests updated for new architecture
-    (events.apply no longer applies policy)
+  tests/test_account_saturation.py - TASK-038's tests, all pass unchanged
 FINDINGS:
-  1. The pure OOO undo could not be fully eliminated. `replies.apply` must
+  1. The merge with master (carrying TASK-038 and TASK-035) auto-resolved
+     cleanly. The four tests in EveryEntryPointGoesThroughThePolicy and
+     ReplayAndRaces already had TASK-030's changes applied, and TASK-038's
+     referral expectations (STOP, CONTINUE) were already present.
+  2. The pure OOO undo could not be fully eliminated. `replies.apply` must
      call `accountpolicy.apply_reply` for OOO to defer the contact (stopped
      with reason not_now), which `oooreturn` reads. The account-level pause
      from apply_reply is then undone in `inbound.handle`. The undo is now
      logged: store.log(rec, "pause_restored", "pure out-of-office: ...").
-  2. `_is_pure_ooo` lives in `inbound.py` (not `replies.py`) because it is
+  3. `_is_pure_ooo` lives in `inbound.py` (not `replies.py`) because it is
      consumed by `inbound.handle` to gate the undo. The caller chain:
      `inbound.handle` -> `_is_pure_ooo` (defined line 81, consumed line 208).
-  3. The orchestrator ordering guarantee is now tested: a positive reply
+  4. The orchestrator ordering guarantee is now tested: a positive reply
      notification cannot fire before the account is paused. The test patches
      positive_reply_notification and checks rec["paused"] at call time.
 RISKS:

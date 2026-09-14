@@ -56,6 +56,7 @@ def fake_record(index, config, today="2026-08-26"):
         f"https://bench{index:05d}.test/careers", "careers_page", "apify", rid,
         published_at="2026-08-20", persona="operations",
         angle_words=["utilisation", "capacity"], today=today)]
+    gen_keys = cadence.generated_keys(cadence.steps_for(config=config))
     for contact in rec["contacts"][:CONTACTS_PER_COMPANY]:
         rec.setdefault("cadence", {})[contact["key"]] = {
             key: {"channel": "email", "generated": True,
@@ -66,7 +67,7 @@ def fake_record(index, config, today="2026-08-26"):
                            "part of a day every month reconciling time before "
                            "they can answer a question anyone actually asked.\n\n"
                            "Is that roughly how it works with you today?\n")}
-            for key in cadence.GENERATED_KEYS}
+            for key in gen_keys}
     return rec
 
 
@@ -97,7 +98,8 @@ def measure(size, config, today="2026-08-26"):
         # One verification per selected contact with an address; the rest are
         # never verified because they are never written to.
         counters["verification_ops_would_be"] += len(selected)
-        counters["llm_calls_would_be"] += len(selected) * len(cadence.GENERATED_KEYS)
+        counters["llm_calls_would_be"] += len(selected) * len(
+            cadence.generated_keys(cadence.steps_for(config=config)))
     timings["select_and_plan"] = time.perf_counter() - start
 
     start = time.perf_counter()
@@ -115,7 +117,7 @@ def measure(size, config, today="2026-08-26"):
     start = time.perf_counter()
     for rec in recs[:min(size, 200)]:          # lint is the expensive one
         for contact in personalization.selected_contacts(rec, config):
-            for key in cadence.GENERATED_KEYS:
+            for key in cadence.generated_keys(cadence.steps_for(config=config)):
                 step = (rec.get("cadence") or {}).get(contact["key"], {}).get(key)
                 if step:
                     lint.check(rec, contact["key"], step)

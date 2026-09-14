@@ -609,16 +609,19 @@ class ThePlannerReadsTheBranch(CampaignTest):
         self.assertEqual(decision["action"], na.ACT, decision["reason"])
         self.assertEqual(decision["person"], COLLEAGUE)
 
-    def test_an_unsubscribe_suppresses_the_person_not_the_company(self):
+    def test_an_unsubscribe_stops_the_account(self):
+        """A person-level unsubscribe reaches the whole account.
+
+        TASK-038: continuing to contact colleagues of someone who asked to
+        be removed reads as one organisation that does not talk to itself.
+        """
         rec = self.record()
         ap.apply_reply(rec, KEY, outcome=ap.UNSUBSCRIBE, config=self.config,
                        at="2026-09-13T10:00:00+00:00")
         store.save([rec])
         self.assertTrue(rec["contacts"][0]["unsubscribed"])
-        self.assertFalse((rec.get("suppression") or {}).get("unsubscribed"))
         decision = self.ask(rec)
-        self.assertEqual(decision["action"], na.ACT, decision["reason"])
-        self.assertEqual(decision["person"], COLLEAGUE)
+        self.assertEqual(decision["action"], na.STOP, decision["reason"])
 
     def test_a_company_wide_removal_stops_everybody(self):
         rec = self.record()
