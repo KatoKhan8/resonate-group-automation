@@ -20,11 +20,14 @@ points and what provider truth says about each),
     `git log --oneline -1` is authoritative. A hash written into a file
     describing that file's own commit is always one behind itself.
 
-    qwen-worker      86b4ede   TASK-033 IN PROGRESS, pushed
-                               last commit "fix generation flow - linkedin_note
-                               prompts and plan ordering" - UNREVIEWED, and it
-                               touches the generation path the copy finding
-                               above is about. Review before trusting.
+    qwen-worker      efbcdf2   TASK-033 COMPLETE, NOT INTEGRATED, UNREVIEWED
+                               It reports fixing the generation flow -
+                               "linkedin_note prompts and plan ordering" - and
+                               it touches the GENERATION PATH the copy finding
+                               below is about. Nobody has read it.
+                               Review it EARLY: if it is sound it may be part
+                               of the progression fix, and if it is not it is
+                               sitting on the path that matters most.
     qwen-worker-2    d3c9369   idle
     qwen-worker-3    1e9197d   TASK-043 COMPLETE, NOT INTEGRATED - see below
     qwen-worker-4    e6ee2af   TASK-039 COMPLETE, NOT INTEGRATED - see below
