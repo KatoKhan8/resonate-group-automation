@@ -55,6 +55,82 @@ CAP_INMAIL = "linkedin.inmail"
 CAP_CONNECT = "linkedin.connection_request"
 CAP_MESSAGE = "linkedin.message"
 
+# --------------------------------------------------------- email ladders
+#
+# Each sequence names which ladder its email steps resolve against. The
+# ladder is looked up by name in LADDER_REGISTRY; `generate._resolve_ladder`
+# reads the `_ladder` attribute off the sequence tuple.
+#
+# THE FIVE-STEP LADDER IS UNCHANGED. It is the production ladder for
+# `productive_li_heavy_v1` and must not change: EmailBison campaign 481 is
+# staged with nine real leads carrying approved subject_5/body_5, and
+# changing rung 5 would silently rewrite the final email of a live sequence.
+EMAIL_FIVE_LADDER = (
+    "Relevance. Why you are writing to THIS person at THIS company, in their "
+    "own operational language. One question they can answer in a line.",
+    "A different angle from the first email. Not the same argument rephrased: "
+    "a different part of how the business runs, and a different question.",
+    "New value. One concrete use case or consequence a team their size would "
+    "recognise, and what changes when it is visible rather than reconstructed.",
+    "A short bump that makes a DIFFERENT argument from every email before it. "
+    "The shortest message in the sequence - and still a whole one: the "
+    "forty-word floor applies here exactly as it does everywhere else. "
+    "One idea, one question, no recap.",
+    "Close the loop. Give them an easy no, make no new pitch, ask for nothing "
+    "beyond permission to stop.",
+)
+
+# The eight-step ladder, read off the client's best-performing sequence
+# (12.23% reply rate at 8 steps, n=17,690). Rungs 1-4 match the five-step
+# ladder; rungs 5-7 are new; rung 8 is the breakup moved from rung 5.
+EMAIL_EIGHT_LADDER = (
+    "Relevance. Why you are writing to THIS person at THIS company, in their "
+    "own operational language. One question they can answer in a line.",
+    "A different angle from the first email. Not the same argument rephrased: "
+    "a different part of how the business runs, and a different question.",
+    "New value. One concrete use case or consequence a team their size would "
+    "recognise, and what changes when it is visible rather than reconstructed.",
+    "A short bump that makes a DIFFERENT argument from every email before it. "
+    "The shortest message in the sequence - and still a whole one: the "
+    "forty-word floor applies here exactly as it does everywhere else. "
+    "One idea, one question, no recap.",
+    "The cost of the current way of doing it. What the existing approach "
+    "actually spends in time, risk or reconstruction - not a feature pitch, "
+    "a number they can recognise.",
+    "What a team their size found when they looked. The pattern, not the "
+    "product: what changed when visibility arrived during the work rather "
+    "than after it.",
+    "The referral ask. Am I talking to the right person about this, and who "
+    "should I be talking to. This is the rung that feeds stakeholder "
+    "escalation in ACCOUNT-OUTREACH.md.",
+    "Close the loop. Give them an easy no, make no new pitch, ask for nothing "
+    "beyond permission to stop.",
+)
+
+LINKEDIN_DEFAULT_LADDER = (
+    "A connection request note. One line on why you are writing to them "
+    "specifically, in the operational language of their angle. No ask beyond "
+    "connecting, and no question that needs a considered answer.",
+    "A short first message. One operational angle, put as a question about "
+    "how they handle it today. Different words and a different angle from "
+    "the connection note.",
+    "A second, different operational angle. Name the consequence of not "
+    "having it rather than the feature that provides it.",
+    "The use case. What a team their size actually changed, and what it was "
+    "costing them before. This is the rung where evidence belongs, if there "
+    "is any; if there is none, describe the pattern as ours rather than "
+    "theirs.",
+    "A concise final follow-up. One line, one question, no new argument and "
+    "no summary of the previous ones.",
+    "Close the loop. An easy no, and leave it there.",
+)
+
+LADDER_REGISTRY = {
+    "email_five": EMAIL_FIVE_LADDER,
+    "email_eight": EMAIL_EIGHT_LADDER,
+    "linkedin_default": LINKEDIN_DEFAULT_LADDER,
+}
+
 
 # The operator's initial production hypothesis, 2026-09-13: roughly five email
 # touches and six LinkedIn activities - four of them messages - across three
@@ -125,9 +201,80 @@ PRODUCTIVE_BALANCED_V1 = (
     {"key": "day21", "day": 21, "channel": "email", "template": "breakup"},
 )
 
+# The eight-step email cadence. TASK-028.
+#
+# Read off the client's best-performing sequence: 12.23% reply rate at 8
+# steps (n=17,690). The waits mirror the best performer's 2/3/2/3/3/3/3/1
+# pattern: days 1, 3, 6, 8, 11, 14, 17, 20.
+#
+# This is email-led with NO LinkedIn steps. The existing li_heavy cadence
+# carries six LinkedIn activities; this one carries zero. The comparison
+# is sequence LENGTH on the email channel, not total touch count. An
+# eight-email cadence alongside six LinkedIn steps would be fourteen
+# touches, and the fatigue caps are paced for eleven.
+#
+# The ladder is `email_eight`, which has eight rungs. Rung 5 is NOT the
+# breakup (that is rung 8); the five-step cadence's ladder is unaffected.
+PRODUCTIVE_EMAIL_EIGHT_V1 = (
+    {"key": "em1", "day": 1, "channel": "email", "generated": True},
+    {"key": "em2", "day": 3, "channel": "email", "generated": True},
+    {"key": "em3", "day": 6, "channel": "email", "generated": True},
+    {"key": "em4", "day": 8, "channel": "email", "generated": True},
+    {"key": "em5", "day": 11, "channel": "email", "generated": True},
+    {"key": "em6", "day": 14, "channel": "email", "generated": True},
+    {"key": "em7", "day": 17, "channel": "email", "generated": True},
+    {"key": "em8", "day": 20, "channel": "email", "generated": True},
+)
+
+# --------------------------------------------------------- ladder tagging
+#
+# Each sequence carries the name of the ladder its email steps resolve
+# against. `generate._resolve_ladder` calls `ladder_name_for` to look up
+# the ladder; sequences absent from this mapping fall through to the
+# default ladder in generate.LADDERS.
+#
+# PRODUCTIVE_LI_HEAVY_V1 uses `email_five` - the same five-rung ladder that
+# has been production since the beginning. This is NOT a change: the ladder
+# content is identical to generate.EMAIL_LADDER. The tagging just makes it
+# explicit so the eight-step cadence can use a different one.
+#
+# Keyed by cadence NAME, not id(). `cadence.steps_for` runs every sequence
+# through `validate_steps`, which returns a new tuple of new dicts - so
+# id() never matches through the path production actually uses. The name
+# is the canonical identity: `SEQUENCES` is already a name-to-sequence
+# mapping and `named()` reads it.
+_SEQUENCE_LADDERS = {
+    "productive_li_heavy_v1": {"email": "email_five"},
+    "productive_balanced_v1": {"email": "email_five"},
+    "productive_email_eight_v1": {"email": "email_eight"},
+}
+
+
+def ladder_name_for(sequence, channel):
+    """The ladder name this sequence uses for this channel, or None.
+
+    None means 'use the default ladder in generate.LADDERS'. A sequence
+    not in the mapping, or a channel it does not name, returns None.
+
+    Matches by step keys - the one thing that survives `validate_steps`.
+    `cadence.steps_for` returns a new tuple of new dicts, so id() and
+    content equality both fail. Keys are preserved through validation
+    and are the identity a step key is: unique within a sequence.
+    """
+    if sequence is None:
+        return None
+    keys = tuple(s.get("key") for s in sequence)
+    for name, seq in SEQUENCES.items():
+        if tuple(s.get("key") for s in seq) == keys:
+            mapping = _SEQUENCE_LADDERS.get(name)
+            if mapping:
+                return mapping.get(channel)
+    return None
+
 SEQUENCES = {
     "productive_li_heavy_v1": PRODUCTIVE_LI_HEAVY_V1,
     "productive_balanced_v1": PRODUCTIVE_BALANCED_V1,
+    "productive_email_eight_v1": PRODUCTIVE_EMAIL_EIGHT_V1,
 }
 
 

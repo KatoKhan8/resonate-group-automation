@@ -205,7 +205,29 @@ def position(sequence, step_key):
     return None, None, None
 
 
-def purpose_for(channel, ordinal):
+def _resolve_ladder(channel, sequence=None):
+    """The ladder for this channel in the context of a given sequence.
+
+    A sequence may name a per-channel ladder via `cadencelibrary.ladder_name_for`.
+    When it does, the named ladder is looked up in the registry. When it
+    does not, or when no sequence is passed, the default ladder for the
+    channel is returned - which is the five-step email ladder that has
+    been production since the beginning.
+
+    Late-imports `cadencelibrary` to avoid a circular import at module
+    load time.
+    """
+    if sequence is not None:
+        from . import cadencelibrary
+        ladder_name = cadencelibrary.ladder_name_for(sequence, channel)
+        if ladder_name:
+            found = cadencelibrary.LADDER_REGISTRY.get(ladder_name)
+            if found:
+                return found
+    return LADDERS.get(channel) or ()
+
+
+def purpose_for(channel, ordinal, sequence=None):
     """This step's distinct job, or None when the ladder does not name one.
 
     None rather than the last rung repeated. A sequence longer than its
@@ -214,8 +236,14 @@ def purpose_for(channel, ordinal):
     exactly the duplication the ladder exists to stop. The prompt is told it
     has no assigned job and what to do about it, which is a stated case
     rather than a fallback that looks like an answer.
+
+    `sequence` selects which ladder to use. A five-step cadence and an
+    eight-step cadence carry different ladders; the same ordinal resolves
+    to a different purpose in each. Without a sequence the default ladder
+    is used, which is the five-step one - backward compatible with every
+    caller that existed before ladders became selectable.
     """
-    ladder = LADDERS.get(channel) or ()
+    ladder = _resolve_ladder(channel, sequence)
     if not ordinal or ordinal > len(ladder):
         return None
     return ladder[ordinal - 1]
@@ -227,7 +255,7 @@ def step_block(sequence, step_key, channel=None):
     channel = found or channel
     return {"key": step_key, "channel": channel,
             "number": ordinal, "of": total,
-            "purpose": purpose_for(channel, ordinal)}
+            "purpose": purpose_for(channel, ordinal, sequence=sequence)}
 
 
 def _day_of(sequence, step_key):
@@ -303,7 +331,7 @@ def sent_so_far(rec, contact, sequence=None, before_day=None):
         _, ordinal, _ = position(sequence, step_key)
         row = {"step": step_key, "channel": channel, "day": day,
                "at": first.get("at"),
-               "purpose": purpose_for(channel, ordinal),
+               "purpose": purpose_for(channel, ordinal, sequence=sequence),
                # OUR argument as it was at the time, off the event. Never
                # `contact["angle"]`, which is whatever the last routing pass
                # decided and may now be a different angle entirely.
@@ -383,7 +411,7 @@ def siblings_block(rec, contact, sequence, step_key, channel):
         if not (stored.get("body") or stored.get("note")):
             continue
         _, ordinal, _ = position(sequence, sk)
-        entry = {"step": sk, "purpose": purpose_for(channel, ordinal)}
+        entry = {"step": sk, "purpose": purpose_for(channel, ordinal, sequence=sequence)}
         if channel == "email":
             entry["subject"] = stored.get("subject", "")
             entry["opening"] = _opening(stored)
