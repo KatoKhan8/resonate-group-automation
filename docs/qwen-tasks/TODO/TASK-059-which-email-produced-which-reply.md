@@ -8,12 +8,19 @@ This is TASK-058's twin and the two must NOT share an implementation until
 Claude has seen both - the providers report different things and a premature
 abstraction will hide whichever one is worse.
 
-## YOU HAVE NO PROVIDER CREDENTIALS. WORK FROM THE EXPORT.
+## YOU NOW HAVE PROVIDER CREDENTIALS. READS ONLY.
 
-`config/.env` exists only in Claude's worktree. Claude exports the raw
-historical data to `work/exports/bison/`; that is your input. If it is
-not there yet, say so and build against a fixture you construct so the
-script runs unchanged when the export lands.
+As of 2026-09-14 `config/.env` is present in this worktree, so the provider
+modules work here. Read whatever the analysis needs.
+
+**READS ONLY, AND THIS IS ABSOLUTE.** You hold real EmailBison and HeyReach
+keys. No write, no send, no campaign mutation, no lead added, no sequence
+replaced. If a function name contains `set_`, `create_`, `add_`, `update_`,
+`resume_`, `pause_` or `stop_`, you are not calling it.
+
+Provider reads cost nothing here but they are rate limited. Cache what you
+pull to a local file and re-read the cache rather than the API while you
+iterate on the analysis.
 
 ## WHAT EXISTS ALREADY
 

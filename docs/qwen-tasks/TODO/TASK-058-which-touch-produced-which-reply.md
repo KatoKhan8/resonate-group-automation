@@ -6,16 +6,19 @@ We have historical HeyReach activity. Nobody can currently say WHICH MESSAGE
 produced WHICH RESPONSE. Until that link exists, every claim about what works
 is taste.
 
-## YOU HAVE NO PROVIDER CREDENTIALS. WORK FROM THE EXPORT.
+## YOU NOW HAVE PROVIDER CREDENTIALS. READS ONLY.
 
-`config/.env` exists only in Claude's worktree, so `heyreach.campaigns`
-and every other provider call will fail here. That is the isolation
-working, not a problem to solve.
+As of 2026-09-14 `config/.env` is present in this worktree, so the provider
+modules work here. Read whatever the analysis needs.
 
-Claude exports the raw historical data to `work/exports/heyreach/` and
-that directory is your input. If it is not there yet, say so in FINDINGS
-and build the analysis against a small fixture you construct, so the
-moment the export lands the script runs unchanged.
+**READS ONLY, AND THIS IS ABSOLUTE.** You hold real EmailBison and HeyReach
+keys. No write, no send, no campaign mutation, no lead added, no sequence
+replaced. If a function name contains `set_`, `create_`, `add_`, `update_`,
+`resume_`, `pause_` or `stop_`, you are not calling it.
+
+Provider reads cost nothing here but they are rate limited. Cache what you
+pull to a local file and re-read the cache rather than the API while you
+iterate on the analysis.
 
 ## WHAT EXISTS ALREADY - READ BEFORE BUILDING
 
