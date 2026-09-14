@@ -351,9 +351,10 @@ class TheWholeChain(CampaignTest):
         self.assertEqual(self.ooo_events(rec), [])
 
     def test_the_account_is_still_held_by_the_reply_itself(self):
-        """Recording a return date must not look like permission. The
-        pause happened in `events.apply` before any of this ran."""
-        rec = self.ingest("Out of office until September 8.", automated=True)
+        """Recording a return date must not look like permission. A human
+        writing about their own absence is not a pure machine autoresponder,
+        so the fail-safe pause still applies through `inbound.handle`."""
+        rec = self.ingest("Out of office until September 8.")
         self.assertTrue(rec.get("paused"))
 
 

@@ -279,7 +279,7 @@ def assess(rec, contact_key, today=None, config=None, workspace=None):
     if state == ap.HOLD and (state_why or {}).get("by") not in (
             None, contact_key):
         return verdict(NOT_YET, CONVERSATION_LIVE,
-                       detail=(state_why or {}).get("reason"))
+                       detail=(state_why or {}).get("by"))
     colleague = _others_replied_since(rec, contact_key, absence.get("at"))
     if colleague is not None:
         return verdict(NOT_YET, CONVERSATION_LIVE,
