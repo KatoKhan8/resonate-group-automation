@@ -618,3 +618,65 @@ is worth sending to.**
   `open_tracking: False`.
 - **Do not count an UNKNOWN reply as negative.** 73.6% of LinkedIn replies
   are unreadable; that is a measurement gap, not a finding about prospects.
+
+## 22. QWEN STATE AT HANDOFF
+
+Eight worktrees. **Every branch is PUSHED - nothing is stranded on the
+laptop.** Unintegrated work sits in each branch's `docs/qwen-tasks/REVIEW/`.
+
+    worker  worktree                  branch          awaiting review
+    1       resonate-qwen-worker      qwen-worker     TASK-054 + its REWORK
+    2       resonate-qwen-2           qwen-worker-2   TASK-060, 061, 068 (all
+                                                      three already integrated)
+    3       resonate-qwen-3           qwen-worker-3   TASK-058 (integrated),
+                                                      TASK-069 four-verdict map
+    4       resonate-qwen-4           qwen-worker-4   TASK-059 RUNNING
+    5       resonate-qwen-5           qwen-worker-5   TASK-057 RUNNING
+    6       resonate-qwen-6           qwen-worker-6   TASK-063, 064, 071
+    7       resonate-qwen-7           qwen-worker-7   TASK-066, 067
+    8       resonate-qwen-8           qwen-worker-8   TASK-065 RUNNING
+
+**UNREVIEWED AND WORTH READING FIRST:** TASK-069 (does the EmailBison
+step-level join exist - four verdicts), TASK-071 (API capability map),
+TASK-067 (thread-context reply classification), TASK-064 (LinkedIn cadence
+read), TASK-063 (five-email read).
+
+    TODO   036, 037, 040, 044, 070
+    REWORK 042 (name gate - breaks 17 tests), 054 (sampling)
+
+### Dispatch mechanics - two mistakes already paid for
+
+    C:\Users\Zvonimir\AppData\Local\qwen-code\bin\qwen.cmd
+        --approval-mode yolo  "<prompt>"
+
+`qwen` is NOT on PATH; use the absolute path. **Do NOT pass
+`--max-tool-calls`** - a 400 cap killed two workers mid-task. Run each from
+inside its own worktree. Credentials are present in all eight
+(`scripts/sync_worker_env.py --write` re-syncs them; it prints names, never
+values, and refuses any worktree where git does not ignore `config/.env`).
+
+## 23. FIRST ACTIONS AFTER THE RESET, IN ORDER
+
+**1. Confirm nothing regressed, cheaply:**
+
+    py -3 scripts/heyreach_readback.py productive-linkedin-production-v1 --expect
+    echo $?        # MUST be read without a pipe. Expect 0, 27/27 PASS.
+
+**2. Review the five unreviewed Qwen results** listed in section 22, starting
+with TASK-069 - what it concludes decides what TASK-070 may claim.
+
+**3. Raise `pushable` from 3 of 15.** That is the gate on a lead cohort, and
+it is regeneration work:
+
+    py -3 -m src.generate --live --client productive
+    py -3 scripts/write_heyreach_sequence.py productive-linkedin-production-v1
+
+If the queue lock is stale - `work/queue.jsonl.lock` naming a dead pid -
+remove it. That happened once today after a run was killed mid-write; the
+lock guard correctly wrote nothing.
+
+**4. Only then consider leads.** Enabling `LINKEDIN_ADD_LEAD` is a separate
+operator decision and should not be taken at `pushable: 3`.
+
+**5. In parallel, keep eight workers saturated.** The queue has five TODO and
+two REWORK items, and TASK-070 depends on TASK-069's verdicts.
