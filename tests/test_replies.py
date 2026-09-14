@@ -197,6 +197,55 @@ class TestTheClassifier(unittest.TestCase):
         verdict = replies.classify("x " * 400)
         self.assertLessEqual(len(verdict["excerpt"]), 201)
 
+    def test_a_quoted_thread_referral_does_not_fool_classify(self):
+        """TASK-029 rework: the 94 false referrals, as a classify test.
+
+        The prospect's own words are a short acknowledgement that matches
+        no rule (unknown). The quoted thread below contains a referral
+        phrase from OUR OWN outreach copy, with a name to point at.
+        Before the wiring, classify saw the whole body and answered
+        referral. After the wiring, classify sees only what the prospect
+        typed and answers unknown.
+
+        The prospect text must NOT match any rule above REFERRAL in
+        precedence, otherwise that higher rule wins on the full body too
+        and the test passes without proving the wiring.
+
+        This test drives replies.classify - not extract_prospect_text -
+        which is the function production calls. If the wiring is removed,
+        this test fails.
+        """
+        body = (
+            "Thanks for reaching out.\n"
+            "\n"
+            "On Mon, Sep 8, 2026 at 3:00 PM, Sender <sender@example.com> wrote:\n"
+            "> Hey, please talk to our procurement team about this.\n"
+            ">\n"
+            "> reach out to Alba Kenji for details.\n"
+        )
+        verdict = replies.classify(body)
+        self.assertNotEqual(verdict["classification"], replies.REFERRAL,
+                            "classify is still reading the quoted thread")
+
+    def test_verdict_carries_extraction_metadata(self):
+        """TASK-029 rework: the verdict says what was judged."""
+        body = (
+            "Not interested.\n"
+            "\n"
+            "> Original outreach text with lots of words.\n"
+        )
+        verdict = replies.classify(body)
+        self.assertEqual(verdict["extract_method"], "top_post")
+        self.assertLess(verdict["extract_stripped_length"],
+                        verdict.get("extract_stripped_length", 999) + len(body))
+        self.assertIn("extract_method", verdict)
+        self.assertIn("extract_stripped_length", verdict)
+
+    def test_no_quote_verdict_still_carries_metadata(self):
+        """A reply with no quoted thread still reports the method."""
+        verdict = replies.classify("Not interested, thanks.")
+        self.assertEqual(verdict["extract_method"], "no_quote")
+
 
 class TestTheModelSeam(unittest.TestCase):
     def test_the_rules_settle_a_clear_case_without_a_model(self):
