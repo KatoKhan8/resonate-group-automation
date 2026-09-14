@@ -149,3 +149,26 @@ Defined in `assignment.py`. This is the entry point a reply handler would call.
 3. Record attestations for each account: `so.attest(workspace, channel, account_id, sender_id, by)`.
 4. Wire `resolve_reply_owner` into the reply handling path (likely `replywatch` or a new reply router).
 5. The generation owed: no `--live` run was attempted (worktree isolation, READS ONLY rule).
+
+
+---
+
+## CLAUDE VERIFICATION - THE NUMBER, MEASURED AGAINST PRODUCTION
+
+The worker could not check its own 285 figure because work/ is gitignored and
+absent from its worktree. Measured here against real state:
+
+    sender rows                    285
+    with NULL sender_id            261   (91%)
+
+    kinds   email_account 235, linkedin_account 35, sender 11,
+            pairing 3, outreach_team 1
+
+So 285 is the ROW COUNT and 261 is the null count - the task said 285 rows
+with a null sender_id, which conflated the two. The conclusion is unchanged
+and if anything sharper: **91% of provider accounts have no human owner**, and
+11 sender identities plus 3 pairings exist to cover 270 accounts.
+
+That is the size of the gap the attestation layer has to close, and it is why
+resolve_owner falling back to an attestation matters rather than being a
+theoretical nicety.
