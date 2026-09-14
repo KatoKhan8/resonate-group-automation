@@ -20,7 +20,25 @@ import argparse
 import json
 import sys
 
+from . import cadence, cadencelibrary
+
 UNKNOWN = "UNKNOWN"
+
+
+def _default_llm_calls_per_contact(cadence_name=None):
+    """The generated-step count for the cadence this campaign runs.
+
+    Derived from the sequence, not from a module constant. A cadence with
+    no generated steps returns zero, so an estimate built on this never
+    falls back to a default. The old hardcoded value of 2 matched the
+    module constant ``STEPS`` (day1, day15) and was wrong by 2.5x for
+    ``productive_li_heavy_v1`` which has five emails and six LinkedIn notes.
+    """
+    seq = cadencelibrary.named(cadence_name) if cadence_name else None
+    if seq is None:
+        seq = cadence.STEPS
+    return len(cadence.generated_keys(seq))
+
 
 DEFAULTS = {
     "domains": 5000,
@@ -43,7 +61,9 @@ DEFAULTS = {
     "deliverable_unusable": 1.0,
     "reoon_fallback": 0.20,          # catch-alls needing a clearer
     "apify_usage": 0.30,             # domains needing public research
-    "llm_calls_per_contact": 2.0,    # the generated steps
+    # Derived from the cadence, not hardcoded. Overridden by CLI or caller.
+    "llm_calls_per_contact": None,
+    "cadence_name": None,            # which cadence to count from
     # Share of selected contacts whose email domain sits behind a blocked
     # gateway. MX is free, so every one of these is a paid verification that
     # never happens.
@@ -69,6 +89,12 @@ def _spread(value, low=0.7, high=1.4):
 def simulate(**overrides):
     a = {**DEFAULTS, **{k: v for k, v in overrides.items() if v is not None}}
     domains = int(a["domains"])
+
+    # Resolve the LLM call count from the cadence when not explicitly set.
+    # A cadence with no generated steps estimates zero, not a default.
+    if a["llm_calls_per_contact"] is None:
+        a["llm_calls_per_contact"] = _default_llm_calls_per_contact(
+            a.get("cadence_name"))
 
     with_people = domains * a["contactout_success"]
     selected = with_people * a["contacts_per_company"]
@@ -175,6 +201,8 @@ def main(argv=None):
     p.add_argument("--apify-usage", type=float, dest="apify_usage")
     p.add_argument("--llm-calls-per-contact", type=float,
                    dest="llm_calls_per_contact")
+    p.add_argument("--cadence-name", dest="cadence_name",
+                   help="named cadence to derive llm_calls_per_contact from")
     p.add_argument("--mx-blocked-rate", type=float, dest="mx_blocked_rate")
     p.add_argument("--json", action="store_true")
     a = p.parse_args(argv)

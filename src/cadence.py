@@ -326,6 +326,31 @@ def describe_steps(steps):
 GENERATED_KEYS = tuple(s["key"] for s in STEPS if s.get("generated"))
 EMAIL_KEYS = tuple(s["key"] for s in STEPS if s["channel"] == "email")
 
+
+def generated_keys(steps=None):
+    """The step keys that require an LLM call, derived from the sequence.
+
+    A step counts if it or its alternative carries ``generated: True``.
+    Returns an empty tuple for a sequence with no generated steps, so an
+    estimate derived from this never falls back to a default.
+
+    This replaces ``len(GENERATED_KEYS)`` in every estimator. The module
+    constant is tied to ``STEPS`` and drifted when the production cadence
+    moved to five emails and six LinkedIn notes; deriving the count from
+    the sequence itself is the second representation that was missing.
+    """
+    if not steps:
+        return ()
+    out = []
+    for step in steps:
+        if step.get("generated"):
+            out.append(step["key"])
+        else:
+            alt = step.get("alternative") or {}
+            if alt.get("generated"):
+                out.append(step["key"])
+    return tuple(out)
+
 # Deterministic templates. Section 8 defines four prompts and none of them is a
 # LinkedIn note, so the note is a template too: it costs nothing and it cannot
 # wander into referencing the email.
