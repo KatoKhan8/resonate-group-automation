@@ -161,5 +161,51 @@ class NoPathSendsTheSameWordsTwice(unittest.TestCase):
                           f"the graph requires {role!r} and no step fills it")
 
 
+
+class TheDeclaredStepListMatchesWhatTheBuilderDemands(unittest.TestCase):
+    """`heyreach.SEQUENCE_STEPS` is read by nothing.
+
+    `grep -rn SEQUENCE_STEPS src/ tests/` returns its own definition and
+    nothing else. It declares "the steps `linkedin_sequence` needs words for"
+    and no code has ever compared that claim to what the builder actually
+    asks for - so it is a second representation of `heyreachfactory.
+    REQUIRED_ROLES`, free to drift from it.
+
+    It HAD drifted, and both had to be edited by hand on 2026-09-14 when the
+    already-connected branch got its own four roles. Two lists of the same
+    truth is how the next change updates one of them.
+
+    Rather than delete a useful piece of documentation or refactor two modules
+    to share a constant, this makes the claim testable: every role the list
+    names is genuinely required, and nothing else is.
+    """
+
+    def roles_without(self, missing):
+        block = copy_block()
+        block.pop(missing, None)
+        return block
+
+    def test_every_declared_step_is_actually_required(self):
+        from src.providers import heyreach
+
+        declared = [s for s in heyreach.SEQUENCE_STEPS if s != "inmail"]
+        self.assertTrue(declared)
+        for role in declared:
+            with self.subTest(role=role):
+                with self.assertRaises(Exception) as caught:
+                    heyreachfactory.build_sequence(self.roles_without(role))
+                self.assertIn(role, str(caught.exception))
+
+    def test_the_declared_list_matches_the_factory_s_required_roles(self):
+        """The two lists must name the same roles, InMail aside - InMail is in
+        the provider's list because its graph has a node for it, and out of
+        the factory's because no InMail copy is ever approved."""
+        from src.providers import heyreach
+
+        self.assertEqual(
+            set(heyreach.SEQUENCE_STEPS) - {"inmail"},
+            set(heyreachfactory.REQUIRED_ROLES))
+
+
 if __name__ == "__main__":
     unittest.main()
