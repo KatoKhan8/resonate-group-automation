@@ -204,3 +204,90 @@ A clean NOT MEASURABLE is worth more than a number with a hole in it.
 `docs/BISON-CADENCE-FINDINGS-2026-09-14.md`. Every number carries its row
 count and its statement kind. READS ONLY - you hold real keys and this task
 creates nothing, pauses nothing and sends nothing.
+
+## RESULT BLOCK
+
+**STATUS:** PARTIAL — report generated, but the 8.49% claim could not be
+re-derived due to reply-feed sampling limitations.
+
+**COMMIT SHA:** (see git log on qwen-worker-3-r2)
+
+**TESTS:** No code tests applicable — this is a read-only analysis task.
+Data collection verified by cross-checking campaign counts, step counts,
+and reply classification against the provider truth doc (TASK-069).
+
+**FILES CHANGED:**
+- `docs/BISON-CADENCE-FINDINGS-2026-09-14.md` — the findings report (395 lines)
+- `scripts/bison_cadence_analysis.py` — collection and analysis script
+- `scripts/task070_generate_report.py` — report generator from SQLite data
+- `.qwen/tmp/task070/cadence.db` — collected data (not in git)
+
+**FINDINGS:**
+
+1. **Estate:** 22 campaigns, 238,627 total `emails_sent` (PROVIDER FACT).
+   `open_tracking` is FALSE on every campaign.
+
+2. **Data collected:** 9,540 scheduled emails sampled (first 100 pages per
+   campaign, 15 rows/page). 3,375 reply rows from the most recent portion
+   of the cursor-paginated feed (1.25% of 270,047 total).
+
+3. **Reply classification (sample):** 843 human replies (Tracked Reply,
+   non-automated), 13 interested. 1,959 bounces (auto). 486 outgoing
+   (our mail). 87 automated replies.
+
+4. **Campaign-level reply rates (sample):** Campaign 352: 0.4% (409
+   replies / 92,806 sent). Campaign 327: 0.3% (114 / 44,976). These are
+   LOWER BOUNDS — the sample covers only recent replies.
+
+5. **Step distribution (sample):** Steps 1-8 represented. Step 1 has the
+   most sends; later steps have fewer as leads drop off.
+
+6. **Step-level reply attribution (ATTRIBUTION HYPOTHESIS):** Replies
+   attributed to steps 1-8 via `scheduled_email_id` join. Sample too
+   small for definitive per-step reply rates.
+
+7. **Cadence delays:** Range from 0 to 14 days between steps. Most common
+   patterns: 3-day gaps. Total cadence duration ranges from 6 to 35 days.
+
+8. **Variant analysis:** Campaign 352 has 39 variants across 5 parent
+   positions. Variant-level send and reply counts reported. Most variants
+   have 14-28 sends in sample, 0-1 replies.
+
+9. **Copy shape:** 82.1% statement-led subjects, 17.9% question-led.
+   Top subjects: "last note from me" (390), "leaving the door open" (373),
+   "should I be talking to someone else?" (328, question).
+
+10. **8.49% claim NOT REPRODUCED.** The reply sample covers only the most
+    recent ~2 months. Campaigns that finished before July 2026 have their
+    replies outside the sample window. Full re-derivation requires
+    collecting all 270,047 reply rows (~7.5 hours at 15 rows/page,
+    ~1.5s/page).
+
+11. **Campaign 274:** 0 sent rows in first 100 pages, confirming the
+    TASK-069 correction that `meta.total` counts scheduled (not sent) rows.
+
+12. **Pagination traps encountered:**
+    - Offset pagination refused for large campaigns beyond ~500 pages (422)
+    - Reply cursor pagination returns 15 rows/page despite `per_page=100`
+    - `per_page` is ignored on the scheduled-emails endpoint
+
+**RISKS:**
+- The reply sample is temporally biased (most recent ~2 months only).
+  Campaign-level reply rates for older campaigns are UNDERCOUNTS.
+- The scheduled-email sample covers only the first ~1,500 rows per
+  campaign. For campaign 274 (28,331 sends), this is 5.3% coverage.
+  For campaign 352 (92,806 sends), it's 1.6%.
+- The `interested` field is used as a positive-reply proxy. It is not
+  a classifier verdict and may over- or under-count positives.
+- The 8.49% claim remains unverified. It may be correct but unreachable
+  from a 1.25% reply sample, or it may be wrong.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Run the full reply feed collection (270,047 rows, ~7.5 hours) to
+   re-derive the 8.49% claim definitively. The script supports this —
+   remove the time limit in the reply collection loop.
+2. Consider deeper pagination for campaign 274 to get step-level data.
+   Cursor pagination may work where offset pagination was refused.
+3. The findings report is usable for cadence-shape decisions (step counts,
+   delays, variant structure, copy patterns) even without the full reply
+   feed. The campaign-level reply rates are lower bounds.
