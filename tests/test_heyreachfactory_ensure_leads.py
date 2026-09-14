@@ -22,7 +22,7 @@ from unittest import mock
 
 from src import (campaigns, clients, collision, configdiff, executionguard,
                  heyreachfactory, killswitch, providerwrites, store)
-from src.providers import heyreach
+from src.providers import bison, heyreach
 
 
 # ----------------------------------------------- fixture helpers
@@ -165,6 +165,18 @@ class _EnsureLeadsTestBase(_NoPatchOutlivesItsTest):
         self._ks_patch = mock.patch.object(killswitch, "workspace_state",
                                            return_value=_KS_ON)
         self._ks_patch.start()
+        # THE EMAILBISON WORKSPACE, because the collision gate reads the
+        # client's own EMAIL estate even for a LinkedIn campaign - the account
+        # is the unit, so somebody mid-sequence by email is a reason not to
+        # open a second channel at that company. `bound_workspace()` is a real
+        # provider read and there are no credentials here, so it is stubbed
+        # for every test in this module rather than in the handful that
+        # happened to reach it.
+        self._ws_patch = mock.patch.object(
+            bison, "bound_workspace", return_value={"id": 10,
+                                                    "name": "PRODUCTIVE"})
+        self._ws_patch.start()
+        self.addCleanup(self._ws_patch.stop)
         # addCleanup, NOT tearDown. `unittest` does not call tearDown when a
         # setUp raises, and an inline `.stop()` never runs if the test fails
         # before it - either way the mock stays installed for the rest of the

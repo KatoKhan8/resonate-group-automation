@@ -874,23 +874,61 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
                 f"The transport was not reached")
 
     # Gate 3: account collision.
+    #
+    # `expect_workspace` IS THE EMAILBISON WORKSPACE ID, NOT THE CLIENT SLUG.
+    # This passed `client` - "productive" - and every call refused:
+    #
+    #   WorkspaceMismatch: this credential is bound to workspace 10
+    #   ('PRODUCTIVE'), not productive
+    #
+    # which is the tenancy guard working, and it meant the collision gate
+    # could never pass rather than never fire. `bisonfactory` reads the id
+    # from `bison.bound_workspace()` for the same call, because `workspace_id`
+    # is ignored by every route on that API and a read taken against the wrong
+    # binding cannot be told apart from a correct one afterwards.
+    #
+    # The collision estate is EmailBison's even when the campaign is HeyReach:
+    # `ACCOUNT-OUTREACH.md` makes the ACCOUNT the unit, so a person already
+    # mid-sequence by email is a reason not to open a second channel at that
+    # company.
+    from .providers import bison as _bison
+
+    workspace_id = (_bison.bound_workspace() or {}).get("id")
+    if not workspace_id:
+        raise FactoryRefused(
+            "the EmailBison credential reports no bound workspace, so the "
+            "client's own estate cannot be read and no account can be "
+            "cleared. A lead that cannot be checked cannot be cleared")
+
+    colliding = []
     for row in enriched:
         domain = row.get("domain")
         if not domain:
             continue
         try:
             account = collision.check_account(
-                domain, expect_workspace=client)
+                domain, expect_workspace=workspace_id)
         except collision.CollisionUnknown as e:
             raise FactoryRefused(
                 f"the provider estate could not be read for {domain!r}: "
                 f"{e}. Refusing to add a lead at an unreadable account")
         verdict, why = collision.account_policy(account)
         if verdict in (collision.STOP, collision.HOLD):
-            raise FactoryRefused(
-                f"contact {row['contact_key']!r} (domain {domain!r}): "
-                f"account verdict is {verdict} - {why}. The transport was "
-                f"not reached")
+            colliding.append((row, verdict, why))
+
+    # COLLECTED, THEN RAISED ONCE - the shape `bisonfactory` already uses.
+    # Raising on the first collision means an operator clearing a cohort
+    # discovers it one contact at a time, one provider round trip each.
+    if colliding:
+        detail = "; ".join(
+            f"{row['contact_key']} ({row.get('domain')}): {v} - {w}"
+            for row, v, w in colliding[:5])
+        raise FactoryRefused(
+            f"{len(colliding)} of {len(enriched)} contact(s) collided with "
+            f"the client's own estate: {detail}"
+            f"{' and more' if len(colliding) > 5 else ''}. A contact at an "
+            f"account the client is already working must not be opened on a "
+            f"second channel. The transport was not reached")
 
     # Gate 4: tenant check.
     provider_id = campaign.get("heyreach_campaign_id")
