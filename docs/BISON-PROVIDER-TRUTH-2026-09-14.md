@@ -732,3 +732,90 @@ TASK-070 must classify before it counts.
            count sent rows, not scheduled rows
            classify the reply feed before counting it
     MAY NOT claim anything about opens. open_tracking is False estate-wide.
+
+---
+
+## CLAUDE REVIEW ROUND 2, 2026-09-14 — B IS A TWO-HOP JOIN, AND THE REAL CONSTRAINT IS PAGINATION
+
+TASK-071 ran the same questions independently on worker 6 and DISAGREED with
+TASK-069 on B. It is right and TASK-069 overstated. Re-probed by Claude:
+
+    a reply row carries sequence_step_id?   NO. Confirmed on reply 1609180.
+    a reply row carries scheduled_email_id? YES.
+    GET /scheduled-emails/{id}              200, carries sequence_step_id
+
+So the chain is TWO HOPS, and every hop is a provider-supplied foreign key:
+
+    reply 1609180
+      -> scheduled_email 22290485
+      -> sequence_step_id 4039
+      -> which is variant=True, variant_from_step=4037
+
+**That single trace is the whole night's most useful fact.** A real reply
+resolves to the exact VARIANT that was sent, through provider fields alone.
+Step-level and variant-level attribution are real.
+
+### The label, settled
+
+Both hops are PROVIDER FACT, so this is not a RESONATE RECONSTRUCTION - no
+timestamp inference, no nearest-touch guess. But it is not a single field
+either, and calling it "directly supported" invites somebody to look for a
+field that does not exist. The accurate statement:
+
+    B  the step, and the variant, are PROVIDER FACT reachable in two hops
+
+A RECONSTRUCTION would be deducing position from sent_at ordering. That is
+verdict C's fallback and is still only needed where a reply has no
+scheduled_email_id.
+
+### `sequence_step_id` alone does not tell you the position
+
+Step 4039 has `order: None`, because a variant is not a position in the
+sequence - it is an alternative AT a position. To get the position you
+resolve `variant_from_step` to the parent and read the parent's `order`.
+Any analysis that sorts steps by `order` drops every variant into one
+undefined heap.
+
+### THE BINDING CONSTRAINT IS PAGINATION, NOT AVAILABILITY
+
+    per_page=15   -> 15 rows
+    per_page=100  -> 15 rows
+
+`per_page` is accepted and ignored on every route probed. Fifteen rows per
+request, always. Campaign 352 holds roughly 95,000 scheduled emails, so a
+full walk is about 6,400 requests, and the two-hop join costs a further
+request per reply.
+
+So the limit on cadence learning is REQUEST BUDGET, not provider truth. Any
+analysis must sample deliberately and say what it sampled, and a task that
+tries to walk campaign 352 exhaustively will not finish. `meta.total` is the
+honest denominator to report against a sample; `/events` returns no `total`
+at all.
+
+### `/events` is not the shortcut TASK-071 suggested
+
+TASK-071 reports `GET /events` carrying `sequence_step_order` AND
+`sequence_step_variant` directly, which would avoid the second hop. Probed:
+
+    sequence_step_order     1        present, as claimed
+    sequence_step_variant   None     absent on the sampled row
+    type                    None     no event type on the sampled rows
+    meta.total              None     no denominator
+
+`sequence_step_order` is real and useful. The variant field was null on the
+row read, so the one-hop variant shortcut is NOT PROVEN and the two-hop join
+above remains the route that is verified end to end. Worth a second look by
+whoever picks this up - filtered to EMAIL_SENT it may populate - but nothing
+may be built on it until it does.
+
+### Four routes the provider has and `bison.py` does not
+
+From TASK-071, and consistent with what was probed here:
+
+    GET /scheduled-emails/{id}     the second hop of B. VERIFIED by Claude.
+    GET /leads/{id}/replies        per-lead reply feed
+    GET /leads/{id}/sent-emails    per-lead send history with step id
+    GET /events                    carries sequence_step_order
+
+Only the first is verified by Claude. The other three are TASK-071's
+observation and carry its evidence, not a second one.
