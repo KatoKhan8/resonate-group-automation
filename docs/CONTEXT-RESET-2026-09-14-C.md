@@ -481,3 +481,62 @@ will never be sent can block a good replacement by colliding with it. TASK-062
 asks whether that is actually happening and recommends rather than deletes -
 removing stored generated work is Claude's call, and `CLAUDE.md` says a record
 is dropped with a reason rather than deleted.
+
+
+---
+
+## 17. THE CRITICAL PATH, CORRECTED
+
+`docs/WHY-REGENERATION-CANNOT-CONVERGE-2026-09-14.md` is the important read.
+Short version, measured on the contact that is blocking the dry run:
+
+**The copy really is bad.** `adcuratio-com/ranjan-damodar` asks the same
+question four times - "utilisation and capacity across your projects" - which
+is the original defect with a different noun, plus a fabricated "our previous
+discussions" on a record whose `prior_contact` is False.
+
+**Every gate correctly catches it** and the planner re-plans all six notes
+with accurate reasons.
+
+**And it still cannot be fixed by regenerating**, because the old failing
+notes remain SIBLINGS. `_note_quality` compares a new candidate against the
+stored steps, so a good new `li2` is judged against five stale notes that say
+nothing but "capacity across projects", collides with four, is refused, and
+is never stored. The stale note stays; the next pass hits the same wall.
+
+That is exactly the observed behaviour: a completed pass MOVED the blocker
+from `brian-price` to `ranjan-damodar` instead of clearing it.
+
+    TASK-062 IS THE UNBLOCKER FOR TASK-061.
+
+TASK-061 should be expected to report NOT CONVERGED until 062 lands, and that
+is the finding rather than a failure.
+
+### The route not taken
+
+Discounting the client's own angle vocabulary clears all five collisions on
+this contact - measured, 5 to 0 - and was REJECTED. `SUBJECT_VOCABULARY`'s own
+comment says structural words like "visibility" and "planning" must keep
+counting, and the client's angle list contains both. A gate that passes four
+askings of the same question is not a better gate; it is the defect returning
+with the alarm switched off. **Do not widen it.**
+
+## 18. FIRST REAL OUTCOME DATA - TASK-058 INTEGRATED
+
+76,315 outbound LinkedIn touches across 26,113 conversations, read from the
+provider. `docs/ESTATE-HEYREACH-OUTCOMES-2026-09-14.md`.
+
+    per-conversation reply    4,007 of 26,113     15.34%
+    per-touch reply           5,291 of 76,315      6.93%
+    POSITIVE reply            178 of 76,315       0.233%
+    reply delay               median 6.1h
+
+**73.6% of replies are unreadable to the classifier** - 3,894 of 5,291. That
+is the number that reframes the rest: 0.233% positive is what survived a
+classifier that cannot read three quarters of its input, so it is a FLOOR
+rather than a rate, and any copy comparison built on the readable quarter is
+a comparison over a biased sample.
+
+TASK-066 is queued and running against it, with the rule that outranks the
+number: do not reduce `unknown` by guessing. An UNKNOWN pauses the account; a
+wrong POSITIVE lets automation continue at somebody who said no.
