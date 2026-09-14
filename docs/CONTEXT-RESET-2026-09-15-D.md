@@ -543,3 +543,53 @@ A first pass reported industry and headcount at 0% and was wrong - it read
 `sizing`, which is null everywhere, where the data lives in `company_facts`.
 A zero and a wrong lookup are indistinguishable from the outside, and that
 mistake was made three separate times in this session.
+
+---
+
+## 19. THE SUITE, BEFORE AND AFTER - THE EXACT ACCOUNTING
+
+Run twice, in full, on 2026-09-15:
+
+    first run   8954 tests, 1937s, 17 red
+    final run   9065 tests, 1810s, 12 red
+
+Diffed by name rather than by count, because a count moving from 17 to 12
+does not prove which five moved.
+
+    FIXED (6)
+      test_LEAK_the_sanctioned_write_path_accepts_a_null_client
+      test_an_unowned_record_belongs_to_nobody_rather_than_to_everybody
+      test_the_unscoped_default_reads_the_whole_estate
+      test_the_pause_is_recorded_with_its_cause_and_is_auditable
+      test_crash_between_first_and_second_lead
+      test_quality_of_calls_gate_with_email_channel
+
+    INTRODUCED (1), and then fixed
+      test_five_step_purposes_unchanged
+
+    STILL RED (11)   all present in the FIRST run. TASK-088.
+
+**A MISTAKE I MADE AND CORRECTED, because the next person will be tempted by
+it.** Four failures - `replaysim` x2, `referral`, `mutation_anchors` - looked
+new to me, and I reverted TASK-085's `cadence.py` fix believing it had caused
+them. It had not. All four were in the first run's list; I had read only the
+HEAD of that list and the sort order differed, so they looked new. The fix is
+restored.
+
+**Diff the two lists by name. Do not eyeball a truncated list and infer.**
+
+## 20. "BE SHORT" IS GONE FROM THE FOLLOW-UP INSTRUCTION
+
+TASK-081's `FOLLOWUP_ADDENDUM` told the model to be short on a same-thread
+follow-up. TASK-080 then measured the estate and found the opposite: 857
+characters against 571 for new threads, on follow-ups that earned replies.
+
+Removed - and NOT replaced with "be long". The measurement is survivorship,
+taken only on emails that got replies, so it supports neither instruction.
+"Add one thought" carries the intent without asserting a length nobody has
+evidence for, and a test now pins that the addendum asserts no length in
+either direction.
+
+This is the second time in the session that a measurement corrected a
+requirement written hours earlier, and both corrections are recorded next to
+the thing they corrected rather than quietly applied.
