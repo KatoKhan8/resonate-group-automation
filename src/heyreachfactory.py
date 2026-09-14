@@ -291,6 +291,107 @@ def _build_sequence_no_inmail(copy, withdraw_after_days=21):
     return sequence
 
 
+# ---------------------------------------------- per-lead copy, not per-campaign
+#
+# A HEYREACH SEQUENCE IS CAMPAIGN-LEVEL. ONE GRAPH SERVES EVERY LEAD IN IT.
+#
+# `_plan` used to build that graph from `complete[0]["copy"]` - the approved
+# words of whichever eligible contact sorted first - and the payloads went to
+# the provider as literal strings. Campaign 599020 therefore carried "hi jacob,
+# ... let's connect!" and "how are you currently managing this at &Partner?"
+# while its canonical row named FOURTEEN records. Enabling `LINKEDIN_ADD_LEAD`
+# would have sent thirteen people at thirteen other companies a note addressed
+# to Jacob at &Partner. Measured 2026-09-14, before any lead was written.
+#
+# So the graph carries MERGE FIELDS and the words travel per lead, which is
+# what `bisonfactory` already does with `{SUBJECT_1}`..`{BODY_5}`. The two
+# providers are now the same shape, and that is the point: a campaign-level
+# artifact may not contain anything true of only one person.
+#
+# The mechanism is not new and is proven on this workspace. The client's own
+# live campaign 565765 uses `{FIRST_NAME}`, `{COMPANY}` and a custom
+# `{Icebreaker}` today. `heyreach.build_lead_pairs` already carries an
+# arbitrary per-row `custom_fields` dict onto the wire as `customUserFields`,
+# `heyreach.supplied_field_names` derives what every row supplies as an
+# INTERSECTION, and `heyreach.refuse_unsupported_sequence` raises when the copy
+# uses a variable the push does not supply.
+#
+# THE VARIABLE NAME IS THE ROLE NAME, deliberately. A separate naming scheme
+# would be one more mapping to keep in step with `COPY_MAPPING`, and the two
+# would drift the first time somebody added a role.
+
+# The one thing this module may not invent: what a prospect reads when a
+# variable cannot be filled.
+#
+# HeyReach does not error on an unfilled variable - it sends `fallbackMessage`
+# instead. `refuse_unsupported_sequence` is what makes that unreachable in
+# practice, because it refuses the push unless EVERY lead supplies EVERY
+# variable. This is the second line, for the case where the provider
+# substitutes differently than we believe it does.
+#
+# It comes from the client's own config and its absence REFUSES. A fallback
+# invented here would be unapproved copy that this system wrote and nobody
+# read, reaching a real person at exactly the moment something has already
+# gone wrong - which is the definition of a silent fallback on a safety path.
+FALLBACK_CONFIG_KEY = "linkedin_sequence"
+
+
+def merge_variable_of(role):
+    """The HeyReach custom-field name carrying `role`'s words, per lead."""
+    return str(role)
+
+
+def merge_sequence_copy(config):
+    """The copy block the GRAPH is built from: variables, never words.
+
+    Returns a block shaped like `assemble_linkedin_copy`'s, but every
+    `messages` entry is `{role}` rather than one contact's sentence. The
+    `fallbackMessage` is the client's configured fallback for that role.
+
+    Raises `FactoryRefused` naming every role whose fallback is missing.
+    """
+    configured = ((config or {}).get(FALLBACK_CONFIG_KEY) or {}).get(
+        "fallbacks") or {}
+    block, missing = {}, []
+    for role in REQUIRED_ROLES:
+        fallback = str(configured.get(role) or "").strip()
+        if not fallback:
+            missing.append(role)
+            continue
+        block[role] = {"messages": ["{" + merge_variable_of(role) + "}"],
+                       "fallbackMessage": fallback}
+    if missing:
+        raise FactoryRefused(
+            f"this client declares no LinkedIn fallback copy for "
+            f"{', '.join(sorted(missing))}. HeyReach sends `fallbackMessage` "
+            f"whenever a per-lead variable cannot be filled, so a graph "
+            f"without one would reach a real person as a blank - and a "
+            f"fallback invented here would be words nobody approved. Declare "
+            f"them under `{FALLBACK_CONFIG_KEY}.fallbacks` in the client "
+            f"config")
+    return block
+
+
+def custom_fields_for(source, contact_key, *, include_inmail=False):
+    """One contact's approved words, keyed by the variable that carries them.
+
+    Returns `(fields, missing)` with the same `missing` shape
+    `assemble_linkedin_copy` returns, because it is the same question asked
+    per lead instead of per campaign.
+    """
+    copy, missing = assemble_linkedin_copy(
+        source, contact_key, include_inmail=include_inmail)
+    fields = {}
+    for role, block in (copy or {}).items():
+        entries = (block or {}).get("messages") or []
+        if not entries or not isinstance(entries[0], str):
+            # An INMAIL role's entry is a {subject, message} object and needs
+            # two variables rather than one. Not wired - see `_plan`.
+            continue
+        fields[merge_variable_of(role)] = entries[0]
+    return fields, missing
+
+
 def build_sequence(copy, *, include_inmail=False, withdraw_after_days=21):
     """The graph this campaign will run. Pure: sends nothing.
 
@@ -400,7 +501,25 @@ def _plan(campaign, recs, config, *, include_inmail=False,
     cadence_steps = _cadence.steps_for(campaign, config=config)
     by_id = {r.get("id"): r for r in recs}
 
-    # Collect copy from every eligible record/contact.
+    if include_inmail:
+        # An INMAIL carries a subject AND a message, so it needs two variables
+        # per lead rather than one, and no approved InMail copy has ever
+        # existed here - `cadencelibrary` holds every step naming `CAP_INMAIL`
+        # because the capability is unproven. Refusing is honest; wiring a
+        # second variable for a branch nothing can fill would be speculative.
+        raise FactoryRefused(
+            "per-lead InMail copy is not wired: an INMAIL step carries a "
+            "subject and a message and so needs two variables per lead, and "
+            "no InMail copy is ever approved because `CAP_INMAIL` is unproven. "
+            "Build without InMail, which is the default")
+
+    # THE GRAPH IS BUILT FROM VARIABLES AND NOTHING ELSE. It used to be built
+    # from `complete[0]["copy"]` - see the note above `merge_sequence_copy`.
+    sequence, touch_report = build_sequence(
+        merge_sequence_copy(config), include_inmail=False,
+        withdraw_after_days=withdraw_after_days)
+
+    # Collect each contact's own words, which travel per lead.
     per_contact = []
     all_missing = []
     for rec in recs:
@@ -410,38 +529,36 @@ def _plan(campaign, recs, config, *, include_inmail=False,
             if not contact.get("linkedin"):
                 continue
             key = contact.get("key")
-            copy, missing = assemble_linkedin_copy(
-                rec, key, include_inmail=include_inmail)
+            fields, missing = custom_fields_for(rec, key)
             if missing:
                 all_missing.extend(missing)
             per_contact.append({
                 "record_id": rec.get("id"),
                 "contact_key": key,
-                "copy": copy,
+                "custom_fields": fields,
                 "missing": missing,
             })
 
-    # Use the first complete contact's copy to build the graph.
-    # The sequence is a CAMPAIGN-level configuration, not per-contact.
+    # A contact who cannot fill every variable is not pushable - HeyReach
+    # would send that step's fallback instead of their words. The sequence is
+    # unaffected, which is the difference this change makes: one incomplete
+    # contact no longer decides what the whole campaign says.
     complete = [c for c in per_contact if not c["missing"]]
-    if not complete and per_contact:
-        _refuse_missing(all_missing)
     if not complete:
+        if per_contact:
+            _refuse_missing(all_missing)
         raise FactoryRefused(
             "no contact on any record has approved LinkedIn copy for every "
             "role the graph requires")
 
-    copy_block = complete[0]["copy"]
-    sequence, touch_report = build_sequence(
-        copy_block, include_inmail=include_inmail,
-        withdraw_after_days=withdraw_after_days)
-
     return {
         "cadence_steps": cadence_steps,
         "contacts": per_contact,
+        "pushable": [c for c in complete],
         "missing": all_missing,
         "sequence": sequence,
         "touch_report": touch_report,
         "copy_mapping": COPY_MAPPING,
-        "inmail_included": include_inmail,
+        "merge_variables": [merge_variable_of(r) for r in REQUIRED_ROLES],
+        "inmail_included": False,
     }

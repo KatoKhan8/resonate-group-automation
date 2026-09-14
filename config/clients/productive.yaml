@@ -274,6 +274,38 @@ cadence: productive_li_heavy_v1
 # `generate.LINKEDIN_LADDER` is what gives each rung its own job.
 linkedin_connection_note:
   mode: llm
+
+# WHAT A PROSPECT READS IF THEIR OWN WORDS DO NOT ARRIVE.
+#
+# A HeyReach sequence is campaign-level, so each step's copy travels per lead
+# in a custom field named after the step's graph role and the graph carries
+# `{connection_note}`, `{connected_1}` and so on. HeyReach does NOT error on a
+# variable it cannot fill - it sends `fallbackMessage` instead, silently. So
+# every role needs one, `heyreachfactory.merge_sequence_copy` REFUSES without
+# it, and the words are declared here rather than invented by the factory: a
+# fallback the code wrote is unapproved copy reaching a real person at exactly
+# the moment something has already gone wrong.
+#
+# `heyreach.refuse_unsupported_sequence` should make these unreachable - it
+# refuses the whole push unless every lead supplies every variable. These are
+# the second line, for the case where the provider substitutes differently
+# than we believe it does.
+#
+# THEY ASSERT NOTHING ABOUT THE READER. No prior contact, no named pain, no
+# claim about their company, nothing the record would have to support - because
+# by definition nothing personalised is available when one of these fires. They
+# are true of any agency and they are the only copy in this system written to
+# be true of a stranger.
+linkedin_sequence:
+  fallbacks:
+    connection_note: hi, i work with agencies on project profitability and thought it would be good to connect.
+    connected_1: how do you currently get visibility on whether a project is making money while it is still running?
+    connected_2: most agencies i speak to find that out at the end of a project rather than during it. is that how it works for you?
+    connected_3: we built productive so budgets, time tracking and resourcing talk to each other. worth a look?
+    connected_4: happy to leave it here if the timing is wrong. is there someone else who owns this?
+    message_2: how do you currently get visibility on whether a project is making money while it is still running?
+    message_3: most agencies i speak to find that out at the end of a project rather than during it. is that how it works for you?
+    message_4: we built productive so budgets, time tracking and resourcing talk to each other. worth a look?
 tone:
   email: polished, professional, no em dashes, no buzzwords, no fluff openers
   linkedin: casual, lowercase, human
