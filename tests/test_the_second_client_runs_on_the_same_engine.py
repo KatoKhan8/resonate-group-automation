@@ -1416,10 +1416,17 @@ class NoClientContextIsNoAccess(Estate):
                 clients.load(bad)
 
     def test_an_unowned_record_belongs_to_nobody_rather_than_to_everybody(self):
-        """HOLDS - src/repo.py:193-194 requires an exact match."""
-        store.append([dict(a_record("orphan", None, "Orphan",
-                                    "orphan.test", "k", "k@orphan.test", "k"),
-                           client=None)])
+        """HOLDS - src/repo.py:193-194 requires an exact match.
+
+        `store.append` now refuses a null client (src/store.py:808), so
+        the orphan is created via `store.transaction`, the lower-level
+        path. The test asserts the Repo boundary, not the ingestion path.
+        """
+        orphan = dict(a_record("orphan", None, "Orphan",
+                               "orphan.test", "k", "k@orphan.test", "k"),
+                      client=None)
+        with store.transaction() as rows:
+            rows.append(orphan)
         self.assertEqual([r["id"] for r in self.repo_a.records()], ["a-1"])
         self.assertEqual([r["id"] for r in self.repo_b.records()], ["b-1"])
         self.assertEqual(len(repo_module.admin_repo().records()), 3)

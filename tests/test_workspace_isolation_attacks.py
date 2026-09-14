@@ -433,18 +433,23 @@ class ConsumingAnApprovalGrantedElsewhere(Estate):
         ids = {row["id"] for row in pending["waiting"] + pending["blocked"]}
         self.assertNotIn("bravo-1", ids)
 
-    def test_the_unscoped_default_reads_the_whole_estate(self):
-        """BLOCKED at the boundary, not in the function - and worth naming.
+    def test_the_unscoped_default_is_gone(self):
+        """FIXED - src/approve.py:221 requires `recs` as a positional arg.
 
-        `approve.pending()` with no argument defaults to `store.load()`
-        (src/approve.py:225). It is the CLI's default. A handler that
-        called it without `repo.records()` would render both tenants'
-        queues on one screen and nothing in the function would object.
+        Was a risk: `approve.pending()` with no argument defaulted to
+        `store.load()`, reading both tenants' queues. A handler that
+        called it without `repo.records()` would have rendered both
+        tenants on one screen. Now the function refuses to run without
+        an explicit `recs` argument, so the unscoped path no longer exists.
         """
-        everything = approve_mod.pending()
+        with self.assertRaises(TypeError):
+            approve_mod.pending()
+        # The scoped path still works and stays scoped.
+        self.approve_bravo()
+        scoped = approve_mod.pending(self.a.records())
         ids = {row["id"] for row in
-               everything["waiting"] + everything["blocked"]}
-        self.assertEqual(ids & {"alpha-1", "bravo-1"}, {"alpha-1", "bravo-1"})
+               scoped["waiting"] + scoped["blocked"]}
+        self.assertNotIn("bravo-1", ids)
 
 
 # ------------------------------------------------------------------ attack 7
@@ -569,24 +574,21 @@ class ARecordWithNoClient(Estate):
         # given, so A may only write rows already stamped `alpha`.
         self.assertIsNone(store.get("orphan-1").get("client"))
 
-    def test_LEAK_the_sanctioned_write_path_accepts_a_null_client(self):
-        """LEAKED (weakly) - src/store.py:249-261.
+    def test_the_sanctioned_write_path_refuses_a_null_client(self):
+        """FIXED - src/store.py:808 validates client is a non-empty slug.
 
-        `validate` checks that the key `client` is *present*, never that it
-        holds a client. `client: None` therefore passes `store.append`, the
-        one guarded ingestion path, and creates a row no tenant owns and no
-        tenant can repair - only `admin_repo` can see it, and only a hand
-        edit can re-tenant it.
-
-        Fail-closed, so not a disclosure. It is an orphaning bug: a record
-        that cost credits becomes unreachable from the product.
+        Was LEAKED. `validate` used to check that the key `client` was
+        *present*, never that it held a client. `client: None` passed
+        `store.append` and created an orphan row. Now `store.append`
+        refuses it at the ingestion boundary, so the orphaning bug is
+        closed before the row reaches the queue.
         """
         rec = a_record("orphan-2", ALPHA)
         rec["client"] = None
-        store.append([rec])                            # accepted
-        self.assertEqual(store.validate(rec), [])
-        self.assertIsNone(store.get("orphan-2")["client"])
-        self.assertNotIn("orphan-2", [r["id"] for r in self.a.records()])
+        with self.assertRaises(ValueError) as raised:
+            store.append([rec])
+        self.assertIn("client", str(raised.exception))
+        self.assertNotIn("orphan-2", [r["id"] for r in store.load()])
 
     def test_an_unowned_row_still_absorbs_an_unscoped_event(self):
         """LEAKED, as a consequence of attack 7.
