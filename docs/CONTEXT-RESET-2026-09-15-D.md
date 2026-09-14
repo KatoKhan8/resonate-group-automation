@@ -155,7 +155,7 @@ A genuine one is lost with it, on purpose.
     MEETING_INTENT and OBJECTION  may carry learning claims, recall stated
     INTERESTED                    may NOT - 0.44 was the OLD pattern set and
                                   the new one is UNMEASURED, which is not the
-                                  same as good. TASK-079 would re-measure it.
+                                  same as good. A re-measure is owed and unqueued.
 
 ## 6. THE TWO RULES THAT SAVED THE NIGHT
 

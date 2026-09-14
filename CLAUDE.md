@@ -3,7 +3,11 @@ docs/CONTEXT-RESET-2026-09-15-D.md is the current state: read it first.
 Read BUILD-SPEC.md before changing anything. PLAYBOOK.md is the operating
 contract: the rules that outrank convenience, including the ones the LLM steps
 work to. SLACK-NOTIFICATIONS.md is the same for the notification layer: two
-levels, no fallback between them. ACCOUNT-OUTREACH.md and CADENCE-MODEL.md
+levels, no fallback between them. EMAILBISON-COPY-REQUIREMENTS.md is the
+standing contract for email generation: a sequence is one conversation,
+same-thread follow-ups use the provider's thread_reply rather than a new
+subject every step, no name is ever hardcoded and no greeting may render
+empty. ACCOUNT-OUTREACH.md and CADENCE-MODEL.md
 cover account-based orchestration: the account is the unit of outreach, and a
 message may only claim what the event log supports. OPERATOR-PLAYBOOK.md is
 the workflow those rules govern; PRODUCT-INVENTORY.md says what exists.
