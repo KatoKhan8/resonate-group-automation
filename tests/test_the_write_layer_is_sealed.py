@@ -85,7 +85,14 @@ class TheLayerIsSealed(unittest.TestCase):
         self.assertEqual(
             providerwrites.SUPPORTED,
             (pw.LINKEDIN_PAUSE, pw.EMAIL_PAUSE, pw.EMAIL_STOP_LEAD,
-             pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE),
+             pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE,
+             # 2026-09-14. The same condition this docstring sets - one
+             # successful call, read back from provider truth - was already
+             # met: campaign 599020 carried a sequence written through
+             # /campaign/UpdateSequence before it was listed. Not
+             # prospect-facing, and the loop below is what actually guards
+             # this file.
+             pw.LINKEDIN_SET_SEQUENCE),
             "the set of enabled provider writes changed")
         # The condition restated as a property, so it survives the list
         # growing: nothing that reaches a prospect is supported.
