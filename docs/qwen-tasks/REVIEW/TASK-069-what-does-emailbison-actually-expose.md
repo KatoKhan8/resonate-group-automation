@@ -211,3 +211,91 @@ not verdict 1.
 
 Still no performance findings. That is TASK-070, and what you conclude here
 decides what TASK-070 is allowed to claim.
+
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** (see git log on qwen-worker-3)
+
+**TESTS:** No code changes. Read-only provider probe. Existing test suite
+not run (no code modified). The truth map is verified against real provider
+responses from the live estate at `https://send.resonategroup.co/api` and
+against the code in `src/providers/bison.py`.
+
+**FILES CHANGED:**
+- `docs/BISON-PROVIDER-TRUTH-2026-09-14.md` — revised with A/B/C/D verdicts,
+  three-kind labelling, and experiment ledger design
+- `docs/qwen-tasks/RUNNING/TASK-069-*.md` → `docs/qwen-tasks/REVIEW/TASK-069-*.md`
+
+**FINDINGS:**
+
+A: **DIRECTLY SUPPORTED BY PROVIDER.** Historical per-lead/per-step sends
+with timestamps exist. `GET /api/campaigns/{id}/scheduled-emails` returns
+rows for archived campaign 274 (30,411 rows), completed campaign 335
+(10,173 rows), and completed campaign 451 (1 row). Each row carries
+`sequence_step_id`, `sent_at`, rendered `email_subject` and `email_body`.
+31 rows checked directly; `meta.total` confirms full estate availability.
+
+B: **DIRECTLY SUPPORTED BY PROVIDER.** A reply carries `scheduled_email_id`
+(748/750 rows; 2 missing are outgoing). Through `scheduled_email_id` →
+`scheduled_email.sequence_step_id`, the exact step is reachable. Verified
+end-to-end on reply id=1609175: campaign 327, lead 146592, step 3738
+(order=7), sent_at=2026-09-14T16:09:20.
+
+C: **RECONSTRUCTABLE FROM PROVIDER DATA.** When B is absent, sequence
+position can be reconstructed from `scheduled_emails` per lead: sort by
+`sent_at`, read `sequence_step_id` from each row. This is a RESONATE
+RECONSTRUCTION, not a provider fact. It determines how far a lead got, not
+which step caused a reply.
+
+D: **NOT AVAILABLE.** The `scheduled_email` row carries `sequence_step_id`
+but no variant identifier. Sequence steps have `variant: bool` and
+`variant_from_step` (39/44 steps in campaign 352 are variants), but the
+scheduled email does not record which variant was sent. The rendered copy
+is available and could be diffed against known variant templates
+(RESONATE RECONSTRUCTION), but there is no explicit variant_id.
+
+**Experiment ledger designed** (appendix in truth map). Stores variant
+assignment at staging time, joins to provider data at observation time.
+`attribution_confidence` field carries the honesty: "direct" (provider
+supplied scheduled_email_id), "reconstructed" (last-touch), "unknown"
+(reply present but unattributable). Design only — not implemented.
+
+**Critical finding carried forward:** `open_tracking` is false on ALL 22
+campaigns. Zero opens across the entire estate is an absent measurement,
+not an absent outcome. Any open-rate analysis is fiction.
+
+**Critical finding on attribution:** `scheduled_email_id` on a reply is the
+provider's association, not a causal claim. A reply may have been triggered
+by an earlier email or by a LinkedIn touch. Every attribution number must
+label itself as PROVIDER FACT, RESONATE RECONSTRUCTION, or ATTRIBUTION
+HYPOTHESIS.
+
+**RISKS:**
+- The `scheduled_email_id` semantics are not documented by the provider.
+  It may mean "reply in this thread" or "most recent email to this lead."
+  The join works; the causation is an ATTRIBUTION HYPOTHESIS.
+- Large campaign reads are expensive (15 rows/page). Campaign 352 needs
+  679 pages for scheduled emails. The `_paged()` function has a PAGE_CAP
+  of 40 (600 rows) and raises PartialInventory beyond that.
+- `parent_id` on replies is always null (750/750). Threading cannot be
+  reconstructed from this field.
+- Older campaign leads (335, 274, 327, 328, 352) lack `record_id` and
+  `contact_key` in custom_variables (0/37 reply leads checked). Only
+  campaign 451 carries our identifiers.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Accept the truth map as the basis for TASK-070.
+2. Decide whether the experiment ledger design earns its place as a
+   separate file or whether `variant_id` should be added to the existing
+   event log.
+3. TASK-070 may now claim step-level attribution (A and B are verdict 1)
+   but must label every causation claim and must not claim open-rate
+   anything.
+4. The variant gap (D) means TASK-044 (five variants that are actually
+   different) needs the Resonate-owned ledger to be measurable. Without
+   it, variant evaluation is copy-diffing at best.
