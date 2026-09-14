@@ -107,8 +107,8 @@ price of every draft, which is itself an argument for deterministic checks.
 - The six real `16kagency-com` notes above, as a fixture. The gate must FAIL
   at least li1 (angle wording) and li4 (unsupported claim), and the
   repetition check must fire across the set.
-- The `nineyards-ie` template note - "hi Brooke, i work with Design Services
-  teams on utilisation. curious how Nineyards handles it at your size" -
+- The `clearwater-ie` template note - "hi Pat, i work with Design Services
+  teams on utilisation. curious how Clearwater handles it at your size" -
   must PASS. A gate that fails good copy is worse than none, and this is the
   test that keeps it honest.
 - Each check fails for its OWN reason, not a generic one.
@@ -152,8 +152,8 @@ FINDINGS:
   All six fail for repetition: they share profitability/visibility
   as content words at an overlap coefficient above 50%.
 
-  The nineyards-ie canary note ("hi Brooke, i work with Design
-  Services teams on utilisation. curious how Nineyards handles it
+  The clearwater-ie canary note ("hi Pat, i work with Design
+  Services teams on utilisation. curious how Clearwater handles it
   at your size") PASSES. A gate that fails good copy is worse than
   none.
 

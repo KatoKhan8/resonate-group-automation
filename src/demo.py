@@ -17,7 +17,7 @@ import datetime
 
 from . import clients, evidence, personalization, store
 
-TODAY = "2026-08-26"
+TODAY = datetime.date.today().isoformat()
 
 
 def _days_ago(n):

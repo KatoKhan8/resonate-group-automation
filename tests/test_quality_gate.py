@@ -15,7 +15,7 @@ three defects a person would catch instantly:
   all  six rungs, one idea - the failure LINKEDIN_LADDER was written to
        prevent
 
-And the `nineyards-ie` template note - honest, short, specific - must
+And the `clearwater-ie` template note - honest, short, specific - must
 PASS. A gate that fails good copy is worse than none.
 """
 import unittest
@@ -54,11 +54,11 @@ SIX_NOTES = [
         "love to hear your thoughts on that.")},
 ]
 
-# The canary note. "hi Brooke, i work with Design Services teams on "
-# "utilisation. curious how Nineyards handles it at your size" - honest,
+# The canary note. "hi Pat, i work with Design Services teams on "
+# "utilisation. curious how Clearwater handles it at your size" - honest,
 # short, specific. A gate that fails this is worse than none.
-CANARY_NOTE = ("hi Brooke, i work with Design Services teams on "
-               "utilisation. curious how Nineyards handles it at your size")
+CANARY_NOTE = ("hi Pat, i work with Design Services teams on "
+               "utilisation. curious how Clearwater handles it at your size")
 
 
 # --------------------------------------------------------------- the checks

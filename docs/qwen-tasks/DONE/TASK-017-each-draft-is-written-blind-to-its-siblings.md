@@ -7,7 +7,7 @@ without letting that be mistaken for confirmed history.
 
 ## WHY IT MATTERS - THIS IS WHY ALL THE COPY REPEATS
 
-Measured 2026-09-14 on `28row-com`:
+Measured 2026-09-14 on a live estate:
 
     already_sent when writing em1: []
     already_sent when writing em3: []

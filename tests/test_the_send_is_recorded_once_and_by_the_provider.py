@@ -51,7 +51,7 @@ def a_row(status="scheduled", sent_at=None, variables=None, **over):
         "sent_at": sent_at,
         "opens": 0, "clicks": 0, "replies": 0, "unique_opens": 0,
         "unique_replies": 0, "interested": False,
-        "raw_message_id": "<abc@goproductive.online>",
+        "raw_message_id": "<abc@fixture.example>",
         "campaign": {"id": CAMPAIGN, "status": "active",
                      "open_tracking": False},
         "lead": {"id": LEAD_ID, "email": "hussein@example.test",

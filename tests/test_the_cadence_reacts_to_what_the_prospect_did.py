@@ -30,8 +30,8 @@ from src import store
 from tests.campaignbase import CampaignTest
 
 WS = "productive"
-KEY = "brooke"
-COLLEAGUE = "joseph"
+KEY = "pat"
+COLLEAGUE = "sam"
 
 REQUEST_AT = "2026-09-01T09:00:00+00:00"
 INSIDE_WINDOW = "2026-09-03T09:00:00+00:00"
@@ -46,7 +46,7 @@ FORK_STEP = next(s for s in LI_STEPS if s["key"] == "li3")
 def a_record(events_=()):
     """The smallest record the connection axis needs: one person, a log."""
     return {"id": "acme", "client": WS, "domain": "acme.test",
-            "contacts": [{"key": KEY, "name": "Brooke Baron",
+            "contacts": [{"key": KEY, "name": "Pat Morgan",
                           "linkedin": f"https://www.linkedin.com/in/{KEY}"}],
             "events": list(events_)}
 
@@ -405,7 +405,7 @@ class TheTimelineReadsTheBranch(CampaignTest):
         rec["state"] = "verified"
         rec["hook"] = "resourcing visibility"
         rec["company_facts"] = {"name": "Acme Ltd", "industry": "agency"}
-        rec["contacts"] = [contact(KEY, "Brooke Baron", f"{KEY}@acme.test",
+        rec["contacts"] = [contact(KEY, "Pat Morgan", f"{KEY}@acme.test",
                                    angle="operations")]
         rec["cadence"] = {}
         # `store.new_record` creates no `events` key - a record grows one the
@@ -478,10 +478,10 @@ class ThePlannerReadsTheBranch(CampaignTest):
         rec["qualification"] = {"segment": {"employee_band": "20_49",
                                             "employees": 31}}
         rec["contacts"] = contacts or [
-            dict(contact(KEY, "Brooke Baron", f"{KEY}@acme.test",
+            dict(contact(KEY, "Pat Morgan", f"{KEY}@acme.test",
                          title="Head of Production", angle="operations"),
                  primary=True),
-            contact(COLLEAGUE, "Joseph O'Neill", f"{COLLEAGUE}@acme.test",
+            contact(COLLEAGUE, "Sam Crowley", f"{COLLEAGUE}@acme.test",
                     title="Design Director", angle="operations"),
         ]
         rec["cadence"] = {}

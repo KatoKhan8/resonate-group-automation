@@ -1233,8 +1233,8 @@ MUTATIONS = [
 
     ("cadence: report waiting for a connection nobody can accept",
      "src/cadence.py",
-     '    if spec["channel"] == "linkedin" and not contact.get("linkedin"):\n        return "blocked"\n    if spec.get("requires") == ACCEPT_EVENT and not accepted:',
-     '    if spec.get("requires") == ACCEPT_EVENT and not accepted:',
+     '    # the cross-channel check agrees with.\n    if spec["channel"] == "linkedin" and not contact.get("linkedin"):\n        return "blocked"',
+     '    # the cross-channel check agrees with.\n    if spec["channel"] == "linkedin" and not contact.get("linkedin"):\n        return "waiting"',
      "tests.test_demo_outreach tests.test_cadence"),
 
     ("push: stop sending our identifiers to EmailBison",

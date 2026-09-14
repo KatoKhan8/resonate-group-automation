@@ -21,8 +21,8 @@ from tests.campaignbase import CampaignTest
 
 WS = "productive"
 
-BROOKE = "brooke"          # Head of Production - operations family, primary
-JOSEPH = "joseph"          # Design Director   - delivery family
+PAT = "pat"          # Head of Production - operations family, primary
+SAM = "sam"          # Design Director   - delivery family
 NATHAN = "nathan"          # CEO               - founder family, last
 
 
@@ -92,9 +92,9 @@ class NextActionTest(CampaignTest):
 
     def record(self, rid="acme", contacts=None):
         rec = store.new_record(rid, "domains", WS, "Acme Ltd", "acme.test")
-        # A 20-49 person creative agency, which is `nineyards.ie`'s measured
-        # shape and the one Productive's own routing sends to operations
-        # first. Stated rather than left empty: with no segment,
+        # A 20-49 person creative agency, which is the measured shape the
+        # routing sends to operations first. Stated rather than left empty:
+        # with no segment,
         # `routing.strategy_for` correctly falls back to `founder_led` and
         # the CEO outranks the Head of Production - which is the module
         # being right about a company whose size nobody established, and
@@ -105,9 +105,9 @@ class NextActionTest(CampaignTest):
             "verdict": {"icp_tier": "C", "icp_status": "qualified"},
         }
         rec["contacts"] = contacts if contacts is not None else [
-            self.person(BROOKE, "Brooke Baron", "Head of Production",
+            self.person(PAT, "Pat Morgan", "Head of Production",
                         primary=True),
-            self.person(JOSEPH, "Joseph O'Neill", "Design Director"),
+            self.person(SAM, "Sam Crowley", "Design Director"),
             self.person(NATHAN, "Nathan Dean", "Chief Executive Officer"),
         ]
         rec["cadence"] = {}
@@ -150,7 +150,7 @@ class AClearAccount(NextActionTest):
     def test_it_names_a_person_a_channel_a_sender_and_a_step(self):
         decision = self.ask(self.record())
         self.assertEqual(decision["action"], na.ACT, decision["reason"])
-        self.assertEqual(decision["person"], BROOKE)
+        self.assertEqual(decision["person"], PAT)
         # THE FIRST STEP IS WHATEVER THE CADENCE SAYS IT IS. This asserted
         # "email" against `productive_default`, whose day 1 was an email.
         # Productive moved to `productive_li_heavy_v1` on 2026-09-13 and its
@@ -169,9 +169,9 @@ class AClearAccount(NextActionTest):
     def test_the_primary_operations_contact_outranks_the_ceo(self):
         """Productive's own routing puts operations ahead of founders."""
         decision = self.ask(self.record())
-        self.assertEqual(decision["person"], BROOKE)
+        self.assertEqual(decision["person"], PAT)
         order = [c["key"] for c in decision["considered"]]
-        self.assertLess(order.index(BROOKE), order.index(NATHAN))
+        self.assertLess(order.index(PAT), order.index(NATHAN))
 
     def test_it_writes_nothing(self):
         rec = self.record()
@@ -190,7 +190,7 @@ class AReplySuppressesTheNextAction(NextActionTest):
         rec = self.record()
         self.assertEqual(self.ask(rec)["action"], na.ACT)
 
-        events.record(rec, events.REPLY_RECEIVED, contact_key=BROOKE,
+        events.record(rec, events.REPLY_RECEIVED, contact_key=PAT,
                       channel="email", at="2026-09-13T10:00:00+00:00")
         decision = self.ask(rec)
         self.assertEqual(decision["action"], na.WAIT)
@@ -204,16 +204,16 @@ class AReplySuppressesTheNextAction(NextActionTest):
         rec = self.record()
         from src import accountpolicy as ap
 
-        ap.apply_reply(rec, BROOKE, outcome=ap.NEGATIVE, config=self.config,
+        ap.apply_reply(rec, PAT, outcome=ap.NEGATIVE, config=self.config,
                        at="2026-09-13T10:00:00+00:00")
         decision = self.ask(rec)
         self.assertEqual(decision["action"], na.ACT, decision["reason"])
-        self.assertNotEqual(decision["person"], BROOKE)
-        brooke = next(c for c in decision["considered"] if c["key"] == BROOKE)
-        self.assertIn(brooke["reason_code"],
+        self.assertNotEqual(decision["person"], PAT)
+        pat = next(c for c in decision["considered"] if c["key"] == PAT)
+        self.assertIn(pat["reason_code"],
                       (eligibility.BLOCKED_CONTACT_STOPPED,
                        eligibility.BLOCKED_REPLIED))
-        self.assertTrue(brooke["terminal"])
+        self.assertTrue(pat["terminal"])
 
     def test_a_held_account_stops_every_colleague_too(self):
         """The counterfactual that matters: the reply did not only remove
@@ -223,7 +223,7 @@ class AReplySuppressesTheNextAction(NextActionTest):
         rec = self.record()
         from src import accountpolicy as ap
 
-        ap.apply_reply(rec, BROOKE, outcome=ap.POSITIVE, config=self.config,
+        ap.apply_reply(rec, PAT, outcome=ap.POSITIVE, config=self.config,
                        at="2026-09-13T10:00:00+00:00")
         decision = self.ask(rec)
         self.assertEqual(decision["action"], na.WAIT)
@@ -233,7 +233,7 @@ class AReplySuppressesTheNextAction(NextActionTest):
         rec = self.record()
         from src import accountpolicy as ap
 
-        ap.apply_reply(rec, BROOKE, outcome=ap.ACCOUNT_DNC, config=self.config,
+        ap.apply_reply(rec, PAT, outcome=ap.ACCOUNT_DNC, config=self.config,
                        at="2026-09-13T10:00:00+00:00")
         decision = self.ask(rec)
         self.assertEqual(decision["action"], na.STOP)
@@ -244,8 +244,8 @@ class AReplySuppressesTheNextAction(NextActionTest):
 class FatigueBlocksTheThirdContact(NextActionTest):
 
     def _two_open(self, rec):
-        self.touch(rec, BROOKE, "anna", "email", 1, "2026-09-01T09:00:00+00:00")
-        self.touch(rec, JOSEPH, "mark", "email", 1, "2026-09-03T09:00:00+00:00")
+        self.touch(rec, PAT, "anna", "email", 1, "2026-09-01T09:00:00+00:00")
+        self.touch(rec, SAM, "mark", "email", 1, "2026-09-03T09:00:00+00:00")
         return rec
 
     def test_a_third_decision_maker_is_refused_at_a_limit_of_two(self):
@@ -272,7 +272,7 @@ class FatigueBlocksTheThirdContact(NextActionTest):
 
     def test_a_company_worked_to_its_weekly_limit_waits_with_a_date(self):
         rec = self.record()
-        for i, key in enumerate((BROOKE, JOSEPH, NATHAN, BROOKE)):
+        for i, key in enumerate((PAT, SAM, NATHAN, PAT)):
             self.touch(rec, key, "anna", "email", i + 1,
                        f"2026-09-1{i}T09:00:00+00:00")
         config = self._config(**{"account.max_touches_per_week": 4})
@@ -291,46 +291,46 @@ class ABounceDisablesTheIdentityNotTheAccount(NextActionTest):
 
     def record_with_email_only_primary(self):
         return self.record(contacts=[
-            self.person(BROOKE, "Brooke Baron", "Head of Production",
+            self.person(PAT, "Pat Morgan", "Head of Production",
                         primary=True, linkedin=False),
-            self.person(JOSEPH, "Joseph O'Neill", "Design Director"),
+            self.person(SAM, "Sam Crowley", "Design Director"),
         ])
 
     def test_the_bounced_person_loses_email_and_the_colleague_is_next(self):
         rec = self.record_with_email_only_primary()
-        self.assertEqual(self.ask(rec)["person"], BROOKE)
+        self.assertEqual(self.ask(rec)["person"], PAT)
 
-        events.record(rec, events.EMAIL_BOUNCED, contact_key=BROOKE,
+        events.record(rec, events.EMAIL_BOUNCED, contact_key=PAT,
                       channel="email", at="2026-09-13T10:00:00+00:00")
         decision = self.ask(rec)
         self.assertEqual(decision["action"], na.ACT, decision["reason"])
-        self.assertEqual(decision["person"], JOSEPH)
-        brooke = next(c for c in decision["considered"] if c["key"] == BROOKE)
-        self.assertEqual(brooke["closed_channels"].get("email"),
+        self.assertEqual(decision["person"], SAM)
+        pat = next(c for c in decision["considered"] if c["key"] == PAT)
+        self.assertEqual(pat["closed_channels"].get("email"),
                          na.CONTACT_BOUNCED)
 
     def test_a_bounce_on_one_address_closes_nothing_else(self):
         """Not the colleague's email, not the bounced person's LinkedIn,
         and not the account."""
         rec = self.record()
-        events.record(rec, events.EMAIL_BOUNCED, contact_key=BROOKE,
+        events.record(rec, events.EMAIL_BOUNCED, contact_key=PAT,
                       channel="email", at="2026-09-13T10:00:00+00:00")
         decision = self.ask(rec)
         self.assertNotEqual(decision["action"], na.STOP)
-        brooke = next(c for c in decision["considered"] if c["key"] == BROOKE)
-        self.assertEqual(brooke["channel"], "linkedin")
-        joseph = next(c for c in decision["considered"] if c["key"] == JOSEPH)
-        self.assertNotIn("email", joseph["closed_channels"])
+        pat = next(c for c in decision["considered"] if c["key"] == PAT)
+        self.assertEqual(pat["channel"], "linkedin")
+        sam = next(c for c in decision["considered"] if c["key"] == SAM)
+        self.assertNotIn("email", sam["closed_channels"])
 
     def test_the_projection_is_per_contact(self):
         rec = self.record()
-        events.record(rec, events.EMAIL_BOUNCED, contact_key=BROOKE,
+        events.record(rec, events.EMAIL_BOUNCED, contact_key=PAT,
                       channel="email", at="2026-09-13T10:00:00+00:00")
-        self.assertEqual(len(account.bounces(rec, BROOKE)), 1)
-        self.assertEqual(account.bounces(rec, JOSEPH), [])
+        self.assertEqual(len(account.bounces(rec, PAT)), 1)
+        self.assertEqual(account.bounces(rec, SAM), [])
         graph = account.graph(rec, workspace=WS)
-        self.assertEqual(len(graph["by_contact"][BROOKE]["bounces"]), 1)
-        self.assertEqual(graph["by_contact"][JOSEPH]["bounces"], [])
+        self.assertEqual(len(graph["by_contact"][PAT]["bounces"]), 1)
+        self.assertEqual(graph["by_contact"][SAM]["bounces"], [])
 
 
 # ------------------------------------------------- the EmailBison constraint
@@ -399,14 +399,14 @@ class OnePersonCannotBeInTwoEmailCampaigns(NextActionTest):
 class SequencingComesFromConfigurationNotFromCode(NextActionTest):
 
     def opened(self, rec):
-        return self.touch(rec, BROOKE, "anna", "email", 1,
+        return self.touch(rec, PAT, "anna", "email", 1,
                           "2026-09-14T09:00:00+00:00")
 
     def test_the_second_stakeholder_waits_the_configured_gap(self):
         rec = self.opened(self.record(contacts=[
-            self.person(BROOKE, "Brooke Baron", "Head of Production",
+            self.person(PAT, "Pat Morgan", "Head of Production",
                         primary=True),
-            self.person(JOSEPH, "Joseph O'Neill", "Design Director"),
+            self.person(SAM, "Sam Crowley", "Design Director"),
         ]))
         config = self._config(
             **{"account.min_hours_between_first_touches": 72,
@@ -416,7 +416,7 @@ class SequencingComesFromConfigurationNotFromCode(NextActionTest):
             at="2026-09-14T10:00:00+00:00", suppressed=set())
         self.assertEqual(decision["action"], na.WAIT)
         self.assertEqual(decision["reason_code"], na.WAIT_SPACING)
-        self.assertEqual(decision["person"], JOSEPH)
+        self.assertEqual(decision["person"], SAM)
         self.assertEqual(decision["execute_after"], "2026-09-17T09:00:00+00:00")
 
     def test_moving_the_number_moves_the_plan(self):
@@ -424,9 +424,9 @@ class SequencingComesFromConfigurationNotFromCode(NextActionTest):
         24 hours is a different plan and the module has no opinion about
         which is right."""
         rec = self.opened(self.record(contacts=[
-            self.person(BROOKE, "Brooke Baron", "Head of Production",
+            self.person(PAT, "Pat Morgan", "Head of Production",
                         primary=True),
-            self.person(JOSEPH, "Joseph O'Neill", "Design Director"),
+            self.person(SAM, "Sam Crowley", "Design Director"),
         ]))
         config = self._config(
             **{"account.min_hours_between_first_touches": 24,
@@ -435,7 +435,7 @@ class SequencingComesFromConfigurationNotFromCode(NextActionTest):
             rec, config=config, workspace=WS, estate=clear_estate(),
             at="2026-09-16T10:00:00+00:00", suppressed=set())
         self.assertEqual(decision["action"], na.ACT, decision["reason"])
-        self.assertEqual(decision["person"], JOSEPH)
+        self.assertEqual(decision["person"], SAM)
 
     def test_nobody_is_opened_simultaneously_by_default(self):
         """Six people at once is what four independently-correct plans
@@ -449,12 +449,12 @@ class SequencingComesFromConfigurationNotFromCode(NextActionTest):
         the stagger that matters is between PEOPLE.
         """
         rec = self.opened(self.record(contacts=[
-            self.person(BROOKE, "Brooke Baron", "Head of Production",
+            self.person(PAT, "Pat Morgan", "Head of Production",
                         primary=True),
-            self.person(JOSEPH, "Joseph O'Neill", "Design Director"),
+            self.person(SAM, "Sam Crowley", "Design Director"),
         ]))
         decision = self.ask(rec, at="2026-09-14T09:30:00+00:00")
-        self.assertNotEqual(decision["person"], JOSEPH,
+        self.assertNotEqual(decision["person"], SAM,
                             "a second person was opened half an hour after "
                             "the first")
 
@@ -554,7 +554,7 @@ class TheArmIsStickyAndItChangesWhatIsSent(NextActionTest):
         decision = self.ask(rec, campaign=self.campaign())
         self.assertEqual(decision["counts"]["touches"], 0)
         self.assertIsNone(account.graph(rec, workspace=WS)["by_contact"]
-                          [BROOKE]["last_touch_at"])
+                          [PAT]["last_touch_at"])
 
 
 # ----------------------------------------------------- the productive file
@@ -593,7 +593,7 @@ class ProductiveHasChosenItsNumbers(NextActionTest):
         config = clients.load("productive")
         cap = fatigue.limits(config)["account.max_touches_per_week"]["value"]
         for i in range(cap):
-            self.touch(rec, BROOKE, "anna", "email", i + 1,
+            self.touch(rec, PAT, "anna", "email", i + 1,
                        f"2026-09-{10 + i:02d}T09:00:00+00:00")
         decision = na.next_best_action(
             rec, config=clients.load("productive"), workspace=WS,
@@ -618,7 +618,7 @@ class ProductiveHasChosenItsNumbers(NextActionTest):
         config = clients.load("productive")
         cap = fatigue.limits(config)["contact.max_touches_per_week"]["value"]
         for i in range(cap):
-            self.touch(rec, BROOKE, "anna", "email", i + 1,
+            self.touch(rec, PAT, "anna", "email", i + 1,
                        f"2026-09-{10 + i:02d}T09:00:00+00:00")
         decision = na.next_best_action(
             rec, config=clients.load("productive"), workspace=WS,
@@ -627,7 +627,7 @@ class ProductiveHasChosenItsNumbers(NextActionTest):
         # The contact-level refusal, asserted against `fatigue` directly so
         # this test fails for its own reason rather than for the account's.
         self.assertEqual(
-            fatigue.contact_check(rec, BROOKE, at="2026-09-14T09:00:00+00:00",
+            fatigue.contact_check(rec, PAT, at="2026-09-14T09:00:00+00:00",
                                   config=clients.load("productive"))["state"],
             fatigue.BLOCK)
         # AND THE PLANNER PASSES OVER THEM, which is not the same as
@@ -636,7 +636,7 @@ class ProductiveHasChosenItsNumbers(NextActionTest):
         # the account week raised for the LinkedIn-heavy cadence the account
         # still has room, so the right answer is that somebody ELSE is
         # chosen - a person at their limit is skipped, not a company halted.
-        self.assertNotEqual(decision["person"], BROOKE, decision["reason"])
+        self.assertNotEqual(decision["person"], PAT, decision["reason"])
 
 
 if __name__ == "__main__":
