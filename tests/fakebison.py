@@ -200,7 +200,11 @@ class FakeBison:
                              "order": len(held) + 1,
                              "email_subject": step.get("email_subject"),
                              "email_body": step.get("email_body"),
-                             "wait_in_days": step.get("wait_in_days")})
+                             "wait_in_days": step.get("wait_in_days"),
+                             "variant": step.get("variant", False),
+                             "variant_from_step": step.get(
+                                 "variant_from_step"),
+                             "thread_reply": step.get("thread_reply")})
             return 201, {"data": {"id": ident}}
         if tail == ["leads"] and method == "GET":
             return self._page([

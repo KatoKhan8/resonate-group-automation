@@ -1375,7 +1375,10 @@ def sequence_steps(campaign_id):
              "email_subject": r.get("email_subject"),
              "email_body": r.get("email_body"),
              "wait_in_days": r.get("wait_in_days"),
-             "active": r.get("active")}
+             "active": r.get("active"),
+             "variant": r.get("variant"),
+             "variant_from_step": r.get("variant_from_step"),
+             "thread_reply": r.get("thread_reply")}
             for r in rows if isinstance(r, dict)]
 
 
