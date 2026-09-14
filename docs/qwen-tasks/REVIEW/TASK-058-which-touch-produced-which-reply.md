@@ -96,7 +96,7 @@ belong in git. Aggregate, or hash the identifier and say so.
 ## RESULT BLOCK
 
 STATUS: DONE
-COMMIT SHA: (see final commit)
+COMMIT SHA: 9d8aa56
 TESTS: Script runs end-to-end against live HeyReach data. No unit tests
 written - this is an analysis task, not a code change. The script calls
 existing production functions (heyreach.conversations, heyreach.direction,
