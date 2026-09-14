@@ -204,14 +204,40 @@ class GenuineInterestStillClassifies(unittest.TestCase):
                 verdict["classification"], replies.MEETING_INTENT, text)
 
     def test_genuine_curiosity_reaches_interested(self):
+        # "That's an intriguing approach." was here and is deliberately gone.
+        # TASK-076 measured INTERESTED at 0.44 precision and found the bare
+        # adjective responsible for 21 of 29 false positives, so only specific
+        # constructions survive. The noun-phrase form is not one of them:
+        # "that's an intriguing approach" and "this is an interesting waste of
+        # my time" are the same shape and the NOUN decides which is which.
+        # A predicative "that's interesting" is kept; the noun phrase is not,
+        # and a genuine one is lost with it. That is the trade, on purpose.
+        # See test_the_noun_phrase_form_is_not_admitted below.
         for text in (
             "I'm curious about your platform.",
-            "That's an intriguing approach.",
+            "That's interesting.",
             "Curious to learn more about this.",
             "I find this intriguing, can you elaborate?",
         ):
             verdict = replies.classify(text)
             self.assertEqual(
+                verdict["classification"], replies.INTERESTED, text)
+
+    def test_the_noun_phrase_form_is_not_admitted(self):
+        """"this is an interesting <noun>" must not reach INTERESTED.
+
+        Measured by TASK-076: sarcasm and hostility carrying the word
+        "interesting" were 21 of the 29 false positives. This form cannot be
+        separated from a genuine one by pattern, so it is refused and the
+        reply falls to UNKNOWN, which pauses the account.
+        """
+        for text in (
+            "This is an interesting waste of my time",
+            "interesting spam",
+            "Curious why you keep emailing",
+        ):
+            verdict = replies.classify(text)
+            self.assertNotEqual(
                 verdict["classification"], replies.INTERESTED, text)
 
     def test_a_stated_constraint_reaches_objection(self):

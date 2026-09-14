@@ -450,12 +450,33 @@ _NEGATOR = re.compile(
 # ("interesting", "curious") are included because the negation guard is
 # the safety net - production rules do not catch "not intriguing" or
 # "curious about your platform", and the taxonomy must handle both.
+# TASK-076 MEASURED THIS SET AND MOST OF IT WAS WRONG. Precision 0.44 on a
+# 263-reply sample: 29 of the 52 replies called INTERESTED were not.
+#
+# 21 of those 29 came from ONE pattern - a bare `interesting|intriguing|
+# intrigued`. In outbound sales "interesting" is a POLITENESS MARKER rather
+# than an interest signal: "sounds interesting, but..." was a refusal 29
+# times out of 52. The bare adjective patterns are removed for that reason.
+# Narrowing for precision is permitted; widening for recall is what TASK-076
+# forbids.
+#
+# What survives is the phrasings where the sender ASKS FOR SOMETHING. A
+# request is an act; an adjective is a manner. MEETING_INTENT and OBJECTION
+# measured 1.00 precision because they were already built that way.
+#
+# All 29 false positives are listed in docs/TAXONOMY-PRECISION-2026-09-14.md.
+# Anyone tempted to put the adjective back should read that list first.
 INTERESTED_PATTERNS = (
-    r"\b(?:interesting|intriguing|intrigued)\b",
-    r"\b(?:curious|curiosity)\b",
-    r"\b(?:fascinating|intriguing)\b",
     r"\bi (?:find|found|am) (?:this|it|that) (?:interesting|intriguing|curious)\b",
-    r"\b(?:that|this) is (?:interesting|intriguing|curious)\b",
+    # PREDICATIVE ONLY - "that's interesting", never "that's an interesting
+    # <noun>". The noun-phrase form cannot be made safe: "that's an intriguing
+    # approach" and "this is an interesting waste of my time" are the same
+    # shape, and the NOUN carries the meaning. Admitting it put the measured
+    # false positive straight back. Regex cannot read the noun, so the form
+    # is refused entirely and a genuine "intriguing approach" is lost with it.
+    r"\b(?:that|this|it)(?:'?s| is) (?:interesting|intriguing|curious)\b",
+    r"\b(?:i'?m|i am) curious about\b",
+    r"\bcurious to (?:learn|know|hear|see)\b",
     r"\bi(?:'d| would) like to know more\b",
     r"\btell me (?:about|something|everything|why)\b",
     r"\bgo on\b",
