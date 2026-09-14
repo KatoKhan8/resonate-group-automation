@@ -302,7 +302,8 @@ class _FakeBisonForFactory:
             {"id": self._id(), "order": i + 1,
              "email_subject": s.get("email_subject"),
              "email_body": s.get("email_body"),
-             "wait_in_days": s.get("wait_in_days"), "active": True}
+             "wait_in_days": s.get("wait_in_days"), "active": True,
+             "thread_reply": s.get("thread_reply")}
             for i, s in enumerate(steps))
         return {"id": self._id(), "title": title}
 
