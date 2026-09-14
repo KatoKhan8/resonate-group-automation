@@ -98,7 +98,76 @@ its statement kind.
 
 ## RESULT BLOCK
 
-STATUS, COMMIT SHA, TESTS, FILES CHANGED, FINDINGS, RISKS, RECOMMENDED
-CLAUDE ACTION - and state plainly whether the evidence supports the
-alternating new/follow-up/new/follow-up/new hypothesis, contradicts it, or
-cannot separate them.
+**STATUS:** REVIEW
+
+**COMMIT SHA:** 912626f
+
+**TESTS:** No code tests — this is a measurement task. The scripts run
+end-to-end: `py -3 scripts/bison_thread_analysis.py --collect` collects
+from the live API (READS ONLY), `py -3 scripts/bison_thread_reply_centric.py`
+fetches 460 scheduled emails referenced by replies, and
+`py -3 scripts/bison_thread_analysis.py --analyze` produces the report.
+All three ran successfully.
+
+**FILES CHANGED:**
+- `scripts/bison_thread_analysis.py` (new) — systematic page sampling of
+  scheduled emails with thread_reply, reply feed collection, analysis engine
+- `scripts/bison_thread_reply_centric.py` (new) — reply-centric fetch of
+  scheduled emails via GET /scheduled-emails/{id}
+- `docs/BISON-THREAD-FINDINGS-2026-09-15.md` (new) — the findings report
+
+**FINDINGS:**
+
+1. **The estate CANNOT separate same-thread from new-thread at the same
+   position.** Every campaign with sends uses thread_reply=True at step 2.
+   Campaign 481 (thread_reply=False at step 2) has zero sends. There is no
+   controlled comparison available.
+
+2. **Campaign 352 same-thread steps (2,4) account for 42.4% of replies
+   from 40% of step-types** — a 1.10x ratio per step-type. This is a small
+   difference with wide confidence intervals at n=316 total attributed
+   replies. NOT statistically significant.
+
+3. **Same-thread follow-ups that got replies are LONGER, not shorter**
+   (857 vs 571 chars average, from reply-centric data). The requirements
+   doc's hypothesis that follow-ups should be short is not supported.
+
+4. **All 153 same-thread follow-ups carry "Re:" prefix** (automatic
+   provider behaviour). Zero new-thread emails have "Re:".
+
+5. **57% of attributed replies come by step 2, 82% by step 4.** Later
+   steps (5-8) contribute 18% — they reach people earlier steps did not.
+
+6. **The alternating F,T,F,T,F structure is a design choice, not an
+   evidence-backed one.** The estate has no natural control group at any
+   position.
+
+**RISKS:**
+- The systematic sample covers only the first 500 accessible pages
+  (API refuses beyond that with 422). For campaign 352 (6,364 pages),
+  this is 7.8% of pages. The sample underrepresents later sends.
+- The reply feed sample (2,250 of ~270K rows, 0.8%) covers only recent
+  replies. Older campaigns (262-274, finished in April-May 2026) may
+  have few or no replies in this window.
+- Body length comparison is from emails that GOT REPLIES only, not all
+  sent emails. Short same-thread follow-ups may have been sent but not
+  replied to.
+- No open-rate data exists (open_tracking is False estate-wide).
+
+**RECOMMENDED CLAUDE ACTION:**
+
+The evidence **CANNOT SEPARATE** same-thread from new-thread at the same
+position. The estate needs a controlled experiment:
+
+1. **A/B test thread_reply at step 2.** Either in campaign 481 (when
+   activated) or as a new variant in campaign 352. Split leads into
+   thread_reply=True and thread_reply=False at step 2, hold everything
+   else constant.
+2. **The step-2-only pattern (F,T,F,F,F,F,F,F) is the majority** (8 of
+   10 active campaigns). The alternating pattern (F,T,F,T,F) is used
+   only by the two largest campaigns (352, 274). If there IS a
+   same-thread benefit, it may be concentrated at step 2 only.
+3. **Same-thread follow-ups should NOT be assumed to need short bodies.**
+   The data shows the opposite: longer same-thread follow-ups got replies.
+4. **The "Re:" prefix is automatic.** The operator does not need to add
+   it to templates; the provider handles it when thread_reply=True.
