@@ -181,6 +181,12 @@ NOT_NOW_PATTERNS = (
     # named "now" as the problem, not the topic. Common on LinkedIn where
     # a single clause carries the whole reply.
     r"\bnot for now\b",
+    # TASK-067: delay phrasings from the live LinkedIn estate.
+    r"\bon (?:a )?pause\b",
+    r"\bnot (?:there|ready) yet\b",
+    r"\boverworked\b",
+    r"\b(?:bit|little) (?:overworked|busy|swamped) (?:at )?(?:the )?moment\b",
+    r"\bnot with this (?:project|role) anymore\b",
 )
 
 NEGATIVE_PATTERNS = (
@@ -201,6 +207,10 @@ NEGATIVE_PATTERNS = (
     r"^no[.?!]*$",
     r"^nope[.?!]*$",
     r"^nah[.?!]*$",
+    # TASK-067: first-person variants and misspellings from the live estate.
+    r"\bi'?m (?:all )?set\b",
+    r"\bnot interessed\b",
+    r"\bno longer (?:active|operational|accepting)\b",
     # TASK-035: grouped from the unmatched 53%. "Not a priority" is a
     # refusal, not a delay - the sender is saying this does not rank high
     # enough to act on, not naming a later time. ~15 replies across both
@@ -248,10 +258,12 @@ REFERRAL_PATTERNS = (
 NOT_RELEVANT_PATTERNS = (
     r"\bwrong person\b", r"\bnot (?:the|my) (?:right )?(?:person|department)\b",
     r"\bno longer (?:with|at)\b", r"\bhas left the (?:company|business)\b",
-    r"\bi don'?t handle\b", r"\bnot my (?:area|remit)\b",
+    r"\bi don'?t handle\b", r"\bnot my (?:area|remit|decision)\b",
     r"\btry (?:contacting|reaching)\b",
     # TASK-020: "not relevant" phrasings that name no one.
-    r"\bnot relevant (?:for|to|at)\b",
+    # TASK-067: broadened to catch "not relevant" standalone or followed by
+    # comma/period (not just prepositions). "Not relevant, thanks" was missed.
+    r"\bnot relevant\b",
     r"\b(?:doesn'?t|does not|won'?t) (?:apply|work|help) (?:for |to |us)\b",
     r"\bnot (?:something|anything) (?:we|I) (?:need|use|want)\b",
     # TASK-035: the first-person variant of "wrong person." The existing
@@ -698,6 +710,10 @@ def _outbound_has_substance(outbound_text):
         r"\b(?:increas|reduc|improv|boost|grow|cut|save)\b",
         r"\b(?:speciali|focus|experti)\b",
         r"\b(?:offer|provid|deliver)\b",
+        r"\b(?:demo|trial|pilot|preview)\b",
+        r"\b(?:fit|match)\b",
+        r"\b(?:idea|thought|suggestion|proposal)\b",
+        r"\b(?:question|ask)\b",
     ]
     return any(re.search(cue, low) for cue in substance_cues)
 
