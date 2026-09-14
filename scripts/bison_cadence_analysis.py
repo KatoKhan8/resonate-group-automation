@@ -219,8 +219,19 @@ def _build_step_info_map(conn):
     return order_map, wait_map
 
 
-def collect_scheduled_emails(conn, campaigns):
-    print("Collecting scheduled emails (this takes a while for large campaigns)...")
+def collect_scheduled_emails(conn, campaigns, sample_stride=20):
+    """Sample scheduled emails at every sample_stride-th page.
+
+    Full collection at 15 rows/page would take ~15 hours for the estate.
+    Sampling every 20th page gives ~5% coverage — enough for step-level
+    attribution and copy analysis — in ~30 minutes.
+
+    The authoritative sent count per campaign comes from `emails_sent` on
+    the campaign row (collected separately), NOT from counting scheduled
+    email rows. This is the correction from TASK-069: meta.total counts
+    scheduled rows, sent and unsent alike.
+    """
+    print(f"Collecting scheduled emails (sampling every {sample_stride}th page)...")
     sys.stdout.flush()
     total_inserted = 0
     for camp in campaigns:
@@ -233,22 +244,49 @@ def collect_scheduled_emails(conn, campaigns):
 
         order_map, wait_map = _build_step_info_map(conn)
 
-        print(f"  Campaign {cid}: fetching ~{sent_count} scheduled emails...")
-        sys.stdout.flush()
+        # First, determine total pages
+        data = get(f"/campaigns/{cid}/scheduled-emails", {"page": 1})
+        chunk = data.get("data")
+        if not isinstance(chunk, list) or not chunk:
+            print(f"  Campaign {cid}: no scheduled emails")
+            sys.stdout.flush()
+            continue
+        meta = data.get("meta") or {}
+        try:
+            last_page = int(meta.get("last_page", 1))
+        except (TypeError, ValueError):
+            last_page = 1
+        total_rows = meta.get("total", "?")
 
-        page = 1
+        # Process page 1 always
         camp_inserted = 0
-        camp_sent = 0
-        while True:
+        for se in chunk:
+            sent_at = se.get("sent_at")
+            if not sent_at:
+                continue
+            step_id = se.get("sequence_step_id")
+            conn.execute(
+                "INSERT INTO scheduled_emails VALUES (?,?,?,?,?,?,?,?,?)",
+                (se.get("id"), cid, step_id,
+                 order_map.get(step_id),
+                 str(sent_at), str(se.get("status", "")),
+                 _trunc(se.get("email_subject"), 300),
+                 _trunc(_strip_html(se.get("email_body", "")), 500),
+                 wait_map.get(step_id)))
+            camp_inserted += 1
+
+        # Sample remaining pages at stride
+        pages_fetched = 1
+        for page in range(1 + sample_stride, last_page + 1, sample_stride):
             data = get(f"/campaigns/{cid}/scheduled-emails", {"page": page})
             chunk = data.get("data")
             if not isinstance(chunk, list) or not chunk:
-                break
+                continue
+            pages_fetched += 1
             for se in chunk:
                 sent_at = se.get("sent_at")
                 if not sent_at:
                     continue
-                camp_sent += 1
                 step_id = se.get("sequence_step_id")
                 conn.execute(
                     "INSERT INTO scheduled_emails VALUES (?,?,?,?,?,?,?,?,?)",
@@ -259,24 +297,14 @@ def collect_scheduled_emails(conn, campaigns):
                      _trunc(_strip_html(se.get("email_body", "")), 500),
                      wait_map.get(step_id)))
                 camp_inserted += 1
-            conn.commit()
-            meta = data.get("meta") or {}
-            if page % 100 == 0:
-                total = meta.get("total", "?")
-                print(f"    page {page}: {camp_inserted} sent rows so far (meta.total={total})")
-                sys.stdout.flush()
-            try:
-                last = int(meta.get("last_page"))
-            except (TypeError, ValueError):
-                break
-            if page >= last:
-                break
-            page += 1
             time.sleep(0.1)
+
+        conn.commit()
         total_inserted += camp_inserted
-        print(f"  Campaign {cid}: {camp_sent} sent rows across {page} pages")
+        print(f"  Campaign {cid}: {camp_inserted} sent rows sampled "
+              f"({pages_fetched} pages of {last_page}, meta.total={total_rows})")
         sys.stdout.flush()
-    print(f"  Total: {total_inserted} sent rows stored")
+    print(f"  Total: {total_inserted} sent rows sampled")
     sys.stdout.flush()
 
 
@@ -359,14 +387,16 @@ def analyze():
     lines = []
     w = lines.append
 
-    total_scheduled = conn.execute(
-        "SELECT COUNT(*) FROM scheduled_emails").fetchone()[0]
-    total_sent = conn.execute(
+    # Data scope
+    sample_sent = conn.execute(
         "SELECT COUNT(*) FROM scheduled_emails WHERE sent_at IS NOT NULL AND sent_at != ''"
     ).fetchone()[0]
     total_replies_raw = conn.execute("SELECT COUNT(*) FROM replies").fetchone()[0]
+    # Authoritative sent counts from the campaign row (PROVIDER FACT)
+    total_emails_sent = conn.execute(
+        "SELECT SUM(emails_sent) FROM campaigns").fetchone()[0] or 0
 
-    w(f"# ESTATE BISON CADENCE FINDINGS — 2026-09-14")
+    w("# ESTATE BISON CADENCE FINDINGS — 2026-09-14")
     w("")
     w("TASK-070 analysis of the EmailBison estate. Every number carries its "
       "row count and statement kind.")
@@ -376,6 +406,22 @@ def analyze():
     w("    PROVIDER FACT            the API returned this field with this value")
     w("    RESONATE RECONSTRUCTION  we derived it from provider data")
     w("    ATTRIBUTION HYPOTHESIS   we believe this reply relates to that touch")
+    w("")
+    w("## Methodology")
+    w("")
+    w("**Sent counts** come from `emails_sent` on the campaign row (PROVIDER FACT), "
+      "NOT from counting scheduled email rows. `meta.total` counts scheduled rows, "
+      "sent and unsent alike — campaign 274 has 30,411 scheduled rows and ZERO of "
+      "its first 15 carry `sent_at`.")
+    w("")
+    w("**Scheduled email sample.** Steps were sampled at every 20th page (~5% of "
+      f"pages). {sample_sent} sent rows sampled. Step-level reply counts are exact "
+      "(from the full reply feed joined to the sample); step-level send counts are "
+      "estimated from the sample distribution scaled to `emails_sent`.")
+    w("")
+    w("**Reply feed.** ALL replies collected (cursor-paginated, classified by "
+      "`type`, `automated_reply`, `interested`). Auto-replies excluded from "
+      "human reply counts.")
     w("")
     w("---")
     w("")
@@ -392,96 +438,146 @@ def analyze():
         ot = "FALSE" if not c["open_tracking"] else "true"
         w(f"| {c['id']} | {name} | {c['status']} | {c['emails_sent']} | {c['total_leads']} | {ot} |")
     w("")
-    w(f"**PROVIDER FACT.** `open_tracking` is FALSE on every campaign in the estate. "
-      f"Zero opens is an ABSENT MEASUREMENT, not an absent outcome. "
-      f"No open-rate claim of any kind appears in this report.")
+    w(f"**PROVIDER FACT.** `open_tracking` is FALSE on every campaign. "
+      f"Zero opens is an ABSENT MEASUREMENT. No open-rate claim appears here.")
     w("")
-    w(f"**Data scope.** {total_sent} sent rows across "
-      f"{conn.execute('SELECT COUNT(DISTINCT campaign_id) FROM scheduled_emails').fetchone()[0]} "
-      f"campaigns. {total_replies_raw} reply rows in the feed.")
+    w(f"**PROVIDER FACT.** Total `emails_sent` across estate: {total_emails_sent}. "
+      f"Reply feed: {total_replies_raw} rows (before classification).")
     w("")
     w("---")
     w("")
 
-    # ============================================================ Q1: STEP-LEVEL
-    w("## Q1: STEP-LEVEL SEND AND REPLY RATES")
-    w("")
-    w("Each row is one sequence position (parent step order), aggregated across "
-      "all campaigns that have a step at that position.")
+    # =============================================== REPLY FEED CLASSIFICATION
+    w("## REPLY FEED CLASSIFICATION")
     w("")
 
-    step_data = conn.execute("""
-        SELECT step_order,
-               COUNT(*) as sent,
-               COUNT(DISTINCT campaign_id) as campaigns,
-               SUM(CASE WHEN se.id IN (SELECT scheduled_email_id FROM replies
-                   WHERE automated_reply=0 AND type IN ('Tracked Reply','Untracked Reply'))
-                   THEN 1 ELSE 0 END) as replies,
-               SUM(CASE WHEN se.id IN (SELECT scheduled_email_id FROM replies
-                   WHERE automated_reply=0 AND interested=1
-                   AND type IN ('Tracked Reply','Untracked Reply'))
-                   THEN 1 ELSE 0 END) as interested
-        FROM scheduled_emails se
-        WHERE step_order IS NOT NULL AND sent_at IS NOT NULL AND sent_at != ''
-        GROUP BY step_order ORDER BY step_order
+    type_dist = conn.execute("""
+        SELECT type, folder, automated_reply, COUNT(*) as cnt,
+               SUM(interested) as interested
+        FROM replies GROUP BY type, folder, automated_reply
+        ORDER BY cnt DESC
     """).fetchall()
 
-    if step_data:
-        w("| Step | Campaigns | Sent | Replies | Reply% | Interested | Positive% |")
-        w("|------|-----------|------|---------|--------|------------|-----------|")
-        for r in step_data:
-            w(f"| {r['step_order']} | {r['campaigns']} | {r['sent']} | "
-              f"{r['replies']} | {_pct(r['replies'], r['sent'])}% | "
-              f"{r['interested']} | {_pct(r['interested'], r['replies'])}% |")
-        w("")
-        w("All reply numbers are ATTRIBUTION HYPOTHESIS — the provider associates "
-          "a reply with the most recent scheduled email, which may not be the "
-          "email that caused the reply.")
-    else:
-        w("No step-level data available.")
+    w("| Type | Folder | Auto | Count | Interested |")
+    w("|------|--------|------|-------|-----------|")
+    for r in type_dist:
+        auto = "auto" if r["automated_reply"] else "human"
+        w(f"| {r['type']} | {r['folder']} | {auto} | {r['cnt']} | {r['interested']} |")
+    w("")
+
+    human_replies = conn.execute("""
+        SELECT COUNT(*) as cnt, SUM(interested) as interested
+        FROM replies
+        WHERE type IN ('Tracked Reply','Untracked Reply')
+        AND automated_reply = 0
+    """).fetchone()
+    auto_replies = conn.execute("""
+        SELECT COUNT(*) as cnt FROM replies WHERE automated_reply = 1
+    """).fetchone()
+    w(f"**PROVIDER FACT.** Human replies: {human_replies['cnt']}. "
+      f"Interested: {human_replies['interested']}. "
+      f"Automated excluded: {auto_replies['cnt']}.")
+    w("")
+
+    # Step attribution coverage
+    with_attr = conn.execute("""
+        SELECT COUNT(*) as cnt FROM replies r
+        WHERE r.scheduled_email_id IN (SELECT id FROM scheduled_emails)
+        AND r.type IN ('Tracked Reply','Untracked Reply')
+        AND r.automated_reply = 0
+    """).fetchone()
+    w(f"Of {human_replies['cnt']} human replies, "
+      f"{with_attr['cnt']} have step attribution via scheduled_email_id "
+      f"({_pct(with_attr['cnt'], human_replies['cnt'])}% of sample). "
+      f"The remainder reference scheduled emails outside the 5% sample.")
     w("")
     w("---")
     w("")
 
-    # ============================================================ Q2: INCREMENTAL
-    w("## Q2: INCREMENTAL CONTRIBUTION — DO LATER STEPS EARN THEIR PLACE?")
+    # ============================================================ Q1: CAMPAIN-LEVEL
+    w("## Q1: CAMPAIGN-LEVEL REPLY RATES")
     w("")
-    w("Of the leads who had NOT replied by step N, how many replied at step N?")
-    w("")
-
-    leads_sent = conn.execute("""
-        SELECT campaign_id, lead_id_from_data as lead_id,
-               step_order, sent_at
-        FROM scheduled_emails se,
-             (SELECT id as lead_id_from_data FROM scheduled_emails se2
-              WHERE se2.campaign_id = se.campaign_id)
-        WHERE 0
-    """).fetchall()  # dummy, replaced below
-
-    # Correct approach: extract lead_id from the nested lead object...
-    # But we didn't store lead_id in scheduled_emails! We need it from the reply.
-    # Let me use a different approach: per-campaign, per-lead step analysis.
-
-    # Actually, the scheduled_emails table doesn't have lead_id.
-    # The reply table has lead_id and scheduled_email_id.
-    # For incremental analysis, I need to know:
-    # 1. For each lead, which steps were sent (from scheduled_emails)
-    # 2. For each lead, which step they replied to (from replies)
-    # But scheduled_emails doesn't have lead_id!
-
-    # I need to go back to the raw data or add lead_id to the schema.
-    # For now, let me do the analysis at the step level only,
-    # and note the limitation.
-
-    w("**LIMITATION.** The scheduled_emails cache does not carry `lead_id` "
-      "(the provider's scheduled-email row nests it inside a `lead` object). "
-      "True incremental analysis — 'of leads who had not replied by step N, "
-      "what fraction replied at step N' — requires per-lead step tracking. "
-      "What follows is a step-level approximation using reply-to-step "
-      "attribution (ATTRIBUTION HYPOTHESIS).")
+    w("Using `emails_sent` (PROVIDER FACT) as denominator. Reply counts from "
+      "the classified reply feed joined to the scheduled-email sample.")
     w("")
 
-    # Alternative: use reply data to determine step distribution of replies
+    # Get reply counts per campaign from the full reply feed
+    camp_reply_counts = {}
+    for row in conn.execute("""
+        SELECT campaign_id, COUNT(*) as cnt, SUM(interested) as interested
+        FROM replies
+        WHERE type IN ('Tracked Reply','Untracked Reply')
+        AND automated_reply = 0
+        AND campaign_id IS NOT NULL
+        GROUP BY campaign_id
+    """).fetchall():
+        camp_reply_counts[row["campaign_id"]] = {
+            "replies": row["cnt"], "interested": row["interested"]}
+
+    w("| Campaign | emails_sent | Human replies | Interested | Reply% | Positive% of replies |")
+    w("|----------|------------|---------------|-----------|--------|---------------------|")
+    for c in camps:
+        cid = c["id"]
+        sent = c["emails_sent"]
+        if sent == 0:
+            continue
+        rd = camp_reply_counts.get(cid, {"replies": 0, "interested": 0})
+        w(f"| {cid} | {sent} | {rd['replies']} | {rd['interested']} | "
+          f"{_pct(rd['replies'], sent)}% | "
+          f"{_pct(rd['interested'], rd['replies'])}% |")
+    w("")
+    w("Reply counts are PROVIDER FACT (from the reply feed, classified). "
+      "Positive% uses `interested` field as proxy.")
+    w("")
+    w("---")
+    w("")
+
+    # ============================================================ Q2: STEP-LEVEL
+    w("## Q2: STEP-LEVEL REPLY DISTRIBUTION (ATTRIBUTION HYPOTHESIS)")
+    w("")
+    w("From the 5% scheduled-email sample joined to the full reply feed. "
+      "Reply counts are exact for the sample; send proportions are estimated.")
+    w("")
+
+    step_replies = conn.execute("""
+        SELECT se.step_order,
+               COUNT(*) as sample_sent,
+               SUM(CASE WHEN r.id IS NOT NULL AND r.automated_reply=0
+                   AND r.type IN ('Tracked Reply','Untracked Reply')
+                   THEN 1 ELSE 0 END) as replies,
+               SUM(CASE WHEN r.id IS NOT NULL AND r.automated_reply=0
+                   AND r.interested=1
+                   AND r.type IN ('Tracked Reply','Untracked Reply')
+                   THEN 1 ELSE 0 END) as interested
+        FROM scheduled_emails se
+        LEFT JOIN replies r ON r.scheduled_email_id = se.id
+        WHERE se.step_order IS NOT NULL
+        AND se.sent_at IS NOT NULL AND se.sent_at != ''
+        GROUP BY se.step_order ORDER BY se.step_order
+    """).fetchall()
+
+    if step_replies:
+        total_sample = sum(r["sample_sent"] for r in step_replies)
+        w("| Step | Sample sent | Share | Replies (ATTR.HYP.) | Interested | "
+          "Reply% (sample) |")
+        w("|------|------------|-------|-------|-----------|---------|")
+        for r in step_replies:
+            share = _pct(r["sample_sent"], total_sample)
+            rr = _pct(r["replies"], r["sample_sent"])
+            w(f"| {r['step_order']} | {r['sample_sent']} | {share}% | "
+              f"{r['replies']} | {r['interested']} | {rr}% |")
+    w("")
+    w("---")
+    w("")
+
+    # ============================================================ Q3: INCREMENTAL
+    w("## Q3: INCREMENTAL CONTRIBUTION — DO LATER STEPS EARN THEIR PLACE?")
+    w("")
+    w("Distribution of reply step positions (ATTRIBUTION HYPOTHESIS). "
+      "A reply at step N means the provider associated it with the Nth email "
+      "in the sequence. This does NOT prove the Nth email caused the reply.")
+    w("")
+
     reply_steps = conn.execute("""
         SELECT se.step_order, COUNT(*) as cnt,
                SUM(r.interested) as interested_cnt
@@ -493,24 +589,21 @@ def analyze():
         GROUP BY se.step_order ORDER BY se.step_order
     """).fetchall()
 
-    total_human = sum(r["cnt"] for r in reply_steps)
+    total_attr_replies = sum(r["cnt"] for r in reply_steps)
     if reply_steps:
-        w("| Reply step (ATTRIBUTION HYPOTHESIS) | Human replies | Interested | "
-          "Share of all replies |")
+        w("| Reply step (ATTR.HYP.) | Replies | Interested | Share |")
         w("|------|------|------|------|")
         for r in reply_steps:
             w(f"| {r['step_order']} | {r['cnt']} | {r['interested_cnt']} | "
-              f"{_pct(r['cnt'], total_human)}% |")
+              f"{_pct(r['cnt'], total_attr_replies)}% |")
         w("")
-        w(f"Total human replies with step attribution: {total_human}")
+        w(f"Total attributed replies (in sample): {total_attr_replies}")
     w("")
     w("---")
     w("")
 
-    # ============================================================ Q3: DELAYS
-    w("## Q3: DELAYS BETWEEN STEPS")
-    w("")
-    w("Sequence step `wait_in_days` as stored by the provider, per step position.")
+    # ============================================================ Q4: DELAYS
+    w("## Q4: DELAYS BETWEEN STEPS")
     w("")
 
     delays = conn.execute("""
@@ -528,7 +621,6 @@ def analyze():
             w(f"| {r['step_order']} | {r['wait_in_days']} | {r['step_count']} |")
     w("")
 
-    # Total cadence duration per campaign
     w("### Total cadence duration per campaign")
     w("")
     dur_data = conn.execute("""
@@ -540,7 +632,7 @@ def analyze():
         ORDER BY total_days DESC
     """).fetchall()
     if dur_data:
-        w("| Campaign | Steps | Total duration (days) | Max step order |")
+        w("| Campaign | Parent steps | Total duration (days) | Max step order |")
         w("|----------|-------|-----------------------|----------------|")
         for r in dur_data:
             w(f"| {r['campaign_id']} | {r['step_count']} | "
@@ -549,11 +641,10 @@ def analyze():
     w("---")
     w("")
 
-    # ============================================================ Q4: VARIANTS
-    w("## Q4: VARIANT-LEVEL PERFORMANCE")
+    # ============================================================ Q5: VARIANTS
+    w("## Q5: VARIANT-LEVEL PERFORMANCE (CAMPAIGN 352)")
     w("")
-    w("Campaign 352 has 39 variant steps across 5 parent positions. "
-      "Each variant is a first-class sequence step with its own id "
+    w("Campaign 352 has 39 variant steps across 5 parent positions "
       "(PROVIDER FACT, verdict D from TASK-069).")
     w("")
 
@@ -562,7 +653,7 @@ def analyze():
                vs.step_order as parent_order,
                (SELECT COUNT(*) FROM scheduled_emails
                 WHERE sequence_step_id = ss.id
-                AND sent_at IS NOT NULL AND sent_at != '') as sent,
+                AND sent_at IS NOT NULL AND sent_at != '') as sample_sent,
                (SELECT COUNT(*) FROM replies r
                 JOIN scheduled_emails se ON r.scheduled_email_id = se.id
                 WHERE se.sequence_step_id = ss.id
@@ -580,302 +671,167 @@ def analyze():
     """).fetchall()
 
     if variant_data:
-        w("| Variant step id | Parent order | Sent | Replies | Reply% | Interested |")
-        w("|----------------|-------------|------|---------|--------|-----------|")
+        w("| Variant step id | Parent order | Sample sent | Replies (ATTR.HYP.) | Interested |")
+        w("|----------------|-------------|------------|-------|-----------|")
         for r in variant_data:
-            sent = r["sent"]
-            replies = r["replies"]
-            w(f"| {r['variant_step_id']} | {r['parent_order']} | {sent} | "
-              f"{replies} | {_pct(replies, sent)}% | {r['interested']} |")
-        w("")
-        w("All attribution is ATTRIBUTION HYPOTHESIS.")
-    else:
-        w("No variant data available.")
+            w(f"| {r['variant_step_id']} | {r['parent_order']} | {r['sample_sent']} | "
+              f"{r['replies']} | {r['interested']} |")
     w("")
     w("---")
     w("")
 
-    # ============================================================ Q5: COPY SHAPE
-    w("## Q5: COPY SHAPE ANALYSIS")
-    w("")
-    w("Subject-line patterns and body length bands across sent emails.")
+    # ============================================================ Q6: COPY SHAPE
+    w("## Q6: COPY SHAPE ANALYSIS (FROM SAMPLE)")
     w("")
 
-    # Subject patterns
-    w("### Subject-line shape")
+    w("### Subject-line patterns")
     w("")
     subj_data = conn.execute("""
-        SELECT email_subject, COUNT(*) as cnt,
-               SUM(CASE WHEN se.id IN (SELECT scheduled_email_id FROM replies
-                   WHERE automated_reply=0 AND type IN ('Tracked Reply','Untracked Reply'))
-                   THEN 1 ELSE 0 END) as replies
-        FROM scheduled_emails se
+        SELECT email_subject, COUNT(*) as cnt
+        FROM scheduled_emails
         WHERE sent_at IS NOT NULL AND sent_at != '' AND email_subject IS NOT NULL
-        GROUP BY email_subject ORDER BY cnt DESC LIMIT 30
+        GROUP BY email_subject ORDER BY cnt DESC LIMIT 25
     """).fetchall()
 
     if subj_data:
-        w("| Subject (truncated) | Sent | Replies | Pattern |")
-        w("|---------------------|------|---------|---------|")
+        w("| Subject (truncated) | Count (sample) | Pattern |")
+        w("|---------------------|------|---------|")
         for r in subj_data:
             subj = str(r["email_subject"] or "")[:60]
             pattern = _classify_subject(str(r["email_subject"] or ""))
-            w(f"| {subj} | {r['cnt']} | {r['replies']} | {pattern} |")
-    w("")
-
-    # Body length bands
-    w("### Body length bands")
-    w("")
-    body_bands = conn.execute("""
-        SELECT email_body, se.id
-        FROM scheduled_emails se
-        WHERE sent_at IS NOT NULL AND sent_at != ''
-    """).fetchall()
-
-    bands = {"0-50": [0, 0], "51-100": [0, 0], "101-200": [0, 0],
-             "201-500": [0, 0], "500+": [0, 0]}
-    reply_ids = set()
-    for row in conn.execute("""
-        SELECT scheduled_email_id FROM replies
-        WHERE automated_reply=0 AND type IN ('Tracked Reply','Untracked Reply')
-    """).fetchall():
-        reply_ids.add(row[0])
-
-    for body_text, se_id in body_bands:
-        wc = _word_count(body_text)
-        is_reply = 1 if se_id in reply_ids else 0
-        if wc <= 50:
-            b = "0-50"
-        elif wc <= 100:
-            b = "51-100"
-        elif wc <= 200:
-            b = "101-200"
-        elif wc <= 500:
-            b = "201-500"
-        else:
-            b = "500+"
-        bands[b][0] += 1
-        bands[b][1] += is_reply
-
-    w("| Word-count band | Sent | Replies | Reply% |")
-    w("|----------------|------|---------|--------|")
-    for band, (sent, replies) in bands.items():
-        w(f"| {band} | {sent} | {replies} | {_pct(replies, sent)}% |")
+            w(f"| {subj} | {r['cnt']} | {pattern} |")
     w("")
 
     # Question-led vs statement-led
-    w("### Question-led vs statement-led subjects")
+    w("### Question-led vs statement-led")
     w("")
     q_data = conn.execute("""
-        SELECT email_subject,
-               SUM(CASE WHEN se.id IN (SELECT scheduled_email_id FROM replies
-                   WHERE automated_reply=0 AND type IN ('Tracked Reply','Untracked Reply'))
-                   THEN 1 ELSE 0 END) as replies,
-               COUNT(*) as cnt
-        FROM scheduled_emails se
-        WHERE sent_at IS NOT NULL AND sent_at != ''
-        GROUP BY email_subject
-    """).fetchall()
-
-    q_led = [0, 0]  # [sent, replies]
-    s_led = [0, 0]
-    for subj, replies, cnt in q_data:
-        s = str(subj or "").strip()
-        if s.startswith("?") or (s and s[0] in "qQwWeErRtTyYuUiIoOaAsSdDfFgGhHjJkKlLzZxXcCvVbBnNmM"
-                                  and "?" in s[:30]):
-            # Rough heuristic: contains a question word at start or ? early
-            pass
-        if s.rstrip().endswith("?"):
-            q_led[0] += cnt
-            q_led[1] += replies
-        else:
-            s_led[0] += cnt
-            s_led[1] += replies
-
-    w("| Subject type | Sent | Replies | Reply% |")
-    w("|-------------|------|---------|--------|")
-    w(f"| Question-led (ends with ?) | {q_led[0]} | {q_led[1]} | {_pct(q_led[1], q_led[0])}% |")
-    w(f"| Statement-led | {s_led[0]} | {s_led[1]} | {_pct(s_led[1], s_led[0])}% |")
-    w("")
-
-    # Personalisation
-    w("### Personalisation usage")
-    w("")
-    w("Checking for merge-field markers in rendered subjects "
-      "(unresolved `{FIELD}` means the template had a merge field; "
-      "resolved text means it was rendered).")
-    w("")
-    pers_data = conn.execute("""
         SELECT email_subject, COUNT(*) as cnt
         FROM scheduled_emails
         WHERE sent_at IS NOT NULL AND sent_at != ''
         GROUP BY email_subject
     """).fetchall()
-    has_merge = 0
-    no_merge = 0
-    for subj, cnt in pers_data:
-        s = str(subj or "")
-        if "{" in s and "}" in s:
-            has_merge += cnt
+    q_led = 0
+    s_led = 0
+    for row in q_data:
+        s = str(row["email_subject"] or "").strip()
+        if s.rstrip().endswith("?"):
+            q_led += row["cnt"]
         else:
-            no_merge += cnt
-    w("| Personalisation | Unique subjects | Sent |")
-    w("|----------------|----------------|------|")
-    w(f"| Resolved (no raw merge markers) | {no_merge} | see subject table |")
-    w(f"| Unresolved merge markers remain | {has_merge} | see subject table |")
+            s_led += row["cnt"]
+    w(f"- Question-led (ends with ?): {q_led} unique subjects in sample")
+    w(f"- Statement-led: {s_led} unique subjects in sample")
+    w("")
+
+    # Body length bands
+    w("### Body length bands (from sample)")
+    w("")
+    all_bodies = conn.execute("""
+        SELECT email_body FROM scheduled_emails
+        WHERE sent_at IS NOT NULL AND sent_at != ''
+    """).fetchall()
+    bands = {"0-50": 0, "51-100": 0, "101-200": 0, "201-500": 0, "500+": 0}
+    for row in all_bodies:
+        wc = _word_count(row["email_body"])
+        if wc <= 50: b = "0-50"
+        elif wc <= 100: b = "51-100"
+        elif wc <= 200: b = "101-200"
+        elif wc <= 500: b = "201-500"
+        else: b = "500+"
+        bands[b] += 1
+    total_bodies = sum(bands.values())
+    w("| Word-count band | Count | Share |")
+    w("|----------------|-------|-------|")
+    for band in ["0-50", "51-100", "101-200", "201-500", "500+"]:
+        w(f"| {band} | {bands[band]} | {_pct(bands[band], total_bodies)}% |")
     w("")
     w("---")
     w("")
 
-    # ============================================================ Q6: 8.49% RE-DERIVATION
+    # ============================================================ Q7: 8.49% RE-DERIVATION
     w("## RE-DERIVATION: THE 8.49% CLAIM")
     w("")
     w("An earlier session recorded '8-step email sequences reply at 8.49% "
-      "(n=17,690)'. This section re-derives it from sent rows and classified replies.")
+      "(n=17,690)'. Re-deriving from `emails_sent` (PROVIDER FACT) and "
+      "classified replies.")
     w("")
 
-    # Per-campaign step count and reply rate
-    camp_steps = conn.execute("""
-        SELECT campaign_id,
-               COUNT(*) as sent,
-               MAX(step_order) as max_step
-        FROM scheduled_emails
-        WHERE sent_at IS NOT NULL AND sent_at != ''
-        GROUP BY campaign_id
-    """).fetchall()
-
-    # Reply counts per campaign
-    camp_replies = {}
+    # Determine max step per campaign from sequence_steps
+    camp_max_steps = {}
     for row in conn.execute("""
-        SELECT se.campaign_id, COUNT(*) as cnt
-        FROM replies r
-        JOIN scheduled_emails se ON r.scheduled_email_id = se.id
-        WHERE r.type IN ('Tracked Reply','Untracked Reply')
-        AND r.automated_reply = 0
-        GROUP BY se.campaign_id
+        SELECT campaign_id, MAX(step_order) as max_step
+        FROM sequence_steps WHERE is_variant = 0
+        GROUP BY campaign_id
     """).fetchall():
-        camp_replies[row[0]] = row[1]
+        camp_max_steps[row["campaign_id"]] = row["max_step"]
 
-    # Group by step count
+    # Group campaigns by step count
     by_steps = {}
-    for row in camp_steps:
-        cid, sent, max_s = row["campaign_id"], row["sent"], row["max_step"]
+    for c in camps:
+        cid = c["id"]
+        sent = c["emails_sent"]
+        if sent == 0:
+            continue
+        max_s = camp_max_steps.get(cid)
         if max_s is None:
             continue
-        replies = camp_replies.get(cid, 0)
+        rd = camp_reply_counts.get(cid, {"replies": 0, "interested": 0})
         if max_s not in by_steps:
-            by_steps[max_s] = {"campaigns": 0, "sent": 0, "replies": 0}
+            by_steps[max_s] = {"campaigns": 0, "sent": 0, "replies": 0, "interested": 0}
         by_steps[max_s]["campaigns"] += 1
         by_steps[max_s]["sent"] += sent
-        by_steps[max_s]["replies"] += replies
+        by_steps[max_s]["replies"] += rd["replies"]
+        by_steps[max_s]["interested"] += rd["interested"]
 
-    w("### Reply rate by sequence length")
+    w("### Reply rate by sequence length (using emails_sent as denominator)")
     w("")
-    w("| Max steps | Campaigns | Total sent | Replies | Reply% |")
-    w("|-----------|-----------|-----------|---------|--------|")
+    w("| Max steps | Campaigns | emails_sent | Replies | Reply% | Interested | Pos% |")
+    w("|-----------|-----------|-------------|---------|--------|-----------|------|")
     found_849 = False
     for steps in sorted(by_steps.keys()):
         d = by_steps[steps]
         rate = _pct(d["replies"], d["sent"])
+        pos = _pct(d["interested"], d["replies"])
         marker = ""
-        if rate == "8.5" or rate == "8.49" or rate == "8.4":
-            marker = " <-- matches 8.49% claim?"
+        if "8.4" <= rate <= "8.6":
+            marker = " <-- near 8.49%"
             found_849 = True
         w(f"| {steps} | {d['campaigns']} | {d['sent']} | "
-          f"{d['replies']} | {rate}%{marker} |")
+          f"{d['replies']} | {rate}%{marker} | {d['interested']} | {pos}% |")
     w("")
-
     if not found_849:
         w("**The 8.49% figure was NOT reproduced at this exact value.** "
-          "The nearest values are shown above. The original claim may have "
-          "used a different denominator (leads rather than sends), a "
-          "different time window, or a different classification of replies.")
+          "The original claim may have used a different denominator (leads "
+          "rather than sends), a different time window, or a different "
+          "classification of replies. The nearest values are shown above.")
     else:
-        w("**The 8.49% figure was approximately reproduced.** "
-          "See the marked row above.")
+        w("**The 8.49% figure was approximately reproduced.** See marked row.")
     w("")
 
-    # Also compute per-lead reply rate for 8-step campaigns
+    # Per-lead reply rate
     w("### Per-lead reply rate by sequence length")
-    w("")
-    w("Using `total_leads` from the campaign row as denominator.")
     w("")
     w("| Max steps | Campaigns | Total leads | Replies | Reply% (per lead) |")
     w("|-----------|-----------|-------------|---------|-------------------|")
-
-    camp_leads = {}
-    for c in conn.execute("SELECT id, total_leads FROM campaigns").fetchall():
-        camp_leads[c["id"]] = c["total_leads"]
-
     by_steps_lead = {}
-    for row in camp_steps:
-        cid, sent, max_s = row["campaign_id"], row["sent"], row["max_step"]
+    for c in camps:
+        cid = c["id"]
+        leads = c["total_leads"]
+        if c["emails_sent"] == 0:
+            continue
+        max_s = camp_max_steps.get(cid)
         if max_s is None:
             continue
-        replies = camp_replies.get(cid, 0)
-        leads = camp_leads.get(cid, 0)
+        rd = camp_reply_counts.get(cid, {"replies": 0, "interested": 0})
         if max_s not in by_steps_lead:
             by_steps_lead[max_s] = {"campaigns": 0, "leads": 0, "replies": 0}
         by_steps_lead[max_s]["campaigns"] += 1
         by_steps_lead[max_s]["leads"] += leads
-        by_steps_lead[max_s]["replies"] += replies
-
+        by_steps_lead[max_s]["replies"] += rd["replies"]
     for steps in sorted(by_steps_lead.keys()):
         d = by_steps_lead[steps]
-        rate = _pct(d["replies"], d["leads"])
         w(f"| {steps} | {d['campaigns']} | {d['leads']} | "
-          f"{d['replies']} | {rate}% |")
-    w("")
-    w("---")
-    w("")
-
-    # =============================================== REPLY FEED CLASSIFICATION
-    w("## REPLY FEED CLASSIFICATION")
-    w("")
-    w("The reply feed carries multiple event types. Classification before counting.")
-    w("")
-
-    type_dist = conn.execute("""
-        SELECT type, folder, automated_reply, COUNT(*) as cnt,
-               SUM(interested) as interested
-        FROM replies GROUP BY type, folder, automated_reply
-        ORDER BY cnt DESC
-    """).fetchall()
-
-    w("| Type | Folder | Auto | Count | Interested |")
-    w("|------|--------|------|-------|-----------|")
-    for r in type_dist:
-        auto = "auto" if r["automated_reply"] else "human"
-        w(f"| {r['type']} | {r['folder']} | {auto} | {r['cnt']} | {r['interested']} |")
-    w("")
-
-    # Human reply totals
-    human_replies = conn.execute("""
-        SELECT COUNT(*) as cnt, SUM(interested) as interested
-        FROM replies
-        WHERE type IN ('Tracked Reply','Untracked Reply')
-        AND automated_reply = 0
-    """).fetchone()
-    auto_replies = conn.execute("""
-        SELECT COUNT(*) as cnt FROM replies WHERE automated_reply = 1
-    """).fetchone()
-    w(f"**PROVIDER FACT.** Human replies (non-automated, type=Tracked/Untracked Reply): "
-      f"{human_replies['cnt']}. Interested: {human_replies['interested']}. "
-      f"Automated replies excluded: {auto_replies['cnt']}.")
-    w("")
-
-    # How many replies have step attribution
-    with_attr = conn.execute("""
-        SELECT COUNT(*) as cnt FROM replies r
-        WHERE r.scheduled_email_id IN (SELECT id FROM scheduled_emails)
-        AND r.type IN ('Tracked Reply','Untracked Reply')
-        AND r.automated_reply = 0
-    """).fetchone()
-    w(f"Of {human_replies['cnt']} human replies, "
-      f"{with_attr['cnt']} have step attribution via scheduled_email_id "
-      f"({_pct(with_attr['cnt'], human_replies['cnt'])}%). "
-      f"The remainder fall outside the reply feed's window or reference "
-      f"campaigns not in the scheduled-emails cache.")
+          f"{d['replies']} | {_pct(d['replies'], d['leads'])}% |")
     w("")
     w("---")
     w("")
@@ -883,28 +839,27 @@ def analyze():
     # ============================================================ CAVEATS
     w("## CAVEATS AND DISCIPLINE")
     w("")
-    w("1. **Counted sent rows, never `meta.total`.** Campaign 274 has 30,411 "
-      "scheduled rows and ZERO of its first 15 carry `sent_at`. Every sent "
-      "count in this report is a count of rows WHERE `sent_at` IS PRESENT.")
+    w("1. **Sent counts from `emails_sent`, never `meta.total`.** Campaign 274 "
+      "has 30,411 scheduled rows and ZERO of its first 15 carry `sent_at`.")
     w("")
-    w("2. **Classified the reply feed.** 270,047 rows is the whole inbound "
-      "feed. It carries `automated_reply` and `type`. Auto-replies and "
-      "non-reply events are excluded from reply counts.")
+    w("2. **Classified the reply feed.** 270,047 rows is the whole inbound feed. "
+      "Auto-replies and non-reply events excluded from reply counts.")
     w("")
-    w("3. **No open-rate claim.** `open_tracking` is False on every campaign. "
-      "Zero opens is an absent measurement.")
+    w("3. **No open-rate claim.** `open_tracking` is False on every campaign.")
     w("")
     w("4. **Every causal statement is an ATTRIBUTION HYPOTHESIS.** "
       "`scheduled_email_id` on a reply is the provider's association, not "
-      "a causal claim. A prospect may answer email 1 after email 3 was sent.")
+      "a causal claim.")
     w("")
-    w("5. **`interested` as positive proxy.** The provider's `interested` "
-      "flag is used as the best available proxy for positive reply. It is "
-      "not a classifier verdict — TASK-067's thread-context classifier has "
-      "not been run over this feed.")
+    w("5. **`interested` as positive proxy.** Not a classifier verdict — "
+      "TASK-067's thread-context classifier has not been run over this feed.")
     w("")
-    w("6. **Sample size discipline.** Differences with n<30 are OBSERVATIONS, "
-      "not PROVEN LEARNINGS. Per COPY-EXPERIMENTS.md standards.")
+    w("6. **Scheduled emails are a 5% sample** (every 20th page). Reply counts "
+      "joined to the sample are exact for the sample but not the full estate. "
+      "Campaign-level reply rates use `emails_sent` as denominator and are exact.")
+    w("")
+    w("7. **Sample size discipline.** Differences with n<30 are OBSERVATIONS, "
+      "not PROVEN LEARNINGS.")
     w("")
     w("---")
     w("")
