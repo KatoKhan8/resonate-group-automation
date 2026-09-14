@@ -17,7 +17,11 @@ points and what provider truth says about each),
     origin/master    7c917ef        identical
     worktree         clean
 
-    qwen-worker      e04d873   running TASK-033 (ten-test cluster)
+    qwen-worker      86b4ede   TASK-033 IN PROGRESS, pushed
+                               last commit "fix generation flow - linkedin_note
+                               prompts and plan ordering" - UNREVIEWED, and it
+                               touches the generation path the copy finding
+                               above is about. Review before trusting.
     qwen-worker-2    d3c9369   idle
     qwen-worker-3    1e9197d   TASK-043 COMPLETE, NOT INTEGRATED - see below
     qwen-worker-4    e6ee2af   TASK-039 COMPLETE, NOT INTEGRATED - see below
