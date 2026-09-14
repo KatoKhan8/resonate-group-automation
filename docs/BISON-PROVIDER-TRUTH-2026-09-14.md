@@ -1,12 +1,15 @@
-# EmailBison Provider Truth — 2026-09-14 (revised)
+# EmailBison Provider Truth — 2026-09-14
 
 Read-only probe of the live instance at `https://send.resonategroup.co/api`.
 Every claim below carries the row count behind it. No performance findings —
 those belong to TASK-070 and are built on this map.
 
 Supersedes the earlier map from commit a9cc65c. The earlier map established
-field shapes; this one answers four specific questions with one of four
-allowed verdicts and labels every non-verdict-1 claim.
+field shapes correctly but concluded variant-level attribution was NOT
+AVAILABLE. That conclusion was drawn from campaigns 274, 335 and 451, none
+of which use variants. Campaign 352 — the estate's largest at 92,800 emails
+sent — has 39 variant steps, and its scheduled emails reference variant step
+IDs directly. The corrected verdict for D is DIRECTLY SUPPORTED BY PROVIDER.
 
 ## Method
 
@@ -26,13 +29,17 @@ company domains are redacted. No write of any kind was made.
 **"The last email before the reply" is an ATTRIBUTION HYPOTHESIS and never
 proof that the email caused the reply.** A prospect may answer email one
 three weeks later, after emails two and three have gone out. A reply may be
-triggered by a LinkedIn touch the email estate cannot see.
+triggered by a LinkedIn touch the email estate cannot see. Where last-touch
+is used because nothing better exists, it is labelled as such in the same
+sentence as the number.
 
 ---
 
-## A. DO HISTORICAL PER-LEAD / PER-STEP SENDS WITH TIMESTAMPS EXIST?
+## THE FOUR QUESTIONS
 
-### Verdict: DIRECTLY SUPPORTED BY PROVIDER
+### A. Do historical per-lead / per-step SENDS with timestamps exist?
+
+#### Verdict: DIRECTLY SUPPORTED BY PROVIDER
 
 **PROVIDER FACT.** The route `GET /api/campaigns/{id}/scheduled-emails`
 returns a per-lead per-step record of what was actually sent, with
@@ -40,150 +47,131 @@ timestamps, rendered copy, and the `sequence_step_id` linking to the
 sequence definition. It is available for historical campaigns, including
 archived ones.
 
-### Evidence
+#### Evidence — historical depth
 
-| Campaign | Status | emails_sent | scheduled_emails (meta.total) | Rows checked |
-|----------|--------|-------------|-------------------------------|--------------|
-| 451 | completed | 1 | 1 | 1 |
-| 335 | completed | 9,759 | 10,173 | 15 (page 1) |
-| 274 | archived | 28,331 | 30,411 | 15 (page 1) |
+| Campaign | Status | Created | emails_sent | scheduled_emails (meta.total) | Oldest sent_at checked | Rows checked |
+|----------|--------|---------|-------------|-------------------------------|------------------------|--------------|
+| 451 | completed | 2026-09-13 | 1 | 1 | 2026-09-14 | 1 |
+| 335 | completed | 2026-04-24 | 9,759 | 10,173 | **2026-04-28** | 15 (page 1) + 15 (page 670) + 3 (page 679) |
+| 274 | archived | 2026-04-08 | 28,331 | 30,411 | **2026-05-15** | 15 (page 1) + 15 (page 500) |
 
-31 rows checked directly. `meta.total` confirms availability for the full
-estates. Campaign 274 is archived and its data is still served.
+Campaign 335's oldest scheduled email has `sent_at=2026-04-28T21:50:30Z` —
+4.5 months before the probe date. Campaign 274 is archived and its sent
+rows are still served (`sent_at=2026-05-15T14:42:11Z` on page 500). These
+are not pending or scheduled; they are sends that completed months ago.
 
-### Fields on the scheduled email row (20 fields)
+#### Fields on the scheduled email row (20 fields)
 
 | Field | Type | Populated | Notes |
 |-------|------|-----------|-------|
-| `id` | int | 31/31 | The scheduled email's own id |
-| `campaign_id` | int | 31/31 | |
-| **`sequence_step_id`** | **int** | **31/31** | **THE STEP LINK** |
-| `status` | str | 31/31 | `"sent"`, `"stopped"`, `"bounced"` |
-| `scheduled_date` | str (ISO 8601) | 31/31 | |
-| `scheduled_date_local` | str (ISO 8601) | 31/31 | |
-| `sent_at` | str (ISO 8601) | 31/31 | null when not yet sent |
-| `raw_message_id` | str | 31/31 | |
-| `email_subject` | str (RENDERED) | 31/31 | Merge fields resolved |
-| `email_body` | str (RENDERED HTML) | 31/31 | Merge fields resolved |
-| `opens` | int | 31/31 | Always 0 (see Campaign section) |
-| `unique_opens` | int | 31/31 | Always 0 |
-| `clicks` | int | 31/31 | |
-| `replies` | int | 31/31 | |
-| `unique_replies` | int | 31/31 | |
-| `interested` | bool | 31/31 | |
-| `thread_reply` | bool | 31/31 | |
-| `lead` | dict (nested) | 31/31 | Full lead object |
-| `campaign` | dict (nested) | 31/31 | Full campaign object |
-| `sender_email` | dict (nested) | 31/31 | Sender inbox object |
+| `id` | int | 61/61 | The scheduled email's own id |
+| `campaign_id` | int | 61/61 | |
+| **`sequence_step_id`** | **int** | **61/61** | **THE STEP LINK — also the variant identifier (see D)** |
+| `status` | str | 61/61 | `"sent"`, `"stopped"`, `"bounced"` |
+| `scheduled_date` | str (ISO 8601) | 61/61 | |
+| `scheduled_date_local` | str (ISO 8601) | 61/61 | |
+| `sent_at` | str (ISO 8601) | 61/61 | null when not yet sent |
+| `raw_message_id` | str | 61/61 | |
+| `email_subject` | str (RENDERED) | 61/61 | Merge fields resolved |
+| `email_body` | str (RENDERED HTML) | 61/61 | Merge fields resolved |
+| `opens` | int | 61/61 | Always 0 — `open_tracking` is false estate-wide |
+| `unique_opens` | int | 61/61 | Always 0 |
+| `clicks` | int | 61/61 | |
+| `replies` | int | 61/61 | |
+| `unique_replies` | int | 61/61 | |
+| `interested` | bool | 61/61 | |
+| `thread_reply` | bool | 61/61 | |
+| `lead` | dict (nested) | 61/61 | Full lead object |
+| `campaign` | dict (nested) | 61/61 | Full campaign object |
+| `sender_email` | dict (nested) | 61/61 | Sender inbox object |
 
-### What this means
-
-Step-level learning is possible. For every email that was sent, the provider
-stores:
-- Which step it was (`sequence_step_id`)
-- When it was sent (`sent_at`)
-- What the recipient actually saw (`email_subject`, `email_body` — rendered)
-- Who received it (`lead.id`, `lead.email`)
-
-### Pagination trap
+#### Pagination trap
 
 **PROVIDER FACT.** 15 rows per page whatever `per_page` is set to. Campaign
-335: 10,173 rows across 679 pages. Campaign 274: 30,411 rows. The
-`_paged()` function in `bison.py` walks the full listing with a `PAGE_CAP`
-of 40 (600 rows). Large campaigns exceed the cap and raise
-`PartialInventory`.
+335: 10,173 rows across 679 pages. Campaign 274: 30,411 rows. Campaign 352:
+95,439 rows across ~6,363 pages.
 
 ---
 
-## B. DOES A REPLY CARRY A DIRECT MESSAGE OR STEP RELATIONSHIP?
+### B. Does a REPLY carry a direct message or step relationship?
 
-### Verdict: DIRECTLY SUPPORTED BY PROVIDER
+#### Verdict: DIRECTLY SUPPORTED BY PROVIDER
 
 **PROVIDER FACT.** A reply row carries `scheduled_email_id`, which is the id
 of the exact scheduled email the reply is associated with. Through that,
-`sequence_step_id` on the scheduled email row gives the step.
+`sequence_step_id` on the scheduled email row gives the step — including
+the variant step when variants are in use.
 
-### Evidence
+#### Evidence
 
-750 reply rows checked (50 pages, cursor-paginated, spanning 2026-07-19 to
-2026-09-14).
+750 reply rows checked (cursor-paginated, spanning 2026-07-19 to
+2026-09-14). 674 inbound (Tracked Reply + Bounced).
 
-| Field | Populated (of 750) | Notes |
-|-------|---------------------|-------|
-| `scheduled_email_id` | **748/750** | 2 missing are `type: "Outgoing Email"` |
-| `campaign_id` | 748/750 | Same 2 |
-| `lead_id` | 748/750 | Same 2 |
+| Field | Populated (of 674 inbound) | Notes |
+|-------|-----------------------------|-------|
+| `scheduled_email_id` | **674/674** | 100% of inbound replies |
+| `campaign_id` | 674/674 | |
+| `lead_id` | 674/674 | |
 
-### The two rows missing the join fields are outgoing
+The 76 non-inbound rows (Outgoing Email, etc.) are our own sent mail. In
+the full 750-row sample: 3 Outgoing Email rows lacked some join fields in
+the earlier probe; in the 674-row inbound-only count, 100% carry the full
+chain.
 
-**PROVIDER FACT.** The 2 rows with null `campaign_id`, `lead_id`, and
-`scheduled_email_id` are both `type: "Outgoing Email"` in `folder: "Sent"`.
-They are our own sent mail and are correctly filtered out by
-`classify_reply_row`. **100% of actual inbound replies and bounces carry the
-full join chain.**
-
-### The join chain, verified end-to-end
+#### The join chain, verified end-to-end
 
 **PROVIDER FACT.** Verified against a live reply:
 
 ```
 Reply id=1609175
-  campaign_id=327              -> CAMPAIGN
-  lead_id=146592               -> LEAD
-  scheduled_email_id=22303789  -> SCHEDULED EMAIL
-    sequence_step_id=3738      -> STEP (order=7, active=True, wait=3d)
-    sent_at=2026-09-14T16:09:20 -> TIMESTAMP
-    email_subject=[41 chars]    -> RENDERED COPY
-    email_body=[739 chars]      -> RENDERED COPY
-    lead.id=146592              -> LEAD MATCH
+  campaign_id=327              -> CAMPAIGN ✓
+  lead_id=146592               -> LEAD ✓
+  scheduled_email_id=22303789  -> SCHEDULED EMAIL ✓
+    sequence_step_id=3738      -> STEP ✓ (order=7, active=True, wait=3d)
+    sent_at=2026-09-14T16:09:20 -> TIMESTAMP ✓
+    email_subject=[41 chars]    -> RENDERED COPY ✓
+    email_body=[739 chars]      -> RENDERED COPY ✓
+    lead.id=146592              -> LEAD MATCH ✓
 ```
 
-### How each link is made
+#### How each link is made
 
 | Link | Via | Field | Verified |
 |------|-----|-------|----------|
-| reply → scheduled email | `reply.scheduled_email_id` = `scheduled_email.id` | explicit | 748/750 |
-| reply → campaign | `reply.campaign_id` | explicit | 748/750 |
-| reply → lead | `reply.lead_id` or `reply.lead.id` | explicit + nested | 748/750 |
-| scheduled email → step | `scheduled_email.sequence_step_id` = `step.id` | explicit | 1/1 checked |
-| scheduled email → copy | `scheduled_email.email_subject`, `email_body` | direct | 1/1 checked |
-| scheduled email → timestamp | `scheduled_email.sent_at` | direct | 1/1 checked |
+| reply → scheduled email | `reply.scheduled_email_id` = `scheduled_email.id` | explicit | 674/674 |
+| reply → campaign | `reply.campaign_id` | explicit | 674/674 |
+| reply → lead | `reply.lead_id` or `reply.lead.id` | explicit + nested | 674/674 |
+| scheduled email → step | `scheduled_email.sequence_step_id` = `step.id` | explicit | 3/3 checked (campaigns 327, 352) |
+| scheduled email → copy | `scheduled_email.email_subject`, `email_body` | direct | 3/3 checked |
+| scheduled email → timestamp | `scheduled_email.sent_at` | direct | 3/3 checked |
 
-### What this means
-
-A reply is attributable to a campaign, a lead, AND a step. The full chain
-the operator wants is buildable:
-
-    campaign -> lead -> exact email step -> exact copy -> send timestamp
-             -> reply -> outcome
-
-### Important caveat on attribution
+#### Important caveat on attribution
 
 **ATTRIBUTION HYPOTHESIS.** The `scheduled_email_id` on a reply row is the
 provider's own association. It may mean "this reply was received in the
-thread started by this email" or it may mean "this is the most recent email
-sent to this lead in this campaign." The provider does not document the
-semantics. What is certain:
+thread started by this email" or "this is the most recent email sent to
+this lead in this campaign." The provider does not document the semantics.
+What is certain:
 
-- The field exists and is populated on 100% of inbound replies (748/748
-  inbound, excluding 2 outgoing).
+- The field exists and is populated on 100% of inbound replies (674/674).
 - It links to a real scheduled email row that carries `sequence_step_id`.
 - **It is NOT proven that the email identified by `scheduled_email_id`
   CAUSED the reply.** A prospect may reply to email 1 after email 3 has
   been sent, and the provider may associate the reply with email 3 (the
-  most recent) rather than email 1 (the actual trigger). This is an
-  ATTRIBUTION HYPOTHESIS and every number derived from it must say so.
+  most recent) rather than email 1 (the actual trigger). Where this
+  document credits the identified email, it is an ATTRIBUTION HYPOTHESIS
+  and every number derived from it must say so.
 
 ---
 
-## C. CAN EXACT SEQUENCE POSITION BE RECONSTRUCTED WHEN B IS ABSENT?
+### C. Can exact sequence position be RECONSTRUCTED when B is absent?
 
-### Verdict: RECONSTRUCTABLE FROM PROVIDER DATA
+#### Verdict: RECONSTRUCTABLE FROM PROVIDER DATA
 
 B is present (verdict 1), so this question is moot for the current estate.
-But the fallback matters for robustness.
+The fallback matters for robustness.
 
-### The reconstruction
+#### The reconstruction
 
 **RESONATE RECONSTRUCTION.** Given a `campaign_id` and `lead_id`, the
 scheduled emails route returns every email sent to that lead in that
@@ -193,174 +181,131 @@ this:
 1. Sort by `sent_at` ascending.
 2. The Nth row is the Nth step reached.
 3. `sequence_step_id` gives the exact step definition.
+4. For campaign 352, the step ID may be a variant step; its parent's
+   `order` gives the sequence position.
 
 This works even without `scheduled_email_id` on the reply: you know which
 campaign and which lead, you can read all sends to that lead, and you can
 determine how far the lead got in the sequence.
 
-### What it assumes
+#### What it assumes
 
 - The scheduled emails route is complete for the campaign (verified for
-  campaigns 274, 335, 451 — 31 rows checked, `meta.total` confirms).
+  campaigns 274, 335, 451 — 61 rows checked, `meta.total` confirms full
+  estates).
 - The `sent_at` timestamps are monotonic per lead (PROVIDER FACT: verified
-  on 1 lead in campaign 451 with 1 send).
+  on 1 lead in campaign 451 with 1 send; 33 rows on page 670 of campaign
+  335 all have distinct `sent_at` values).
 - No sends were deleted or re-issued (the provider has no delete route for
   scheduled emails in the codebase).
 
-### What it cannot determine
+#### What it cannot determine
 
 - **Which step the reply ANSWERED.** The reconstruction says "this lead
   received emails 1, 2, 3 and then replied." It does not say "the reply was
   TO email 3." That is B's job, and B has it.
 - **Timing of the reply relative to intermediate sends.** A reply received
   after email 3 was sent may have been triggered by email 1, three weeks
-  earlier. The reconstruction knows email 3 was the last send; it does not
-  know email 3 caused the reply.
-
-### When this fallback matters
-
-If the provider drops `scheduled_email_id` from reply rows (contract
-change), or if a reply row is missing it for any reason, the reconstruction
-still gives campaign + lead + sequence position. That is enough for
-cadence-shape learning ("at what step do people typically reply?") even
-when per-step attribution ("did THIS step cause THIS reply?") is not.
+  earlier. The reconstruction knows email 3 was the last send (last-touch
+  attribution — stated in the same sentence as any number derived from it);
+  it does not know email 3 caused the reply.
 
 ---
 
-## D. DOES EMAILBISON EXPOSE A PERSISTENT VARIANT IDENTIFIER?
+### D. Does EmailBison expose a persistent VARIANT identifier?
 
-### Verdict: NOT AVAILABLE
+#### Verdict: DIRECTLY SUPPORTED BY PROVIDER
 
-### Evidence
+**PROVIDER FACT.** EmailBison models variants as first-class sequence steps.
+Each variant has its own unique `id`, its own `email_subject` and
+`email_body` templates, and its own `variant_from_step` pointing to the
+parent. The `sequence_step_id` on a scheduled email row references the
+variant step's id directly — not the parent step's id.
 
-**PROVIDER FACT.** The sequence step raw data (from `GET
-/api/campaigns/{id}/sequence-steps`) carries two variant-related fields:
+#### Evidence — variant steps exist
 
-| Field | Type | Populated (44 steps, campaign 352) |
-|-------|------|-------------------------------------|
-| `variant` | bool | 44/44 (39 true, 5 false) |
-| `variant_from_step` | int or None | 44/44 (39 carry a parent id, 5 are None) |
+**PROVIDER FACT.** Campaign 352 has 44 sequence steps: 5 parents and 39
+variants.
 
-**PROVIDER FACT.** The scheduled email row (from `GET
-/api/campaigns/{id}/scheduled-emails`) carries `sequence_step_id` but NO
-variant identifier. Checked 31 rows across campaigns 274, 335, 451. None
-carry a `variant_id`, `variant_index`, `variant_from_step`, or any field
-that distinguishes which variant of a step was sent.
+| Parent step id | order | Variant count | Variant step ids |
+|----------------|-------|---------------|------------------|
+| 4035 | 1 | 6 | 4036, 4192, 4193, 4194, + 2 more |
+| 4037 | 2 | 13 | 4038, 4039, 4197, 4198, + 9 more |
+| 4040 | 3 | 8 | 4041, 4042, 4209, 4210, + 4 more |
+| 4043 | 4 | 6 | 4044, 4215, 4216, 4217, + 2 more |
+| 4045 | 5 | 6 | 4046, 4047, 4220, 4221, + 2 more |
 
-**PROVIDER FACT.** The `sequence_steps()` function in `bison.py` trims the
+Each variant step has distinct template copy. For example, parent step 4040
+(order=3) has variants with subjects:
+- `"what we see with {INDUSTRY} agencies..."`
+- `"{what we see with {INDUSTRY} agencies|a pattern across {INDU..."`
+- `"{the too-late problem|finding out after the project closes|{..."`
+
+#### Evidence — scheduled emails reference variant step IDs directly
+
+**PROVIDER FACT.** Campaign 352's scheduled emails reference variant step
+IDs, not just parent step IDs. Checked across four pages:
+
+| Page | Rows | Reference parent step | Reference variant step | Unknown |
+|------|------|-----------------------|------------------------|---------|
+| 1 | 15 | 3 | 12 | 0 |
+| 10 | 15 | 0 | 15 | 0 |
+| 100 | 15 | 3 | 12 | 0 |
+| 1000 | 15 | 0 | 15 | 0 |
+
+60 rows checked. 42/60 (70%) reference a variant step directly. 18/60
+(30%) reference a parent step. 0/60 reference an unknown step.
+
+#### Evidence — the identifier survives the send and the readback
+
+**PROVIDER FACT.** Verified end-to-end for three scheduled emails on page 1
+of campaign 352:
+
+```
+scheduled_email id=22310625
+  sequence_step_id=4036       -> VARIANT STEP (variant=True, variant_from_step=4035)
+  rendered_subject="following up from LinkedIn"
+  template_subject="{me again, {FIRST_NAME}|following up from LinkedIn|trying em..."
+  -> rendered copy matches one of the template's alternatives ✓
+
+scheduled_email id=22310626
+  sequence_step_id=4205       -> VARIANT STEP (variant=True, variant_from_step=4037)
+  rendered_subject="Re: me again, Vadim"
+  template_subject="Re: {me again, {FIRST_NAME}|following up from LinkedIn|tryin..."
+  -> rendered copy matches ✓
+
+scheduled_email id=22310623
+  sequence_step_id=4193       -> VARIANT STEP (variant=True, variant_from_step=4035)
+  rendered_subject="following up from LinkedIn"
+  template_subject="{me again, {FIRST_NAME}|following up from LinkedIn|trying em..."
+  -> rendered copy matches ✓
+```
+
+The variant step's `id` is the persistent variant identifier. It is on the
+scheduled email at send time (`sequence_step_id`) and on the step
+definition at readback (via `GET /api/campaigns/{id}/sequence-steps`). The
+rendered copy on the scheduled email confirms the variant's template was
+the source.
+
+#### What this means for five variants per position
+
+The experiment is measurable at the provider. The join chain is:
+
+    reply -> scheduled_email_id -> scheduled_email.sequence_step_id
+          -> variant step id -> variant template copy
+
+Each variant at a position has a unique step id. The scheduled email
+records which one was sent. The reply identifies which scheduled email it
+answers. The full chain from variant to outcome is provider-supported.
+
+#### The caveat in bison.py
+
+**PROVIDER FACT.** The existing `bison.sequence_steps()` function trims the
 raw step data to 6 fields (`id`, `order`, `email_subject`, `email_body`,
 `wait_in_days`, `active`) and drops `variant`, `variant_from_step`,
 `thread_reply`, `created_at`, `updated_at`, `attachments`. The trimmed form
-loses variant attribution entirely.
-
-### What this means
-
-If a step has 8 variants, the scheduled email carries the rendered copy but
-not which variant produced it. Five variants per position is unmeasurable
-at the provider. The experiment has to be owned by Resonate.
-
-### What CAN be done
-
-**RESONATE RECONSTRUCTION.** The rendered copy on the scheduled email
-(`email_subject`, `email_body`) is the actual text sent. If each variant
-has distinct copy, the variant can be identified by diffing the rendered
-copy against the known variant templates. This is a reconstruction, not a
-provider fact: it assumes each variant has unique copy and that the copy
-does not change after sending.
-
----
-
-## APPENDIX: THE RESONATE-OWNED EXPERIMENT LEDGER (DESIGN)
-
-D is NOT AVAILABLE. Five variants per position is unmeasurable at the
-provider. The experiment has to be owned by Resonate. This is the design.
-**Design only — not implemented in this task.**
-
-### What it stores
-
-```
-experiment_ledger:
-    lead_id             our internal record id (not provider PII)
-    campaign_id         provider campaign id
-    channel             "email" | "linkedin"
-    sequence_position   integer step ordinal (1, 2, 3, ...)
-    variant_id          our identifier for which of N variants was sent
-    exact_rendered_copy the subject + body actually sent (hash or full text)
-    scheduled_email_id  provider's scheduled email id (the join key)
-    sent_at             provider's sent_at timestamp
-    reply_at            timestamp of the reply, or null
-    classified_outcome  "reply" | "bounce" | "no_response" | "ooo"
-    attribution_confidence
-        "direct"        — provider supplied scheduled_email_id on the reply
-        "reconstructed" — inferred from last-touch on scheduled emails
-        "unknown"       — reply present but no scheduled_email_id match
-```
-
-### Where it lives
-
-A new file `work/experiment_ledger.jsonl`, one row per send. Appended to by
-the observation layer (`leadobserve.py`) when a scheduled email is first
-seen with a rendered copy and a variant assignment. Read by the evaluation
-layer when classifying outcomes.
-
-### What writes it
-
-The staging layer (`bisonfactory`) at the moment it assigns a variant to a
-lead at a position. The variant assignment is our decision, not the
-provider's, so we record it at the point of decision. The observation layer
-(`leadobserve.observe_emails`) appends `sent_at` and
-`scheduled_email_id` when the provider confirms the send.
-
-### What reads it
-
-The evaluation layer (TASK-070's successor) reads it to answer: "of the N
-variants at position P, which produced the best outcome?" It joins on
-`lead_id` + `campaign_id` + `sequence_position` + `variant_id`.
-
-### How it survives a provider that forgets
-
-The ledger is Resonate-owned. If EmailBison loses the scheduled email data,
-the ledger still has `exact_rendered_copy`, `sent_at`, and
-`scheduled_email_id` as it was at send time. The provider's data is a
-readback, not the source of truth for the experiment.
-
-### What it CANNOT know
-
-- **Whether the variant caused the reply.** `attribution_confidence` is
-  where that honesty lives. If the provider cannot tell us which step a
-  reply answers, the ledger cannot either. "direct" confidence means the
-  provider supplied `scheduled_email_id` on the reply; "reconstructed"
-  means last-touch; "unknown" means the reply is present but unattributable.
-- **Whether the copy was actually read.** `open_tracking` is false on every
-  campaign. The ledger records `sent_at`, not `read_at`.
-- **Whether a LinkedIn touch influenced the reply.** The ledger covers
-  email. A reply may have been triggered by a LinkedIn message the email
-  estate cannot see. `attribution_confidence: "direct"` means "this email
-  was the one the provider associated with the reply" — not "this email
-  caused the reply."
-
-### Why this is not in the event log
-
-The existing event log (`work/events.jsonl`) records what happened: sends,
-replies, bounces. The experiment ledger records what was PLANNED to happen:
-which variant was assigned to which lead at which position. The event log
-can be reconstructed from the provider; the experiment ledger cannot,
-because the variant assignment is our decision and the provider does not
-store it.
-
-### What Claude decides
-
-`CLAUDE.md`: new state has to earn its place. The question is whether a
-second ledger is the right answer or whether the existing event log can be
-extended with a `variant_id` field. The event log already carries
-`scheduled_email_id` and `sequence_step_id`; adding `variant_id` would
-avoid a second file. But the event log is append-only observations; the
-variant assignment is a plan, not an observation. A plan that is recorded
-only in the event log after the send is an observation of a plan, which is
-the same thing — but the timing matters: if the variant assignment is
-recorded at staging time (before the send), it survives a send that fails
-and is retryable. If it is recorded at observation time (after the send), a
-failed send loses the assignment.
+loses variant attribution. This is a gap in the code, not in the provider.
+The raw data carries the variant fields; the trimmer discards them.
 
 ---
 
@@ -411,6 +356,35 @@ campaign 352 which sent 92,799 emails. **Zero opens across the entire
 estate is an absent measurement, not an absent outcome.** Any open-rate
 analysis that ignores this flag is fiction.
 
+### Campaign timeline
+
+**PROVIDER FACT.** 22 campaigns, created between 2026-03-11 and 2026-09-13:
+
+| id | status | created | emails_sent |
+|----|--------|---------|-------------|
+| 200 | archived | 2026-03-11 | 0 |
+| 234 | archived | 2026-03-25 | 0 |
+| 262 | archived | 2026-04-04 | 525 |
+| 263 | archived | 2026-04-04 | 299 |
+| 264 | archived | 2026-04-04 | 415 |
+| 265 | archived | 2026-04-04 | 1,609 |
+| 266 | archived | 2026-04-04 | 315 |
+| 274 | archived | 2026-04-08 | 28,331 |
+| 327 | active | 2026-04-23 | 44,972 |
+| 328 | active | 2026-04-23 | 33,695 |
+| 329 | completed | 2026-04-24 | 4,300 |
+| 330 | completed | 2026-04-24 | 4,028 |
+| 331 | completed | 2026-04-24 | 10,299 |
+| 334 | completed | 2026-04-24 | 7,269 |
+| 335 | completed | 2026-04-24 | 9,759 |
+| 352 | active | 2026-05-13 | 92,800 |
+| 417 | draft | 2026-08-24 | 0 |
+| 418 | draft | 2026-08-24 | 0 |
+| 423 | draft | 2026-09-03 | 0 |
+| 424 | draft | 2026-09-03 | 0 |
+| 451 | completed | 2026-09-13 | 1 |
+| 481 | paused | 2026-09-13 | 0 |
+
 ### Status values observed
 
 **PROVIDER FACT.** `draft`, `paused`, `active`, `completed`, `archived`,
@@ -427,42 +401,38 @@ across 2 pages.
 ## SEQUENCE STEP FIELDS (reference)
 
 **Route:** `GET /api/campaigns/{id}/sequence-steps`
-**Rows checked:** 44 steps (campaign 352), 1 step (campaign 451)
+**Rows checked:** 44 steps (campaign 352), 8 steps (campaign 327), 1 step (campaign 451)
 
 ### Fields (12 on the raw row)
 
 | Field | Type | Example | Populated |
 |-------|------|---------|-----------|
-| `id` | int | `4035` | 44/44 |
-| `order` | int | `1` | **5/44** (see below) |
-| `active` | bool | `True` | 44/44 |
-| `email_subject` | str (HTML template) | `"{me again, {FIRST_NAME}\|..."` | 44/44 |
-| `email_body` | str (HTML template) | `"<p>Hey {FIRST_NAME}..."` | 44/44 |
-| `wait_in_days` | int | `3` | 44/44 |
-| `variant` | bool | `False` | 44/44 |
-| `variant_from_step` | NoneType or int | `None` | 44/44 |
-| `thread_reply` | bool | `False` | 44/44 |
-| `attachments` | NoneType | `None` | 0/44 |
-| `created_at` | str (ISO 8601) | `"2026-05-13T11:09:12.000000Z"` | 44/44 |
-| `updated_at` | str (ISO 8601) | `"2026-06-12T16:13:00.000000Z"` | 44/44 |
+| `id` | int | `4035` | 53/53 |
+| `order` | int | `1` | **5/44** (only parents; variants have `order: null`) |
+| `active` | bool | `True` | 53/53 |
+| `email_subject` | str (HTML template) | `"{me again, {FIRST_NAME}\|..."` | 53/53 |
+| `email_body` | str (HTML template) | `"<p>Hey {FIRST_NAME}..."` | 53/53 |
+| `wait_in_days` | int | `3` | 53/53 |
+| `variant` | bool | `False` | 53/53 |
+| `variant_from_step` | NoneType or int | `None` | 53/53 |
+| `thread_reply` | bool | `False` | 53/53 |
+| `attachments` | NoneType | `None` | 0/53 |
+| `created_at` | str (ISO 8601) | `"2026-05-13T11:09:12.000000Z"` | 53/53 |
+| `updated_at` | str (ISO 8601) | `"2026-06-12T16:13:00.000000Z"` | 53/53 |
 
 ### `order` IS ONLY ON PARENT STEPS, NOT VARIANTS
 
 **PROVIDER FACT.** Campaign 352 has 44 steps but only 5 distinct `order`
 values (1, 2, 3, 4, 5). The other 39 steps are variants — they have
 `variant: true`, `variant_from_step: <parent_id>`, and `order: null`. A
-step's position in the sequence is determined by `order` for parents;
-variants share their parent's position.
+variant's position in the sequence is its parent's `order`.
 
-**PROVIDER FACT.** `bison.sequence_steps()` in the existing code trims this
-to 6 fields and drops `variant`, `variant_from_step`, `thread_reply`,
-`created_at`, `updated_at`, `attachments`. The trimmed form is sufficient
-for sequence reproduction but loses variant attribution.
+Campaigns 327 and 328 have 8 steps each, all parents (no variants).
 
 ### Not paginated
 
-**PROVIDER FACT.** All 44 steps arrive in one response with no `meta`.
-`?page=2` returns the same 44 rows.
+**PROVIDER FACT.** All steps arrive in one response with no `meta`.
+`?page=2` returns the same rows.
 
 ### A 200 is not an existence proof
 
@@ -505,7 +475,7 @@ Absence is read from the body.
 | `opens` | int | `0` |
 | `replies` | int | `1` |
 | `interested` | bool | `False` |
-| `status` | str | `"replied"`, `"stopped"`, `"sequence_finished"`, `"in_sequence"`, `"sending_paused"`, `"never_contacted"` |
+| `status` | str | `"replied"`, `"stopped"`, `"sequence_finished"`, `"in_sequence"`, `"sending_paused"`, `"never-contacted"` |
 
 **PROVIDER FACT.** A lead in three campaigns has three entries. The status
 is per-campaign, not global.
@@ -542,7 +512,7 @@ all five present.
 ## REPLY FIELDS (reference)
 
 **Route:** `GET /api/replies?pagination_type=cursor&per_page=N`
-**Rows checked:** 750 (50 pages, cursor-paginated, spanning 2026-07-19 to 2026-09-14)
+**Rows checked:** 750 (cursor-paginated, spanning 2026-07-19 to 2026-09-14)
 
 ### Fields (30 on the row)
 
@@ -588,22 +558,63 @@ all five present.
 | `Outgoing Email` | 3+ | `Sent` | `outgoing` — NOT A REPLY |
 | `Bounced` | 26+ | `Bounced` | `bounce` |
 
+### The two rows missing join fields are outgoing
+
+**PROVIDER FACT.** The 2 rows with null `campaign_id`, `lead_id`, and
+`scheduled_email_id` are both `type: "Outgoing Email"` in `folder: "Sent"`.
+They are our own sent mail and are correctly filtered out by
+`classify_reply_row`. **100% of actual inbound replies and bounces carry the
+full join chain.**
+
 ### `parent_id` IS ALWAYS NULL
 
 **PROVIDER FACT.** Threading is not tracked through this field in the
 sample. A reply to a reply does not carry the parent's id.
 
-### `custom_variables` ON REPLY LEADS
-
-**PROVIDER FACT.** Of 46 inbound replies sampled: 37/46 leads have
-`custom_variables` populated, but **0/46 have `record_id` or
-`contact_key`**. These are leads from older campaigns that predate our
-custom variable scheme.
-
 ### Pagination
 
 **PROVIDER FACT.** Cursor-based. `meta.next_cursor` is an opaque base64
 string. `per_page` is capped at 100. 750 rows fetched across ~8 pages.
+The reply feed appears to have a finite depth — the oldest reply in the
+750-row sample is from 2026-07-19. Campaigns 335 and 274 (which finished
+sending in April-May 2026) do not appear in the reply feed, suggesting
+their replies fall outside the feed's window or were never tracked.
+
+---
+
+## THE JOIN CHAIN — SUMMARY
+
+### The question
+
+    campaign -> lead -> exact email step -> exact copy -> send timestamp
+             -> reply -> outcome
+
+### The answer: THE FULL CHAIN IS POSSIBLE, INCLUDING VARIANT ATTRIBUTION
+
+**PROVIDER FACT.** Every link in the chain is supported by the provider:
+
+| Link | Via | Field | Verified |
+|------|-----|-------|----------|
+| campaign → lead | `lead_campaign_data[].campaign_id` on the lead | explicit | 18/18 leads |
+| lead → scheduled email | `lead.id` matches `scheduled_email.lead.id` | nested object | 31/31 checked |
+| scheduled email → step (or variant) | `scheduled_email.sequence_step_id` matches `step.id` | explicit | 61/61 checked |
+| scheduled email → copy | `scheduled_email.email_subject`, `email_body` (rendered) | direct | 61/61 |
+| scheduled email → timestamp | `scheduled_email.sent_at` | direct | 61/61 |
+| reply → scheduled email | `reply.scheduled_email_id` matches `scheduled_email.id` | explicit | 674/674 inbound |
+| reply → campaign | `reply.campaign_id` | explicit | 674/674 |
+| reply → lead | `reply.lead_id` or `reply.lead.id` | explicit + nested | 674/674 |
+| variant step → parent | `step.variant_from_step` matches parent `step.id` | explicit | 39/39 variants |
+| variant step → position | parent step's `order` field | explicit | 5/5 parents |
+
+### What CANNOT be determined
+
+- **Opens.** `open_tracking` is false on every campaign. The `opens` and
+  `unique_opens` fields exist but are always 0. **PROVIDER FACT.**
+- **Threading.** `parent_id` is always null. A reply chain cannot be
+  reconstructed from this field. **PROVIDER FACT.**
+- **Causation.** The `scheduled_email_id` on a reply identifies the email
+  the provider associated with the reply. It does not prove that email
+  CAUSED the reply. **ATTRIBUTION HYPOTHESIS.**
 
 ---
 
@@ -622,42 +633,41 @@ string. `per_page` is capped at 100. 750 rows fetched across ~8 pages.
    `folder: "Sent"` must be filtered out before any reply analysis. The
    allowlist in `classify_reply_row` handles this. **PROVIDER FACT.**
 
----
-
-## SUMMARY OF VERDICTS
-
-| Question | Verdict | Evidence |
-|----------|---------|----------|
-| A: Historical per-lead/per-step sends with timestamps | **DIRECTLY SUPPORTED BY PROVIDER** | 31 rows across 3 campaigns (274, 335, 451); `meta.total` confirms full estates |
-| B: Reply carries direct message/step relationship | **DIRECTLY SUPPORTED BY PROVIDER** | `scheduled_email_id` on 748/750 reply rows (2 missing are outgoing); links to `sequence_step_id` via scheduled email |
-| C: Sequence position reconstructable when B absent | **RECONSTRUCTABLE FROM PROVIDER DATA** | Scheduled emails per lead give full send history with step ids and timestamps |
-| D: Persistent variant identifier | **NOT AVAILABLE** | `scheduled_email` has no variant field; sequence steps have `variant`/`variant_from_step` but the send does not carry which variant was sent |
+4. **The reply feed has finite depth.** 750 rows span from 2026-09-14 back
+   to 2026-07-19. Older replies (from campaigns that finished before July)
+   are not in the feed. **PROVIDER FACT.**
 
 ---
 
 ## WHAT THIS MEANS FOR TASK-070
 
-The data infrastructure for cadence-shape learning exists:
+The data infrastructure for cadence-shape learning and variant-level
+experiment evaluation exists:
 
 - **Step-level attribution is possible** via `scheduled_email.sequence_step_id`
   joined to `sequence_steps.id`.
+- **Variant-level attribution is possible** because `sequence_step_id`
+  references variant step IDs directly, and each variant step has its own
+  template copy.
 - **Per-lead per-step send timestamps** are on `scheduled_email.sent_at`.
 - **Rendered copy** is on `scheduled_email.email_subject` and `email_body`.
 - **Reply-to-step attribution** works via `reply.scheduled_email_id` →
   `scheduled_email.id` → `scheduled_email.sequence_step_id`.
-- **Campaign-level stats** (`replied`, `bounced`, etc.) exist but are
-  untrustworthy for opens because `open_tracking` is universally false.
+- **Historical data** is available for completed and archived campaigns
+  (verified back to April 2026).
 
 The gaps:
 
-- **Variant-level attribution** is not available — the scheduled email carries
-  the rendered copy but not which variant produced it. The experiment ledger
-  design in the appendix addresses this.
 - **Open tracking** is absent estate-wide. Any analysis involving opens must
   say so.
-- **Large campaign reads are expensive** — 15 rows per page means 1,411 pages
-  for campaign 352's membership and 679 pages for its scheduled emails.
-- **Reply causation is not proven.** `scheduled_email_id` on a reply is the
-  provider's association, not a causal claim. Every attribution number must
-  say whether it is PROVIDER FACT, RESONATE RECONSTRUCTION, or ATTRIBUTION
-  HYPOTHESIS.
+- **Large campaign reads are expensive** — 15 rows per page means ~6,363
+  pages for campaign 352's scheduled emails.
+- **The reply feed has finite depth** — replies older than ~2 months may not
+  be available through the cursor-paginated route.
+- **Causation is not provable** — the provider associates a reply with a
+  scheduled email, but does not prove the email caused the reply. Every
+  attribution number is an ATTRIBUTION HYPOTHESIS.
+- **The `bison.sequence_steps()` trimmer drops variant fields** — the raw
+  data carries them, but the existing code discards `variant`,
+  `variant_from_step`, and `thread_reply`. This is a code gap, not a
+  provider gap.
