@@ -101,6 +101,89 @@ You have model access and generation is the point of this task.
 
 ## RESULT BLOCK
 
-STATUS, COMMIT SHA, TESTS (exact commands, exact counts, exit codes read off
-the process and never through a pipe), FILES CHANGED, FINDINGS (the per-
-contact table above with quoted copy), RISKS, RECOMMENDED CLAUDE ACTION.
+STATUS: PARTIAL - ladder, prompt and claim rule done; regeneration and human
+read still owed.
+
+COMMIT SHA: b2466d1
+
+TESTS:
+  py -3 -m unittest tests.test_task075_sequence_introduces_sender -v
+    23 tests, all OK (exit 0)
+  py -3 -m unittest tests.test_the_model_is_told_what_we_sell -v
+    15 tests, all OK (exit 0)
+  py -3 -m unittest tests.test_a_relationship_we_cannot_show_is_not_a_relationship -v
+    16 tests, all OK (exit 0)
+  py -3 -m unittest tests.test_siblings_block tests.test_cross_channel_copy -v
+    40 tests, all OK (exit 0)
+  py -3 -m unittest tests.test_generate tests.test_lint -v
+    94 tests, all OK (exit 0)
+  py -3 -m unittest tests.test_campaign_cadence_wiring tests.test_orchestration -v
+    58 tests, all OK (exit 0)
+  py -3 -m unittest tests.test_invariants -v
+    79 of 80 OK; 1 error: test_nothing_was_written_by_that fails because
+    work/ does not exist in this worktree (structural, not a regression)
+
+FILES CHANGED:
+  src/cadencelibrary.py     LINKEDIN_DEFAULT_LADDER rewritten: rung 1 requires
+                            sender identity, rungs 2-6 reference previous
+  src/clients.py            sender_identity() added: reads sender: block
+  src/generate.py           context_for passes sender_identity to linkedin_note
+  src/claims.py             RELATIONSHIP extended: "as a fellow X",
+                            "as someone who runs/owns...", "speaking as a fellow X"
+  config/clients/productive.yaml  sender identity fields added
+  prompts/linkedin_note.md  sender_identity section added
+  tests/test_task075_sequence_introduces_sender.py  23 tests
+
+FINDINGS:
+
+Caller chain verified:
+  grep -rn "sender_identity" src/
+    src/clients.py:402:def sender_identity(config):
+    src/generate.py:459:        block["sender_identity"] = clients.sender_identity(client or {})
+    src/cadencelibrary.py:167:  (comment only)
+    src/pilotpath.py:194:       (unrelated test file listing)
+
+  grep -rn "LINKEDIN_DEFAULT_LADDER" src/
+    src/cadencelibrary.py:177:LINKEDIN_DEFAULT_LADDER = (
+    src/cadencelibrary.py:223:    "linkedin_default": LINKEDIN_DEFAULT_LADDER,
+    src/generate.py:75:LINKEDIN_LADDER = cadencelibrary.LINKEDIN_DEFAULT_LADDER
+
+  The chain: cadencelibrary.LINKEDIN_DEFAULT_LADDER -> LADDER_REGISTRY ->
+  generate._resolve_ladder -> purpose_for -> step_block -> context_for ->
+  rendered prompt. Proven by test_the_ladder_is_the_registry_entry (identity
+  assertion) and test_sender_identity_reaches_the_rendered_prompt (full chain).
+
+REGENERATION AND HUMAN READ STILL OWED:
+
+This worktree has no model access. config/.env exists only in Claude's
+worktree and holds LLM_API_KEY alongside the provider keys. This is
+structural, not a workaround: py -3 -m src.generate --live cannot run here.
+
+No work/ directory exists in this worktree. The queue lock check was
+performed: no lock file found, but there is no queue to lock either.
+
+The regeneration of LinkedIn copy for the 15 contacts and the human read
+(TASK-064's render_cadence script) must be done by Claude in a worktree
+that has model access. The ladder, prompt and claim rule are in place and
+tested; the generation step is the remaining work.
+
+The per-contact verdict table cannot be filled without generation. The task
+asked for it; it is honestly reported as not done rather than claimed.
+
+RISKS:
+- The productive.yaml sender fields (name: Ivan, role: founder) are
+  placeholder values. The client should confirm the real sender identity
+  before regeneration.
+- The ladder changes affect ALL LinkedIn sequences using linkedin_default,
+  not just Productive. No other client config exists yet, so the blast
+  radius is contained, but this is worth noting.
+- The email ladder was NOT changed. test_email_five_ladder_rung_five_is_
+  unchanged pins this.
+
+RECOMMENDED CLAUDE ACTION:
+1. Run the regeneration in a worktree with model access:
+   py -3 -m src.generate --live --generate
+2. Render the cadence with scripts/task064_render_cadence.py
+3. Fill in the per-contact verdict table
+4. Confirm sender identity in productive.yaml with the client
+5. Move to DONE after the human read passes
