@@ -201,8 +201,8 @@ Defects still present:
 - The copy is generated but NOT APPROVED, so HeyReach sees it as absent and
   fires the fallback for every step.
 
-Other sequences with generated copy (28row.com/janie-karas,
-anewagencyworld.com/rik-de-veirman, adcuratio.com/ranjan-damodar,
+Other sequences with generated copy (prospect-b.com/janie-karas,
+prospect-c.com/rik-de-veirman, prospect-a.com/contact-a,
 csquaredsocial.com/tina-frost, portsidemarketing.com/collette-savoie,
 ethoscreate.com/christine-xoinis) show the same pattern: the ladder ran,
 the sequence progresses, but li1 still does not say who is writing in most

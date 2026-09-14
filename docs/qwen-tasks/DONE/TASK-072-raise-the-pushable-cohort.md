@@ -86,7 +86,7 @@ The three pushable contacts are unchanged:
 
 Measured by comparing a blocked contact with a pushable one:
 
-    adcuratio-com/ranjan-damodar (BLOCKED):
+    prospect-a-com/contact-a (BLOCKED):
       li1-li5: generated=True, has_note=True, has_approval=False
 
     savagebrands-com/paula-savage-hansen (PUSHABLE):
@@ -106,7 +106,7 @@ is a separate step that `generate.py` does not import or call.
 Eight contacts have ALL LinkedIn steps generated but UNAPPROVED:
 - ogpartner-dk/jacob-faertz (li1-li5 generated, none approved)
 - acqcom-com/brian-price (li1-li5 generated, none approved)
-- adcuratio-com/ranjan-damodar (li1-li5 regenerated this pass, none approved)
+- prospect-a-com/contact-a (li1-li5 regenerated this pass, none approved)
 - portsidemarketing-com/collette-savoie (li1-li2 generated, none approved)
 - agency59-ca/al-scornaienchi (li1/li4 generated, none approved)
 - semcasting-com/ray-kingman (li1/li4 generated, none approved)
@@ -118,8 +118,8 @@ Two contacts have unsupported claims on specific steps:
 - ethoscreate-com/christine-xoinis: connected_4 asserts 'our previous discussions'
 
 Two contacts have missing steps AND unsupported claims:
-- 28row-com/janie-karas: li1/li4/li5 missing, none approved
-- anewagencyworld-com/rik-de-veirman: li1 missing, connected_3/message_4
+- prospect-b-com/janie-karas: li1/li4/li5 missing, none approved
+- prospect-c-com/rik-de-veirman: li1 missing, connected_3/message_4
   assert 'profitability'
 
 **WHY MORE PASSES WILL NOT HELP:**
@@ -131,13 +131,13 @@ would not change. This is true regardless of how many passes are run.
 
 The generation process itself was also unstable: only 23 of 300 records were
 touched before the process stalled (15+ minutes with no new log entries) and
-had to be killed. One campaign contact (adcuratio-com) was regenerated
+had to be killed. One campaign contact (prospect-a-com) was regenerated
 ("6 notes regenerated as a set") but remains blocked because the new notes
 lack approval.
 
 **THE GENERATION DID PRODUCE SOME VALUE:**
 
-adcuratio-com/ranjan-damodar's notes were regenerated as a set (the TASK-068
+prospect-a-com/contact-a's notes were regenerated as a set (the TASK-068
 fix). The new notes may be better quality than the old ones. But they need
 approval before the factory will consider them.
 
@@ -166,7 +166,7 @@ approval before the factory will consider them.
    The unsupported claims are on connected_4 only - the other steps may
    already be approvable.
 
-3. **For anewagencyworld-com/rik-de-veirman**: regenerate li1 (missing) and
+3. **For prospect-c-com/rik-de-veirman**: regenerate li1 (missing) and
    the two unsupported steps (connected_3, message_4 asserting
    'profitability'), then approve all.
 

@@ -20,6 +20,7 @@ regenerated, never patched, and never widened away (CLAUDE.md).
                                         when none is configured
 """
 import argparse
+import hashlib
 import os
 
 from . import cadencelibrary, claims, clients, events, lint, llm, research, store
@@ -231,6 +232,58 @@ def purpose_for(channel, ordinal, sequence=None):
     if not ordinal or ordinal > len(ladder):
         return None
     return ladder[ordinal - 1]
+
+
+def ladder_fingerprint(channel, ordinal, sequence=None):
+    """Hash of the ladder rung this step was generated against.
+
+    TASK-083. A step generated against a ladder that later changed carries
+    a fingerprint of the OLD rung. Recomputing against the CURRENT ladder
+    produces a different hash, so the mismatch is the signal that the copy
+    is stale. The fingerprint covers the channel and the purpose TEXT, so
+    any edit to the ladder brief - a word, a reorder, a new rung - moves it.
+
+    Returns None when the step has no ladder context (no channel, no
+    ordinal, or ordinal beyond the ladder). A step without a fingerprint
+    cannot be checked for staleness.
+    """
+    purpose = purpose_for(channel, ordinal, sequence=sequence)
+    if not channel or not ordinal or purpose is None:
+        return None
+    material = f"{channel}:{ordinal}:{purpose}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
+def ladder_stale(stored_step, step_key, sequence=None):
+    """Was this step generated against a ladder that no longer matches?
+
+    True when the stored ladder fingerprint differs from the current one.
+    False when the fingerprints match, when the step has no fingerprint
+    (generated before this mechanism existed), or when the step's position
+    in the sequence cannot be resolved.
+
+    A step without a fingerprint is NOT treated as stale here. The absence
+    means the step predates the mechanism, and treating it as stale would
+    silently invalidate every stored step in the estate. The opt-in flag
+    in `plan` handles that case separately.
+
+    `step_key` is passed separately because stored step dicts carry channel
+    and body but not their own key - the key is the dict key in the cadence
+    row, not a field on the step.
+    """
+    stored_fp = (stored_step or {}).get("ladder_fingerprint")
+    if not stored_fp:
+        return False
+    channel = (stored_step or {}).get("channel")
+    if not channel or not step_key:
+        return False
+    _, ordinal, _ = position(sequence, step_key)
+    if not ordinal:
+        return False
+    current_fp = ladder_fingerprint(channel, ordinal, sequence=sequence)
+    if not current_fp:
+        return False
+    return stored_fp != current_fp
 
 
 def step_block(sequence, step_key, channel=None):
@@ -573,7 +626,7 @@ def note_mode(rec, client=None):
     return clients.linkedin_note_mode(client)
 
 
-def plan(rec, client=None, campaign=None):
+def plan(rec, client=None, campaign=None, regen_stale_ladder=False):
     """What this record needs from a model, and why. No call without a reason.
 
     THE SEQUENCE DECIDES WHICH STEPS ARE WRITTEN, not a constant here.
@@ -588,6 +641,15 @@ def plan(rec, client=None, campaign=None):
     template for every other step, so generating a draft for a step the
     sequence has not marked generated would spend a model call on words
     nothing reads.
+
+    `regen_stale_ladder` is OPT-IN (TASK-083). When True, a step whose stored
+    ladder fingerprint does not match the current ladder is treated as needing
+    regeneration, exactly like a failing gate. When False (the default), plan
+    behaves exactly as before - no ladder check, no change to idempotence.
+    A step without a stored fingerprint (generated before this mechanism) is
+    treated as stale only when the flag is set, because its absence means it
+    predates the mechanism and was almost certainly generated against an
+    older ladder.
     """
     ops = []
     if rec.get("state") in ("dropped", "pushed"):
@@ -712,6 +774,32 @@ def plan(rec, client=None, campaign=None):
                                        f"repeats another step "
                                        f"({', '.join(note_repeats)})",
                                 "contact": c.get("name"), "day": spec["key"]})
+                    continue
+                # LADDER STALENESS (TASK-083). OPT-IN: only when the flag is
+                # set. A step whose ladder fingerprint does not match the
+                # current ladder was generated against a brief that no longer
+                # exists. Without the flag, plan returns exactly what it
+                # always returned - the check does not fire.
+                if regen_stale_ladder:
+                    has_fp = bool(note.get("ladder_fingerprint"))
+                    if ladder_stale(note, spec["key"], sequence=sequence):
+                        ops.append({"step": "linkedin_note",
+                                    "why": f"{c['name']}'s {spec['key']} note "
+                                           f"was generated against a ladder "
+                                           f"that has since changed",
+                                    "contact": c.get("name"),
+                                    "day": spec["key"],
+                                    "ladder_stale": True})
+                        continue
+                    if not has_fp:
+                        ops.append({"step": "linkedin_note",
+                                    "why": f"{c['name']}'s {spec['key']} note "
+                                           f"has no ladder fingerprint "
+                                           f"(predates TASK-083)",
+                                    "contact": c.get("name"),
+                                    "day": spec["key"],
+                                    "ladder_stale": True})
+                        continue
         # EMAIL DRAFTS STAY BEHIND EMAIL VERIFICATION. CLAUDE.md: no email is
         # generated for an unverified address, and that rule is untouched -
         # only the LinkedIn note moved out from behind it.
@@ -787,6 +875,31 @@ def plan(rec, client=None, campaign=None):
                                    f"repeats another step "
                                    f"({', '.join(quality_out)})",
                             "contact": c.get("name"), "day": spec["key"]})
+                continue
+            # LADDER STALENESS (TASK-083). Same shape as the LinkedIn check
+            # above. OPT-IN: only when the flag is set. A step whose ladder
+            # fingerprint does not match the current ladder was generated
+            # against a brief that no longer exists.
+            if regen_stale_ladder:
+                has_fp = bool(step.get("ladder_fingerprint"))
+                if ladder_stale(step, spec["key"], sequence=sequence):
+                    ops.append({"step": "draft",
+                                "why": f"{c['name']}'s {spec['key']} email "
+                                       f"was generated against a ladder "
+                                       f"that has since changed",
+                                "contact": c.get("name"),
+                                "day": spec["key"],
+                                "ladder_stale": True})
+                    continue
+                if not has_fp:
+                    ops.append({"step": "draft",
+                                "why": f"{c['name']}'s {spec['key']} email "
+                                       f"has no ladder fingerprint "
+                                       f"(predates TASK-083)",
+                                "contact": c.get("name"),
+                                "day": spec["key"],
+                                "ladder_stale": True})
+                    continue
 
     # SET REGENERATION DETECTION.
     #
@@ -1157,6 +1270,11 @@ def _regenerate_linkedin_set(rec, contact, model, client=None):
         step_key = spec["key"]
         step = {"channel": "linkedin", "generated": True,
                 "note": generated[step_key]}
+        # LADDER FINGERPRINT (TASK-083).
+        _, ordinal, _ = position(sequence, step_key)
+        fp = ladder_fingerprint("linkedin", ordinal, sequence=sequence)
+        if fp:
+            step["ladder_fingerprint"] = fp
         rec.setdefault("cadence", {}).setdefault(key, {})[step_key] = step
         committed.append(step)
 
@@ -1201,7 +1319,8 @@ def persona_angle(rec, contact, model, client=None):
     return data
 
 
-def linkedin_note(rec, contact, model, client=None, step_key="day3"):
+def linkedin_note(rec, contact, model, client=None, step_key="day3",
+                  sequence=None):
     """One written LinkedIn step. Short, and no crossover.
 
     `step_key` defaults to `day3` because that is where `cadence.STEPS` puts
@@ -1214,6 +1333,9 @@ def linkedin_note(rec, contact, model, client=None, step_key="day3"):
     Cost accounting: every model call is counted here through
     `model_calls`, and the attempts are on the record's log, so the price of
     llm mode is visible before it is turned on for 500 domains.
+
+    `sequence` is the resolved sequence for this contact. When provided,
+    the ladder fingerprint is computed and stored on the step (TASK-083).
     """
     key = lint.contact_key(contact)
     rejected = []
@@ -1262,6 +1384,13 @@ def linkedin_note(rec, contact, model, client=None, step_key="day3"):
                             f"sequence; say something the others do not "
                             f"({', '.join(repeats)})")
         if not failures:
+            # LADDER FINGERPRINT (TASK-083). Stored on the step so a future
+            # ladder change can be detected.
+            if sequence is not None:
+                _, ordinal, _ = position(sequence, step_key)
+                fp = ladder_fingerprint("linkedin", ordinal, sequence=sequence)
+                if fp:
+                    step["ladder_fingerprint"] = fp
             rec.setdefault("cadence", {}).setdefault(key, {})[step_key] = step
             count_model_call("linkedin_note", total_attempts)
             store.log(rec, "linkedin_note", note[:80],
@@ -1279,13 +1408,17 @@ def linkedin_note(rec, contact, model, client=None, step_key="day3"):
     return None
 
 
-def draft(rec, contact, day, model, client=None):
+def draft(rec, contact, day, model, client=None, sequence=None):
     """Generate, lint, regenerate. Never patch, never widen a rule.
 
     `day` is the STEP KEY, which is what it has always been - `day1`,
     `day15`, and now `em1`..`em5` under a sequence that names them that way.
     It is passed to the prompt so the draft knows which rung of
     `EMAIL_LADDER` it is writing and what the earlier rungs already spent.
+
+    `sequence` is the resolved sequence for this contact. When provided,
+    the ladder fingerprint is computed and stored on the step, so a future
+    ladder change can be detected (TASK-083).
     """
     key = lint.contact_key(contact)
     rejected = []
@@ -1364,6 +1497,14 @@ def draft(rec, contact, day, model, client=None):
                 f"this repeats another step in the sequence; say something "
                 f"the others do not ({', '.join(repeats)})"]
         if not content_failures:
+            # LADDER FINGERPRINT (TASK-083). Stored on the step so a future
+            # ladder change can be detected by comparing this against the
+            # current ladder's fingerprint for the same channel and ordinal.
+            if sequence is not None:
+                _, ordinal, _ = position(sequence, day)
+                fp = ladder_fingerprint("email", ordinal, sequence=sequence)
+                if fp:
+                    candidate["ladder_fingerprint"] = fp
             rec.setdefault("cadence", {}).setdefault(key, {})[day] = candidate
             store.log(rec, "draft", f"{contact.get('name')} {day}: {data['subject']}",
                       attempts=attempt, rejected=rejected)
@@ -1451,7 +1592,8 @@ def generate_variants(rec, contact, model, spec, client=None, campaign=None):
     return variant_entries
 
 
-def generate_record(rec, model, client=None, campaign=None):
+def generate_record(rec, model, client=None, campaign=None,
+                    regen_stale_ladder=False):
     """Every step this record needs, in order, stopping at the first that fails.
 
     `client` reaches `plan` now and did not before. It always mattered -
@@ -1459,9 +1601,11 @@ def generate_record(rec, model, client=None, campaign=None):
     more since the sequence decides which steps are written: planning without
     the config resolves the module constant and would draft `day1`/`day15`
     for a record whose client runs `em1`..`em5`.
+
+    `regen_stale_ladder` is threaded through to `plan` (TASK-083).
     """
     done = []
-    for op in plan(rec, client, campaign):
+    for op in plan(rec, client, campaign, regen_stale_ladder=regen_stale_ladder):
         contact = next((c for c in rec.get("contacts") or []
                         if c.get("name") == op.get("contact")), None)
         try:
@@ -1472,13 +1616,17 @@ def generate_record(rec, model, client=None, campaign=None):
             elif op["step"] == "persona_angle" and contact:
                 persona_angle(rec, contact, model, client)
             elif op["step"] == "linkedin_note" and contact:
-                if not linkedin_note(rec, contact, model, client, op["day"]):
+                seq = sequence_for(rec, client, contact, campaign)
+                if not linkedin_note(rec, contact, model, client, op["day"],
+                                     sequence=seq):
                     continue
             elif op["step"] == "linkedin_set" and contact:
                 if not _regenerate_linkedin_set(rec, contact, model, client):
                     continue
             elif op["step"] == "draft" and contact:
-                if not draft(rec, contact, op["day"], model, client):
+                seq = sequence_for(rec, client, contact, campaign)
+                if not draft(rec, contact, op["day"], model, client,
+                             sequence=seq):
                     continue
             elif op["step"] == "variant_set" and contact:
                 spec = _step_spec(rec, client, contact, op.get("day"),
@@ -1583,8 +1731,14 @@ def _step_spec(rec, client, contact, step_key, campaign=None):
     return None
 
 
-def run(model=None, live=False, ids=None, limit=None, client=None):
-    """Dry by default: reports what would be asked without asking anything."""
+def run(model=None, live=False, ids=None, limit=None, client=None,
+        regen_stale_ladder=False):
+    """Dry by default: reports what would be asked without asking anything.
+
+    `regen_stale_ladder` is OPT-IN (TASK-083). When True, plan treats steps
+    whose ladder fingerprint does not match the current ladder as needing
+    regeneration. When False (the default), plan behaves exactly as before.
+    """
     recs = store.load()
     model = model or llm.NoModel()
     targets = [r for r in recs if ids is None or r["id"] in ids]
@@ -1592,6 +1746,8 @@ def run(model=None, live=False, ids=None, limit=None, client=None):
         targets = targets[:limit]
 
     report = []
+    stale_steps = 0
+    stale_with_approval = 0
     for rec in targets:
         if live:
             # CHECKPOINT PER RECORD. This loaded the estate, worked, and saved
@@ -1616,14 +1772,46 @@ def run(model=None, live=False, ids=None, limit=None, client=None):
             # `refuse_history_loss` correctly kills it. Runs are sequential.
             with store.transaction() as rows:
                 target = next(r for r in rows if r["id"] == rec["id"])
-                ops = generate_record(target, model, client)
+                ops = generate_record(target, model, client,
+                                      regen_stale_ladder=regen_stale_ladder)
                 state = target.get("state")
         else:
-            ops = plan(rec, client)
+            ops = plan(rec, client, regen_stale_ladder=regen_stale_ladder)
             state = rec.get("state")
+        # Count ladder-stale ops and their approvals for the impact report.
+        if regen_stale_ladder:
+            from . import approval as _approval
+            for op in ops:
+                if not op.get("ladder_stale"):
+                    continue
+                stale_steps += 1
+                # `op["contact"]` is the DISPLAY NAME ("Jacob Faertz") and the
+                # cadence is keyed by the contact KEY ("jacob-faertz"). Building
+                # a key out of the display name misses every time, so this
+                # counted ZERO approvals on an estate holding them - and
+                # "0 approvals would be revoked" is the most reassuring
+                # possible wrong answer to the one question the operator has to
+                # decide. Resolve the real contact instead.
+                ck = None
+                for _c in (rec.get("contacts") or []):
+                    if op.get("contact") in (_c.get("name"), _c.get("key")):
+                        ck = _c.get("key")
+                        break
+                if ck is None:
+                    ck = lint.contact_key(
+                        {"name": op.get("contact", ""),
+                         "key": op.get("contact", "")})
+                step_data = ((rec.get("cadence") or {}).get(ck) or {}) \
+                    .get(op.get("day")) or {}
+                if _approval.is_approved(rec, ck, op.get("day", ""),
+                                         step_data):
+                    stale_with_approval += 1
         report.append({"id": rec["id"], "lane": rec.get("lane"),
                        "state": state, "ops": ops})
-    return {"live": live, "model": getattr(model, "name", "unknown"), "records": report}
+    return {"live": live, "model": getattr(model, "name", "unknown"),
+            "records": report, "regen_stale_ladder": regen_stale_ladder,
+            "stale_steps": stale_steps,
+            "stale_with_approval": stale_with_approval}
 
 
 def main(argv=None):
@@ -1633,6 +1821,10 @@ def main(argv=None):
     p.add_argument("--id", action="append", dest="ids")
     p.add_argument("--limit", type=int)
     p.add_argument("--client", help="whose cadence and tone the drafts follow")
+    p.add_argument("--regen-stale-ladder", action="store_true",
+                   help="re-plan steps whose ladder fingerprint does not "
+                        "match the current ladder (TASK-083). OPT-IN: "
+                        "without this flag, plan is unchanged.")
     a = p.parse_args(argv)
 
     # `client` IS A CONFIG, NOT A SLUG, everywhere below this line. `plan`
@@ -1658,7 +1850,22 @@ def main(argv=None):
         return 1
 
     result = run(model=model, live=a.live, ids=a.ids, limit=a.limit,
-                 client=config)
+                 client=config, regen_stale_ladder=a.regen_stale_ladder)
+
+    # IMPACT REPORT (TASK-083). When the flag is set, report how many steps
+    # are ladder-stale and how many carry current approvals BEFORE listing
+    # the per-record detail. Running this revokes approvals (correct but
+    # expensive), so the operator sees the price before it is paid.
+    if a.regen_stale_ladder:
+        print(f"\nLADDER STALENESS REPORT (TASK-083):")
+        print(f"  steps to re-plan:              "
+              f"{result['stale_steps']}")
+        print(f"  approvals that would be "
+              f"revoked: {result['stale_with_approval']}")
+        if not a.live:
+            print(f"  (dry run - nothing was changed)")
+        print()
+
     head = "GENERATED" if a.live else "DRY RUN, no model called"
     print(f"{head}: {len(result['records'])} record(s), model={result['model']}")
     for r in result["records"]:
@@ -1666,7 +1873,8 @@ def main(argv=None):
         for o in r["ops"]:
             detail = f" [{o['contact']}{' ' + o['day'] if o.get('day') else ''}]" \
                 if o.get("contact") else ""
-            print(f"    {o['step']:<14}{detail:<28} {o['why']}")
+            stale_mark = " [LADDER STALE]" if o.get("ladder_stale") else ""
+            print(f"    {o['step']:<14}{detail:<28} {o['why']}{stale_mark}")
         if not r["ops"]:
             print("    nothing to generate")
     if not a.live:

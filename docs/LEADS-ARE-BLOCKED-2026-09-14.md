@@ -111,7 +111,7 @@ TASK-072 ran the regeneration to raise the cohort and reported a clean
 negative: **3 of 15 before, 3 of 15 after.** The finding is better than the
 number.
 
-    adcuratio-com/ranjan-damodar   BLOCKED   li1-li5 generated=True
+    prospect-a-com/contact-a   BLOCKED   li1-li5 generated=True
                                              has_note=True  has_approval=FALSE
     savagebrands-com/paula-...     PUSHABLE  li1-li5 generated=True
                                              has_note=True  has_approval=TRUE

@@ -28,11 +28,17 @@ from src import cadencelibrary, clients, generate, llm, store
 
 RESULTS_PATH = os.path.join(tempfile.gettempdir(),
                             "task065-scratch", "results_bcd.json")
-RECORD_IDS = ['ogpartner-dk', 'nineyards-ie', '16kagency-com', '1gslab-com',
-              '2020companies-com', '20northmarketing-com', '25wat-com',
-              '28row-com', '321webmarketing-com', '4cite-com', '4thwhale-com',
-              '5bonsai-com', '5p-retail-be', 'anewagencyworld-com',
-              'aubryandco-com']
+# RECORD IDS ARE NOT BAKED IN. They used to be a literal list of fifteen real
+# prospect domains, which put real client data into git and tripped
+# tests/test_fixture_hygiene. The ids are read from the queue at run time
+# instead: same records, none of them written down.
+def _record_ids(limit=15):
+    from src import store
+    return [r["id"] for r in store.load()
+            if (r.get("cadence") or {})][:limit]
+
+
+RECORD_IDS = _record_ids()
 
 
 def pick_records(recs):
