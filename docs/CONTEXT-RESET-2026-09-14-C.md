@@ -369,3 +369,46 @@ decides what to fix next - whether the shared words are SUBJECT words
 (capacity, profitability, utilisation) or STRUCTURAL ones. Subject words mean
 `SUBJECT_VOCABULARY` needs widening; structural ones mean the ladder does.
 **That call is Claude's, not Qwen's.**
+
+
+---
+
+## 14. CREDENTIAL VERIFICATION - PASSED, AND WHAT IT PROVED
+
+TASK-060, run by Qwen worker 2 on `qwen-worker-2`, integrated to master.
+
+    QWEN_MODEL_ACCESS      PASS
+    QWEN_PROVIDER_CONFIG   PASS
+    QWEN_TASK_EXECUTION    PASS
+
+    10 of 11 planned steps generated, 17 model calls for one record.
+    em2 failed all three lint attempts and was NOT stored, correctly.
+    The repetition, unsupported-claim and subject-length gates all fired.
+
+Claude generated nothing on its behalf. The worker read the task, reached the
+model, wrote copy, ran the gates against its own output, ran the tests and
+committed. **Bulk regeneration, variant generation and live prompt
+measurement are all delegable from here.**
+
+It also corroborated TASK-054 without being told it existed: "No step mentions
+Productive by name." Third independent observation of the same defect.
+
+### Secret leak scan - NONE
+
+Every value of length >= 12 in `config/.env`, one variable at a time, via
+`git grep -F` across all ten remote branches:
+
+    CONTACTOUT_TOKEN, AIARK_KEY, REOON_KEY, DELIVERABLE_KEY, BISON_KEY,
+    EMAILBISON_API_KEY, HEYREACH_KEY, APIFY_TOKEN, BLITZ_API_KEY,
+    LLM_API_KEY                        absent from every branch
+
+    BISON_BASE, LLM_MODEL, LLM_BASE_URL   present and NOT secret - an API
+                                          base URL and a model name, both
+                                          documented in BUILD-SPEC.md
+
+**A FIRST PASS REPORTED TEN LEAKS AND WAS WRONG.** It ORed every value into
+one `git grep -F -e ... -e ...`, so a match on the model name looked like a
+match on a key. Anyone re-running this check will write the same query;
+search one variable at a time and classify config separately from secrets.
+
+Re-run it after any change that touches credentials or worktrees.
