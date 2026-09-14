@@ -213,16 +213,31 @@ def handle(event, recs, rows=None, config=None, post=None, model=None):
     #    automated reply that names a colleague is a referral, not a
     #    machine non-reply, so the account must still be paused.
     if _is_pure_ooo(verdict, event):
+        # Pure OOO: undo the account pause. The contact may be paused
+        # (for deferral) but the account is not.
         rec["paused"] = _pre_pause
-    else:
+    elif event.get("automated") is True:
+        # Provider automated (non-OOO): don't pause the account, unless
+        # it's a referral (which is not a machine non-reply).
         cls = (verdict.get("verdict") or {}).get("classification")
-        if event.get("automated") is True and cls == replies.REFERRAL:
-            if not rec.get("paused"):
-                accountpolicy._hold_account(
-                    rec, applied.get("contact"),
-                    accountpolicy.REFERRAL, event.get("at"),
-                    channel=event.get("channel"),
-                    reason=event.get("type"))
+        if cls == replies.REFERRAL and not rec.get("paused"):
+            accountpolicy._hold_account(
+                rec, applied.get("contact"),
+                accountpolicy.REFERRAL, event.get("at"),
+                channel=event.get("channel"),
+                reason=event.get("type"))
+    elif not rec.get("paused"):
+        # Not pure OOO, not automated: ensure the account is paused.
+        # This is the fail-safe: any reply that is not a pure machine
+        # reply pauses the account. `replies.apply` may have already
+        # paused it (for UNKNOWN, POSITIVE, etc.), but for NEGATIVE and
+        # UNSUBSCRIBE the policy is at CONTACT scope, so the account is
+        # not paused. We pause it here to preserve the fail-safe.
+        accountpolicy._hold_account(
+            rec, applied.get("contact"),
+            (verdict.get("verdict") or {}).get("classification", "unknown"),
+            event.get("at"), channel=event.get("channel"),
+            reason=event.get("type"))
 
     outcome["paused"] = bool(rec.get("paused"))
 
