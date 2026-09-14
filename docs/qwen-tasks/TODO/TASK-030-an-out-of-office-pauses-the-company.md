@@ -83,3 +83,57 @@ function you change:
 
 Then delete the classification check and confirm a test fails. If nothing
 fails, the pause is not actually reading the classification.
+
+---
+
+## REVIEW 1 - REWORK 2026-09-14. The trace is right and two things are not.
+
+Removing the unconditional pause from `events.apply` and deciding after
+classification is the right shape. Keep it. Two things to settle first.
+
+**1. An orchestrator docstring now asserts something false.**
+
+`orchestrator.positive_reply_notification` says, as its stated safety
+property:
+
+    "The ordering is the safety property. `events.apply()` has already paused
+     the company by the time this runs; this function only tells someone. If
+     Slack is off, misconfigured or broken, the pause is untouched and the
+     alert stays retryable."
+
+`events.apply()` no longer pauses. The PROPERTY may still hold - a positive
+reply pauses a few lines later in `inbound.handle` - but "it happens to still
+be true" and "it is guaranteed" are different, and the sentence a future
+reader trusts now names a function that does not do it.
+
+Establish whether the pause still precedes the notification ON EVERY PATH that
+reaches `positive_reply_notification`, fix the docstring to name whatever
+actually guarantees it, and write a test that FAILS if a notification can
+precede the pause. That test is the point: the docstring was the only thing
+holding this and docstrings do not fail.
+
+**2. The out-of-office case still pauses and then un-pauses.**
+
+    _pre_pause = rec.get("paused")
+    ...
+    rec["paused"] = _pre_pause
+
+`replies.apply` still calls `accountpolicy` which pauses, and the OOO branch
+reverses it. The `_pre_pause` capture is right and means a pre-existing pause
+cannot be lifted - keep that - but reversing a policy decision is a second
+place that decides the same fact, and CLAUDE.md's "prefer canonical state to a
+second representation of it" is about exactly this.
+
+Prefer not pausing in the first place: `replies.apply` knows the
+classification, so the policy it applies can depend on it rather than being
+applied and then partly undone.
+
+If that cannot be done inside your allowed files, say so plainly and keep the
+undo - but then it must also RECORD why the pause was lifted. An account that
+is not paused with nothing in the log saying why is indistinguishable from one
+nobody ever paused, and the next person reading that record cannot tell.
+
+## STILL REQUIRED, unchanged
+
+The most important test remains: an UNKNOWN reply STILL PAUSES. Confirm it is
+in place and that it fails when the classification check is removed.
