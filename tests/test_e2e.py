@@ -94,7 +94,8 @@ class E2EModel:
             # One note per rung, not one note repeated - the quality gate now
             # runs before a note is stored and refuses the second copy. See
             # the same branch in `tests/test_preproduction.py`.
-            if '"key": "day8"' in prompt or '"key": "li' in prompt:
+            later = ("day8", "li3", "li4", "li5")
+            if any(f'"key": "{k}"' in prompt for k in later):
                 return json.dumps({"note": "the part most teams find hardest "
                                            "is knowing which work paid for "
                                            "itself while it is still running. "

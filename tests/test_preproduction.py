@@ -63,7 +63,8 @@ class FakeModel:
             # sentence for every LinkedIn step and day8 was refused as a copy
             # of day3 - the gate being right about a fixture, which is the
             # same thing that happened to the day15 draft body.
-            if '"key": "day8"' in prompt or '"key": "li' in prompt:
+            later = ("day8", "li3", "li4", "li5")
+            if any(f'"key": "{k}"' in prompt for k in later):
                 return json.dumps({"note": "the part most teams find hardest "
                                            "is knowing which work paid for "
                                            "itself while it is still running. "
@@ -80,19 +81,41 @@ class FakeModel:
                     break
             # Each step key gets distinct copy so the repetition gate does
             # not refuse the second draft as a copy of the first.
-            if "day15" in prompt or "em5" in prompt:
+            # THE STEP BLOCK, NOT ANYWHERE IN THE PROMPT. This read
+            # `"day15" in prompt`, and since TASK-017 the prompt carries a
+            # `siblings` block naming every OTHER step in the sequence - so
+            # the day1 prompt contains the string "day15" the moment a day15
+            # draft exists, and day1 was answered with day15's body. Both
+            # steps then held identical copy and the repetition gate refused
+            # the second one, which presented as "day15 is missing".
+            #
+            # It only bites once day1 is REGENERATED, because the first pass
+            # writes day1 before any sibling exists. That is what made it look
+            # intermittent and unrelated to the fixture.
+            if '"key": "day15"' in prompt or '"key": "em5"' in prompt:
+                # DELIBERATELY DIFFERENT VOCABULARY FROM `BODY`, not merely a
+                # different sentence. `quality.repetition_across_rungs` scores
+                # a word as distinctive relative to the SET, so two bodies
+                # that look different side by side can collide once three
+                # template siblings join them - day1 and this one shared 32
+                # words under that comparison while sharing almost none as a
+                # pair. A fixture whose two generated bodies argue the same
+                # subject in the same nouns is a fixture that will drift in
+                # and out of passing as the rest of the cadence changes.
+                #
+                # So: no "month end", no "teams", no "spreadsheets", no
+                # "margin", no "money". A different rung with a different
+                # argument, which is what the ladder asks for anyway.
                 return json.dumps({
-                    "subject": "the cost of waiting one more month",
-                    "body": (f"{first}, the teams I hear from describe the "
-                             f"same pattern: month end arrives and the numbers "
-                             f"still live in three spreadsheets, so the "
-                             f"argument about which engagement paid for "
-                             f"itself happens weeks after anybody could have "
-                             f"acted on it. Two similar firms changed that "
-                             f"inside their first thirty days and I am happy "
-                             f"to say what they did differently.\n\n"
+                    "subject": "who owns the resourcing call at your place",
+                    "body": (f"{first}, one thing I keep running into is that "
+                             f"nobody can say who is booked on what in three "
+                             f"weeks without asking four people first, and by "
+                             f"the time the answer arrives it has changed "
+                             f"again. Two firms your size fixed that inside a "
+                             f"quarter and I am glad to say how.\n\n"
                              f"Worth a short call, or is this someone "
-                             f"else's call to make?")})
+                             f"else's decision entirely?")})
             return json.dumps({"subject": "one week of month end, every month",
                                "body": BODY.format(first=first)})
         raise AssertionError(f"unexpected prompt: {prompt[:60]}")

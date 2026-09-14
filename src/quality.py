@@ -704,6 +704,189 @@ def campaign_repetition(steps, company_name=None,
         result.append({"step_a": key_a, "step_b": key_b,
                        "shared_words": count, "shared": shared})
     return result
+# ------------------------------------------------ structural repetition
+#
+# TASK-047. Four of five staged Productive emails open with the same SHAPE:
+#
+#     [the company's own self-description]
+#     -> [why I am writing, stated by role]
+#     -> [the ask]
+#
+# Different words, one formula. `repetition_across_rungs` passed all of it
+# correctly by its own rule: it counts shared distinctive WORDS, and a
+# formula that varies its nouns shares almost none.
+#
+# This check catches the SHAPE, not the words. Two rungs collide when their
+# opening move AND closing move AND self-reference pattern are all the same.
+# The self-reference must be present in BOTH emails for a collision, because
+# the formula includes "I am reaching out to you as the founder" as a
+# load-bearing part of the shape.
+#
+# FINDING: The starting definition (opening+closing only) was too eager.
+# Measured against the phase7 estate (twelve emails, six contacts, two
+# steps each): 2 of 6 contacts collided, but the copy was good - both
+# steps asked different questions. Requiring self_ref in both emails
+# catches the formula and passes all phase7 contacts. Zero false positives
+# on the estate, and the formula is still caught.
+
+_SENTENCE_SPLIT = _re.compile(r'(?<=[.!?])\s+')
+
+# Opening move: what the first sentence does.
+OPENING_DESCRIBE_THEM = "describe_them"
+OPENING_DESCRIBE_US = "describe_us"
+OPENING_QUESTION = "question"
+OPENING_OBSERVATION = "observation"
+
+# Closing move: what the last sentence does.
+CLOSING_QUESTION = "question"
+CLOSING_CALL = "call_proposal"
+CLOSING_OUT = "out"
+CLOSING_STATEMENT = "statement"
+
+# Patterns for the opening move. The first sentence is checked against
+# these in order; the first match wins.
+_OPENING_THEM_PATTERNS = _re.compile(
+    r"\b(?:your|you(?:'re| are))\b"
+    r"|(?:the\s+)?\b(?:team|company|agency|studio|firm)\b"
+    r"|\bat\s+[A-Z]\w+\b",
+    _re.I)
+
+_OPENING_US_PATTERNS = _re.compile(
+    r"\b(?:i\s+work|i\s+help|we\s+help|we\s+build|we\s+make|"
+    r"our\s+(?:platform|tool|product|team)|i\s+lead|i\s+run|"
+    r"i\s+am\s+(?:the|a)\s+(?:founder|ceo|cto))\b",
+    _re.I)
+
+# Patterns for the closing move. The last sentence is checked against
+# these in order; the first match wins.
+_CLOSING_QUESTION_RE = _re.compile(r'\?\s*$')
+_CLOSING_CALL_PATTERNS = _re.compile(
+    r"\b(?:call|meeting|chat|speaking|15\s*min|this\s+week|"
+    r"schedule|book\s+(?:a\s+)?(?:time|a\s+)?(?:call|slot))\b",
+    _re.I)
+_CLOSING_OUT_PATTERNS = _re.compile(
+    r"\b(?:no\s+worries|no\s+problem|if\s+not|easy\s+no|"
+    r"permission\s+to\s+stop|happy\s+to\s+(?:leave|stop)|"
+    r"not\s+the\s+right\s+time|if\s+this\s+isn|"
+    r"last\s+(?:note|email|message)|no\s+pitch)\b",
+    _re.I)
+
+
+def _sentences(text):
+    """Split text into sentences, stripping greeting prefixes.
+
+    A greeting ("Hi Sam,") is not a sentence for shape classification:
+    it is present in every message and says nothing about the shape.
+    """
+    text = str(text or "").strip()
+    # Strip the greeting: "Hi Name," or "Hello Name," at the start.
+    text = _re.sub(
+        r'^(?:hi|hello|hey|dear|good\s+(?:morning|afternoon))'
+        r'\s+[^,.!?\n]+[,]\s*',
+        '', text, count=1, flags=_re.I)
+    parts = _SENTENCE_SPLIT.split(text.strip())
+    return [s.strip() for s in parts if s.strip()]
+
+
+def _classify_opening(sentence):
+    """What the first sentence does: describe them, describe us, ask, observe."""
+    if not sentence:
+        return OPENING_OBSERVATION
+    if sentence.rstrip().endswith("?"):
+        return OPENING_QUESTION
+    if _OPENING_US_PATTERNS.search(sentence):
+        return OPENING_DESCRIBE_US
+    if _OPENING_THEM_PATTERNS.search(sentence):
+        return OPENING_DESCRIBE_THEM
+    return OPENING_OBSERVATION
+
+
+def _classify_closing(sentence):
+    """What the last sentence does: ask, propose a call, offer an out, state."""
+    if not sentence:
+        return CLOSING_STATEMENT
+    if _CLOSING_QUESTION_RE.search(sentence):
+        return CLOSING_QUESTION
+    if _CLOSING_OUT_PATTERNS.search(sentence):
+        return CLOSING_OUT
+    if _CLOSING_CALL_PATTERNS.search(sentence):
+        return CLOSING_CALL
+    return CLOSING_STATEMENT
+
+
+def structural_shape(text):
+    """The shape of a message: opening move, closing move, question count.
+
+    Returns a dict with:
+      opening     one of describe_them, describe_us, question, observation
+      closing     one of question, call_proposal, out, statement
+      questions   how many sentences end with ?
+      self_ref    whether a sentence introduces the sender by role
+
+    This is not a grammar parser. It classifies by heuristics that are
+    good enough to catch the formula the task describes: four emails
+    opening with [describe them] and closing with [statement/ask],
+    varying only their nouns.
+    """
+    sents = _sentences(text)
+    if not sents:
+        return {"opening": OPENING_OBSERVATION, "closing": CLOSING_STATEMENT,
+                "questions": 0, "self_ref": False}
+    opening = _classify_opening(sents[0])
+    closing = _classify_closing(sents[-1])
+    questions = sum(1 for s in sents if s.rstrip().endswith("?"))
+    self_ref = bool(_re.search(
+        r"\b(?:i\s+am\s+reaching\s+out|"
+        r"as\s+(?:the|a)\s+(?:founder|ceo|cto|coo)|"
+        r"i\s+am\s+(?:the|a)\s+(?:founder|ceo|cto|coo))\b",
+        text, _re.I))
+    return {"opening": opening, "closing": closing,
+            "questions": questions, "self_ref": self_ref}
+
+
+def structural_repetition(steps, ignore=()):
+    """Pairs of steps that share the same structural shape.
+
+    `steps` is a list of dicts, each with at least `key` and `text`.
+    Returns a list of (key_a, key_b, shape_detail) tuples.
+
+    Two rungs collide when their opening move AND closing move AND
+    self-reference pattern are all the same. The self-reference must
+    be present in BOTH emails for a collision, because the formula
+    TASK-047 describes includes "I am reaching out to you as the
+    founder" as a load-bearing part of the shape.
+
+    FINDING: The starting definition (opening+closing only) was too
+    eager. Measured against the phase7 estate (twelve emails, six
+    contacts, two steps each): 2 of 6 contacts collided, but the copy
+    was good - both steps asked different questions. Requiring self_ref
+    in both emails catches the formula (em1 and em2 both have "I am
+    reaching out to you as the founder") and passes all phase7 contacts
+    (none have self_ref). Zero false positives on the estate, and the
+    formula is still caught.
+    """
+    if not steps or len(steps) < 2:
+        return []
+    shapes = []
+    for s in steps:
+        shape = structural_shape(s.get("text", ""))
+        shapes.append((s.get("key", ""), shape))
+    collisions = []
+    for i, (key_a, shape_a) in enumerate(shapes):
+        for key_b, shape_b in shapes[i + 1:]:
+            # Both must have self_ref for a collision. The formula
+            # includes "I am reaching out to you as the founder"; an
+            # email without self_ref is not using the formula.
+            if not (shape_a["self_ref"] and shape_b["self_ref"]):
+                continue
+            if (shape_a["opening"] == shape_b["opening"]
+                    and shape_a["closing"] == shape_b["closing"]):
+                collisions.append((key_a, key_b, {
+                    "opening": shape_a["opening"],
+                    "closing": shape_a["closing"],
+                    "self_ref": True,
+                }))
+    return collisions
 
 
 # THIRD-PARTY CLAIM PATTERNS.
@@ -769,6 +952,7 @@ FAIL = "fail"
 # exactly one check, so a failure can be traced to its source.
 REASON_ANGLE_LEAKAGE = "angle_wording_leakage"
 REASON_REPETITION = "repetition_across_rungs"
+REASON_STRUCTURAL_REPETITION = "structural_repetition_across_rungs"
 REASON_UNSUPPORTED_CLAIM = "unsupported_third_party_claim"
 
 
@@ -828,6 +1012,17 @@ def gate(text, config, steps=None, channel="linkedin", ignore=()):
             detail["repetitions"] = [{"step_a": a, "step_b": b,
                                       "shared_words": n}
                                      for a, b, n in collisions]
+        # STRUCTURAL REPETITION: same opening+closing shape across rungs.
+        # Only on email, where the five-step ladder has distinct jobs per
+        # rung and reusing the same shape is the defect TASK-047 names.
+        # LinkedIn notes are too short for shape analysis to be meaningful.
+        if str(channel or "").lower() == "email":
+            shape_collisions = structural_repetition(steps, ignore=ignore)
+            if shape_collisions:
+                reasons.append(REASON_STRUCTURAL_REPETITION)
+                detail["structural_repetitions"] = [
+                    {"step_a": a, "step_b": b, "shape": s}
+                    for a, b, s in shape_collisions]
 
     return {"verdict": PASS if not reasons else FAIL,
             "reasons": reasons,

@@ -107,6 +107,10 @@ EXPLAIN = {
     "note_too_short": "the note is too short to say anything",
     "mentions_the_email": "you referred to the other channel. Each "
         "message stands alone",
+    "structural_repetition_across_rungs": "this email has the same "
+        "opening and closing shape as another step in the sequence. "
+        "Vary the nouns is not enough: open differently and close "
+        "differently from every other step",
 }
 
 
