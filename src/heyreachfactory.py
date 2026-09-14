@@ -372,6 +372,41 @@ def merge_sequence_copy(config):
     return block
 
 
+def unsupported_claims(rec, contact, fields):
+    """Every per-lead variable whose words assert something unsupported.
+
+    THE EMAIL HALF HAS THREE GATES AND THE LINKEDIN HALF HAD ONE. `generate`
+    runs lint, claims and quality when a draft is STORED, and
+    `executionguard` runs claims again at send time - but the send-time gate
+    guards a send, and putting a lead into a campaign is not a send, so
+    nothing stood between a stored LinkedIn note and a real person.
+
+    Measured 2026-09-14 across the Productive estate: 26 stored LinkedIn notes
+    assert something the record does not support - "'utilisation' is asserted
+    about them and nothing stored supports it" - and EIGHT of the fifteen
+    contacts this campaign would have pushed carried one. The checkpoint's
+    count of seventeen remaining unsupported drafts was email only; the 194
+    stored LinkedIn notes had never been audited.
+
+    Those notes predate the fix that put `claims.check` beside `lint.check` in
+    `generate.draft`, so the mechanism is right and the DATA is stale. That
+    distinction does not help the prospect, which is why this refuses on the
+    stored words rather than trusting when they were written.
+
+    Returns `(contact_key, variable, why)` tuples, the same reporting shape
+    `assemble_linkedin_copy` uses for missing copy.
+    """
+    from . import claims
+
+    key = (contact or {}).get("key")
+    found = []
+    for variable, text in sorted((fields or {}).items()):
+        for problem in claims.check(str(text or ""), rec, contact) or []:
+            found.append((key, variable, problem.get("why") or "unsupported"))
+            break
+    return found
+
+
 def custom_fields_for(source, contact_key, *, include_inmail=False):
     """One contact's approved words, keyed by the variable that carries them.
 
@@ -547,6 +582,7 @@ def _plan(campaign, recs, config, *, include_inmail=False,
     # Collect each contact's own words, which travel per lead.
     per_contact = []
     all_missing = []
+    all_unsupported = []
     for rec in recs:
         if rec.get("dropped") or rec.get("paused"):
             continue
@@ -566,21 +602,41 @@ def _plan(campaign, recs, config, *, include_inmail=False,
             fields, missing = custom_fields_for(rec, key)
             if missing:
                 all_missing.extend(missing)
+            unsupported = unsupported_claims(rec, contact, fields)
+            if unsupported:
+                all_unsupported.extend(unsupported)
             per_contact.append({
                 "record_id": rec.get("id"),
                 "contact_key": key,
                 "custom_fields": fields,
                 "missing": missing,
+                "unsupported": unsupported,
             })
 
     # A contact who cannot fill every variable is not pushable - HeyReach
     # would send that step's fallback instead of their words. The sequence is
     # unaffected, which is the difference this change makes: one incomplete
     # contact no longer decides what the whole campaign says.
-    complete = [c for c in per_contact if not c["missing"]]
+    complete = [c for c in per_contact
+                if not c["missing"] and not c["unsupported"]]
     if not complete:
-        if per_contact:
+        # THREE DIFFERENT REFUSALS, because they are three different problems
+        # and one message covering all of them sends a reader to the wrong
+        # place. "No approved copy" is a generation job, "asserts something
+        # unsupported" is a regeneration job on copy that already exists, and
+        # "nobody at all" is a cohort problem.
+        if all_missing:
             _refuse_missing(all_missing)
+        if all_unsupported:
+            parts = [f"contact {ck!r}, variable {var!r}: {why}"
+                     for ck, var, why in all_unsupported]
+            raise FactoryRefused(
+                f"every contact's LinkedIn copy asserts something the record "
+                f"does not support: {'; '.join(parts[:6])}"
+                f"{' ...' if len(parts) > 6 else ''}. These drafts predate the "
+                f"claims gate in `generate.draft`; regenerate them rather "
+                f"than editing them, and never widen the claim rules to let "
+                f"them through")
         raise FactoryRefused(
             "no contact on any record has approved LinkedIn copy for every "
             "role the graph requires")
@@ -590,6 +646,7 @@ def _plan(campaign, recs, config, *, include_inmail=False,
         "contacts": per_contact,
         "pushable": [c for c in complete],
         "missing": all_missing,
+        "unsupported": all_unsupported,
         "sequence": sequence,
         "touch_report": touch_report,
         "copy_mapping": COPY_MAPPING,

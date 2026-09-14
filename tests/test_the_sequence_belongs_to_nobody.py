@@ -202,6 +202,92 @@ class OnlyTheCampaignsOwnRecordsAreConsidered(unittest.TestCase):
         self.assertIn("names no records", str(caught.exception))
 
 
+class LinkedInCopyIsClaimCheckedBeforeItCanBePushed(unittest.TestCase):
+    """The email half had three gates at store time and the LinkedIn push had
+    none of them at push time.
+
+    `generate` runs lint, claims and quality when a draft is STORED, and
+    `executionguard` runs claims again before a SEND. Putting a lead into a
+    campaign is not a send, so nothing stood between a stored LinkedIn note
+    and a real person receiving it.
+
+    Measured 2026-09-14 across the Productive estate: 26 stored LinkedIn notes
+    assert something the record does not support, and eight of the fifteen
+    contacts this campaign would have pushed carried one. The checkpoint's
+    "17 unsupported drafts remain" was EMAIL ONLY - the 194 stored LinkedIn
+    notes had never been audited at all.
+    """
+
+    def test_a_contact_claiming_prior_contact_cannot_be_pushed(self):
+        """With one contact and that contact unsafe, the whole plan refuses -
+        there is nobody left to build a campaign for."""
+        rec = _full_record("brooke")
+        rec["cadence"]["brooke"]["li2"]["note"] = (
+            "Following up on our previous discussions about your delivery "
+            "pipeline.")
+        with self.assertRaises(heyreachfactory.FactoryRefused) as caught:
+            plan([rec])
+        self.assertIn("does not support", str(caught.exception))
+
+    def test_the_refusal_is_not_the_missing_copy_one(self):
+        """Three different problems, three different messages. "No approved
+        copy" is a generation job and "asserts something unsupported" is a
+        regeneration job on copy that already exists; one message covering
+        both sends a reader to the wrong place."""
+        rec = _full_record("brooke")
+        rec["cadence"]["brooke"]["li2"]["note"] = (
+            "Following up on our previous discussions.")
+        with self.assertRaises(heyreachfactory.FactoryRefused) as caught:
+            plan([rec])
+        message = str(caught.exception)
+        self.assertNotIn("approved LinkedIn copy is missing", message)
+        self.assertIn("regenerate", message)
+        # li2 fills both first-message roles, so the named variable is one of
+        # them rather than the cadence step key.
+        self.assertTrue("connected_1" in message or "message_2" in message)
+
+    def test_a_step_with_no_graph_role_cannot_block_a_push(self):
+        """`li6` has no position in the graph, so its words never reach
+        anybody and its claims cannot disqualify the contact.
+
+        This is the difference between auditing STORED copy and auditing copy
+        that will actually be SENT. Three contacts in the real cohort are
+        pushable precisely because their only bad step is li6.
+        """
+        rec = _full_record("brooke")
+        rec["cadence"]["brooke"]["li6"]["note"] = (
+            "As we discussed on our previous call about your margins.")
+        built = plan([rec])
+        self.assertEqual(built["unsupported"], [])
+        self.assertEqual([c["contact_key"] for c in built["pushable"]],
+                         ["brooke"])
+
+    def test_one_bad_contact_does_not_stop_a_clean_one(self):
+        good = _full_record("brooke")
+        bad = _full_record("carla")
+        bad["id"] = "beta"
+        bad["cadence"]["carla"]["li2"]["note"] = (
+            "Great speaking with you on our previous call.")
+        built = heyreachfactory._plan(
+            campaign_row(["acme", "beta"]), [good, bad],
+            config_with_fallbacks())
+        self.assertEqual([c["contact_key"] for c in built["pushable"]],
+                         ["brooke"])
+
+    def test_the_sequence_is_unaffected_by_an_unsupported_claim(self):
+        """The graph carries variables, so one contact's bad words cannot
+        change what the campaign says - only whether they are in it."""
+        good = _full_record("brooke")
+        bad = _full_record("carla")
+        bad["id"] = "beta"
+        bad["cadence"]["carla"]["li2"]["note"] = "As per our previous call."
+        alone = plan([good])["sequence"]
+        together = heyreachfactory._plan(
+            campaign_row(["acme", "beta"]), [good, bad],
+            config_with_fallbacks())["sequence"]
+        self.assertEqual(json.dumps(alone), json.dumps(together))
+
+
 class InMailIsRefusedRatherThanHalfWired(unittest.TestCase):
 
     def test_include_inmail_refuses_and_says_why(self):
