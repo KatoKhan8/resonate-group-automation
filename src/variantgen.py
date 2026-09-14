@@ -320,6 +320,16 @@ def variant_prompt(approach, step, purpose, context_block):
     lines.append("- Do not assert a prior conversation that did not happen.")
     lines.append("- Do not name a product that is not listed above.")
     lines.append("- Every claim must be traceable to the context above.")
+    # TASK-087: The approach controls the message structure. Without this
+    # rule, a rung purpose that mentions "ask a question" or "make a
+    # statement" can override the approach's structural instructions,
+    # causing all variants to collapse to the same form.
+    lines.append("- The Approach section above controls your message "
+                 "structure: how you open, how you close, and the overall "
+                 "shape. The step job above describes what CONTENT to "
+                 "cover, not how to structure the message. If the step job "
+                 "mentions a form (a question, a statement), the Approach "
+                 "overrides it.")
     return "\n".join(lines)
 
 
