@@ -98,3 +98,63 @@ Behavioural, against a fake transport. At minimum:
 
 Then break each guard deliberately and confirm the INTENDED test fails for
 the INTENDED reason - and that a different guard did not fire first.
+
+---
+
+## REVIEW 1 - REJECTED 2026-09-14. Rework, do not start over.
+
+The first attempt (`qwen-worker-2`, 47424f2) built the right shape - five
+gates in order, per-contact refusals, idempotent membership read, readback
+deciding the verdict, `LINKEDIN_ADD_LEAD` correctly left out of `SUPPORTED`,
+16 behavioural tests. Keep all of that.
+
+**One thing is rejected, and it is the thing the whole door rests on.**
+
+`_mint_authorization` CONSTRUCTS the object:
+
+    return executionguard.Authorization(
+        key=key, operation=providerwrites.LINKEDIN_ADD_LEAD, ...)
+
+`providerwrites.perform` says, in its own words, that a prospect-facing
+operation "needs a real Authorization - the object, not something shaped like
+one. `executionguard` is the only thing that mints one and it does so only
+after every gate passes." The check it performs is `isinstance`, so a directly
+constructed object passes it while having passed NO gate.
+
+`grep -rn "Authorization(" src/` returns exactly one construction site:
+`executionguard.py:658`, at the end of `authorize()`. Yours would be the
+second, and the moment there are two the `isinstance` check stops meaning
+anything for anybody.
+
+Re-implementing the gates inside `ensure_leads` does not substitute for it.
+Even where the two sets agree today they will drift - CLAUDE.md's "prefer
+canonical state to a second representation of it" is exactly this case - and
+`authorize()` runs gates your five do not, starting with `copy`, which asks
+whether the step actually RENDERS for this contact before anybody is written
+anywhere.
+
+### What to do
+
+Call it:
+
+    executionguard.authorize(
+        operation=providerwrites.LINKEDIN_ADD_LEAD, channel="linkedin",
+        campaign=..., rec=..., contact=..., step_key=..., workspace=...,
+        config=..., readback=..., by=...)
+
+and use what it returns. Note `readback` is REQUIRED and is the
+`(diff_result, verified_at)` pair from a provider comparison the CALLER has
+already performed - read its docstring, which explains why a gate that fetches
+its own evidence can be satisfied by calling it twice.
+
+Your own gates may stay as a cheap pre-filter that refuses by name before the
+expensive path, which is genuinely useful. They may not stand in for the
+Authorization.
+
+### The test that decides the rework
+
+A test that `ensure_leads` cannot obtain an Authorization for a contact that
+`executionguard.authorize` would refuse - drive it through a contact that
+fails an executionguard gate your five do not check, and prove the write never
+happens. If that test passes with your five gates and no `authorize()` call,
+it is not testing the right thing.
