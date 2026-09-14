@@ -362,6 +362,43 @@ def angle_labels(config):
             for key, value in labels.items() if str(value or "").strip()}
 
 
+PRODUCT_KEY = "product"
+
+
+def product(config):
+    """What the client sells: the name, the one-line answer, the capabilities.
+
+    `angles_for` says what a message ARGUES to one persona. This says what the
+    thing IS, and the two are not interchangeable: a prospect who has been
+    asked four questions about profitability still does not know what they
+    are being sold.
+
+    Returns `{}` for a client who has not stated it, and every caller treats
+    that as "say nothing about the product" rather than substituting a
+    default. A guessed product description is worse than none - it is the
+    invented pitch `context_for` already documents.
+
+    `capabilities` is a menu a message SELECTS from. Nothing here licenses a
+    claim about the prospect; it is a statement about our own software, which
+    is the one subject we may assert without evidence from their record.
+    """
+    block = (config or {}).get(PRODUCT_KEY)
+    if not isinstance(block, dict):
+        return {}
+    caps = block.get("capabilities")
+    out = {}
+    for key in ("name", "what_it_is"):
+        value = " ".join(str(block.get(key) or "").split())
+        if value:
+            out[key] = value
+    if isinstance(caps, dict):
+        chosen = {str(k).strip().lower(): " ".join(str(v).split())
+                  for k, v in caps.items() if str(v or "").strip()}
+        if chosen:
+            out["capabilities"] = chosen
+    return out
+
+
 def cap_for(config, persona, default=1):
     value = (personas(config).get(persona) or {}).get("cap_per_domain", default)
     return int(value) if value is not None else default

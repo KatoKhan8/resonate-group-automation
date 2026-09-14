@@ -61,17 +61,37 @@ CAP_MESSAGE = "linkedin.message"
 # ladder is looked up by name in LADDER_REGISTRY; `generate._resolve_ladder`
 # reads the `_ladder` attribute off the sequence tuple.
 #
-# THE FIVE-STEP LADDER IS UNCHANGED. It is the production ladder for
-# `productive_li_heavy_v1` and must not change: EmailBison campaign 481 is
-# staged with nine real leads carrying approved subject_5/body_5, and
+# RUNG 5 IS UNCHANGED, AND THAT IS THE PART OF THIS WARNING THAT BINDS. It is
+# the production ladder for `productive_li_heavy_v1`, EmailBison campaign 481
+# is staged with nine real leads carrying approved subject_5/body_5, and
 # changing rung 5 would silently rewrite the final email of a live sequence.
+#
+# RUNGS 1 AND 3 DID CHANGE, 2026-09-14, deliberately. Rung 3 had no way to do
+# its job: measured by rendering the real prompt, the word "Productive" did
+# not appear in it once, so "new value" could only be argued from
+# `angle_wording` and the model reached for the same phrase every rung. The
+# `product:` block in the client config is the missing input and these two
+# rungs are what consume it - rung 1 says who is writing, rung 3 says what
+# the thing is.
+#
+# CONSEQUENCE, STATED RATHER THAN DISCOVERED: 481's nine leads carry copy
+# generated against the OLD rungs 1 and 3. They are not rewritten by this
+# change - stored copy is stored - but regenerating them will now produce
+# materially different em1 and em3, and it must happen before 481 sends.
+# The campaign is paused and `EMAIL_ACTIVATE` is not in
+# `providerwrites.SUPPORTED`, so nothing can send in the meantime.
 EMAIL_FIVE_LADDER = (
-    "Relevance. Why you are writing to THIS person at THIS company, in their "
-    "own operational language. One question they can answer in a line.",
+    "Relevance, and who is writing. Why you are writing to THIS person at "
+    "THIS company, in their own operational language, and one clause saying "
+    "what the product is so the question that follows has a sender behind "
+    "it. One question they can answer in a line.",
     "A different angle from the first email. Not the same argument rephrased: "
     "a different part of how the business runs, and a different question.",
-    "New value. One concrete use case or consequence a team their size would "
-    "recognise, and what changes when it is visible rather than reconstructed.",
+    "SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Name it, say in one line "
+    "what it joins up - only the capabilities in `product.capabilities` that "
+    "fit this person's angle - and give one concrete consequence a team their "
+    "size would recognise: what changes when this is visible while the work "
+    "is running rather than reconstructed afterwards.",
     "A short bump that makes a DIFFERENT argument from every email before it. "
     "The shortest message in the sequence - and still a whole one: the "
     "forty-word floor applies here exactly as it does everywhere else. "
@@ -84,12 +104,17 @@ EMAIL_FIVE_LADDER = (
 # (12.23% reply rate at 8 steps, n=17,690). Rungs 1-4 match the five-step
 # ladder; rungs 5-7 are new; rung 8 is the breakup moved from rung 5.
 EMAIL_EIGHT_LADDER = (
-    "Relevance. Why you are writing to THIS person at THIS company, in their "
-    "own operational language. One question they can answer in a line.",
+    "Relevance, and who is writing. Why you are writing to THIS person at "
+    "THIS company, in their own operational language, and one clause saying "
+    "what the product is so the question that follows has a sender behind "
+    "it. One question they can answer in a line.",
     "A different angle from the first email. Not the same argument rephrased: "
     "a different part of how the business runs, and a different question.",
-    "New value. One concrete use case or consequence a team their size would "
-    "recognise, and what changes when it is visible rather than reconstructed.",
+    "SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Name it, say in one line "
+    "what it joins up - only the capabilities in `product.capabilities` that "
+    "fit this person's angle - and give one concrete consequence a team their "
+    "size would recognise: what changes when this is visible while the work "
+    "is running rather than reconstructed afterwards.",
     "A short bump that makes a DIFFERENT argument from every email before it. "
     "The shortest message in the sequence - and still a whole one: the "
     "forty-word floor applies here exactly as it does everywhere else. "
@@ -107,6 +132,17 @@ EMAIL_EIGHT_LADDER = (
     "beyond permission to stop.",
 )
 
+# Rung one is the CONNECTION REQUEST, which is a different object from a
+# message: it has no subject, it is read beside a profile photo, and asking a
+# question that needs thought in it is how it gets ignored. Rungs two onward
+# are messages to somebody who accepted.
+#
+# RUNG 4 CHANGED, 2026-09-14. It read "the use case" and could not be written
+# to: nothing in the prompt said what the product was, so the model answered
+# with an offer to explain - "i'd love to share how teams like yours have
+# improved their project visibility" - rather than an explanation. It is now
+# the rung that names the product, and it consumes the client config's
+# `product:` block.
 LINKEDIN_DEFAULT_LADDER = (
     "A connection request note. One line on why you are writing to them "
     "specifically, in the operational language of their angle. No ask beyond "
@@ -116,10 +152,12 @@ LINKEDIN_DEFAULT_LADDER = (
     "the connection note.",
     "A second, different operational angle. Name the consequence of not "
     "having it rather than the feature that provides it.",
-    "The use case. What a team their size actually changed, and what it was "
-    "costing them before. This is the rung where evidence belongs, if there "
-    "is any; if there is none, describe the pattern as ours rather than "
-    "theirs.",
+    "SAY WHAT THE PRODUCT IS. Name it, and say in one line what it joins up, "
+    "choosing only the capabilities in `product.capabilities` that fit this "
+    "person's angle. This is the rung the recipient learns what they are "
+    "being offered on, and it is a statement, not a question: by now they "
+    "have been asked two and told nothing. Evidence belongs here if there is "
+    "any; if there is none, describe the pattern as ours rather than theirs.",
     "A concise final follow-up. One line, one question, no new argument and "
     "no summary of the previous ones.",
     "Close the loop. An easy no, and leave it there.",

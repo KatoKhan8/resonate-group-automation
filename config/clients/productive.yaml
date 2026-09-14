@@ -248,6 +248,46 @@ angle_labels:
 # alternative is a sequence pasted into several modules.
 cadence: productive_li_heavy_v1
 
+# WHAT WE ARE SELLING. THE MODEL WAS NEVER TOLD.
+#
+# Measured 2026-09-14 by rendering the real `linkedin_note` prompt for
+# `ogpartner-dk`: the string "Productive" occurs ZERO times in it. So do
+# "time tracking", "budgeting", "resourcing" and "invoicing". The model was
+# asked to write four LinkedIn messages, one of whose jobs is to say what the
+# product does, on behalf of a product it had never been told about.
+#
+# What it had was `angle_wording` - two phrases for this persona - so every
+# rung reached for the same one. The generated sequence for Jacob Faertz asked
+# about profitability four times in four different ways, and the ladder took
+# the blame for it. The ladder is right; the input was missing.
+#
+# This is the same gap `generate.context_for` already closed one level down,
+# and the comment there says it in the same words: the model "was handed
+# `angle: "founder"` and no statement of what the client actually sells. It
+# filled the gap by inventing a pitch". It still was, one level up.
+#
+# `what_it_is` is the one-line answer to "what is this". `capabilities` is the
+# menu a rung SELECTS FROM, never a list to recite: the prompt rule is that a
+# message names the capabilities that fit this person's angle and stays silent
+# about the rest. A feature list pasted into a LinkedIn note is the failure
+# this block is most likely to cause, so it is named here as well as in the
+# prompt.
+#
+# These are Productive's own words, taken from the hand-written fallback copy
+# further down this file - "we built productive so budgets, time tracking and
+# resourcing talk to each other" - which is the copy that reads better than
+# anything the model produced. It is not a new claim about the product.
+product:
+  name: Productive
+  what_it_is: one place where an agency's budgets, time tracking, resourcing and invoicing talk to each other instead of living in separate tools
+  capabilities:
+    project_management: projects, tasks and delivery in one place
+    time_tracking: time booked against the project and the budget it belongs to
+    budgeting: what a project was quoted at and what it has burned so far
+    resource_planning: who is booked on what next week, and where the next hire goes
+    billing: invoices raised from the time and the budget rather than retyped
+    profitability: margin per project while it is running, not after it closes
+
 # THE LINKEDIN HALF OF THAT CADENCE DID NOT EXIST UNTIL THIS LINE.
 #
 # `productive_li_heavy_v1` is six LinkedIn activities and li2..li6 are all

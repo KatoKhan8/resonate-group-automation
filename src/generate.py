@@ -22,7 +22,7 @@ regenerated, never patched, and never widened away (CLAUDE.md).
 import argparse
 import os
 
-from . import claims, clients, events, lint, llm, research, store
+from . import cadencelibrary, claims, clients, events, lint, llm, research, store
 
 
 def cadence_note_words():
@@ -53,44 +53,26 @@ MAX_DRAFT_ATTEMPTS = 3
 # second email is the second email whatever it is called.
 #
 # These are jobs, not wording. Nothing here is a sentence a prospect ever
-# sees, and none of it licenses a claim: the evidence rung below says what
-# kind of thing to reach for, never that we have one.
-EMAIL_LADDER = (
-    "Relevance. Why you are writing to THIS person at THIS company, in their "
-    "own operational language. One question they can answer in a line.",
-    "A different angle from the first email. Not the same argument rephrased: "
-    "a different part of how the business runs, and a different question.",
-    "New value. One concrete use case or consequence a team their size would "
-    "recognise, and what changes when it is visible rather than reconstructed.",
-    "A short bump that makes a DIFFERENT argument from every email before it. "
-    "The shortest message in the sequence - and still a whole one: the "
-    "forty-word floor applies here exactly as it does everywhere else. "
-    "One idea, one question, no recap.",
-    "Close the loop. Give them an easy no, make no new pitch, ask for nothing "
-    "beyond permission to stop.",
-)
-
-# Rung one is the CONNECTION REQUEST, which is a different object from a
-# message: it has no subject, it is read beside a profile photo, and asking a
-# question that needs thought in it is how it gets ignored. Rungs two onward
-# are messages to somebody who accepted.
-LINKEDIN_LADDER = (
-    "A connection request note. One line on why you are writing to them "
-    "specifically, in the operational language of their angle. No ask beyond "
-    "connecting, and no question that needs a considered answer.",
-    "A short first message. One operational angle, put as a question about "
-    "how they handle it today. Different words and a different angle from the "
-    "connection note.",
-    "A second, different operational angle. Name the consequence of not "
-    "having it rather than the feature that provides it.",
-    "The use case. What a team their size actually changed, and what it was "
-    "costing them before. This is the rung where evidence belongs, if there "
-    "is any; if there is none, describe the pattern as ours rather than "
-    "theirs.",
-    "A concise final follow-up. One line, one question, no new argument and "
-    "no summary of the previous ones.",
-    "Close the loop. An easy no, and leave it there.",
-)
+# sees, and none of it licenses a claim: the evidence rung says what kind of
+# thing to reach for, never that we have one.
+#
+# ONE REPRESENTATION, AND IT LIVES IN `cadencelibrary`.
+#
+# These texts existed TWICE - here and in `cadencelibrary.LADDER_REGISTRY` -
+# and production resolves through the registry, because a sequence names its
+# ladder. So the copies here were the fallback for a sequence that names none,
+# and `test_five_step_purposes_unchanged` existed to assert the two agreed.
+#
+# They drifted the moment anybody edited one. Measured 2026-09-14: rung 3 of
+# the email ladder was rewritten here to give the product rung its job, the
+# rendered `em3` prompt still carried the old wording, and the LinkedIn edit
+# beside it DID take effect - because `productive_li_heavy_v1` names an email
+# ladder and no LinkedIn one. Same edit, two outcomes, no error.
+#
+# A test asserting two representations agree is a smoke alarm, not a fix. The
+# names below are the defaults for a channel; the texts have one home.
+EMAIL_LADDER = cadencelibrary.EMAIL_FIVE_LADDER
+LINKEDIN_LADDER = cadencelibrary.LINKEDIN_DEFAULT_LADDER
 
 LADDERS = {"email": EMAIL_LADDER, "linkedin": LINKEDIN_LADDER}
 
@@ -214,11 +196,13 @@ def _resolve_ladder(channel, sequence=None):
     channel is returned - which is the five-step email ladder that has
     been production since the beginning.
 
-    Late-imports `cadencelibrary` to avoid a circular import at module
-    load time.
+    `cadencelibrary` is imported at module level rather than here. It was a
+    late import against a circular one, and `cadencelibrary` imports nothing
+    at all - it is a data module. The module-level import is what lets the
+    channel defaults below BE the registry's entries instead of a second copy
+    of them.
     """
     if sequence is not None:
-        from . import cadencelibrary
         ladder_name = cadencelibrary.ladder_name_for(sequence, channel)
         if ladder_name:
             found = cadencelibrary.LADDER_REGISTRY.get(ladder_name)
@@ -453,6 +437,19 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
         block["angle"] = (contact or {}).get("angle")
         block["angle_wording"] = ((client or {}).get("personas") or {}).get(
             (contact or {}).get("persona") or "", {}).get("angles")
+        # WHAT WE SELL, NOT ONLY WHAT WE ARGUE. See the note beside the same
+        # line under `draft` below, and the `product:` block in
+        # `config/clients/productive.yaml` for the measurement: rendering this
+        # very prompt, the word "Productive" occurred zero times in it. A
+        # rung whose job is to say what the product does cannot do that job
+        # from `angle_wording`, and what the model produced instead was an
+        # offer to explain - "i'd love to share how teams like yours have
+        # improved their project visibility" - four times over.
+        #
+        # `clients.product` answers `{}` for a client who has not stated one,
+        # and the prompt's rule for an absent block is to say nothing about
+        # the product rather than invent one.
+        block["product"] = clients.product(client or {})
         block["tone"] = ((client or {}).get("tone") or {}).get("linkedin")
         block["prior_contact"] = bool(claims.prior_contact(rec, contact))
         if step_key:
@@ -486,6 +483,14 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
         # `founder: profitability visible on Monday not two weeks late`.
         block["angle_wording"] = ((client or {}).get("personas") or {}).get(
             (contact or {}).get("persona") or "", {}).get("angles")
+        # AND WHAT THE THING IS. `angle_wording` closed half this gap: the
+        # model stopped inventing a pitch and started arguing the client's
+        # own phrase. It still could not answer "what is this", because
+        # nothing told it. Four of five staged Productive emails opened
+        # [company self-description] -> [why I am writing] -> [ask] and never
+        # named the product, which is the email half of the same defect the
+        # LinkedIn ladder shows more plainly.
+        block["product"] = clients.product(client or {})
         block["evidence"] = (rec.get("evidence") or {}).get(
             lint.contact_key(contact or {}), [])
         block["tone"] = (client or {}).get("tone")

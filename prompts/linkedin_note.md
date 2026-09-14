@@ -26,6 +26,32 @@ If `step.purpose` is null, the sequence is longer than the jobs anybody has
 assigned. Write the shortest honest message that adds one thing no entry in
 `already_sent` has said, and ask nothing more than one plain question.
 
+## `product` is what we sell, and it is the one thing we may assert
+
+`product.name` is what it is called, `product.what_it_is` answers "what is
+this" in one line, and `product.capabilities` is a MENU, not a list to
+recite.
+
+Everything else in this context is a claim about THEIR business and needs
+evidence. This block is a claim about OUR software, so it needs none - it is
+the only subject here you may state plainly.
+
+Pick the one or two capabilities that fit this person's angle and say nothing
+about the rest. Naming six capabilities in a LinkedIn message is a brochure,
+and a brochure is the failure this block is most likely to cause. A founder
+whose angle is profitability does not need to hear about invoicing.
+
+Use the client's own words. Do not translate `what_it_is` into marketing
+language, and do not promise to explain it later: "i'd love to share how
+teams like yours have improved their visibility" is an offer to say
+something, not the thing. Say the thing.
+
+If `product` is absent or empty, say nothing about any product. Do not infer
+one from the angle. An invented product description is the worst sentence
+this prompt can produce, because nothing downstream can catch it: `lint` and
+`claims` check assertions about the RECORD, and a false statement about our
+own software is grounded in nothing they read.
+
 ## `already_sent` is what this person has actually received
 
 Every entry was confirmed sent: its channel, its day, the job that step had,

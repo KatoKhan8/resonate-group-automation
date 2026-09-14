@@ -121,6 +121,27 @@ Where `angle_wording` lists several phrases, a later step may take a different
 phrase from the same list. That is how a second angle stays true instead of
 becoming a new product.
 
+`product` is the product itself, and it is what the sentence above means by
+"a product you have not been told about" - now you have been. `product.name`
+is what it is called, `product.what_it_is` answers "what is this" in one
+line, and `product.capabilities` is a MENU to select from, never a list to
+recite. Pick the one or two that fit this recipient's angle and stay silent
+about the rest: a finance lead does not need to hear about resource planning.
+
+This block and `angle_wording` are the only claims here that need no evidence,
+because they are about our own software rather than about their business. Say
+them plainly, in the client's own words, and do not translate them into
+marketing language.
+
+Do not promise to explain later. "I would love to share how teams like yours
+have improved their visibility" is an offer to say something rather than the
+thing itself.
+
+If `product` is absent or empty, describe no product at all. Do not infer one
+from the angle. Nothing downstream can catch an invented product description:
+lint and claims check what is asserted about the RECORD, and a false sentence
+about our own software is grounded in nothing either of them reads.
+
 ## Never, in any case
 
 Do not describe our own records, evidence, pipeline or research. The recipient
