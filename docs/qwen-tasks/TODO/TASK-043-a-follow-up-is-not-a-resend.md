@@ -68,3 +68,36 @@ deleting the CALL to your new code makes a test fail.
 A sequence whose steps rephrase one another cannot be written, and a
 legitimately progressive one is unaffected - shown on real stored copy, not
 only on fixtures.
+
+---
+
+## ADDED 2026-09-14: STRUCTURAL repetition, with evidence
+
+Read `docs/CAMPAIGN-ACCEPTANCE-2026-09-14.md` first. The five emails staged on
+a real lead share one formula:
+
+    [the company's own self-description]
+    -> [why I am writing to you, by role]
+    -> [question or pitch]
+
+Four of the five open by naming the company and describing it - "describes
+itself as", "offers a wide range of", "partners closely with", "focuses on
+delivering". Four different sets of words, one shape. And "I am reaching out
+to you as COO and Co-Founder" appears in two of them.
+
+**`quality.repetition_across_rungs` passed all of it**, because it counts
+shared distinctive WORDS and the formula uses different words every time.
+
+So this task must catch SHAPE as well as CONTENT:
+
+- do consecutive messages open with the same MOVE - naming the company,
+  describing it, restating the role?
+- does the same framing sentence recur with different nouns?
+- is the sequence of moves identical across steps?
+
+A sequence where every message is [context][why you][question] is a sequence
+of one message told four ways, and it is what the operator means by "five
+versions of the same message".
+
+Report the measurement on the real stored copy. If your comparator flags the
+five emails above, it works; if it passes them as it stands, it does not.
