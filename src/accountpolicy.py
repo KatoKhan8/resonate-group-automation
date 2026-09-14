@@ -113,21 +113,21 @@ POLICIES = (
      "Somebody asked us to stop contacting the company",
      "A company-wide request must reach every contact there, not only the "
      "person who sent it."),
-    ("reply.on_referral", HOLD, CONTACT,
+    ("reply.on_referral", STOP, CONTACT,
      "A contact pointed us at somebody else",
-     "The referrer usually stops and the referred contact is activated - but "
-     "which of those happens is a campaign decision."),
+     "The referrer said 'not me' so their sequence stops; the referred "
+     "contact is the escalation target."),
     ("reply.on_wrong_person", CONTINUE, CONTACT,
      "We wrote to the wrong person",
      "Their colleagues may still be right. Only this sequence stops."),
     ("reply.on_left_company", STOP, CONTACT,
      "The contact has left",
      "Nothing more can usefully be sent to that address."),
-    ("reply.activate_referred_contact", HOLD, CONTACT,
+    ("reply.activate_referred_contact", CONTINUE, CONTACT,
      "A referral names somebody we are not yet working",
-     "Activating the referred contact automatically is usually right and is "
-     "still a decision about who gets contacted, so it is off until somebody "
-     "turns it on."),
+     "A referral is an explicit escalation: the referrer said 'talk to B', "
+     "so B is activated. Only that one person, and only because the "
+     "referrer named them."),
     ("reply.on_existing_client", REVIEW, ACCOUNT,
      "They are already a client",
      "Somebody needs to know before anything else goes out."),

@@ -80,7 +80,7 @@ class EveryOutcomeHasAStatedEffect(TransitionTest):
         ap.NOT_ICP: (ap.STOP, ap.CONTINUE, False),
         ap.WRONG_PERSON: (ap.STOP, ap.CONTINUE, False),
         ap.LEFT_COMPANY: (ap.STOP, ap.CONTINUE, False),
-        ap.REFERRAL: (ap.HOLD, ap.CONTINUE, False),
+        ap.REFERRAL: (ap.STOP, ap.CONTINUE, False),
         ap.EXISTING_CLIENT: (ap.HOLD, ap.HOLD, True),
         ap.UNSUBSCRIBE: (ap.SUPPRESS, ap.CONTINUE, False),
         ap.ACCOUNT_DNC: (ap.SUPPRESS, ap.SUPPRESS, False),
@@ -232,18 +232,19 @@ class AReferralKeepsTheRelationshipAndAsksAboutTheTarget(TransitionTest):
         self.assertEqual(edge["from_contact"], JOHN)
         self.assertEqual(edge["to_contact"], MIKE)
 
-    def test_the_referrer_holds_and_the_account_carries_on(self):
+    def test_the_referrer_is_stopped_and_the_account_carries_on(self):
+        """A referral says 'not me, talk to B'. The referrer is stopped."""
         rec = self.refer(self.record())
         self.reply(rec, JOHN, ap.REFERRAL)
-        self.assertEqual(self.state_of(rec, JOHN), ap.HOLD)
+        self.assertEqual(self.state_of(rec, JOHN), ap.STOP)
         self.assertEqual(self.account_of(rec), ap.CONTINUE)
 
-    def test_the_target_is_not_activated_by_default(self):
-        """Turning somebody on for outreach is a campaign decision."""
+    def test_the_target_is_activated_by_default(self):
+        """A referral is an explicit escalation: the referrer named them."""
         rec = self.refer(self.record())
         moved = self.reply(rec, JOHN, ap.REFERRAL)
-        self.assertIsNone(moved["activated"])
-        self.assertFalse(self.contact(rec, MIKE)["selected"])
+        self.assertEqual(moved["activated"], MIKE)
+        self.assertTrue(self.contact(rec, MIKE)["selected"])
 
     def test_the_configured_flow_activates_them(self):
         rec = self.refer(self.record())

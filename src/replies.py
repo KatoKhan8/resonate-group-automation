@@ -110,7 +110,28 @@ UNSUBSCRIBE_PATTERNS = (
     # the bare word was not caught. Gated on NOT being followed by words
     # that change the meaning: "stop by" is a visit, "stop the" is about
     # an object.
-    r"\bstop\b(?! (?:by|the|it|this|that|your?|my|our|a |an ))",
+    # A BARE "stop" IS NOT AN UNSUBSCRIBE, and this used to be one - with a
+    # small lookahead that excluded "stop by/the/it" and nothing else. It
+    # matched "please stop asking", which `NEGATIVE_PATTERNS` names
+    # explicitly, and unsubscribe outranks negative in `RULES` - so a negative
+    # reply was escalated into a removal request.
+    #
+    # That is over-suppression, which is the safe direction and still wrong:
+    # an unsubscribe suppresses globally and for good, a negative stops an
+    # account. Recording somebody as having asked for removal when they asked
+    # a question sharply is asserting more than we know, and this system's
+    # whole discipline is not doing that.
+    #
+    # The specific forms - stop emailing, stop contacting, stop messaging,
+    # stop sending, stop writing - are already patterns above and catch the
+    # real cases.
+    #
+    # EXCEPT ONE, WHICH IS REAL: a reply whose ENTIRE content is "stop".
+    # Somebody answering a sequence with the single word is asking to be
+    # removed and nothing else, and the estate contains them. Anchored to the
+    # whole message so it cannot fire inside a sentence - which is exactly
+    # what the bare pattern got wrong.
+    r"^stop[\s.!]*$",
 )
 OUT_OF_OFFICE_PATTERNS = (
     r"\bout of (?:the )?office\b", r"\bautomatic reply\b", r"\bauto[- ]?reply\b",
