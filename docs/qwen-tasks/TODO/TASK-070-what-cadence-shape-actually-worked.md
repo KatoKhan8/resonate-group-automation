@@ -133,3 +133,74 @@ every number can be re-derived rather than trusted. No prospect PII.
 
 STATUS, COMMIT SHA, TESTS, FILES CHANGED, FINDINGS, RISKS, RECOMMENDED
 CLAUDE ACTION. Every quoted number carries its n.
+
+---
+
+## LICENCE FROM TASK-069, 2026-09-14 - READ THIS FIRST
+
+TASK-069 is integrated and its verdicts were re-probed by Claude. This
+section says what you may claim. It outranks anything above it that
+assumes less.
+
+    A  historical per-lead/per-step SENDS with timestamps   DIRECTLY SUPPORTED
+    B  a reply carries scheduled_email_id -> step           DIRECTLY SUPPORTED
+    D  a variant is a sequence step with its own id         DIRECTLY SUPPORTED
+
+**So you MAY do step-level and variant-level analysis.** That is a bigger
+licence than this task was written under. Use it.
+
+### The three traps, each already measured
+
+1. **Count sent rows, never `meta.total`.** Campaign 274 has 30,411
+   scheduled rows and ZERO of its first 15 are sent. `meta.total` counts
+   scheduled emails, sent and unsent alike. Every number you report is a
+   count of rows WHERE `sent_at` IS PRESENT, and you report that count
+   beside it.
+
+2. **The reply feed is 270,047 rows, not 750.** An earlier read stopped at
+   750 and mistook its own paginator for the provider's depth. Read
+   `meta.total`. And 270,047 is the whole inbound feed - it carries
+   `automated_reply` and `type`, so classify before you count. A count of
+   feed rows is not a count of human replies.
+
+3. **No open-rate claim of any kind.** `open_tracking` is False on every
+   campaign in the estate. Zero opens is an ABSENT MEASUREMENT. A number
+   derived from it is fiction, and reporting one fails this task.
+
+### Re-derive the 8.49% rather than trusting it
+
+An earlier session recorded "8-step email sequences reply at 8.49%
+(n=17,690)". It is a claim, not a finding. Re-derive it from sent rows and
+classified replies, or report that you could not and why.
+
+### Label every statement
+
+    PROVIDER FACT            the API returned this field with this value
+    RESONATE RECONSTRUCTION  we derived it, and here is the derivation
+    ATTRIBUTION HYPOTHESIS   we believe this reply relates to that touch
+
+"The last email before the reply caused it" is an ATTRIBUTION HYPOTHESIS
+every single time, even though B gives you a provider-supplied join.
+`scheduled_email_id` is the provider's ASSOCIATION, not its causal claim.
+Where you use it, say so in the same sentence as the number.
+
+### The questions worth answering, in priority order
+
+    1  Which sequence LENGTHS correlate with replies? Sent rows per step
+       position, replies per step position, per campaign.
+    2  Do later steps reach people earlier steps did not, or are they
+       collecting replies that earlier touches earned? Step position at
+       reply time vs step position at send time.
+    3  Which DELAYS (wait_in_days) correlate with replies?
+    4  VARIANT performance, now that D is verdict 1. Campaign 352 has 39
+       variant steps and is the estate's largest. Do variants differ?
+    5  Where does performance decay with sequence position?
+
+If the data cannot answer one, say so plainly and say what would be needed.
+A clean NOT MEASURABLE is worth more than a number with a hole in it.
+
+## OUTPUT
+
+`docs/BISON-CADENCE-FINDINGS-2026-09-14.md`. Every number carries its row
+count and its statement kind. READS ONLY - you hold real keys and this task
+creates nothing, pauses nothing and sends nothing.
