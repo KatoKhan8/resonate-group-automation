@@ -519,12 +519,46 @@ def _plan(campaign, recs, config, *, include_inmail=False,
         merge_sequence_copy(config), include_inmail=False,
         withdraw_after_days=withdraw_after_days)
 
+    # THE CAMPAIGN'S OWN RECORDS, AND ONLY THOSE. This walked the WHOLE
+    # estate: measured against `productive-linkedin-production-v1`, whose row
+    # names fourteen records, it considered 92 contacts and produced 598
+    # missing-copy entries for records that are not in this campaign at all.
+    #
+    # It read as harmless while the graph came from one contact, because the
+    # extra contacts only padded a report. It is not harmless now: `pushable`
+    # is the set a lead write reads, so an unscoped walk is how a record
+    # nobody added to this campaign ends up in it - and how a contact
+    # belonging to ANOTHER CLIENT would, since nothing here compared tenants
+    # either. Today every LinkedIn contact in the estate happens to be
+    # Productive's, which is luck rather than a boundary.
+    #
+    # Empty `record_ids` REFUSES rather than meaning "everybody". A campaign
+    # that names nobody should push nobody, and the permissive reading of an
+    # empty set is the one that reaches people by accident.
+    client_of = campaign.get("client")
+    wanted_ids = [str(i) for i in (campaign.get("record_ids") or [])]
+    if not wanted_ids:
+        raise FactoryRefused(
+            f"campaign {campaign.get('campaign_id')!r} names no records, so "
+            f"there is nobody to push. An empty record set is not a licence "
+            f"to walk the estate")
+    wanted = set(wanted_ids)
+
     # Collect each contact's own words, which travel per lead.
     per_contact = []
     all_missing = []
     for rec in recs:
         if rec.get("dropped") or rec.get("paused"):
             continue
+        if str(rec.get("id")) not in wanted:
+            continue
+        if client_of and rec.get("client") != client_of:
+            raise FactoryRefused(
+                f"record {rec.get('id')!r} belongs to client "
+                f"{rec.get('client')!r} and campaign "
+                f"{campaign.get('campaign_id')!r} belongs to {client_of!r}. "
+                f"A record named by another client's campaign is a tenancy "
+                f"error, not a record to skip quietly")
         for contact in rec.get("contacts") or []:
             if not contact.get("linkedin"):
                 continue

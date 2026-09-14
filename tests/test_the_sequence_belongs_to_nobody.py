@@ -160,6 +160,48 @@ class TheFallbackIsTheClientsAndNotThisModules(unittest.TestCase):
                 self.assertIn(f"fallback for {role}", blob)
 
 
+class OnlyTheCampaignsOwnRecordsAreConsidered(unittest.TestCase):
+    """`_plan` walked the whole estate, and `pushable` is what a lead write
+    reads.
+
+    Measured against `productive-linkedin-production-v1`, whose row names
+    fourteen records: 92 contacts considered and 598 missing-copy entries for
+    records not in the campaign. Harmless while the graph came from one
+    contact and the extra names only padded a report; not harmless once a set
+    of pushable contacts is the input to a write.
+    """
+
+    def test_a_record_the_campaign_does_not_name_is_not_considered(self):
+        inside = _full_record("brooke")
+        outside = _full_record("carla")
+        outside["id"] = "not-in-this-campaign"
+        built = heyreachfactory._plan(
+            campaign_row(["acme"]), [inside, outside], config_with_fallbacks())
+        self.assertEqual([c["contact_key"] for c in built["contacts"]],
+                         ["brooke"])
+        self.assertEqual(built["missing"], [])
+
+    def test_a_record_belonging_to_another_client_refuses(self):
+        """Not skipped quietly. A campaign naming another client's record is a
+        tenancy error, and the permissive reading is how one client's prospect
+        enters another client's campaign."""
+        other = _full_record("carla")
+        other["id"] = "beta"
+        other["client"] = "contactout"
+        with self.assertRaises(heyreachfactory.FactoryRefused) as caught:
+            heyreachfactory._plan(campaign_row(["acme", "beta"]),
+                                  [_full_record("brooke"), other],
+                                  config_with_fallbacks())
+        self.assertIn("tenancy", str(caught.exception))
+
+    def test_a_campaign_naming_no_records_refuses(self):
+        """An empty set is not a licence to walk the estate."""
+        with self.assertRaises(heyreachfactory.FactoryRefused) as caught:
+            heyreachfactory._plan(campaign_row([]), [_full_record()],
+                                  config_with_fallbacks())
+        self.assertIn("names no records", str(caught.exception))
+
+
 class InMailIsRefusedRatherThanHalfWired(unittest.TestCase):
 
     def test_include_inmail_refuses_and_says_why(self):
