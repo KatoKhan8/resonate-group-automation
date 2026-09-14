@@ -770,6 +770,12 @@ def _quality_of(rec, contact, stored, step_key, config):
     made relevance look like duplication - `acqcom-com` went from two
     colliding pairs to zero with "acqcom", "digital" and "marketing"
     excluded, on copy that was fine.
+
+    A SIBLING THAT FAILS LINT IS NOT A SIBLING. A stored step that does not
+    pass the gates cannot ship - `cadence.status_for` holds it, `eligibility`
+    refuses the payload - so it is a draft that did not make it, not valid
+    copy. Including it in comparisons inflates repetition counts and can
+    block a good new note by colliding with copy that will never be sent.
     """
     import re as _re
 
@@ -778,9 +784,11 @@ def _quality_of(rec, contact, stored, step_key, config):
     step = (stored or {}).get(step_key) or {}
     if not step.get("body"):
         return []
+    contact_key = lint.contact_key(contact)
     siblings = [{"key": k, "text": f"{s.get('subject') or ''} {s.get('body') or ''}"}
                 for k, s in sorted((stored or {}).items())
-                if s.get("channel") == "email" and s.get("body")]
+                if s.get("channel") == "email" and s.get("body")
+                and not lint.classify(lint.check_step(rec, contact_key, s)) == "failed"]
     name = (rec.get("company_facts") or {}).get("name") or rec.get("company") or ""
     ignore = {w for w in _re.findall(r"[a-z]+", str(name).lower()) if len(w) > 2}
     found = quality.gate(f"{step.get('subject') or ''} {step.get('body') or ''}",
@@ -803,6 +811,10 @@ def _note_quality(rec, contact, stored, step_key, config):
     The company's own name is discounted here too. Every message in a
     sequence to one company names that company, and counting those tokens as
     shared content makes relevance look like duplication.
+
+    A SIBLING THAT FAILS LINT IS NOT A SIBLING. See `_quality_of` for the
+    full reasoning. A stored LinkedIn note that fails lint cannot ship, so
+    it is not valid copy and must not participate in repetition comparisons.
     """
     import re as _re
 
@@ -812,9 +824,11 @@ def _note_quality(rec, contact, stored, step_key, config):
     note = (step.get("note") or "").strip()
     if not note:
         return []
+    contact_key = lint.contact_key(contact)
     siblings = [{"key": k, "text": s.get("note") or ""}
                 for k, s in sorted((stored or {}).items())
-                if s.get("channel") == "linkedin" and (s.get("note") or "").strip()]
+                if s.get("channel") == "linkedin" and (s.get("note") or "").strip()
+                and not lint.classify(lint.check_step(rec, contact_key, s)) == "failed"]
     name = (rec.get("company_facts") or {}).get("name") or rec.get("company") or ""
     ignore = {w for w in _re.findall(r"[a-z]+", str(name).lower()) if len(w) > 2}
     found = quality.gate(note, config, steps=siblings, channel="linkedin",
