@@ -74,36 +74,49 @@ def _fake_llm_ask(responses=None):
 
 
 def _five_distinct_variants():
-    """Five variants that ARE materially different."""
+    """Five variants that ARE materially different in structure.
+
+    Structural diversity:
+      v1: statement / question   (21 words)
+      v2: question  / statement  (32 words)
+      v3: statement / question   (7 words - very short, ratio 0.33 vs v1)
+      v4: question  / statement  (10 words - short, ratio 0.50 vs v2)
+      v5: statement / statement  (28 words)
+    No pair shares both (opening, CTA) at similar length.
+    """
     return [
         variants.variant("em1_concise_direct", "short_direct",
                          subject="quick question",
-                         body="Hi Anna, do you track utilisation at Acme?\n"
+                         body="Acme spends Monday mornings rebuilding "
+                              "utilisation reports by hand. Productive "
+                              "shows it in one view.\n"
                               "Worth a look?"),
         variants.variant("em1_conversational", "casual",
                          subject="hey Anna",
-                         body="hey, been looking at how agencies handle "
-                              "resource planning - curious how Acme does it?\n"
-                              "would love to hear your take"),
+                         body="How does Acme handle resource planning "
+                              "across the delivery team right now?\n"
+                              "We have been working with similar-sized "
+                              "agencies and the Monday rebuild problem "
+                              "comes up every single time. Might be "
+                              "worth a conversation."),
         variants.variant("em1_problem_led", "problem_led",
-                         subject="the Monday morning problem",
-                         body="Most agency founders I speak to spend Monday "
-                              "rebuilding last week's utilisation by hand.\n"
-                              "Is that Acme too, or have you solved it?"),
+                         subject="the Monday problem",
+                         body="Spreadsheets break on Monday.\n"
+                              "Sound familiar?"),
         variants.variant("em1_observation_led", "consultative",
                          subject="saw Acme is hiring",
-                         body="Noticed Acme is growing the delivery team.\n"
-                              "That usually means resource visibility matters "
-                              "more, not less.\n"
-                              "Worth a conversation?"),
+                         body="Growing the team?\n"
+                              "We help agencies like Acme keep "
+                              "visibility as they scale."),
         variants.variant("em1_value_led", "professional",
                          subject="what Productive joins up for Acme",
                          body="Productive connects time tracking, project "
-                              "visibility and profitability in one view.\n"
-                              "For a 25-person agency, that means Monday "
-                              "reporting takes minutes, not hours.\n"
-                              "Happy to show you how it works - "
-                              "book a 15-minute demo here."),
+                              "visibility and profitability in one view. "
+                              "For a 25-person agency, Monday reporting "
+                              "drops from hours to minutes and the team "
+                              "stops rebuilding what the spreadsheet "
+                              "already knew.\n"
+                              "Here is how it works."),
     ]
 
 
@@ -447,6 +460,154 @@ class WiringIsConsumed(unittest.TestCase):
                 style = variantgen.style_for(node_type, approach)
                 self.assertIn(style, variants.STYLES_FOR[node_type],
                               f"{node_type}/{approach} -> {style}")
+
+
+class JSONContractInPrompt(unittest.TestCase):
+    """The variant prompt carries the JSON contract from the template."""
+
+    def test_email_variant_prompt_contains_json_instruction(self):
+        prompt = variantgen.variant_prompt(
+            "concise_direct", "draft", "Ask about utilisation",
+            {"company": "Acme"})
+        self.assertIn("Return JSON only", prompt)
+
+    def test_email_variant_prompt_contains_subject_body_schema(self):
+        prompt = variantgen.variant_prompt(
+            "concise_direct", "draft", "Ask about utilisation",
+            {"company": "Acme"})
+        self.assertIn("subject", prompt)
+        self.assertIn("body", prompt)
+
+    def test_linkedin_variant_prompt_contains_note_schema(self):
+        prompt = variantgen.variant_prompt(
+            "concise_direct", "linkedin_note", "Open a conversation",
+            {"company": "Acme"})
+        self.assertIn("Return JSON only", prompt)
+        self.assertIn("note", prompt)
+
+    def test_variant_prompt_reuses_template_not_inline_copy(self):
+        """The prompt starts with the same template render_prompt uses."""
+        from src.generate import prompt_text
+        for step in ("draft", "linkedin_note"):
+            prompt = variantgen.variant_prompt(
+                "concise_direct", step, "purpose", {"company": "Acme"})
+            template = prompt_text(step)
+            self.assertTrue(
+                prompt.startswith(template),
+                f"variant_prompt for {step} does not start with the template")
+
+    def test_variant_prompt_includes_approach_after_template(self):
+        prompt = variantgen.variant_prompt(
+            "problem_led", "draft", "purpose", {"company": "Acme"})
+        self.assertIn("## Approach: Problem-led", prompt)
+
+
+class StructuralClonesCollide(unittest.TestCase):
+    """Two structurally identical variants COLLIDE even with low word overlap."""
+
+    def test_same_opening_same_cta_collides_despite_different_words(self):
+        """Both open with a question, both close with a question.
+        Different vocabulary, same structure, similar length = collision."""
+        entries = [
+            variants.variant("v1", "short_direct",
+                             subject="utilization",
+                             body="Do you track utilisation at Acme?\n"
+                                  "Worth a quick look?"),
+            variants.variant("v2", "casual",
+                             subject="resource planning",
+                             body="Has the team considered resourcing "
+                                  "for delivery?\n"
+                                  "Worth a deeper look?"),
+        ]
+        result = variantgen.are_materially_different(entries, "email")
+        self.assertFalse(result["different"],
+                         "same opening (question) + same CTA (question) "
+                         "must collide")
+
+    def test_same_opening_same_cta_statement_pair(self):
+        """Both open with a statement, both close with a statement."""
+        entries = [
+            variants.variant("v1", "short_direct",
+                             subject="efficiency",
+                             body="Acme spends too long on Monday "
+                                  "reporting each week.\n"
+                                  "Productive fixes that."),
+            variants.variant("v2", "professional",
+                             subject="visibility",
+                             body="Most agencies lose half a day to "
+                                  "spreadsheets every week.\n"
+                                  "A single view changes that."),
+        ]
+        result = variantgen.are_materially_different(entries, "email")
+        self.assertFalse(result["different"],
+                         "same opening (statement) + same CTA (statement) "
+                         "must collide")
+
+    def test_near_identical_opening_same_length_collides(self):
+        """em3 variants 1 and 4: nearly identical opening, same length,
+        both statements. Must collide."""
+        entries = [
+            variants.variant("em3_v1", "short_direct",
+                             subject="budgets",
+                             body="Productive is one place where an "
+                                  "agency's budgets, time tracking, "
+                                  "resourcing and delivery come together "
+                                  "in a single view.\n"
+                                  "Worth exploring for Acme?"),
+            variants.variant("em3_v4", "consultative",
+                             subject="operations",
+                             body="Productive is one place where an "
+                                  "agency's financial planning, resource "
+                                  "allocation, project tracking and "
+                                  "profitability meet.\n"
+                                  "Happy to share more if useful."),
+        ]
+        result = variantgen.are_materially_different(entries, "email")
+        self.assertFalse(result["different"],
+                         "near-identical opening, same length: must collide")
+
+    def test_different_opening_different_cta_passes(self):
+        """One opens with a question and closes with a statement; the other
+        opens with a statement and closes with a question. No collision."""
+        entries = [
+            variants.variant("v1", "short_direct",
+                             subject="planning",
+                             body="Acme handles resource planning in "
+                                  "spreadsheets.\n"
+                                  "Worth a look at something simpler?"),
+            variants.variant("v2", "casual",
+                             subject="resource visibility",
+                             body="How does the team track who is working "
+                                  "on what?\n"
+                                  "We built something that might help."),
+        ]
+        result = variantgen.are_materially_different(entries, "email")
+        self.assertTrue(result["different"],
+                        "different opening AND different CTA: should pass")
+
+    def test_same_opening_different_length_passes(self):
+        """Both open with a statement but one is 3x the other and they
+        close differently. Different CTA means no structural collision."""
+        entries = [
+            variants.variant("v1", "short_direct",
+                             subject="quick note",
+                             body="Acme could save time on Monday "
+                                  "reporting.\n"
+                                  "Worth a look?"),
+            variants.variant("v2", "professional",
+                             subject="detailed proposal",
+                             body="After reviewing how agencies of your "
+                                  "size typically handle resource planning "
+                                  "and utilisation tracking across multiple "
+                                  "projects and teams, I noticed several "
+                                  "patterns that Productive addresses "
+                                  "directly.\n"
+                                  "Here is how it works."),
+        ]
+        result = variantgen.are_materially_different(entries, "email")
+        self.assertTrue(result["different"],
+                        "same opening but different CTA and very different "
+                        "length: should pass")
 
 
 if __name__ == "__main__":

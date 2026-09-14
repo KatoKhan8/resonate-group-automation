@@ -265,16 +265,25 @@ def approaches_available(rec, contact, node_type="email", config=None,
 
 # --------------------------------------------------- the prompt
 
-def variant_prompt(approach, purpose, context_block):
+def variant_prompt(approach, step, purpose, context_block):
     """The prompt for one variant, combining the approach brief with the
     step's purpose and the record context.
 
     The purpose is the ladder's rung job - shared across all variants for
     this step. The approach is what makes THIS variant different from the
     other four.
+
+    `step` is the prompt template name ("draft" or "linkedin_note"). It
+    prepends the same template the normal draft path uses, so the JSON
+    contract and schema come from one place rather than being restated
+    here and drifting.
     """
+    from . import generate
+
     spec = APPROACHES[approach]
     lines = [
+        generate.prompt_text(step),
+        "",
         f"## Approach: {spec['label']}",
         "",
         spec["description"],
@@ -363,7 +372,7 @@ def _word_length(text):
 
 def are_materially_different(variants_entries, node_type="email",
                              company_name=None):
-    """Whether a set of variants differ in approach, not just wording.
+    """Whether a set of variants differ in structure, not just wording.
 
     Returns a dict:
         {"different": True/False,
@@ -371,16 +380,17 @@ def are_materially_different(variants_entries, node_type="email",
          "structural_summary": [{"variant_id": ..., "opening": ..., "cta": ...,
                                   "length": ..., "approach": ...}, ...]}
 
-    Two variants are NOT materially different when:
-      - they share the same opening shape AND the same CTA shape AND
-        their distinctive-word overlap is >= 50% of the smaller set
-      - they are identical in all structural dimensions
+    Two variants are NOT materially different when they share the same
+    opening shape AND the same CTA shape. Word overlap is not consulted:
+    lexical overlap is the wrong instrument for the question being asked.
+    Two variants that both open with a question and close with a question
+    are structurally the same variant however different the words.
 
-    This reuses the same overlap logic as `quality.repetition_across_rungs`
-    rather than writing a second comparator, per the task's instruction.
+    An additional check catches near-identical length plus same opening:
+    two variants that open the same way and are within 30% word count of
+    each other are too close even when one switches from question to
+    statement at the end.
     """
-    from . import quality
-
     if not variants_entries or len(variants_entries) < 2:
         return {"different": True, "pairs": [], "structural_summary": []}
 
@@ -396,37 +406,42 @@ def are_materially_different(variants_entries, node_type="email",
             "words": _word_length(text),
         })
 
-    # Build the step list for quality.campaign_repetition
-    ignore = set()
-    if company_name:
-        for token in re.findall(r"[a-z]+", str(company_name).lower()):
-            if len(token) >= 4:
-                ignore.add(token)
-
-    steps = []
-    for entry in variants_entries:
-        text = " ".join(filter(None, [
-            entry.get("subject"), entry.get("body"), entry.get("note")]))
-        steps.append({"key": entry.get("variant_id", ""), "text": text})
-
-    collisions = quality.repetition_across_rungs(steps, ignore=ignore)
-
-    # Filter collisions to those that ALSO share structural dimensions
     problem_pairs = []
-    summary_by_id = {s["variant_id"]: s for s in summaries}
-    for key_a, key_b, shared_count in collisions:
-        sa = summary_by_id.get(key_a, {})
-        sb = summary_by_id.get(key_b, {})
-        same_opening = sa.get("opening") == sb.get("opening")
-        same_cta = sa.get("cta") == sb.get("cta")
-        if same_opening and same_cta:
-            problem_pairs.append({
-                "a": key_a, "b": key_b,
-                "why": (f"same opening ({sa.get('opening')}), same CTA "
-                        f"({sa.get('cta')}), {shared_count} shared words"),
-            })
+    seen = set()
 
-    # Also check: all same approach?
+    for i, sa in enumerate(summaries):
+        for sb in summaries[i + 1:]:
+            key = (sa["variant_id"], sb["variant_id"])
+            if key in seen:
+                continue
+            same_opening = sa["opening"] == sb["opening"]
+            same_cta = sa["cta"] == sb["cta"]
+
+            if same_opening and same_cta and sa["words"] > 0 and sb["words"] > 0:
+                ratio = min(sa["words"], sb["words"]) / max(sa["words"],
+                                                            sb["words"])
+                if ratio >= 0.7:
+                    seen.add(key)
+                    problem_pairs.append({
+                        "a": sa["variant_id"], "b": sb["variant_id"],
+                        "why": (f"same opening ({sa['opening']}), same CTA "
+                                f"({sa['cta']}), similar length "
+                                f"({sa['words']} vs {sb['words']} words)"),
+                    })
+                    continue
+
+            if same_opening and sa["words"] > 0 and sb["words"] > 0:
+                ratio = min(sa["words"], sb["words"]) / max(sa["words"],
+                                                            sb["words"])
+                if ratio >= 0.7:
+                    seen.add(key)
+                    problem_pairs.append({
+                        "a": sa["variant_id"], "b": sb["variant_id"],
+                        "why": (f"same opening ({sa['opening']}), similar "
+                                f"length ({sa['words']} vs {sb['words']} "
+                                f"words)"),
+                    })
+
     approaches_used = {s.get("approach") for s in summaries}
     if len(approaches_used) == 1 and len(summaries) > 1:
         problem_pairs.append({
@@ -484,6 +499,8 @@ def build_variant_set(rec, contact, node_type, step_key, sequence=None,
     if obs_entry and obs_entry.get("available") and obs_entry.get("evidence"):
         context_block["observation"] = obs_entry["evidence"]
 
+    prompt_step = "draft" if node_type == "email" else "linkedin_note"
+
     generated = []
     skipped = []
 
@@ -493,7 +510,7 @@ def build_variant_set(rec, contact, node_type, step_key, sequence=None,
             skipped.append({"approach": approach, "why": entry.get("why", "")})
             continue
 
-        prompt = variant_prompt(approach, purpose, context_block)
+        prompt = variant_prompt(approach, prompt_step, purpose, context_block)
 
         if llm_ask is None:
             # No model: return the prompt for the caller to use
