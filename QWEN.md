@@ -90,6 +90,46 @@ thing on TASK-052: it reported that it had no credentials and asked Claude to
 run the measurement rather than claiming a number. Do that - but check first,
 because this paragraph was wrong once already.
 
+### THE QUEUE IN YOUR WORKTREE IS NOT PRODUCTION STATE
+
+**Discovered 2026-09-15, after it had already cost two tasks.** `work/` is
+gitignored, so `work/queue.jsonl` does NOT travel with a branch. Measured
+across the eight worktrees that evening:
+
+    seven of eight        NO work/queue.jsonl AT ALL
+    the eighth            a copy from 23:04 while production was 23:41
+
+Two consequences, and both had already happened before anyone noticed:
+
+1. **A task that ANALYSES the queue in a worktree is analysing nothing, or
+   something stale.** TASK-078 measured LinkedIn product-naming at 33% and
+   reported it against a 68% baseline. It was right about its own file and
+   the file was old. It said so, which is why this was caught.
+
+2. **A task that GENERATES writes to an isolated queue that never reaches
+   production.** TASK-072 ran a full regeneration, reported 23 of 300 records
+   touched, and every one of those writes landed in its own worktree. None of
+   it reached the real queue.
+
+**So: do not run `py -3 -m src.generate --live` expecting it to change
+production state. It will not.** Generation against the real queue is
+Claude's, run from Claude's worktree. If a task appears to ask you for it,
+do the code and the tests, and say in your RESULT BLOCK that the generation
+is owed.
+
+**To READ real record data, use the snapshot:**
+
+    work/queue.snapshot.jsonl    a read-only copy of production
+    work/queue.snapshot.STAMP    when it was taken, and from which commit
+
+It is deliberately NOT called `queue.jsonl`, so nothing can mistake it for
+live state and no `store` write can land on it. **Quote the stamp in your
+result block** whenever a number comes from it - a measurement against a
+snapshot is a measurement at a moment, and the moment is part of the answer.
+
+Never write to either file. `store.py` owns the real one and you are not
+running it against production.
+
 ### The queue has six states
 
     TODO   RUNNING   REVIEW   REWORK   DONE   BLOCKED   BLOCKED_QUOTA
