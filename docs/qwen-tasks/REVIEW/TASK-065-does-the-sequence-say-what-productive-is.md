@@ -84,7 +84,7 @@ including the ones that do not move.
 ## RESULT BLOCK
 
 STATUS: DONE
-COMMIT SHA: 3aa1a57
+COMMIT SHA: a1d7fe7
 TESTS: tests.test_generate 51/51 pass. tests.test_invariants 79/80 pass
   (one failure: work/ directory absent in this worktree - structural, not
   caused by this task).
