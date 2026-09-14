@@ -208,8 +208,32 @@ OPERATIONS = {
         "by GUESSING at routes, and guessing is what produced two wrong "
         "conclusions in a row here. The real one was documented all along"),
     EMAIL_ACTIVATE: ("email", True,
-        "no documented route. Prospect-facing by definition: activation is "
-        "what makes a staged sequence start emailing real people"),
+        "THE CONTRACT IS ESTABLISHED. WHAT IS MISSING IS PERMISSION, AND "
+        "THOSE ARE DIFFERENT REFUSALS. This entry read 'no documented route' "
+        "until 2026-09-14, which was false and false in the expensive "
+        "direction: it sent a reader looking for a route that has existed "
+        "since 2026-09-13. `PATCH /api/campaigns/{id}/resume` answered 200 "
+        "TWICE that day, `/campaigns/{campaign_id}/resume` is on "
+        "`bison.WRITE_ROUTES`, and `bison.resume_campaign` carries the full "
+        "brake set - an `expect_leads` count read from `meta.total` that "
+        "refuses when the provider disagrees, `queued` polled out rather than "
+        "reported as started, and `failed` classified rather than defaulted. "
+        "So this module's own test of an established endpoint - 'a real "
+        "response has been read' - is MET. "
+        "It stays out of `SUPPORTED` for the only reason that matters: it is "
+        "prospect-facing, and it is the single verb on this provider that "
+        "makes a staged sequence start emailing real people. Nothing has been "
+        "sent by this system yet - confirmed touches are zero - so enabling "
+        "it would make the first real send a batch rather than a canary. "
+        "That is an operator's decision and it is not an engineering one. "
+        "WHAT ENABLING IT WOULD TAKE, stated so the decision is one line "
+        "rather than an investigation: add EMAIL_ACTIVATE here, then call "
+        "`bison.resume_campaign(481, expect_leads=N)` with N read from the "
+        "provider first - 481 holds 23 leads of which 14 are deliberately "
+        "`stopped`, and passing the wrong count is how a campaign meant for "
+        "nine reaches twenty-three. A smaller first rung needs no code change "
+        "at all: `bison.set_limits(481, name, emails_per_day=1)` paces it to "
+        "one person a day"),
 }
 
 # LINKEDIN_PAUSE IS LIVE-VALIDATED. Every other operation is not.
