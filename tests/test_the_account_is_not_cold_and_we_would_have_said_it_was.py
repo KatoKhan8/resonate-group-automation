@@ -88,7 +88,7 @@ class ThePolicyKeepsTheDistinctions(unittest.TestCase):
         """This case used to assert ALLOW, and the live account did not.
 
         It was written as "THE LIVE CASE" for an account carrying
-        `("stopped", "sequence_finished")` - which nineyards.ie really does -
+        `("stopped", "sequence_finished")` - which a live account really does -
         and asserted ALLOW. The live account has always answered HOLD, because
         `check_account` populates `unknown_statuses` and `stopped` was not a
         word this system had verified. The fixture above simply omits that

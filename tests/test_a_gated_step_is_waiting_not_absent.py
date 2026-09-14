@@ -18,7 +18,7 @@ from tests.campaignbase import CampaignTest
 
 
 WS = "productive"
-KEY = "brooke"
+KEY = "pat"
 
 
 class GatedStepsAppearInTheTimeline(CampaignTest):
@@ -35,7 +35,7 @@ class GatedStepsAppearInTheTimeline(CampaignTest):
         rec["hook"] = "resourcing visibility"
         rec["company_facts"] = {"name": "Acme Ltd", "industry": "agency"}
         rec["contacts"] = [{
-            "key": KEY, "name": "Brooke Baron",
+            "key": KEY, "name": "Pat Morgan",
             "email": f"{KEY}@acme.test",
             "linkedin": f"https://www.linkedin.com/in/{KEY}",
             "title": "Head of Production",
@@ -102,7 +102,7 @@ class EligibilityStillRefusesWaitingSteps(CampaignTest):
         rec["state"] = "verified"
         rec["company_facts"] = {"name": "Acme Ltd", "industry": "agency"}
         rec["contacts"] = [{
-            "key": KEY, "name": "Brooke Baron",
+            "key": KEY, "name": "Pat Morgan",
             "email": f"{KEY}@acme.test",
             "linkedin": f"https://www.linkedin.com/in/{KEY}",
             "title": "Head of Production",
@@ -169,7 +169,7 @@ class ExecutionGuardStillRefusesWaitingSteps(CampaignTest):
         rec["state"] = "verified"
         rec["company_facts"] = {"name": "Acme Ltd", "industry": "agency"}
         rec["contacts"] = [{
-            "key": KEY, "name": "Brooke Baron",
+            "key": KEY, "name": "Pat Morgan",
             "email": f"{KEY}@acme.test",
             "linkedin": f"https://www.linkedin.com/in/{KEY}",
             "title": "Head of Production",
@@ -215,7 +215,7 @@ class WaitingStepsAreNotExposures(CampaignTest):
         rec["state"] = "verified"
         rec["company_facts"] = {"name": "Acme Ltd", "industry": "agency"}
         rec["contacts"] = [{
-            "key": KEY, "name": "Brooke Baron",
+            "key": KEY, "name": "Pat Morgan",
             "email": f"{KEY}@acme.test",
             "linkedin": f"https://www.linkedin.com/in/{KEY}",
             "title": "Head of Production",

@@ -145,7 +145,7 @@ class TestSignatureStripping(unittest.TestCase):
             "-- \n"
             "Alba Kenji\n"
             "Account & Project Manager\n"
-            "+00 000 000 000\n"
+            "+44 20 7946 0000\n"
         )
         result = extract_prospect_text(body)
         self.assertIn("Not interested", result["text"])

@@ -6,8 +6,8 @@ MEASURED, NOT FEARED. On 2026-09-13, against the client's live inbox of 26,039
 conversations, through `heyreach.conversations`:
 
     {"nonsenseKeyNobodyDocuments": "x"}   -> 26039   dropped
-    {"companyName": "Nineyards"}          -> 26039   dropped: not a filter
-    {"searchString": "Brooke"}            ->    13   honoured
+    {"companyName": "Clearwater"}         -> 26039   dropped: not a filter
+    {"searchString": "Pat"}               ->    13   honoured
     {"leadProfileUrl": <a real profile>}  ->     1   honoured
     {"leadProfileUrl": <a candidate>}     ->     0   honoured, and empty
     {"linkedInAccountIds": [116968]}      ->  1261   honoured
@@ -77,8 +77,8 @@ class TheTransportRefusesAKeyItCannotVouchFor(StubbedWire):
 
     def test_a_measured_key_reaches_the_provider(self):
         sent = self.wire()
-        heyreach.conversations(0, 10, filters={"searchString": "Brooke"})
-        self.assertEqual(sent[0]["body"]["filters"], {"searchString": "Brooke"})
+        heyreach.conversations(0, 10, filters={"searchString": "Pat"})
+        self.assertEqual(sent[0]["body"]["filters"], {"searchString": "Pat"})
 
     def test_every_allowlisted_key_is_accepted(self):
         sent = self.wire()
@@ -91,13 +91,13 @@ class TheTransportRefusesAKeyItCannotVouchFor(StubbedWire):
         and something downstream has already been handed them."""
         sent = self.wire()
         with self.assertRaises(providers.ProviderError):
-            heyreach.conversations(0, 10, filters={"companyName": "Nineyards"})
+            heyreach.conversations(0, 10, filters={"companyName": "Clearwater"})
         self.assertEqual(sent, [])
 
     def test_a_typo_in_a_real_key_is_refused_rather_than_ignored(self):
         sent = self.wire()
         with self.assertRaises(providers.ProviderError):
-            heyreach.conversations(0, 10, filters={"searchStrings": "Brooke"})
+            heyreach.conversations(0, 10, filters={"searchStrings": "Pat"})
         self.assertEqual(sent, [])
 
     def test_the_refusal_names_the_key_and_what_would_have_happened(self):
@@ -116,7 +116,7 @@ class TheTransportRefusesAKeyItCannotVouchFor(StubbedWire):
         sent = self.wire()
         with self.assertRaises(providers.ProviderError):
             heyreach.conversations(
-                0, 10, filters={"searchString": "Brooke", "companyName": "x"})
+                0, 10, filters={"searchString": "Pat", "companyName": "x"})
         self.assertEqual(sent, [])
 
     def test_no_filter_at_all_is_still_the_whole_inbox_and_is_allowed(self):
@@ -150,7 +150,7 @@ class AProfileTheProviderCannotResolveIsNotAnAbsence(StubbedWire):
     """A well-formed but unknown `leadProfileUrl` answers 400, not 0.
 
     Measured: `.../in/zzqq9notarealperson` returned 400 while
-    `.../in/brookebaron` - a real profile with no conversation - returned 0.
+    `.../in/patmorgan` - a real profile with no conversation - returned 0.
     Those are different facts and `_read` keeps them apart by raising, so a
     caller cannot read "the provider refused" as "nobody has spoken to them".
     """

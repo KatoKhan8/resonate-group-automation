@@ -46,7 +46,7 @@ class AWebmailAddressIsNotAnotherEmployer(unittest.TestCase):
         rec = record()
         self.assertTrue(enrich.same_company(
             {"name": "Casper", "company": "Acme Ltd",
-             "email": "casper@hotmail.com"}, rec))
+             "email": "casper@mail.test"}, rec))
 
     def test_every_listed_provider_falls_through_rather_than_excluding(self):
         rec = record()
@@ -61,7 +61,7 @@ class AWebmailAddressIsNotAnotherEmployer(unittest.TestCase):
         payload there is nothing for the second branch to match, and the row
         leaves by the same door it always did."""
         self.assertFalse(enrich.same_company(
-            {"name": "Casper", "email": "casper@hotmail.com"}, record()))
+            {"name": "Casper", "email": "casper@mail.test"}, record()))
 
     def test_a_work_address_elsewhere_still_outranks_a_matching_name(self):
         """The guard trap 1 exists for. An address at another WORK domain is
@@ -159,7 +159,7 @@ class TheCorrectedCheckReachesPeopleAlreadySetAside(unittest.TestCase):
     def held(self, **over):
         row = {"name": "Casper", "title": "Partner", "company": "Acme Ltd",
                "linkedin": "https://www.linkedin.com/in/casper",
-               "email": "casper@hotmail.com", "key": "casper",
+               "email": "casper@mail.test", "key": "casper",
                "why": enrich.COLLISION}
         row.update(over)
         return row
@@ -176,7 +176,7 @@ class TheCorrectedCheckReachesPeopleAlreadySetAside(unittest.TestCase):
         rec = record()
         rec["excluded"] = [self.held()]
         contact = enrich.reconsider_exclusions(rec)[0]
-        self.assertEqual(contact["email"], "casper@hotmail.com")
+        self.assertEqual(contact["email"], "casper@mail.test")
         self.assertEqual(contact["email_source"], "provider")
         self.assertFalse(contact["sendable"])
         self.assertIsNone(contact["verdict"])

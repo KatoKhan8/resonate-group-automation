@@ -150,8 +150,8 @@ FINDINGS:
     (cadence.build omits li2) and #3 (step_requirement_unmet vs HELD_REQUEST_OUTSTANDING).
   - test_a_finished_campaign_with_no_reply_still_authorizes: 1E - Known defect #1
     (account-collision gate policy disagreement).
-  - test_fixture_hygiene: 3F - Real strings in src/ and tests/ (hotmail.com,
-    goproductive.online, nineyards.ie, real names like "brooke baron").
+  - test_fixture_hygiene: 3F - Real strings in src/ and tests/ (real domains,
+    real names).
   - test_the_prototype_cannot_send: 1F - Error message text mismatch
     ('cannot send' not found in 'run build.py first').
   - test_waterfall: 1F - Ledger accounting mismatch (expected 2, spent 3).

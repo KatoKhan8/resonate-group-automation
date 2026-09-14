@@ -38,7 +38,7 @@ def _approved_li_step(key, day, action, *, note=None, subject=None,
     return step
 
 
-def _full_record(contact_key="brooke"):
+def _full_record(contact_key="pat"):
     """A record with every LinkedIn step approved, including InMail."""
     inmail_alt = {"requires": "connection_not_accepted",
                   "linkedin_action": "inmail",
@@ -51,12 +51,12 @@ def _full_record(contact_key="brooke"):
                           "quick look?"}
     return {
         "id": "acme", "client": "productive", "domain": "acme.test",
-        "contacts": [{"key": contact_key, "name": "Brooke Baron",
+        "contacts": [{"key": contact_key, "name": "Pat Morgan",
                       "linkedin": f"https://www.linkedin.com/in/{contact_key}"}],
         "cadence": {
             contact_key: {
                 "li1": _approved_li_step("li1", 1, "connect",
-                                         note="Hi Brooke, noticed your work "
+                                         note="Hi Pat, noticed your work "
                                               "in delivery ops. Would love "
                                               "to connect."),
                 "li2": _approved_li_step("li2", 3, "message",
@@ -91,7 +91,7 @@ def _full_record(contact_key="brooke"):
     }
 
 
-def _record_missing_step(missing_key, contact_key="brooke"):
+def _record_missing_step(missing_key, contact_key="pat"):
     """A record where one step has no approval."""
     rec = _full_record(contact_key)
     step = rec["cadence"][contact_key].get(missing_key)
@@ -107,16 +107,16 @@ class TheMapping(unittest.TestCase):
 
     def test_li1_maps_to_connection_note(self):
         rec = _full_record()
-        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         self.assertIn("connection_note", copy)
         self.assertEqual(copy["connection_note"]["messages"],
-                         ["Hi Brooke, noticed your work in delivery ops. "
+                         ["Hi Pat, noticed your work in delivery ops. "
                           "Would love to connect."])
 
     def test_li2_maps_to_both_connected_1_and_message_2(self):
         """The same generated words serve two positions on two branches."""
         rec = _full_record()
-        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         self.assertIn("connected_1", copy)
         self.assertIn("message_2", copy)
         self.assertEqual(copy["connected_1"]["messages"],
@@ -124,12 +124,12 @@ class TheMapping(unittest.TestCase):
 
     def test_li3_maps_to_message_3(self):
         rec = _full_record()
-        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         self.assertIn("message_3", copy)
 
     def test_li4_maps_to_message_4(self):
         rec = _full_record()
-        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         self.assertIn("message_4", copy)
 
     def test_li5_is_required_and_li6_is_not(self):
@@ -145,23 +145,23 @@ class TheMapping(unittest.TestCase):
         still not a refusal and is still reported in `touch_report`.
         """
         rec = _full_record()
-        rec["cadence"]["brooke"]["li6"].pop("approval")
-        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        rec["cadence"]["pat"]["li6"].pop("approval")
+        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         self.assertEqual(missing, [])
         self.assertIn("connected_4", copy)
 
-        rec["cadence"]["brooke"]["li5"].pop("approval")
-        _copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        rec["cadence"]["pat"]["li5"].pop("approval")
+        _copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         self.assertEqual([m[2] for m in missing], ["connected_4"])
 
     def test_inmail_is_only_collected_when_requested(self):
         rec = _full_record()
         copy_without, _ = heyreachfactory.assemble_linkedin_copy(
-            rec, "brooke", include_inmail=False)
+            rec, "pat", include_inmail=False)
         self.assertNotIn("inmail", copy_without)
 
         copy_with, missing = heyreachfactory.assemble_linkedin_copy(
-            rec, "brooke", include_inmail=True)
+            rec, "pat", include_inmail=True)
         self.assertIn("inmail", copy_with)
         self.assertEqual(missing, [])
         # InMail entries are objects with subject and message.
@@ -187,25 +187,25 @@ class MissingCopyIsRefused(unittest.TestCase):
 
     def test_missing_connection_note_is_reported(self):
         rec = _record_missing_step("li1")
-        _copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        _copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         self.assertTrue(any(role == "connection_note"
                            for _, _, role in missing))
         self.assertTrue(any(step == "li1" for _, step, _ in missing))
-        self.assertTrue(any(ck == "brooke" for ck, _, _ in missing))
+        self.assertTrue(any(ck == "pat" for ck, _, _ in missing))
 
     def test_missing_message_step_is_reported(self):
         rec = _record_missing_step("li3")
-        _copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        _copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         roles = [role for _, _, role in missing]
         self.assertIn("message_3", roles)
 
     def test_refuse_missing_raises_naming_contact_and_step(self):
         rec = _record_missing_step("li2")
-        _copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        _copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         with self.assertRaises(heyreachfactory.FactoryRefused) as ctx:
             heyreachfactory._refuse_missing(missing)
         text = str(ctx.exception)
-        self.assertIn("brooke", text)
+        self.assertIn("pat", text)
         self.assertIn("li2", text)
         self.assertIn("connected_1", text)
         self.assertIn("message_2", text)
@@ -213,26 +213,26 @@ class MissingCopyIsRefused(unittest.TestCase):
     def test_missing_inmail_is_refused_when_requested(self):
         rec = _full_record()
         # Remove the InMail alternative's approval.
-        rec["cadence"]["brooke"]["li3"]["alternative"].pop("approval")
+        rec["cadence"]["pat"]["li3"]["alternative"].pop("approval")
         _copy, missing = heyreachfactory.assemble_linkedin_copy(
-            rec, "brooke", include_inmail=True)
+            rec, "pat", include_inmail=True)
         roles = [role for _, _, role in missing]
         self.assertIn("inmail", roles)
 
     def test_missing_inmail_is_not_refused_by_default(self):
         rec = _full_record()
-        rec["cadence"]["brooke"]["li3"]["alternative"].pop("approval")
+        rec["cadence"]["pat"]["li3"]["alternative"].pop("approval")
         _copy, missing = heyreachfactory.assemble_linkedin_copy(
-            rec, "brooke", include_inmail=False)
+            rec, "pat", include_inmail=False)
         roles = [role for _, _, role in missing]
         self.assertNotIn("inmail", roles)
 
     def test_an_unapproved_step_is_not_copy(self):
         """A step with no approval field carries no copy, even if it has text."""
         rec = _full_record()
-        rec["cadence"]["brooke"]["li4"].pop("approval")
-        rec["cadence"]["brooke"]["li4"]["note"] = "these words are unapproved"
-        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        rec["cadence"]["pat"]["li4"].pop("approval")
+        rec["cadence"]["pat"]["li4"]["note"] = "these words are unapproved"
+        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         self.assertNotIn("message_4", copy)
         roles = [role for _, _, role in missing]
         self.assertIn("message_4", roles)
@@ -246,7 +246,7 @@ class TheGraphPassesValidation(unittest.TestCase):
     def _build(self, include_inmail=False):
         rec = _full_record()
         copy, missing = heyreachfactory.assemble_linkedin_copy(
-            rec, "brooke", include_inmail=include_inmail)
+            rec, "pat", include_inmail=include_inmail)
         self.assertEqual(missing, [])
         return heyreachfactory.build_sequence(copy, include_inmail=include_inmail)
 
@@ -302,7 +302,7 @@ class TheInMailDecision(unittest.TestCase):
 
     def test_the_default_graph_omits_inmail(self):
         rec = _full_record()
-        copy, _ = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        copy, _ = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         _seq, report = heyreachfactory.build_sequence(copy)
         self.assertFalse(report["inmail"])
 
@@ -394,7 +394,7 @@ class ReadbackDisagreement(unittest.TestCase):
     def test_sequence_matches_detects_a_difference(self):
         """If the provider returns a different graph, it is reported."""
         rec = _full_record()
-        copy, _ = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        copy, _ = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         sent, _ = heyreachfactory.build_sequence(copy)
 
         # Tamper with the observed graph: change the already-connected
@@ -417,7 +417,7 @@ class ReadbackDisagreement(unittest.TestCase):
 
     def test_sequence_matches_agrees_on_identical_graphs(self):
         rec = _full_record()
-        copy, _ = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        copy, _ = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         sent, _ = heyreachfactory.build_sequence(copy)
         same, _why = heyreach.sequence_matches(sent, sent)
         self.assertTrue(same)
@@ -431,7 +431,7 @@ class GuardBreaking(unittest.TestCase):
     def test_breaking_the_connection_note_guard_refuses(self):
         """Remove the connection note approval -> refusal naming li1."""
         rec = _record_missing_step("li1")
-        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         self.assertTrue(missing)
         with self.assertRaises(heyreachfactory.FactoryRefused) as ctx:
             heyreachfactory._refuse_missing(missing)
@@ -440,7 +440,7 @@ class GuardBreaking(unittest.TestCase):
     def test_breaking_the_message_3_guard_refuses(self):
         """Remove li3 approval -> refusal naming message_3."""
         rec = _record_missing_step("li3")
-        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "pat")
         self.assertTrue(missing)
         with self.assertRaises(heyreachfactory.FactoryRefused) as ctx:
             heyreachfactory._refuse_missing(missing)
@@ -466,9 +466,9 @@ class GuardBreaking(unittest.TestCase):
     def test_the_inmail_guard_refuses_when_requested_but_missing(self):
         """include_inmail=True with no approved InMail copy -> refusal."""
         rec = _full_record()
-        rec["cadence"]["brooke"]["li3"]["alternative"].pop("approval")
+        rec["cadence"]["pat"]["li3"]["alternative"].pop("approval")
         _copy, missing = heyreachfactory.assemble_linkedin_copy(
-            rec, "brooke", include_inmail=True)
+            rec, "pat", include_inmail=True)
         self.assertTrue(any(role == "inmail" for _, _, role in missing))
         with self.assertRaises(heyreachfactory.FactoryRefused) as ctx:
             heyreachfactory._refuse_missing(missing)

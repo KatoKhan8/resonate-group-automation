@@ -2285,7 +2285,7 @@ def all_li_accounts(page_size=MAX_PAGE, max_pages=10):
 # rather than feared: on 2026-09-13, against an inbox of 26,039 conversations,
 #
 #   {"nonsenseKeyNobodyDocuments": "x"}  -> 26039   the key was dropped
-#   {"companyName": "Nineyards"}         -> 26039   same: not a filter
+#   {"companyName": "Redacted Co"}         -> 26039   same: not a filter
 #   {"leadProfileUrl": <a real profile>} ->     1   honoured
 #   {"linkedInAccountIds": [116968]}     ->  1261   honoured
 #   {"linkedInAccountIds": [999999999]}  ->     0   honoured, and empty

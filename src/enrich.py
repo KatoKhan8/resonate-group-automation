@@ -140,6 +140,16 @@ class Budget:
         self.spent += cost
         return True
 
+    def refund(self, cost):
+        """Return credits when a provider declines to charge.
+
+        The budget is charged before the call so the cap can refuse it, but a
+        provider that returns `charged: False` never billed the credit. Without
+        a refund the budget over-reports by exactly that cost, and the waterfall
+        - which records after the call - disagrees with it.
+        """
+        self.spent = max(0, self.spent - cost)
+
     def remaining(self):
         return None if self.cap is None else max(0, self.cap - self.spent)
 
@@ -347,7 +357,7 @@ def same_company(person, rec, facts=None):
     payloads after the exclusions started being kept whole:
 
     A PERSONAL MAILBOX WAS READ AS A DIFFERENT EMPLOYER. The first branch
-    short-circuited on any address at all, so `cavleise@hotmail.com` answered
+    short-circuited on any address at all, so `personal@example.test` answered
     "not this domain" for a man whose payload `company` reads "&Partner ApS"
     at the record for &Partner ApS. Five of the first eleven exclusions
     measured this way were exactly that, every one of them at the right
@@ -397,6 +407,10 @@ FREE_MAIL = frozenset({
     "ymail.com", "aol.com", "icloud.com", "me.com", "mac.com",
     "protonmail.com", "proton.me", "gmx.com", "gmx.de", "gmx.net", "web.de",
     "mail.com", "zoho.com", "yandex.com", "yandex.ru",
+    # Reserved domain for tests. A fixture must not carry a real provider's
+    # address; this entry lets a test exercise the webmail branch on a domain
+    # that resolves to nothing.
+    "mail.test",
 })
 
 

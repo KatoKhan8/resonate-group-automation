@@ -261,7 +261,7 @@ nine that pass, and the four were dropped.
 **Six collision-clean accounts are NOT in the cohort** and are the work
 queue:
 
-    28row-com           4 steps, em5 missing, 4 failing quality
+    account-a           4 steps, em5 missing, 4 failing quality
     csquaredsocial-com  5 steps, 5 failing quality
     ethoscreate-com     5 steps, 5 failing quality
     roaringmedia-co     5 steps, 5 failing quality
@@ -269,7 +269,7 @@ queue:
     viralityllc-com     4 steps, em4 missing, 4 failing quality
 
 Every failure is `repetition_across_rungs`. Two also have a missing step:
-`28row-com`'s em5 and `viralityllc-com`'s em4 will not clear on the current
+`account-a`'s em5 and `viralityllc-com`'s em4 will not clear on the current
 model - em5's rung asks for a close-the-loop message against a 40-word floor,
 and em4's asks for "the shortest message in the sequence". The rules were NOT
 widened.

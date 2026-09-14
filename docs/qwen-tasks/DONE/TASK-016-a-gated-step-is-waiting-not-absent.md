@@ -20,7 +20,7 @@ connected, so `cadence.build` omits them.
 
 `heyreachfactory` then refuses, correctly:
 
-    approved LinkedIn copy is missing for: contact 'brooke-baron', step 'li2'
+    approved LinkedIn copy is missing for: contact 'pat-morgan', step 'li2'
     -> role 'connected_1'; step 'li3' -> role 'message_3'; ...
 
 **This is a deadlock, and it is the whole reason no HeyReach campaign can be

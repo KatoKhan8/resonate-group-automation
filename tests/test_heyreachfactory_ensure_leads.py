@@ -38,7 +38,7 @@ def _approved_step(key, day, action, *, note=None):
     return step
 
 
-def _full_cadence(contact_key="brooke"):
+def _full_cadence(contact_key="pat"):
     """A complete LinkedIn cadence with every required role covered."""
     return {
         contact_key: {
@@ -76,13 +76,13 @@ def _fallback_config():
     }
 
 
-def _make_record(rec_id="acme", contact_key="brooke", *, domain="acme.test",
+def _make_record(rec_id="acme", contact_key="pat", *, domain="acme.test",
                  client="productive", linkedin=None):
     """A record with one contact and a full LinkedIn cadence."""
     url = linkedin or f"https://www.linkedin.com/in/{contact_key}"
     return {
         "id": rec_id, "client": client, "domain": domain,
-        "contacts": [{"key": contact_key, "name": "Brooke Baron",
+        "contacts": [{"key": contact_key, "name": "Pat Okafor",
                       "linkedin": url}],
         "cadence": _full_cadence(contact_key),
     }
@@ -208,7 +208,7 @@ class _EnsureLeadsTestBase(_NoPatchOutlivesItsTest):
             key="fake-auth-key", operation=providerwrites.LINKEDIN_ADD_LEAD,
             channel="linkedin", workspace="productive",
             campaign_id="test-li-campaign", sender_id="0",
-            rec_id="acme", contact_key="brooke", step_key="day3",
+            rec_id="acme", contact_key="pat", step_key="day3",
             fingerprint="fp-li1", gates=("tenancy", "approval", "readback",
                                          "eligibility", "suppression", "copy",
                                          "claims", "fatigue", "collision",
@@ -258,7 +258,7 @@ def _auth_patches():
         key="fake-auth-key", operation=providerwrites.LINKEDIN_ADD_LEAD,
         channel="linkedin", workspace="productive",
         campaign_id="test-li-campaign", sender_id="0",
-        rec_id="acme", contact_key="brooke", step_key="li1",
+        rec_id="acme", contact_key="pat", step_key="li1",
         fingerprint="fp-li1",
         gates=("tenancy", "approval", "readback", "eligibility",
                "suppression", "copy", "claims", "fatigue", "collision",
@@ -343,7 +343,7 @@ class SuppressionRefuses(_EnsureLeadsTestBase):
         finally:
             _stop_all(mocks)
         text = str(ctx.exception)
-        self.assertIn("brooke", text)
+        self.assertIn("pat", text)
         self.assertIn("blocked", text)
         transport.assert_not_called()
 
@@ -364,7 +364,7 @@ class SuppressionRefuses(_EnsureLeadsTestBase):
         finally:
             _stop_all(mocks)
         text = str(ctx.exception)
-        self.assertIn("brooke", text)
+        self.assertIn("pat", text)
         transport.assert_not_called()
 
 
@@ -399,7 +399,7 @@ class CollisionRefuses(_EnsureLeadsTestBase):
             mocks["readback"].stop()
             mocks["perform"].stop()
         text = str(ctx.exception)
-        self.assertIn("brooke", text)
+        self.assertIn("pat", text)
         self.assertIn("stop", text.lower())
         transport.assert_not_called()
 
@@ -716,7 +716,7 @@ class GuardBreaking(_EnsureLeadsTestBase):
             mocks["readback"].stop()
             mocks["perform"].stop()
         text = str(ctx.exception)
-        self.assertIn("brooke", text)
+        self.assertIn("pat", text)
         self.assertIn("stop", text.lower())
         self.assertEqual(tenant_called, [],
                          "tenant check should not have been reached")
@@ -758,7 +758,7 @@ class DryRunReport(_EnsureLeadsTestBase):
 
         self.assertFalse(report["live"])
         self.assertTrue(any("dry run" in d for d in report["did"]))
-        self.assertTrue(any("brooke" in d for d in report["did"]))
+        self.assertTrue(any("pat" in d for d in report["did"]))
         self.assertTrue(any("variables=" in d for d in report["did"]))
 
 
@@ -866,7 +866,7 @@ class AuthorizationGateRefuses(_EnsureLeadsTestBase):
             key="fake-auth", operation=providerwrites.LINKEDIN_ADD_LEAD,
             channel="linkedin", workspace="productive",
             campaign_id="test-li-campaign", sender_id="0",
-            rec_id="acme", contact_key="brooke", step_key="day3",
+            rec_id="acme", contact_key="pat", step_key="day3",
             fingerprint="fp-li1", gates=(), at=store.now())
         authorize_mock = mock.MagicMock(return_value=fake_auth)
         mocks = {
