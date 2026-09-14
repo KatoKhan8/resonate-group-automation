@@ -108,3 +108,60 @@ On INVENTED bodies, not corpus rows:
 - a signature block does not contribute a name to a referral verdict - this
   is the one that would have caught the 94;
 - the caller can still reach the untouched original.
+
+---
+
+## REVIEW 1 - REJECTED 2026-09-14. Rework, do not start over.
+
+`extract_prospect_text` is a good function. It handles top-posting, detects
+bottom-posting, strips signatures, reports `method`, `had_quote`,
+`had_signature` and the lengths, and keeps `original` for a caller that needs
+the whole body. That is exactly what was asked for. Keep all of it.
+
+**Nothing calls it.**
+
+    grep -n "extract_prospect_text" src/replies.py
+    324:def extract_prospect_text(body):
+
+One line: its own definition. `classify` still calls `classify_rules(text)`,
+which calls `normalise(text)` on the raw body. So the classifier is reading
+the quoted thread exactly as it was this morning, and the before/after table
+in the result block was produced by `scripts/measure_task029.py` calling the
+function directly - it measures what WOULD happen, not what does.
+
+Confirmed on a real corpus row: `classify(whole body)` answers
+`not_relevant` today, unchanged.
+
+A second, smaller thing: the function returns a DICT, so wiring it in is not a
+drop-in substitution. `classify(extract_prospect_text(body))` raises
+`TypeError: expected string or bytes-like object, got 'dict'`. The dict is the
+right design - scope item 3 asked for it - but the caller has to take the
+`text` field, and that is part of the wiring.
+
+### What to do
+
+Wire it into the path production uses, and decide deliberately WHERE:
+
+- `classify_rules` is the narrow place, but `normalise` is called by other
+  things and this must not change what they see;
+- `classify` is the honest place, because it is what every caller reaches.
+
+Whichever you choose, the verdict a caller gets must be able to say it was
+made on the prospect's words rather than on the whole body - `method` and
+`stripped_length` are already there to carry that, so put them in the verdict
+rather than throwing them away.
+
+**Do not silently change what `classify` returns for a caller that depends on
+the old behaviour.** `grep -rn "replies.classify\|classify_rules" src/ tests/`
+before you change it, and name in the result block every caller you found and
+what each one now sees.
+
+### The test that decides the rework
+
+    delete the CALL to extract_prospect_text and re-run the suite
+
+If every test still passes, the rework is not done. At least one test must
+drive `classify` - not `extract_prospect_text` - with a body whose quoted
+thread contains a referral phrase, and assert the verdict is NOT referral.
+That is the 94-false-referrals case, expressed as a test of the thing
+production calls.

@@ -106,7 +106,46 @@ def _make_campaign(campaign_id="test-li-campaign", client="productive",
 _KS_ON = {"sending": True, "why": "on"}
 
 
-class _EnsureLeadsTestBase(unittest.TestCase):
+class _NoPatchOutlivesItsTest(unittest.TestCase):
+    """Every `mock.patch` started in this module stops when its test ends.
+
+    Several tests here stop only SOME of the patches they start, and any test
+    that fails before its inline `.stop()` leaves the rest installed for the
+    remainder of the PROCESS - silently disabling the real function for every
+    later test in the run.
+
+    That is not hypothetical. `TheRealAuthorizationGateIsReachable` was
+    written to prove that the genuine `executionguard.authorize` refuses a
+    contact with no approved copy. Run alone it passes. Run after this
+    module's other classes it reported "Exception not raised", because
+    `authorize` was still mocked from an earlier test - which is precisely the
+    failure the test existed to rule out.
+
+    `mock.patch.stopall()` stops everything started with `.start()`, so it
+    does not matter which test forgot which one. `tests/base.py` makes the
+    same argument for `addCleanup` over `tearDown`.
+    """
+
+    @staticmethod
+    def _stop_everything():
+        """Tolerant, because several tests stop some of their own patches.
+
+        `stopall` raises on a patcher that is already stopped, and stopping
+        one twice is exactly what a test that cleans up after itself will
+        cause. The point of this is that NOTHING survives the test, not that
+        every stop is the first one.
+        """
+        try:
+            mock.patch.stopall()
+        except RuntimeError:
+            pass
+
+    def setUp(self):
+        super().setUp()
+        self.addCleanup(self._stop_everything)
+
+
+class _EnsureLeadsTestBase(_NoPatchOutlivesItsTest):
     """Temp estate for ensure_leads tests."""
 
     def setUp(self):
@@ -126,6 +165,16 @@ class _EnsureLeadsTestBase(unittest.TestCase):
         self._ks_patch = mock.patch.object(killswitch, "workspace_state",
                                            return_value=_KS_ON)
         self._ks_patch.start()
+        # addCleanup, NOT tearDown. `unittest` does not call tearDown when a
+        # setUp raises, and an inline `.stop()` never runs if the test fails
+        # before it - either way the mock stays installed for the rest of the
+        # process and silently disables the real function for every later
+        # test. That is not hypothetical here: with these patches leaking,
+        # `TheRealAuthorizationGateIsReachable` saw a mocked
+        # `executionguard.authorize` and reported that the real gate had not
+        # refused, when run alone it passes. `tests/base.py` documents the
+        # same trap for the same reason.
+        self.addCleanup(self._ks_patch.stop)
 
     def tearDown(self):
         self._ks_patch.stop()
@@ -191,9 +240,55 @@ class _EnsureLeadsTestBase(unittest.TestCase):
         return mocks
 
 
-def _start_all(mocks):
+def _auth_patches():
+    """The two patches every `ensure_leads(live=True)` test needs.
+
+    `executionguard.authorize` and `configdiff.compare_heyreach` are on the
+    live path, so a test that does not patch them reaches the real gate. Two
+    tests here omitted both and passed anyway - because an earlier class's
+    patches were leaking - and started failing honestly the moment that leak
+    was closed. Sharing them makes the omission impossible to repeat.
+    """
+    fake_readback = configdiff.Readback(
+        diff={"verdict": configdiff.PASS, "failures": []},
+        approved={}, provider={},
+        campaign_id="test-li-campaign", channel="linkedin",
+        provider_campaign_id=599020, verified_at=store.now())
+    fake_auth = executionguard.Authorization(
+        key="fake-auth-key", operation=providerwrites.LINKEDIN_ADD_LEAD,
+        channel="linkedin", workspace="productive",
+        campaign_id="test-li-campaign", sender_id="0",
+        rec_id="acme", contact_key="brooke", step_key="li1",
+        fingerprint="fp-li1",
+        gates=("tenancy", "approval", "readback", "eligibility",
+               "suppression", "copy", "claims", "fatigue", "collision",
+               "account_collision", "sender", "cap", "killswitch"),
+        at=store.now())
+    return {
+        "compare_heyreach": mock.patch.object(
+            configdiff, "compare_heyreach", return_value=fake_readback),
+        "authorize": mock.patch.object(
+            executionguard, "authorize", return_value=fake_auth),
+    }
+
+
+def _start_all(mocks, case=None):
+    """Start every patch, and register its stop with the TEST CASE.
+
+    `case.addCleanup` rather than an inline `_stop_all` at the end of the
+    test: a test that fails before reaching the stop leaves the mock
+    installed for the rest of the PROCESS, silently disabling the real
+    function for every later test. That happened here -
+    `TheRealAuthorizationGateIsReachable` saw a mocked
+    `executionguard.authorize` and reported that the real gate had not
+    refused; run alone it passes. `tests/base.py` documents the same trap.
+
+    `case` is optional only so existing callers keep working; pass it.
+    """
     for m in mocks.values():
         m.start()
+        if case is not None:
+            case.addCleanup(m.stop)
     return mocks
 
 
@@ -470,7 +565,8 @@ class ReadbackDisagrees(_EnsureLeadsTestBase):
                               "any_bounce": False,
                               "workspace": "productive"}),
         }
-        _start_all(mocks)
+        mocks.update(_auth_patches())
+        _start_all(mocks, self)
 
         def _perform_side_effect(*args, **kwargs):
             rb = kwargs.get("readback")
@@ -520,7 +616,8 @@ class UnclassifiableResponse(_EnsureLeadsTestBase):
                               "any_bounce": False,
                               "workspace": "productive"}),
         }
-        _start_all(mocks)
+        mocks.update(_auth_patches())
+        _start_all(mocks, self)
         try:
             with mock.patch.object(
                     providerwrites, "perform",
@@ -627,7 +724,7 @@ class GuardBreaking(_EnsureLeadsTestBase):
 
 # =============================================== LINKEDIN_ADD_LEAD not enabled
 
-class LinkAddLeadNotEnabled(unittest.TestCase):
+class LinkAddLeadNotEnabled(_NoPatchOutlivesItsTest):
     """LINKEDIN_ADD_LEAD is NOT in SUPPORTED. This is deliberate."""
 
     def test_linkedin_add_lead_is_not_in_supported(self):
@@ -702,12 +799,6 @@ class AuthorizationGateRefuses(_EnsureLeadsTestBase):
 
         transport = mock.MagicMock()
         # Mock the five pre-filters to pass, plus configdiff.compare_heyreach.
-        fake_readback = configdiff.Readback(
-            diff={"verdict": configdiff.PASS, "failures": []},
-            approved={}, provider={},
-            campaign_id="test-li-campaign", channel="linkedin",
-            provider_campaign_id=599020,
-            verified_at=store.now())
         mocks = {
             "tenant": mock.patch.object(heyreach, "check_tenant",
                                         return_value=True),
@@ -723,10 +814,9 @@ class AuthorizationGateRefuses(_EnsureLeadsTestBase):
                               "people": [], "unknown_statuses": [],
                               "any_bounce": False,
                               "workspace": "productive"}),
-            "compare_heyreach": mock.patch.object(
-                configdiff, "compare_heyreach", return_value=fake_readback),
+            "compare_heyreach": _auth_patches()["compare_heyreach"],
         }
-        _start_all(mocks)
+        _start_all(mocks, self)
 
         # Mock authorize() to refuse on the "approval" gate - a gate the
         # five pre-filters do NOT check. If the implementation calls
@@ -814,3 +904,72 @@ class AuthorizationGateRefuses(_EnsureLeadsTestBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheRealAuthorizationGateIsReachable(_NoPatchOutlivesItsTest):
+    """Every other test in this file MOCKS `executionguard.authorize` and
+    hands `_mint_authorization` a fake Authorization, which is reasonable for
+    exercising the orchestration around it and proves nothing about the gate.
+
+    The first version of this task constructed the Authorization itself.
+    The second called `authorize` correctly and named `step_key = "day3"` -
+    a step of the OLD seven-step cadence that `productive_li_heavy_v1` does
+    not contain - so the `copy` gate would have refused every person alive.
+    Neither was caught by a test, because no test let the real function run.
+
+    These do.
+    """
+
+    def campaign_row(self, cadence_name="productive_li_heavy_v1"):
+        return {"campaign_id": "c1", "client": "productive", "name": "t",
+                "record_ids": ["acme"], "cadence": cadence_name,
+                "heyreach_campaign_id": "599020"}
+
+    def test_the_step_key_is_the_cadences_own_first_linkedin_step(self):
+        from src import clients
+
+        config = clients.load("productive")
+        self.assertEqual(
+            heyreachfactory._first_linkedin_step(self.campaign_row(), config),
+            "li1")
+
+    def test_a_cadence_with_no_linkedin_step_refuses(self):
+        """Rather than defaulting to one. A default here would be the same
+        class of bug as the hard-coded key it replaced.
+
+        The email-only cadence is constructed rather than named: no shipped
+        cadence is email-only today, and a test that names one would start
+        passing or failing for reasons that have nothing to do with this.
+        """
+        from src import cadence, clients
+
+        config = clients.load("productive")
+        email_only = ({"key": "em1", "day": 1, "channel": "email"},
+                      {"key": "em2", "day": 4, "channel": "email"})
+        patch = mock.patch.object(cadence, "steps_for", return_value=email_only)
+        patch.start()
+        self.addCleanup(patch.stop)
+        with self.assertRaises(heyreachfactory.FactoryRefused) as caught:
+            heyreachfactory._first_linkedin_step(self.campaign_row(), config)
+        self.assertIn("no LinkedIn step", str(caught.exception))
+
+    def test_a_contact_executionguard_refuses_yields_no_authorization(self):
+        """THE ONE THAT DECIDES IT. No mock: the real gate runs, and a contact
+        with no approved copy must not come back with an Authorization."""
+        from src import clients, executionguard
+
+        config = clients.load("productive")
+        bare = {"id": "acme", "client": "productive", "domain": "acme.test",
+                "company": "Acme", "contacts": [{"key": "acme-c1",
+                                                 "name": "Ada Tester"}],
+                "cadence": {}}
+        with self.assertRaises(Exception) as caught:
+            heyreachfactory._mint_authorization(
+                self.campaign_row(), bare, bare["contacts"][0],
+                config=config, readback=None, by="test")
+        self.assertNotIsInstance(
+            caught.exception, AssertionError,
+            "the gate must refuse, not assert")
+        # And nothing that looks like an Authorization came back.
+        self.assertFalse(isinstance(caught.exception,
+                                    executionguard.Authorization))

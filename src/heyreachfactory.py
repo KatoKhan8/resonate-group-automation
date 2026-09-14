@@ -672,6 +672,27 @@ def _plan(campaign, recs, config, *, include_inmail=False,
 # thing between a real lead and this function is `LINKEDIN_ADD_LEAD` not
 # being in `providerwrites.SUPPORTED`, which is an operator decision.
 
+def _first_linkedin_step(campaign, config):
+    """The key of the first LinkedIn step in this campaign's cadence.
+
+    `authorize` asks whether a STEP renders for a contact, so adding somebody
+    to a LinkedIn campaign has to name the step they will actually receive
+    first. Raises rather than guessing: a cadence with no LinkedIn step is not
+    a campaign anybody should be added to, and a default here would be the
+    same class of bug as the hard-coded key it replaces.
+    """
+    from . import cadence as _cadence
+
+    for spec in _cadence.steps_for(campaign, config=config) or ():
+        if spec.get("channel") == "linkedin":
+            return spec.get("key")
+    raise FactoryRefused(
+        f"campaign {campaign.get('campaign_id')!r} runs a cadence with no "
+        f"LinkedIn step, so there is no first action to authorise against. "
+        f"Adding a lead to it would put somebody into a sequence that will "
+        f"never message them")
+
+
 def _mint_authorization(campaign, rec, contact, *, config=None, readback=None,
                         by="system"):
     """One Authorization per contact, from the canonical gate.
@@ -693,11 +714,23 @@ def _mint_authorization(campaign, rec, contact, *, config=None, readback=None,
     one contact must not be bypassed by another contact's clean record.
     """
     client = campaign.get("client")
-    # Use "day3" as the step_key: it is a LinkedIn step in cadence.STEPS.
-    # The authorize() function's copy gate checks if the step renders for
-    # this contact. For LinkedIn lead addition, we are not sending a specific
-    # message but adding a person to a campaign sequence.
-    step_key = "day3"
+    # THE STEP KEY IS DERIVED, NOT NAMED. This read `step_key = "day3"`, which
+    # is a step of `PRODUCTIVE_BALANCED_V1` - the old seven-step shape - and
+    # does not exist in `productive_li_heavy_v1` at all:
+    #
+    #     position(li_heavy, "day3")  ->  (None, None, None)
+    #     position(li_heavy, "li1")   ->  ("linkedin", 1, 6)
+    #
+    # So `authorize`'s `copy` gate would have asked whether "day3" renders for
+    # this contact, found nothing, and refused every single person. Fail-closed
+    # rather than unsafe - but the path would simply never have worked, and no
+    # test would have said so because every test mocks `authorize`.
+    #
+    # The right key is the FIRST LINKEDIN STEP THIS CAMPAIGN'S CADENCE
+    # ACTUALLY HAS, because that is the first thing the sequence does to the
+    # person being added. Derived from the cadence rather than written down
+    # here, so a campaign on a different cadence asks about its own first step.
+    step_key = _first_linkedin_step(campaign, config)
     return executionguard.authorize(
         operation=providerwrites.LINKEDIN_ADD_LEAD,
         channel="linkedin",

@@ -190,6 +190,40 @@ A caution on one number: "usable company name" here is `name != domain
 prefix`, which is close to but not identical with `cadence.company_name`'s own
 test. The readiness counts below it are exact; that one is indicative.
 
+## THE SUITE, MEASURED
+
+`py -3 scripts/run_suite.py --timeout 2400`, exit code read from unittest
+rather than from a pipe:
+
+    failures      24        (was 29 at the context-reset checkpoint)
+    wall          1795.8s   (slower than the 1381s baseline - four Qwen
+                             workers were competing for the machine)
+    timed_out     False
+    exit_code     1
+
+NOT GREEN, and not claimed to be.
+
+**This run started at 09:12Z, BEFORE TASK-021 and TASK-020 were integrated**,
+and two of the 24 are defects those tasks fixed:
+
+    test_validating_the_capability_is_the_only_thing_that_changes_it
+    test_a_pending_request_carries_a_date_and_an_unread_one_does_not
+
+So the tree as it stands should be near 22. That has not been re-measured and
+is not being claimed.
+
+The clusters, unchanged in character from the checkpoint:
+
+    fixture hygiene   3   real names, client domains and non-reserved email
+                          addresses in fixtures. This is a PRIVACY finding,
+                          not a cosmetic one, and TASK-018 is told to fix it
+                          by replacing the data rather than widening the rule
+    test_e2e          8   seven-step cadence expectations, stale since the
+                          cadence moved to productive_li_heavy_v1
+    preproduction     2   the same
+    waterfall/ledger  2
+    the rest          9   assorted, classified by TASK-018
+
 ## OPEN, IN ORDER
 
 1. **Campaign 451 sends at 16:24Z.** Do not mutate it. Record `sent_at`,
