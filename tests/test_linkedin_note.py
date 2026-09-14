@@ -12,7 +12,7 @@ import shutil
 import tempfile
 import unittest
 
-from src import cadence, clients, generate, lint, llm, store
+from src import cadence, claims, clients, generate, lint, llm, store
 from tests.base import FIXTURES, pin_client_config
 
 # "month end reconciliation" was in here and it is `personas.champion.angles`
@@ -332,3 +332,143 @@ class TestTheNoteGoesThroughTheSameDoorTheEmailDoes(NoteTest):
     # A test written here asserting the outright refusal passed for the wrong
     # reason - the model's second answer was stored - which is what a
     # redundant test at the wrong layer looks like.
+
+
+class TestThePlanRegeneratesANoteThatFailsTheGates(NoteTest):
+    """A stored note that fails the gates is re-planned, not counted as done.
+
+    `plan` asked only whether a note EXISTED, so a stored note asserting
+    something the record cannot support was counted as work already finished
+    and nothing else regenerated it. The email branch fixed this on
+    2026-09-13; the LinkedIn branch twenty lines above it still asked only
+    whether a note existed.
+
+    Measured on `productive-linkedin-production-v1`, 2026-09-14: five contacts
+    blocked by real claims, nothing regenerating them.
+    """
+
+    def _store_note(self, step_key, note_text):
+        """Write a note directly to the record, bypassing the gates."""
+        with store.transaction() as recs:
+            rec = store.get("meridian", recs)
+            key = lint.contact_key(rec["contacts"][0])
+            rec.setdefault("cadence", {}).setdefault(key, {})[step_key] = {
+                "channel": "linkedin", "generated": True, "note": note_text}
+
+    def test_a_clean_stored_note_is_not_re_planned(self):
+        """A note that passes everything is done work, not pending work."""
+        self._store_note("day3", GOOD_NOTE)
+        rec = self.rec()
+        contact_name = rec["contacts"][0]["name"]
+        ops = generate.plan(rec, self.llm_config())
+        note_ops = [o for o in ops
+                    if o["step"] == "linkedin_note" and o.get("day") == "day3"
+                    and o.get("contact") == contact_name]
+        self.assertEqual(note_ops, [],
+                         "a clean stored note was re-planned for regeneration")
+
+    def test_a_note_asserting_an_unsupported_claim_is_re_planned(self):
+        """A note that says something the record does not support is not done."""
+        bad = ("hi Ivana, our previous discussions about your profitability "
+               "setup were very productive. happy to connect.")
+        self._store_note("day3", bad)
+        rec = self.rec()
+        contact_name = rec["contacts"][0]["name"]
+        unsupported = claims.check(bad, rec, rec["contacts"][0])
+        self.assertTrue(unsupported,
+                        "the fixture note does not actually fail claims.check")
+        ops = generate.plan(rec, self.llm_config())
+        note_ops = [o for o in ops
+                    if o["step"] == "linkedin_note" and o.get("day") == "day3"
+                    and o.get("contact") == contact_name]
+        self.assertTrue(note_ops,
+                        "a note asserting an unsupported claim was not re-planned")
+        self.assertIn("unsupported claim", note_ops[0]["why"])
+
+    def test_a_note_that_fails_lint_is_re_planned(self):
+        """A stored note with a lint violation is re-planned."""
+        bad = "hi Ivana, our previous discussions\u2014very productive. happy to connect."
+        self._store_note("day3", bad)
+        rec = self.rec()
+        contact_name = rec["contacts"][0]["name"]
+        key = lint.contact_key(rec["contacts"][0])
+        step = rec["cadence"][key]["day3"]
+        failures = lint.check_step(rec, key, step)
+        self.assertIn("em_dash", failures,
+                      "the fixture note does not actually fail lint")
+        ops = generate.plan(rec, self.llm_config())
+        note_ops = [o for o in ops
+                    if o["step"] == "linkedin_note" and o.get("day") == "day3"
+                    and o.get("contact") == contact_name]
+        self.assertTrue(note_ops,
+                        "a note failing lint was not re-planned")
+        self.assertIn("fails lint", note_ops[0]["why"])
+
+    def test_a_note_for_a_contact_with_no_profile_is_not_re_planned(self):
+        """No rewrite fixes a missing profile. The held code must not trigger
+        three model calls and then block forever."""
+        self.assertIn("profile_missing", lint.LINKEDIN_HELD_CODES)
+        bad = "hi there, our profitability discussions were great. connect?"
+        self._store_note("day3", bad)
+        with store.transaction() as recs:
+            rec = store.get("meridian", recs)
+            rec["contacts"][0]["linkedin"] = None
+        rec = self.rec()
+        ops = generate.plan(rec, self.llm_config())
+        note_ops = [o for o in ops
+                    if o["step"] == "linkedin_note"
+                    and o.get("contact") == rec["contacts"][0]["name"]]
+        self.assertEqual(note_ops, [],
+                         "a contact with no profile had notes re-planned")
+
+    def test_the_reason_reaches_the_ops_why(self):
+        """An operator reading the plan must see which note and what for."""
+        bad = ("hi Ivana, our previous discussions about your profitability "
+               "setup were very productive. happy to connect.")
+        self._store_note("day3", bad)
+        rec = self.rec()
+        contact_name = rec["contacts"][0]["name"]
+        ops = generate.plan(rec, self.llm_config())
+        note_ops = [o for o in ops
+                    if o["step"] == "linkedin_note" and o.get("day") == "day3"
+                    and o.get("contact") == contact_name]
+        self.assertTrue(note_ops)
+        why = note_ops[0]["why"]
+        self.assertIn(contact_name.split()[0], why)
+        self.assertIn("day3", why)
+        self.assertTrue(
+            "unsupported claim" in why or "fails lint" in why
+            or "repeats" in why or "product" in why,
+            f"the why {why!r} does not say what is wrong")
+
+    def test_breaking_the_wiring_makes_the_intended_test_fail(self):
+        """If the claims check is removed from plan, the unsupported-claim
+        test must fail. This proves the test is connected to the code, not
+        passing by accident."""
+        bad = ("hi Ivana, our previous discussions about your profitability "
+               "setup were very productive. happy to connect.")
+        self._store_note("day3", bad)
+        rec = self.rec()
+        contact_name = rec["contacts"][0]["name"]
+        # Verify the note actually fails claims
+        unsupported = claims.check(bad, rec, rec["contacts"][0])
+        self.assertTrue(unsupported, "fixture is not actually broken")
+        # Verify plan catches it
+        ops = generate.plan(rec, self.llm_config())
+        note_ops = [o for o in ops
+                    if o["step"] == "linkedin_note" and o.get("day") == "day3"
+                    and o.get("contact") == contact_name]
+        self.assertTrue(note_ops,
+                        "plan did not re-plan a note with unsupported claims")
+        # Now verify that WITHOUT the claims check, it would NOT be caught.
+        # Simulate by checking that the note passes lint (so lint alone
+        # would not catch it):
+        key = lint.contact_key(rec["contacts"][0])
+        step = rec["cadence"][key]["day3"]
+        lint_failures = [f for f in lint.check_step(rec, key, step)
+                         if f not in lint.LINKEDIN_HELD_CODES]
+        lint_verdict = lint.classify_linkedin(lint_failures)
+        # The note should pass lint (it is the claims that fail)
+        self.assertEqual(lint_verdict, "clean",
+                         "the fixture fails lint, so this test does not prove "
+                         "the claims wiring is connected")

@@ -620,12 +620,70 @@ def plan(rec, client=None, campaign=None):
                 if spec.get("channel") != "linkedin":
                     continue
                 note = stored.get(spec["key"]) or {}
-                if note.get("generated") and note.get("note"):
+                if not (note.get("generated") and note.get("note")):
+                    ops.append({"step": "linkedin_note",
+                                "why": f"{c['name']} has no written "
+                                       f"{spec['key']} note",
+                                "contact": c.get("name"), "day": spec["key"]})
                     continue
-                ops.append({"step": "linkedin_note",
-                            "why": f"{c['name']} has no written "
-                                   f"{spec['key']} note",
-                            "contact": c.get("name"), "day": spec["key"]})
+                # A NOTE THAT DOES NOT PASS IS NOT A NOTE. The same defect
+                # the email branch fixed: this asked only whether a note
+                # EXISTED, so a stored note that fails the gates counted as
+                # work already done - and nothing else regenerates one.
+                #
+                # The gates are the same ones `linkedin_note` runs before
+                # storing: lint, claims, foreign_product and quality. The
+                # planner must ask the same questions, or it will re-plan
+                # notes that would pass and skip notes that would fail.
+                #
+                # HELD CODES ARE NOT REGENERABLE. `profile_missing` is in
+                # `LINKEDIN_HELD_CODES` for the same reason
+                # `recipient_not_sendable` is in `HELD_CODES`: no rewrite
+                # fixes a fact about the contact. A note for a contact with
+                # no LinkedIn profile must not be regenerated three times.
+                trial = dict(rec)
+                trial["cadence"] = {**(rec.get("cadence") or {}),
+                                    lint.contact_key(c): {
+                                        **stored, spec["key"]: note}}
+                li_failures = [f for f in lint.check_step(
+                    trial, lint.contact_key(c), note)
+                    if f not in lint.LINKEDIN_HELD_CODES]
+                if lint.classify_linkedin(li_failures) == "failed":
+                    ops.append({"step": "linkedin_note",
+                                "why": f"{c['name']}'s {spec['key']} note "
+                                       f"fails lint "
+                                       f"({', '.join(li_failures)})",
+                                "contact": c.get("name"), "day": spec["key"]})
+                    continue
+                unsupported = claims.check(
+                    note.get("note") or "", trial, c)
+                if unsupported:
+                    ops.append({"step": "linkedin_note",
+                                "why": f"{c['name']}'s {spec['key']} note "
+                                       f"makes an unsupported claim "
+                                       f"({unsupported[0].get('why', '')[:60]})",
+                                "contact": c.get("name"), "day": spec["key"]})
+                    continue
+                invented = claims.foreign_product(
+                    note.get("note") or "",
+                    clients.product(client or {}), rec)
+                if invented:
+                    ops.append({"step": "linkedin_note",
+                                "why": f"{c['name']}'s {spec['key']} note "
+                                       f"names a product not sold "
+                                       f"({invented[0].get('why', '')[:60]})",
+                                "contact": c.get("name"), "day": spec["key"]})
+                    continue
+                note_repeats = _note_quality(
+                    trial, c,
+                    (trial.get("cadence") or {}).get(lint.contact_key(c)) or {},
+                    spec["key"], client)
+                if note_repeats:
+                    ops.append({"step": "linkedin_note",
+                                "why": f"{c['name']}'s {spec['key']} note "
+                                       f"repeats another step "
+                                       f"({', '.join(note_repeats)})",
+                                "contact": c.get("name"), "day": spec["key"]})
         # EMAIL DRAFTS STAY BEHIND EMAIL VERIFICATION. CLAUDE.md: no email is
         # generated for an unverified address, and that rule is untouched -
         # only the LinkedIn note moved out from behind it.
