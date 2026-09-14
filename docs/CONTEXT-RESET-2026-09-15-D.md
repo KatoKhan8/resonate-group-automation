@@ -352,3 +352,82 @@ enabling it is a separate operator decision.
 - **Do not merge a worker branch wholesale.** Take named files.
 - **Do not believe a document about the environment** without checking.
   `QWEN.md` cost a whole task tonight.
+
+---
+
+## 14. THE FULL SUITE RAN, AND MASTER WAS ALREADY RED
+
+Run to completion for the first time this session:
+
+    8954 tests, 1937s (32 min)
+    10 failures, 7 errors, 5 skipped, 16 expected failures
+
+**Seven of them were then run at `a519954`** - the commit this session
+started from - in a detached worktree. They fail there IDENTICALLY: same
+names, same count. **Nothing in the 2026-09-14/15 work caused any of them.**
+
+    test_workspace_isolation_attacks    LEAK_the_sanctioned_write_path_
+                                        accepts_a_null_client
+                                        the_unscoped_default_reads_the_
+                                        whole_estate
+    test_the_second_client_runs_on_the_same_engine
+                                        an_unowned_record_belongs_to_nobody_
+                                        rather_than_to_everybody
+    test_no_write_happens_without_every_gate   the write door
+    test_a_bounced_address_stops_being_sendable
+                                        class TheSENDPathReadsIt
+    test_ingest TestPhase1Csv           x2, ingest integrity
+
+Three tenancy, one write door, one send safety, two ingest. TASK-086 is
+queued and told to start with the tenancy three and STOP if any is a real
+leak rather than a stale test. TASK-085 covers the other two
+(`test_crash_restart_idempotency`, `test_cadence` company pause).
+
+**The lesson is not that the tests are red. It is that nobody knew.** The
+suite takes 32 minutes, so it had not been run end to end, and seven
+guarantees - including the ones with LEAK in the name - had been untested for
+an unknown length of time. Run it.
+
+### And one of the failures WAS mine
+
+`tests/test_fixture_hygiene` guards against real client data in tracked
+files. I tripped it by integrating worker documents without reading them for
+PII - the same rule I had written into those workers' own task files.
+
+    docs/LEADS-ARE-BLOCKED-2026-09-14.md
+    docs/qwen-tasks/DONE/TASK-072-...md
+    docs/qwen-tasks/DONE/TASK-078-...md
+    scripts/task065_run_bcd.py          fifteen real prospect domains, baked
+                                        into a literal list
+
+All four redacted; the script now reads its record ids from the queue.
+`test_no_real_client_prospect_or_roster_domain` passes. The remaining hygiene
+failures are pre-existing, verified present at `a519954`.
+
+**Note what this means and does not mean.** Redaction fixes the working tree.
+The domains remain in git HISTORY, so this is mitigation rather than
+erasure. Anyone who needs them genuinely gone needs a history rewrite, which
+is an operator decision.
+
+## 15. THE PROPAGATION FIX LANDED - AND ITS HEADLINE NUMBER WAS WRONG
+
+TASK-083. A ladder change finally reaches the copy, opt-in:
+
+    plan(rec)                             0 ops      <- the defect
+    plan(rec, regen_stale_ladder=True)   11 ops      <- the sequence re-plans
+    plan(rec) == plan(rec, regen_stale_ladder=False)  True
+
+    py -3 -m src.generate --regen-stale-ladder --client productive
+      steps to re-plan:               560
+      approvals that would be revoked:  83
+      (dry run - nothing was changed)
+
+**That 83 read 0 until Claude fixed it.** The count keyed its approval lookup
+on `op["contact"]`, which is the display name "Jacob Faertz", while the
+cadence is keyed "jacob-faertz". It missed every time. "0 approvals would be
+revoked" is the most reassuring possible wrong answer to the one question the
+operator has to decide, and it would have made a destructive run look free.
+
+**So the decision now has real numbers on it: regenerating costs 560 steps
+and 83 human approvals.** That is the operator's call, not Claude's, and it
+is why the flag is opt-in and reports before it acts.
