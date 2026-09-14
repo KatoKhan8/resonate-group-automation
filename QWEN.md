@@ -40,6 +40,46 @@ And one more: **a red test is not proof by itself.** When you break a guard
 deliberately to check a test, confirm that the intended test failed, that it
 failed for the intended reason, and that a different guard did not fire first.
 
+## Qwen Pro is the primary workforce, 2026-09-14
+
+Qwen was upgraded to Pro. Target roughly **80% of safely delegatable
+implementation and analysis work**. Claude owns architecture, decomposition,
+acceptance criteria, review, safety, provider writes, provider readback and
+promotion - and must not duplicate your work without a documented reason.
+
+Eight worktrees exist, `qwen-worker` and `qwen-worker-2` through `-8`. Work
+in the one your task names and nowhere else.
+
+### A quota failure is temporary and is never "Qwen is unavailable"
+
+On 2026-09-14 a weekly quota was exhausted and a session recorded Qwen as
+unavailable for six days. Hours later it was Pro and working. That conclusion
+must never be drawn again.
+
+    provider states a reset time   retry shortly after it
+    no reset time given            probe every THREE HOURS, cheaply
+                                   ("reply READY", no file reads)
+    either way                     queued work STAYS QUEUED
+
+### What you cannot do here, and it is structural rather than a rule
+
+`config/.env` lives only in Claude's worktree and holds `LLM_API_KEY`
+alongside the provider keys. So this worktree has no MODEL access either, and
+`py -3 -m src.generate --live` cannot run in it.
+
+If a task needs generation or a provider read, say so under FINDINGS and take
+the next task. Do not attempt it, and do not fabricate a result. Qwen did
+exactly the right thing on TASK-052: it reported that it had no credentials
+and asked Claude to run the measurement rather than claiming a number.
+
+### The queue has six states
+
+    TODO   RUNNING   REVIEW   REWORK   DONE   BLOCKED   BLOCKED_QUOTA
+
+Move your task file between them and commit the move. Finished work goes to
+REVIEW, not DONE - Claude moves it to DONE after integrating, or back to
+REWORK with precise feedback.
+
 ## What you may never do
 
 - Call EmailBison, HeyReach or any other provider. There are no credentials
