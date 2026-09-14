@@ -819,7 +819,46 @@ def _note_quality(rec, contact, stored, step_key, config):
     ignore = {w for w in _re.findall(r"[a-z]+", str(name).lower()) if len(w) > 2}
     found = quality.gate(note, config, steps=siblings, channel="linkedin",
                          ignore=ignore)
-    return (found or {}).get("reasons") or []
+    reasons = list((found or {}).get("reasons") or [])
+
+    # AND THE CHECK THE STAGE WILL RUN, ASKED HERE INSTEAD OF ONLY THERE.
+    #
+    # `quality.campaign_repetition` is what `heyreachfactory._plan` refuses a
+    # campaign on. It was reachable ONLY at stage time, so a note could pass
+    # every gate at generation, be stored, and then block the whole campaign
+    # - with nothing in the generation loop able to see why, and nothing in
+    # the retry feedback able to tell the model.
+    #
+    # The two checks genuinely disagree. Measured 2026-09-14 on
+    # `acqcom-com/brian-price`:
+    #
+    #     campaign_repetition      li2 vs li5, 4 shared words
+    #                              (across, day-to-day, right, tracking)
+    #     repetition_across_rungs  NONE
+    #
+    # `repetition_across_rungs` needs three shared words AND fifty percent
+    # overlap of the smaller set, so two long notes sharing four words pass
+    # it. `campaign_repetition` discounts the subject vocabulary and the
+    # company name and then applies its own threshold, which is stricter on
+    # exactly this shape. Both are defensible; having only the stricter one
+    # at the far end of the pipeline is not.
+    #
+    # A full regeneration ran and did not converge, because the storer kept
+    # accepting replacements that collided the same way. That is the loop
+    # this closes: the storer refuses it, the planner re-plans it, the reason
+    # reaches the model, and the stage-time check becomes a backstop that
+    # should never fire rather than the only place the question is asked.
+    if len(siblings) > 1:
+        company = (rec.get("company_facts") or {}).get("name") or rec.get("company")
+        for collision in quality.campaign_repetition(siblings,
+                                                     company_name=company):
+            if step_key not in (collision.get("step_a"), collision.get("step_b")):
+                continue
+            other = (collision["step_b"] if collision["step_a"] == step_key
+                     else collision["step_a"])
+            shared = ", ".join(collision.get("shared", [])[:5])
+            reasons.append(f"says the same thing as {other} ({shared})")
+    return reasons
 
 
 def diagnose(rec, model):
