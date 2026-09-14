@@ -137,3 +137,52 @@ nobody ever paused, and the next person reading that record cannot tell.
 
 The most important test remains: an UNKNOWN reply STILL PAUSES. Confirm it is
 in place and that it fails when the classification check is removed.
+
+---
+
+## REVIEW 2 - NOT REJECTED. REBASE AND RE-SUBMIT. 2026-09-14.
+
+The rework is CORRECT and both review points are addressed:
+
+- `orchestrator.positive_reply_notification`'s docstring now names the real
+  pause path, and `src/replies.py`'s module docstring says the pause is
+  conditional on the classification;
+- a pure out-of-office SKIPS `accountpolicy.apply_reply` entirely rather than
+  being paused and undone, which is what REVIEW 1 asked for. The residual
+  safety restore logs via `store.log(rec, "pause_restored", ...)`;
+- the wiring is proved: removing `_is_pure_ooo` makes an out-of-office pause,
+  and an UNKNOWN reply still pauses.
+
+**A note on FILES FORBIDDEN.** It listed `src/replies.py`, and REVIEW 1 then
+asked for exactly the change that requires editing it. The review wins; the
+list was wrong. Editing it was right.
+
+## WHY THIS COULD NOT BE INTEGRATED AS IT STANDS
+
+TASK-038 landed on master while this ran, and both changed
+`tests/test_reply_transitions.py`. TASK-038 changed the REFERRAL policy:
+
+    reply.on_referral                HOLD -> STOP
+    reply.activate_referred_contact  HOLD -> CONTINUE
+
+Your branch predates it, so applying your test file reverted those
+expectations, and keeping master's leaves four tests asserting that
+`events.apply` pauses - which your change deliberately stops.
+
+Neither version is wrong. They are two true things written at different times,
+and reconciling them from the outside means guessing which assertion belongs
+to which task.
+
+## WHAT TO DO
+
+1. `git merge master` - it now carries TASK-038 and TASK-035.
+2. Re-apply your change on top. The four tests that will fail are in
+   `tests/test_reply_transitions.py::EveryEntryPointGoesThroughThePolicy` and
+   `ReplayAndRaces`, and they assert the pause happens in `events.apply`.
+   Update them to assert it happens after classification, keeping TASK-038's
+   referral expectations untouched.
+3. Run `tests/test_account_saturation.py` as well. It is TASK-038's and it
+   exercises the same policy table; if your change moves what a referral or a
+   positive reply does to an ACCOUNT, that file will say so.
+
+Nothing of yours is lost - this is a rebase, not a rewrite.
