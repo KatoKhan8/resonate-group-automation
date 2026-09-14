@@ -18,24 +18,45 @@ report can read.
 ## WHY IT MATTERS - measured 2026-09-14 against the client's live estate
 
 The estate reports 2,139 unique replies across 48,606 people contacted, a
-4.40% reply rate. Classifying a sample of those replies with
-`replies.classify(model=None)` says that number means much less than it looks:
+4.40% reply rate. Classifying **794 of them** with `replies.classify(model=
+None)` - a walk of the `/replies` feed that a provider timeout ended at 3,000
+rows, so roughly the most recent 37% of replies and NOT the whole estate -
+says that number means much less than it looks:
 
-    automated_reply flag set by the provider     71% of replies
-    out_of_office by our own rules               29%
-    NO RULE MATCHED AT ALL                       39%
-    referral                                     10%
-    unsubscribe / negative / not_relevant        16%
-    positive                                      3%
+    NO RULE MATCHED AT ALL       279   35.1%
+    negative                     166   20.9%
+    referral                     119   15.0%
+    unsubscribe                  115   14.5%
+    positive                      41    5.2%
+    out_of_office                 37    4.7%
+    not_now                       24    3.0%
+    not_relevant                  11    1.4%
+    account_do_not_contact         2    0.3%
 
-So the headline reply rate is mostly robots, and two of every five real
-replies fall through every rule we have. `interested`, the provider's own
-field for a good reply, is set 17 times in the whole estate.
+So one reply in twenty is positive, one in seven is somebody asking to be
+taken off the list, and **more than a third match no rule we have**.
+`interested`, the provider's own field for a good reply, is set 17 times in
+the whole estate and 11 times in this sample.
 
-A campaign cannot be optimised on a metric where 71% of the signal is an
-out-of-office auto-responder. Everything in the learning document - sequence
-length, subject variants, the referral step - currently terminates in
-"replied: yes/no", and that is the ceiling until this is fixed.
+A CORRECTION, and it is the kind this task exists to prevent. An earlier
+version of this file said "71% of replies carry the provider's automated
+flag". That was read off the first 119 rows. Across all 794 the flag is set
+**84 times, 10.6%** - every one of them in that first, most recent slice. So
+the honest statement is that automated replies are CONCENTRATED IN RECENT
+CAMPAIGNS and the estate-wide rate is about one in ten. Establishing why is
+part of this task; it is not yet a finding.
+
+A campaign cannot be optimised on a metric where a third of the signal is
+unreadable and a seventh of it is somebody asking to stop. Everything in the
+learning document - sequence length, subject variants, the referral step -
+currently terminates in "replied: yes/no", and that is the ceiling until this
+is fixed.
+
+THE MOST URGENT SINGLE LINE IN THIS TASK: 14.5% of replies are unsubscribe
+requests IN WORDS, and the provider records ZERO unsubscribes across 237,935
+emails because `can_unsubscribe: false` means there is no link. Opt-out
+reaches this system only as a reply somebody has to classify. If that chain
+is broken there is no second line, and 115 people in this sample alone asked.
 
 ## CURRENT CONTEXT
 
@@ -44,7 +65,7 @@ length, subject variants, the referral step - currently terminates in
   account_do_not_contact, out_of_office, not_now, referral, not_relevant.
 - `classify(text, model=None)` runs rules first and falls back to
   `{"classification": "neutral", "confidence": 0.5, "reason": "no rule
-  matched and no classifier was available"}`. THAT FALLBACK IS THE 39%, and
+  matched and no classifier was available"}`. THAT FALLBACK IS THE 35%, and
   reporting it as `neutral` is how "we could not tell" becomes "they were
   lukewarm". Those are different facts.
 - Rows carry `automated_reply`, `interested`, `folder`, `type` and
@@ -61,7 +82,7 @@ length, subject variants, the referral step - currently terminates in
    suppress outreach the way a human reply does - though an out-of-office
    should still defer the next touch, which `src/ooo.py` and
    `src/oooreturn.py` already model. Trace whether they are consumed.
-3. **Raise rule coverage on the unmatched 39%.** Work from the real bodies;
+3. **Raise rule coverage on the unmatched 35%.** Work from the real bodies;
    add patterns with evidence. Do not invent a category.
 4. **A meeting is not a positive reply.** The hierarchy names them
    separately and nothing here distinguishes them. Decide whether `positive`

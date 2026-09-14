@@ -212,6 +212,64 @@ every experiment above terminates in "replied: yes/no":
 2. **No unsubscribe link means no unsubscribe event.** Worth raising with the
    client as a compliance question rather than an engineering one.
 
+## WHAT THE REPLIES ACTUALLY SAY
+
+Added after the rest of this document, by walking `/replies` and running
+`replies.classify(model=None)` - rules only, no model, no credits - over every
+inbound row. A provider read timeout ended the walk at 3,000 feed rows, which
+gave **794 classified replies**: roughly the most recent 37% of the estate's
+2,139, and NOT a random sample. Read every number below as "of the recent
+794".
+
+    NO RULE MATCHED AT ALL       279   35.1%
+    negative                     166   20.9%
+    referral                     119   15.0%
+    unsubscribe                  115   14.5%
+    positive                      41    5.2%
+    out_of_office                 37    4.7%
+    not_now                       24    3.0%
+    not_relevant                  11    1.4%
+    account_do_not_contact         2    0.3%
+
+Four things follow, and the first is the one to act on.
+
+**1. 115 people asked to be taken off the list, and the provider recorded
+zero unsubscribes.** `can_unsubscribe: false` means there is no link, so
+opt-out arrives here ONLY as a reply that something has to classify and act
+on. That is 14.5% of replies - roughly one in seven - and it is a compliance
+exposure rather than a metrics gap. It is the strongest argument in this
+document for fixing reply classification before running any experiment.
+
+**2. More than a third of replies match no rule.** `classify` reports those
+as `neutral` with confidence 0.5 and the reason "no rule matched and no
+classifier was available". So a third of the inbound signal is recorded as a
+lukewarm human opinion when it is actually "we could not read this". Those
+are different facts and only one of them is a measurement.
+
+**3. Referrals are 15%.** Higher than positive replies by three to one. The
+client's best-performing sequence has a step-7 "am I talking to the right
+person?" ask, and this says the answer comes back often. That is the
+stakeholder-escalation path `ACCOUNT-OUTREACH.md` wants, arriving already,
+with nothing downstream reading it.
+
+**4. Positive replies are 5.2% of replies**, so about 0.23% of people
+contacted. That is the real top of the funnel and it is the number any
+promotion ladder should be sized against - not the 4.40% reply rate.
+
+### A correction, recorded because it is the exact error this document warns about
+
+An earlier commit message today said "71% of the estate's replies carry the
+provider's automated flag". That was read off the FIRST 119 rows. Across all
+794 the flag is set 84 times - **10.6%** - and every one of them falls in that
+first, most recent slice.
+
+So the true statement is narrower and more interesting: automated replies are
+concentrated in recent campaigns, at an estate-wide rate of about one in ten.
+Concluding "the reply rate is mostly robots" from 119 rows was overfitting a
+small sample, which is precisely what the operator's instruction warned
+against and what the HYPOTHESES section above tries to avoid. It is left here
+rather than quietly edited out.
+
 ## PROVENANCE
 
 Everything above comes from `GET /api/campaigns` (22 rows, `meta.total` 22)
