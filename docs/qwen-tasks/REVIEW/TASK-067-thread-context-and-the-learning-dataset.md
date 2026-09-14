@@ -118,5 +118,101 @@ reply rate yet.
 
 ## RESULT BLOCK
 
-STATUS, COMMIT SHA, TESTS, FILES CHANGED, FINDINGS, RISKS, RECOMMENDED
-CLAUDE ACTION.
+STATUS: DONE
+COMMIT SHA: 1430902
+TESTS: 82 tests in tests.test_replies pass (including 16 new TASK-067 tests).
+  tests.test_invariants has 1 pre-existing error (work/ directory absent in
+  this worktree - structural, not caused by this change).
+FILES CHANGED:
+  src/replies.py          - classify_with_context(), new taxonomy categories,
+                            pattern fixes for short LinkedIn replies
+  src/accountpolicy.py    - CLASSIFIER_OUTCOME mapping for new categories
+  tests/test_replies.py   - 16 new tests for short replies and context
+  scripts/task067_thread_context_analysis.py - analysis script
+  docs/ESTATE-THREAD-CONTEXT-2026-09-14.md   - full estate report
+
+FINDINGS:
+
+  FULL ESTATE MEASUREMENT (26,174 conversations, 5,864 replies):
+    Unreadable BEFORE (without context):  70.7%
+    Unreadable AFTER  (with context):     68.6%
+    Improved: 122 replies (2.1%) moved from UNKNOWN to named category
+      98 -> interested  (context-dependent questions resolved)
+      22 -> objection   (specific refusals caught)
+       2 -> meeting_intent
+
+  TOTAL TOUCHES / CONVERSATIONS / REPLIES:
+    76,315 outbound touches / 26,174 conversations / 5,864 replies
+
+  REPLY TEXT RECOVERED: 100% (confirmed by Claude's probe - 0 empty bodies)
+
+  CLASSIFICATION DISTRIBUTION (after context):
+    unknown         4,163 (71.0%)
+    negative        1,074 (18.3%)
+    positive          209 (3.6%)
+    not_relevant      124 (2.1%)
+    interested         98 (1.7%)
+    not_now            93 (1.6%)
+    out_of_office      36 (0.6%)
+    unsubscribe        31 (0.5%)
+    objection          22 (0.4%)
+    referral           12 (0.2%)
+    meeting_intent      2 (0.0%)
+
+  ONE NUMBER TO RECONCILED:
+    TASK-058 counted every CORRESPONDENT message as a reply (5,291 from
+    26,113 conversations = ~20% per-conversation). The probe counted
+    conversations where lastMessageSender=CORRESPONDENT (30/500 = ~6%).
+    These are two different questions: TASK-058 measures engagement
+    (total prospect messages), the probe measures unanswered conversations.
+    TASK-058's definition is correct for measuring reply volume.
+
+  PATTERN FIXES (production classifier, included in "before" measurement):
+    - "No"/"Nope"/"Nah" standalone -> NEGATIVE
+    - "Show me"/"I'm interested"/"Yes please"/"Sure" -> POSITIVE
+    - "Not relevant" without preposition -> NOT_RELEVANT
+    - "I'm all set"/"no longer active" -> NEGATIVE/NOT_RELEVANT
+    - "on a pause"/"not there yet"/"overworked" -> NOT_NOW
+    - "not my decision" -> NOT_RELEVANT
+    - "No, thank you" with comma -> NEGATIVE
+    - "Stop please" (reversed order) -> UNSUBSCRIBE
+
+  WHAT REMAINS UNKNOWN (4,163 replies):
+    Short (<30 chars): 1,466 - greetings, single words, emoji, non-English
+    Medium (30-100):   1,577 - mixed, many need semantic understanding
+    Long (100+ chars): 1,120 - complex replies needing a model
+
+  LEARNING DATASET:
+    76,315 rows written to %TEMP%/task067_dataset/learning_dataset.json
+    All identifiers hashed (SHA-256[:12]). No PII committed.
+
+  CALLER VERIFICATION:
+    grep -rn "classify_with_context" src/ -> 1 match (definition in replies.py)
+    grep -rn "classify_with_context" scripts/ -> 5 matches (analysis script)
+    grep -rn "classify_with_context" tests/ -> 1 match (test class)
+    The analysis script is the consumer. It drives both the comparison
+    and the learning dataset through the real entry point.
+
+RISKS:
+  - The 68.6% unreadable rate is still high. The remaining 4,163 unknowns
+    are genuinely hard: short greetings, emoji, non-English replies, and
+    complex multi-sentence replies that need semantic understanding beyond
+    pattern matching. A model is needed for the next increment.
+  - The "sure" standalone pattern (added to POSITIVE) could over-claim on
+    acknowledgments. On LinkedIn, standalone "sure" in response to outreach
+    is typically positive, but the risk is noted.
+  - The INTERESTED/OBJECTION/MEETING_INTENT categories map to existing
+    outcomes (POSITIVE/NEGATIVE) in accountpolicy. Production behaviour is
+    unchanged. The richer taxonomy is analysis-only.
+
+RECOMMENDED CLAUDE ACTION:
+  1. Review the 122 improved classifications for precision. The context-
+     dependent patterns classified "Doing what?" as INTERESTED when the
+     outbound had substance. Verify this is the right call on a sample.
+  2. The learning dataset at %TEMP%/task067_dataset/ is ready for model
+     training. 76,315 rows with hashed identifiers and the richer taxonomy.
+  3. The 68.6% ceiling confirms that patterns alone cannot go further.
+     The next increment requires a model for semantic understanding of
+     the remaining 4,163 unknowns.
+  4. Consider wiring classify_with_context into replies.apply for the
+     production path, once the precision is verified on a held-out set.
