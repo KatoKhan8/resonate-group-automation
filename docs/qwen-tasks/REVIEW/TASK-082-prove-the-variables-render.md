@@ -94,3 +94,68 @@ way a render can currently go wrong.
 STATUS, COMMIT SHA, TESTS (exact commands, exact counts, exit codes read off
 the process and never through a pipe), FILES CHANGED, FINDINGS (the coverage
 table and the rendered failures), RISKS, RECOMMENDED CLAUDE ACTION.
+
+## RESULT BLOCK
+
+    STATUS: DONE
+    COMMIT SHA: 48a2f52
+    TESTS: py -3 -m unittest tests.test_emailbison_no_empty_greeting -v
+           16 tests, all pass, exit code 0
+           py -3 -m unittest tests.test_the_emailbison_write_door_is_enforced -v
+           19 tests, all pass, exit code 0
+           py -3 scripts/render_preview.py email_edge_cases
+           12 leads rendered, exit code 0
+    FILES CHANGED:
+      scripts/render_preview.py - 11 edge-case fixtures and render_email_edge_cases()
+      src/bisonfactory.py - _refuse_bad_greetings() guard wired into _ensure_leads
+      tests/test_emailbison_no_empty_greeting.py - 16 tests including
+        DeletingTheCallMakesTheTestFail class
+      docs/BISON-RENDER-QA-2026-09-15.md - the QA document
+    FINDINGS:
+      1. VARIABLE SYNTAX: single-brace only. 3,295 single-brace occurrences,
+         ZERO double-brace across 81 sequences. Confirmed from bison.LEAD_VARIABLES
+         and the template structure. A double-brace placeholder would reach a
+         prospect as literal text.
+      2. GREETING IS NOT A PROVIDER VARIABLE: EmailBison has no {first_name}
+         merge variable. The greeting is baked into the generated body text
+         that travels as {BODY_N}. If the generator produces "Hey ," or
+         "Hi undefined," that goes straight to the provider and out the door.
+      3. COVERAGE: work/ does not exist in this worktree. Coverage cannot be
+         measured against the real queue here. This must be done on the
+         production worktree where work/queue.jsonl exists.
+      4. RENDERED 12 LEADS through bisonfactory pipeline:
+         - Happy path (Elena): OK
+         - No name: EMPTY GREETING "Hey ," detected
+         - No company: OK (greeting renders without company reference)
+         - One-char name (X): OK
+         - Lowercase (jane): OK (preserves case)
+         - ALL CAPS (JOHN): OK (preserves case)
+         - Non-ASCII (Zoë): OK (Unicode renders correctly)
+         - "Hi undefined,": LITERAL UNDEFINED detected
+         - "Hi null,": LITERAL NULL detected
+         - Planted name (Rachel's body names Declan): PLANTED NAME detected
+         - Declan's own copy: OK
+         - Missing sender: SENDER MISSING detected
+      5. GUARD WRITTEN: bisonfactory._refuse_bad_greetings() checks three
+         defect classes: empty greeting, literal placeholder, planted cohort
+         name. Wired into _ensure_leads, called on every stage() invocation.
+         16 tests including DeletingTheCallMakesTheTestFail proving the guard
+         is not inert.
+      6. THE WIRING PROOF: grep -n _refuse_bad_greetings src/bisonfactory.py
+         returns TWO hits: the definition (line 420) and the call (line 1125).
+         Deleting the call makes the test fail.
+    RISKS:
+      - Coverage not measured against real queue (work/ absent in this worktree)
+      - The guard checks the first line of body text only - a broken greeting
+        in the middle of the body would not be caught
+      - The generator could still produce bad greetings if the prompt is wrong
+      - Single-character names are excluded from the planted-name check
+        (too short for reliable word-boundary matching)
+    RECOMMENDED CLAUDE ACTION:
+      1. Measure coverage on production worktree where work/ exists
+      2. Render real leads through scripts/render_preview.py email_edge_cases
+      3. Read back from provider after staging (scripts/readback or equivalent)
+      4. Consider extending the guard to check the full body, not just the
+         first line
+      5. Add the guard to the generation prompt so the model does not produce
+         broken greetings in the first place
