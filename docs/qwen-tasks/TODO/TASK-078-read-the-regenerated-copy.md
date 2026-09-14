@@ -84,3 +84,40 @@ the before-and-after counts, and the side-by-side against the fallbacks),
 RISKS, RECOMMENDED CLAUDE ACTION - and state explicitly whether the block in
 LEADS-ARE-BLOCKED-2026-09-14.md should be lifted, kept, or kept for some
 contacts and lifted for others.
+
+---
+
+## READ THIS BEFORE YOU START - THE REGENERATION DID NOT LAND
+
+Added after the regeneration ran. `docs/THE-LADDER-MOVED-AND-THE-COPY-DID-NOT-2026-09-15.md`
+is the measurement.
+
+The regeneration exited 0 and changed almost nothing, because `plan` only
+re-plans a step that FAILS A GATE and the old copy passes every gate - it
+always did. A stored step records no ladder version and no prompt
+fingerprint, so nothing marks it stale when the ladder changes.
+
+Measured after the run:
+
+    per-SEQUENCE naming Productive   68%   - exactly the pre-work baseline
+    li1 says who is writing          33%
+    email says who is writing         0%
+    email "i noticed" openers          49
+
+**So you will find copy that looks much like what TASK-064 and TASK-063
+condemned, and you must NOT conclude the ladder fix failed.** It did not run.
+Those are different failures with different fixes.
+
+What this changes about your job:
+
+1. Report the before-and-after counts anyway. They are the evidence that the
+   fix did not propagate, which is worth having stated plainly.
+2. For any contact whose copy DID regenerate, read it properly - that is the
+   ladder working and is the real test of whether it is any good.
+   `ogpartner-dk/jacob-faertz` is one: six rungs, six different jobs, product
+   named at rung 4, easy out at rung 6. Find the others and judge them.
+3. **The block stays regardless.** Do not recommend lifting it on copy that
+   was never regenerated. The question "does it beat the fallbacks" can only
+   be answered on copy the new ladder actually produced.
+
+TASK-079 is the fix for the propagation defect and it is queued.
