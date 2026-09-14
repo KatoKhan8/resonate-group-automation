@@ -102,3 +102,59 @@ Found in the read, each on a specific record:
 The first is the more interesting one, and it is the fourth phrase this rule
 has turned out to be short of. Checkpoint C predicted there would be a
 fourth. There was.
+
+---
+
+## WHY `pushable` DID NOT MOVE, AND WHY THAT IS THE SYSTEM WORKING
+
+TASK-072 ran the regeneration to raise the cohort and reported a clean
+negative: **3 of 15 before, 3 of 15 after.** The finding is better than the
+number.
+
+    adcuratio-com/ranjan-damodar   BLOCKED   li1-li5 generated=True
+                                             has_note=True  has_approval=FALSE
+    savagebrands-com/paula-...     PUSHABLE  li1-li5 generated=True
+                                             has_note=True  has_approval=TRUE
+
+The only difference is `approval`. `heyreachfactory._step_copy` returns None
+when a step has no approval, so an unapproved step is simply absent from the
+factory's view however good its copy is. Eight of the twelve blocked contacts
+have every LinkedIn step generated and none of them approved.
+
+**This is not a defect and it must not be fixed.** `src/approve.py` opens
+with the reason: *"Human approval. Nothing is push eligible until a person
+says so. A draft can be generated, lint clean and scheduled and still not be
+sendable: approval is a separate, explicit, recorded act."* It is granted per
+step, bound to the exact words, and revoked when a word changes.
+
+So `generate.py` not calling `approve.py` is the design, not an oversight.
+Anyone reading TASK-072's phrase "the structural blocker" and reaching for a
+bulk-approve has misread it.
+
+### The two findings fit together exactly
+
+TASK-064 read the copy and said it should not be sent. TASK-072 found that
+the copy has not been approved. **A human has not approved it because a human
+should not approve it.** The gate held the thing the gate exists to hold, and
+it held it before anyone asked it to.
+
+That is the whole argument of this file in one sentence: the automated gates
+passed three contacts a person would refuse, and the one gate that requires a
+person is the one still standing between that copy and a prospect.
+
+### So the unblock is unchanged, and bulk approval is not on it
+
+    1  TASK-075   fix the connection note and the progression
+    2  regenerate against the corrected ladder
+    3  a human reads the regenerated copy and it passes
+    4  approve, per step, deliberately
+    5  only then, leads
+
+Approving the current copy to raise a number would skip steps 1 through 3 and
+would be the single most damaging thing available to do tonight.
+
+### Housekeeping from the same run
+
+A stale `work/queue.jsonl.lock` naming dead PID 65548 was removed, which is
+expected after a killed run and is recorded here rather than left implicit.
+23 of 300 records were touched by the regeneration pass.
