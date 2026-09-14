@@ -27,7 +27,7 @@ and decide the clear cases for free. Tests never reach a model.
 """
 import re
 
-VERSION = "rules-2"
+VERSION = "rules-3"
 
 POSITIVE = "positive"
 # TASK-020: should `positive` split into `positive` and `meeting`? The
@@ -141,6 +141,10 @@ OUT_OF_OFFICE_PATTERNS = (
     r"\bon vacation\b", r"\bmaternity leave\b", r"\bpaternity leave\b",
     r"\bi am away\b", r"\bcurrently away\b", r"\breturning on\b",
     r"\bback in the office\b", r"\blimited access to email\b",
+    # TASK-066: "sabbatical" was not in the leave alternation, so "on a
+    # sabbatical leave" was missed. The article "a" before the leave type
+    # also prevented matching.
+    r"\bon (?:a |an )?(?:sabbatical|extended|unpaid)\s+leave\b",
 )
 # Somebody who has named a later time. Distinct from a refusal: they have
 # said when, and that is a date worth keeping rather than a door closing.
@@ -163,10 +167,14 @@ NOT_NOW_PATTERNS = (
     r"\bnot at this time\b",
     r"\b(?:get|reach) back to (?:me|us) (?:sometime|later|when)\b",
     r"\b(?:shelve|park) (?:this|it) (?:for )?(?:now|later)\b",
+    # TASK-066: "not for now" is a deferral, not a refusal - the sender
+    # named "now" as the problem, not the topic. Common on LinkedIn where
+    # a single clause carries the whole reply.
+    r"\bnot for now\b",
 )
 
 NEGATIVE_PATTERNS = (
-    r"\bnot interested\b", r"\bno thanks?\b", r"\bno thank you\b",
+    r"\bnot interested\b", r"\bno thanks?\b", r"\bno,? thank you\b",
     r"\bwe(?:'re| are) (?:all )?(?:set|sorted|covered)\b",
     r"\bplease stop\b", r"\bnot a (?:good )?fit\b", r"\bpass\b",
     r"\bwe already (?:have|use)\b", r"\bhappy with (?:our|the) current\b",
@@ -191,6 +199,15 @@ NEGATIVE_PATTERNS = (
     r"\bnot interesting for\b",
     r"\bno longer interested\b",
     r"\bnot for us\b",
+    # TASK-066: LinkedIn replies are short and drop qualifiers. The existing
+    # "no (interest|need) (at this time|...)" required a qualifier that
+    # LinkedIn senders omit. "No interest" bare and "no, thank you" with a
+    # comma were both missed. 30 of 100 hand-labelled unknowns were clear
+    # refusals that no pattern caught.
+    r"\bno interest\b",
+    # TASK-066: "no requirement" is the formal variant of "no need" - common
+    # in enterprise replies where the sender uses professional language.
+    r"\bno requirement\b",
 )
 # Handing somebody on.
 #
@@ -227,13 +244,23 @@ NOT_RELEVANT_PATTERNS = (
     # `classify_rules` still requires a named person for REFERRAL; this
     # catches the same phrase when it points at nobody. ~5 replies.
     r"\bnot (?:be )?(?:the )?right person\b",
+    # TASK-066: "I don't work at X" is a common LinkedIn not_relevant
+    # signal - the person is at a different company than the one targeted.
+    r"\bi (?:don'?t|do not) work (?:at|for)\b",
+    r"\bnot in (?:that |this )?(?:field|area|department)\b",
 )
 POSITIVE_PATTERNS = (
     r"\binterested\b", r"\bsounds (?:good|interesting|great)\b",
-    r"\bhappy to (?:chat|talk|speak|meet)\b", r"\blet'?s (?:chat|talk|speak)\b",
+    r"\bhappy to (?:chat|talk|speak|meet|connect)\b",
+    r"\blet'?s (?:chat|talk|speak)\b",
     r"\bbook (?:a|some) time\b", r"\bset up a (?:call|meeting)\b",
     r"\bkeen to\b", r"\bwould like to (?:know|hear) more\b",
-    r"\btell me more\b", r"\bsend (?:me )?(?:over |through )?(?:some )?(?:more )?(?:info|details)\b",
+    r"\btell me more\b",
+    # TASK-066: the send-info pattern missed "information" (only matched
+    # "info") and "send me any more info" (the "any" before "more" was not
+    # in the expected position). LinkedIn replies use both "information"
+    # and "info" interchangeably, and "any" is a common softener.
+    r"\bsend (?:me )?(?:over |through )?(?:(?:some |any )?(?:more )?)?(?:info|information|details)\b",
     r"\bwhat does it cost\b", r"\bhow much (?:is|does)\b", r"\bpricing\b",
     r"\bcalendar\b", r"\bavailability\b", r"\bnext week works\b",
     # TASK-020: short affirmative replies, especially LinkedIn where a
@@ -258,6 +285,13 @@ POSITIVE_PATTERNS = (
     # information request that signals engagement. 4-5 replies. Added to
     # the existing send-me-X pattern rather than as a separate line.
     r"\bsend (?:me )?(?:a )?video\b",
+    # TASK-066: LinkedIn short affirmatives that the TASK-020 companion
+    # gate missed. "Yes please" is unambiguous enthusiasm - "please"
+    # converts a bare "yes" from acknowledgment into a request. "Happy to
+    # connect" is a willingness signal on the channel where the outreach
+    # happened. "Pitch deck" is a specific material request.
+    r"\byes please\b",
+    r"\bsend (?:me )?(?:a )?(?:pitch deck|deck|one[- ]pager)\b",
 )
 
 RULES = (
@@ -291,7 +325,13 @@ RULES = (
 
 
 def normalise(text):
-    return re.sub(r"\s+", " ", (text or "")).strip()
+    # TASK-066: LinkedIn (and many mobile clients) use the Unicode right
+    # single quotation mark (U+2019, ') instead of the ASCII apostrophe.
+    # Every pattern in this module uses '? to make the apostrophe optional,
+    # but that only matches U+0027. Normalising here fixes every pattern
+    # at once rather than doubling each alternation.
+    text = (text or "").replace("\u2019", "'").replace("\u2018", "'")
+    return re.sub(r"\s+", " ", text).strip()
 
 
 # ---------------------------------------------------------------------------

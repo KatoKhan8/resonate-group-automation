@@ -171,6 +171,48 @@ class TestTheClassifier(unittest.TestCase):
                      "Not something we need right now."):
             self.assertEqual(self.verdict(text), replies.NOT_RELEVANT, text)
 
+    def test_linkedin_short_refusals(self):
+        """TASK-066: LinkedIn replies drop qualifiers the email patterns expected."""
+        for text in ("No interest.",
+                     "No, thank you.",
+                     "No requirement for this.",
+                     "Not for now."):
+            v = replies.classify(text)
+            self.assertIn(v["classification"],
+                          (replies.NEGATIVE, replies.NOT_NOW), text)
+        # "no interest" and "no, thank you" are negative, not not_now
+        self.assertEqual(replies.classify("No interest.")["classification"],
+                         replies.NEGATIVE)
+        self.assertEqual(replies.classify("No, thank you.")["classification"],
+                         replies.NEGATIVE)
+        # "not for now" is a deferral, not a refusal
+        self.assertEqual(replies.classify("Not for now.")["classification"],
+                         replies.NOT_NOW)
+
+    def test_linkedin_short_affirmatives(self):
+        """TASK-066: short LinkedIn affirmatives the companion gate missed."""
+        for text in ("Yes please.",
+                     "Send me a pitch deck.",
+                     "Happy to connect.",
+                     "Send me more information."):
+            self.assertEqual(self.verdict(text), replies.POSITIVE, text)
+
+    def test_unicode_apostrophe_normalised(self):
+        """TASK-066: LinkedIn uses U+2019 curly quotes, not ASCII apostrophes."""
+        # Right single quotation mark (U+2019) in a contraction
+        text_curly = "I don\u2019t work at Acme anymore."
+        text_ascii = "I don't work at Acme anymore."
+        self.assertEqual(replies.classify(text_curly)["classification"],
+                         replies.NOT_RELEVANT)
+        self.assertEqual(replies.classify(text_curly)["classification"],
+                         replies.classify(text_ascii)["classification"])
+
+    def test_sabbatical_leave_is_out_of_office(self):
+        """TASK-066: 'sabbatical' was not in the leave alternation."""
+        self.assertEqual(
+            replies.classify("I am on a sabbatical leave.")["classification"],
+            replies.OUT_OF_OFFICE)
+
     def test_a_referral_requires_somebody_to_point_at(self):
         """TASK-020: _points_at_somebody must keep holding.
 
