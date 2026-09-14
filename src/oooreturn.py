@@ -260,11 +260,11 @@ def assess(rec, contact_key, today=None, config=None, workspace=None):
     if _has_meeting(rec):
         return verdict(NOT_YET, MEETING_BOOKED)
 
-    # The absence held the account as well as the contact: `events.apply`
-    # pauses the whole company on any reply, before anything is classified,
-    # so the hold reads `outcome: unknown` even for an autoresponder.
-    # Treating that as a live conversation would make every out-of-office
-    # permanent, which is the state this module exists to fix.
+    # A non-pure OOO (e.g. a human "I'm away but let's talk") may have held
+    # the account through `replies.apply` -> `accountpolicy.apply_reply`.
+    # A pure OOO does not hold the account (TASK-030). If the hold was
+    # raised by a colleague, not by this person's own absence, treating it
+    # as a live conversation would make every out-of-office permanent.
     #
     # Two questions, because neither answers it alone. `_hold_account` is
     # idempotent, so the *first* reply to hold an account keeps the

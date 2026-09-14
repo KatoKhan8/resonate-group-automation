@@ -7,12 +7,12 @@ answered. They are normalised to one neutral event, applied once, and then
 walked through the same four steps in the same order, every time:
 
     1. apply the event      (idempotent on the provider's own event id)
-    2. pause the company    (both channels, every contact, no exceptions)
-    3. classify the reply   (conservatively, and never to resume anything)
+    2. classify the reply   (conservatively, and never to resume anything)
+    3. pause the account    (conditional on the classification)
     4. notify a human       (best effort, and allowed to fail)
 
 The order is the whole design. The reply is applied (step 1), then classified
-(step 3), and ONLY THEN is the pause decided (step 2). The pause is
+(step 2), and ONLY THEN is the pause decided (step 3). The pause is
 conditional on the classification: an UNKNOWN reply still pauses (fail-safe),
 a human "not interested" pauses, but a pure out-of-office does not. Only a
 positively identified machine reply may skip the pause.
@@ -81,13 +81,14 @@ def _text_of(event):
 def _is_pure_ooo(verdict, event):
     """A machine-generated out-of-office with no human sentence.
 
-    TASK-030: the only case where the fail-safe pause is skipped. Both
-    conditions must hold: the reply must be classified as out_of_office
-    AND the absence must be machine-generated (either by provider flag
-    or by machine-only phrasing in the text). A human writing about their
-    own absence is NOT a pure OOO, and an out-of-office that also contains
-    a human sentence classifies as something else (positive, negative)
-    and is not pure OOO either.
+    TASK-030: the only case where the account pause is lifted after
+    `replies.apply` has applied it. Both conditions must hold: the reply
+    must be classified as out_of_office AND the absence must be
+    machine-generated (either by provider flag or by machine-only phrasing
+    in the text). A human writing about their own absence is NOT a pure
+    OOO, and an out-of-office that also contains a human sentence is
+    caught by `ooo.detect` returning HUMAN_ABSENCE rather than
+    AUTORESPONDER.
     """
     cls = (verdict.get("verdict") or {}).get("classification")
     if cls != replies.OUT_OF_OFFICE:
@@ -162,28 +163,26 @@ def handle(event, recs, rows=None, config=None, post=None, model=None):
         except Exception:
             config = {}
 
-    # THE PAUSE IS LOCAL. THE QUEUE IS NOT.
+    # THE PROVIDER STOP IS INDEPENDENT OF CLASSIFICATION.
     #
-    # `replies.apply` below pauses the record, which stops US planning a next
-    # step. The provider keeps its own scheduler and its own queue, so until
-    # this call existed a reply stopped our planning and nothing else. This
-    # tells the provider, and it is attempted BEFORE classification because
-    # whether the reply was positive, negative or an out-of-office does not
-    # change that they should stop receiving the sequence.
+    # The provider keeps its own scheduler and its own queue. Whether the
+    # reply was positive, negative or an out-of-office does not change that
+    # they should stop receiving the sequence. This tells the provider, and
+    # it is attempted BEFORE classification because the stop is a safety
+    # REDUCTION - it can only ever mean somebody receives less.
     #
-    # It is a safety REDUCTION - it can only ever mean somebody receives less
-    # - so it is not gated behind --live the way a send is. A contact with no
+    # It is not gated behind --live the way a send is. A contact with no
     # provider binding is a no-op, which is every record staged before this
     # existed.
     outcome["provider_stop"] = _stop_at_provider(
         rec, _contact_of(rec, applied.get("contact")), rows)
 
-    # TASK-030: Save the account pause state BEFORE classification.
-    # `replies.apply` applies the policy for most classifications, which
-    # may pause the account. For a pure out-of-office, the account must
-    # NOT be paused - only deferred. We save the state so we can undo the
-    # account-level pause for pure OOO while keeping the events and
-    # contact-level state that `replies.apply` recorded.
+    # TASK-030 rework: save the pause state BEFORE `replies.apply`.
+    # `replies.apply` calls `accountpolicy.apply_reply` for all non-automated
+    # replies, which may pause the account. For a pure out-of-office, the
+    # account must NOT be paused - only the contact is deferred. We save
+    # the state so we can undo the account-level pause for pure OOO while
+    # keeping the contact-level state that `replies.apply` recorded.
     _pre_pause = rec.get("paused")
 
     verdict = replies.apply(
@@ -191,48 +190,40 @@ def handle(event, recs, rows=None, config=None, post=None, model=None):
         at=event.get("at"), model=model, channel=event.get("channel"),
         provider=event.get("provider"),
         provider_event_id=event.get("provider_event_id"),
-        # The provider's own autoresponder flag where it has one. `None`
-        # means it did not say, which `ooo.detect` treats as unknown rather
-        # than as a denial.
         automated=event.get("automated"))
     outcome["classification"] = verdict["verdict"]
 
-    # TASK-030: The pause is NOW conditional on the classification.
+    # TASK-030: The pause is conditional on the classification.
     #
-    # `replies.apply` has applied the policy for most classifications,
-    # which may have paused the account. Two adjustments:
+    # `replies.apply` called `accountpolicy.apply_reply` for all non-automated
+    # replies, which may have paused the account. For a pure out-of-office
+    # (machine-generated, no human sentence), the account pause is lifted
+    # here. The contact-level deferral from `apply_reply` is kept. The
+    # restore is logged: an account that is not paused with nothing in the
+    # log saying why is indistinguishable from one nobody ever paused.
     #
-    # 1. A pure out-of-office (machine absence, no human sentence) must
-    #    NOT pause the account. `replies.apply` called accountpolicy which
-    #    paused it, so we undo the account-level pause. Contact-level
-    #    state (contact paused for deferral) is correct and kept. The OOO
-    #    event was already recorded by `replies.apply`, so `oooreturn`
-    #    can schedule the return.
-    #
-    # 2. `replies.apply` skips policy for automated non-OOO replies. An
-    #    automated reply that names a colleague is a referral, not a
-    #    machine non-reply, so the account must still be paused.
+    # For everything else, the fail-safe ensures the account is paused:
+    # an UNKNOWN reply, a human "not interested", an OOO with a human
+    # sentence, an automated referral - all pause.
     if _is_pure_ooo(verdict, event):
-        # Pure OOO: undo the account pause. The contact may be paused
-        # (for deferral) but the account is not.
-        rec["paused"] = _pre_pause
-    elif event.get("automated") is True:
-        # Provider automated (non-OOO): don't pause the account, unless
-        # it's a referral (which is not a machine non-reply).
-        cls = (verdict.get("verdict") or {}).get("classification")
-        if cls == replies.REFERRAL and not rec.get("paused"):
-            accountpolicy._hold_account(
-                rec, applied.get("contact"),
-                accountpolicy.REFERRAL, event.get("at"),
-                channel=event.get("channel"),
-                reason=event.get("type"))
+        # Pure OOO: the account must NOT be paused. `apply_reply` maps
+        # OOO to NOT_NOW which is CONTINUE at ACCOUNT scope, so the
+        # account is usually not paused. But if a pre-existing pause was
+        # present, it is preserved. If `apply_reply` or a policy change
+        # were to pause the account, we undo it here and log why.
+        if rec.get("paused") and not _pre_pause:
+            rec["paused"] = _pre_pause
+        store.log(rec, "pause_restored",
+                  "pure out-of-office: account not paused; "
+                  "contact deferred for oooreturn follow-up")
     elif not rec.get("paused"):
-        # Not pure OOO, not automated: ensure the account is paused.
-        # This is the fail-safe: any reply that is not a pure machine
-        # reply pauses the account. `replies.apply` may have already
-        # paused it (for UNKNOWN, POSITIVE, etc.), but for NEGATIVE and
-        # UNSUBSCRIBE the policy is at CONTACT scope, so the account is
-        # not paused. We pause it here to preserve the fail-safe.
+        # Fail-safe: any reply that is not a pure OOO pauses the account.
+        # `replies.apply` may have already paused it (for UNKNOWN, POSITIVE,
+        # OOO+human through NOT_NOW -> HOLD at ACCOUNT scope), but for
+        # NEGATIVE and UNSUBSCRIBE the policy is at CONTACT scope, so the
+        # account is not paused. We pause it here to preserve the fail-safe.
+        # An automated reply that is not a pure OOO (e.g. a referral) also
+        # pauses here, because `replies.apply` skipped `apply_reply` for it.
         accountpolicy._hold_account(
             rec, applied.get("contact"),
             (verdict.get("verdict") or {}).get("classification", "unknown"),

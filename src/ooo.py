@@ -48,8 +48,8 @@ this refuses to need one.
 ## What it does not do
 
 It does not send, schedule, or resume anything. It reads a message and
-returns what it can prove about it. Holding the cadence already happened in
-`events.apply` when the reply arrived, before any of this ran.
+returns what it can prove about it. The pause decision happens in
+`replies.apply` after classification, not here.
 """
 import datetime
 import re

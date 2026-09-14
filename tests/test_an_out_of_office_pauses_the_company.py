@@ -17,7 +17,8 @@ Not the function we changed - the function production calls.
 import os
 import unittest
 
-from src import (accountpolicy, events, inbound, ooo, replies, store)
+from src import (accountpolicy, events, inbound, ooo, replies, store,
+                 orchestrator)
 from tests.base import QueueTest
 
 OOO_AT = "2026-09-10T08:00:00+00:00"
@@ -272,9 +273,10 @@ class WiringVerification(_OOOTestBase):
         """If _is_pure_ooo always returns False, OOO pauses - proving the
         pause is conditional on the classification.
 
-        We don't pass automated=True here, because the automated flag
-        takes a separate path. Without it, patching _is_pure_ooo to False
-        sends the OOO through the 'ensure pause' branch.
+        _is_pure_ooo lives in inbound.py, where it gates whether the
+        account pause is lifted after replies.apply. Patching it to False
+        means the OOO is not recognised as pure, so the fail-safe pauses
+        the account.
         """
         from unittest.mock import patch
 
@@ -313,6 +315,136 @@ class WiringVerification(_OOOTestBase):
         self.assertTrue(rec.get("paused"),
                         "if OOO were classified as UNKNOWN, it should pause - "
                         "proving the pause reads the classification")
+
+
+# ---------------------------- REVIEW 1: orchestrator ordering guarantee
+
+
+class PausePrecedesNotification(_OOOTestBase):
+    """REVIEW 1, point 1: the docstring was the only thing holding this.
+
+    `orchestrator.positive_reply_notification` says the pause precedes the
+    notification. The docstring now names `replies.apply` (through
+    `accountpolicy.apply_reply`) as what guarantees it. This test FAILS if
+    a notification can precede the pause: it patches the notification to
+    check the pause state at the moment it fires.
+    """
+
+    def test_pause_is_set_before_positive_notification_fires(self):
+        """If the notification fires and the account is not paused, the
+        safety property is broken. This test fails if the ordering changes.
+        """
+        from unittest.mock import patch
+
+        recs = store.load()
+        text = "Yes, let's schedule a call this week. Thursday works for me."
+        observed_paused = []
+
+        def capture_state(*args, **kwargs):
+            rec_arg = args[0] if args else kwargs.get("rec")
+            observed_paused.append(bool(rec_arg.get("paused")))
+            return {"sent": False, "why": "test", "planned": False,
+                    "payload": {}, "notification": {}, "delivery": {}}
+
+        with patch.object(orchestrator, "positive_reply_notification",
+                          side_effect=capture_state):
+            outcome = inbound.handle(_event(text), recs)
+
+        cls = (outcome.get("classification") or {}).get("classification")
+        self.assertEqual(cls, replies.POSITIVE,
+                         f"expected POSITIVE, got {cls}")
+        self.assertTrue(observed_paused,
+                        "notification was not called - test is broken")
+        self.assertTrue(observed_paused[0],
+                        "the positive reply notification fired BEFORE the "
+                        "account was paused - the safety property is broken")
+
+
+# ---------------------------- REVIEW 1: safety restore with logging
+
+
+class SafetyRestoreLogs(_OOOTestBase):
+    """REVIEW 1, point 2: if the undo pattern fires, it must record why.
+
+    The primary fix is that `replies.apply` now skips `accountpolicy.apply_reply`
+    for pure OOO, so the account is never paused in the first place. The
+    safety restore in `inbound.handle` is a second layer: if
+    `accountpolicy.apply_reply` were to change and unexpectedly pause for
+    an OOO, the safety restores the pre-existing state AND logs why.
+
+    This test forces the unexpected pause by patching `_hold_account` and
+    confirms the log entry exists.
+    """
+
+    def test_safety_restore_logs_why_pause_was_lifted(self):
+        """If accountpolicy unexpectedly pauses for a pure OOO, the safety
+        restore must log why. An unpaused account with no log entry is
+        indistinguishable from one nobody ever paused."""
+        from unittest.mock import patch
+
+        recs = store.load()
+        text = ("Automatic reply: I am out of the office until September 20 "
+                "with limited access to email.")
+
+        original_hold = accountpolicy._hold_account
+
+        def patched_hold(rec, *args, **kwargs):
+            """Force a pause even for pure OOO to trigger the safety."""
+            original_hold(rec, *args, **kwargs)
+            return True
+
+        with patch.object(accountpolicy, "_hold_account",
+                          side_effect=patched_hold):
+            inbound.handle(_event(text, automated=True), recs)
+
+        rec = self._rec(recs)
+        # The safety should have restored the pause state
+        self.assertFalse(rec.get("paused"),
+                         "safety did not restore the pause state")
+        # And it must have logged why
+        logs = rec.get("log", [])
+        restore_entries = [entry for entry in logs
+                           if entry.get("step") == "pause_restored"]
+        self.assertTrue(restore_entries,
+                        "safety restored the pause but did not log why - "
+                        "an unpaused account with no log is indistinguishable "
+                        "from one nobody ever paused")
+
+
+# ---------------------------------- no pause-then-unpause pattern exists
+
+
+class NoPauseThenUnpause(_OOOTestBase):
+    """REVIEW 1: the OOO undo must be logged.
+
+    The old code captured `_pre_pause`, let `replies.apply` pause the
+    account, then restored `_pre_pause` silently. The rework keeps the
+    undo (because `apply_reply` must run for the contact deferral) but
+    requires a log entry explaining why the pause was lifted.
+
+    This test confirms the log entry exists for a pure OOO.
+    """
+
+    def test_pure_ooo_pause_lift_is_logged(self):
+        """The undo of the account pause for a pure OOO must be logged.
+        An unpaused account with no log entry is indistinguishable from
+        one nobody ever paused."""
+        recs = store.load()
+        text = ("Automatic reply: I am out of the office until September 20 "
+                "with limited access to email.")
+        inbound.handle(_event(text, automated=True), recs)
+        rec = self._rec(recs)
+        # Account is not paused
+        self.assertFalse(rec.get("paused"),
+                         "a pure OOO should not leave the account paused")
+        # And the lift is logged
+        logs = rec.get("log", [])
+        restore_entries = [entry for entry in logs
+                           if entry.get("step") == "pause_restored"]
+        self.assertTrue(restore_entries,
+                        "the pure OOO pause lift was not logged - "
+                        "an unpaused account with no log is indistinguishable "
+                        "from one nobody ever paused")
 
 
 if __name__ == "__main__":

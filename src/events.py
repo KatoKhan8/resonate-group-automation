@@ -522,21 +522,21 @@ def apply(recs, event):
 
 
 def apply_reply_policy(rec, entry, contact_key=None):
-    """Deferred to `inbound.handle` after classification.
+    """Deferred to `replies.apply` after classification.
 
     TASK-030: pausing here, before the reply is classified, meant an
     out-of-office autoresponder held the whole company. The pause now
-    happens in `inbound.handle` AFTER `replies.apply` has classified the
-    reply, so the pause is conditional on the classification rather than
-    on the existence of a reply.
+    happens in `replies.apply` AFTER the reply is classified, through
+    `accountpolicy.apply_reply`, so the pause is conditional on the
+    classification rather than on the existence of a reply.
 
-    The fail-safe is preserved there: an UNKNOWN reply still pauses,
-    because the uncertain case is the one that must not narrow. Only a
-    positively identified machine reply (a pure out-of-office, or a
-    provider-flagged automated non-committal reply) skips the pause.
+    The fail-safe is preserved: an UNKNOWN reply still pauses, because
+    the uncertain case is the one that must not narrow. Only a positively
+    identified machine reply (a pure out-of-office, or a provider-flagged
+    automated non-committal reply) skips the pause.
 
     This function returns None to signal that no policy has been applied
-    yet. `inbound.handle` reads the classification and applies the
+    yet. `replies.apply` reads the classification and applies the
     appropriate policy through `accountpolicy.apply_reply`.
     """
     return None

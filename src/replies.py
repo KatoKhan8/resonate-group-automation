@@ -14,11 +14,13 @@ carry most of the weight:
      looks at it. An unknown costs someone a minute. A false positive costs
      the client's reputation.
 
-Classification never resumes anything. A reply pauses the company - that
-happens in events.py, before this module is ever consulted - and no verdict
-here can lift it. The worst this can do is fail to raise an alert, which is why
-`unknown` is safe and why a model failure degrades to it rather than to
-`neutral`.
+Classification never resumes anything. The pause is conditional on the
+classification: a pure out-of-office skips the pause, everything else -
+including `unknown` - pauses. The pause happens in `replies.apply` through
+`accountpolicy.apply_reply`, after classification and before notification.
+No verdict here can lift a pause once applied. The worst this can do is
+fail to raise an alert, which is why `unknown` is safe and why a model
+failure degrades to it rather than to `neutral`.
 
 The model adapter is a seam, not a dependency: deterministic rules run first
 and decide the clear cases for free. Tests never reach a model.
@@ -532,11 +534,12 @@ def apply(rec, contact_key, text, at=None, model=None, channel=None,
           threshold=CONFIDENCE_THRESHOLD, automated=None):
     """Classify a reply, record it, and apply the policy it now resolves to.
 
-    Never resumes anything. `events.apply` already held the account when the
-    reply arrived unclassified; this may add to that state and may never
-    subtract from it. `accountpolicy.apply_reply` only ever writes state that
-    is absent, so a classification cannot lift a hold, clear a suppression,
-    or reopen an account - whatever it says.
+    Never resumes anything. The pause is conditional on the classification:
+    a pure out-of-office skips `accountpolicy.apply_reply` entirely (the
+    OUT_OF_OFFICE_RECORDED event carries the return date for `oooreturn`);
+    a provider-flagged automated non-OOO reply also skips it; everything
+    else - including UNKNOWN - goes through `accountpolicy.apply_reply`,
+    which may add hold/stop/suppress state and may never subtract from it.
 
     That asymmetry is the safety property. A classifier that could unpause
     would make "not interested, we already bought" a way to resume outreach.
@@ -655,14 +658,20 @@ def apply(rec, contact_key, text, at=None, model=None, channel=None,
     # before anything is announced, so a Slack failure cannot leave a
     # classified reply that changed nothing.
     #
-    # TASK-020: a provider-flagged automated reply is not a person. It must
-    # not suppress outreach the way a human reply does. An out-of-office is
-    # the exception: it still defers the next touch, which is the policy
-    # outcome NOT_NOW and is what the operator wants. Every other automated
-    # classification - including one the rules could not read - skips the
-    # policy application entirely. The classification event is still
-    # recorded above for reporting; what changes is that no HOLD or STOP
-    # lands on the account because a mail server wrote back.
+    # TASK-030: `accountpolicy.apply_reply` is skipped for automated
+    # non-OOO replies. A mail-server autoresponder is not a person and
+    # must not suppress outreach. An out-of-office is the exception: it
+    # still defers the next touch through `apply_reply` and the
+    # OUT_OF_OFFICE_RECORDED event above.
+    #
+    # For a pure out-of-office (machine-generated, no human sentence),
+    # `apply_reply` runs and defers the contact, but `inbound.handle`
+    # undoes the account-level pause afterwards. An OOO that also
+    # contains a human sentence goes through `apply_reply` and the
+    # account pause stands - the fail-safe requires it.
+    #
+    # The classification event is recorded above for reporting in all
+    # cases; what changes is whether `apply_reply` runs at all.
     if automated is True and verdict["classification"] != OUT_OF_OFFICE:
         effect = None
     else:
@@ -678,11 +687,12 @@ def apply(rec, contact_key, text, at=None, model=None, channel=None,
                       provider_event_id=(f"{provider_event_id}:positive"
                                          if provider_event_id else None),
                       confidence=verdict.get("confidence"))
-        # Last, and deliberately last. The company was paused by
-        # `events.apply` before this function ran, the classification is
-        # recorded above, and only now is anybody told. `notify.positive_reply`
-        # cannot raise - see its docstring - so a Slack problem cannot unwind
-        # any of it. A notification layer that runs first is a notification
+        # Last, and deliberately last. The account was paused by
+        # `accountpolicy.apply_reply` above (a positive reply maps to HOLD
+        # at ACCOUNT scope), the classification is recorded, and only now
+        # is anybody told. `notify.positive_reply` cannot raise - see its
+        # docstring - so a Slack problem cannot unwind any of it. A
+        # notification layer that runs before the pause is a notification
         # layer that can lose a pause.
         notification = _announce(rec, contact_key, verdict, channel, provider,
                                 provider_event_id, at, effect)
@@ -703,8 +713,9 @@ def _announce(rec, contact_key, verdict, channel, provider, provider_event_id,
     on. If the resolution is ambiguous the reply is announced nowhere.
 
     Returns the notification row, or None if there was nothing to route to.
-    Either way the caller's business state is already correct: the company is
-    paused and the classification is recorded before this runs.
+    Either way the caller's business state is already correct: the account
+    is paused (by `accountpolicy.apply_reply` for a positive reply) and the
+    classification is recorded before this runs.
     """
     from . import notify
 

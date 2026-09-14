@@ -171,15 +171,18 @@ OUTCOME_POLICY = {
 
 # What this build actually does today, whatever the policy says.
 #
-# `events.apply` pauses the whole company on any reply. That is stated here
-# rather than left for somebody to discover, because a policy screen showing
-# "carry on" beside behaviour that pauses would be worse than no screen.
+# `replies.apply` pauses the account through `accountpolicy.apply_reply`
+# after classification. A pure out-of-office skips the pause; everything
+# else - including UNKNOWN - goes through. That is stated here rather than
+# left for somebody to discover, because a policy screen showing "carry on"
+# beside behaviour that pauses would be worse than no screen.
 CURRENT_BEHAVIOUR = (
     "These policies are in force. `accountpolicy.apply_reply` is the only "
     "thing that moves reply state, and every entry point - the provider "
     "event, the hand-recorded reply, the classifier - comes through it. An "
     "unclassified reply still holds the whole company, because the "
-    "uncertain case is the one that must not narrow.")
+    "uncertain case is the one that must not narrow. A pure out-of-office "
+    "skips the pause; everything else pauses.")
 
 
 def _at(config, dotted):
