@@ -79,11 +79,34 @@ class FactoryRefused(Exception):
 # li5 and li6 have no entry: the graph has no position for them. They are
 # cadence steps that exist on paper but not in the provider graph.
 
+# EVERY ROLE RESOLVES TO EXACTLY ONE CADENCE STEP, and no branch of the graph
+# carries the same step twice. That was not true until 2026-09-14: `li2` mapped
+# to `connected_1` AND `message_2`, and those two roles sit one after the other
+# on the already-connected branch, so a prospect who was already a connection
+# received the identical sentence twice, three days apart. Read back from
+# campaign 599020 before any lead was written.
+#
+# The docstring above justified the double mapping by saying the two roles sit
+# on different branches. That is true of `chain()` and false of `already`,
+# which used both in sequence - the justification described a graph the builder
+# does not build.
+#
+# The two branches are DIFFERENT LENGTHS because they start from different
+# places, and that is why they need different steps rather than a shared chain:
+#
+#     not connected yet    li1 invite -> li2 -> li3 -> li4
+#     already connected    li2 -> li3 -> li4 -> li5      (no invite needed)
+#
+# So `li2` is genuinely the first message on both branches - `message_2` on one
+# and `connected_1` on the other - and every later position differs by one.
+# That is also what finally gives `li5` a position. `li6` still has none and is
+# reported in `touch_report` rather than silently dropped.
 COPY_MAPPING = {
     "li1": {"role": "connection_note", "kind": "MESSAGE"},
     "li2": {"role": ("connected_1", "message_2"), "kind": "MESSAGE"},
-    "li3": {"role": "message_3", "kind": "MESSAGE"},
-    "li4": {"role": "message_4", "kind": "MESSAGE"},
+    "li3": {"role": ("connected_2", "message_3"), "kind": "MESSAGE"},
+    "li4": {"role": ("connected_3", "message_4"), "kind": "MESSAGE"},
+    "li5": {"role": ("connected_4",), "kind": "MESSAGE"},
 }
 
 # The alternative branch of a cadence step, mapped to its graph role.
@@ -95,8 +118,9 @@ ALTERNATIVE_MAPPING = {
 # The roles the graph requires. Derived from COPY_MAPPING and
 # ALTERNATIVE_MAPPING, but stated explicitly so a test can assert the set
 # without walking the mapping.
-REQUIRED_ROLES = ("connection_note", "connected_1", "message_2",
-                  "message_3", "message_4")
+REQUIRED_ROLES = ("connection_note", "connected_1", "connected_2",
+                  "connected_3", "connected_4", "message_2", "message_3",
+                  "message_4")
 
 # The roles needed when InMail is included.
 INMAIL_ROLE = "inmail"
@@ -253,12 +277,12 @@ def _build_sequence_no_inmail(copy, withdraw_after_days=21):
     already = heyreach._node(
         "MESSAGE", 3, "HOUR", heyreach._copy("connected_1", copy),
         nxt=heyreach._node("MESSAGE", 3, "DAY",
-                           heyreach._copy("message_2", copy),
+                           heyreach._copy("connected_2", copy),
             nxt=heyreach._node("VIEW_PROFILE", 2, "DAY",
                 nxt=heyreach._node("MESSAGE", 5, "DAY",
-                    heyreach._copy("message_3", copy),
+                    heyreach._copy("connected_3", copy),
                     nxt=heyreach._node("MESSAGE", 7, "DAY",
-                        heyreach._copy("message_4", copy),
+                        heyreach._copy("connected_4", copy),
                         nxt=end())))))
 
     sequence = heyreach._node("CHECK_IS_CONNECTION", 0, "HOUR",

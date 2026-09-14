@@ -1017,7 +1017,19 @@ def _copy(step, copy, kind="MESSAGE"):
 # wire, which is where `COPY-EXPERIMENTS.md`'s five variants per step land:
 # the provider rotates them itself, so a variant is a graph fact rather than
 # something this system has to assign per contact.
-SEQUENCE_STEPS = ("connection_note", "connected_1", "message_2", "message_3",
+# THE ALREADY-CONNECTED BRANCH HAS ITS OWN FOUR ROLES, and that is the point.
+# It used to reuse `message_2`/`message_3`/`message_4` from the cold path, and
+# because a role maps to one cadence step, the first message on this branch
+# (`connected_1`) and the second (`message_2`) both resolved to the same step -
+# so a prospect who was already a connection received the identical sentence
+# twice, three days apart. Measured on campaign 599020, 2026-09-14.
+#
+# The graph was never wrong; its own comment says "already connected -> message
+# straight away, four of them". Four slots wanted four different messages and
+# the mapping had only three to give. Naming them separately is what lets each
+# one hold its own step.
+SEQUENCE_STEPS = ("connection_note", "connected_1", "connected_2",
+                  "connected_3", "connected_4", "message_2", "message_3",
                   "message_4", "inmail")
 
 
@@ -1083,11 +1095,11 @@ def linkedin_sequence(copy, withdraw_after_days=21):
                       nxt=_node("FOLLOW", 3, "HOUR", nxt=ask_to_connect)))
 
     already = _node("MESSAGE", 3, "HOUR", _copy("connected_1", copy),
-               nxt=_node("MESSAGE", 3, "DAY", _copy("message_2", copy),
+               nxt=_node("MESSAGE", 3, "DAY", _copy("connected_2", copy),
                     nxt=_node("VIEW_PROFILE", 2, "DAY",
-                         nxt=_node("MESSAGE", 5, "DAY", _copy("message_3", copy),
+                         nxt=_node("MESSAGE", 5, "DAY", _copy("connected_3", copy),
                               nxt=_node("MESSAGE", 7, "DAY",
-                                        _copy("message_4", copy),
+                                        _copy("connected_4", copy),
                                         nxt=end())))))
 
     sequence = _node("CHECK_IS_CONNECTION", 0, "HOUR", cond=already, nxt=cold)

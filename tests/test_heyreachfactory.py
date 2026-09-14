@@ -132,15 +132,27 @@ class TheMapping(unittest.TestCase):
         copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
         self.assertIn("message_4", copy)
 
-    def test_li5_and_li6_are_not_required(self):
-        """The graph has no slot for them. Their absence is not a refusal."""
+    def test_li5_is_required_and_li6_is_not(self):
+        """CHANGED 2026-09-14, and the change is the point.
+
+        `li5` had no slot because the already-connected branch was spending
+        two of its four message nodes on the same step - `connected_1` and
+        `message_2` both resolved to `li2`, so that prospect received the
+        identical sentence twice. Giving that branch its own four roles fixes
+        the repeat and needs a fourth distinct step, which is `li5`.
+
+        `li6` still has no position anywhere in the graph. Its absence is
+        still not a refusal and is still reported in `touch_report`.
+        """
         rec = _full_record()
-        # Remove li5 and li6 approvals.
-        rec["cadence"]["brooke"]["li5"].pop("approval")
         rec["cadence"]["brooke"]["li6"].pop("approval")
         copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
         self.assertEqual(missing, [])
-        self.assertIn("message_4", copy)
+        self.assertIn("connected_4", copy)
+
+        rec["cadence"]["brooke"]["li5"].pop("approval")
+        _copy, missing = heyreachfactory.assemble_linkedin_copy(rec, "brooke")
+        self.assertEqual([m[2] for m in missing], ["connected_4"])
 
     def test_inmail_is_only_collected_when_requested(self):
         rec = _full_record()
@@ -163,7 +175,8 @@ class TheMapping(unittest.TestCase):
         self.assertIn("li2", heyreachfactory.COPY_MAPPING)
         self.assertIn("li3", heyreachfactory.COPY_MAPPING)
         self.assertIn("li4", heyreachfactory.COPY_MAPPING)
-        self.assertNotIn("li5", heyreachfactory.COPY_MAPPING)
+        # li5 gained a position on 2026-09-14; li6 still has none.
+        self.assertIn("li5", heyreachfactory.COPY_MAPPING)
         self.assertNotIn("li6", heyreachfactory.COPY_MAPPING)
 
 
@@ -472,7 +485,8 @@ class TheMappingDocumented(unittest.TestCase):
 
     def test_the_required_roles_are_stated(self):
         self.assertEqual(heyreachfactory.REQUIRED_ROLES,
-                         ("connection_note", "connected_1", "message_2",
+                         ("connection_note", "connected_1", "connected_2",
+                          "connected_3", "connected_4", "message_2",
                           "message_3", "message_4"))
 
     def test_the_alternative_mapping_names_inmail(self):
