@@ -794,9 +794,15 @@ def plan_step(rec, contact, spec, observed=None, steps=None, config=None,
     #    capability so an unproven capability is reported as one rather than
     #    as a prospect who is in the wrong state for it.
     if not satisfied:
-        return answer(WAIT, action, considered[-1]["why"],
-                      HELD_ACCEPTANCE_UNREAD
-                      if state == UNKNOWN_ACCEPTANCE else HELD_REQUIRES_UNMET)
+        if state == REQUEST_PENDING:
+            code = HELD_REQUEST_OUTSTANDING
+        elif state == UNKNOWN_ACCEPTANCE:
+            code = HELD_ACCEPTANCE_UNREAD
+        else:
+            code = HELD_REQUIRES_UNMET
+        return answer(WAIT, action, considered[-1]["why"], code,
+                      execute_after=found.get("wait_until")
+                      if code == HELD_REQUEST_OUTSTANDING else None)
 
     # 6. The connection request itself.
     if action == CONNECT:
@@ -842,13 +848,31 @@ def plan_step(rec, contact, spec, observed=None, steps=None, config=None,
                       else HELD_NOT_REACHABLE, execute_after=None)
 
     # 8. An InMail. The branch reached it, the workspace may permit it, and
-    #    this build still cannot send one.
+    #    whether it may GO is decided by ONE THING: the capability table.
+    #
+    # This returned WAIT unconditionally until 2026-09-14, which made
+    # `test_validating_the_capability_is_the_only_thing_that_changes_it` fail
+    # on a clean tree - a test whose docstring says "the counterfactual, and
+    # it is also the instruction for whoever validates it: one table entry,
+    # nothing else". The code did not honour its own instruction: validating
+    # the capability changed nothing, because the hold was hard-coded below
+    # the capability gate rather than expressed by it.
+    #
+    # NOTHING IS LOOSENED BY FIXING IT. `CAPABILITIES[CAP_INMAIL]` is unproven
+    # in the shipped table, so step 4 holds every real prospect with
+    # HELD_CAPABILITY_UNPROVEN long before this line - which is what
+    # `test_every_condition_met_is_still_held_on_the_capability` pins. The GO
+    # below is reachable only by a caller that has deliberately recorded the
+    # capability as proven, and recording that is the decision this whole
+    # table exists to make explicit.
+    #
+    # INMAIL_ELIGIBLE still means only that THE PROVIDER reports an InMail is
+    # available. Whether WE can send one is the capability's question, and it
+    # is answered above, not here.
     verdict, why = evaluate_inmail(state, observed, config)
-    return answer(WAIT, action,
-                  ("an InMail is reported available and nothing here has a "
-                   "validated way to send one, so it is held rather than "
-                   "skipped" if verdict == INMAIL_ELIGIBLE else why),
-                  HELD_INMAIL_UNAVAILABLE, inmail=verdict,
+    if verdict == INMAIL_ELIGIBLE:
+        return answer(GO, action, why, inmail=verdict, execute_after=None)
+    return answer(WAIT, action, why, HELD_INMAIL_UNAVAILABLE, inmail=verdict,
                   execute_after=None)
 
 

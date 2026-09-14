@@ -246,11 +246,12 @@ classifier was available". So a third of the inbound signal is recorded as a
 lukewarm human opinion when it is actually "we could not read this". Those
 are different facts and only one of them is a measurement.
 
-**3. Referrals are 15%.** Higher than positive replies by three to one. The
-client's best-performing sequence has a step-7 "am I talking to the right
-person?" ask, and this says the answer comes back often. That is the
-stakeholder-escalation path `ACCOUNT-OUTREACH.md` wants, arriving already,
-with nothing downstream reading it.
+**3. ~~Referrals are 15%.~~ WITHDRAWN - see the correction at the end of
+this document.** Measured again with the quoted email thread stripped, the
+real figure is about 2%. Ninety-four of the 110 "referrals" were the
+classifier reading OUR OWN outreach copy, quoted below the prospect's reply.
+The step-7 referral ask may still be worth having - it is in the client's best
+sequence - but this estate does not show referrals arriving often.
 
 **4. Positive replies are 5.2% of replies**, so about 0.23% of people
 contacted. That is the real top of the funnel and it is the number any
@@ -319,18 +320,62 @@ metric this system can read is even weaker on the channel the operator wants
 to lead with. TASK-020 should treat LinkedIn as its own problem rather than
 assuming the email rules transfer.
 
-**Referrals are 0.4% here against 15% on email.** That is a 35x difference on
-the same classifier and the same client, and it is worth understanding before
-anybody designs a LinkedIn stakeholder-escalation step on the assumption that
-referrals arrive. Two readings and this data cannot separate them: either
-people genuinely do not hand off on LinkedIn the way they do over email, or
-the referral rules - which require the text to point at somebody, via
-`_points_at_somebody` - simply do not fire on how a LinkedIn referral is
-phrased. The 70% unclassified makes the second reading very plausible.
+**~~Referrals are 0.4% here against 15% on email - a 35x difference.~~
+RESOLVED, and it was neither of the two readings offered here.** The gap was
+an artefact of EMAIL QUOTING. 85% of email replies carry the quoted original
+message; 0% of LinkedIn replies do. The classifier was matching referral
+phrases in our own copy on email and had nothing to match on LinkedIn.
+Stripping the quote gives about 2% against 0.4% - the same order of magnitude,
+and no mystery left. See the correction at the end of this document.
 
 Positive replies are 4.3% of inbound against email's 5.2%, and negative is
 20.5% against 20.9% - so where the rules DO fire, the two channels look
 broadly alike. That is a further reason to suspect the gap is in the rules.
+
+## CORRECTION - the classifier was reading our own email back to us
+
+Found on 2026-09-14, a few hours after the rest of this document, while
+QA-ing a change to the reply rules against the same corpus.
+
+**85% of email replies (676 of 795) contain the quoted original message.**
+`replies.classify` was handed the whole body, so it matched patterns in our
+own outreach copy, in the quoted thread and in the sender's signature block,
+and reported the result as the prospect's sentiment. Stripping everything from
+the first quote marker:
+
+    category      as-is   quoted stripped   delta
+    referral        110           16         -94
+    positive         42           18         -24
+    not_now          23            6         -17
+    negative        185          165         -20
+    unknown         259          428        +169
+
+Read individually, the vanished referrals are not referrals: "Sorry no opp for
+you", "We currently use Productive and you should know that", "Stop", "I'm not
+a project manager. I'm a graphic designer." One of eight sampled was genuine.
+
+**LinkedIn replies contain no quoted thread - 0 of 695 - and stripping changes
+nothing there.** That is the cleanest possible control, and it dissolves the
+email/LinkedIn referral puzzle above.
+
+### What this does and does not invalidate
+
+INVALIDATED: every per-category reply figure in this document that came from
+the classifier. The referral rate above all, and the positive rate to a lesser
+degree - 42 becomes 18, so positive replies are nearer 2% of replies than 5%.
+
+NOT INVALIDATED: the sequence-length table, the campaign-shape comparison and
+the geography table. Those come from the provider's own `unique_replies`
+counter and never touched the classifier. **The central finding of this
+document - eight steps at 8.49% against five, twenty-two and forty-four - is
+unaffected.**
+
+ALSO NOT INVALIDATED, and made worse: the measurement gap. The true
+unclassified rate on email is not 33% but something nearer 54%, because a
+third of what the rules were "reading" was our own text. There is less signal
+here than this document originally claimed, not more.
+
+Filed as TASK-029.
 
 ## PROVENANCE
 

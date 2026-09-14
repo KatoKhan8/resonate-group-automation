@@ -62,7 +62,9 @@ performs this comparison through `sequence_matches`.
 import argparse
 import sys
 
-from . import cadence, cadencelibrary, campaigns, clients, providerwrites, store
+from . import (cadence, cadencelibrary, campaigns, clients, configdiff,
+               collision, eligibility, executionguard, killswitch,
+               providerwrites, store)
 from .providers import ProviderError, heyreach
 
 
@@ -653,3 +655,309 @@ def _plan(campaign, recs, config, *, include_inmail=False,
         "merge_variables": [merge_variable_of(r) for r in REQUIRED_ROLES],
         "inmail_included": False,
     }
+
+
+# --------------------------------------------------------- ensure_leads
+#
+# THE CALLER THAT PUTS A REAL LEAD INTO A HEYREACH CAMPAIGN.
+#
+# `stage` writes the SEQUENCE (the graph). `ensure_leads` writes the LEADS
+# (the people). The sequence carries variables; each lead carries its own
+# words in `customUserFields`. The two together make a working campaign:
+# a graph that says what happens and people who bring the words.
+#
+# Nothing calls `heyreach.add_leads_to_campaign` today. That is the defect
+# this function closes: the transport exists, the graph is built, the copy
+# is approved, and the leads are ready - but nobody put them in. The only
+# thing between a real lead and this function is `LINKEDIN_ADD_LEAD` not
+# being in `providerwrites.SUPPORTED`, which is an operator decision.
+
+def _first_linkedin_step(campaign, config):
+    """The key of the first LinkedIn step in this campaign's cadence.
+
+    `authorize` asks whether a STEP renders for a contact, so adding somebody
+    to a LinkedIn campaign has to name the step they will actually receive
+    first. Raises rather than guessing: a cadence with no LinkedIn step is not
+    a campaign anybody should be added to, and a default here would be the
+    same class of bug as the hard-coded key it replaces.
+    """
+    from . import cadence as _cadence
+
+    for spec in _cadence.steps_for(campaign, config=config) or ():
+        if spec.get("channel") == "linkedin":
+            return spec.get("key")
+    raise FactoryRefused(
+        f"campaign {campaign.get('campaign_id')!r} runs a cadence with no "
+        f"LinkedIn step, so there is no first action to authorise against. "
+        f"Adding a lead to it would put somebody into a sequence that will "
+        f"never message them")
+
+
+def _mint_authorization(campaign, rec, contact, *, config=None, readback=None,
+                        by="system"):
+    """One Authorization per contact, from the canonical gate.
+
+    THE AUTHORIZATION COMES FROM executionguard.authorize(), NOT FROM
+    CONSTRUCTING THE OBJECT DIRECTLY. providerwrites.perform checks with
+    isinstance, so a hand-built object passes while having passed no gate.
+    authorize() is the ONLY place in src/ that may construct an Authorization,
+    and it runs gates the five pre-filters do not, starting with `copy` which
+    asks whether the step actually renders for this contact.
+
+    The five pre-filters in ensure_leads (killswitch, suppression, collision,
+    tenant, unsupported sequence) are a cheap pre-filter that refuses by name
+    before the expensive path. They may not stand in for the Authorization.
+
+    A batch authorization would let one gate cover every person, and a gate
+    that covers a batch cannot refuse by name. The authorization is per
+    person because the gates are per person: a suppression that fires for
+    one contact must not be bypassed by another contact's clean record.
+    """
+    client = campaign.get("client")
+    # THE STEP KEY IS DERIVED, NOT NAMED. This read `step_key = "day3"`, which
+    # is a step of `PRODUCTIVE_BALANCED_V1` - the old seven-step shape - and
+    # does not exist in `productive_li_heavy_v1` at all:
+    #
+    #     position(li_heavy, "day3")  ->  (None, None, None)
+    #     position(li_heavy, "li1")   ->  ("linkedin", 1, 6)
+    #
+    # So `authorize`'s `copy` gate would have asked whether "day3" renders for
+    # this contact, found nothing, and refused every single person. Fail-closed
+    # rather than unsafe - but the path would simply never have worked, and no
+    # test would have said so because every test mocks `authorize`.
+    #
+    # The right key is the FIRST LINKEDIN STEP THIS CAMPAIGN'S CADENCE
+    # ACTUALLY HAS, because that is the first thing the sequence does to the
+    # person being added. Derived from the cadence rather than written down
+    # here, so a campaign on a different cadence asks about its own first step.
+    step_key = _first_linkedin_step(campaign, config)
+    return executionguard.authorize(
+        operation=providerwrites.LINKEDIN_ADD_LEAD,
+        channel="linkedin",
+        campaign=campaign,
+        rec=rec,
+        contact=contact,
+        step_key=step_key,
+        workspace=client,
+        config=config,
+        readback=readback,
+        by=by)
+
+
+def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
+                 by="system"):
+    """Put a campaign's pushable contacts into the HeyReach campaign.
+
+    Returns a report: who was pushed, who was already there, who was refused.
+    Dry run by default.
+
+    THE GATES, IN ORDER, AND EACH ONE REFUSING RATHER THAN SKIPPING:
+      1. killswitch workspace state - is this workspace allowed to send
+      2. suppression and DNC - may this person be contacted
+      3. account collision - is this account already being worked
+      4. tenant check - does the campaign belong to this client
+      5. unsupported sequence - can every row fill every variable
+
+    A contact who fails any gate is refused BY NAME and the transport is
+    never reached. A batch where one lead cannot fill one variable refuses
+    the WHOLE push.
+
+    THE READBACK DECIDES. The response body of AddLeadsToCampaignV2 has
+    never been read, so nothing may be concluded from it. The readback is
+    `heyreach.readback_membership`, which reads the campaign's actual
+    membership and compares it to what was asked for.
+
+    IDEMPOTENT: reads membership first and pushes only the difference.
+    A re-run costs reads and writes nothing.
+    """
+    rows = campaigns.load()
+    campaign = campaigns.require(str(campaign_id), rows)
+    client = campaign.get("client")
+    if not client:
+        raise FactoryRefused(
+            f"campaign {campaign_id} names no client; every provider write "
+            f"is tenant-bound")
+    if config is None:
+        config = clients.load(client)
+    recs = store.load() if recs is None else recs
+
+    report = {"campaign": str(campaign_id), "client": client,
+              "live": bool(live), "did": [], "refused": [], "provider": {}}
+
+    # Gate 1: killswitch workspace state.
+    ws_state = killswitch.workspace_state(client)
+    if not ws_state["sending"]:
+        raise FactoryRefused(
+            f"the killswitch for workspace {client!r} is off: "
+            f"{ws_state['why']}. No leads were added")
+
+    plan = _plan(campaign, recs, config)
+    pushable = plan.get("pushable") or []
+    sequence = plan["sequence"]
+
+    # Build enriched rows for the sequence check and the transport.
+    rec_map = {r.get("id"): r for r in recs}
+    enriched = []
+    for contact in pushable:
+        rec = rec_map.get(contact["record_id"])
+        if not rec:
+            continue
+        linkedin_url = None
+        for c in rec.get("contacts") or []:
+            if c.get("key") == contact["contact_key"]:
+                linkedin_url = c.get("linkedin")
+                break
+        if not linkedin_url:
+            continue
+        enriched.append({
+            "record_id": contact["record_id"],
+            "contact_key": contact["contact_key"],
+            "linkedin_url": linkedin_url,
+            "first_name": (contact.get("contact_key") or "").split("_")[0],
+            "last_name": "",
+            "company": rec.get("company", ""),
+            "title": "",
+            "custom_fields": dict(contact.get("custom_fields") or {}),
+            "domain": rec.get("domain", ""),
+        })
+
+    # Gate 2: suppression and DNC, by name.
+    for row in enriched:
+        rec = rec_map.get(row["record_id"])
+        contact_obj = None
+        for c in (rec.get("contacts") or []):
+            if c.get("key") == row["contact_key"]:
+                contact_obj = c
+                break
+        reasons = eligibility.must_not_contact(rec, contact_obj, config=config)
+        fired = [r for r in reasons if r]
+        if fired:
+            raise FactoryRefused(
+                f"contact {row['contact_key']!r} (record "
+                f"{row['record_id']!r}) is blocked: {', '.join(fired)}. "
+                f"The transport was not reached")
+
+    # Gate 3: account collision.
+    for row in enriched:
+        domain = row.get("domain")
+        if not domain:
+            continue
+        try:
+            account = collision.check_account(
+                domain, expect_workspace=client)
+        except collision.CollisionUnknown as e:
+            raise FactoryRefused(
+                f"the provider estate could not be read for {domain!r}: "
+                f"{e}. Refusing to add a lead at an unreadable account")
+        verdict, why = collision.account_policy(account)
+        if verdict in (collision.STOP, collision.HOLD):
+            raise FactoryRefused(
+                f"contact {row['contact_key']!r} (domain {domain!r}): "
+                f"account verdict is {verdict} - {why}. The transport was "
+                f"not reached")
+
+    # Gate 4: tenant check.
+    provider_id = campaign.get("heyreach_campaign_id")
+    if not provider_id:
+        raise FactoryRefused(
+            f"campaign {campaign_id!r} carries no `heyreach_campaign_id`")
+    provider_id = int(provider_id)
+    org_unit = (config.get("heyreach") or {}).get("org_unit_id")
+    if org_unit:
+        heyreach.check_tenant(provider_id, org_unit)
+
+    # Gate 5: refuse_unsupported_sequence against the rows actually pushed.
+    if enriched:
+        heyreach.refuse_unsupported_sequence(
+            sequence, rows=enriched, campaign_id=str(campaign_id))
+
+    # Read current membership for idempotency.
+    expected_urls = [r["linkedin_url"] for r in enriched]
+    if expected_urls:
+        membership = heyreach.readback_membership(
+            provider_id, expected_urls)
+        already_member = membership.get("found") or set()
+    else:
+        membership = {"found": set(), "missing": set(), "total": 0,
+                      "per_lead": []}
+        already_member = set()
+
+    new_contacts = [r for r in enriched
+                    if r["linkedin_url"].lower() not in already_member]
+
+    if not new_contacts:
+        report["did"].append(
+            "all pushable contacts are already members; nothing to push")
+        return report
+
+    if not live:
+        report["did"].append(
+            f"dry run: would push {len(new_contacts)} contact(s) to "
+            f"HeyReach campaign {provider_id}")
+        for row in new_contacts:
+            report["did"].append(
+                f"  {row['contact_key']} from seat "
+                f"{row.get('domain', '?')}: "
+                f"variables="
+                f"{sorted(row.get('custom_fields', {}).keys())}")
+        return report
+
+    # THE PROVIDER WRITE. One authorization per contact, one perform call.
+    # The transport is heyreach.add_leads_to_campaign; the readback is
+    # heyreach.readback_membership. THE READBACK DECIDES.
+    #
+    # THE AUTHORIZATION COMES FROM executionguard.authorize(), which requires
+    # a sealed Readback from configdiff.compare_heyreach(). The Readback is
+    # obtained once before the loop and passed to each authorize() call.
+    # authorize() runs gates the five pre-filters do not, starting with `copy`
+    # which asks whether the step actually renders for this contact.
+    linkedin_account_id = (config.get("heyreach") or {}).get(
+        "default_account_id", 0)
+
+    # Obtain a sealed Readback for the authorization gate. This is a provider
+    # comparison that stamps its own timestamp after the last provider read.
+    # The Readback is single-use per authorize() call, but compare_heyreach
+    # produces a fresh one each time. For the lead addition, we obtain one
+    # Readback and pass it to each authorize() call; authorize() spends it on
+    # the first call, so subsequent calls need their own Readback.
+    # However, the Readback is spent inside authorize(), so we need to obtain
+    # a fresh one for each contact. This is expensive but correct: each
+    # authorization gets its own sealed, timestamped provider comparison.
+    def _obtain_readback():
+        return configdiff.compare_heyreach(campaign, recs=recs, config=config)
+
+    def _transport(payload):
+        return heyreach.add_leads_to_campaign(
+            provider_id, new_contacts, linkedin_account_id)
+
+    def _readback():
+        return heyreach.readback_membership(provider_id, expected_urls)
+
+    for row in new_contacts:
+        rec = rec_map.get(row["record_id"])
+        contact_obj = None
+        for c in (rec.get("contacts") or []):
+            if c.get("key") == row["contact_key"]:
+                contact_obj = c
+                break
+        # Each contact gets its own Readback because authorize() spends it.
+        readback = _obtain_readback()
+        auth = _mint_authorization(
+            campaign, rec, contact_obj, config=config, readback=readback,
+            by=by)
+        providerwrites.perform(
+            providerwrites.LINKEDIN_ADD_LEAD,
+            authorization=auth,
+            campaign=str(campaign_id), tenant=client,
+            payload={"campaignId": provider_id,
+                     "contact": row["contact_key"]},
+            transport=_transport, readback=_readback,
+            expected={"missing": set()}, by=by)
+        report["did"].append(
+            f"pushed {row['contact_key']} to HeyReach campaign "
+            f"{provider_id}")
+
+    report["provider"]["campaign_id"] = provider_id
+    report["provider"]["pushed"] = len(new_contacts)
+    report["provider"]["already_member"] = len(already_member)
+    return report

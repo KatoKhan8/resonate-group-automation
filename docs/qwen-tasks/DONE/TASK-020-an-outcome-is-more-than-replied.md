@@ -121,3 +121,77 @@ Behavioural, on what `classify` returns for a given text.
 - a referral is only a referral when it points at somebody - `_points_at_
   somebody` already enforces that and it must keep holding;
 - every new pattern has a test with a body that is realistic and INVENTED.
+
+---
+
+STATUS
+DONE
+
+COMMIT SHA
+708089c
+
+TESTS
+59 tests in tests/test_replies.py, all passing. 124 tests across related
+files (test_inbox, test_conversation, test_reply_transitions,
+test_reply_high_water, test_reply_escalation), all passing. New tests
+cover: unmatched returns UNKNOWN not NEUTRAL; UNKNOWN and NEUTRAL are
+distinguishable; new unsubscribe/negative/positive/not_now/not_relevant
+patterns; referral requires _points_at_somebody; automated reply marked
+in verdict; automated non-OOO does not apply policy; automated OOO still
+defers; non-automated and automated=None apply policy normally.
+
+FILES CHANGED
+- src/replies.py: VERSION rules-1 → rules-2; fallback UNKNOWN not NEUTRAL;
+  is_automated in verdict; skip policy for automated non-OOO; new patterns;
+  meeting decision documented.
+- tests/test_replies.py: updated 2 existing tests for UNKNOWN fallback;
+  added TestAutomatedReplies class (5 tests); added 7 pattern tests;
+  added referral _points_at_somebody test.
+- docs/TASK-020-REPLY-CLASSIFIER-REPORT.md: analysis and consumer chain trace.
+
+FINDINGS
+1. The report (src/report.py) counts REPLY_CLASSIFIED events but does not
+   separate automated from human. A reply_breakdown that includes 84
+   automated replies in its "negative" count overstates negative signal.
+   Fixing this requires events.record() to carry the is_automated flag,
+   which is outside FILES ALLOWED.
+
+2. The upstream pause in events.apply() happens BEFORE classification.
+   inbound.handle() calls events.apply() which pauses the company on ANY
+   reply event, before replies.apply() classifies it. An automated reply
+   still pauses the company at the event level, even though replies.apply()
+   now skips the policy application. Fixing this requires changes to
+   src/inbound.py or src/events.py, outside FILES ALLOWED.
+
+3. LinkedIn rule coverage is still much worse than email (70% vs 35%
+   unmatched). The new patterns help but LinkedIn replies are short,
+   casual, frequently non-English, single-clause. The email rules do not
+   transfer directly. A separate LinkedIn-specific rule set or model-backed
+   classifier is needed.
+
+4. positive does not split into positive/meeting at the classifier level.
+   A meeting is an action (calendar event, time agreed), not a pattern.
+   The Slack alert already offers MARK_MEETING as a person's decision.
+
+RISKS
+- The UNKNOWN fallback change means 35% of replies that were previously
+  reported as "neutral" will now be "unknown". Reports that consumed the
+  neutral count will see it drop. This is correct: those were never
+  neutral, they were unclassified. But any downstream consumer that
+  treated neutral as "lukewarm but real" will now see a gap instead.
+- The automated skip in replies.apply() does not undo the upstream pause
+  from events.apply(). A provider-flagged automated reply still pauses
+  the company at the event level. This is a partial fix; the full fix
+  needs changes outside FILES ALLOWED.
+
+RECOMMENDED CLAUDE ACTION
+1. Review the consumer chain gaps in FINDINGS 1 and 2. The report needs
+   to separate automated from human, and the upstream pause needs to be
+   conditional on the automated flag. Both require changes to files
+   outside TASK-020's allowed scope.
+2. Consider a LinkedIn-specific rule set or model-backed classifier to
+   close the 70% unmatched gap. The email rules are necessary but not
+   sufficient for LinkedIn's short, casual, multilingual replies.
+3. The UNKNOWN fallback is now correct. Any report or dashboard that
+   showed "neutral" counts should be updated to show "unknown" separately
+   and make the gap visible rather than burying it in a category.

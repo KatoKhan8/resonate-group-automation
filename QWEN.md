@@ -99,3 +99,46 @@ Say what changed and why it was wrong before. This repository's history is
 part of its documentation; "fix tests" is a commit that has to be re-read
 from the diff. Read `git diff` and `git status` before every commit and check
 every changed file is intentional.
+
+## THE RULE THAT DECIDED THREE REVIEWS ON 2026-09-14
+
+**A change that is correct and not consumed is a change that did nothing. It
+will be rejected, however good the code and however green the tests.**
+
+Three tasks failed review the same day for three faces of one mistake:
+
+- TASK-029 added `extract_prospect_text`, a good function that strips the
+  quoted thread. `grep -n extract_prospect_text src/replies.py` returned ONE
+  line: its own definition. `classify` still passed the whole contaminated
+  body to `normalise`. The measured improvement in the result block came from
+  the measurement script calling the function directly - not from the
+  classifier ever using it.
+- TASK-028 keyed a ladder registry by `id(tuple)`. `cadence.steps_for()`
+  returns a new object, so the lookup missed through the path production
+  actually uses and three cadence steps silently got no purpose at all. The
+  nineteen tests passed because every one handed the library tuple straight to
+  `purpose_for`.
+- TASK-019 built the five gates and then CONSTRUCTED the
+  `executionguard.Authorization` itself. `providerwrites.perform` checks it
+  with `isinstance`, so the object passed while having cleared no gate.
+
+In each case the unit under test was right and the wiring was absent or fake,
+and in each case the test suite was green.
+
+### What is now required of every task
+
+1. **Name the caller.** Before you finish, run `grep -rn "<your new name>"
+   src/` and read the result. If the only hit is the definition, you are not
+   done. Put that grep's output in the result block.
+2. **Drive the test through the real entry point.** Not the function you
+   wrote - the function production calls. If your test constructs the input by
+   hand, it is testing the seam, and the seam was never the risk.
+3. **Break the wiring, not the logic.** Delete the CALL to your new function
+   and re-run. If your tests still pass, they do not prove the change is
+   connected, and connecting it was the task.
+4. **Say which existing behaviour now goes through your code**, by name. "It
+   is used by `classify`" is checkable. "It is available to callers" is not.
+
+CLAUDE.md already says this - "Existence is not function... trace the whole
+chain and prove every link is consumed" - and it is repeated here because
+three tasks in one day read it and shipped anyway.
