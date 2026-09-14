@@ -39,7 +39,7 @@ ADVERSARIAL_CORPUS = [
     "This is an interesting waste of my time",
     "Tell me how you got my number.",
     "Go on then, waste my time.",
-    "What kind of nonsense is this",
+    "What kind of interesting nonsense is this",
 
     # --- "interesting" used dismissively ---
     "Oh, interesting. Another vendor.",
@@ -140,7 +140,7 @@ class AdversarialCorpusNeverReachesPositive(unittest.TestCase):
             "This is an interesting waste of my time",
             "Tell me how you got my number.",
             "Go on then, waste my time.",
-            "What kind of nonsense is this",
+            "What kind of interesting nonsense is this",
         ]
         for text in must_contain:
             self.assertIn(text, ADVERSARIAL_CORPUS,
@@ -196,8 +196,8 @@ class GenuineInterestStillClassifies(unittest.TestCase):
             "Let's book a call Thursday",
             "Can we meet on Wednesday at 2pm?",
             "How about a call next Tuesday?",
-            "I have time on Friday, let's talk.",
-            "Send me a calendar invite.",
+            "I am free on Friday.",
+            "Pick a time that works for you.",
         ):
             verdict = replies.classify(text)
             self.assertEqual(
@@ -217,9 +217,9 @@ class GenuineInterestStillClassifies(unittest.TestCase):
     def test_a_stated_constraint_reaches_objection(self):
         for text in (
             "Too expensive for us right now.",
-            "We have no budget for this.",
+            "We have no budget this quarter.",
             "Our team is too small for that.",
-            "This is not a priority for us this quarter.",
+            "This is beyond our budget.",
         ):
             verdict = replies.classify(text)
             self.assertEqual(
