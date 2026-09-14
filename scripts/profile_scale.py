@@ -80,6 +80,7 @@ def _make_estate(size, tmp):
     """
     store.use_directory(tmp)
     recs = companies.dataset(size, client="benchmark", batch="profile")
+    store.save(recs)
     return recs
 
 
