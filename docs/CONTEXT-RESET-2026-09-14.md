@@ -290,7 +290,45 @@ times running.
 
 ## TESTS
 
-See `## TESTS, measured` appended below after the settled-tree run.
+Measured on the settled tree, `py -3 scripts/run_suite.py --timeout 2400`,
+exit code read from unittest rather than from a pipe:
+
+    TOTAL               8291
+    PASS                8241
+    FAIL                  22
+    ERROR                  7
+    SKIP                   5
+    expected failures     16
+    wall clock          1381s
+    exit_code              1
+
+**NOT GREEN.** 29 tests are failing or erroring. That is down from **134** at
+the start of this run, which is the first time anybody had seen the number at
+all.
+
+Four of the 22 were seals that the `LINKEDIN_SET_SEQUENCE` enablement broke
+and that I had missed when updating the others -
+`test_the_write_layer_is_still_sealed`,
+`test_the_write_allowlist_is_exactly_the_stop`,
+`test_nothing_is_supported_until_it_has_actually_worked_once`,
+`test_and_nothing_else_came_with_it`. **Fixed after the run**, each updated
+deliberately with the reason, plus a new test asserting directly that the
+four verbs which CAN reach a person - `heyreach.add_lead`,
+`heyreach.activate`, `bison.add_lead`, `bison.activate` - are all still
+sealed. 95 write-layer tests green.
+
+So the number to expect on the next full run is roughly **25**, not 29. It
+has not been re-run since; do not claim otherwise.
+
+Known remaining clusters, none of them a regression from tonight:
+
+    test_fixture_hygiene          3   real names/domains in fixtures
+    test_e2e                      4   seven-step cadence expectations
+    test_preproduction            2   same
+    test_personalization_e2e      1
+    test_the_cadence_reacts...    2   the generic hold-code defect (P1)
+    test_mutation_anchors         1
+    test_waterfall                1
 
 ---
 

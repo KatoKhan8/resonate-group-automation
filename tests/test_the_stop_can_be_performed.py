@@ -92,8 +92,16 @@ class ThePauseIsPerformable(QueueTest):
         live estate with a readback, and each is named here so that the next
         one is a decision rather than a drift.
         """
+        # `heyreach.set_sequence` joined on 2026-09-14. Its entry had set its
+        # own condition - "a write would be verifiable the moment a verb is
+        # established" - and campaign 599020 already carried a sequence
+        # written through /campaign/UpdateSequence, so the condition was met.
+        # Not prospect-facing: a sequence on a campaign holding nobody
+        # reaches nobody, and the campaign has no list, no leads and no wired
+        # verb that can start it.
         proven = {"heyreach.pause", "bison.pause", "bison.stop_lead",
-                  "bison.create_campaign", "bison.set_sequence"}
+                  "bison.create_campaign", "bison.set_sequence",
+                  "heyreach.set_sequence"}
         for operation in providerwrites.OPERATIONS:
             if operation in proven:
                 continue
@@ -184,8 +192,18 @@ class TheStartIsStillRefused(unittest.TestCase):
         # `AddLeadsToCampaignV2`. None of the three is here. A system that
         # can start an outreach campaign before it can reliably stop one has
         # acquired exposure it cannot end.
-        forbidden = ("Resume", "StartCampaign", "AddLeadsToCampaign",
-                     "SendMessage")
+        # `AddLeadsToCampaignV2` joined WRITE_ROUTES on 2026-09-14 so the
+        # transport and its readback could be built and tested. It is NOT in
+        # `providerwrites.SUPPORTED`, which is the permission - and that
+        # distinction is asserted directly below rather than left to this
+        # route list. A route on WRITE_ROUTES is one this module CAN call; a
+        # route in SUPPORTED is one this build WILL call.
+        #
+        # Resume, StartCampaign and SendMessage remain absent from BOTH, and
+        # that is what this test is really about: a system that can start an
+        # outreach campaign before it can reliably stop one has acquired
+        # exposure it cannot end.
+        forbidden = ("Resume", "StartCampaign", "SendMessage")
         reaching = [r for r in heyreach.WRITE_ROUTES
                     if any(v.lower() in r.lower() for v in forbidden)]
         self.assertEqual(reaching, [],

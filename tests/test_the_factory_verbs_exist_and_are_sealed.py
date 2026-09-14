@@ -159,16 +159,34 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
         self.assertEqual(
             providerwrites.SUPPORTED,
             (pw.LINKEDIN_PAUSE, pw.EMAIL_PAUSE, pw.EMAIL_STOP_LEAD,
-             pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE))
+             pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE,
+             # Added 2026-09-14, not prospect-facing.
+             pw.LINKEDIN_SET_SEQUENCE))
         # `heyreach.pause` left this list on 2026-09-12: a live pause of
         # campaign 594061 returned 200 and read back PAUSED, so it is
         # live-validated and declared. It was never a campaign-BUILDING verb
         # anyway - it is the stop. Every builder below is still sealed.
+        # `heyreach.set_sequence` left this list on 2026-09-14 for the same
+        # kind of reason as the pause: its own stated condition was met, and
+        # it is not prospect-facing - a sequence written onto a campaign
+        # holding nobody reaches nobody. The verbs that CAN reach a person,
+        # `add_lead` and `activate`, are still sealed and are asserted
+        # separately below so the distinction is explicit rather than
+        # implied by membership of a list.
         for operation in ("heyreach.create_campaign", "heyreach.create_list",
-                          "heyreach.set_sequence", "heyreach.assign_sender",
+                          "heyreach.assign_sender",
                           "heyreach.set_limits", "heyreach.add_lead",
                           "heyreach.activate"):
             with self.subTest(operation=operation):
+                self.assertFalse(providerwrites.is_supported(operation))
+
+    def test_the_two_verbs_that_reach_a_person_are_sealed(self):
+        """The property the list above now rests on, asserted directly."""
+        for operation in ("heyreach.add_lead", "heyreach.activate",
+                          "bison.add_lead", "bison.activate"):
+            with self.subTest(operation=operation):
+                _channel, facing, _why = providerwrites.OPERATIONS[operation]
+                self.assertTrue(facing, "this test is about prospect-facing verbs")
                 self.assertFalse(providerwrites.is_supported(operation))
 
     def test_the_discovered_read_routes_are_wired_now(self):
