@@ -48,8 +48,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src import cadence, cadencelibrary, clients, lint
-from src import heyreachfactory
+from src import cadence, cadencelibrary, clients, generate, lint
+from src import bisonfactory, heyreachfactory
 from src.providers import heyreach
 
 
@@ -1002,6 +1002,122 @@ def render_heyreach_preview(campaign_name="heyreach", config=None, recs=None):
     return "\n".join(out)
 
 
+def _try_load_email_campaign(campaign_id, campaign, recs, config):
+    """Render the email preview for a canonical campaign loaded from work/.
+
+    TASK-057.  Uses the REAL bisonfactory pipeline: _sequence_steps,
+    _approved_copy, _variables_for.  Returns (text, error).
+    """
+    rec_map = {r.get("id"): r for r in recs}
+    record_ids = campaign.get("record_ids") or []
+    campaign_recs = [rec_map[rid] for rid in record_ids if rid in rec_map]
+    if not campaign_recs:
+        return None, (f"campaign {campaign_id!r} names {len(record_ids)} "
+                      f"record(s) but none could be loaded from work/")
+    try:
+        plan = _build_email_plan(config, campaign_recs, campaign=campaign)
+    except bisonfactory.FactoryRefused as e:
+        return None, f"factory refused: {e}"
+    except Exception as e:
+        return None, f"email plan failed: {e}"
+
+    sequence = plan["sequence"]
+    cadence_steps = plan["cadence_steps"]
+    cadence_seq = cadencelibrary.named(config.get("cadence"))
+
+    if not sequence:
+        return None, (f"campaign {campaign_id!r} has no email sequence. "
+                      f"The client config has no email_sequence.steps")
+
+    all_contacts = []
+    for lead in plan["leads"]:
+        copy_by_key = {}
+        for entry in lead.get("copy") or []:
+            copy_by_key[entry.get("step_key")] = entry
+        all_contacts.append({"rec": lead["rec"], "contact": lead["contact"],
+                             "copy_by_key": copy_by_key,
+                             "missing": lead.get("missing") or [],
+                             "variables": lead.get("variables") or []})
+
+    client = campaign.get("client", "?")
+    out = []
+    out.append(_sep("#"))
+    out.append("  EMAIL CAMPAIGN PREVIEW - WHAT THE PERSON ACTUALLY RECEIVES")
+    out.append(f"  Campaign: {campaign_id}")
+    out.append(f"  Client: {client}")
+    out.append(f"  EmailBison campaign id: "
+               f"{campaign.get('bison_campaign_id', '(not staged)')}")
+    out.append(f"  Status: {campaign.get('status', '?')}")
+    out.append(f"  Record ids: {record_ids}")
+    out.append(f"  Pipeline: EmailBison custom variables")
+    out.append(f"  Contacts: {len(all_contacts)} total, "
+               f"{len(plan['leads'])} in plan")
+    out.append(_sep("#"))
+
+    issues = _detect_email_issues(all_contacts, sequence)
+    missing_total = sum(len(l.get("missing") or []) for l in plan["leads"])
+    if missing_total:
+        issues.insert(0, (
+            f"{missing_total} step(s) across all leads have no approved "
+            f"copy - those steps will send with empty subject and body"))
+    if issues:
+        out.append("")
+        out.append("  " + _sep("!"))
+        out.append("  ISSUES DETECTED - READ BEFORE PROMOTING")
+        out.append("  " + _sep("!"))
+        for issue in issues:
+            out.append(f"  !!! {issue}")
+        out.append("  " + _sep("!"))
+    else:
+        out.append("")
+        out.append("  No issues detected.")
+
+    out.append(_format_email_sequence_template(sequence, config))
+
+    ladder_name = cadencelibrary.ladder_name_for(cadence_seq, "email")
+    ladder = (cadencelibrary.LADDER_REGISTRY.get(ladder_name)
+              if ladder_name else None)
+    if ladder:
+        out.append("")
+        out.append(_sep("-"))
+        out.append(f"  LADDER: {ladder_name} ({len(ladder)} rungs)")
+        out.append(_sep("-"))
+        for i, rung in enumerate(ladder, 1):
+            out.append(f"    Rung {i}: {rung}")
+
+    shown = 0
+    for lead_info in all_contacts:
+        if shown >= 5:
+            remaining = len(all_contacts) - shown
+            out.append("")
+            out.append(f"  ... {remaining} more contact(s) not shown")
+            break
+        rec = lead_info["rec"]
+        contact = lead_info["contact"]
+        variables = lead_info["variables"]
+        copy = lead_info.get("copy_by_key") or {}
+        missing = lead_info.get("missing") or []
+        out.append(_format_email_lead_header(rec, contact))
+        missing_set = set(missing)
+        for position, node in enumerate(sequence):
+            key = node.get("step_key", "?")
+            ordinal = position + 1
+            entry = copy.get(key)
+            if key in missing_set:
+                entry = None
+            out.append(_format_email_touch(
+                node, ordinal, entry, variables, cadence_steps,
+                sequence, position, contact, rec, config,
+                cadence_seq=cadence_seq))
+        shown += 1
+
+    out.append("")
+    out.append(_sep("#"))
+    out.append("  END OF EMAIL PREVIEW")
+    out.append(_sep("#"))
+    return "\n".join(out), None
+
+
 def _try_load_campaign(campaign_id):
     """Try to load a campaign from work/ and render it.
 
@@ -1035,6 +1151,11 @@ def _try_load_campaign(campaign_id):
     except Exception as e:
         return None, (f"could not load records from work/: {e}. "
                       f"The work/ directory may be empty in this worktree")
+
+    # Check if this is an email campaign (TASK-057).
+    has_email_seq = bool((config.get("email_sequence") or {}).get("steps"))
+    if has_email_seq and not campaign.get("heyreach_campaign_id"):
+        return _try_load_email_campaign(campaign_id, campaign, recs, config)
 
     # Check if this is a HeyReach campaign.
     if not campaign.get("heyreach_campaign_id"):
@@ -1158,6 +1279,732 @@ def _try_load_campaign(campaign_id):
     out.append("  END OF HEYREACH PREVIEW")
     out.append(_sep("#"))
     return "\n".join(out), None
+
+
+# ----------------------------------------- TASK-057: Email pipeline fixtures
+#
+# The email campaign does NOT go through cadence.expand_step for its final
+# rendering.  It goes through:
+#
+#     bisonfactory._sequence_steps    the provider sequence (templates)
+#     bisonfactory._approved_copy     per-lead approved words
+#     bisonfactory._variables_for     custom variables on the wire
+#     EmailBison                      substitutes {SUBJECT_N}/{BODY_N}
+#
+# So the preview renders through the REAL pipeline: the same functions that
+# build the provider payload.  Every name, company and domain is invented.
+
+def _fixture_config_email():
+    """A client config for the email-five cadence.
+
+    email_sequence.steps carries the provider templates: {SUBJECT_N} and
+    {BODY_N} merge fields that EmailBison resolves against per-lead custom
+    variables.
+    """
+    return {
+        "cadence": "productive_li_heavy_v1",
+        "personas": {
+            "champion": {
+                "cap_per_domain": 2,
+                "angles": {
+                    "visibility": ("how the numbers behind the work become "
+                                   "visible before the month ends"),
+                    "margin": ("how project margin stops disappearing between "
+                               "the spreadsheet and the actual work"),
+                },
+            },
+        },
+        "angle_labels": {
+            "visibility": "real-time visibility",
+            "margin": "margin protection",
+        },
+        "tone": {"linkedin": "casual", "email": "professional"},
+        "email_sequence": {
+            "title": "Resonate generated cadence",
+            "steps": {
+                "em1": {"order": 1, "subject": "{SUBJECT_1}",
+                         "body": "<p>{BODY_1}</p>", "wait_in_days": 3},
+                "em2": {"order": 2, "subject": "{SUBJECT_2}",
+                         "body": "<p>{BODY_2}</p>", "wait_in_days": 4},
+                "em3": {"order": 3, "subject": "{SUBJECT_3}",
+                         "body": "<p>{BODY_3}</p>", "wait_in_days": 4},
+                "em4": {"order": 4, "subject": "{SUBJECT_4}",
+                         "body": "<p>{BODY_4}</p>", "wait_in_days": 9},
+                "em5": {"order": 5, "subject": "{SUBJECT_5}",
+                         "body": "<p>{BODY_5}</p>", "wait_in_days": 1},
+            },
+        },
+    }
+
+
+def _fixture_rec_email():
+    """A record with five approved email steps for the email preview.
+
+    Every name, company and domain is invented.  The copy is representative
+    of what the generator produces for the email_five ladder: five different
+    arguments, each grounded in the contact's angle and company facts.
+    """
+    return {
+        "id": "fixture-email-001",
+        "client": "fixture_client",
+        "company": "Northbridge Consulting",
+        "domain": "northbridge-consulting.example.com",
+        "lane": "cold",
+        "state": "active",
+        "company_facts": {
+            "name": "Northbridge Consulting",
+            "employees": 42,
+            "industry": "management consulting",
+            "revenue": "$6M",
+            "offices": ["London"],
+        },
+        "contacts": [
+            {"key": "jacob-hartley",
+             "name": "Jacob Hartley",
+             "title": "Delivery Director",
+             "email": "j.hartley@northbridge-consulting.example.com",
+             "linkedin": "https://linkedin.example.com/in/jacob-hartley",
+             "persona": "champion",
+             "angle": "visibility",
+             "verdict": "icp_match"},
+        ],
+        "events": [],
+        "cadence": {
+            "jacob-hartley": {
+                "em1": {"subject": ("Your project visibility gap at "
+                                    "Northbridge Consulting"),
+                        "body": ("Jacob, I work with consulting delivery "
+                                 "teams on real-time project visibility. "
+                                 "Northbridge Consulting runs forty-two "
+                                 "people across London and the utilisation "
+                                 "numbers your teams produce today arrive "
+                                 "too late to act on.\n\n"
+                                 "Productive joins up time tracking, "
+                                 "budgets and resource planning so the "
+                                 "numbers are visible while the work is "
+                                 "running rather than reconstructed "
+                                 "afterwards.\n\n"
+                                 "How do you currently get visibility on "
+                                 "whether a project is on track while it "
+                                 "is still running?"),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em1"}},
+                "em2": {"subject": "A different angle on the numbers",
+                        "body": ("Jacob, a different thought for "
+                                 "Northbridge Consulting.\n\n"
+                                 "Most consulting teams your size lose "
+                                 "margin between the spreadsheet and the "
+                                 "actual work. The finance view and the "
+                                 "operations view are two separate "
+                                 "spreadsheets maintained by two separate "
+                                 "people.\n\n"
+                                 "Would it be useful to see what that "
+                                 "looked like for a team your size?"),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em2"}},
+                "em3": {"subject": ("What Productive joins up at "
+                                    "Northbridge Consulting"),
+                        "body": ("Jacob, Productive connects time "
+                                 "tracking, budgets and resource planning "
+                                 "into one view. For a forty-two-person "
+                                 "consulting team, that means the project "
+                                 "margin is visible while the work is "
+                                 "running rather than reconstructed at "
+                                 "month end.\n\n"
+                                 "The consequence is that delivery "
+                                 "directors see the same numbers the "
+                                 "finance team sees, during the project "
+                                 "rather than after it."),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em3"}},
+                "em4": {"subject": "One more thought on visibility",
+                        "body": ("Jacob, following up on a different "
+                                 "point. The teams we work with find that "
+                                 "the visibility gap is not the data - it "
+                                 "is the time between the data existing "
+                                 "and the right person seeing it.\n\n"
+                                 "Is that roughly how it works at "
+                                 "Northbridge Consulting?"),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em4"}},
+                "em5": {"subject": "Should I close the file?",
+                        "body": ("Jacob, I don't want to keep writing if "
+                                 "the timing is wrong. If project "
+                                 "visibility is not on your list this "
+                                 "quarter, happy to stop.\n\n"
+                                 "Is there someone else at Northbridge "
+                                 "Consulting who owns this?"),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em5"}},
+            },
+        },
+    }
+
+
+def _fixture_rec_email_second():
+    """A second lead for the email fixture - shows per-lead variation."""
+    return {
+        "id": "fixture-email-002",
+        "client": "fixture_client",
+        "company": "Bastion Digital",
+        "domain": "bastion-dg.example.com",
+        "lane": "cold",
+        "state": "active",
+        "company_facts": {
+            "name": "Bastion Digital",
+            "employees": 58,
+            "industry": "digital agency",
+            "revenue": "$9M",
+            "offices": ["Manchester"],
+        },
+        "contacts": [
+            {"key": "declan-reilly",
+             "name": "Declan Reilly",
+             "title": "Head of Operations",
+             "email": "declan@bastion-dg.example.com",
+             "linkedin": "https://linkedin.example.com/in/declan-reilly",
+             "persona": "champion",
+             "angle": "margin",
+             "verdict": "icp_match"},
+        ],
+        "events": [],
+        "cadence": {
+            "declan-reilly": {
+                "em1": {"subject": "Your margin visibility at Bastion Digital",
+                        "body": ("Declan, I work with digital agency "
+                                 "operations leads on project margin "
+                                 "visibility. Bastion Digital runs "
+                                 "fifty-eight people across Manchester "
+                                 "and the margin numbers your projects "
+                                 "produce today arrive too late to act "
+                                 "on.\n\n"
+                                 "Productive joins up time tracking, "
+                                 "budgets and resource planning so the "
+                                 "numbers are visible while the work is "
+                                 "running.\n\n"
+                                 "How do you currently track whether a "
+                                 "project is making money while it is "
+                                 "still running?"),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em1"}},
+                "em2": {"subject": "The cost of the current approach",
+                        "body": ("Declan, a different thought for Bastion "
+                                 "Digital.\n\n"
+                                 "Most agencies your size spend two days "
+                                 "per project reconstructing what the "
+                                 "budget looked like versus what actually "
+                                 "happened. That is time the operations "
+                                 "team spends on looking backwards "
+                                 "instead of forwards.\n\n"
+                                 "Would it be useful to see what that "
+                                 "looks like for a team your size?"),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em2"}},
+                "em3": {"subject": "What Productive joins up at Bastion",
+                        "body": ("Declan, Productive connects time "
+                                 "tracking, budgets and resource planning "
+                                 "into one view. For a fifty-eight-person "
+                                 "digital agency, that means the project "
+                                 "margin is visible while the work is "
+                                 "running rather than reconstructed at "
+                                 "month end."),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em3"}},
+                "em4": {"subject": "One more thought on margin",
+                        "body": ("Declan, following up on a different "
+                                 "point. The agencies we work with find "
+                                 "that the margin gap is not the data - "
+                                 "it is the time between the data "
+                                 "existing and the right person seeing "
+                                 "it.\n\n"
+                                 "Is that roughly how it works at Bastion "
+                                 "Digital?"),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em4"}},
+                "em5": {"subject": "Should I close the file?",
+                        "body": ("Declan, I don't want to keep writing if "
+                                 "the timing is wrong. If margin "
+                                 "visibility is not on your list this "
+                                 "quarter, happy to stop.\n\n"
+                                 "Is there someone else at Bastion Digital "
+                                 "who owns this?"),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em5"}},
+            },
+        },
+    }
+
+
+def _fixture_rec_email_missing():
+    """A record where em3 has no approval - tests MISSING reporting.
+
+    Five steps, four approved, one missing.  The preview must show MISSING
+    for em3, not silently render a four-email sequence.
+    """
+    return {
+        "id": "fixture-email-missing-001",
+        "client": "fixture_client",
+        "company": "Ashford Digital",
+        "domain": "ashford-d.example.com",
+        "lane": "cold",
+        "state": "active",
+        "company_facts": {
+            "name": "Ashford Digital",
+            "employees": 18,
+            "industry": "digital marketing",
+            "revenue": "$2M",
+        },
+        "contacts": [
+            {"key": "priya-sharma",
+             "name": "Priya Sharma",
+             "title": "Founder",
+             "email": "priya@ashford-d.example.com",
+             "linkedin": "https://linkedin.example.com/in/priya-sharma",
+             "persona": "champion",
+             "angle": "margin",
+             "verdict": "icp_match"},
+        ],
+        "events": [],
+        "cadence": {
+            "priya-sharma": {
+                "em1": {"subject": "Your margin at Ashford Digital",
+                        "body": ("Priya, I work with agency founders on "
+                                 "project margin visibility."),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em1"}},
+                "em2": {"subject": "A different angle on the numbers",
+                        "body": ("Priya, most agencies your size lose "
+                                 "margin between the spreadsheet and the "
+                                 "actual work."),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em2"}},
+                # em3 deliberately missing approval - tests the MISSING path
+                "em3": {"subject": "This has no approval",
+                        "body": "This should not reach the wire",
+                        "channel": "email", "generated": True},
+                "em4": {"subject": "One more thought",
+                        "body": ("Priya, the visibility gap is not the "
+                                 "data - it is the time between the data "
+                                 "existing and the right person seeing "
+                                 "it."),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em4"}},
+                "em5": {"subject": "Should I close the file?",
+                        "body": ("Priya, happy to stop if the timing is "
+                                 "wrong."),
+                        "channel": "email", "generated": True,
+                        "approval": {"fingerprint": "fixture-approve-em5"}},
+            },
+        },
+    }
+
+
+# ----------------------------------------- TASK-057: Email rendering engine
+
+def _email_ordinal_map(cadence_steps):
+    """Map step key -> email ordinal (1-based) for email steps only.
+
+    The ladder is indexed by email position, not cadence position.  A
+    cadence with LinkedIn steps interleaved has em1 at ordinal 1 regardless
+    of where it sits in the full timeline.
+    """
+    email_steps = sorted(
+        [s for s in cadence_steps if s.get("channel") == "email"],
+        key=lambda s: (s.get("day", 0), s.get("key", "")))
+    return {s["key"]: i + 1 for i, s in enumerate(email_steps)
+            if s.get("key")}
+
+
+def _email_next_branch(sequence, position, cadence_steps):
+    """What happens after this email step, and on what condition.
+
+    Returns a human-readable string.  The last step returns "END OF
+    SEQUENCE".
+    """
+    if position + 1 >= len(sequence):
+        return "END OF SEQUENCE - no further steps"
+    next_node = sequence[position + 1]
+    wait = next_node.get("wait_in_days", "?")
+    next_key = next_node.get("step_key", "?")
+    next_spec = None
+    for s in cadence_steps:
+        if s.get("key") == next_key:
+            next_spec = s
+            break
+    requires = (next_spec or {}).get("requires")
+    if requires:
+        return (f"Day +{wait} -> {next_key} (requires: {requires})")
+    return f"Day +{wait} -> {next_key}"
+
+
+def _detect_email_issues(all_contacts, sequence):
+    """Flag what would embarrass us.  Returns a list of issue strings.
+
+    Checks:
+    1. Two emails that open the same way (same first 10 words of body).
+    2. Two emails with the same subject.
+    3. Missing copy (a step with no approved words).
+    4. A product name never appearing in any email.
+    """
+    issues = []
+    for contact_info in all_contacts:
+        contact = contact_info.get("contact") or {}
+        contact_key = contact.get("key", "?")
+        copy_by_key = contact_info.get("copy_by_key") or {}
+        missing = contact_info.get("missing") or []
+
+        # Missing copy.
+        for step_name in missing:
+            issues.append(
+                f"MISSING COPY: lead {contact_key!r} has no approved "
+                f"copy for {step_name} - that step will send with an "
+                f"empty subject and body")
+
+        # Collect rendered subjects and opening lines.
+        subjects = {}
+        openings = {}
+        has_product_name = False
+        for node in sequence:
+            key = node.get("step_key")
+            entry = copy_by_key.get(key)
+            if not entry:
+                continue
+            subj = entry.get("subject", "")
+            body = entry.get("body", "")
+            if subj:
+                norm_subj = " ".join(subj.split()).lower()
+                if norm_subj in subjects:
+                    issues.append(
+                        f"DUPLICATE SUBJECT: lead {contact_key!r}, steps "
+                        f"{subjects[norm_subj]!r} and {key!r} have the "
+                        f"same subject line")
+                else:
+                    subjects[norm_subj] = key
+            if body:
+                words = body.split()[:10]
+                opening = " ".join(words).lower()
+                if opening in openings:
+                    issues.append(
+                        f"DUPLICATE OPENING: lead {contact_key!r}, steps "
+                        f"{openings[opening]!r} and {key!r} open the same "
+                        f"way ({body.split()[0]!r} {body.split()[1]!r}...)")
+                else:
+                    openings[opening] = key
+            full_text = f"{subj} {body}".lower()
+            if "productive" in full_text:
+                has_product_name = True
+
+        if copy_by_key and not has_product_name:
+            issues.append(
+                f"PRODUCT NAME MISSING: lead {contact_key!r} - none of "
+                f"the {len(copy_by_key)} email(s) name the product. "
+                f"The ladder requires the product name by rung 3")
+
+    return issues
+
+
+def _format_email_sequence_template(sequence, config):
+    """Show the provider-side template structure."""
+    lines = []
+    lines.append("")
+    lines.append(_sep("-"))
+    lines.append("  SEQUENCE TEMPLATE (campaign-level, carries MERGE FIELDS)")
+    lines.append(_sep("-"))
+    lines.append("")
+    lines.append("  The EmailBison sequence is campaign-level.  The")
+    lines.append("  templates carry merge fields like {SUBJECT_1}, {BODY_1}.")
+    lines.append("  Each lead supplies their own words via custom variables.")
+    lines.append("")
+    lines.append("  STEPS:")
+    seq_config = (config.get("email_sequence") or {}).get("steps") or {}
+    for node in sequence:
+        key = node.get("step_key", "?")
+        order = node.get("order", "?")
+        entry = seq_config.get(key, {})
+        subj_tmpl = entry.get("subject", "(none)")
+        body_tmpl = entry.get("body", "(none)")
+        wait = node.get("wait_in_days", "?")
+        lines.append(f"    Step {order} ({key}):")
+        lines.append(f"      Subject template: {subj_tmpl}")
+        body_display = (body_tmpl if len(body_tmpl) <= 60
+                        else body_tmpl[:57] + "...")
+        lines.append(f"      Body template:    {body_display}")
+        lines.append(f"      Wait after:       {wait} day(s)")
+    lines.append("")
+    lines.append("  CUSTOM VARIABLES (per-lead, resolved by EmailBison):")
+    for node in sequence:
+        key = node.get("step_key", "?")
+        order = node.get("order", "?")
+        lines.append(f"    {{SUBJECT_{order}}} -> variable subject_{order} "
+                     f"(from step {key})")
+        lines.append(f"    {{BODY_{order}}}    -> variable body_{order} "
+                     f"(from step {key})")
+    return "\n".join(lines)
+
+
+def _format_email_touch(node, ordinal, entry, variables, cadence_steps,
+                        sequence, position, contact, rec, config,
+                        cadence_seq=None):
+    """Format one email touch for human reading.
+
+    Shows every field the operator named:
+    DAY, CHANNEL, PURPOSE, ANGLE, VARIANT, EVIDENCE USED,
+    VARIABLES, FALLBACKS, FINAL RENDERED, NEXT BRANCH.
+    """
+    step_key = node.get("step_key", "?")
+    day = node.get("day")
+    if day is None:
+        for cs in cadence_steps:
+            if cs.get("key") == step_key:
+                day = cs.get("day", "?")
+                break
+    if day is None:
+        day = "?"
+    wait = node.get("wait_in_days", "?")
+    purpose = generate.purpose_for("email", ordinal,
+                                   sequence=cadence_seq)
+    angle = (contact or {}).get("angle", "?")
+    angle_label = ((config.get("angle_labels") or {}).get(angle)
+                   if angle != "?" else "?")
+
+    lines = []
+    lines.append("")
+    lines.append(f"  === EMAIL {ordinal} (step: {step_key}) ===")
+    lines.append(f"    DAY:            {day}")
+    lines.append(f"    CHANNEL:        email")
+    if purpose:
+        lines.append(f"    PURPOSE:        {purpose}")
+    else:
+        lines.append(f"    PURPOSE:        (no ladder rung for position "
+                     f"{ordinal})")
+    lines.append(f"    ANGLE:          {angle} ({angle_label})")
+
+    variant_id = (entry or {}).get("variant_id") if entry else None
+    if variant_id:
+        lines.append(f"    VARIANT:        {variant_id} "
+                     f"(style: {(entry or {}).get('variant_style', '?')}, "
+                     f"version: {(entry or {}).get('variant_version', '?')})")
+    else:
+        lines.append(f"    VARIANT:        (none assigned)")
+
+    lines.append(f"    EVIDENCE USED:  "
+                 f"company={( rec.get('company') or '?')}, "
+                 f"angle={angle}, "
+                 f"industry={(rec.get('company_facts') or {}).get('industry', '?')}, "
+                 f"size={(rec.get('company_facts') or {}).get('employees', '?')} "
+                 f"people")
+
+    lines.append(f"    VARIABLES (provider-side names):")
+    for v in (variables or []):
+        name = v.get("name", "?")
+        value = v.get("value", "")
+        if name.startswith(("subject_", "body_")):
+            display = (value if len(str(value)) <= 60
+                       else str(value)[:57] + "...")
+            lines.append(f"      {name}: {display!r}")
+    for v in (variables or []):
+        name = v.get("name", "?")
+        value = v.get("value", "")
+        if name in ("record_id", "contact_key", "client"):
+            lines.append(f"      {name}: {value!r}  (attribution)")
+
+    lines.append(f"    FALLBACKS:      "
+                 f"EmailBison sends the variable value; if the variable "
+                 f"is empty the merge field renders as empty text")
+
+    lines.append(f"    FINAL RENDERED:")
+    if entry:
+        lines.append(f"      Subject: {entry.get('subject', '(none)')}")
+        lines.append(f"      Body:")
+        for line in (entry.get("body") or "").splitlines():
+            lines.append(f"        {line}")
+    else:
+        lines.append(f"      *** MISSING - no approved copy for this "
+                     f"step ***")
+        lines.append(f"      Subject: (empty - {{SUBJECT_{ordinal}}} "
+                     f"has no value)")
+        lines.append(f"      Body:    (empty - {{BODY_{ordinal}}} "
+                     f"has no value)")
+
+    next_branch = _email_next_branch(sequence, position, cadence_steps)
+    lines.append(f"    NEXT BRANCH:    {next_branch}")
+
+    return "\n".join(lines)
+
+
+def _format_email_lead_header(rec, contact):
+    """Header for one lead's email preview."""
+    lines = [
+        "",
+        _sep("="),
+        f"  LEAD: {(contact or {}).get('name', '?')}",
+        f"  Company: {rec.get('company', '?')}",
+        f"  Domain: {rec.get('domain', '?')}",
+        f"  Title: {(contact or {}).get('title', '?')}",
+        f"  Email: {(contact or {}).get('email', '?')}",
+        f"  Persona: {(contact or {}).get('persona', '?')}",
+        f"  Angle: {(contact or {}).get('angle', '?')}",
+    ]
+    return "\n".join(lines)
+
+
+def _build_email_plan(config, recs, campaign=None):
+    """Build a plan-like dict for the email preview.
+
+    Uses the REAL bisonfactory functions:
+    - cadence.steps_for()        -> the cadence timeline
+    - bisonfactory._sequence_steps() -> the provider sequence
+    - bisonfactory._approved_copy()  -> per-lead approved words
+    - bisonfactory._variables_for()  -> provider custom variables
+
+    This is the SAME code path that bisonfactory._plan() runs.
+    """
+    cadence_steps = cadence.steps_for(campaign, config=config)
+    sequence = bisonfactory._sequence_steps(
+        config.get("email_sequence"), cadence_steps)
+    leads = []
+    for rec in recs:
+        for contact in rec.get("contacts") or []:
+            if not contact.get("email"):
+                continue
+            key = contact.get("key")
+            copy, missing = bisonfactory._approved_copy(
+                rec, key, sequence, rec.get("id"),
+                cadence_steps=cadence_steps, campaign=campaign,
+                config=config)
+            lead = {"record_id": rec.get("id"),
+                    "contact_key": key,
+                    "email": contact.get("email"),
+                    "first_name": ((contact.get("name") or "").split()
+                                   or [""])[0],
+                    "copy": copy,
+                    "missing_copy": missing,
+                    "subject": copy[0]["subject"] if copy else "",
+                    "body": copy[0]["body"] if copy else ""}
+            variables = bisonfactory._variables_for(lead, campaign or {})
+            leads.append({"rec": rec, "contact": contact,
+                          "copy": copy, "missing": missing,
+                          "variables": variables})
+    return {"sequence": sequence, "cadence_steps": cadence_steps,
+            "leads": leads}
+
+
+def render_email_preview(campaign_name="email_five", config=None, recs=None):
+    """Render the email pipeline preview.
+
+    Returns the rendered text as a string.  Goes through the REAL pipeline:
+    _sequence_steps -> _approved_copy -> _variables_for.
+
+    TASK-057.  The email side of what render_preview.py does for LinkedIn.
+    """
+    out = []
+    out.append(_sep("#"))
+    out.append("  EMAIL CAMPAIGN PREVIEW - WHAT THE PERSON ACTUALLY RECEIVES")
+    out.append(f"  Campaign: {campaign_name}")
+    out.append("  Pipeline: EmailBison custom variables")
+    out.append("  Sequence: _sequence_steps -> merge field templates")
+    out.append("  Per-lead: _approved_copy -> approved words per step")
+    out.append("  Wire: _variables_for -> subject_N/body_N custom variables")
+    out.append(_sep("#"))
+
+    if config is None:
+        config = _fixture_config_email()
+    if recs is None:
+        if campaign_name == "email_missing":
+            recs = [_fixture_rec_email_missing()]
+        elif campaign_name == "email_five":
+            recs = [_fixture_rec_email(), _fixture_rec_email_second()]
+        else:
+            recs = [_fixture_rec_email()]
+
+    plan = _build_email_plan(config, recs)
+    sequence = plan["sequence"]
+    cadence_steps = plan["cadence_steps"]
+    cadence_seq = cadencelibrary.named(config.get("cadence"))
+
+    if not sequence:
+        out.append("")
+        out.append("  ERROR: no email sequence configured.  The client "
+                   "config has no email_sequence.steps block.")
+        out.append(_sep("#"))
+        return "\n".join(out)
+
+    # Collect contact info for issue detection.
+    all_contacts = []
+    for lead in plan["leads"]:
+        copy_by_key = {}
+        for entry in lead.get("copy") or []:
+            copy_by_key[entry.get("step_key")] = entry
+        all_contacts.append({"rec": lead["rec"], "contact": lead["contact"],
+                             "copy_by_key": copy_by_key,
+                             "missing": lead.get("missing") or [],
+                             "variables": lead.get("variables") or []})
+
+    # Issue detection at the top.
+    issues = _detect_email_issues(all_contacts, sequence)
+    if issues:
+        out.append("")
+        out.append("  " + _sep("!"))
+        out.append("  ISSUES DETECTED - READ BEFORE PROMOTING")
+        out.append("  " + _sep("!"))
+        for issue in issues:
+            out.append(f"  !!! {issue}")
+        out.append("  " + _sep("!"))
+    else:
+        out.append("")
+        out.append("  No issues detected.")
+
+    # Sequence template.
+    out.append(_format_email_sequence_template(sequence, config))
+
+    # Ladder.
+    ladder_name = cadencelibrary.ladder_name_for(cadence_seq, "email")
+    ladder = (cadencelibrary.LADDER_REGISTRY.get(ladder_name)
+              if ladder_name else None)
+    if ladder:
+        out.append("")
+        out.append(_sep("-"))
+        out.append(f"  LADDER: {ladder_name} ({len(ladder)} rungs)")
+        out.append(_sep("-"))
+        for i, rung in enumerate(ladder, 1):
+            out.append(f"    Rung {i}: {rung}")
+
+    # Per-lead rendering.
+    total = len(all_contacts)
+    shown = 0
+    for lead_info in all_contacts:
+        if shown >= 5:
+            remaining = total - shown
+            out.append("")
+            out.append(f"  ... {remaining} more contact(s) not shown")
+            break
+        rec = lead_info["rec"]
+        contact = lead_info["contact"]
+        variables = lead_info["variables"]
+        copy = lead_info.get("copy_by_key") or {}
+        missing = lead_info.get("missing") or []
+
+        out.append(_format_email_lead_header(rec, contact))
+
+        # Build a copy_by_key for ordinal lookup.
+        missing_set = set(missing)
+        for position, node in enumerate(sequence):
+            key = node.get("step_key", "?")
+            ordinal = position + 1
+            entry = copy.get(key)
+            if key in missing_set:
+                entry = None
+            out.append(_format_email_touch(
+                node, ordinal, entry, variables, cadence_steps,
+                sequence, position, contact, rec, config,
+                cadence_seq=cadence_seq))
+        shown += 1
+
+    out.append("")
+    out.append(_sep("#"))
+    out.append("  END OF EMAIL PREVIEW")
+    out.append(_sep("#"))
+    return "\n".join(out)
 
 
 # ------------------------------------------------------- variable analysis
@@ -1373,17 +2220,25 @@ HEYREACH_FIXTURES = frozenset((
     "heyreach", "heyreach_planted_name", "heyreach_missing_field",
 ))
 
+# The fixture names that route to the email pipeline.  TASK-057.
+EMAIL_FIXTURES = frozenset((
+    "email_five", "email_missing",
+))
+
 
 def _is_campaign_id(name):
     """Does this look like a canonical campaign id rather than a fixture?"""
-    return "-" in name and name not in HEYREACH_FIXTURES
+    return ("-" in name
+            and name not in HEYREACH_FIXTURES
+            and name not in EMAIL_FIXTURES)
 
 
 def render_preview(campaign_name="balanced", config=None, recs=None):
     """Render the full preview for a named campaign fixture or campaign id.
 
-    Routes to the template path (TASK-045) or the HeyReach path (TASK-046)
-    based on the name.  A canonical campaign id loads from work/.
+    Routes to the template path (TASK-045), the HeyReach path (TASK-046),
+    or the email path (TASK-057) based on the name.  A canonical campaign
+    id loads from work/.
 
     Returns the rendered text as a string.
     """
@@ -1398,6 +2253,10 @@ def render_preview(campaign_name="balanced", config=None, recs=None):
 
     if campaign_name in HEYREACH_FIXTURES:
         return render_heyreach_preview(
+            campaign_name, config=config, recs=recs)
+
+    if campaign_name in EMAIL_FIXTURES:
+        return render_email_preview(
             campaign_name, config=config, recs=recs)
 
     out = []
@@ -1467,7 +2326,8 @@ def main(argv=None):
                         help="Campaign fixture name: balanced, li_heavy, "
                              "no_linkedin, missing_variable, heyreach, "
                              "heyreach_planted_name, "
-                             "heyreach_missing_field; or a canonical "
+                             "heyreach_missing_field, "
+                             "email_five, email_missing; or a canonical "
                              "campaign id like "
                              "productive-linkedin-production-v1")
     args = parser.parse_args(argv)

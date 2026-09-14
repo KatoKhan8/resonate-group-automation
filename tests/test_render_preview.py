@@ -210,5 +210,106 @@ class TestPreviewOutputIsHumanReadable(unittest.TestCase):
         self.assertIn("EMAIL", text)
 
 
+class TestEmailPreviewUsesTheProductionCodePath(unittest.TestCase):
+    """TASK-057: the email preview renders through bisonfactory, not a
+    second renderer.  The same functions that build the provider payload
+    (_sequence_steps, _approved_copy, _variables_for) produce the preview.
+    """
+
+    def test_email_five_renders_all_five_emails(self):
+        """The email_five fixture shows five FINAL RENDERED sections."""
+        text = render_preview("email_five")
+        for i in range(1, 6):
+            self.assertIn(f"EMAIL {i}", text)
+        self.assertIn("FINAL RENDERED", text)
+        self.assertIn("END OF EMAIL PREVIEW", text)
+
+    def test_email_five_shows_ladder_purposes(self):
+        """Each email step shows its ladder rung purpose."""
+        text = render_preview("email_five")
+        self.assertIn("Relevance, and who is writing", text)
+        self.assertIn("A different angle from the first email", text)
+        self.assertIn("SAY WHAT THE PRODUCT IS", text)
+        self.assertIn("Close the loop", text)
+
+    def test_email_five_shows_provider_variables(self):
+        """The preview shows subject_N and body_N variable names."""
+        text = render_preview("email_five")
+        self.assertIn("subject_1", text)
+        self.assertIn("body_1", text)
+        self.assertIn("subject_5", text)
+        self.assertIn("body_5", text)
+        self.assertIn("{SUBJECT_1}", text)
+        self.assertIn("{BODY_1}", text)
+
+    def test_email_five_shows_day_numbers(self):
+        """Each email step shows its cadence day."""
+        text = render_preview("email_five")
+        self.assertIn("DAY:            1", text)
+
+    def test_email_five_shows_angle(self):
+        """Each email step shows the contact's angle."""
+        text = render_preview("email_five")
+        self.assertIn("ANGLE:          visibility", text)
+        self.assertIn("ANGLE:          margin", text)
+
+    def test_email_five_shows_next_branch(self):
+        """Each email step shows what happens next."""
+        text = render_preview("email_five")
+        self.assertIn("NEXT BRANCH:", text)
+        self.assertIn("END OF SEQUENCE", text)
+
+    def test_email_missing_shows_missing_for_em3(self):
+        """The email_missing fixture shows MISSING for em3."""
+        text = render_preview("email_missing")
+        self.assertIn("MISSING COPY", text)
+        self.assertIn("em3", text)
+        self.assertIn("*** MISSING - no approved copy for this step ***", text)
+        self.assertIn("{SUBJECT_3} has no value", text)
+
+    def test_email_missing_reports_product_name_absent(self):
+        """The email_missing fixture flags that no email names the product."""
+        text = render_preview("email_missing")
+        self.assertIn("PRODUCT NAME MISSING", text)
+
+    def test_email_five_no_issues_for_clean_copy(self):
+        """The email_five fixture with two clean leads reports no issues."""
+        text = render_preview("email_five")
+        self.assertIn("No issues detected", text)
+
+    def test_email_preview_renders_through_bisonfactory_variables_for(self):
+        """The variables in the preview are what _variables_for produces.
+
+        This proves the wiring: the preview calls the SAME function that
+        builds the provider payload.
+        """
+        from src import bisonfactory
+        from scripts.render_preview import (
+            _fixture_config_email, _fixture_rec_email, _build_email_plan)
+        config = _fixture_config_email()
+        rec = _fixture_rec_email()
+        plan = _build_email_plan(config, [rec])
+        lead = plan["leads"][0]
+        variables = lead["variables"]
+        var_names = {v["name"] for v in variables}
+        self.assertIn("subject_1", var_names)
+        self.assertIn("body_1", var_names)
+        contact = rec["contacts"][0]
+        key = contact["key"]
+        stored_em1 = rec["cadence"][key]["em1"]
+        subject_var = next(v for v in variables if v["name"] == "subject_1")
+        self.assertEqual(subject_var["value"], stored_em1["subject"])
+
+    def test_email_preview_two_leads_render_different_copy(self):
+        """Two leads with different angles render different email copy."""
+        text = render_preview("email_five")
+        self.assertIn("Jacob Hartley", text)
+        self.assertIn("Declan Reilly", text)
+        self.assertIn("Northbridge Consulting", text)
+        self.assertIn("Bastion Digital", text)
+        self.assertIn("visibility gap", text)
+        self.assertIn("margin visibility", text)
+
+
 if __name__ == "__main__":
     unittest.main()
