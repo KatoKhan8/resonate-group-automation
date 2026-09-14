@@ -328,10 +328,13 @@ class EveryEntryPointGoesThroughThePolicy(TransitionTest):
         self.assertIsNone(out.get("effect"))
 
     def test_a_hand_recorded_reply_holds_it_too(self):
-        """TASK-030 rework: `cadence.record_event` no longer holds.
+        """TASK-030 rework, TASK-085 correction: `cadence.record_event`
+        holds the account again for hand-recorded replies.
 
-        The hold is deferred to `inbound.handle` after classification,
-        same as the provider reply path. The event is still recorded.
+        The provider-webhook path defers the hold to `inbound.handle`
+        after classification (TASK-030). But the hand-recorded path is
+        an operator saying "this is a real reply," so the conservative
+        UNKNOWN outcome applies immediately (TASK-085).
         """
         rec = self.record()
         cadence.record_event(rec, "email_reply", contact_key=JOHN)
