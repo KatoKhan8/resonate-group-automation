@@ -620,10 +620,11 @@ def _refuse_cohort_names_in_graph(sequence, cohort_names):
     text = _graph_text(sequence)
     if not text:
         return
+    text_lower = text.lower()
     for name in sorted(cohort_names):
         if len(name) < 2:
             continue
-        if re.search(r'\b' + re.escape(name) + r'\b', text):
+        if re.search(r'\b' + re.escape(name.lower()) + r'\b', text_lower):
             raise FactoryRefused(
                 f"the sequence graph contains literal name {name!r} from "
                 f"this campaign's cohort. A campaign-level graph must "
