@@ -87,3 +87,40 @@ not a reason to loosen it.
 - assignment is deterministic: the same contact gets the same arm twice;
 - the evaluator still returns INSUFFICIENT_DATA on a cohort this size, and
   the test says what sample size it would need.
+
+## RESULT
+
+STATUS: done
+COMMIT SHA: cea9a2b
+TESTS: 8 new tests in test_five_subject_variants_the_provider_already_rotates.py,
+  all pass. 151 related tests (variants, heyreachfactory, variant_wiring,
+  variant_cadence_end_to_end, variant_attribution) all pass.
+FILES CHANGED:
+  src/bisonfactory.py - _approved_copy now resolves variants and checks approval
+  src/heyreachfactory.py - assemble_linkedin_copy now resolves variants
+  tests/test_variant_wiring.py - updated: apply_to_step now called from 3 places
+  tests/test_five_subject_variants_the_provider_already_rotates.py - new test file
+FINDINGS:
+  - The mechanism is per-lead variables, not provider spintax. Spintax rotates
+    per send and cannot be attributed to a contact; per-lead variables can be
+    attributed but are fixed per person. Attribution is the whole point of the
+    experiment.
+  - The factory reads the recorded variant_id (sticky assignment from when the
+    step was stored), applies the variant's words via apply_to_step, and checks
+    the approval fingerprint covers them. A variant whose words don't match the
+    stored approval is reported as missing copy.
+  - test_variant_wiring had to be updated: it asserted apply_to_step was called
+    from exactly one place (cadence.py). Now it's called from three (cadence,
+    bisonfactory, heyreachfactory). The factories use it to resolve the recorded
+    variant, not to assign a new one.
+RISKS:
+  - The stored step must have the variant's words AND an approval covering them.
+    If a step was approved before variants were added, the approval won't match
+    the variant's words and the factory will report it as missing. This is
+    correct behaviour - the variant hasn't been approved - but it means existing
+    campaigns with variants need to re-approve each variant's words.
+RECOMMENDED CLAUDE ACTION:
+  Review the factory changes. The key invariant: every variant is approved copy
+  or it is not sent. Five variants means five approvals. The fingerprint check
+  in _resolve_step_copy (bisonfactory) and assemble_linkedin_copy (heyreachfactory)
+  enforces this.

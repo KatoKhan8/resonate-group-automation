@@ -163,7 +163,8 @@ def _step_copy(step, *, channel=None):
     return text or None
 
 
-def assemble_linkedin_copy(source, contact_key, *, include_inmail=False):
+def assemble_linkedin_copy(source, contact_key, *, include_inmail=False,
+                           cadence_steps=None, campaign=None, config=None):
     """The copy block `linkedin_sequence` needs, from a record's approved steps.
 
     Returns `(copy_block, missing)`. `copy_block` is a dict keyed by role.
@@ -177,14 +178,45 @@ def assemble_linkedin_copy(source, contact_key, *, include_inmail=False):
     `bisonfactory._approved_copy`: the caller needs to know what is missing
     before deciding whether to proceed. A dry run returns the missing list;
     the live path refuses on it.
+
+    VARIANTS ARE RESOLVED HERE, the same way as the email factory. A LinkedIn
+    step carrying five variants assigns one per contact deterministically,
+    and the variant's note - not the base template's - is what the provider
+    receives. Each variant must be approved independently.
     """
+    from . import cadence as _cadence
+    from . import variants
+
     steps = ((source or {}).get("cadence") or {}).get(contact_key) or {}
+    spec_by_key = {}
+    for spec in (cadence_steps or ()):
+        if spec.get("key"):
+            spec_by_key[spec["key"]] = spec
     copy = {}
     missing = []
 
     for step_key, mapping in COPY_MAPPING.items():
         step = steps.get(step_key) or {}
-        text = _step_copy(step)
+        spec = spec_by_key.get(step_key) or {}
+        # Resolve variant if present.
+        entry = None
+        if spec.get(_cadence.VARIANTS_KEY):
+            recorded = step.get("variant_id")
+            entry = _cadence.variant_for(spec, campaign, contact_key,
+                                         recorded=recorded, config=config)
+        if entry is not None:
+            stepped = variants.apply_to_step(dict(step), entry)
+            if stepped.get("approval"):
+                from . import approval
+                if approval.fingerprint(stepped) == stepped["approval"].get(
+                        "fingerprint"):
+                    text = _step_copy(stepped)
+                else:
+                    text = None
+            else:
+                text = None
+        else:
+            text = _step_copy(step)
         roles = mapping["role"]
         if isinstance(roles, str):
             roles = (roles,)
@@ -409,7 +441,8 @@ def unsupported_claims(rec, contact, fields):
     return found
 
 
-def custom_fields_for(source, contact_key, *, include_inmail=False):
+def custom_fields_for(source, contact_key, *, include_inmail=False,
+                      cadence_steps=None, campaign=None, config=None):
     """One contact's approved words, keyed by the variable that carries them.
 
     Returns `(fields, missing)` with the same `missing` shape
@@ -417,7 +450,8 @@ def custom_fields_for(source, contact_key, *, include_inmail=False):
     per lead instead of per campaign.
     """
     copy, missing = assemble_linkedin_copy(
-        source, contact_key, include_inmail=include_inmail)
+        source, contact_key, include_inmail=include_inmail,
+        cadence_steps=cadence_steps, campaign=campaign, config=config)
     fields = {}
     for role, block in (copy or {}).items():
         entries = (block or {}).get("messages") or []
@@ -601,7 +635,9 @@ def _plan(campaign, recs, config, *, include_inmail=False,
             if not contact.get("linkedin"):
                 continue
             key = contact.get("key")
-            fields, missing = custom_fields_for(rec, key)
+            fields, missing = custom_fields_for(
+                rec, key, cadence_steps=cadence_steps, campaign=campaign,
+                config=config)
             if missing:
                 all_missing.extend(missing)
             unsupported = unsupported_claims(rec, contact, fields)

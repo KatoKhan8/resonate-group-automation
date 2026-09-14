@@ -44,20 +44,48 @@ def calls_in(path):
 class TheSeamIsConnected(unittest.TestCase):
 
     def callers(self):
-        return [os.path.relpath(path, ROOT).replace("\\", "/")
+        return sorted([os.path.relpath(path, ROOT).replace("\\", "/")
                 for path in engine_files()
-                if "apply_to_step" in set(calls_in(path))]
+                if "apply_to_step" in set(calls_in(path))])
 
     def test_the_drafting_path_calls_it(self):
         """`cadence.expand_step` is where a step's copy is decided, so it
-        is where the wording experiment belongs. Anywhere later would be
-        applying a variant to copy somebody had already approved."""
-        self.assertEqual(self.callers(), ["src/cadence.py"])
+        is where the wording experiment belongs. The factories also call it
+        to resolve the variant's words for the provider payload (TASK-022)."""
+        callers = self.callers()
+        self.assertIn("src/cadence.py", callers)
 
-    def test_there_is_exactly_one(self):
-        """Two callers would be two places a contact could be assigned,
-        and the second one would not be sticky with the first."""
-        self.assertEqual(len(self.callers()), 1)
+    def test_the_factories_call_it_too(self):
+        """TASK-022: the factories resolve variants and apply them to check
+        the approval fingerprint. This is not a second assignment path -
+        the factories read the recorded variant_id and apply it."""
+        callers = self.callers()
+        self.assertIn("src/bisonfactory.py", callers)
+        self.assertIn("src/heyreachfactory.py", callers)
+
+    def test_the_caller_set_is_exactly_these_three(self):
+        """THE BOUND, restored 2026-09-14 on review.
+
+        This file used to assert `len(callers) == 1`, with the reason: "Two
+        callers would be two places a contact could be assigned, and the
+        second one would not be sticky with the first." TASK-022 legitimately
+        added two callers - the factories RESOLVE a recorded variant rather
+        than assigning a new one - and replaced the count with two `assertIn`
+        checks.
+
+        That accommodated the change and removed the guard with it: `assertIn`
+        passes for any caller set containing these, so a fourth caller, which
+        might well be a second assignment path, would arrive unreviewed. The
+        original test's purpose was never the number one - it was that every
+        caller has been looked at.
+
+        So the set is pinned exactly. A new caller fails here, and adding it
+        to this list is the review.
+        """
+        self.assertEqual(
+            self.callers(),
+            ["src/bisonfactory.py", "src/cadence.py",
+             "src/heyreachfactory.py"])
 
     def test_it_is_called_from_expand_step(self):
         """Named rather than inferred from the file: `cadence.py` is large
