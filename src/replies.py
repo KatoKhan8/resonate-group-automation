@@ -231,6 +231,24 @@ NEGATIVE_PATTERNS = (
     # TASK-066: "no requirement" is the formal variant of "no need" - common
     # in enterprise replies where the sender uses professional language.
     r"\bno requirement\b",
+    # TASK-066: LinkedIn-specific refusals measured across 3,869 unknowns.
+    # "No interest" is the plain form - 27 replies said "no interest" or
+    # "no interest at the moment" and the existing "not interested" did
+    # not reach them. "At the moment" was missing from the qualifier list.
+    r"\bno (?:interest|need) at the moment\b",
+    # "Nope" is unambiguous - more so than bare "no", which can answer a
+    # different question. 4+ replies.
+    r"\bnope\b",
+    # "Not at this stage" - variant of "not at this time". 6+ replies.
+    r"\bnot at this stage\b",
+    # "No budget" / "no funding" - a refusal grounded in resources.
+    r"\bno (?:budget|funding)\b",
+    # "Don't have a need" - the existing pattern requires "need this/that"
+    # directly; "have a need" inserts a verb that broke the match.
+    r"\b(?:don'?t|do not) have (?:a |any )?need\b",
+    # "Not looking" without a following preposition - "we're not looking"
+    # is a refusal even without "for this". 39 replies.
+    r"\bnot (?:looking|seeking)\b",
 )
 # Handing somebody on.
 #
@@ -249,6 +267,11 @@ REFERRAL_PATTERNS = (
     # Acme quarterly", which is a sentence about a supplier.
     r"\b(?:please|instead,?) (?:contact|email|ask|try|speak to|talk to)\b",
     r"\b(?:you|you'?d) (?:should|want|need) (?:to )?(?:talk|speak|contact|email)\b",
+    # TASK-066: "handled by X" / "managed by X" - a hand-off phrase that
+    # the existing patterns missed. 5+ replies. Still requires
+    # `_points_at_somebody` in `classify_rules` to avoid false positives
+    # from sentences like "this is handled by our team" with no name.
+    r"\b(?:handled|managed|covered) by\b",
 )
 
 NOT_RELEVANT_PATTERNS = (
@@ -273,6 +296,15 @@ NOT_RELEVANT_PATTERNS = (
     # signal - the person is at a different company than the one targeted.
     r"\bi (?:don'?t|do not) work (?:at|for)\b",
     r"\bnot in (?:that |this )?(?:field|area|department)\b",
+    # TASK-066: LinkedIn "I left" / "no longer here" phrasings. 89 replies
+    # across the unknown set said they had left the company or were no
+    # longer in the role, and the existing patterns required "the company"
+    # or "the business" after "left" - "left Protosell" did not match.
+    # "No longer work/working" catches the verb form that "no longer with"
+    # missed when a verb intervened.
+    r"\bno longer (?:work|working)\b",
+    r"\b(?:i'?m|i am) not (?:at|with) \S+ (?:anymore|any more)\b",
+    r"\bnot (?:responsible|in charge) (?:for|of)\b",
 )
 POSITIVE_PATTERNS = (
     r"\binterested\b", r"\bsounds (?:good|interesting|great)\b",
@@ -326,6 +358,15 @@ POSITIVE_PATTERNS = (
     r"^yes,? please[.?!]*$",
     r"^sure thing[.?!]*$",
     r"^sure[.?!]*$",
+    # TASK-066: "send me the details" - the existing pattern's optional
+    # chain did not include "the", so "send me the details" fell through.
+    # 5+ replies. Kept separate from the existing pattern to avoid
+    # restructuring a chain that already works for email.
+    r"\bsend (?:me )?the (?:details|info)\b",
+    # "Happy to learn/hear/know more" - expresses curiosity without
+    # committing. Distinct from "happy to chat" (existing) which is about
+    # a conversation; this is about the content. 3+ replies.
+    r"\bhappy to (?:learn|hear|know) more\b",
 )
 RULES = (
     (ACCOUNT_DNC, ACCOUNT_DNC_PATTERNS, 0.95),

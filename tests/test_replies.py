@@ -288,6 +288,43 @@ class TestTheClassifier(unittest.TestCase):
         verdict = replies.classify("Not interested, thanks.")
         self.assertEqual(verdict["extract_method"], "no_quote")
 
+    def test_task066_linkedin_negative_patterns(self):
+        """TASK-066: LinkedIn-specific refusals from the 3,869 unknowns."""
+        for text in ("No interest at the moment.",
+                     "No interest, thanks.",
+                     "Nope.",
+                     "Not at this stage.",
+                     "No budget for this.",
+                     "We don't have a need for this.",
+                     "We are not looking."):
+            self.assertEqual(self.verdict(text), replies.NEGATIVE, text)
+
+    def test_task066_linkedin_not_relevant_patterns(self):
+        """TASK-066: 'I left' / 'no longer here' phrasings."""
+        for text in ("I no longer work at TikTok.",
+                     "I'm no longer working there.",
+                     "I'm not at PayPal anymore.",
+                     "Not responsible for FP&A.",
+                     "Not in charge of this."):
+            self.assertEqual(self.verdict(text), replies.NOT_RELEVANT, text)
+
+    def test_task066_linkedin_positive_patterns(self):
+        """TASK-066: 'send me the details' and 'happy to learn more'."""
+        for text in ("Send me the details please.",
+                     "Send the info.",
+                     "Happy to learn more about this.",
+                     "Happy to hear more."):
+            self.assertEqual(self.verdict(text), replies.POSITIVE, text)
+
+    def test_task066_referral_handed_by_still_needs_a_name(self):
+        """TASK-066: 'handled by' is a referral cue but still needs a name.
+
+        The guard `_points_at_somebody` must still hold. 'Handled by our
+        team' with no specific person is NOT a referral.
+        """
+        self.assertNotEqual(self.verdict("This is handled by our team."),
+                            replies.REFERRAL)
+
 
 class TestTheModelSeam(unittest.TestCase):
     def test_the_rules_settle_a_clear_case_without_a_model(self):
