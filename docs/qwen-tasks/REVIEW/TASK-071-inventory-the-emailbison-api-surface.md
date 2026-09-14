@@ -94,7 +94,7 @@ addresses.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (see final commit)
+**COMMIT SHA:** db05879
 
 **TESTS:** No code changes — this is a documentation and discovery task. Three
 probe scripts were written, executed against the live API, and deleted. No
