@@ -216,6 +216,35 @@ read fails just manufactures more copy nobody should send.
 A full regeneration against the corrected ladder was RUNNING when this was
 written. It does not survive the reset; it is idempotent, re-run it.
 
+## 8b. THE REGENERATION RAN AND REACHED ALMOST NOTHING
+
+**Added after the regeneration completed, exit 0.** Full write-up in
+`docs/THE-LADDER-MOVED-AND-THE-COPY-DID-NOT-2026-09-15.md`.
+
+    per-SEQUENCE naming Productive   68%   exactly the pre-work baseline
+    li1 says who is writing          33%
+    email says who is writing         0%   unchanged
+    email "i noticed" openers          49   TASK-063 counted 47
+
+`plan` re-plans a step that FAILS A GATE. That is correct and is what makes
+regeneration idempotent. But a stored step records nothing about what
+produced it - the complete field list across the estate is `approval, body,
+channel, generated, note, subject, template`. No ladder version, no prompt
+fingerprint. So when the ladder changes, the old copy still passes every
+gate, `plan` says "nothing to generate", and the fix never lands. There is
+no `--force` flag either.
+
+**The trap for the next reader:** the copy looks much like what TASK-064 and
+TASK-063 condemned, so the tempting conclusion is that the ladder fix did not
+work. It did. It was never applied. The numbers above are how to tell those
+apart. `ogpartner-dk/jacob-faertz` is a sequence where it DID run - six
+rungs, six different jobs, product named once at rung 4, easy out at rung 6.
+
+TASK-079 is the fix. Its deliverable is a dry-run count of how many steps and
+approvals a ladder change would invalidate - because an approval is bound to
+exact words, so invalidating copy revokes approval, and that must be counted
+and visible rather than discovered.
+
 ## 9. RUNNING JOBS AT CHECKPOINT
 
     49280  py -3 -m src.generate --live --client productive
