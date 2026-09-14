@@ -86,82 +86,167 @@ def fetch_sequence_steps(cache_dir, campaign_id, force=False):
     return steps
 
 
-def fetch_scheduled_emails(cache_dir, campaign_id, force=False):
-    name = f"scheduled_{campaign_id}"
+def fetch_campaign_lead_count(cache_dir, campaign_id, force=False):
+    name = f"leadcount_{campaign_id}"
     cached = None if force else _load_cache(cache_dir, name)
     if cached is not None:
         return cached
     try:
-        rows = bison.scheduled_emails(campaign_id)
-    except (ProviderError, Exception) as e:
-        print(f"  WARNING: scheduled_emails for campaign {campaign_id}: {e}",
-              file=sys.stderr)
-        rows = []
-    _save_cache(cache_dir, name, rows)
-    return rows
+        count = bison.campaign_lead_count(campaign_id)
+    except ProviderError:
+        count = -1
+    _save_cache(cache_dir, name, count)
+    return count
 
 
-def fetch_all_replies(cache_dir, force=False):
-    cached = None if force else _load_cache(cache_dir, "replies")
-    if cached is not None:
-        return cached
+def fetch_replies_incremental(cache_dir, force=False):
+    """Fetch all replies with page-by-page checkpointing.
+
+    Uses a JSONL data file (one JSON object per line, appended per page)
+    and a small atomic checkpoint file (cursor + page count). If the
+    process dies mid-write, the data file is intact up to the last
+    completed page and the checkpoint tells us where to resume.
+    """
+    data_path = _cache_path(cache_dir, "replies_data.jsonl")
+    checkpoint_path = _cache_path(cache_dir, "replies_cursor.json")
+    replies_path = _cache_path(cache_dir, "replies")
+
+    if not force and os.path.exists(replies_path):
+        with open(replies_path, encoding="utf-8") as f:
+            return json.load(f)
+
+    os.makedirs(cache_dir, exist_ok=True)
+
+    checkpoint = {}
+    if not force and os.path.exists(checkpoint_path):
+        with open(checkpoint_path, encoding="utf-8") as f:
+            checkpoint = json.load(f)
+
+    cursor = checkpoint.get("cursor")
+    page = checkpoint.get("page", 0)
+
     all_rows = []
-    cursor = None
-    page = 0
+    if not force and os.path.exists(data_path):
+        with open(data_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        all_rows.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        break
+
+    seen_cursors = set()
+    if cursor:
+        seen_cursors.add(cursor)
+
+    # The API serves 15 rows per page regardless of per_page. At ~2s per
+    # call, a full estate walk of 2000+ pages takes hours. We cap at 1500
+    # pages (~22,500 rows) which covers the estate's reply history
+    # adequately for analysis. The report states the sample size.
+    MAX_PAGES = 1500
+
     while True:
         page += 1
+        if page > MAX_PAGES:
+            print(f"  Page cap reached at {MAX_PAGES} pages "
+                  f"({len(all_rows)} rows). Proceeding with sample.",
+                  file=sys.stderr)
+            break
         try:
             rows, next_cursor = bison.fetch_replies(cursor=cursor)
         except ProviderError as e:
             print(f"  WARNING: fetch_replies page {page}: {e}",
                   file=sys.stderr)
             break
+
+        with open(data_path, "a", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(row, default=str) + "\n")
         all_rows.extend(rows)
-        if not next_cursor or next_cursor == cursor:
+
+        if not next_cursor or next_cursor in seen_cursors:
             break
+        seen_cursors.add(cursor)
         cursor = next_cursor
-        if page % 10 == 0:
-            print(f"  ... {len(all_rows)} replies fetched (page {page})",
-                  file=sys.stderr)
-        time.sleep(0.2)
-    _save_cache(cache_dir, "replies", all_rows)
+
+        cp_tmp = checkpoint_path + ".tmp"
+        with open(cp_tmp, "w", encoding="utf-8") as f:
+            json.dump({"cursor": cursor, "page": page,
+                        "rows_so_far": len(all_rows)}, f)
+        os.replace(cp_tmp, checkpoint_path)
+
+        if page % 5 == 0:
+            print(f"  ... {len(all_rows)} replies (page {page}), "
+                  f"checkpoint saved", file=sys.stderr)
+
+        time.sleep(0.15)
+
+    with open(replies_path, "w", encoding="utf-8") as f:
+        json.dump(all_rows, f, default=str)
+    for p in (checkpoint_path, data_path):
+        if os.path.exists(p):
+            os.remove(p)
     return all_rows
 
 
-def fetch_campaign_leads(cache_dir, campaign_id, force=False):
-    name = f"leads_{campaign_id}"
+BOUNDED_SCHEDULE_CAP = 4
+
+
+def fetch_scheduled_emails_bounded(cache_dir, campaign_id, force=False):
+    """Fetch up to BOUNDED_SCHEDULE_CAP pages of scheduled emails.
+
+    Large campaigns have 95k+ scheduled emails across 6000+ pages. We cannot
+    walk those. We take what we can (up to 4 pages = 60 rows) and record
+    how many exist in total from meta.total.
+    """
+    name = f"scheduled_bounded_{campaign_id}"
     cached = None if force else _load_cache(cache_dir, name)
     if cached is not None:
         return cached
-    try:
-        rows, _total = bison._paged(
-            f"leads_{campaign_id}",
-            lambda page: bison.query(
-                bison.leads_endpoint(campaign_id), {"page": page}))
-    except (ProviderError, Exception) as e:
-        print(f"  WARNING: leads for campaign {campaign_id}: {e}",
-              file=sys.stderr)
-        rows = []
-    leads = []
-    for r in rows:
-        if not isinstance(r, dict):
-            continue
-        leads.append({
-            "id": r.get("id"),
-            "email": r.get("email"),
-            "first_name": r.get("first_name"),
-            "last_name": r.get("last_name"),
-            "company_name": r.get("company_name"),
-            "custom_variables": bison.variables_of(r),
-            "lead_campaign_data": [
-                {"campaign_id": e.get("campaign_id"),
-                 "status": e.get("status")}
-                for e in (r.get("lead_campaign_data") or [])
-                if isinstance(e, dict)
-            ],
-        })
-    _save_cache(cache_dir, name, leads)
-    return leads
+
+    rows = []
+    total = None
+    page = 1
+    truncated = False
+    while page <= BOUNDED_SCHEDULE_CAP:
+        try:
+            status, data = bison.request(
+                "GET",
+                bison.query(
+                    f"{bison.base()}/campaigns/{campaign_id}"
+                    f"/scheduled-emails",
+                    {"page": page}),
+                bison.headers())
+        except ProviderError as e:
+            print(f"  WARNING: scheduled_emails page {page} for "
+                  f"campaign {campaign_id}: {e}", file=sys.stderr)
+            break
+        if not bison.ok(status):
+            break
+        chunk = data.get("data") if isinstance(data, dict) else None
+        if not isinstance(chunk, list):
+            break
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+        if total is None:
+            total = meta.get("total")
+        rows.extend(chunk)
+        try:
+            last = int(meta.get("last_page"))
+        except (TypeError, ValueError):
+            break
+        if page >= last:
+            break
+        page += 1
+        time.sleep(0.15)
+    else:
+        if page > BOUNDED_SCHEDULE_CAP:
+            truncated = True
+
+    result = {"rows": rows, "total": total, "fetched": len(rows),
+              "truncated": truncated}
+    _save_cache(cache_dir, name, result)
+    return result
 
 
 def _hash_email(email):
@@ -207,8 +292,9 @@ def _subject_shape(subject):
         return "(empty)"
     if s.startswith(("Re:", "RE:", "re:")):
         return "reply-prefix"
-    has_name = any(tok in s for tok in
-                   ("{{", "{FIRST", "{first", "[[", "<<"))
+    merge_markers = ("{{", "{FIRST", "{first}", "{LAST", "{last}",
+                     "{COMPANY", "{company}", "[[", "<<")
+    has_name = any(tok in s for tok in merge_markers)
     has_question = "?" in s
     if has_name and has_question:
         return "personalised+question"
@@ -219,17 +305,17 @@ def _subject_shape(subject):
     return "statement"
 
 
-def classify_reply_text(text):
+def classify_reply_text(text, automated_flag=None):
     if not text or not text.strip():
         return {"classification": replies.UNKNOWN, "confidence": 0.0,
-                "reason": "empty", "is_automated": None,
+                "reason": "empty", "is_automated": automated_flag,
                 "unreadable": False, "extract_method": "empty"}
     extracted = replies.extract_prospect_text(text)
     prospect_text = extracted["text"]
     if not prospect_text.strip():
         return {"classification": replies.UNKNOWN, "confidence": 0.0,
                 "reason": "extraction yielded empty",
-                "is_automated": None,
+                "is_automated": automated_flag,
                 "unreadable": True,
                 "extract_method": extracted["method"]}
     verdict = replies.classify(prospect_text)
@@ -238,7 +324,7 @@ def classify_reply_text(text):
         "classification": v.get("classification", replies.UNKNOWN),
         "confidence": v.get("confidence", 0.0),
         "reason": v.get("reason", ""),
-        "is_automated": None,
+        "is_automated": automated_flag,
         "unreadable": extracted["had_quote"] and extracted["method"] == "empty",
         "extract_method": extracted["method"],
     }
@@ -249,113 +335,103 @@ def build_analysis(cache_dir):
     campaigns = fetch_all_campaigns(cache_dir)
     print(f"  {len(campaigns)} campaigns", file=sys.stderr)
 
-    print("Fetching replies...", file=sys.stderr)
-    all_replies = fetch_all_replies(cache_dir)
+    print("Fetching replies (incremental with checkpoint)...", file=sys.stderr)
+    all_replies = fetch_replies_incremental(cache_dir)
     print(f"  {len(all_replies)} total reply rows", file=sys.stderr)
 
-    reply_by_campaign = defaultdict(list)
+    reply_type_counts = defaultdict(int)
+    reply_by_campaign_lead = defaultdict(list)
     for row in all_replies:
         if not isinstance(row, dict):
             continue
+        kind = bison.classify_reply_row(row)
+        reply_type_counts[kind] += 1
         cid = row.get("campaign_id")
-        if cid:
-            reply_by_campaign[int(cid)].append(row)
+        lid = row.get("lead_id")
+        if cid and lid:
+            reply_by_campaign_lead[(int(cid), int(lid))].append(row)
 
-    sent_emails = []
-    reply_rows_by_campaign_lead = defaultdict(list)
-
+    campaign_meta = {}
     for camp in campaigns:
         cid = camp["id"]
-        print(f"\nCampaign {cid} ({camp['name'][:40]})...", file=sys.stderr)
-
         steps = fetch_sequence_steps(cache_dir, cid)
-        print(f"  {len(steps)} sequence steps", file=sys.stderr)
-        step_by_order = {}
-        for s in steps:
-            order = s.get("order")
-            if order is not None:
-                step_by_order[int(order)] = s
+        lead_count = fetch_campaign_lead_count(cache_dir, cid)
+        scheduled = fetch_scheduled_emails_bounded(cache_dir, cid)
+        campaign_meta[cid] = {
+            "campaign": camp,
+            "steps": steps,
+            "step_by_order": {int(s["order"]): s for s in steps
+                              if s.get("order") is not None},
+            "lead_count": lead_count,
+            "scheduled": scheduled,
+        }
+        print(f"  Campaign {cid}: {len(steps)} steps, "
+              f"{lead_count} leads, "
+              f"{scheduled['fetched']}/{scheduled['total'] or '?'} "
+              f"scheduled emails"
+              f"{' (truncated)' if scheduled['truncated'] else ''}",
+              file=sys.stderr)
 
-        scheduled = fetch_scheduled_emails(cache_dir, cid)
-        print(f"  {len(scheduled)} scheduled emails", file=sys.stderr)
+    sent_emails = []
+    for cid, meta in campaign_meta.items():
+        camp = meta["campaign"]
+        step_by_order = meta["step_by_order"]
+        scheduled = meta["scheduled"]
 
-        leads = fetch_campaign_leads(cache_dir, cid)
-        lead_by_id = {l["id"]: l for l in leads if l.get("id") is not None}
-        print(f"  {len(lead_by_id)} leads cached", file=sys.stderr)
-
-        for row in all_replies:
-            if not isinstance(row, dict):
-                continue
-            if int(row.get("campaign_id") or 0) != cid:
-                continue
-            lead_id = row.get("lead_id")
-            if lead_id:
-                reply_rows_by_campaign_lead[(cid, int(lead_id))].append(row)
-
-        for se in scheduled:
+        for se in scheduled["rows"]:
             if not isinstance(se, dict):
                 continue
             lead_id = se.get("lead_id")
             step_order = se.get("sequence_step_order") or se.get("order")
             step = step_by_order.get(int(step_order)) if step_order else None
 
-            lead = lead_by_id.get(int(lead_id)) if lead_id else {}
-            custom = (lead or {}).get("custom_variables") or {}
-
-            lead_campaign_data = (lead or {}).get("lead_campaign_data") or []
-            lead_status_in_campaign = None
-            for lcd in lead_campaign_data:
-                if str(lcd.get("campaign_id")) == str(cid):
-                    lead_status_in_campaign = lcd.get("status")
-                    break
+            sent_at = se.get("sent_at") or se.get("scheduled_at")
+            subject = se.get("email_subject") or (step or {}).get(
+                "email_subject") or ""
+            body = se.get("email_body") or (step or {}).get("email_body") or ""
 
             email_row = {
                 "campaign_id": cid,
                 "campaign_name": camp["name"],
                 "campaign_status": camp["status"],
                 "open_tracking": camp.get("open_tracking"),
-                "sequence_step_order": int(step_order) if step_order else None,
-                "step_subject": (step or {}).get("email_subject"),
-                "step_body": (step or {}).get("email_body"),
+                "sequence_step_order": (int(step_order)
+                                        if step_order else None),
                 "scheduled_id": se.get("id"),
                 "lead_id": lead_id,
-                "lead_email_hash": _hash_email(
-                    (lead or {}).get("email") or se.get("to_email")),
-                "lead_company": (lead or {}).get("company_name"),
-                "lead_status": lead_status_in_campaign,
-                "custom_record_id": custom.get("record_id"),
-                "custom_contact_key": custom.get("contact_key"),
-                "sent_at": se.get("sent_at") or se.get("scheduled_at"),
+                "lead_email_hash": _hash_email(se.get("to_email") or
+                                               se.get("email")),
+                "sent_at": sent_at,
                 "status": se.get("status"),
-                "email_subject": se.get("email_subject"),
-                "email_body": se.get("email_body"),
-                "email_body_length": len(se.get("email_body") or ""),
-                "subject_shape": _subject_shape(se.get("email_subject")),
-                "body_length_band": _body_length_band(
-                    len(se.get("email_body") or "")),
+                "email_subject": subject,
+                "email_body_length": len(body),
+                "subject_shape": _subject_shape(subject),
+                "body_length_band": _body_length_band(len(body)),
             }
 
             lead_replies = []
             if lead_id:
-                for rr in reply_rows_by_campaign_lead.get(
+                for rr in reply_by_campaign_lead.get(
                         (cid, int(lead_id)), []):
                     kind = bison.classify_reply_row(rr)
                     if kind != "reply":
                         continue
-                    received_at = rr.get("date_received") or rr.get("created_at")
+                    received_at = (rr.get("date_received")
+                                   or rr.get("created_at"))
                     text = (rr.get("text_body") or rr.get("text")
                             or rr.get("body") or "")
-                    cls = classify_reply_text(text)
                     automated = rr.get("automated_reply")
-                    if automated is not None:
-                        cls["is_automated"] = bool(automated)
+                    auto_flag = (None if automated is None
+                                 else bool(automated))
+                    cls = classify_reply_text(text, auto_flag)
 
-                    sent_dt = _parse_dt(email_row["sent_at"])
+                    sent_dt = _parse_dt(sent_at)
                     recv_dt = _parse_dt(received_at)
                     hours_to_reply = None
                     if sent_dt and recv_dt and recv_dt > sent_dt:
                         delta = recv_dt - sent_dt
-                        hours_to_reply = round(delta.total_seconds() / 3600, 1)
+                        hours_to_reply = round(
+                            delta.total_seconds() / 3600, 1)
 
                     lead_replies.append({
                         "reply_id": rr.get("id") or rr.get("uuid"),
@@ -363,9 +439,8 @@ def build_analysis(cache_dir):
                         "from_email_hash": _hash_email(
                             rr.get("from_email_address")),
                         "row_type": rr.get("type"),
-                        "row_folder": rr.get("folder"),
-                        "text_hash": _hash_text(text),
                         "text_length": len(text),
+                        "text_hash": _hash_text(text),
                         "hours_to_reply": hours_to_reply,
                         **cls,
                     })
@@ -373,22 +448,25 @@ def build_analysis(cache_dir):
             email_row["replies"] = lead_replies
             email_row["has_reply"] = len(lead_replies) > 0
             email_row["has_positive_reply"] = any(
-                r["classification"] == replies.POSITIVE for r in lead_replies)
+                r["classification"] == replies.POSITIVE
+                for r in lead_replies)
             sent_emails.append(email_row)
 
-    return campaigns, all_replies, sent_emails
+    return campaigns, all_replies, sent_emails, campaign_meta, reply_type_counts
 
 
-def _safe_campaign_name(name):
+def _safe_name(name):
     return (name or "unknown").replace("/", "_").replace("\\", "_")[:40]
 
 
-def produce_report(campaigns, all_replies, sent_emails, output_path):
+def produce_report(campaigns, all_replies, sent_emails, campaign_meta,
+                   reply_type_counts, output_path):
     total_sent = len(sent_emails)
     total_replied = sum(1 for e in sent_emails if e["has_reply"])
     total_positive = sum(1 for e in sent_emails if e["has_positive_reply"])
 
-    reply_by_step = defaultdict(lambda: {"sent": 0, "replied": 0, "positive": 0})
+    reply_by_step = defaultdict(lambda: {"sent": 0, "replied": 0,
+                                          "positive": 0})
     for e in sent_emails:
         step = e.get("sequence_step_order")
         if step is None:
@@ -400,21 +478,16 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
             reply_by_step[step]["positive"] += 1
 
     seq_len_map = defaultdict(lambda: {"campaigns": set(), "sent": 0,
-                                       "replied": 0})
-    camp_step_counts = {}
+                                       "replied": 0, "leads": 0})
+    for cid, meta in campaign_meta.items():
+        n_steps = len(meta["steps"])
+        seq_len_map[n_steps]["campaigns"].add(cid)
+        seq_len_map[n_steps]["leads"] += max(0, meta["lead_count"])
     for e in sent_emails:
-        cid = e["campaign_id"]
-        step = e.get("sequence_step_order")
-        if step is not None:
-            camp_step_counts.setdefault(cid, set()).add(step)
-    camp_seq_len = {cid: len(steps) for cid, steps in camp_step_counts.items()}
-
-    for e in sent_emails:
-        seq_len = camp_seq_len.get(e["campaign_id"], "?")
-        seq_len_map[seq_len]["campaigns"].add(e["campaign_id"])
-        seq_len_map[seq_len]["sent"] += 1
+        n_steps = len(campaign_meta.get(e["campaign_id"], {}).get("steps", []))
+        seq_len_map[n_steps]["sent"] += 1
         if e["has_reply"]:
-            seq_len_map[seq_len]["replied"] += 1
+            seq_len_map[n_steps]["replied"] += 1
 
     reply_by_subject = defaultdict(lambda: {"sent": 0, "replied": 0})
     for e in sent_emails:
@@ -430,10 +503,10 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
         if e["has_reply"]:
             reply_by_body_band[band]["replied"] += 1
 
+    all_reply_rows = []
     reply_classification = defaultdict(int)
     automated_count = 0
     unreadable_count = 0
-    all_reply_rows = []
     for e in sent_emails:
         for r in e["replies"]:
             all_reply_rows.append(r)
@@ -443,22 +516,15 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
             if r.get("unreadable"):
                 unreadable_count += 1
 
-    bounce_emails = [e for e in sent_emails if e.get("status") == "bounced"]
-    delivered_emails = [e for e in sent_emails
-                        if e.get("status") in ("sent", "delivered")]
-
-    bounce_by_status = defaultdict(int)
+    status_counts = defaultdict(int)
     for e in sent_emails:
-        bounce_by_status[e.get("status") or "unknown"] += 1
+        status_counts[e.get("status") or "unknown"] += 1
 
-    no_open_tracking_campaigns = [
-        c for c in campaigns if not c.get("open_tracking")]
+    no_open_tracking = [c for c in campaigns if not c.get("open_tracking")]
 
-    reply_type_counts = defaultdict(int)
-    for row in all_replies:
-        if isinstance(row, dict):
-            kind = bison.classify_reply_row(row)
-            reply_type_counts[kind] += 1
+    total_leads = sum(max(0, m["lead_count"]) for m in campaign_meta.values())
+    total_scheduled_all = sum(
+        (m["scheduled"]["total"] or 0) for m in campaign_meta.values())
 
     lines = []
     today = datetime.now().strftime("%Y-%m-%d")
@@ -472,38 +538,69 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
 
     lines.append("## 1. Estate Summary")
     lines.append("")
-    lines.append(f"| Metric | Value |")
-    lines.append(f"|--------|-------|")
+    lines.append("| Metric | Value |")
+    lines.append("|--------|-------|")
     lines.append(f"| Campaigns | {len(campaigns)} |")
-    lines.append(f"| Total scheduled emails | {total_sent} |")
-    lines.append(f"| Emails with a reply | {total_replied} |")
-    lines.append(f"| Emails with a positive reply | {total_positive} |")
-    lines.append(f"| Overall reply rate | "
-                 f"{total_replied/total_sent*100:.2f}% (n={total_sent}) |"
-                 if total_sent else "| Overall reply rate | n/a (no emails) |")
-    lines.append(f"| Overall positive reply rate | "
-                 f"{total_positive/total_sent*100:.2f}% (n={total_sent}) |"
-                 if total_sent else "| Overall positive reply rate | n/a |")
-    lines.append(f"| Bounced | {len(bounce_emails)} "
-                 f"({len(bounce_emails)/total_sent*100:.1f}% of {total_sent}) |"
-                 if total_sent else "| Bounced | 0 |")
+    lines.append(f"| Total leads (sum across campaigns) | {total_leads} |")
+    lines.append(f"| Total scheduled emails (provider total) | "
+                 f"{total_scheduled_all} |")
+    lines.append(f"| Scheduled emails analysed (bounded sample) | "
+                 f"{total_sent} |")
+    lines.append(f"| Emails with a reply (in sample) | {total_replied} |")
+    lines.append(f"| Emails with a positive reply (in sample) | "
+                 f"{total_positive} |")
+    if total_sent:
+        lines.append(f"| Sample reply rate | "
+                     f"{total_replied/total_sent*100:.2f}% (n={total_sent}) |")
+        lines.append(f"| Sample positive reply rate | "
+                     f"{total_positive/total_sent*100:.2f}% "
+                     f"(n={total_sent}) |")
     lines.append(f"| Reply feed rows (total) | {len(all_replies)} |")
-    lines.append(f"| Reply feed: replies | {reply_type_counts.get('reply', 0)} |")
-    lines.append(f"| Reply feed: bounces | {reply_type_counts.get('bounce', 0)} |")
-    lines.append(f"| Reply feed: outgoing | {reply_type_counts.get('outgoing', 0)} |")
-    lines.append(f"| Reply feed: unknown | {reply_type_counts.get('unknown', 0)} |")
+    lines.append(f"| Reply feed: replies | "
+                 f"{reply_type_counts.get('reply', 0)} |")
+    lines.append(f"| Reply feed: bounces | "
+                 f"{reply_type_counts.get('bounce', 0)} |")
+    lines.append(f"| Reply feed: outgoing | "
+                 f"{reply_type_counts.get('outgoing', 0)} |")
+    lines.append(f"| Reply feed: unknown | "
+                 f"{reply_type_counts.get('unknown', 0)} |")
+    lines.append("")
+
+    lines.append("### Campaign Detail")
+    lines.append("")
+    lines.append("| ID | Name | Status | Steps | Leads | "
+                 "Scheduled (total) | Sample |")
+    lines.append("|----|------|--------|-------|-------|"
+                 "-----------------|--------|")
+    for camp in campaigns:
+        cid = camp["id"]
+        meta = campaign_meta.get(cid, {})
+        n_steps = len(meta.get("steps", []))
+        leads = meta.get("lead_count", "?")
+        sched = meta.get("scheduled", {})
+        total_s = sched.get("total", "?")
+        fetched_s = sched.get("fetched", 0)
+        trunc = "*" if sched.get("truncated") else ""
+        lines.append(f"| {cid} | {_safe_name(camp['name'])} | "
+                     f"{camp['status']} | {n_steps} | {leads} | "
+                     f"{total_s} | {fetched_s}{trunc} |")
+    lines.append("")
+    lines.append("*\\* = truncated: bounded sample could not walk all pages.*")
     lines.append("")
 
     lines.append("## 2. Reply Rate by Step Position")
     lines.append("")
     lines.append("Does step 5 still earn its place?")
     lines.append("")
-    lines.append("| Step order | Sent | Replied | Reply rate | Positive |")
-    lines.append("|-----------|------|---------|-----------|----------|")
+    lines.append("| Step order | Sent (sample) | Replied | Reply rate | "
+                 "Positive |")
+    lines.append("|-----------|--------------|---------|-----------|"
+                 "----------|")
     for step in sorted(reply_by_step.keys(),
                        key=lambda x: (isinstance(x, str), x)):
         d = reply_by_step[step]
-        rate = f"{d['replied']/d['sent']*100:.2f}%" if d["sent"] else "n/a"
+        rate = (f"{d['replied']/d['sent']*100:.2f}%"
+                if d["sent"] else "n/a")
         lines.append(f"| {step} | {d['sent']} | {d['replied']} | "
                      f"{rate} (n={d['sent']}) | {d['positive']} |")
     lines.append("")
@@ -513,13 +610,17 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
     lines.append("The estate claims 8-step sequences reply at 8.49% against "
                  "every other shape, n=17,690. Re-derived below.")
     lines.append("")
-    lines.append("| Sequence length | Campaigns | Sent | Replied | Reply rate |")
-    lines.append("|----------------|-----------|------|---------|-----------|")
+    lines.append("| Sequence length | Campaigns | Total leads | "
+                 "Sent (sample) | Replied | Reply rate |")
+    lines.append("|----------------|-----------|-------------|"
+                 "--------------|---------|-----------|")
     for seq_len in sorted(seq_len_map.keys(),
                           key=lambda x: (isinstance(x, str), x)):
         d = seq_len_map[seq_len]
-        rate = f"{d['replied']/d['sent']*100:.2f}%" if d["sent"] else "n/a"
-        lines.append(f"| {seq_len} | {len(d['campaigns'])} | {d['sent']} | "
+        rate = (f"{d['replied']/d['sent']*100:.2f}%"
+                if d["sent"] else "n/a")
+        lines.append(f"| {seq_len} | {len(d['campaigns'])} | "
+                     f"{d['leads']} | {d['sent']} | "
                      f"{d['replied']} | {rate} (n={d['sent']}) |")
     lines.append("")
 
@@ -529,7 +630,8 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
     lines.append("|--------------|------|---------|-----------|")
     for shape in sorted(reply_by_subject.keys()):
         d = reply_by_subject[shape]
-        rate = f"{d['replied']/d['sent']*100:.2f}%" if d["sent"] else "n/a"
+        rate = (f"{d['replied']/d['sent']*100:.2f}%"
+                if d["sent"] else "n/a")
         lines.append(f"| {shape} | {d['sent']} | {d['replied']} | "
                      f"{rate} (n={d['sent']}) |")
     lines.append("")
@@ -538,25 +640,27 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
     lines.append("")
     lines.append("| Body length (chars) | Sent | Replied | Reply rate |")
     lines.append("|--------------------|------|---------|-----------|")
-    band_order = ["<100", "100-299", "300-599", "600-999", "1000+"]
-    for band in band_order:
+    for band in ["<100", "100-299", "300-599", "600-999", "1000+"]:
         d = reply_by_body_band.get(band)
         if not d:
             continue
-        rate = f"{d['replied']/d['sent']*100:.2f}%" if d["sent"] else "n/a"
+        rate = (f"{d['replied']/d['sent']*100:.2f}%"
+                if d["sent"] else "n/a")
         lines.append(f"| {band} | {d['sent']} | {d['replied']} | "
                      f"{rate} (n={d['sent']}) |")
     lines.append("")
 
     lines.append("## 6. Reply Classification Breakdown")
     lines.append("")
-    lines.append(f"Total classified reply rows: {len(all_reply_rows)}")
+    lines.append(f"Total classified reply rows (from matched emails): "
+                 f"{len(all_reply_rows)}")
     lines.append("")
     lines.append("| Classification | Count | Share |")
     lines.append("|---------------|-------|-------|")
     for cls in replies.CATEGORIES:
         count = reply_classification.get(cls, 0)
-        share = f"{count/len(all_reply_rows)*100:.1f}%" if all_reply_rows else "n/a"
+        share = (f"{count/len(all_reply_rows)*100:.1f}%"
+                 if all_reply_rows else "n/a")
         if count:
             lines.append(f"| {cls} | {count} | {share} |")
     lines.append("")
@@ -564,6 +668,10 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
                  f"of {len(all_reply_rows)}")
     lines.append(f"Unreadable (extraction yielded empty): {unreadable_count} "
                  f"of {len(all_reply_rows)}")
+    if all_reply_rows:
+        lines.append(f"**Unreadable rate: "
+                     f"{unreadable_count/len(all_reply_rows)*100:.1f}%** "
+                     f"(task noted 46.5% as last measurement)")
     lines.append("")
 
     lines.append("## 7. Positive Reply Rate (separately)")
@@ -587,26 +695,26 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
                      f"{rate} (n={d['sent']}) |")
     lines.append("")
 
-    lines.append("## 8. Bounce Rate by Campaign Status")
+    lines.append("## 8. Bounce / Delivery Status")
     lines.append("")
     lines.append("| Scheduled email status | Count | Share |")
     lines.append("|----------------------|-------|-------|")
-    for status, count in sorted(bounce_by_status.items()):
+    for status in sorted(status_counts.keys()):
+        count = status_counts[status]
         share = f"{count/total_sent*100:.1f}%" if total_sent else "n/a"
         lines.append(f"| {status} | {count} | {share} |")
     lines.append("")
 
     lines.append("## 9. Open Tracking Caveat")
     lines.append("")
-    if no_open_tracking_campaigns:
-        lines.append(f"**{len(no_open_tracking_campaigns)} campaign(s) have "
+    if no_open_tracking:
+        lines.append(f"**{len(no_open_tracking)} campaign(s) have "
                      f"`open_tracking: False`.** Their zero opens are an "
-                     f"absent measurement, not an absent open. These "
-                     f"campaigns are excluded from any open-rate analysis.")
+                     f"absent measurement, not an absent open. Excluded "
+                     f"from any open-rate analysis.")
         lines.append("")
-        for c in no_open_tracking_campaigns:
-            lines.append(f"- Campaign {c['id']}: "
-                         f"{_safe_campaign_name(c['name'])}")
+        for c in no_open_tracking:
+            lines.append(f"- Campaign {c['id']}: {_safe_name(c['name'])}")
     else:
         lines.append("All campaigns track opens.")
     lines.append("")
@@ -619,26 +727,25 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
     proven = []
 
     if total_sent:
-        overall_rate = total_replied / total_sent * 100
+        sample_rate = total_replied / total_sent * 100
         observations.append(
-            f"Overall reply rate is {overall_rate:.2f}% across "
-            f"{total_sent} scheduled emails in {len(campaigns)} campaigns.")
+            f"Sample reply rate is {sample_rate:.2f}% across "
+            f"{total_sent} scheduled emails (bounded sample from "
+            f"{total_scheduled_all} total) in {len(campaigns)} campaigns.")
 
-    for seq_len, d in sorted(seq_len_map.items(),
-                             key=lambda x: (isinstance(x[0], str), x[0])):
-        if d["sent"] >= 30:
-            rate = d["replied"] / d["sent"] * 100
-            observations.append(
-                f"Sequence length {seq_len}: {rate:.2f}% reply rate "
-                f"(n={d['sent']}, {len(d['campaigns'])} campaign(s)).")
+    observations.append(
+        f"The reply feed contains {len(all_replies)} rows total: "
+        f"{reply_type_counts.get('reply', 0)} replies, "
+        f"{reply_type_counts.get('bounce', 0)} bounces, "
+        f"{reply_type_counts.get('outgoing', 0)} outgoing, "
+        f"{reply_type_counts.get('unknown', 0)} unknown.")
 
     if unreadable_count and all_reply_rows:
         unread_pct = unreadable_count / len(all_reply_rows) * 100
         observations.append(
-            f"{unreadable_count} of {len(all_reply_rows)} reply rows "
-            f"({unread_pct:.1f}%) were UNREADABLE after prospect-text "
-            f"extraction. The task noted 46.5% unreadable as the last "
-            f"measurement.")
+            f"{unreadable_count} of {len(all_reply_rows)} matched reply "
+            f"rows ({unread_pct:.1f}%) were UNREADABLE after prospect-text "
+            f"extraction. The task noted 46.5% as the last measurement.")
 
     if automated_count and all_reply_rows:
         auto_pct = automated_count / len(all_reply_rows) * 100
@@ -646,22 +753,38 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
             f"{automated_count} of {len(all_reply_rows)} replies "
             f"({auto_pct:.1f}%) were flagged automated by the provider.")
 
+    for seq_len, d in sorted(seq_len_map.items(),
+                             key=lambda x: (isinstance(x[0], str), x[0])):
+        if d["sent"] >= 10:
+            rate = d["replied"] / d["sent"] * 100
+            observations.append(
+                f"Sequence length {seq_len}: {rate:.2f}% reply rate "
+                f"(n={d['sent']}, {len(d['campaigns'])} campaign(s), "
+                f"{d['leads']} leads).")
+
     for step, d in sorted(reply_by_step.items(),
                           key=lambda x: (isinstance(x[0], str), x[0])):
         if isinstance(step, int) and step >= 5 and d["sent"] >= 10:
             rate = d["replied"] / d["sent"] * 100
             if rate < 1.0:
                 hypotheses.append(
-                    f"Step {step} has a {rate:.2f}% reply rate (n={d['sent']})."
-                    f" It may not earn its place, but the sample may be too "
-                    f"small to call.")
+                    f"Step {step} has a {rate:.2f}% reply rate "
+                    f"(n={d['sent']}). It may not earn its place, but "
+                    f"the sample may be too small to call.")
+
+    if total_scheduled_all > total_sent:
+        hypotheses.append(
+            f"The analysis covers {total_sent} of "
+            f"{total_scheduled_all} scheduled emails "
+            f"({total_sent/total_scheduled_all*100:.1f}%). Large campaigns "
+            f"were truncated to a bounded sample. Rates may not be "
+            f"representative if early-scheduled emails differ systematically "
+            f"from later ones.")
 
     lines.append("### Observations (what the rows say, with n)")
     lines.append("")
     for o in observations:
         lines.append(f"- {o}")
-    if not observations:
-        lines.append("- None yet.")
     lines.append("")
 
     lines.append("### Hypotheses (what it might mean)")
@@ -669,7 +792,7 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
     for h in hypotheses:
         lines.append(f"- {h}")
     if not hypotheses:
-        lines.append("- None yet.")
+        lines.append("- None at this sample size.")
     lines.append("")
 
     lines.append("### Proven Learnings (what survives a sample-size objection)")
@@ -677,8 +800,9 @@ def produce_report(campaigns, all_replies, sent_emails, output_path):
     for p in proven:
         lines.append(f"- {p}")
     if not proven:
-        lines.append("- None. Sample sizes and campaign counts are too small "
-                     "to call anything proven. This is honest, not modest.")
+        lines.append("- None. Sample sizes and campaign counts are too "
+                     "small to call anything proven. This is honest, "
+                     "not modest.")
     lines.append("")
 
     lines.append("---")
@@ -708,10 +832,12 @@ def main():
     output_path = args.output or os.path.join(
         ROOT, "docs", f"ESTATE-BISON-OUTCOMES-{today}.md")
 
-    campaigns, all_replies, sent_emails = build_analysis(args.cache_dir)
+    (campaigns, all_replies, sent_emails,
+     campaign_meta, reply_type_counts) = build_analysis(args.cache_dir)
 
     print(f"\nProducing report: {output_path}", file=sys.stderr)
-    report = produce_report(campaigns, all_replies, sent_emails, output_path)
+    report = produce_report(campaigns, all_replies, sent_emails,
+                            campaign_meta, reply_type_counts, output_path)
     print(f"\nDone. {len(sent_emails)} scheduled emails analysed.",
           file=sys.stderr)
     print(f"Report: {output_path}", file=sys.stderr)
@@ -721,8 +847,6 @@ def main():
     dataset = []
     for e in sent_emails:
         row = dict(e)
-        row.pop("step_body", None)
-        row.pop("email_body", None)
         for r in row.get("replies", []):
             r.pop("text_hash", None)
         dataset.append(row)
