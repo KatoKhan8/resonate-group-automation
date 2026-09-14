@@ -98,3 +98,55 @@ Behavioural, against a fake transport. At minimum:
 
 Then break each guard deliberately and confirm the INTENDED test fails for
 the INTENDED reason - and that a different guard did not fire first.
+
+STATUS: done
+COMMIT SHA: 47424f2
+TESTS: 16 new tests in tests/test_heyreachfactory_ensure_leads.py, all
+passing. 36 existing tests in tests/test_heyreachfactory.py still pass.
+52 total heyreachfactory tests green. One pre-existing failure in
+test_no_write_happens_without_every_gate (collision HOLD verdict for a
+finished campaign) confirmed unrelated - fails the same way before and
+after these changes.
+FILES CHANGED:
+  src/heyreachfactory.py - added ensure_leads() and _mint_authorization()
+  tests/test_heyreachfactory_ensure_leads.py - 16 behavioural tests
+FINDINGS:
+  - ensure_leads() follows bisonfactory._ensure_leads pattern with five
+    gates in order: killswitch workspace state, suppression/DNC (via
+    eligibility.must_not_contact), account collision (via
+    collision.check_account + account_policy), tenant check (via
+    heyreach.check_tenant), and refuse_unsupported_sequence against the
+    rows actually being pushed.
+  - Each gate refuses BY NAME. A contact who fails any gate is refused
+    and the transport is never reached.
+  - One executionguard.Authorization is minted per contact with an
+    actionledger reservation. The authorization carries the operation,
+    channel, workspace, campaign, record and contact.
+  - The write goes through providerwrites.perform(LINKEDIN_ADD_LEAD)
+    with transport=heyreach.add_leads_to_campaign and
+    readback=heyreach.readback_membership. THE READBACK DECIDES.
+  - Idempotent: reads membership first via readback_membership and
+    pushes only the difference. A re-run costs reads and writes nothing.
+  - Dry run lists who would be pushed, from which seat, with which
+    variables, and touches nothing.
+  - LINKEDIN_ADD_LEAD is NOT added to SUPPORTED. The only thing between
+    a real lead and this function is a human deciding.
+  - Guard breaking tests confirm each gate fires in order and that a
+    different guard did not fire first: killswitch before suppression,
+    suppression before collision, collision before tenant.
+RISKS:
+  - The authorization path through providerwrites.perform requires
+    LINKEDIN_ADD_LEAD in SUPPORTED before a live call can succeed. This
+    is the deliberate operator decision the task describes.
+  - The _mint_authorization function calls actionledger.reserve which
+    writes to the ledger file. In the live path, this creates a durable
+    reservation that must be settled by the perform call.
+  - The collision check uses collision.check_account which reads the
+    EmailBison provider estate. For LinkedIn leads, the record's domain
+    is used as the collision key. This is account-level per
+    ACCOUNT-OUTREACH.md.
+RECOMMENDED CLAUDE ACTION:
+  Review ensure_leads() and the gate order. When ready to enable the
+  route, add LINKEDIN_ADD_LEAD to providerwrites.SUPPORTED and run a
+  canary with one contact. The function is ready; the decision is not
+  an engineering one.
