@@ -275,3 +275,23 @@ Grant the Qwen worktrees an `.env` containing ONLY `LLM_API_KEY`,
 `LLM_BASE_URL` and `LLM_MODEL`. Without it, bulk regeneration, variant
 generation and live prompt measurement cannot be delegated, and the ~80%
 target cannot be met on the work that actually matters right now.
+
+---
+
+## 11. TWO THINGS THE NEXT SESSION WILL SEE AND SHOULD NOT MISREAD
+
+**A regeneration was still running when this was written.** `py -3 -m
+src.generate --live --client productive`, 471 steps logged across 51 records.
+It writes through `store.transaction()`, which is atomic per record, so the
+ledger is consistent whenever it stops. It does not survive the reset. Re-run
+it; it is idempotent and only re-plans steps that fail a gate.
+
+Verified at checkpoint time: `work/queue.jsonl` holds **300 records, zero
+unparseable**.
+
+**`work/queue.jsonl.32172.tmp` is stale garbage.** Dated 01:01 today, and
+process 32172 is long gone - an interrupted write from an earlier session.
+`store` writes to a temp file and renames, so a leftover temp means a process
+died mid-write, NOT that the queue is damaged. The queue parses cleanly. It
+was left in place rather than deleted because `work/` is production state and
+a handoff is not the moment to tidy it.
