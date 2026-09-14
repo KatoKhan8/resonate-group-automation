@@ -86,7 +86,7 @@ numbers both recorded in the result block.
 
 STATUS: partial - fixed 5 of 7 failure clusters, 2 clusters remain
 
-COMMIT SHA: (to be filled after commit)
+COMMIT SHA: c400346
 
 TESTS:
   Before: ~8291 tests, ~22 failures, ~7 errors (from checkpoint)
