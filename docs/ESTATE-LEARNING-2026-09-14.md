@@ -270,6 +270,68 @@ small sample, which is precisely what the operator's instruction warned
 against and what the HYPOTHESES section above tries to avoid. It is left here
 rather than quietly edited out.
 
+## THE HEYREACH ESTATE, and the classifier is much worse there
+
+83 campaigns read from `/campaign/GetAll`. Their `progressStats` is EXECUTION
+only - it counts users pending, in progress, finished, failed, excluded and
+manually stopped, and says nothing about acceptance, replies or meetings:
+
+    totalUsers                 949536
+    totalUsersPending          713270
+    totalUsersInProgress       170346
+    totalUsersExcluded          38242
+    totalUsersFinished          15869
+    totalUsersFailed            11716
+    totalUsersManuallyStopped      93
+
+    status: 32 PAUSED, 31 FINISHED, 12 IN_PROGRESS, 8 DRAFT
+
+**Connection acceptance is not in that payload**, so the intermediate metric
+the operator explicitly warned against over-weighting cannot be read from the
+campaign list at all. It would have to come from lead state, which is a
+per-lead read across 949,536 users and is not worth spending on before the
+outcome metrics below are fixed.
+
+Outcomes come from conversations. 6,000 threads read from
+`/inbox/GetConversationsV2` - a bounded sample, 60 pages, not the estate -
+and classified with the same rules used on the email replies:
+
+    threads sampled                    6000
+    threads with an inbound message      697   11.6%
+
+    of those 697:
+      NO RULE MATCHED                    487   69.9%
+      negative                           143   20.5%
+      positive                            30    4.3%
+      not_relevant                        12    1.7%
+      not_now                              7    1.0%
+      out_of_office                        7    1.0%
+      unsubscribe                          6    0.9%
+      referral                             3    0.4%
+      unknown                              2    0.3%
+
+### Two differences from email that matter
+
+**The rules are twice as blind on LinkedIn. 70% unclassified against 35% on
+email.** `src/replies.py` was built from email bodies, and a LinkedIn reply is
+short, casual, frequently not in English and often a single clause. So the one
+metric this system can read is even weaker on the channel the operator wants
+to lead with. TASK-020 should treat LinkedIn as its own problem rather than
+assuming the email rules transfer.
+
+**Referrals are 0.4% here against 15% on email.** That is a 35x difference on
+the same classifier and the same client, and it is worth understanding before
+anybody designs a LinkedIn stakeholder-escalation step on the assumption that
+referrals arrive. Two readings and this data cannot separate them: either
+people genuinely do not hand off on LinkedIn the way they do over email, or
+the referral rules - which require the text to point at somebody, via
+`_points_at_somebody` - simply do not fire on how a LinkedIn referral is
+phrased. The 70% unclassified makes the second reading very plausible.
+
+Positive replies are 4.3% of inbound against email's 5.2%, and negative is
+20.5% against 20.9% - so where the rules DO fire, the two channels look
+broadly alike. That is a further reason to suspect the gap is in the rules.
+
 ## PROVENANCE
 
 Everything above comes from `GET /api/campaigns` (22 rows, `meta.total` 22)
