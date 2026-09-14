@@ -224,6 +224,66 @@ The clusters, unchanged in character from the checkpoint:
     waterfall/ledger  2
     the rest          9   assorted, classified by TASK-018
 
+## QWEN, AND WHAT REVIEW ACTUALLY CAUGHT
+
+Four workers in four isolated worktrees, each with its own branch, none able
+to reach a provider - `config/.env` does not exist in any of them, which is
+structural rather than a promise.
+
+    tasks completed by Qwen        12
+    integrated                     11
+    rejected and reworked           3   (TASK-019, TASK-028, TASK-029)
+    integrated with a correction    6
+
+**Every one of the three rejections was the same defect wearing a different
+hat: correct code that nothing consumed, with a green test suite.**
+
+    TASK-029  built a quoted-thread stripper; `grep` returned one line, its
+              own definition. `classify` still read the raw body. The
+              before/after table came from the measurement script calling the
+              function directly.
+    TASK-028  keyed a ladder registry by `id(tuple)`. `cadence.steps_for`
+              returns new objects, so three cadence steps silently resolved to
+              no purpose at all - while nineteen tests passed by handing
+              `purpose_for` the library constant.
+    TASK-019  built five gates and then CONSTRUCTED the
+              `executionguard.Authorization` itself. `perform` checks with
+              `isinstance`, so it passed having cleared no gate.
+
+`QWEN.md` now carries the rule that came out of it: grep for your new name and
+put the output in the result block; drive the test through the entry point
+production uses; delete the CALL and confirm a test fails; name the existing
+behaviour that now goes through your code.
+
+The corrections on integration were mostly the same shape from the other
+side - a test that could not fail. A fixture built per role when the defect
+was per step. Mocks stopped inline so a failing test left them installed for
+the whole process, which made a test written to prove the real
+`executionguard.authorize` refuses somebody report that it had not. A seal
+loosened from "exactly one caller" to `assertIn`, which passes for any set.
+
+And once: **Qwen caught me.** TASK-024 was written to reproduce this
+repository's own estate tables from raw data and found three of my numbers
+wrong, one of which killed a hypothesis I had published that morning. H2 is
+withdrawn in `ESTATE-LEARNING-2026-09-14.md`.
+
+## WHERE THE NUMBERS STAND
+
+`scripts/campaign_ready_funnel.py`, cross-checked against an independent
+measurement written without reference to it - same records, both channels:
+
+    productive domains                       300
+    icp_pass*                                113
+    + a verified sendable contact             54
+    + a usable company name                   53
+    contacts with 5 approved email steps      23
+      EMAIL-READY                              9
+    contacts with li1-li5 approved + URL      10
+      LINKEDIN-READY                           9
+
+Of the LinkedIn-ready, the account-collision gate holds two, so the real
+HeyReach cohort is EIGHT.
+
 ## OPEN, IN ORDER
 
 1. **Campaign 451 sends at 16:24Z.** Do not mutate it. Record `sent_at`,
