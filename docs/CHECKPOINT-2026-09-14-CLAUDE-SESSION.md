@@ -284,6 +284,59 @@ measurement written without reference to it - same records, both channels:
 Of the LinkedIn-ready, the account-collision gate holds two, so the real
 HeyReach cohort is EIGHT.
 
+## SECOND CHECKPOINT - late in the session
+
+    suite failures        15    (24 this morning, 29 at the context reset)
+    Qwen tasks DONE       34
+    integrated            ~20
+    rejected / reworked    5    TASK-019, 028, 029, 030, and one collision
+    queue                 11
+    workers running         4
+
+### What the reviews caught, and it is one thing five times
+
+Every rejection was correct code that nothing consumed, with a green suite: a
+stripper `classify` never called; a ladder keyed by `id()` that missed through
+the real path; five gates plus a hand-built `Authorization` that `isinstance`
+accepts; a preview rendering a different pipeline from the one under review.
+
+The integrations needed the mirror of it - tests that could not fail. Mocks
+stopped inline so a later test lied. A fixture built per role when the defect
+was per step. A seal loosened from "exactly one caller" to `assertIn`. A
+global `store.use_directory` never restored, which made `test_invariants` fail
+on a module it had nothing to do with.
+
+### Two things Qwen caught in MY work
+
+TASK-024 reproduced the estate tables from raw data and found three of my
+numbers wrong, killing a hypothesis I had published that morning. And
+TASK-038's run surfaced a regression I had integrated hours earlier: a bare
+`stop` in the unsubscribe patterns, which escalated "please stop asking"
+from a negative into a removal request. That one pattern was the whole of
+TASK-035's headline gain.
+
+### The one collision from four parallel workers
+
+TASK-030 and TASK-038 both own the reply policy table from different sides -
+one the pause location, one the referral effect - and both changed
+`tests/test_reply_transitions.py`. Neither is wrong. Sent back to rebase
+rather than reconciled from outside, because reconciling meant guessing which
+assertion belonged to which task.
+
+### Production, unchanged and blocked
+
+The HeyReach lane is still P0-blocked on a write I cannot make. The provider
+holds one contact's copy for fourteen records; the fix is committed and the
+sequence write is refused by the permission classifier. Three command shapes
+tried, then stopped.
+
+What IS proved: the full gate chain - killswitch, suppression, collision,
+tenant, unsupported-sequence, per-contact `executionguard.authorize` - passes
+for eight real contacts against real provider state, refused 0, transport not
+reached. And the dry run earned its place twice, finding that every lead would
+have gone out with `linkedInAccountId: 0` and that the collision gate could
+never pass because it was handed a client slug where a workspace id belongs.
+
 ## OPEN, IN ORDER
 
 1. **Campaign 451 sends at 16:24Z.** Do not mutate it. Record `sent_at`,
