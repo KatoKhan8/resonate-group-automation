@@ -171,6 +171,48 @@ class TestTheClassifier(unittest.TestCase):
                      "Not something we need right now."):
             self.assertEqual(self.verdict(text), replies.NOT_RELEVANT, text)
 
+    def test_linkedin_short_refusals(self):
+        """TASK-066: LinkedIn replies drop qualifiers the email patterns expected."""
+        for text in ("No interest.",
+                     "No, thank you.",
+                     "No requirement for this.",
+                     "Not for now."):
+            v = replies.classify(text)
+            self.assertIn(v["classification"],
+                          (replies.NEGATIVE, replies.NOT_NOW), text)
+        # "no interest" and "no, thank you" are negative, not not_now
+        self.assertEqual(replies.classify("No interest.")["classification"],
+                         replies.NEGATIVE)
+        self.assertEqual(replies.classify("No, thank you.")["classification"],
+                         replies.NEGATIVE)
+        # "not for now" is a deferral, not a refusal
+        self.assertEqual(replies.classify("Not for now.")["classification"],
+                         replies.NOT_NOW)
+
+    def test_linkedin_short_affirmatives(self):
+        """TASK-066: short LinkedIn affirmatives the companion gate missed."""
+        for text in ("Yes please.",
+                     "Send me a pitch deck.",
+                     "Happy to connect.",
+                     "Send me more information."):
+            self.assertEqual(self.verdict(text), replies.POSITIVE, text)
+
+    def test_unicode_apostrophe_normalised(self):
+        """TASK-066: LinkedIn uses U+2019 curly quotes, not ASCII apostrophes."""
+        # Right single quotation mark (U+2019) in a contraction
+        text_curly = "I don\u2019t work at Acme anymore."
+        text_ascii = "I don't work at Acme anymore."
+        self.assertEqual(replies.classify(text_curly)["classification"],
+                         replies.NOT_RELEVANT)
+        self.assertEqual(replies.classify(text_curly)["classification"],
+                         replies.classify(text_ascii)["classification"])
+
+    def test_sabbatical_leave_is_out_of_office(self):
+        """TASK-066: 'sabbatical' was not in the leave alternation."""
+        self.assertEqual(
+            replies.classify("I am on a sabbatical leave.")["classification"],
+            replies.OUT_OF_OFFICE)
+
     def test_a_referral_requires_somebody_to_point_at(self):
         """TASK-020: _points_at_somebody must keep holding.
 
@@ -624,6 +666,38 @@ class TestNothingResumes(InboundTest):
         blob = json.dumps(recs)
         self.assertNotIn("40000", blob)
         self.assertNotIn("mobile is on my card", blob)
+
+
+class TestTask067ShortReplies(unittest.TestCase):
+    """TASK-067: short LinkedIn replies that were outright misses."""
+
+    def verdict(self, text):
+        return replies.classify(text)["classification"]
+
+    def test_standalone_no_is_negative(self):
+        for text in ("No", "No.", "No!", "No?", "no"):
+            self.assertEqual(self.verdict(text), replies.NEGATIVE, text)
+
+    def test_standalone_nope_is_negative(self):
+        for text in ("Nope", "Nope.", "nope"):
+            self.assertEqual(self.verdict(text), replies.NEGATIVE, text)
+
+    def test_standalone_nah_is_negative(self):
+        for text in ("Nah", "Nah.", "nah"):
+            self.assertEqual(self.verdict(text), replies.NEGATIVE, text)
+
+    def test_no_inside_a_sentence_is_not_caught_by_short_pattern(self):
+        """The anchored pattern must not fire inside a longer sentence."""
+        self.assertNotEqual(self.verdict("No, but maybe later"),
+                            replies.NEGATIVE)
+
+    def test_show_me_is_positive(self):
+        for text in ("Show me", "Show me.", "show me"):
+            self.assertEqual(self.verdict(text), replies.POSITIVE, text)
+
+    def test_im_interested_is_positive(self):
+        for text in ("I'm interested", "I am interested.", "im interested"):
+            self.assertEqual(self.verdict(text), replies.POSITIVE, text)
 
 
 if __name__ == "__main__":
