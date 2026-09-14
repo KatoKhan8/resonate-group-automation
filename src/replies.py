@@ -115,6 +115,9 @@ UNSUBSCRIBE_PATTERNS = (
     r"\b(?:remove|delete) me from (?:your|this|the) (?:list|database|mailing)\b",
     r"\bplease (?:do not|don'?t) (?:send|write) (?:me |any )?(?:more |any )?(?:emails?|messages?|mail)\b",
     r"\b(?:do not|don'?t) (?:send|write) me (?:any )?(?:more |any )?(?:emails?|messages?|mail)\b",
+    # TASK-067: "Stop please" and "please stop" were both seen. The existing
+    # pattern only had "please stop"; the reversed order was missed.
+    r"\bstop please\b",
     # TASK-035: standalone "stop" - the one-word unsubscribe. 15+ replies
     # across the email corpus that are just "Stop" or "stop" with nothing
     # else. The existing patterns require "stop" to be followed by a

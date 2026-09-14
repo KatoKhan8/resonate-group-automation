@@ -7,8 +7,8 @@ Read-only analysis of reply classification with and without thread context. Ever
 ## DATA QUALITY
 
 - **Conversations analysed**: 5864 replies from 26174 conversations
-- **Before (without context)**: 4285/5864 unreadable (73.1%)
-- **After (with context)**: 4163/5864 unreadable (71.0%)
+- **Before (without context)**: 4144/5864 unreadable (70.7%)
+- **After (with context)**: 4022/5864 unreadable (68.6%)
 - **Improved**: 122 replies moved from UNKNOWN to a named category (2.1%)
 
 ## BEFORE/AFTER COMPARISON
@@ -17,27 +17,27 @@ Read-only analysis of reply classification with and without thread context. Ever
 
 | Category | Count |
 | --- | --- |
-| unknown | 4285 |
-| negative | 1074 |
-| positive | 209 |
+| unknown | 4144 |
+| negative | 1197 |
+| positive | 226 |
 | not_relevant | 124 |
 | not_now | 93 |
 | out_of_office | 36 |
-| unsubscribe | 31 |
+| unsubscribe | 32 |
 | referral | 12 |
 
 ### After (with context)
 
 | Category | Count |
 | --- | --- |
-| unknown | 4163 |
-| negative | 1074 |
-| positive | 209 |
+| unknown | 4022 |
+| negative | 1197 |
+| positive | 226 |
 | not_relevant | 124 |
 | interested | 98 |
 | not_now | 93 |
 | out_of_office | 36 |
-| unsubscribe | 31 |
+| unsubscribe | 32 |
 | objection | 22 |
 | referral | 12 |
 | meeting_intent | 2 |
