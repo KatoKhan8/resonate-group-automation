@@ -89,11 +89,12 @@ EMAIL_FIVE_LADDER = (
     "it. One question they can answer in a line.",
     "A different angle from the first email. Not the same argument rephrased: "
     "a different part of how the business runs, and a different question.",
-    "SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Name it, say in one line "
-    "what it joins up - only the capabilities in `product.capabilities` that "
-    "fit this person's angle - and give one concrete consequence a team their "
-    "size would recognise: what changes when this is visible while the work "
-    "is running rather than reconstructed afterwards.",
+    "SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Use the product's name "
+    "in the message, and say in one line what it joins up - only the "
+    "capabilities in `product.capabilities` that fit this person's angle - "
+    "and give one concrete consequence a team their size would recognise: "
+    "what changes when this is visible while the work is running rather "
+    "than reconstructed afterwards.",
     # RUNG 4 CHANGED, 2026-09-14. "The shortest message in the sequence"
     # invited a twenty-word body and the forty-word floor refused it. em4
     # was NOT WRITTEN for several records across multiple regeneration
@@ -116,13 +117,17 @@ EMAIL_EIGHT_LADDER = (
     "it. One question they can answer in a line.",
     "A different angle from the first email. Not the same argument rephrased: "
     "a different part of how the business runs, and a different question.",
-    "SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Name it, say in one line "
-    "what it joins up - only the capabilities in `product.capabilities` that "
-    "fit this person's angle - and give one concrete consequence a team their "
-    "size would recognise: what changes when this is visible while the work "
-    "is running rather than reconstructed afterwards.",
-    # RUNG 4 CHANGED, 2026-09-14. Same fix as EMAIL_FIVE_LADDER rung 4:
-    # "shortest message" invited a body under the forty-word floor.
+    "SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Use the product's name "
+    "in the message, and say in one line what it joins up - only the "
+    "capabilities in `product.capabilities` that fit this person's angle - "
+    "and give one concrete consequence a team their size would recognise: "
+    "what changes when this is visible while the work is running rather "
+    "than reconstructed afterwards.",
+    # RUNG 4 CHANGED, 2026-09-14. "The shortest message in the sequence"
+    # invited a twenty-word body and the forty-word floor refused it. em4
+    # was NOT WRITTEN for several records across multiple regeneration
+    # attempts. The fix is in the brief, not the floor: ask for a focused
+    # follow-up with a distinct argument rather than the shortest message.
     "A follow-up that makes a DIFFERENT argument from every email before it. "
     "One focused idea and one question - no recap of earlier messages and no "
     "new pitch beyond the single point this message carries.",
@@ -159,12 +164,13 @@ LINKEDIN_DEFAULT_LADDER = (
     "the connection note.",
     "A second, different operational angle. Name the consequence of not "
     "having it rather than the feature that provides it.",
-    "SAY WHAT THE PRODUCT IS. Name it, and say in one line what it joins up, "
-    "choosing only the capabilities in `product.capabilities` that fit this "
-    "person's angle. This is the rung the recipient learns what they are "
-    "being offered on, and it is a statement, not a question: by now they "
-    "have been asked two and told nothing. Evidence belongs here if there is "
-    "any; if there is none, describe the pattern as ours rather than theirs.",
+    "SAY WHAT THE PRODUCT IS. Use the product's name in the message, and "
+    "say in one line what it joins up, choosing only the capabilities in "
+    "`product.capabilities` that fit this person's angle. This is the rung "
+    "the recipient learns what they are being offered on, and it is a "
+    "statement, not a question: by now they have been asked two and told "
+    "nothing. Evidence belongs here if there is any; if there is none, "
+    "describe the pattern as ours rather than theirs.",
     "A concise final follow-up. One line, one question, no new argument and "
     "no summary of the previous ones.",
     "Close the loop. An easy no, and leave it there.",

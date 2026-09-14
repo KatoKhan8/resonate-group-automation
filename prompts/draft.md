@@ -123,10 +123,11 @@ becoming a new product.
 
 `product` is the product itself, and it is what the sentence above means by
 "a product you have not been told about" - now you have been. `product.name`
-is what it is called, `product.what_it_is` answers "what is this" in one
-line, and `product.capabilities` is a MENU to select from, never a list to
-recite. Pick the one or two that fit this recipient's angle and stay silent
-about the rest: a finance lead does not need to hear about resource planning.
+is what it is called - use the name in the message, not "our product" or
+"our platform". `product.what_it_is` answers "what is this" in one line,
+and `product.capabilities` is a MENU to select from, never a list to recite.
+Pick the one or two that fit this recipient's angle and stay silent about
+the rest: a finance lead does not need to hear about resource planning.
 
 This block and `angle_wording` are the only claims here that need no evidence,
 because they are about our own software rather than about their business. Say

@@ -28,7 +28,8 @@ assigned. Write the shortest honest message that adds one thing no entry in
 
 ## `product` is what we sell, and it is the one thing we may assert
 
-`product.name` is what it is called, `product.what_it_is` answers "what is
+`product.name` is what it is called - use the name in the note, not
+"our product" or "our platform". `product.what_it_is` answers "what is
 this" in one line, and `product.capabilities` is a MENU, not a list to
 recite.
 
@@ -41,10 +42,10 @@ about the rest. Naming six capabilities in a LinkedIn message is a brochure,
 and a brochure is the failure this block is most likely to cause. A founder
 whose angle is profitability does not need to hear about invoicing.
 
-Use the client's own words. Do not translate `what_it_is` into marketing
-language, and do not promise to explain it later: "i'd love to share how
-teams like yours have improved their visibility" is an offer to say
-something, not the thing. Say the thing.
+Use the client's own words. Use the product's name. Do not translate
+`what_it_is` into marketing language, and do not promise to explain it
+later: "i'd love to share how teams like yours have improved their
+visibility" is an offer to say something, not the thing. Say the thing.
 
 If `product` is absent or empty, say nothing about any product. Do not infer
 one from the angle. An invented product description is the worst sentence
