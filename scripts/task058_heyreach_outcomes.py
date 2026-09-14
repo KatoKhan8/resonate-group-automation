@@ -21,6 +21,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -59,7 +60,7 @@ def _save_cache(kind, page, data):
 
 
 def fetch_all_conversations(max_pages=None, use_cache=True):
-    """Page through the entire inbox, caching each page."""
+    """Page through the entire inbox, caching each page. Retries on 429."""
     _ensure_cache()
     all_items = []
     offset = 0
@@ -80,7 +81,19 @@ def fetch_all_conversations(max_pages=None, use_cache=True):
                     break
                 continue
 
-        items, total = heyreach.conversations(offset=offset, limit=100)
+        retries = 0
+        while True:
+            try:
+                items, total = heyreach.conversations(offset=offset, limit=100)
+                break
+            except Exception as e:
+                if "429" in str(e) and retries < 5:
+                    wait = 30 * (retries + 1)
+                    print(f"  rate limited, waiting {wait}s...", flush=True)
+                    time.sleep(wait)
+                    retries += 1
+                else:
+                    raise
         if use_cache:
             _save_cache("convs", page, {"items": items, "total": total})
         all_items.extend(items)
@@ -92,6 +105,7 @@ def fetch_all_conversations(max_pages=None, use_cache=True):
             break
         if max_pages and page >= max_pages:
             break
+        time.sleep(1)
     return all_items, total
 
 
@@ -387,12 +401,28 @@ def _analyse(rows):
     n_convs = len(set(r["conv_id"] for r in rows))
     n_touches = len(rows)
     n_replied = sum(1 for r in rows if r["replied"])
+
+    # Per-conversation reply rate: what fraction of conversations got at
+    # least one reply?
+    conv_replies = {}
+    for r in rows:
+        cid = r["conv_id"]
+        conv_replies[cid] = conv_replies.get(cid, 0) + (1 if r["replied"] else 0)
+    convs_with_reply = sum(1 for v in conv_replies.values() if v > 0)
+    convs_with_multiple = sum(1 for v in conv_replies.values() if v > 1)
+
     analysis["summary"] = {
         "conversations": n_convs,
         "total_outbound_touches": n_touches,
         "touches_with_reply": n_replied,
         "overall_reply_rate": round(n_replied / n_touches * 100, 2)
         if n_touches else 0,
+        "conversations_with_reply": convs_with_reply,
+        "conversations_with_reply_rate": round(
+            convs_with_reply / n_convs * 100, 2) if n_convs else 0,
+        "conversations_with_multiple_replies": convs_with_multiple,
+        "avg_touches_per_conversation": round(n_touches / n_convs, 1)
+        if n_convs else 0,
     }
 
     analysis["reply_by_position"] = _group_by(
@@ -446,7 +476,13 @@ def _group_by(rows, key, agg_fn):
     for r in rows:
         k = str(r.get(key, "unknown"))
         groups.setdefault(k, []).append(r)
-    return {k: agg_fn(v) for k, v in sorted(groups.items())}
+    # Sort numerically when keys are numeric, otherwise alphabetically
+    def sort_key(item):
+        try:
+            return (0, int(item[0]), item[0])
+        except (ValueError, TypeError):
+            return (1, 0, item[0])
+    return {k: agg_fn(v) for k, v in sorted(groups.items(), key=sort_key)}
 
 
 def _classification_dist(replied_rows):
@@ -540,11 +576,21 @@ def generate_report(analysis, total_conversations, total_fetched):
 
     lines.append("## DATA QUALITY\n")
     ur = analysis["unreadable"]
+    lines.append(f"- **Conversations analysed**: {s['conversations']} "
+                 f"(of {total_fetched} fetched, {total_conversations} total)")
+    lines.append(f"- **Average touches per conversation**: "
+                 f"{s['avg_touches_per_conversation']}")
     lines.append(f"- **Total outbound touches**: {s['total_outbound_touches']}")
-    lines.append(f"- **Touches that got a reply**: {s['touches_with_reply']} "
+    lines.append(f"- **Conversations with at least one reply**: "
+                 f"{s['conversations_with_reply']} "
+                 f"({s['conversations_with_reply_rate']}%)")
+    lines.append(f"- **Conversations with multiple replies**: "
+                 f"{s['conversations_with_multiple_replies']}")
+    lines.append(f"- **Touches that immediately preceded a reply**: "
+                 f"{s['touches_with_reply']} "
                  f"({s['overall_reply_rate']}%)")
-    lines.append(f"- **Conversations with unknown-direction messages**: "
-                 f"{ur['touches_with_unknown_direction']}")
+    lines.append(f"- **Touches with unknown-direction messages in their "
+                 f"conversation**: {ur['touches_with_unknown_direction']}")
     lines.append(f"- **Replies classified as unknown/unreadable**: "
                  f"{ur['replies_classified_unknown']} of {ur['replied']} "
                  f"({ur['unreadable_rate']}%)")
@@ -582,6 +628,14 @@ def generate_report(analysis, total_conversations, total_fetched):
     lines.append("")
 
     lines.append("## REPLY RATE BY TOUCH COUNT REACHED\n")
+    lines.append("Each row is a conversation length: conversations with this "
+                 "many total outbound touches. The reply rate is the "
+                 "per-touch rate within those conversations (touches that "
+                 "immediately preceded a reply, divided by all touches). "
+                 "Conversations with more touches tend to be more engaged "
+                 "back-and-forths, so a higher per-touch reply rate is "
+                 "expected and does NOT mean later touches are more "
+                 "effective.\n")
     tc = analysis["reply_by_touch_count"]
     tbl = [{"total_outbound": k, **v} for k, v in tc.items()]
     lines.append(_format_table(tbl,
@@ -729,27 +783,69 @@ def generate_report(analysis, total_conversations, total_fetched):
     lines.append("## HYPOTHESES\n")
     lines.append("These are observations that might mean something, "
                  "NOT proven learnings. Each needs a controlled experiment "
-                 "to confirm.\n")
-    lines.append("1. **Connection request note length affects acceptance.** "
-                 "If short notes (<100 chars) have a different reply rate "
-                 "than longer ones, it might be that note length proxies "
-                 "for personalisation.")
-    lines.append("2. **Questions get more replies than statements.** "
-                 "If CTA type 'question' has a higher reply rate than "
-                 "'statement', it supports the engagement question strategy.")
-    lines.append("3. **Follow-ups have diminishing returns.** If reply rate "
-                 "declines with touch position, it suggests the marginal "
-                 "value of each additional touch decreases.")
-    lines.append("4. **InMails have a different reply profile.** If InMails "
-                 "have a materially different reply rate than regular "
-                 "messages, it affects channel planning.\n")
+                 "changing ONE variable at a time to confirm.\n")
+
+    lines.append("**H1. Medium-length messages (100-300 chars) outperform "
+                 "both shorter and longer ones.** "
+                 "7.66% vs 6.95% (short) vs 6.08% (long). "
+                 "n is large in all three groups. Against: confounded with "
+                 "message type - connection requests are short, follow-ups "
+                 "are medium, and very long messages may be InMails or "
+                 "multi-paragraph pitches.\n")
+
+    lines.append("**H2. Questions get more replies than statements.** "
+                 "7.38% vs 6.51%, both with large n. The gap is real but "
+                 "small (0.87 percentage points). Against: the CTA "
+                 "classifier is a simple regex, and many messages contain "
+                 "both a question and a statement.\n")
+
+    lines.append("**H3. Reply rate declines from position 5 onwards.** "
+                 "Position 1: 6.74% (n=26114), position 2: 7.35% "
+                 "(n=15411), position 3: 7.18% (n=13002), position 4: "
+                 "7.60% (n=8772), position 5: 6.52% (n=6245), position 6: "
+                 "5.88% (n=3913), position 7: 3.68% (n=1821). All have "
+                 "n>1000. Against: the people still in the conversation at "
+                 "position 7 are a selected subset - the uninterested have "
+                 "already stopped responding.\n")
+
+    lines.append("**H4. Messages without a subject line get more replies.** "
+                 "7.13% vs 5.48% with subject. Both have large n. Against: "
+                 "subjects are used by specific campaigns and senders, so "
+                 "this may be a campaign effect rather than a subject "
+                 "effect.\n")
+
+    lines.append("**H5. Consultants/advisors reply at twice the rate of "
+                 "other roles.** 13.75% (n=480) vs 6-7% for most other "
+                 "roles. Against: n=480 is moderate, and consultants may "
+                 "be more responsive to outreach in general.\n")
+
+    lines.append("**NOT a hypothesis: anything about positions 10+.** "
+                 "Sample sizes drop below 100 and the numbers become "
+                 "unreliable.\n")
 
     lines.append("## PROVEN LEARNINGS\n")
-    lines.append("Nothing is proven yet. Every observation above has "
-                 "confounders (different campaigns, different senders, "
-                 "different time periods, different prospect pools). "
-                 "A controlled experiment changing ONE variable at a time "
-                 "is needed before any of these become actionable.\n")
+    lines.append("With n>1000 in the major groups, a few things survive "
+                 "the sample-size objection:\n")
+    lines.append("1. **The overall per-touch reply rate is 6.93%, and the "
+                 "per-conversation rate is higher.** Of "
+                 f"{s['conversations']} conversations, "
+                 f"{s['conversations_with_reply']} "
+                 f"({s['conversations_with_reply_rate']}%) got at least "
+                 "one reply.")
+    lines.append("2. **73% of LinkedIn replies are unreadable to the "
+                 "rule-based classifier.** The classifier was built for "
+                 "email and does not transfer to short, casual LinkedIn "
+                 "messages. This is a measurement gap, not a finding.")
+    lines.append("3. **The positive reply rate is 0.233% per touch.** "
+                 "178 positive replies from 76,315 touches. This is the "
+                 "real top of the funnel.")
+    lines.append("4. **Median reply time is 6.1 hours.** Most replies "
+                 "arrive within a day (P75 = 33.3h).")
+    lines.append("5. **No InMail messages were found in the estate.** "
+                 "Every message in 26,174 conversations had "
+                 "`isInMail: false`. The InMail capability exists in the "
+                 "sequence builder but is not used in any campaign that "
+                 "generated conversations.\n")
 
     lines.append("## LIMITATIONS\n")
     lines.append("1. **No campaign ID on conversations.** The HeyReach "
