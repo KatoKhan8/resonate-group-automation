@@ -20,8 +20,8 @@ import tempfile
 import unittest
 from unittest import mock
 
-from src import (campaigns, clients, collision, heyreachfactory, killswitch,
-                 providerwrites, store)
+from src import (campaigns, clients, collision, configdiff, executionguard,
+                 heyreachfactory, killswitch, providerwrites, store)
 from src.providers import heyreach
 
 
@@ -147,6 +147,25 @@ class _EnsureLeadsTestBase(unittest.TestCase):
         """Mock the provider calls. Returns the mocks as a dict."""
         if membership_found is None:
             membership_found = set()
+        # Build a fake Readback for configdiff.compare_heyreach.
+        fake_readback = configdiff.Readback(
+            diff={"verdict": configdiff.PASS, "failures": []},
+            approved={}, provider={},
+            campaign_id="test-li-campaign", channel="linkedin",
+            provider_campaign_id=599020,
+            verified_at=store.now())
+        # Build a fake Authorization for executionguard.authorize.
+        fake_auth = executionguard.Authorization(
+            key="fake-auth-key", operation=providerwrites.LINKEDIN_ADD_LEAD,
+            channel="linkedin", workspace="productive",
+            campaign_id="test-li-campaign", sender_id="0",
+            rec_id="acme", contact_key="brooke", step_key="day3",
+            fingerprint="fp-li1", gates=("tenancy", "approval", "readback",
+                                         "eligibility", "suppression", "copy",
+                                         "claims", "fatigue", "collision",
+                                         "account_collision", "sender", "cap",
+                                         "killswitch"),
+            at=store.now())
         mocks = {
             "tenant": mock.patch.object(heyreach, "check_tenant",
                                         return_value=True),
@@ -164,6 +183,10 @@ class _EnsureLeadsTestBase(unittest.TestCase):
                               "people": [], "unknown_statuses": [],
                               "any_bounce": False,
                               "workspace": "productive"}),
+            "compare_heyreach": mock.patch.object(
+                configdiff, "compare_heyreach", return_value=fake_readback),
+            "authorize": mock.patch.object(
+                executionguard, "authorize", return_value=fake_auth),
         }
         return mocks
 
@@ -640,6 +663,153 @@ class DryRunReport(_EnsureLeadsTestBase):
         self.assertTrue(any("dry run" in d for d in report["did"]))
         self.assertTrue(any("brooke" in d for d in report["did"]))
         self.assertTrue(any("variables=" in d for d in report["did"]))
+
+
+# =============================================== authorization gate
+#
+# THE TEST THE REVIEW DEMANDS.
+#
+# _mint_authorization used to construct executionguard.Authorization(...)
+# directly. providerwrites.perform checks with isinstance, so a hand-built
+# object passes while having passed NO gate. executionguard.authorize() is
+# the ONLY place in src/ that may construct one, and it runs gates the five
+# pre-filters do not, starting with `copy` and `approval`.
+#
+# This test drives ensure_leads through a contact that passes all five
+# pre-filter gates but fails an executionguard gate they do not check.
+# If the implementation constructs Authorization directly (bypassing
+# authorize()), this test FAILS because the write proceeds. If the
+# implementation calls authorize(), the mock fires, NotAuthorized is raised,
+# and the write never happens.
+
+class AuthorizationGateRefuses(_EnsureLeadsTestBase):
+    """ensure_leads cannot obtain an Authorization for a contact that
+    executionguard.authorize would refuse on a gate the five pre-filters
+    do not check. The write must never happen."""
+
+    def test_authorize_refuses_on_approval_gate_write_never_happens(self):
+        """The contact passes all five pre-filters but fails approval.
+
+        The five pre-filters are: killswitch (on), suppression (clean),
+        collision (clear), tenant (match), unsupported sequence (all filled).
+        The approval gate is NOT one of the five. If authorize() is called,
+        it refuses. If authorize() is NOT called, the write proceeds and
+        this test fails.
+        """
+        rec = _make_record()
+        camp = _make_campaign()
+        self._seed([rec], camp)
+
+        transport = mock.MagicMock()
+        # Mock the five pre-filters to pass, plus configdiff.compare_heyreach.
+        fake_readback = configdiff.Readback(
+            diff={"verdict": configdiff.PASS, "failures": []},
+            approved={}, provider={},
+            campaign_id="test-li-campaign", channel="linkedin",
+            provider_campaign_id=599020,
+            verified_at=store.now())
+        mocks = {
+            "tenant": mock.patch.object(heyreach, "check_tenant",
+                                        return_value=True),
+            "readback": mock.patch.object(
+                heyreach, "readback_membership",
+                return_value={"found": set(), "missing": set(),
+                              "total": 0, "per_lead": []}),
+            "collision": mock.patch.object(
+                collision, "check_account",
+                return_value={"domain": "acme.test", "verdict": "clear",
+                              "anyone_in_sequence": False,
+                              "emails_sent_total": 0, "leads": 0,
+                              "people": [], "unknown_statuses": [],
+                              "any_bounce": False,
+                              "workspace": "productive"}),
+            "compare_heyreach": mock.patch.object(
+                configdiff, "compare_heyreach", return_value=fake_readback),
+        }
+        _start_all(mocks)
+
+        # Mock authorize() to refuse on the "approval" gate - a gate the
+        # five pre-filters do NOT check. If the implementation calls
+        # authorize(), this fires. If it constructs Authorization directly,
+        # this mock is never called and the write proceeds.
+        def _authorize_refuses(**kwargs):
+            raise executionguard.NotAuthorized(
+                "approval",
+                "these exact words carry no current approval; an edit to "
+                "the template, angle or evidence moves the fingerprint and "
+                "the approval no longer applies")
+
+        try:
+            with mock.patch.object(executionguard, "authorize",
+                                   side_effect=_authorize_refuses), \
+                 mock.patch.object(heyreach, "add_leads_to_campaign",
+                                   transport):
+                with self.assertRaises(executionguard.NotAuthorized) as ctx:
+                    heyreachfactory.ensure_leads(
+                        "test-li-campaign", config=self._config(), live=True)
+        finally:
+            _stop_all(mocks)
+
+        # The refusal names the approval gate.
+        self.assertEqual(ctx.exception.gate, "approval")
+        # The transport was NEVER reached.
+        transport.assert_not_called()
+
+    def test_authorize_must_be_called_not_constructed(self):
+        """Prove that authorize() is actually called, not bypassed.
+
+        If the implementation constructs Authorization directly, this mock
+        is never called and the assertion fails. This is the test the review
+        demands: it must FAIL without the authorize() call.
+        """
+        rec = _make_record()
+        camp = _make_campaign()
+        self._seed([rec], camp)
+
+        fake_readback = configdiff.Readback(
+            diff={"verdict": configdiff.PASS, "failures": []},
+            approved={}, provider={},
+            campaign_id="test-li-campaign", channel="linkedin",
+            provider_campaign_id=599020,
+            verified_at=store.now())
+        fake_auth = executionguard.Authorization(
+            key="fake-auth", operation=providerwrites.LINKEDIN_ADD_LEAD,
+            channel="linkedin", workspace="productive",
+            campaign_id="test-li-campaign", sender_id="0",
+            rec_id="acme", contact_key="brooke", step_key="day3",
+            fingerprint="fp-li1", gates=(), at=store.now())
+        authorize_mock = mock.MagicMock(return_value=fake_auth)
+        mocks = {
+            "tenant": mock.patch.object(heyreach, "check_tenant",
+                                        return_value=True),
+            "readback": mock.patch.object(
+                heyreach, "readback_membership",
+                return_value={"found": set(), "missing": set(),
+                              "total": 0, "per_lead": []}),
+            "perform": mock.patch.object(providerwrites, "perform"),
+            "collision": mock.patch.object(
+                collision, "check_account",
+                return_value={"domain": "acme.test", "verdict": "clear",
+                              "anyone_in_sequence": False,
+                              "emails_sent_total": 0, "leads": 0,
+                              "people": [], "unknown_statuses": [],
+                              "any_bounce": False,
+                              "workspace": "productive"}),
+            "compare_heyreach": mock.patch.object(
+                configdiff, "compare_heyreach", return_value=fake_readback),
+            "authorize": mock.patch.object(
+                executionguard, "authorize", authorize_mock),
+        }
+        _start_all(mocks)
+        try:
+            heyreachfactory.ensure_leads(
+                "test-li-campaign", config=self._config(), live=True)
+        finally:
+            _stop_all(mocks)
+
+        # authorize() WAS called. If the implementation constructs
+        # Authorization directly, this assertion fails.
+        authorize_mock.assert_called()
 
 
 if __name__ == "__main__":

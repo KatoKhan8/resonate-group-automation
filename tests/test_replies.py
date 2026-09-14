@@ -100,8 +100,92 @@ class TestTheClassifier(unittest.TestCase):
         self.assertEqual(self.verdict(""), replies.UNKNOWN)
         self.assertEqual(self.verdict("   "), replies.UNKNOWN)
 
-    def test_something_unreadable_is_neutral_never_positive(self):
-        self.assertEqual(self.verdict("ok"), replies.NEUTRAL)
+    def test_something_unreadable_is_unknown_never_neutral(self):
+        """TASK-020: 'no rule matched' is UNKNOWN, not NEUTRAL.
+
+        NEUTRAL means 'we read this and it is genuinely lukewarm' - a
+        measurement. UNKNOWN means 'we could not read this' - a gap.
+        Reporting the gap as a measurement is how 35% of replies on the
+        live estate became invisible.
+        """
+        self.assertEqual(self.verdict("ok"), replies.UNKNOWN)
+
+    def test_unmatched_and_neutral_are_tellable_apart(self):
+        """TASK-020: a caller can distinguish 'no rule matched' from 'neutral'.
+
+        UNKNOWN means 'we could not read this'. NEUTRAL means 'we read this
+        and it is genuinely lukewarm'. Only one of them is a measurement.
+        """
+        unmatched = replies.classify("xyzzy")
+        self.assertEqual(unmatched["classification"], replies.UNKNOWN)
+        self.assertEqual(unmatched["confidence"], 0.0)
+        # NEUTRAL is still a valid category a model could return
+        model_neutral = replies.classify(
+            "Hmm.", model=lambda t: {"classification": "neutral",
+                                     "confidence": 0.6})
+        self.assertEqual(model_neutral["classification"], replies.NEUTRAL)
+        self.assertNotEqual(unmatched["classification"],
+                            model_neutral["classification"])
+
+    def test_new_unsubscribe_patterns(self):
+        """TASK-020: removal requests that previously matched no rule."""
+        for text in ("Please stop sending these emails.",
+                     "No more messages please.",
+                     "Remove me from your mailing list.",
+                     "Please don't send me any more emails."):
+            self.assertEqual(self.verdict(text), replies.UNSUBSCRIBE, text)
+
+    def test_new_negative_patterns(self):
+        """TASK-020: short refusals common on both email and LinkedIn."""
+        for text in ("Not for me, thanks.",
+                     "No need for this.",
+                     "We're good, appreciate it.",
+                     "Don't need this right now.",
+                     "Not looking for this kind of thing.",
+                     "No interest at this time."):
+            self.assertEqual(self.verdict(text), replies.NEGATIVE, text)
+
+    def test_new_positive_patterns(self):
+        """TASK-020: short affirmative replies, especially LinkedIn."""
+        for text in ("Yes, let's chat.",
+                     "Sure, happy to discuss.",
+                     "Let's do it.",
+                     "I'm interested in learning more.",
+                     "That sounds great.",
+                     "Send me a demo.",
+                     "Can we schedule a call?"):
+            self.assertEqual(self.verdict(text), replies.POSITIVE, text)
+
+    def test_new_not_now_patterns(self):
+        """TASK-020: delay phrasings that neither refuse nor commit."""
+        for text in ("Maybe later.",
+                     "Not at this time, try us in Q3.",
+                     "Get back to me sometime.",
+                     "Let's park this for now."):
+            self.assertEqual(self.verdict(text), replies.NOT_NOW, text)
+
+    def test_new_not_relevant_patterns(self):
+        """TASK-020: not-relevant phrasings that name no one."""
+        for text in ("Not relevant for us.",
+                     "This doesn't apply to our team.",
+                     "Not something we need right now."):
+            self.assertEqual(self.verdict(text), replies.NOT_RELEVANT, text)
+
+    def test_a_referral_requires_somebody_to_point_at(self):
+        """TASK-020: _points_at_somebody must keep holding.
+
+        A hand-off phrase alone is not a referral. 'I need to talk to my
+        boss first' is a delay, not a hand-off. The cue only makes this a
+        referral when the sentence also points at somebody.
+        """
+        # A hand-off phrase with no name - should NOT be referral
+        self.assertNotEqual(self.verdict("Let me talk to someone first."),
+                            replies.REFERRAL)
+        self.assertNotEqual(self.verdict("I need to speak to someone."),
+                            replies.REFERRAL)
+        # A hand-off phrase WITH a name - IS a referral
+        self.assertEqual(self.verdict("Let me talk to Sarah about this."),
+                         replies.REFERRAL)
 
     def test_every_verdict_carries_its_evidence(self):
         verdict = replies.classify("Not interested, thanks.")
@@ -140,9 +224,12 @@ class TestTheModelSeam(unittest.TestCase):
         self.assertIn("failed", verdict["reason"])
 
     def test_a_model_inventing_a_category_is_ignored(self):
+        """TASK-020: when the model returns garbage and no rules matched,
+        the fallback is UNKNOWN, not NEUTRAL. A model that invents a
+        category is the same as no model at all: we could not read this."""
         verdict = replies.classify("Hmm.",
                                    model=lambda t: {"classification": "amazing"})
-        self.assertEqual(verdict["classification"], replies.NEUTRAL)
+        self.assertEqual(verdict["classification"], replies.UNKNOWN)
 
     def test_a_low_confidence_positive_becomes_manual_review(self):
         verdict = replies.classify("Hmm.",
@@ -252,6 +339,79 @@ class TestAnEmailReply(InboundTest):
             source = inspect.getsource(module)
             for forbidden in ("send_message", "send_email", "reply_to"):
                 self.assertNotIn(forbidden, source, module.__name__)
+
+
+class TestAutomatedReplies(InboundTest):
+    """TASK-020: a provider-flagged auto-reply is not a reply from a person."""
+
+    def test_an_automated_reply_is_marked_in_the_verdict(self):
+        """The is_automated flag travels with the verdict."""
+        recs = self.seed_records()
+        payload = {"events": [{"event": "replied", "id": "b-auto-1",
+                               "email": "champ@acme.test",
+                               "timestamp": "2026-08-26T09:00:00+00:00",
+                               "text": "Out of office until Monday.",
+                               "automated_reply": True,
+                               "custom_variables": {"record_id": "acme",
+                                                    "contact_key": "acme-champ",
+                                                    "client": "demo"}}]}
+        outcomes = inbound.ingest(payload, "emailbison", recs=recs,
+                                  config=self.config,
+                                  post=lambda p, c=None: {"ok": True})
+        self.assertTrue(outcomes[0]["classification"].get("is_automated"))
+
+    def test_an_automated_non_ooo_does_not_apply_policy(self):
+        """A provider-flagged auto-reply that is not an OOO must not suppress.
+
+        The classification event is still recorded for reporting, but no
+        HOLD or STOP lands on the account because a mail server wrote back.
+        """
+        recs = self.seed_records()
+        # A negative reply that the provider flagged as automated
+        result = replies.apply(
+            recs[0], "acme-champ", "Not interested, automated response",
+            automated=True)
+        # The classification is still recorded
+        self.assertEqual(result["verdict"]["classification"], replies.NEGATIVE)
+        self.assertTrue(result["verdict"]["is_automated"])
+        # But no policy was applied - effect is None
+        self.assertIsNone(result["effect"])
+
+    def test_an_automated_ooo_still_defers(self):
+        """An out-of-office defers even when provider-flagged as automated.
+
+        The operator's instruction: 'an out-of-office should still defer the
+        next touch, which src/ooo.py and src/oooreturn.py already model.'
+        """
+        recs = self.seed_records()
+        result = replies.apply(
+            recs[0], "acme-champ",
+            "Automatic reply: out of the office until the 5th.",
+            automated=True)
+        self.assertEqual(result["verdict"]["classification"],
+                         replies.OUT_OF_OFFICE)
+        self.assertTrue(result["verdict"]["is_automated"])
+        # OOO still applies policy (maps to NOT_NOW, which defers)
+        self.assertIsNotNone(result["effect"])
+
+    def test_a_non_automated_reply_still_applies_policy(self):
+        """When automated is False or None, normal policy application holds."""
+        recs = self.seed_records()
+        result = replies.apply(
+            recs[0], "acme-champ", "Not interested, thanks.",
+            automated=False)
+        self.assertEqual(result["verdict"]["classification"], replies.NEGATIVE)
+        self.assertFalse(result["verdict"]["is_automated"])
+        self.assertIsNotNone(result["effect"])
+
+    def test_automated_none_applies_policy_normally(self):
+        """When the provider did not say (None), treat as human."""
+        recs = self.seed_records()
+        result = replies.apply(
+            recs[0], "acme-champ", "Not interested.",
+            automated=None)
+        self.assertIsNotNone(result["effect"])
+        self.assertFalse(result["verdict"]["is_automated"])
 
 
 class TestALinkedInReply(InboundTest):

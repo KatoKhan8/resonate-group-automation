@@ -99,54 +99,121 @@ Behavioural, against a fake transport. At minimum:
 Then break each guard deliberately and confirm the INTENDED test fails for
 the INTENDED reason - and that a different guard did not fire first.
 
-STATUS: done
-COMMIT SHA: 47424f2
-TESTS: 16 new tests in tests/test_heyreachfactory_ensure_leads.py, all
-passing. 36 existing tests in tests/test_heyreachfactory.py still pass.
-52 total heyreachfactory tests green. One pre-existing failure in
-test_no_write_happens_without_every_gate (collision HOLD verdict for a
-finished campaign) confirmed unrelated - fails the same way before and
-after these changes.
+STATUS: done (rework after REVIEW 1 rejection)
+COMMIT SHA: pending
+TESTS: 18 tests in tests/test_heyreachfactory_ensure_leads.py, all passing.
+  16 original behavioural tests + 2 new authorization gate tests.
+  36 existing tests in tests/test_heyreachfactory.py still pass.
+  54 total heyreachfactory tests green.
 FILES CHANGED:
-  src/heyreachfactory.py - added ensure_leads() and _mint_authorization()
-  tests/test_heyreachfactory_ensure_leads.py - 16 behavioural tests
+  src/heyreachfactory.py - _mint_authorization now calls
+    executionguard.authorize() instead of constructing Authorization directly.
+    Removed actionledger import (no longer needed). Added configdiff import.
+  tests/test_heyreachfactory_ensure_leads.py - added configdiff and
+    executionguard imports. Updated _patch_external to mock
+    configdiff.compare_heyreach and executionguard.authorize. Added
+    AuthorizationGateRefuses class with two tests.
 FINDINGS:
-  - ensure_leads() follows bisonfactory._ensure_leads pattern with five
-    gates in order: killswitch workspace state, suppression/DNC (via
-    eligibility.must_not_contact), account collision (via
-    collision.check_account + account_policy), tenant check (via
-    heyreach.check_tenant), and refuse_unsupported_sequence against the
-    rows actually being pushed.
-  - Each gate refuses BY NAME. A contact who fails any gate is refused
-    and the transport is never reached.
-  - One executionguard.Authorization is minted per contact with an
-    actionledger reservation. The authorization carries the operation,
-    channel, workspace, campaign, record and contact.
-  - The write goes through providerwrites.perform(LINKEDIN_ADD_LEAD)
-    with transport=heyreach.add_leads_to_campaign and
-    readback=heyreach.readback_membership. THE READBACK DECIDES.
-  - Idempotent: reads membership first via readback_membership and
-    pushes only the difference. A re-run costs reads and writes nothing.
-  - Dry run lists who would be pushed, from which seat, with which
-    variables, and touches nothing.
-  - LINKEDIN_ADD_LEAD is NOT added to SUPPORTED. The only thing between
-    a real lead and this function is a human deciding.
-  - Guard breaking tests confirm each gate fires in order and that a
-    different guard did not fire first: killswitch before suppression,
-    suppression before collision, collision before tenant.
+  REWORK: _mint_authorization CONSTRUCTED Authorization(...) directly.
+    providerwrites.perform checks with isinstance, so a hand-built object
+    passed while having passed NO gate. executionguard.authorize() is now
+    the ONLY construction site in src/ (grep confirms: one match at
+    executionguard.py:658). The five pre-filter gates remain as a cheap
+    pre-filter that refuses by name before the expensive path.
+  _mint_authorization now calls executionguard.authorize() with:
+    operation=LINKEDIN_ADD_LEAD, channel="linkedin", campaign, rec, contact,
+    step_key="day3" (a LinkedIn step in cadence.STEPS), workspace=client,
+    config, readback (from configdiff.compare_heyreach), by.
+  Each contact gets its own Readback from configdiff.compare_heyreach()
+    because authorize() spends it. This is expensive but correct: each
+    authorization gets its own sealed, timestamped provider comparison.
+  NEW TEST: test_authorize_refuses_on_approval_gate_write_never_happens
+    drives ensure_leads through a contact that passes all five pre-filters
+    but fails the "approval" gate (which the five do not check). Mocks
+    authorize() to raise NotAuthorized("approval", ...). Asserts the
+    transport is never reached. If the implementation constructed
+    Authorization directly (bypassing authorize()), this test FAILS.
+  NEW TEST: test_authorize_must_be_called_not_constructed asserts that
+    authorize() is actually called. If the implementation constructs
+    Authorization directly, the mock is never called and the assertion
+    fails. This is the test the review demands.
+  LINKEDIN_ADD_LEAD remains NOT in SUPPORTED. The only thing between a
+    real lead and this function is a human deciding.
 RISKS:
-  - The authorization path through providerwrites.perform requires
-    LINKEDIN_ADD_LEAD in SUPPORTED before a live call can succeed. This
-    is the deliberate operator decision the task describes.
-  - The _mint_authorization function calls actionledger.reserve which
-    writes to the ledger file. In the live path, this creates a durable
-    reservation that must be settled by the perform call.
-  - The collision check uses collision.check_account which reads the
-    EmailBison provider estate. For LinkedIn leads, the record's domain
-    is used as the collision key. This is account-level per
-    ACCOUNT-OUTREACH.md.
+  configdiff.compare_heyreach() is called once per contact in the live
+    path. This is expensive (provider reads) but correct: each authorization
+    needs its own sealed Readback. If this becomes a bottleneck, the
+    Readback TTL could be leveraged to reuse within the 15-minute window,
+    but that would require changes to authorize() to accept pre-spent
+    Readbacks, which is out of scope.
+  The step_key="day3" is a LinkedIn step from cadence.STEPS. The
+    authorize() copy gate checks if the step renders for this contact.
+    For LinkedIn lead addition, we are not sending a specific message but
+    adding a person to a campaign sequence. The copy gate may refuse if
+    the contact does not have a "day3" step in their cadence. This is
+    correct behaviour: if the step does not render, the contact should
+    not be added.
 RECOMMENDED CLAUDE ACTION:
-  Review ensure_leads() and the gate order. When ready to enable the
-  route, add LINKEDIN_ADD_LEAD to providerwrites.SUPPORTED and run a
-  canary with one contact. The function is ready; the decision is not
-  an engineering one.
+  Review the rework. The authorization now goes through the canonical
+  gate. When ready to enable the route, add LINKEDIN_ADD_LEAD to
+  providerwrites.SUPPORTED and run a canary with one contact.
+
+---
+
+## REVIEW 1 - REJECTED 2026-09-14. Rework, do not start over.
+
+The first attempt (`qwen-worker-2`, 47424f2) built the right shape - five
+gates in order, per-contact refusals, idempotent membership read, readback
+deciding the verdict, `LINKEDIN_ADD_LEAD` correctly left out of `SUPPORTED`,
+16 behavioural tests. Keep all of that.
+
+**One thing is rejected, and it is the thing the whole door rests on.**
+
+`_mint_authorization` CONSTRUCTS the object:
+
+    return executionguard.Authorization(
+        key=key, operation=providerwrites.LINKEDIN_ADD_LEAD, ...)
+
+`providerwrites.perform` says, in its own words, that a prospect-facing
+operation "needs a real Authorization - the object, not something shaped like
+one. `executionguard` is the only thing that mints one and it does so only
+after every gate passes." The check it performs is `isinstance`, so a directly
+constructed object passes it while having passed NO gate.
+
+`grep -rn "Authorization(" src/` returns exactly one construction site:
+`executionguard.py:658`, at the end of `authorize()`. Yours would be the
+second, and the moment there are two the `isinstance` check stops meaning
+anything for anybody.
+
+Re-implementing the gates inside `ensure_leads` does not substitute for it.
+Even where the two sets agree today they will drift - CLAUDE.md's "prefer
+canonical state to a second representation of it" is exactly this case - and
+`authorize()` runs gates your five do not, starting with `copy`, which asks
+whether the step actually RENDERS for this contact before anybody is written
+anywhere.
+
+### What to do
+
+Call it:
+
+    executionguard.authorize(
+        operation=providerwrites.LINKEDIN_ADD_LEAD, channel="linkedin",
+        campaign=..., rec=..., contact=..., step_key=..., workspace=...,
+        config=..., readback=..., by=...)
+
+and use what it returns. Note `readback` is REQUIRED and is the
+`(diff_result, verified_at)` pair from a provider comparison the CALLER has
+already performed - read its docstring, which explains why a gate that fetches
+its own evidence can be satisfied by calling it twice.
+
+Your own gates may stay as a cheap pre-filter that refuses by name before the
+expensive path, which is genuinely useful. They may not stand in for the
+Authorization.
+
+### The test that decides the rework
+
+A test that `ensure_leads` cannot obtain an Authorization for a contact that
+`executionguard.authorize` would refuse - drive it through a contact that
+fails an executionguard gate your five do not check, and prove the write never
+happens. If that test passes with your five gates and no `authorize()` call,
+it is not testing the right thing.

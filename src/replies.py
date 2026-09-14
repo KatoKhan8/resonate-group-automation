@@ -25,9 +25,27 @@ and decide the clear cases for free. Tests never reach a model.
 """
 import re
 
-VERSION = "rules-1"
+VERSION = "rules-2"
 
 POSITIVE = "positive"
+# TASK-020: should `positive` split into `positive` and `meeting`? The
+# operator's hierarchy names them separately:
+#
+#     MEETING / QUALIFIED OPPORTUNITY
+#     POSITIVE REPLY
+#     MEANINGFUL REPLY
+#
+# Decision: no split at the classifier level. A meeting is determined by
+# an action (calendar link accepted, time agreed, meeting scheduled), not
+# by words alone. "Let's talk Thursday" is a positive reply until a
+# calendar event exists; "Sounds interesting" is positive but not a
+# meeting. The classifier can flag language that suggests a meeting, but
+# confirming one requires observing that a calendar event was created or
+# a time was agreed - a downstream signal, not a classification. Splitting
+# here would require the classifier to predict future actions, which is
+# not what rules do. The Slack alert already offers MARK_MEETING as an
+# action, which is where the distinction belongs: in a person's decision,
+# not in a pattern match.
 NEUTRAL = "neutral"
 NEGATIVE = "negative"
 UNSUBSCRIBE = "unsubscribe"
@@ -77,6 +95,14 @@ UNSUBSCRIBE_PATTERNS = (
     r"\bunsubscribe\b", r"\bopt[- ]?out\b", r"\bremove me\b",
     r"\btake me off\b", r"\bstop (?:emailing|contacting|messaging)\b",
     r"\bdo not (?:contact|email|message) me\b", r"\bgdpr\b",
+    # TASK-020: common phrasings from the unmatched 35%. Every one of these
+    # is a removal request in words, and the estate has no unsubscribe link
+    # so opt-out arrives only as a reply somebody has to classify.
+    r"\bstop (?:sending|writing)\b",
+    r"\bno more (?:emails|messages|mail)\b",
+    r"\b(?:remove|delete) me from (?:your|this|the) (?:list|database|mailing)\b",
+    r"\bplease (?:do not|don'?t) (?:send|write) (?:me |any )?(?:more |any )?(?:emails?|messages?|mail)\b",
+    r"\b(?:do not|don'?t) (?:send|write) me (?:any )?(?:more |any )?(?:emails?|messages?|mail)\b",
 )
 OUT_OF_OFFICE_PATTERNS = (
     r"\bout of (?:the )?office\b", r"\bautomatic reply\b", r"\bauto[- ]?reply\b",
@@ -101,6 +127,11 @@ NOT_NOW_PATTERNS = (
     r"\b(?:bad|wrong) timing\b", r"\btoo early\b",
     r"\bnext (?:quarter|year|month)\b",
     r"\bafter (?:the )?(?:new year|summer|holidays)\b",
+    # TASK-020: delay phrasings that do not refuse but do not commit.
+    r"\bmaybe (?:later|sometime|another time|in the future)\b",
+    r"\bnot at this time\b",
+    r"\b(?:get|reach) back to (?:me|us) (?:sometime|later|when)\b",
+    r"\b(?:shelve|park) (?:this|it) (?:for )?(?:now|later)\b",
 )
 
 NEGATIVE_PATTERNS = (
@@ -108,6 +139,12 @@ NEGATIVE_PATTERNS = (
     r"\bwe(?:'re| are) (?:all )?(?:set|sorted|covered)\b",
     r"\bplease stop\b", r"\bnot a (?:good )?fit\b", r"\bpass\b",
     r"\bwe already (?:have|use)\b", r"\bhappy with (?:our|the) current\b",
+    # TASK-020: short refusals common on both email and LinkedIn.
+    r"\bnot for me\b", r"\bno need\b", r"\bwe(?:'re| are) good\b",
+    r"\b(?:don'?t|do not) need (?:this|that|your)\b",
+    r"\bnot (?:looking|shopping) (?:for|at) (?:this|that|a)\b",
+    r"\b(?:not |un)(?:likely|likely) to (?:be|work|help)\b",
+    r"\bno (?:interest|need) (?:at this time|right now|currently|for now)\b",
 )
 # Handing somebody on.
 #
@@ -133,6 +170,10 @@ NOT_RELEVANT_PATTERNS = (
     r"\bno longer (?:with|at)\b", r"\bhas left the (?:company|business)\b",
     r"\bi don'?t handle\b", r"\bnot my (?:area|remit)\b",
     r"\btry (?:contacting|reaching)\b",
+    # TASK-020: "not relevant" phrasings that name no one.
+    r"\bnot relevant (?:for|to|at)\b",
+    r"\b(?:doesn'?t|does not|won'?t) (?:apply|work|help) (?:for |to |us)\b",
+    r"\bnot (?:something|anything) (?:we|I) (?:need|use|want)\b",
 )
 POSITIVE_PATTERNS = (
     r"\binterested\b", r"\bsounds (?:good|interesting|great)\b",
@@ -142,6 +183,16 @@ POSITIVE_PATTERNS = (
     r"\btell me more\b", r"\bsend (?:me )?(?:over |through )?(?:some )?(?:more )?(?:info|details)\b",
     r"\bwhat does it cost\b", r"\bhow much (?:is|does)\b", r"\bpricing\b",
     r"\bcalendar\b", r"\bavailability\b", r"\bnext week works\b",
+    # TASK-020: short affirmative replies, especially LinkedIn where a
+    # single clause is the norm. "Sure" and "yes" alone are risky - they
+    # can acknowledge receipt without buying anything - so they are gated
+    # on a companion phrase that carries intent.
+    r"\b(?:yes|sure|absolutely|definitely),?\s+(?:let'?s|happy|glad|would love|available)\b",
+    r"\blet'?s do (?:it|this)\b",
+    r"\b(?:i'?m|i am) (?:interested|keen|up for it)\b",
+    r"\b(?:that|this) (?:would be|sounds) (?:great|helpful|useful)\b",
+    r"\bsend (?:me )?(?:a |over )?(?:demo|proposal|quote|estimate)\b",
+    r"\bcan we (?:schedule|arrange|organise|set up)\b",
 )
 
 RULES = (
@@ -270,7 +321,13 @@ def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD):
                        "evidence": [], "classifier": VERSION}
 
     if verdict is None:
-        verdict = {"classification": NEUTRAL, "confidence": 0.5,
+        # "No rule matched" is UNKNOWN, not NEUTRAL. NEUTRAL means "we read
+        # this and it is genuinely lukewarm" - a measurement. UNKNOWN means
+        # "we could not read this" - a gap. Reporting the gap as a measurement
+        # is how 35% of replies on the live estate became invisible: they
+        # showed up as a category in reports rather than as the missing
+        # coverage they actually are. TASK-020, measured 2026-09-14.
+        verdict = {"classification": UNKNOWN, "confidence": 0.0,
                    "reason": "no rule matched and no classifier was available",
                    "evidence": [], "classifier": VERSION}
 
@@ -305,6 +362,13 @@ def apply(rec, contact_key, text, at=None, model=None, channel=None,
     from . import accountpolicy, events, ooo, referral, store
 
     verdict = classify(text, model=model, threshold=threshold)
+    # TASK-020: the provider's own automated flag travels with the verdict.
+    # A provider-flagged auto-reply is not a reply from a person. It must
+    # not count toward a reply rate and must not suppress outreach the way
+    # a human reply does - though an out-of-office should still defer the
+    # next touch. The flag is recorded here so every downstream consumer
+    # can see it without re-reading the provider row.
+    verdict["is_automated"] = automated is True
     # The policy outcome is recorded beside the classifier's own word.
     # They are two vocabularies - `out_of_office` is something a
     # classifier says and not something a policy has - and anything that
@@ -404,9 +468,21 @@ def apply(rec, contact_key, text, at=None, model=None, channel=None,
     # Business state first, notification second - and the state moves here,
     # before anything is announced, so a Slack failure cannot leave a
     # classified reply that changed nothing.
-    effect = accountpolicy.apply_reply(rec, contact_key, outcome,
-                                       at=at, channel=channel,
-                                       workspace=rec.get("client"))
+    #
+    # TASK-020: a provider-flagged automated reply is not a person. It must
+    # not suppress outreach the way a human reply does. An out-of-office is
+    # the exception: it still defers the next touch, which is the policy
+    # outcome NOT_NOW and is what the operator wants. Every other automated
+    # classification - including one the rules could not read - skips the
+    # policy application entirely. The classification event is still
+    # recorded above for reporting; what changes is that no HOLD or STOP
+    # lands on the account because a mail server wrote back.
+    if automated is True and verdict["classification"] != OUT_OF_OFFICE:
+        effect = None
+    else:
+        effect = accountpolicy.apply_reply(rec, contact_key, outcome,
+                                           at=at, channel=channel,
+                                           workspace=rec.get("client"))
 
     notification = None
     if is_positive(verdict):

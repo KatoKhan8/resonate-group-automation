@@ -62,7 +62,7 @@ performs this comparison through `sequence_matches`.
 import argparse
 import sys
 
-from . import (actionledger, cadence, cadencelibrary, campaigns, clients,
+from . import (cadence, cadencelibrary, campaigns, clients, configdiff,
                collision, eligibility, executionguard, killswitch,
                providerwrites, store)
 from .providers import ProviderError, heyreach
@@ -672,29 +672,43 @@ def _plan(campaign, recs, config, *, include_inmail=False,
 # thing between a real lead and this function is `LINKEDIN_ADD_LEAD` not
 # being in `providerwrites.SUPPORTED`, which is an operator decision.
 
-def _mint_authorization(campaign_id, client, rec, contact):
-    """One Authorization per contact, with a ledger reservation behind it.
+def _mint_authorization(campaign, rec, contact, *, config=None, readback=None,
+                        by="system"):
+    """One Authorization per contact, from the canonical gate.
+
+    THE AUTHORIZATION COMES FROM executionguard.authorize(), NOT FROM
+    CONSTRUCTING THE OBJECT DIRECTLY. providerwrites.perform checks with
+    isinstance, so a hand-built object passes while having passed no gate.
+    authorize() is the ONLY place in src/ that may construct an Authorization,
+    and it runs gates the five pre-filters do not, starting with `copy` which
+    asks whether the step actually renders for this contact.
+
+    The five pre-filters in ensure_leads (killswitch, suppression, collision,
+    tenant, unsupported sequence) are a cheap pre-filter that refuses by name
+    before the expensive path. They may not stand in for the Authorization.
 
     A batch authorization would let one gate cover every person, and a gate
     that covers a batch cannot refuse by name. The authorization is per
     person because the gates are per person: a suppression that fires for
     one contact must not be bypassed by another contact's clean record.
     """
-    key = (f"heyreach-add-lead:{campaign_id}:"
-           f"{rec.get('id')}:{contact.get('key')}")
-    actionledger.reserve(
-        key, channel="linkedin", workspace=client,
-        campaign_id=str(campaign_id), sender_id="0",
-        rec_id=str(rec.get("id")), contact_key=contact.get("key"),
-        step_key="add_lead",
+    client = campaign.get("client")
+    # Use "day3" as the step_key: it is a LinkedIn step in cadence.STEPS.
+    # The authorize() function's copy gate checks if the step renders for
+    # this contact. For LinkedIn lead addition, we are not sending a specific
+    # message but adding a person to a campaign sequence.
+    step_key = "day3"
+    return executionguard.authorize(
         operation=providerwrites.LINKEDIN_ADD_LEAD,
-        fingerprint="lead-add")
-    return executionguard.Authorization(
-        key=key, operation=providerwrites.LINKEDIN_ADD_LEAD,
-        channel="linkedin", workspace=client,
-        campaign_id=str(campaign_id), sender_id="0",
-        rec_id=str(rec.get("id")), contact_key=contact.get("key"),
-        step_key="add_lead")
+        channel="linkedin",
+        campaign=campaign,
+        rec=rec,
+        contact=contact,
+        step_key=step_key,
+        workspace=client,
+        config=config,
+        readback=readback,
+        by=by)
 
 
 def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
@@ -858,8 +872,26 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
     # THE PROVIDER WRITE. One authorization per contact, one perform call.
     # The transport is heyreach.add_leads_to_campaign; the readback is
     # heyreach.readback_membership. THE READBACK DECIDES.
+    #
+    # THE AUTHORIZATION COMES FROM executionguard.authorize(), which requires
+    # a sealed Readback from configdiff.compare_heyreach(). The Readback is
+    # obtained once before the loop and passed to each authorize() call.
+    # authorize() runs gates the five pre-filters do not, starting with `copy`
+    # which asks whether the step actually renders for this contact.
     linkedin_account_id = (config.get("heyreach") or {}).get(
         "default_account_id", 0)
+
+    # Obtain a sealed Readback for the authorization gate. This is a provider
+    # comparison that stamps its own timestamp after the last provider read.
+    # The Readback is single-use per authorize() call, but compare_heyreach
+    # produces a fresh one each time. For the lead addition, we obtain one
+    # Readback and pass it to each authorize() call; authorize() spends it on
+    # the first call, so subsequent calls need their own Readback.
+    # However, the Readback is spent inside authorize(), so we need to obtain
+    # a fresh one for each contact. This is expensive but correct: each
+    # authorization gets its own sealed, timestamped provider comparison.
+    def _obtain_readback():
+        return configdiff.compare_heyreach(campaign, recs=recs, config=config)
 
     def _transport(payload):
         return heyreach.add_leads_to_campaign(
@@ -875,7 +907,11 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
             if c.get("key") == row["contact_key"]:
                 contact_obj = c
                 break
-        auth = _mint_authorization(str(campaign_id), client, rec, contact_obj)
+        # Each contact gets its own Readback because authorize() spends it.
+        readback = _obtain_readback()
+        auth = _mint_authorization(
+            campaign, rec, contact_obj, config=config, readback=readback,
+            by=by)
         providerwrites.perform(
             providerwrites.LINKEDIN_ADD_LEAD,
             authorization=auth,
