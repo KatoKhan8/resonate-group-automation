@@ -970,6 +970,44 @@ def validate_sequence_for_write(sequence):
         stack.append((
             unconditional, kind, f"{where}/next:{kind}", below_invite,
             False if kind == "CHECK_IS_CONNECTION" else connected))
+
+    # DOUBLE-BRACE CHECK. HeyReach uses single braces for merge variables:
+    # {FIRST_NAME}, {COMPANY}, {Icebreaker}. Double braces ({{first_name}})
+    # are NOT recognised and reach the prospect as literal text - the
+    # provider sends the fallback or the braces themselves. Measured across
+    # 81 campaign sequences: 3,295 single-brace occurrences, 0 double.
+    #
+    # Walk every text in the graph and refuse if any carries {{...}}.
+    def _collect_texts(node):
+        if not isinstance(node, dict):
+            return
+        payload = node.get("payload")
+        if isinstance(payload, dict):
+            for msg in (payload.get("messages") or []):
+                if isinstance(msg, str):
+                    yield msg
+            fb = payload.get("fallbackMessage")
+            if isinstance(fb, str):
+                yield fb
+            note = payload.get("note")
+            if isinstance(note, str):
+                yield note
+        for key in ("conditionalNode", "unconditionalNode"):
+            child = node.get(key)
+            if isinstance(child, dict):
+                yield from _collect_texts(child)
+
+    import re as _re
+    for text in _collect_texts(sequence):
+        doubles = _re.findall(r'\{\{[^}]*\}\}', text)
+        if doubles:
+            raise SequenceInvalid(
+                f"sequence carries double-brace syntax {doubles[0]!r}: "
+                f"HeyReach uses single braces for merge variables "
+                f"({{FIRST_NAME}}), and does not substitute double braces - "
+                f"the prospect would read the literal text including the "
+                f"braces")
+
     return len(seen), messages
 
 

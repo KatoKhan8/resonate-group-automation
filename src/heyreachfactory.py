@@ -60,6 +60,7 @@ readback is compared field-for-field. `heyreach.set_sequence` already
 performs this comparison through `sequence_matches`.
 """
 import argparse
+import re
 import sys
 
 from . import (cadence, cadencelibrary, campaigns, clients, configdiff,
@@ -564,6 +565,73 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system",
     return report
 
 
+def _graph_text(sequence):
+    """Every prospect-facing string in the sequence graph, concatenated.
+
+    Walks the entire tree - every branch, every node - and collects the
+    text a prospect could read: ``messages`` entries, ``fallbackMessage``,
+    and ``note``. Used by the name gate to check whether the campaign-level
+    graph carries a literal name that belongs to one person.
+    """
+    texts = []
+
+    def _walk(node):
+        if not isinstance(node, dict):
+            return
+        payload = node.get("payload")
+        if isinstance(payload, dict):
+            for msg in (payload.get("messages") or []):
+                if isinstance(msg, str):
+                    texts.append(msg)
+            fb = payload.get("fallbackMessage")
+            if isinstance(fb, str):
+                texts.append(fb)
+            note = payload.get("note")
+            if isinstance(note, str):
+                texts.append(note)
+        for key in ("conditionalNode", "unconditionalNode"):
+            child = node.get(key)
+            if isinstance(child, dict):
+                _walk(child)
+
+    _walk(sequence)
+    return " ".join(texts)
+
+
+def _refuse_cohort_names_in_graph(sequence, cohort_names):
+    """Refuse when the campaign-level graph carries a cohort member's name.
+
+    A HeyReach sequence is campaign-level: one graph serves every lead.
+    If the graph contains a literal first name, last name, or company
+    from this campaign's cohort, the copy was written for one person and
+    baked into a graph that every other person would receive.
+
+    THE CHECK IS ON THE GRAPH, NOT THE PER-LEAD CUSTOM FIELDS. The graph
+    carries merge variables (``{connection_note}``, ``{FIRST_NAME}``) and
+    must be campaign-neutral. The custom fields carry each lead's own
+    words, which legitimately contain that lead's name. Checking the
+    custom fields would refuse every correct plan.
+
+    Matches on word boundaries and only for names of 2+ characters to
+    avoid false positives on common words.
+    """
+    if not cohort_names:
+        return
+    text = _graph_text(sequence)
+    if not text:
+        return
+    text_lower = text.lower()
+    for name in sorted(cohort_names):
+        if len(name) < 2:
+            continue
+        if re.search(r'\b' + re.escape(name.lower()) + r'\b', text_lower):
+            raise FactoryRefused(
+                f"the sequence graph contains literal name {name!r} from "
+                f"this campaign's cohort. A campaign-level graph must "
+                f"carry merge variables, not one person's name; every "
+                f"other lead would receive copy written for this one")
+
+
 def _plan(campaign, recs, config, *, include_inmail=False,
           withdraw_after_days=21):
     """What this campaign's LinkedIn sequence is, from canonical state."""
@@ -614,6 +682,39 @@ def _plan(campaign, recs, config, *, include_inmail=False,
             f"there is nobody to push. An empty record set is not a licence "
             f"to walk the estate")
     wanted = set(wanted_ids)
+
+    # THE NAME GATE. A campaign-level graph may not carry a literal name
+    # from this campaign's cohort. The graph uses merge variables; if a
+    # name from the cohort appears in it, the copy was written for one
+    # person and baked into a graph every other person would receive.
+    #
+    # THIS IS THE EXACT DEFECT of campaign 599020: "hi jacob" in a
+    # connection request on a campaign naming fourteen records.
+    #
+    # THE CHECK IS ON THE GRAPH, NOT THE PER-LEAD CUSTOM FIELDS. The
+    # custom fields carry each lead's own words, which legitimately
+    # contain that lead's name. Checking them would refuse every correct
+    # plan. The previous attempt at this gate did exactly that and broke
+    # seventeen tests - the module protecting this exact defect was
+    # refused by the gate meant to enforce it.
+    cohort_names = set()
+    for rec in recs:
+        if str(rec.get("id")) not in wanted:
+            continue
+        company = (rec.get("company") or "").strip()
+        if company:
+            cohort_names.add(company)
+        for contact in rec.get("contacts") or []:
+            for name_field in ("first_name", "last_name"):
+                n = (contact.get(name_field) or "").strip()
+                if n:
+                    cohort_names.add(n)
+            full_name = (contact.get("name") or "").strip()
+            if full_name:
+                for part in full_name.split():
+                    if len(part) >= 2:
+                        cohort_names.add(part)
+    _refuse_cohort_names_in_graph(sequence, cohort_names)
 
     # Collect each contact's own words, which travel per lead.
     per_contact = []
