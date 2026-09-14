@@ -660,6 +660,61 @@ class ThePlannerReadsTheBranch(CampaignTest):
         rec = self.record()
         self.assertIsNone(cadence.pause_state(rec, self.config))
 
+    # ---------------------------------------- a held account reports itself
+
+    def test_a_held_account_carries_a_non_empty_considered(self):
+        """A held account's decision carries a non-empty `considered`. An
+        operator must be able to see what was on the table, not just that
+        the account is held."""
+        rec = self.record()
+        events.record(rec, events.MEETING_MARKED, contact_key=KEY,
+                      at="2026-09-13T10:00:00+00:00")
+        store.save([rec])
+        decision = self.ask(rec)
+        self.assertEqual(decision["action"], na.WAIT)
+        self.assertEqual(decision["reason_code"], na.WAIT_ACCOUNT_HELD)
+        self.assertTrue(decision["considered"])
+        self.assertGreater(len(decision["considered"]), 0)
+
+    def test_a_held_account_considered_has_the_same_keys_as_a_working_one(self):
+        """Every entry has the same core keys as an entry from the non-held
+        path. A caller must not have to know which path the decision came
+        from. Some keys are conditional on the path through `_consider`, but
+        the structural keys must always be present."""
+        rec_working = self.record()
+        decision_working = self.ask(rec_working)
+        working_entry = decision_working["considered"][0]
+
+        rec_held = self.record()
+        events.record(rec_held, events.MEETING_MARKED, contact_key=KEY,
+                      at="2026-09-13T10:00:00+00:00")
+        store.save([rec_held])
+        decision_held = self.ask(rec_held)
+        held_entry = decision_held["considered"][0]
+
+        # The core structural keys that must always be present
+        core_keys = {"key", "name", "ok", "terminal", "channel", "sender",
+                     "step", "execute_after", "why", "reason_code", "linkedin",
+                     "persona", "family", "family_rank", "primary",
+                     "strategy", "why_rank", "title"}
+        self.assertTrue(core_keys.issubset(set(working_entry.keys())),
+                        f"Working entry missing: {core_keys - set(working_entry.keys())}")
+        self.assertTrue(core_keys.issubset(set(held_entry.keys())),
+                        f"Held entry missing: {core_keys - set(held_entry.keys())}")
+
+    def test_the_decision_is_unchanged_the_account_is_still_held(self):
+        """The DECISION is unchanged: the account is still held, with the
+        same reason it had before. This is about what the decision reports
+        about itself, not about changing what is decided."""
+        rec = self.record()
+        events.record(rec, events.MEETING_MARKED, contact_key=KEY,
+                      at="2026-09-13T10:00:00+00:00")
+        store.save([rec])
+        decision = self.ask(rec)
+        self.assertEqual(decision["action"], na.WAIT)
+        self.assertEqual(decision["reason_code"], na.WAIT_ACCOUNT_HELD)
+        self.assertIn("held", decision["reason"].lower())
+
     # -------------------------------------------------------------- a bounce
 
     def test_a_bounce_closes_the_address_and_nothing_else(self):
