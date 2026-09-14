@@ -83,3 +83,45 @@ findings - those are TASK-070's, and they will be built on this.
 
 STATUS, COMMIT SHA, TESTS, FILES CHANGED, FINDINGS, RISKS, RECOMMENDED
 CLAUDE ACTION.
+
+
+---
+
+## ADDENDUM - THE STEP-LEVEL JOIN IS THE WHOLE POINT
+
+Added after dispatch. If you have already started, read this before writing
+the result block.
+
+The operator's requirement is step-level learning:
+
+    campaign -> lead -> email step -> delay -> subject/body/variant
+             -> send timestamp -> reply -> classified outcome
+
+So the questions that matter most in this map are the ones that decide
+whether that chain can be built at all:
+
+1. **Is there a per-lead, per-step record of what was SENT, with a
+   timestamp, for HISTORICAL campaigns?** `scheduled_emails` carries
+   `sent_at`, `status`, `opens` and `replies`, and it is known to work for a
+   scheduled campaign. Establish whether it returns rows for a campaign that
+   finished months ago, or only for pending sends. If the latter, the send
+   history for historical campaigns may not exist and that changes what
+   TASK-070 can ask.
+
+2. **Can a REPLY be joined to a STEP?** Not to a campaign - to a step. If a
+   reply row carries a `sequence_step_id`, say so and give the field name.
+   If it does not, say that plainly and say what the nearest available join
+   is. "Reply attributable to campaign and lead but not step" is a complete
+   and useful answer.
+
+3. **Can a lead's position in the sequence at reply time be RECONSTRUCTED**
+   from sends plus timestamps, if the direct join is absent? That is the
+   fallback and it is worth establishing, but say clearly that it is a
+   reconstruction rather than a provider fact.
+
+4. **Does a step carry a VARIANT identifier?** Five variants per position is
+   the target design; establish whether the provider can distinguish them at
+   all, because an experiment nobody can read back is not an experiment.
+
+Answer each with a real response behind it and a row count. A NO here is
+worth more than an optimistic maybe: it tells TASK-070 what it may claim.
