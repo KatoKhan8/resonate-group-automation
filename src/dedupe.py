@@ -161,6 +161,7 @@ def find(records, scope=BATCH, config=None, campaign_ids=None):
     policy = settings(config)
     seen, findings = {}, []
     weak = {}
+    found_pairs = set()
 
     for rec in records or []:
         for contact in rec.get("contacts") or []:
@@ -185,6 +186,7 @@ def find(records, scope=BATCH, config=None, campaign_ids=None):
                     "duplicate_of": {"record_id": there[0], "contact_key": there[1]},
                     "reason": f"same {kind}: {key.split(':', 1)[-1]}",
                 })
+                found_pairs.add((rec.get("id"), contact.get("key")))
                 break                       # one finding per contact is enough
 
             if policy["flag_possible_name_matches"]:
@@ -192,10 +194,7 @@ def find(records, scope=BATCH, config=None, campaign_ids=None):
                 if not name_key:
                     continue
                 previous = weak.get(name_key)
-                if previous and previous != here and not any(
-                        f["record_id"] == rec.get("id")
-                        and f["contact_key"] == contact.get("key")
-                        for f in findings):
+                if previous and previous != here and here not in found_pairs:
                     findings.append({
                         "scope": scope, "kind": POSSIBLE, "key": name_key,
                         "strong": False,
@@ -206,6 +205,7 @@ def find(records, scope=BATCH, config=None, campaign_ids=None):
                         "reason": ("same name at a similar company: a human "
                                    "decides, nothing is merged"),
                     })
+                    found_pairs.add(here)
                 weak.setdefault(name_key, here)
     return findings
 

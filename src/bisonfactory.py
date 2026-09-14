@@ -892,6 +892,27 @@ def _remember_lead(lead, lead_id):
                     contact["bison_lead_id"] = lead_id
 
 
+def _remember_leads(pairs):
+    """Write many provider ids in one transaction instead of one per lead.
+
+    At 30k records each transaction reads and writes the full queue. N leads
+    in N transactions moves O(N * queue_size) bytes; one transaction moves it
+    once. `_remember_lead` is kept for the single-lead path; this is what
+    `_ensure_leads` calls after the create loop.
+    """
+    if not pairs:
+        return
+    with store.transaction() as rows:
+        by_id = {rec.get("id"): rec for rec in rows}
+        for lead, lead_id in pairs:
+            rec = by_id.get(lead["record_id"])
+            if rec is None:
+                continue
+            for contact in rec.get("contacts") or []:
+                if contact.get("key") == lead["contact_key"]:
+                    contact["bison_lead_id"] = lead_id
+
+
 def _variables_for(lead, campaign):
     """Everything this lead carries at the provider.
 
@@ -1080,6 +1101,7 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     before = bison.campaign_lead_count(provider_id)
     known = _known_lead_ids(campaign, wanted)
     ids, created, reconciled, refreshed = [], 0, 0, 0
+    remember_pairs = []
     for lead in wanted:
         existing = known.get(lead["contact_key"])
         if existing:
@@ -1137,8 +1159,9 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
                     f"not return it - its lead search lags behind creation. "
                     f"Wait and re-run; do NOT create a duplicate") from None
             reconciled += 1
-        _remember_lead(lead, row["id"])
+        remember_pairs.append((lead, row["id"]))
         ids.append(row["id"])
+    _remember_leads(remember_pairs)
     # FRESH READ, NOT ASSUMED FROM `_ensure_stopped` FOUR CALLS AGO.
     # The invariant that makes lead attachment safe is "the campaign is
     # stopped at the provider". `_ensure_stopped` established that earlier,
