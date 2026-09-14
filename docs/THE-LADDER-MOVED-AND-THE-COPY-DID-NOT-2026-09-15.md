@@ -105,3 +105,48 @@ exact words. Invalidating copy therefore invalidates approval, which is
 correct - a person approved words, not an intention - but it means a
 ladder change silently un-approves work. That consequence has to be
 deliberate and visible, not a side effect somebody discovers.
+
+---
+
+## THE PRICE OF FIXING IT, MEASURED
+
+`scripts/ladder_impact.py` (TASK-079), run by Claude against REAL production
+state rather than a snapshot:
+
+    records analysed                300
+    records with affected steps      68
+    TOTAL AFFECTED STEPS            581
+      carrying a current approval   115
+    unaffected steps                105
+
+    changed rungs   email    positions 1, 3, 4   (5 unchanged, TASK-047)
+                    linkedin all six rewritten
+
+**So regenerating against the corrected ladder invalidates 581 stored steps
+and revokes 115 human approvals.** That is the number the operator needs
+before anyone re-runs generation, and it is why this was never going to be a
+quiet background fix.
+
+115 approvals is a person's work. An approval is bound to the exact words, so
+new words means a new approval is required - correct, and expensive.
+
+## WHAT IS STILL NOT FIXED
+
+TASK-079 delivered the MEASUREMENT. It did not deliver the propagation.
+
+Its result block argues that `src/approval.py` needs no change because "the
+ladder change propagates through regeneration -> different text -> different
+fingerprint -> stale approval". **That reasoning has a hole in it, and the
+hole is this whole document:** regeneration does not happen, because `plan`
+finds no failing gate. No re-plan, no new text, no new fingerprint, no
+invalidation. The chain it describes never starts.
+
+So the state today is:
+
+    the impact of a ladder change   MEASURABLE   scripts/ladder_impact.py
+    a ladder change propagating     NOT FIXED    plan still says
+                                                 "nothing to generate"
+
+The diagnostic is genuinely useful and is integrated - it turns an invisible
+problem into a number. But nothing yet causes the copy to be rebuilt, and
+anyone reading "TASK-079 DONE" should not infer otherwise.
