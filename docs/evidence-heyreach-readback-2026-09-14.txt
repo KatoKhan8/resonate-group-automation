@@ -1,0 +1,37 @@
+====================================================================================================
+  READBACK COMPARISON - campaign productive-linkedin-production-v1
+====================================================================================================
+  CHECK                        EXPECTED                         ACTUAL                           VERDICT
+  --------------------------- ------------------------------- ------------------------------- -------
+  campaign_id                  599020                           599020                           PASS
+  campaign_name                RESONATE - PRODUCTIVE LINKED...  RESONATE - PRODUCTIVE LINKEDI... PASS
+  status                       DRAFT                            DRAFT                            PASS
+  lead_list_id                 933603                           933603                           PASS
+  lead_count                   0                                0                                PASS
+  sender_seats                 174892                           174892                           PASS
+  schedule                     not set                          not set                          PASS
+  node_count                   17                               17                               PASS
+  type:CHECK_IS_CONNECTION     1                                1                                PASS
+  type:CONNECTION_REQUEST      1                                1                                PASS
+  type:END                     3                                3                                PASS
+  type:FOLLOW                  1                                1                                PASS
+  type:MESSAGE                 7                                7                                PASS
+  type:VIEW_PROFILE            4                                4                                PASS
+  delays                       +0H, +1D, +2D, +2D, +3D, +3D...  +0H, +1D, +2D, +2D, +3D, +3D,... PASS
+  path_count                   3                                3                                PASS
+  branch_structure             CHECK_IS_CONNECTION (+0H) ->...  CHECK_IS_CONNECTION (+0H) -> ... PASS
+  connection_note              {connection_note}                {connection_note}                PASS
+  open_profile                 absent                           absent                           PASS
+  inmail_path                  absent                           absent                           PASS
+  message_texts                {connected_1} | {connected_2...  {connected_1} | {connected_2}... PASS
+  merge_variables              connected_1, connected_2, co...  connected_1, connected_2, con... PASS
+  double_brace_vars            none (correct)                   none (correct)                   PASS
+  per_variable_fallbacks       8 fallback(s)                    8 fallback(s)                    PASS
+  literal:jacob                absent                           absent                           PASS
+  literal:&Partner             absent                           absent                           PASS
+  repeated_msg_on_path         none                             none                             PASS
+====================================================================================================
+  27 passed, 0 failed
+  VERDICT: PASS
+
+  sequence_matches: MATCH
