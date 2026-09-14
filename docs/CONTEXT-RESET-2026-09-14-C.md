@@ -412,3 +412,72 @@ match on a key. Anyone re-running this check will write the same query;
 search one variable at a time and classify config separately from secrets.
 
 Re-run it after any change that touches credentials or worktrees.
+
+
+---
+
+## 15. SECOND DISPATCH ROUND - ALL EIGHT WORKERS RUNNING
+
+    worker  branch          task
+    1       qwen-worker     TASK-054 REWORK  measure the estate, not one record
+    2       qwen-worker-2   TASK-061         drive regeneration to a passing
+                                             dry run, capped at five passes
+    3       qwen-worker-3   TASK-058         HeyReach touch -> reply
+    4       qwen-worker-4   TASK-059         Bison email -> reply
+    5       qwen-worker-5   TASK-057         five-email preview renderer
+    6       qwen-worker-6   TASK-063         read the five emails as a human
+    7       qwen-worker-7   TASK-064         read the LinkedIn cadence, both
+                                             branches, as a human
+    8       qwen-worker-8   TASK-039         what the model actually gets
+
+    TODO    TASK-036, 037, 040, 044, 062
+    REWORK  TASK-042 (name gate), TASK-054 (sampling)
+
+### Reviewed this round
+
+**TASK-041 INTEGRATED.** Two quadratics and a repeated policy lookup, fixed
+without changing any verdict. Verified on 84 tests across the real affected
+surface. Note for future task authors: TASK-041 named two test modules that
+DO NOT EXIST (`test_campaign_segments`, `test_bisonfactory`). Check a module
+name before putting it in a task file.
+
+**TASK-042 REJECTED to REWORK.** The name gate breaks SEVENTEEN tests -
+twelve errors in `test_the_sequence_belongs_to_nobody` and five in
+`test_campaign_repetition_integration`. That first module is the one
+protecting the exact defect the gate exists to prevent, so a gate that breaks
+it is wrong somewhere. Design kept, wiring sent back. Master reverted and
+green.
+
+**TASK-054 REJECTED to REWORK, and this is the more interesting one.** Qwen
+measured four prompt variants three times each on ONE record, got 3/3
+everywhere including the baseline, and honestly reported its hypothesis
+unconfirmed. The harness is good; the conclusion is not. Measured against the
+real estate the same evening:
+
+    stored li4 notes  50, naming Productive 21   42%
+    stored em3 bodies 38, naming Productive 11   29%
+
+The behaviour is STOCHASTIC. Twelve runs of one record landed on a record
+that names it reliably; three in five do not. Neither "0 of 3, broken" from
+TASK-052 nor "3 of 3, fine" describes the system. **The Productive-
+introduction defect is REAL and remains open**, now with a measured baseline
+to beat.
+
+## 16. A FINDING NOBODY WAS LOOKING FOR
+
+13 of 630 stored steps still carry an em dash or curly apostrophe AFTER a
+full regeneration pass:
+
+    1gslab-com li1 li3 li4, 25wat-com li1, 28row-com li1 li4, and others
+
+`lint` refuses those characters, so `plan` DID re-plan them. The regeneration
+then failed to produce a replacement that passed the other gates, and
+`linkedin_note` stores nothing on failure - **so the old failing note stays
+exactly where it was.**
+
+It cannot ship: `cadence.status_for` holds it and `eligibility` refuses the
+payload. But it is compared against as a SIBLING, which means a bad note that
+will never be sent can block a good replacement by colliding with it. TASK-062
+asks whether that is actually happening and recommends rather than deletes -
+removing stored generated work is Claude's call, and `CLAUDE.md` says a record
+is dropped with a reason rather than deleted.
