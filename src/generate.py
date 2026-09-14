@@ -821,6 +821,14 @@ def linkedin_note(rec, contact, model, client=None, step_key="day3"):
         data, attempts, errors = llm.ask(model, "linkedin_note", prompt)
         total_attempts += attempts
         note = data["note"].strip()
+        # NORMALISE PUNCTUATION BEFORE LINT. A character substitution that
+        # changes no word is not a content failure and must not spend an
+        # attempt. The model is told plainly to use ASCII punctuation and
+        # sometimes ignores it; normalising here means the draft never
+        # fails on encoding, and the full attempt budget stays available
+        # for actual content issues. The mapping is exactly
+        # lint.SUBSTITUTED_PUNCTUATION and nothing else.
+        note = lint.normalise_punctuation(note)
         step = {"channel": "linkedin", "generated": True, "note": note}
         leaks = [w for w in NOTE_MUST_NOT_MENTION if w in note.lower()]
         if leaks:
@@ -890,8 +898,17 @@ def draft(rec, contact, day, model, client=None):
                        f"{rejected[-1]}\n\nWrite a new one. "
                        "Do not patch the old one.\n")
         data, _, schema_errors = llm.ask(model, "draft", prompt)
+        # NORMALISE PUNCTUATION BEFORE LINT. A character substitution that
+        # changes no word is not a content failure and must not spend an
+        # attempt. The model is told plainly to use ASCII punctuation and
+        # sometimes ignores it; normalising here means the draft never
+        # fails on encoding, and the full attempt budget stays available
+        # for actual content issues. The mapping is exactly
+        # lint.SUBSTITUTED_PUNCTUATION and nothing else.
+        subject = lint.normalise_punctuation(data["subject"])
+        body = lint.normalise_punctuation(data["body"])
         candidate = {"channel": "email", "generated": True,
-                     "subject": data["subject"], "body": data["body"]}
+                     "subject": subject, "body": body}
         # Lint the candidate against a copy: a failing draft is never stored.
         trial = dict(rec)
         trial["cadence"] = {**(rec.get("cadence") or {}),

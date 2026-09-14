@@ -12,7 +12,7 @@ import shutil
 import tempfile
 import unittest
 
-from src import cadence, clients, generate, llm, store
+from src import cadence, clients, generate, lint, llm, store
 from tests.base import FIXTURES, pin_client_config
 
 # "month end reconciliation" was in here and it is `personas.champion.angles`
@@ -250,16 +250,40 @@ class TestTheNoteGoesThroughTheSameDoorTheEmailDoes(NoteTest):
             return generate.linkedin_note(rec, rec["contacts"][0], model,
                                           self.llm_config())
 
-    def test_an_em_dash_is_refused_and_the_note_regenerated(self):
+    def test_an_em_dash_is_normalised_rather_than_spending_an_attempt(self):
+        # CHANGED BY TASK-055, and the change is the point. This asserted
+        # that an em dash was REFUSED and the note regenerated. It is now
+        # normalised to " - " before lint sees it, so the first answer is
+        # kept and the attempt is not spent.
+        #
+        # Four of six em4 refusals in a live run were a dash or a curly
+        # apostrophe, and `draft` allows three attempts - so a step whose
+        # first two answers carried one had a single attempt left for
+        # everything else. A character substitution that changes no word is
+        # not a content failure.
+        #
+        # What must NOT change: the stored text is still plain ASCII, and
+        # `lint` still refuses the character on every other path.
         step = self.write("hi Ivana, i work with finance leads at agencies "
                           "running several offices\u2014curious how you handle "
-                          "it. happy to connect.", GOOD_NOTE)
-        self.assertEqual(step["note"], GOOD_NOTE)
+                          "it. happy to connect.")
+        self.assertIn(" - ", step["note"])
+        for char in lint.SUBSTITUTED_PUNCTUATION:
+            self.assertNotIn(char, step["note"])
 
     def test_a_note_that_never_passes_stores_nothing(self):
         # Three attempts, all refused, and NOTHING is written. The old path
         # had no way to express this: it stored on the first answer.
-        bad = "hi Ivana, settling up\u2014every month.-- and again."
+        #
+        # The refusal is a CONTENT one now that punctuation is normalised -
+        # this note repeats itself and says nothing, which no amount of
+        # character substitution fixes.
+        # `personas.champion.angles.finance` verbatim, which
+        # `quality.angle_leakage` refuses on LinkedIn - the client's own sales
+        # phrasing put into a note. A content failure no retry can normalise
+        # away, which is exactly what this test needs.
+        bad = ("hi Ivana, margin per project, month end reconciliation and "
+               "multi entity billing are what i work on. happy to connect.")
         self.assertIsNone(self.write(bad, bad, bad))
         self.assertNotIn("day3", (self.rec().get("cadence") or {}).get(
             "ivana-saric", {}))

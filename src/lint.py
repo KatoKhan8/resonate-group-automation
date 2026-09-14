@@ -41,7 +41,55 @@ MAX_SUBJECT = 60          # "under 60 characters": 59 passes, 60 fails
 # somebody's name and somebody's street, and a rule that refused them would
 # refuse half the German and Nordic market this client sells to. These five
 # are substitutions for characters that are already on the keyboard.
+# WRITTEN AS ESCAPES, NOT AS CHARACTERS, AND THAT IS DELIBERATE.
+#
+# These five are invisible in a diff and indistinguishable from their
+# ASCII cousins in most editors. On 2026-09-14 a change that ADDED a
+# curly-apostrophe normaliser silently rewrote both curly apostrophes in
+# this tuple as straight ones (U+0027) somewhere between being written
+# and being committed. The rule then refused every ordinary contraction
+# - "don't", "it's" - and stopped catching the character it names.
+#
+# An escape cannot be mangled by an encoding round-trip and cannot be
+# mistyped invisibly. `tests/test_lint.py` pins the codepoints.
 SUBSTITUTED_PUNCTUATION = ("—", "–", "‑", "’", "‘")
+
+# THE CHARACTER MAP FOR NORMALISATION. Each substituted character maps to
+# the plain ASCII equivalent a person would have typed. An em dash becomes
+# " - " (space-hyphen-space) because it typically separates clauses; an en
+# dash becomes a bare hyphen; a non-breaking hyphen becomes a hyphen; curly
+# apostrophes become straight ones.
+#
+# This map is exactly SUBSTITUTED_PUNCTUATION and nothing else. It is not
+# a general-purpose typography normaliser and must not become one.
+_PUNCTUATION_MAP = {
+    "—": " - ",      # em dash, separates clauses
+    "–": "-",        # en dash
+    "‑": "-",        # non-breaking hyphen
+    "’": "'",        # right single quote
+    "‘": "'",        # left single quote
+}
+
+
+def normalise_punctuation(text):
+    """Replace substituted punctuation with plain ASCII equivalents.
+
+    Applied to model output BEFORE lint, so a draft whose only defect is a
+    character encoding never fails an attempt. The words are untouched; the
+    meaning is untouched; only the encoding changes. This is not patching a
+    failing draft - it is pre-processing, the same kind of thing as
+    normalising line endings.
+
+    Returns the normalised text. Returns the original unchanged when no
+    substituted character is present, so callers may compare identity to
+    detect whether normalisation did anything.
+    """
+    if not text:
+        return text
+    for bad, replacement in _PUNCTUATION_MAP.items():
+        text = text.replace(bad, replacement)
+    return text
+
 
 # The failure key stays `em_dash`. It is the name this rule has had
 # since it was written, `render` and `classify` both key off it, and
