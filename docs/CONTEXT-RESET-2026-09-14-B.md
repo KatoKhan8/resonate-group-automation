@@ -13,9 +13,12 @@ points and what provider truth says about each),
 
 ## GIT
 
-    master HEAD      7c917ef
-    origin/master    7c917ef        identical
+    master HEAD      the commit that added this file, or later
+    origin/master    identical - verified with `git fetch && git rev-parse`
     worktree         clean
+
+    `git log --oneline -1` is authoritative. A hash written into a file
+    describing that file's own commit is always one behind itself.
 
     qwen-worker      86b4ede   TASK-033 IN PROGRESS, pushed
                                last commit "fix generation flow - linkedin_note
