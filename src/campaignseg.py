@@ -150,9 +150,9 @@ def _code(text):
     return text.strip("_") or "UNKNOWN"
 
 
-def key_parts(segment, persona, rung="full", config=None):
+def key_parts(segment, persona, rung="full", config=None, _policy=None):
     """The four parts of a key at one rung of the ladder."""
-    policy = settings(config)
+    policy = _policy if _policy is not None else settings(config)
     vertical = segment.get("vertical") or segments.UNKNOWN
     region = segment.get("region") or geo.OTHER
     band = segment.get("employee_band") or segments.UNKNOWN
@@ -183,8 +183,8 @@ def key_parts(segment, persona, rung="full", config=None):
     }
 
 
-def key_for(segment, persona, rung="full", config=None):
-    parts = key_parts(segment, persona, rung, config)
+def key_for(segment, persona, rung="full", config=None, _policy=None):
+    parts = key_parts(segment, persona, rung, config, _policy=_policy)
     return "-".join([parts["prefix"], parts["region"], parts["vertical"],
                      parts["band"], parts["persona"]])
 
@@ -218,36 +218,41 @@ def assign(companies, config=None):
     eligible = [entry for entry in companies
                 if entry["verdict"].get("icp_status") == icp.QUALIFIED
                 and (entry["persona_plan"].get("persona_priority") or [])]
-    skipped = [entry for entry in companies if entry not in eligible]
+    eligible_ids = {entry["record"]["id"] for entry in eligible}
+    skipped = [entry for entry in companies
+               if entry["record"]["id"] not in eligible_ids]
 
     # Each company is placed at the finest rung that ends up viable. The loop
     # walks the ladder once per rung and only re-places companies that are
     # still in a segment too small to be worth writing for.
     placement = {}
     for entry in eligible:
-        placement[id(entry)] = "full"
+        placement[entry["record"]["id"]] = "full"
 
     for rung, next_rung in zip(LADDER, LADDER[1:]):
         counts = {}
         for entry in eligible:
-            if placement[id(entry)] != rung:
+            if placement[entry["record"]["id"]] != rung:
                 continue
             persona = entry["persona_plan"]["persona_priority"][0]
-            counts.setdefault(key_for(entry["segment"], persona, rung, config),
+            counts.setdefault(key_for(entry["segment"], persona, rung, config,
+                                      _policy=policy),
                               []).append(entry)
         for key, members in counts.items():
             if len(members) < policy["min_segment_size"]:
                 for entry in members:
-                    placement[id(entry)] = next_rung
+                    placement[entry["record"]["id"]] = next_rung
 
     assigned = []
     for entry in eligible:
-        rung = placement[id(entry)]
+        rung = placement[entry["record"]["id"]]
         persona = entry["persona_plan"]["persona_priority"][0]
-        parts = key_parts(entry["segment"], persona, rung, config)
+        parts = key_parts(entry["segment"], persona, rung, config,
+                          _policy=policy)
         assigned.append({
             **entry,
-            "segment_key": key_for(entry["segment"], persona, rung, config),
+            "segment_key": key_for(entry["segment"], persona, rung, config,
+                                   _policy=policy),
             "segment_parts": parts,
             "segment_rung": rung,
             "segment_reason": _reason(parts, entry["segment"], persona),
