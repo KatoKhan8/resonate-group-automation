@@ -377,6 +377,58 @@ here than this document originally claimed, not more.
 
 Filed as TASK-029.
 
+## CORRECTION 2 - three numbers in this document were wrong, and H2 is dead
+
+Found by TASK-024, which was written to reproduce these tables from the raw
+data and did exactly that. Three discrepancies, and the third removes a
+hypothesis.
+
+**1. The "1 step" row was never a one-step campaign.** Campaigns 262-266 carry
+SIX-step sequences. The 1.0 came from `emails_sent / contacted`, which is
+emails DELIVERED per person, not steps configured - those campaigns have six
+steps and delivered about one email each, so they were stopped early or their
+leads were added once. The corrected table, with both columns stated:
+
+    steps  campaigns  contacted  reply%   emails delivered per person
+        6          5       3163     0.85       1.0
+        8          5      17690     8.49       5.6
+       22          2       2422     2.23       7.0
+       35          1       4994     1.44       5.7
+       44          1      20337     2.38       4.6
+
+**The central finding survives unchanged**: the 8-step group replies at 8.49%
+against every other shape. What changes is that the floor of the range is not
+"one email" - it is "six steps that only ever delivered one".
+
+**2. The bounce column had no stated denominator.** 0.91% was bounced over
+emails SENT; per person CONTACTED the same campaigns are 4.98%. Neither is
+wrong and the column should have said which it was.
+
+**3. H2 IS WITHDRAWN. There is no variance in the variable.**
+
+This document claimed "every campaign above 6% uses three subject variants;
+every campaign below 3% uses one". Counted properly - with a parser that
+handles `{hoe {COMPANY} marges bijhoudt|...}`, where the nested merge field
+defeats any regex that stops at the first brace:
+
+    every one of the 14 campaigns that has sent anything uses THREE variants
+    the only 1-variant campaigns are 451 and 481, which are OURS, contacted 0
+
+So the comparison underneath H2 was between campaigns that have sent and
+campaigns that have not. No correlation between variant count and reply rate
+can exist in this estate, in either direction, because every sent campaign
+sits at the same value.
+
+I had not counted them. The claim was pattern-matching on which campaigns
+looked modern, and it read as evidence because it was written next to numbers
+that were real.
+
+**What survives of the variant idea**: `COPY-EXPERIMENTS.md` specifies five
+variants per step, both providers rotate them natively, and campaign 481 sends
+one. That remains a real gap between the specification and what we do, and
+TASK-022 still closes it. What is gone is any claim that this estate shows it
+WORKS - E2 has to establish that, and now it has no head start.
+
 ## PROVENANCE
 
 Everything above comes from `GET /api/campaigns` (22 rows, `meta.total` 22)
