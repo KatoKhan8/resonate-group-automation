@@ -167,3 +167,62 @@ Delegate the bulk to Qwen: historical cadence and follow-up analysis,
 variable coverage, greeting and signature analysis, copy and variant
 generation, rendering QA, batch preparation. Claude reviews, rejects weak
 work and decides what is safe to promote.
+
+---
+
+## MEASURED 2026-09-15 - WHAT TASK-080 FOUND, INCLUDING AGAINST THIS DOCUMENT
+
+`docs/BISON-THREAD-FINDINGS-2026-09-15.md`. Read it before treating section 1
+as settled, because one of its hypotheses is now contradicted.
+
+### The alternating structure is a DESIGN CHOICE, not evidence
+
+**The estate cannot separate same-thread from new-thread at the same
+position.** Every campaign with sends uses `thread_reply=True` at step 2, and
+campaign 481 - the only one with `False` at step 2 - has ZERO sends. There is
+no control group at any position.
+
+So the F,T,F,T,F shape stays, and it stays as a deliberate bet rather than a
+proven one. Campaign 352's same-thread steps take 42.4% of replies from 40%
+of step-types - a 1.10x ratio at n=316, which is not significant and should
+not be quoted as a result.
+
+Getting a real answer needs a campaign that deliberately runs a new thread at
+step 2 against one that runs a follow-up. That is an EXPERIMENT nobody has
+run, and it is the honest next step if the question matters.
+
+### CORRECTION - "short follow-up" is not supported
+
+Section 1 of this document says a step-2 follow-up should be "short". Measured:
+
+    same-thread follow-ups that got replies   857 chars average
+    new-thread emails that got replies        571 chars average
+
+The follow-ups that earned replies are LONGER, not shorter.
+
+**Caveat that keeps this honest, and it is a real one:** that is measured on
+emails that GOT REPLIES, not on all emails sent. It is survivorship, so it
+says "long follow-ups are well represented among repliers" and NOT "long
+follow-ups cause replies". Short follow-ups may have been sent in volume and
+simply not replied to.
+
+So: do not instruct the model to be brief on a follow-up as though brevity
+were established. "Adds one thought and does not repeat email 1" survives;
+"short" does not.
+
+### Useful provider facts
+
+    "Re:" prefix   ALL 153 same-thread follow-ups carry it, automatically.
+                   ZERO new-thread emails do. Do not write "Re:" yourself.
+    reply timing   57% of attributed replies arrive by step 2, 82% by step 4
+    later steps    steps 5-8 contribute 18% and DO reach people earlier
+                   steps did not - the case for a longer cadence is real,
+                   though it is an ATTRIBUTION HYPOTHESIS
+
+### What the sample could not cover
+
+Offset pagination is refused past 500 pages, so campaign 352's sample is 7.8%
+of its pages and underrepresents later sends. The reply feed sample is 2,250
+of ~270,000 rows and skews recent, so campaigns that finished in April-May
+2026 are barely represented. Every number above is a lower bound from a
+sample, and none of them is an open rate, because there are none.
