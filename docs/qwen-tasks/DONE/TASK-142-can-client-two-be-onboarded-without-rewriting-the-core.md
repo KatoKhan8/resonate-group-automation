@@ -93,7 +93,7 @@ the rows above it.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (pending)
+**COMMIT SHA:** ef0afcd
 
 **TESTS:** Read-only audit. No code changed. No tests run. The deliverable is
 a document, not a code change.
