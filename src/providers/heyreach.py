@@ -1422,6 +1422,66 @@ LIST_FIELDS = ("id", "name", "listType", "totalItemsCount", "campaignIds",
 MUTABLE_STATUSES = ("DRAFT", "SCHEDULED", "PAUSED")
 
 DRAFT = "DRAFT"
+IN_PROGRESS = "IN_PROGRESS"
+PAUSED = "PAUSED"
+FINISHED = "FINISHED"
+
+# Statuses in which a campaign is PROVEN unable to act on a lead added now.
+#
+# DRAFT only, and the shortness of that list is the point.
+#
+# PAUSED is excluded because a paused campaign can be resumed at any moment by
+# a human pressing a button in the vendor UI, and leads added to it sit in the
+# queue waiting for exactly that.
+#
+# FINISHED IS EXCLUDED FOR THE SAME REASON, which the first version of this
+# list missed. "Finished" describes the leads already in the campaign - they
+# have completed the sequence. It does not describe what the campaign does
+# with a lead added AFTERWARDS, and nothing read from this provider proves it
+# would sit inert. A campaign that resumes on a new arrival is
+# indistinguishable, from the outside, from one that does not, until somebody
+# is contacted.
+#
+# Establishing it would take a write to a real finished campaign, which is the
+# action being gated. So it fails closed, and the cost of that is nothing:
+# every campaign this system will populate is one it created, in DRAFT.
+_STATUSES_THAT_CANNOT_SEND = (DRAFT,)
+
+
+def campaign_cannot_send(campaign_id):
+    """Whether this campaign demonstrably cannot send right now.
+
+    Read from the PROVIDER, not from local state. A campaign that reports
+    DRAFT or FINISHED cannot send. A campaign that reports IN_PROGRESS or
+    PAUSED can - PAUSED because it can be resumed at any moment, and leads
+    added to it sit waiting for the resume button.
+
+    Fails closed: if the status cannot be read, the answer is REFUSE, not
+    proceed. A timeout is not a DRAFT.
+
+    Returns True if the campaign cannot send, False if it can.
+    Raises ProviderError if the campaign cannot be read at all.
+    """
+    row = campaign_read(campaign_id)
+    if not row:
+        raise ProviderError(
+            f"heyreach campaign_cannot_send: campaign {campaign_id} could "
+            f"not be read from the provider. A campaign whose status is "
+            f"unknown is not proven safe to write to. Refusing")
+    status = str(row.get("status") or "").strip()
+    if not status:
+        raise ProviderError(
+            f"heyreach campaign_cannot_send: campaign {campaign_id} returned "
+            f"no status field. Cannot prove it is safe to write to. Refusing")
+    if status in _STATUSES_THAT_CANNOT_SEND:
+        return True
+    if status in (IN_PROGRESS, PAUSED):
+        return False
+    raise ProviderError(
+        f"heyreach campaign_cannot_send: campaign {campaign_id} has status "
+        f"{status!r}, which is not in the known set "
+        f"({DRAFT}, {IN_PROGRESS}, {PAUSED}, {FINISHED}). An unrecognised "
+        f"status is not proven safe. Refusing")
 
 
 def lists(offset=0, limit=MAX_PAGE, keyword=None, list_type=None):

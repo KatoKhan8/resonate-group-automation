@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-09-15T09:34:46+00:00",
+  "generated_at": "2026-09-15T09:42:09+00:00",
   "generated_from": "docs/qwen-tasks/**, git, and work/claims/. Derived, never hand-edited.",
-  "master_head": "c44cb23",
+  "master_head": "39858c9",
   "counts": {
     "BLOCKED": 1,
-    "AWAITING_REVIEW": 33,
-    "DONE": 90
+    "AWAITING_REVIEW": 30,
+    "DONE": 93
   },
   "ready_count": 0,
   "workers": 8,
@@ -164,22 +164,6 @@
       "worker": null,
       "claimed_at": null,
       "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-101",
-      "file": "docs/qwen-tasks/REVIEW/TASK-101-prepare-a-real-lead-batch.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P1",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [
-        "TASK-096"
-      ],
       "branch": null,
       "result": null,
       "review_status": "NOT_SUBMITTED",
@@ -356,20 +340,6 @@
       "blocked_by": []
     },
     {
-      "task": "TASK-115",
-      "file": "docs/qwen-tasks/REVIEW/TASK-115-the-check-asks-a-binary-question-about-a-five-valued-design.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P1",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
       "task": "TASK-116",
       "file": "docs/qwen-tasks/REVIEW/TASK-116-forty-nine-openers-that-never-moved.md",
       "status": "AWAITING_REVIEW",
@@ -468,27 +438,13 @@
       "blocked_by": []
     },
     {
-      "task": "TASK-124",
-      "file": "docs/qwen-tasks/REVIEW/TASK-124-the-add-leads-door-is-shut.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P0",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
       "task": "TASK-125",
       "file": "docs/qwen-tasks/REVIEW/TASK-125-add-leads-to-a-campaign-that-cannot-send.md",
       "status": "AWAITING_REVIEW",
       "stage_dir": "REVIEW",
       "priority": "P0",
-      "worker": "resonate-qwen-worker",
-      "claimed_at": "2026-09-15T09:31:19+00:00",
+      "worker": null,
+      "claimed_at": null,
       "dependencies": [],
       "branch": null,
       "result": null,
@@ -1728,6 +1684,36 @@
       "blocked_by": []
     },
     {
+      "task": "TASK-101",
+      "file": "docs/qwen-tasks/DONE/TASK-101-prepare-a-real-lead-batch.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P1",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [
+        "TASK-096"
+      ],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-115",
+      "file": "docs/qwen-tasks/DONE/TASK-115-the-check-asks-a-binary-question-about-a-five-valued-design.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P1",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
       "task": "TASK-120",
       "file": "docs/qwen-tasks/DONE/TASK-120-what-exactly-would-a-regeneration-change.md",
       "status": "DONE",
@@ -1753,6 +1739,20 @@
       "branch": null,
       "result": null,
       "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-124",
+      "file": "docs/qwen-tasks/DONE/TASK-124-the-add-leads-door-is-shut.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     }
   ]

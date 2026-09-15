@@ -165,6 +165,16 @@ class _EnsureLeadsTestBase(_NoPatchOutlivesItsTest):
         self._ks_patch = mock.patch.object(killswitch, "workspace_state",
                                            return_value=_KS_ON)
         self._ks_patch.start()
+        # Default gate-6 mock: the campaign is DRAFT, so it is proven unable
+        # to send and the gate lets the test reach whatever it is actually
+        # testing. Gate 6 (TASK-125) sits immediately before the provider
+        # write, so every test that exercises the write path now passes
+        # through it; without this they fail on an unreadable campaign status
+        # instead of on the thing they assert. A test that wants to exercise
+        # the gate itself overrides this - see test_campaign_cannot_send.
+        self._draft_patch = mock.patch.object(
+            heyreach, "campaign_cannot_send", return_value=True)
+        self._draft_patch.start()
         # THE EMAILBISON WORKSPACE, because the collision gate reads the
         # client's own EMAIL estate even for a LinkedIn campaign - the account
         # is the unit, so somebody mid-sequence by email is a reason not to
