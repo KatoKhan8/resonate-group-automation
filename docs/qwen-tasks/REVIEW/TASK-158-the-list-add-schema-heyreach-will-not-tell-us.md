@@ -91,3 +91,84 @@ The working request body with a readback proving the lead is IN the list, the
 documentation URL that establishes it, the list of shapes that silently failed
 so nobody repeats them, and - if the schema cannot be established - exactly
 what is missing and where it would come from.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 00fde19
+
+**TESTS:**
+- `tests.test_invariants` - 80 tests, all pass
+- HeyReach-specific tests - 109 tests, 1 pre-existing failure (the write
+  surface test doesn't include `/list/AddLeadsToListV2` in its expected set;
+  this was already failing before this task, from commit 1f85680)
+- No conflict markers found
+
+**FILES CHANGED:**
+- `src/providers/heyreach.py` - `add_leads_to_list` body shape: `linkedInUrl`
+  -> `profileUrl`. Docstring updated.
+- `docs/HEYREACH-LIST-SCHEMA-2026-09-15.md` - new documentation of the
+  established schema
+- `scripts/task158_*.py` - probe scripts (5 files)
+
+**THE WORKING REQUEST BODY:**
+```json
+{
+  "listId": 940797,
+  "leads": [{
+    "profileUrl": "https://www.linkedin.com/in/brookebaron",
+    "firstName": "Brooke",
+    "lastName": "Baron"
+  }]
+}
+```
+Response: `{"addedLeadsCount": 1, "updatedLeadsCount": 0, "failedLeadsCount": 0}`
+Readback: `totalCount: 1`, Brooke Baron present with correct profile_url.
+
+**DOCUMENTATION SOURCE:**
+n8n HeyReach community node source code:
+- https://github.com/bcharleson/n8n-nodes-heyreach
+  - `nodes/HeyReachApi/operations/ListOperations.ts`
+  - `nodes/HeyReachApi/parameters/ListParameters.ts`
+- HeyReach CLI: https://github.com/bcharleson/heyreach-cli
+  - `src/commands/lists/add-leads.ts`
+- Postman collection (JS-rendered, not machine-readable):
+  https://documenter.getpostman.com/view/23808049/2sA2xb5F75
+
+**SHAPES THAT SILENTLY FAILED (0/0/0):**
+All tested against list 940797 with real profiles HeyReach resolves:
+1. `{linkedInUrl, firstName, lastName, companyName, position}` - wrong field name
+2. `{profileUrl}` alone - missing required firstName/lastName
+3. `{lead: {profileUrl}}` - wrong wrapper
+4. `{linkedInAccountId, leads: [{profileUrl}]}` - campaign shape
+5. `{}` empty lead
+6. `{linkedin_id: "389277834"}` - not recognised
+7. `{linkedInUserProfileId: "389277834"}` - not recognised
+8. `{linkedinId: "389277834"}` - not recognised
+9. `{linkedInUrl: 389277834}` (integer) - wrong field, wrong type
+10. `{linkedInUserProfile: {profileUrl}}` - wrong nesting
+11. `{linkedInUserProfile: {linkedin_id}}` - wrong nesting
+12. `{linkedInAccountId, lead: {profileUrl}}` - campaign shape in list clothing
+
+**KEY FINDING:**
+The field name is `profileUrl` (same as the campaign route uses inside its
+`accountLeadPairs[].lead` wrapper). The list route takes the lead object
+directly in the `leads` array. `firstName` and `lastName` are REQUIRED -
+the provider silently drops any lead missing either, returning 0/0/0 with
+no error. The previous code used `linkedInUrl`, which does not exist on
+this route.
+
+**RISKS:**
+- The test `test_the_write_surface_is_exactly_this_and_nothing_else` has a
+  pre-existing failure (does not include `/list/AddLeadsToListV2`). This was
+  already broken before this task.
+- List 940797 now contains 1 lead (Brooke Baron) from the verification probe.
+  This list is attached to no campaign and cannot send anything.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Update `test_the_heyreach_write_contract.py` to include
+   `/list/AddLeadsToListV2` in the expected WRITE_ROUTES set.
+2. Consider whether `providerwrites` should now enable the list route for
+   staging (the schema is established and proven).
+3. Clean up list 940797 if desired (remove the probe lead).
