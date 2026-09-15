@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-15T09:56:04+00:00",
+  "generated_at": "2026-09-15T10:09:20+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
-  "master_head": "c5aac9a",
-  "origin_master_head": "c5aac9a",
+  "master_head": "4c1419e",
+  "origin_master_head": "4c1419e",
   "master_pushed": true,
   "tasks": [
     {
@@ -19,22 +19,6 @@
       "stage": "TODO",
       "last_commit": "24aa883",
       "last_commit_at": "2026-09-15T11:54:07+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-126",
-      "file": "docs/qwen-tasks/TODO/TASK-126-put-five-variants-into-a-sequence.md",
-      "stage": "TODO",
-      "last_commit": "c5aac9a",
-      "last_commit_at": "2026-09-15T11:55:23+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-127",
-      "file": "docs/qwen-tasks/TODO/TASK-127-many-senders-for-one-cohort.md",
-      "stage": "TODO",
-      "last_commit": "c5aac9a",
-      "last_commit_at": "2026-09-15T11:55:23+02:00",
       "reported": false
     },
     {
@@ -1192,16 +1176,35 @@
       "reported": true,
       "declared_status": "DONE",
       "commit_sha": "488f4e7"
+    },
+    {
+      "task": "TASK-126",
+      "file": "docs/qwen-tasks/DONE/TASK-126-put-five-variants-into-a-sequence.md",
+      "stage": "DONE",
+      "last_commit": "546ec94",
+      "last_commit_at": "2026-09-15T12:07:46+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "be361ee"
+    },
+    {
+      "task": "TASK-127",
+      "file": "docs/qwen-tasks/DONE/TASK-127-many-senders-for-one-cohort.md",
+      "stage": "DONE",
+      "last_commit": "4c1419e",
+      "last_commit_at": "2026-09-15T12:08:37+02:00",
+      "reported": true,
+      "declared_status": "DONE"
     }
   ],
   "branches": [
     {
       "branch": "master",
-      "head": "c5aac9a",
+      "head": "4c1419e",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "c5aac9a",
-      "last_commit_at": "2026-09-15T11:55:23+02:00"
+      "remote_head": "4c1419e",
+      "last_commit_at": "2026-09-15T12:08:37+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -1221,11 +1224,11 @@
     },
     {
       "branch": "qwen-worker-2-r11",
-      "head": "c5aac9a",
-      "commits_ahead_of_master": 0,
-      "pushed": false,
-      "remote_head": null,
-      "last_commit_at": "2026-09-15T11:55:23+02:00"
+      "head": "750103d",
+      "commits_ahead_of_master": 2,
+      "pushed": true,
+      "remote_head": "750103d",
+      "last_commit_at": "2026-09-15T12:00:03+02:00"
     },
     {
       "branch": "qwen-worker-2-r2",
@@ -1301,11 +1304,11 @@
     },
     {
       "branch": "qwen-worker-3-r11",
-      "head": "c5aac9a",
-      "commits_ahead_of_master": 0,
-      "pushed": false,
-      "remote_head": null,
-      "last_commit_at": "2026-09-15T11:55:23+02:00"
+      "head": "6e3592d",
+      "commits_ahead_of_master": 3,
+      "pushed": true,
+      "remote_head": "6e3592d",
+      "last_commit_at": "2026-09-15T12:03:34+02:00"
     },
     {
       "branch": "qwen-worker-3-r2",
@@ -1653,11 +1656,11 @@
     },
     {
       "branch": "qwen-worker-r11",
-      "head": "c5aac9a",
-      "commits_ahead_of_master": 0,
-      "pushed": false,
-      "remote_head": null,
-      "last_commit_at": "2026-09-15T11:55:23+02:00"
+      "head": "988e484",
+      "commits_ahead_of_master": 4,
+      "pushed": true,
+      "remote_head": "988e484",
+      "last_commit_at": "2026-09-15T12:04:24+02:00"
     },
     {
       "branch": "qwen-worker-r2",
@@ -1735,21 +1738,21 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "c5aac9a",
+      "head": "4c1419e",
       "branch": "master",
       "uncommitted_files": 1,
       "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-2",
-      "head": "c5aac9a",
+      "head": "750103d",
       "branch": "qwen-worker-2-r11",
-      "uncommitted_files": 2,
-      "clean": false
+      "uncommitted_files": 0,
+      "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-3",
-      "head": "c5aac9a",
+      "head": "6e3592d",
       "branch": "qwen-worker-3-r11",
       "uncommitted_files": 2,
       "clean": false
@@ -1791,15 +1794,15 @@
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-worker",
-      "head": "c5aac9a",
+      "head": "988e484",
       "branch": "qwen-worker-r11",
-      "uncommitted_files": 2,
-      "clean": false
+      "uncommitted_files": 0,
+      "clean": true
     }
   ],
   "stage_counts": {
-    "TODO": 4,
+    "TODO": 2,
     "REVIEW": 1,
-    "DONE": 120
+    "DONE": 122
   }
 }
