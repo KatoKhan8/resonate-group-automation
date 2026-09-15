@@ -67,3 +67,70 @@ interesting finding than either.
 - Do not report a PREDICTED result. You have model access via config/.env.
 - Separate OBSERVATIONS (with n), HYPOTHESES and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection.
+
+## RESULT BLOCK
+
+    STATUS: DONE
+    COMMIT SHA: (pending)
+    TESTS: Read-only analysis. No code changed. No tests run.
+           Measurements extracted from work/queue.snapshot.jsonl
+           (stamped 2026-09-14T21:52:15Z from master 0ac5e60).
+           Quality gate verification run through src/quality.gate
+           and src/lint.check_step (read-only, asserted on returned
+           values, not source text).
+    FILES CHANGED:
+      docs/TASK-116-I-NOTICED-ANALYSIS-2026-09-15.md (the analysis)
+    FINDINGS:
+      1. It is explanation (1): stale copy that never re-planned.
+         All 48 steps carry approval timestamps from 2026-09-13.
+         None has been re-approved. The set identity is unchanged
+         from TASK-063's count of 47 (the 48th is one contact
+         outside TASK-063's 33-contact scope).
+      2. The model does NOT produce "I noticed" any more. 108 fresh
+         draft attempts on 2026-09-14 produced zero "I noticed"
+         openers. The phrase is not being actively regenerated.
+      3. The old copy is stuck in a regeneration deadlock. The
+         planner catches the steps via quality.gate
+         (repetition_across_rungs), schedules regeneration, but new
+         drafts fail the same gate because they are compared against
+         the old "I noticed" copy they must replace. Three attempts
+         per step, all fail, old copy stays. This is the same
+         deadlock generate.py:913-937 documents for LinkedIn notes.
+      4. "I noticed" is not a bad opener in isolation. The defect is
+         monotony: 21% of all email steps open identically, and
+         within-record siblings share identical first sentences on
+         13 of 48 steps. The structural formula ([self-description]
+         -> [why writing] -> [the ask]) is the real repetition;
+         "I noticed" is its most visible symptom.
+      5. The count discrepancy: TASK-063 found 47 of 165 (reproduced
+         exactly with same methodology: 47 of 170 - one more contact
+         gained all 5 steps, but no new "I noticed"). The estate-wide
+         count is 48 of 232. TASK-098's 49 of 234 likely includes
+         one step added between the snapshot and the provider
+         readback.
+      Caller: quality.gate() and lint.check_step() are called with
+      the stored step data and their return values are asserted on.
+      No source text was searched for words.
+      The analysis document contains no record ids, contact names,
+      domains, or reply text.
+    RISKS:
+      The regeneration deadlock is structural. Until the old copy is
+      cleared (by operator decision to regenerate the estate, or by
+      a mechanism that bypasses the repetition check for the first
+      attempt), the "I noticed" steps will remain. The fix is NOT a
+      prompt change - the model already produces different openers.
+      The fix is clearing the reference copy so new drafts have
+      nothing to collide with.
+    RECOMMENDED CLAUDE ACTION:
+      1. The operator decides whether to regenerate the 48 steps.
+         This costs 48 model calls and requires 48 re-approvals.
+      2. If regeneration is chosen, the old copy must be cleared
+         BEFORE the new draft is generated, so the quality gate has
+         no reference to collide with. A clear-then-regenerate
+         transaction, not a replace-on-pass.
+      3. Consider whether regen_stale_ladder should be the default
+         rather than opt-in. The 48 steps were generated against a
+         ladder that no longer exists, and the opt-in flag was not
+         set when regeneration ran.
+      4. No lint rule banning "I noticed". The phrase is not the
+         defect; the monotony is.
