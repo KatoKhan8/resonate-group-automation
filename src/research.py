@@ -501,9 +501,18 @@ def for_prompt(rec, limit=3, chars=800):
 
     A model is given a fact and where it came from, never a page. The fence in
     src/llm.py then marks the whole thing as data rather than instruction.
+
+    TASK-146: used to return the first `limit` rows in stored order - no
+    quality filter, no ranking. After TASK-138's refresh, new rows were
+    appended AFTER stale ones, so `[:limit]` still returned the rows the
+    crawl was paid to replace. Two consumers already did this correctly
+    (`evidence.select` for the dossier, `generate.research_block` for the
+    draft prompt); this function was the third and the one that mattered
+    because it is what `context_for` calls for every step.
     """
+    chosen = ev.select(rec.get("research") or [], limit=limit)
     out = []
-    for entry in existing_evidence(rec)[:limit]:
+    for entry in chosen:
         out.append({
             "field": entry.get("field"),
             "source_url": entry.get("source_url"),
