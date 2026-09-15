@@ -1321,17 +1321,31 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
                 f"{sorted(row.get('custom_fields', {}).keys())}")
         return report
 
-    # Gate 6: the campaign must demonstrably not be sending right now.
-    # Re-read from the provider at the moment of the write, not from local
-    # state cached at planning time. A campaign can be started by a human in
-    # the vendor UI between the plan and the write, and the whole point of
-    # this gate is that the window is small and checked.
-    if not heyreach.campaign_cannot_send(provider_id):
-        raise FactoryRefused(
-            f"HeyReach campaign {provider_id} is not proven unable to send "
-            f"(only DRAFT is). Adding a lead to a campaign that can send is "
-            f"prospect-facing: the sequence acts on it immediately. "
-            f"The transport was not reached")
+    # Gate 6: the destination must admit a staged lead, right now.
+    #
+    # THE SAME PREDICATE THE DOOR USES, NOT A SECOND OPINION ABOUT IT. This
+    # asked `heyreach.campaign_cannot_send`, which is DRAFT-only - and the
+    # provider then proved DRAFT is the one state it refuses leads into, so
+    # this pre-filter refused every campaign the door would have admitted.
+    #
+    # Two checks of one question drift, and this repository has spent a day
+    # on the consequences of that. So the gate calls
+    # `providerwrites.require_conditional_permission` with the same operation
+    # and the same arguments `perform` will use: our declared staging
+    # campaign, bound to this exact provider id, PAUSED at the provider on a
+    # read taken now. It refuses by raising, and the message it raises with is
+    # the door's own.
+    #
+    # It stays a pre-filter for the reason it always was: refusing here costs
+    # one read, and refusing inside the loop costs a mint and a spent token
+    # per contact. `perform` checks again regardless - a human can press
+    # Resume in the vendor UI between this line and the write, and the gate
+    # that matters is the one closest to it.
+    try:
+        providerwrites.require_conditional_permission(
+            providerwrites.LINKEDIN_ADD_LEAD, provider_id, str(campaign_id))
+    except providerwrites.WriteRefused as e:
+        raise FactoryRefused(f"{e} (refused before any contact was minted)")
 
     # THE PROVIDER WRITE. One authorization per contact, one perform call.
     # The transport is heyreach.add_leads_to_campaign; the readback is

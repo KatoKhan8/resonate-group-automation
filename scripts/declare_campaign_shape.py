@@ -84,11 +84,26 @@ def main(argv=None):
 
     # DRAFT ONLY, and read at the moment of the write rather than trusted from
     # the row. The same predicate the add-lead gate uses.
-    if not heyreach.campaign_cannot_send(provider_id):
+    # DRAFT, OR PAUSED AND EMPTY. This asked `campaign_cannot_send`, which is
+    # DRAFT-only - correct when DRAFT was the staging state, and wrong the
+    # moment the provider proved it is not: HeyReach refuses leads into a
+    # DRAFT campaign, so a stageable campaign is necessarily one that has been
+    # started and paused.
+    #
+    # The property being protected is unchanged: a campaign whose shape this
+    # script adopts must not be one that is reaching people. A PAUSED campaign
+    # holding ZERO leads is not, and the lead count is read from the provider
+    # rather than assumed.
+    live = heyreach.campaign_read(provider_id) or {}
+    status = str(live.get("status") or "")
+    _rows, held = heyreach.campaign_leads(provider_id, offset=0)
+    empty = int(held or 0) == 0
+    if not (status == heyreach.DRAFT or (status == heyreach.PAUSED and empty)):
         raise DeclareRefused(
-            f"HeyReach campaign {provider_id} is not proven unable to send. "
-            f"The shape of a campaign that can send is a thing a person "
-            f"states deliberately, not one this script adopts")
+            f"HeyReach campaign {provider_id} is {status!r} holding {held} "
+            f"lead(s). This script adopts the shape of a DRAFT campaign, or "
+            f"of a PAUSED one that holds nobody. The shape of a campaign that "
+            f"is working a cohort is a thing a person states deliberately")
 
     provider = configdiff.provider_heyreach(str(provider_id))
     print(f"campaign        {a.campaign}  ->  HeyReach {provider_id}")

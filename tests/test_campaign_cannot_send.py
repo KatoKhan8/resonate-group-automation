@@ -112,7 +112,7 @@ class TheGateRefusesACampaignThatCanSend(unittest.TestCase):
         }
 
     @staticmethod
-    def _mock_early_gates():
+    def _mock_early_gates(declared=True):
         """Mock gates 1-5 so the test reaches gate 6.
 
         Provides one pushable contact so the function reaches the write path
@@ -132,6 +132,17 @@ class TheGateRefusesACampaignThatCanSend(unittest.TestCase):
                                   "campaign_id": "test-1",
                                   "client": "productive",
                                   "heyreach_campaign_id": 599020,
+                                  # THE STAGING DECLARATION. Gate 6 asks the
+                                  # same condition the write door asks: our
+                                  # declared campaign, PAUSED at the provider,
+                                  # read live. `declared=False` strips it, to
+                                  # make a campaign nobody declared - which is
+                                  # what the client's own 83 look like.
+                                  **({"provider_status_expected": "PAUSED",
+                                      "provider_note": "{connection_note}",
+                                      "provider_actions":
+                                          ["CHECK_IS_CONNECTION",
+                                           "MESSAGE"]} if declared else {}),
                                   "senders": {"linkedin": [
                                       {"provider_account_id": "116968"}]},
                                   "cadence": "productive_balanced_v1",
@@ -168,8 +179,11 @@ class TheGateRefusesACampaignThatCanSend(unittest.TestCase):
         from src.heyreachfactory import ensure_leads, FactoryRefused
 
         patches = self._mock_early_gates()
-        patches.append(mock.patch.object(heyreach, "campaign_cannot_send",
-                                         return_value=False))
+        patches.append(mock.patch.object(
+            heyreach, "campaign_read",
+            return_value={"id": 599020, "status": "IN_PROGRESS",
+                          "campaignAccountIds": [174892],
+                          "organizationUnitId": "174892"}))
         patches.append(mock.patch.object(eligibility, "must_not_contact",
                                          return_value=[]))
         for p in patches:
@@ -177,24 +191,34 @@ class TheGateRefusesACampaignThatCanSend(unittest.TestCase):
         try:
             with self.assertRaises(FactoryRefused) as ctx:
                 ensure_leads("test-1", recs=self._recs(), live=True)
-            self.assertIn("can send", str(ctx.exception))
+            self.assertIn("not PAUSED", str(ctx.exception))
         finally:
             for p in patches:
                 p.stop()
 
-    def test_paused_campaign_refuses_the_push(self):
-        """A PAUSED campaign can be resumed, so it refuses too.
+    def test_a_paused_campaign_nobody_declared_refuses_the_push(self):
+        """INVERTED 2026-09-15, and the inversion is the point.
 
-        This is the counterfactual: if PAUSED were treated as safe, leads
-        would sit in the queue for the resume. The predicate returns False
-        for PAUSED and the gate refuses.
+        This read "a PAUSED campaign can be resumed, so it refuses too" -
+        correct while DRAFT was the staging state, and unsatisfiable the
+        moment the provider proved otherwise: AddLeadsToCampaignV2 answers 400
+        on a DRAFT campaign, so a stageable campaign is necessarily one that
+        has been started and paused.
+
+        PAUSED is admitted now - but ONLY for a campaign this deployment
+        declared, bound to this exact provider id. The client's account holds
+        83 campaigns and paused is a common state among them; being paused is
+        not a permission. So the counterfactual moves rather than disappearing.
         """
         from src import eligibility
         from src.heyreachfactory import ensure_leads, FactoryRefused
 
-        patches = self._mock_early_gates()
-        patches.append(mock.patch.object(heyreach, "campaign_cannot_send",
-                                         return_value=False))
+        patches = self._mock_early_gates(declared=False)
+        patches.append(mock.patch.object(
+            heyreach, "campaign_read",
+            return_value={"id": 599020, "status": "PAUSED",
+                          "campaignAccountIds": [174892],
+                          "organizationUnitId": "174892"}))
         patches.append(mock.patch.object(eligibility, "must_not_contact",
                                          return_value=[]))
         for p in patches:
@@ -202,7 +226,8 @@ class TheGateRefusesACampaignThatCanSend(unittest.TestCase):
         try:
             with self.assertRaises(FactoryRefused) as ctx:
                 ensure_leads("test-1", recs=self._recs(), live=True)
-            self.assertIn("can send", str(ctx.exception))
+            self.assertIn("declares provider_status_expected",
+                          str(ctx.exception))
         finally:
             for p in patches:
                 p.stop()
@@ -212,8 +237,15 @@ class TheGateRefusesACampaignThatCanSend(unittest.TestCase):
         from src import eligibility
         from src.heyreachfactory import ensure_leads
 
+        from src.heyreachfactory import FactoryRefused
+
         patches = self._mock_early_gates()
-        patches.append(mock.patch.object(heyreach, "campaign_cannot_send",
+        # The READ is what fails now, not the predicate: gate 6 asks the write
+        # door's condition, which reads the campaign from the provider. An
+        # unreadable campaign is not a paused one, and a timeout is not a
+        # permission - so it refuses rather than propagating, and the refusal
+        # names the read.
+        patches.append(mock.patch.object(heyreach, "campaign_read",
                                          side_effect=heyreach.ProviderError(
                                              "timeout")))
         patches.append(mock.patch.object(eligibility, "must_not_contact",
@@ -221,8 +253,9 @@ class TheGateRefusesACampaignThatCanSend(unittest.TestCase):
         for p in patches:
             p.start()
         try:
-            with self.assertRaises(heyreach.ProviderError):
+            with self.assertRaises(FactoryRefused) as ctx:
                 ensure_leads("test-1", recs=self._recs(), live=True)
+            self.assertIn("could not be established", str(ctx.exception))
         finally:
             for p in patches:
                 p.stop()
@@ -262,6 +295,13 @@ class TheGateIsCheckedImmediatelyBeforeTheWrite(unittest.TestCase):
                                    "campaign_id": "test-1",
                                    "client": "productive",
                                    "heyreach_campaign_id": 599020,
+                                   # The staging declaration, which gate 6
+                                   # reads through the write door's own
+                                   # condition.
+                                   "provider_status_expected": "PAUSED",
+                                   "provider_note": "{connection_note}",
+                                   "provider_actions": [
+                                       "CHECK_IS_CONNECTION", "MESSAGE"],
                                    "senders": {"linkedin": [
                                        {"provider_account_id": "116968"}]},
                                    "cadence": "productive_balanced_v1",

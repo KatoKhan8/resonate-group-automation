@@ -989,8 +989,10 @@ class TheConditionIsTheRealPermission(QueueTest):
         self.assertIn("ARCHIVED_OR_SOMETHING_NEW", why)
 
     def test_an_absent_status_refuses(self):
+        """An absent status is not a status, and it gets its own refusal -
+        "not PAUSED" would read as though the provider had said something."""
         why = self._attempt(status="")
-        self.assertIn("UNKNOWN", why)
+        self.assertIn("returned no status field", why)
 
     def test_a_campaign_that_cannot_be_read_refuses(self):
         """A failed read is not a PAUSED. A timeout is not a permission."""

@@ -1336,12 +1336,31 @@ WRITE_ROUTES = (
     # for any campaign the provider says holds a lead, read immediately
     # before. Starting a campaign that HOLDS people is `LINKEDIN_ACTIVATE`,
     # which remains sealed, carries no condition, and is a separate decision.
+    # TWO START VERBS, AND THEY ARE NOT INTERCHANGEABLE - measured, after
+    # assuming they were:
+    #
+    #     /campaign/Resume        400  "The campaign you are trying to resume
+    #                                   is not paused, finished or failed."
+    #     /campaign/StartCampaign      the verb for a DRAFT campaign
+    #
+    # `Resume` moves a PAUSED campaign back to sending, which is activation -
+    # a campaign that is paused is one that already holds leads. It is on this
+    # list because it is the transport activation will eventually need, and
+    # `providerwrites` refuses `heyreach.activate` regardless: a route here is
+    # one this module CAN call, a route in SUPPORTED is one this build WILL.
+    #
+    # `StartCampaign` is what moves DRAFT to running, and it is the one
+    # `heyreach.start_empty_for_staging` uses - against a campaign the
+    # provider says holds ZERO leads, so it starts nothing that reaches
+    # anybody.
     "/campaign/Resume",
+    "/campaign/StartCampaign",
 )
 
 # The routes that take their argument in the query string rather than a body.
 # `_write` builds both forms and this is what tells them apart.
-WRITE_QUERY_ROUTES = ("/campaign/Pause", "/campaign/Resume")
+WRITE_QUERY_ROUTES = ("/campaign/Pause", "/campaign/Resume",
+                      "/campaign/StartCampaign")
 
 
 def _write_body(path, body):
@@ -1420,8 +1439,32 @@ def pause_campaign(campaign_id):
     return _write("/campaign/Pause", {"campaignId": int(campaign_id)})
 
 
+def start_campaign(campaign_id):
+    """Move a DRAFT campaign to running. Returns the raw provider response.
+
+    THE VERB FOR A DRAFT CAMPAIGN, and `resume_campaign` is not it: Resume
+    answers 400 "The campaign you are trying to resume is not paused,
+    finished or failed". A campaign that can be resumed is one that already
+    holds leads, which is activation; a campaign that must be started is one
+    that has never run.
+
+    THE TRANSPORT ONLY. It has no idea whether the campaign holds people, and
+    that is the whole question - so it is never called directly.
+    `providerwrites.perform` owns the reservation, the read-back and the
+    classification, and the condition on `LINKEDIN_START_EMPTY_FOR_STAGING`
+    refuses unless the provider says this campaign holds ZERO leads.
+    """
+    return _write("/campaign/StartCampaign", {"campaignId": int(campaign_id)})
+
+
 def resume_campaign(campaign_id):
-    """Start or resume a campaign. Returns the raw provider response.
+    """Resume a PAUSED campaign. Returns the raw provider response.
+
+    THIS IS ACTIVATION. A paused campaign is one that already holds leads, so
+    resuming it is the moment those people start receiving messages -
+    `providerwrites.LINKEDIN_ACTIVATE`, which is sealed, carries no condition,
+    and is a separate decision with its own evidence. The transport exists so
+    that decision has something to call when it is made.
 
     THE TRANSPORT ONLY. It has no idea whether the campaign holds people, and
     that is the whole question - so it is never called directly.

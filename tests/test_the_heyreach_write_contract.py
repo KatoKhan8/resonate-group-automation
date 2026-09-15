@@ -234,6 +234,12 @@ class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
             # that reach nobody. `heyreach.activate`, which starts a campaign
             # holding people, remains sealed.
             "/campaign/Resume",
+            # Added 2026-09-15. Resume answers 400 on a DRAFT
+            # campaign - it is the ACTIVATION verb, for a paused
+            # campaign that already holds leads. StartCampaign is
+            # what moves a never-run campaign, and it is used only
+            # against one the provider says holds zero leads.
+            "/campaign/StartCampaign",
         })
 
     def test_the_add_leads_route_is_enabled_only_against_a_draft(self):
@@ -275,8 +281,9 @@ class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
         from src import providerwrites
 
         for route in heyreach.WRITE_ROUTES:
-            self.assertNotIn("StartCampaign", route)
+            self.assertNotIn("SendMessage", route)
         self.assertIn("/campaign/Resume", heyreach.WRITE_ROUTES)
+        self.assertIn("/campaign/StartCampaign", heyreach.WRITE_ROUTES)
         self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
                          providerwrites.SUPPORTED)
         self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,

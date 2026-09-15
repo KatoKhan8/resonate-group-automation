@@ -109,6 +109,15 @@ def _make_campaign(campaign_id="test-li-campaign", client="productive",
         "name": "LinkedIn test",
         "status": "draft",
         "heyreach_campaign_id": "599020",
+        # THE STAGING DECLARATION. Gate 6 and the write door both ask
+        # `providerwrites.require_conditional_permission`, which proves this
+        # campaign is one this deployment declared as a staging campaign -
+        # provider binding, expected status PAUSED, and the shape fields a
+        # provider readback writes. A fixture without them is a campaign
+        # nobody declared, which is exactly what the condition refuses.
+        "provider_status_expected": "PAUSED",
+        "provider_note": "{connection_note}",
+        "provider_actions": ["CHECK_IS_CONNECTION", "MESSAGE"],
         "record_ids": record_ids or ["acme"],
         "cadence_version": "productive_li_heavy_v1",
     }
@@ -184,8 +193,21 @@ class _EnsureLeadsTestBase(_NoPatchOutlivesItsTest):
         # through it; without this they fail on an unreadable campaign status
         # instead of on the thing they assert. A test that wants to exercise
         # the gate itself overrides this - see test_campaign_cannot_send.
+        # Gate 6 reads the PROVIDER's status now rather than asking
+        # `campaign_cannot_send`, because DRAFT is the one state HeyReach
+        # refuses leads into. PAUSED is what a staged campaign looks like.
+        # ONE PATCH FOR ONE FUNCTION. There were two: this one for gate 6 and
+        # `_seat_patch` below for the seat lookup, both on
+        # `heyreach.campaign_read`, and the second silently won - so gate 6
+        # read a row with no `status` field and every test refused with
+        # "campaign 599020 is ''". Two mocks of one function is the same
+        # defect as two representations of one truth, and it fails the same
+        # way: quietly, in whichever order they happened to start.
         self._draft_patch = mock.patch.object(
-            heyreach, "campaign_cannot_send", return_value=True)
+            heyreach, "campaign_read",
+            return_value={"id": 599020, "status": "PAUSED", "name": "t",
+                          "campaignAccountIds": [174892],
+                          "organizationUnitId": "174892"})
         self._draft_patch.start()
         # addCleanup, for the reason this file already gives below: a patch
         # that outlives its test leaks into every test that runs after it.
@@ -210,12 +232,9 @@ class _EnsureLeadsTestBase(_NoPatchOutlivesItsTest):
         # pushed without a seat is a lead assigned to nobody - and the seat is
         # who the prospect sees the message come from. Both are reads these
         # tests have no credentials for.
-        self._seat_patch = mock.patch.object(
-            heyreach, "campaign_read",
-            return_value={"id": 599020, "campaignAccountIds": [174892],
-                          "organizationUnitId": 118832})
-        self._seat_patch.start()
-        self.addCleanup(self._seat_patch.stop)
+        # The seat lookup reads the SAME row, which `_draft_patch` above now
+        # carries in full - `campaignAccountIds` included. A second patch of
+        # the same function is what broke gate 6.
         # addCleanup, NOT tearDown. `unittest` does not call tearDown when a
         # setUp raises, and an inline `.stop()` never runs if the test fails
         # before it - either way the mock stays installed for the rest of the

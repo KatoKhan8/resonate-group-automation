@@ -521,10 +521,16 @@ def _campaign_is_a_declared_staging_campaign(provider_campaign_id,
             f"{provider_campaign_id}, or one with a different id. A missing "
             f"campaign is not an empty one. The transport was not reached")
     status = str(live.get("status") or "").strip()
+    if not status:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: HeyReach campaign {provider_campaign_id} "
+            f"returned no status field, so nothing proves it is a paused "
+            f"staging campaign. An absent status is not a status. The "
+            f"transport was not reached")
     if status != heyreach.PAUSED:
         raise WriteRefused(
             f"{LINKEDIN_ADD_LEAD}: HeyReach campaign {provider_campaign_id} "
-            f"is {status or 'UNKNOWN'!r}, not {heyreach.PAUSED}. A DRAFT "
+            f"is {status!r}, not {heyreach.PAUSED}. A DRAFT "
             f"campaign refuses leads outright; an IN_PROGRESS one sends to "
             f"them immediately; a FINISHED or unrecognised one is not proven "
             f"anything. The transport was not reached")

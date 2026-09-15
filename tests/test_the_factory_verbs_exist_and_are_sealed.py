@@ -161,12 +161,21 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
         # That is `heyreach.activate`, it is absent from SUPPORTED, it carries
         # no condition, and the two verbs share a route and are told apart by
         # a lead count the provider supplies - asserted below.
-        forbidden = ("StartCampaign", "SendMessage")
+        # `/campaign/StartCampaign` is present too, and Resume was not the
+        # verb for a DRAFT campaign after all - it answers 400 "not paused,
+        # finished or failed". Resume is ACTIVATION (a paused campaign holds
+        # leads); StartCampaign is what moves a never-run campaign, and it is
+        # used only against one the provider says holds ZERO leads.
+        #
+        # What may never be writable is a route that SENDS A MESSAGE
+        # directly, which no lead count can make harmless.
+        forbidden = ("SendMessage",)
         reaching = [r for r in heyreach.WRITE_ROUTES
                     if any(v.lower() in r.lower() for v in forbidden)]
         self.assertEqual(reaching, [],
                          f"a route that reaches a prospect is writable: {reaching}")
         self.assertIn("/campaign/Resume", heyreach.WRITE_ROUTES)
+        self.assertIn("/campaign/StartCampaign", heyreach.WRITE_ROUTES)
         self.assertNotIn("heyreach.activate", providerwrites.SUPPORTED)
         self.assertNotIn("heyreach.activate", providerwrites.CONDITIONAL)
         self.assertIn("heyreach.start_empty_for_staging",
