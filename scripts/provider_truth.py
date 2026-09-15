@@ -48,6 +48,16 @@ OUT = os.path.join(ROOT, "docs", "state", "PROVIDER-CAMPAIGNS.json")
 RESONATE_PREFIXES = ("RESONATE",)
 
 
+def short_hash(value):
+    """Stable, non-reversible. Used so a tracked file can say "the same sender
+    as last time" without carrying a real person's name."""
+    import hashlib
+    v = " ".join(str(value or "").split()).lower()
+    if not v:
+        return None
+    return hashlib.sha256(v.encode("utf-8")).hexdigest()[:12]
+
+
 def all_campaigns(base, hdr):
     out, off, total = [], 0, None
     while True:
@@ -202,10 +212,17 @@ def main():
         senders = []
         for aid in (c.get("campaignAccountIds") or []):
             a = accounts.get(aid)
+            # The sender is a REAL PERSON - a client seat holder. The id and
+            # whether it resolves and is active is everything an operator needs
+            # to rule "sender missing" in or out; the name adds nothing and is
+            # PII in a tracked file. Writing it here tripped
+            # test_no_real_person_or_client_named on the first commit of this
+            # script, which is the guard doing its job on its own author.
             senders.append({"id": aid,
-                            "name": ("%s %s" % (a.get("firstName") or "", a.get("lastName") or "")).strip() if a else None,
+                            "name_hash": short_hash("%s %s" % (a.get("firstName") or "",
+                                                               a.get("lastName") or "")) if a else None,
                             "active": a.get("isActive") if a else None,
-                            "found": bool(a)})
+                            "resolves": bool(a)})
         mapping.append({
             "internal_campaign_id": "productive-linkedin-production-v1"
                                     if c.get("id") == 599020 else None,

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-15T06:36:15+00:00",
+  "generated_at": "2026-09-15T06:43:42+00:00",
   "source": "HeyReach public API, read-only. Credential env var: HEYREACH_KEY.",
   "heyreach": {
     "campaigns_total_in_account": 83,
@@ -25,9 +25,9 @@
         "senders": [
           {
             "id": 174892,
-            "name": "Bruno Gudelj",
+            "name_hash": "d7b929fb95a5",
             "active": true,
-            "found": true
+            "resolves": true
           }
         ],
         "organization_unit_id": 118832,
@@ -68,7 +68,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-15T06:36:15+00:00"
+        "last_provider_readback": "2026-09-15T06:43:42+00:00"
       }
     ],
     "status_totals": {

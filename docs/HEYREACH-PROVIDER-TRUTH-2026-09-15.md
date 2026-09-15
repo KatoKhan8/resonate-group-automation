@@ -20,7 +20,7 @@ machine can read it without this terminal.
     startedAt              null          <- never started, not once
     lead list              933603, same name, USER_LIST
     lead count             0             <- the list is empty
-    sender                 174892, Bruno Gudelj, active
+    sender                 174892, resolves, active (name withheld: real seat holder)
     organization unit      118832
     sequence               24 nodes, readable, not truncated
     sequence_hash          32f8dde79bfa0f27
@@ -152,7 +152,7 @@ against production for no gain.
 
     1. CREATE DRAFT            DONE   599020, 2026-09-13
     2. CONFIGURE LEAD LIST     DONE   933603 attached, currently 0 leads
-    3. CONFIGURE SENDERS       DONE   174892 Bruno Gudelj, active
+    3. CONFIGURE SENDERS       DONE   174892 resolves and is active
     4. WRITE FULL SEQUENCE     DONE   24 nodes, hash 32f8dde79bfa0f27
     5. CONFIGURE SCHEDULE      NOT CONFIRMED - GetById returns no schedule
                                field; whether that means absent or merely not
