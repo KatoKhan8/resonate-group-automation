@@ -125,13 +125,40 @@ def _ids(values):
 
 # ------------------------------------------------------- APPROVED, HeyReach
 
+def _approved_for_campaign(rec, contact, config):
+    """Whether this contact has approved copy for every role the graph needs.
+
+    ASKED OF THE FACTORY THAT OWNS THE QUESTION, not answered again here.
+    `heyreachfactory.custom_fields_for` is what `_plan` uses to decide who is
+    pushable, and it reads the campaign's own `COPY_MAPPING` roles - li1 to
+    li5 - through `assemble_linkedin_copy`, which returns a role's words only
+    when that step carries an `approval`.
+
+    Keeping a second opinion about it here is how the two drift, and a drift
+    on this particular question means the diff blesses a lead set the factory
+    would refuse, or refuses one it would push. The import is local because
+    `heyreachfactory` imports this module at the top of the file.
+    """
+    from . import heyreachfactory
+
+    _fields, missing = heyreachfactory.custom_fields_for(
+        rec, contact.get("key"), config=config)
+    return not missing
+
+
 def approved_heyreach(campaign, recs=None, config=None):
     """What canonical state says this LinkedIn campaign should be.
 
     `campaign` is a canonical campaign row - the binding of a
-    provider campaign to records, senders and limits. The copy comes from the
-    per-contact cadence step, so a template change moves the approved note and
-    the diff fails until somebody re-approves, which is the point.
+    provider campaign to records, senders and limits.
+
+    TWO SHAPES OF CAMPAIGN, AND THE ROW SAYS WHICH. A campaign that declares
+    no `provider_note` is the single-step canary this function was written
+    for: its copy comes from the per-contact cadence step, so a template
+    change moves the approved note and the diff fails until somebody
+    re-approves, which is the point. A campaign that DOES declare one carries
+    merge variables at the provider and its words travel per lead - see the
+    long note below for what that gives up and what it does not.
     """
     from . import collision
     if not campaign:
@@ -146,9 +173,66 @@ def approved_heyreach(campaign, recs=None, config=None):
     wanted = set(campaign.get("record_ids") or ())
     rows = [r for r in recs if r.get("id") in wanted]
 
+    # WHICH SHAPE OF CAMPAIGN IS THIS, AND THE ROW HAS TO SAY.
+    #
+    # This function could only ever describe ONE shape: a single-step canary
+    # whose graph is CONNECTION_REQUEST then END and which carries one literal
+    # note, rendered from one contact's `day3` step. That was campaign 594061
+    # and it was right for it.
+    #
+    # Campaign 599020 is not that. Its graph has 24 nodes and six node types,
+    # and - the fact checkpoint E calls the most important one in the system -
+    # it carries MERGE VARIABLES rather than words. Read back from the
+    # provider, its connection-request payload is the literal string
+    # `{connection_note}`; each lead brings its own approved words in
+    # `customUserFields`. So every field this function derived from a rendered
+    # note described a campaign that does not exist, and the diff could not
+    # pass for a reason that had nothing to do with safety.
+    #
+    # The row declares its shape, and a row that does not is refused rather
+    # than guessed. That is the rule this module already set for itself over
+    # `provider_delays` - "a cadence day is a position in a schedule, an
+    # actionDelay is a wait after the lead enters this campaign" - and the
+    # same argument applies here with more force, because guessing the note
+    # means guessing what a real person reads.
+    #
+    # WHAT DECLARING THE NOTE DOES NOT GIVE UP. The protection being replaced
+    # was that a template edit moves the fingerprint and drops the contact out
+    # of the approved set until somebody re-approves. In a merge-variable
+    # campaign that protection does not weaken, it MOVES to where the words
+    # now are: `heyreachfactory._plan` refuses any contact without approved
+    # copy for every role the graph requires, and `providerwrites.
+    # _require_approved_words` re-checks the fingerprint at the write and then
+    # checks the approved text literally appears in the payload. The words are
+    # still fingerprint-bound. They are just no longer in the graph.
+    declared_note = campaign.get("provider_note")
+    declared_actions = campaign.get("provider_actions")
+    if declared_note is not None and not declared_actions:
+        raise DiffRefused(
+            "this campaign declares `provider_note`, so it is a "
+            "merge-variable campaign whose graph this function cannot derive "
+            "from a cadence step - and it declares no `provider_actions`. A "
+            "campaign that states what its graph SAYS must also state what "
+            "its graph DOES, or the diff checks the words and not the shape")
+
     leads, notes, actions = set(), [], []
     for rec in rows:
         for contact in rec.get("contacts") or ():
+            if declared_note is not None:
+                # The lead set is who this campaign may legitimately contain.
+                # The copy question was answered above and per-lead; what is
+                # left here is identity, and `_approved_for_campaign` asks the
+                # factory that owns the campaign's own copy roles rather than
+                # this module keeping a second opinion about them.
+                if not _approved_for_campaign(rec, contact, config):
+                    continue
+                slug = collision.profile_slug(contact.get("linkedin"))
+                if not slug:
+                    raise DiffRefused(
+                        f"{contact.get('name')!r} has no readable LinkedIn "
+                        f"profile, so the approved lead set cannot be stated")
+                leads.add(slug)
+                continue
             step = cadence.expand_step(rec, contact, LINKEDIN_STEP, config)
             if not step:
                 continue
@@ -176,11 +260,20 @@ def approved_heyreach(campaign, recs=None, config=None):
             notes.append(_norm_text(step.get("note")))
             actions.append("CONNECTION_REQUEST")
 
-    if not notes:
+    if declared_note is not None:
+        if not leads:
+            raise DiffRefused(
+                "no contact on this campaign's records has approved copy for "
+                "every role its graph requires, so the approved lead set is "
+                "empty and there is nobody this campaign may legitimately "
+                "hold. An unapproved contact is not an approved config")
+        notes = [_norm_text(declared_note)]
+        actions = list(declared_actions)
+    elif not notes:
         raise DiffRefused(
             "no APPROVED and renderable LinkedIn step on any of this "
             "campaign's records; an unapproved step is not an approved config")
-    if len(set(notes)) > 1:
+    elif len(set(notes)) > 1:
         raise DiffRefused(
             f"{len(set(notes))} different approved notes across this campaign's "
             f"records; one campaign carries one note at the provider, so the "
@@ -224,12 +317,36 @@ def approved_heyreach(campaign, recs=None, config=None):
     # could not all be recalled. When a pause is established and read back, that
     # gate lifts by itself and this bound should be raised deliberately with it -
     # not silently, and not here first.
-    if len(leads) != 1:
+    #
+    # THE CONDITION IT SET FOR ITSELF HAS BEEN MET, and this is the deliberate
+    # raise it asked for. `heyreach.pause` entered `SUPPORTED` on 2026-09-12
+    # against campaign 594061: POST /campaign/Pause returned 200, the campaign
+    # read back PAUSED, connectionsSent stayed 0, and provider, canonical
+    # state, ledger and touches reconciled four ways. A stop demonstrably
+    # exists, so a staged campaign is no longer a campaign whose leads could
+    # not be recalled.
+    #
+    # It reads the SAME PREDICATE `executionguard` reads rather than a number
+    # copied to sit beside it. A hardcoded 1 here and a lifted gate there is
+    # precisely the drift this module was written against - two representations
+    # of one truth, and nothing to keep them honest. If the pause is ever
+    # withdrawn from `SUPPORTED`, both tighten together and neither has to
+    # remember to.
+    from . import providerwrites
+
+    if not providerwrites.is_supported("heyreach.pause"):
+        if len(leads) != 1:
+            raise DiffRefused(
+                f"this campaign has {len(leads)} approved LinkedIn leads. "
+                f"While no pause route is established the stoppability "
+                f"ceiling is one contact per unstoppable channel, so a "
+                f"campaign staged beyond it holds people this system could "
+                f"not recall")
+    elif not leads:
         raise DiffRefused(
-            f"this campaign has {len(leads)} approved LinkedIn leads. While no "
-            f"pause route is established the stoppability ceiling is one "
-            f"contact per unstoppable channel, so a campaign staged beyond it "
-            f"holds people this system could not recall")
+            "this campaign has no approved LinkedIn leads, so there is "
+            "nobody it may legitimately hold and nothing to compare the "
+            "provider's lead set against")
 
     senders = _ids((campaign.get("senders") or {}).get("linkedin"))
     return {
@@ -241,7 +358,17 @@ def approved_heyreach(campaign, recs=None, config=None):
         "list_id": str(campaign.get("heyreach_list_id") or ""),
         "lead_set": frozenset(leads),
         "lead_count": len(leads),
-        "actions": ("CONNECTION_REQUEST", "END"),
+        # THE GRAPH THE ROW DECLARES, OR THE CANARY'S IF IT DECLARES NONE.
+        #
+        # This was the literal tuple `("CONNECTION_REQUEST", "END")` and the
+        # `actions` list built in the loop above was assembled and thrown
+        # away - a value computed correctly that nothing read, which is the
+        # defect this repository keeps finding. It did not matter while every
+        # campaign was that one shape. Campaign 599020 has six node types, so
+        # the hardcoded pair described a graph that does not exist and the
+        # diff would have failed on `actions` even once the note was right.
+        "actions": tuple(actions) if declared_note is not None
+        else ("CONNECTION_REQUEST", "END"),
         "note": notes[0],
         "delays": tuple(delays),
         "linkedin_only": True,
@@ -565,12 +692,51 @@ def provider_bison(campaign_id, expect_workspace=None, max_pages=200):
 
 # ---------------------------------------------------------------- the diff
 
-def diff(approved, provider, required=()):
+# Fields a STAGING comparison compares directionally rather than by equality.
+#
+# WHY EQUALITY CANNOT BE THE RULE FOR A LEAD SET THAT IS ABOUT TO CHANGE.
+#
+# `executionguard.authorize` will not mint an authorization unless this diff
+# says PASS, and `heyreachfactory.ensure_leads` asks for that authorization in
+# order to ADD A LEAD. Comparing the lead set by equality therefore demanded
+# that the provider ALREADY HOLD the people we were asking permission to put
+# there. The gate could not admit a first lead into any campaign, ever, and
+# the reason nobody had noticed is that no lead had ever been added.
+#
+# The safety property that actually matters is not "the provider holds exactly
+# who we approved". It is "the provider holds NOBODY WE DID NOT APPROVE", and
+# that one survives the write: a campaign whose leads are a subset of the
+# approved set contains no stranger, whether it is empty, half-filled or
+# complete. A lead nobody approved still fails, because it is not in the
+# approved set and containment refuses it.
+#
+# Equality stays the rule for every other field and for these two whenever the
+# caller does not ask, so this cannot loosen a comparison by accident.
+SUBSET_FIELDS = ("lead_set", "lead_count")
+
+
+def _within(want, got):
+    """`got` is contained by `want`, for the two shapes a lead set takes."""
+    if isinstance(want, (frozenset, set)) and isinstance(got, (frozenset, set)):
+        return got <= want
+    if isinstance(want, bool) or isinstance(got, bool):
+        return want == got
+    if isinstance(want, int) and isinstance(got, int):
+        return got <= want
+    return want == got
+
+
+def diff(approved, provider, required=(), subset_fields=()):
     """Per-field verdicts over the UNION of both sides' keys, and PASS/FAIL.
 
     The union rather than `approved`'s keys, because the dangerous field is the
     one nobody approved: a second sender, an extra sequence node, a lead that
     should not be there. Those are `UNEXPECTED` and they fail.
+
+    `subset_fields` are compared as containment rather than equality - read
+    `SUBSET_FIELDS` for the one operation that needs it and why equality made
+    the gate unsatisfiable for it. Nothing is compared that way unless the
+    caller names it.
 
     Keys starting `_` are context for a human reading the report - hazards,
     counters - and are never part of the verdict.
@@ -589,6 +755,8 @@ def diff(approved, provider, required=()):
         elif key not in provider:
             verdict = MISSING
         elif want == got:
+            verdict = MATCH
+        elif key in subset_fields and _within(want, got):
             verdict = MATCH
         else:
             verdict = MISMATCH
@@ -659,11 +827,19 @@ class Readback:
         return f"<Readback {self.campaign_id} {self.channel} {self.verdict}>"
 
 
-def compare_heyreach(campaign, recs=None, config=None):
-    """`(diff, approved, provider)` for one LinkedIn campaign."""
+def compare_heyreach(campaign, recs=None, config=None, staging=False):
+    """`(diff, approved, provider)` for one LinkedIn campaign.
+
+    `staging=True` says this comparison is about to authorise a write that ADDS
+    people to the campaign, so the lead set is compared as containment rather
+    than equality. `SUBSET_FIELDS` carries the reasoning; the short version is
+    that equality asked the provider to already hold the people we were asking
+    permission to add.
+    """
     approved = approved_heyreach(campaign, recs, config)
     provider = provider_heyreach(approved["campaign_id"])
-    found = diff(approved, provider, REQUIRED_HEYREACH)
+    found = diff(approved, provider, REQUIRED_HEYREACH,
+                 subset_fields=SUBSET_FIELDS if staging else ())
     # Stamped here, after the last provider read, so freshness means what it says.
     return Readback(diff=found, approved=approved, provider=provider,
                     campaign_id=campaign.get("campaign_id"), channel="linkedin",

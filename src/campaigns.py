@@ -303,6 +303,20 @@ def material(campaign, recs=None, config=None):
         "workspace": campaign.get("workspace"),
         "provider_delays": campaign.get("provider_delays"),
         "provider_status_expected": campaign.get("provider_status_expected"),
+        # DECLARED GRAPH SHAPE, and it belongs here for the reason directly
+        # above rather than a new one. `configdiff.approved_heyreach` cannot
+        # derive these from a cadence step for a merge-variable campaign - the
+        # provider holds `{connection_note}` and the words travel per lead -
+        # so the canonical row states them and the diff compares what it
+        # states against provider truth.
+        #
+        # Which means they are exactly as launch-sensitive as the list id and
+        # the org unit. Left out of the fingerprint, a campaign could be
+        # re-declared to assert its graph says something different, and carry
+        # its old approval while doing it. `provider_note` is the one string
+        # here that describes what a real person receives.
+        "provider_note": campaign.get("provider_note"),
+        "provider_actions": campaign.get("provider_actions"),
         "cadence_version": campaign.get("cadence_version"),
         "config": sending_config(config),
     }
