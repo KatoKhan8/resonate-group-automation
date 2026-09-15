@@ -70,3 +70,66 @@ the copy to make the readback pass.
 - Do not report a PREDICTED result. You have model access via config/.env.
 - Separate OBSERVATIONS (with n), HYPOTHESES and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection.
+
+## RESULT
+
+**STATUS:** DONE
+**COMMIT SHA:** (owed - pending commit)
+**TESTS:** `py -3 scripts/bison_readback.py productive-email-liheavy-v1 --expect` → exit code 1 (22 PASS, 2 FAIL)
+**FILES CHANGED:**
+- `docs/BISON-READBACK-481-2026-09-15.md` (new - deliverable)
+
+**FINDINGS:**
+
+1. **thread_reply FAIL on steps 2 and 4.** Expected (F,T,F,T,F), observed
+   (F,F,F,F,F). The ladder, factory, and readback script all compute the
+   correct pattern. The campaign was staged on 2026-09-13T20:11, before
+   TASK-081 added `thread_reply` to the sequence writer (integrated
+   2026-09-14T23:58). The provider defaulted all steps to `false`.
+
+2. **variant and variant_from_step come back.** Both fields are present in
+   the provider response (false and null respectively). The TASK-073 trimmer
+   fix is confirmed working end-to-end.
+
+3. **No broken greetings.** 0 of 115 bodies (23 leads × 5 steps) contain
+   "Hey ,", "Hi undefined,", "Hi null,", or a bare comma greeting.
+
+4. **No signatures.** 0 of 115 bodies contain a sign-off. EmailBison has no
+   sender merge variable, so the signature must be in the body text. The
+   copy was generated before the ladder instructed the generator to include
+   one.
+
+5. **No duplicate bodies.** All five body_N values are distinct for every
+   lead. 3 of 23 leads have duplicate subjects (steps 2 and 4 share a
+   subject line), but the bodies are always different.
+
+6. **Campaign state confirmed:** paused, 23 leads, 0 emails sent, 0
+   contacted.
+
+**OBSERVATIONS:**
+- (n=115) Zero bodies start with a greeting. The generated copy begins
+  directly with the message content. This is a property of the generated
+  copy, not a provider or trimmer defect.
+- (n=3 of 23) Subject line duplication across steps. The generator produced
+  the same subject for different steps on 3 leads. Bodies remain distinct.
+
+**HYPOTHESES:**
+- Re-staging campaign 481's sequence would fix the thread_reply defect,
+  since the current code writes the field correctly. The campaign would need
+  to be rebuilt (sequence route appends, no replace).
+
+**PROVEN LEARNINGS:**
+- The bison_readback script catches the exact defect it was built to catch:
+  a step meant as a follow-up that landed as a new thread. The readback is
+  now proven against a live campaign for the first time.
+
+**RISKS:**
+- Campaign 481 cannot be fixed in place. The sequence route appends and has
+  no replace or delete. Fixing thread_reply requires rebuilding the campaign
+  (new provider id, re-attach leads).
+
+**RECOMMENDED CLAUDE ACTION:**
+- Review the deliverable at `docs/BISON-READBACK-481-2026-09-15.md`.
+- Decide whether to re-stage campaign 481 (requires a new provider campaign
+  since the sequence route appends) or leave it as-is for the experiment.
+- TASK-091 is in REVIEW with the same finding; consolidate or close.
