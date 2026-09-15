@@ -88,3 +88,64 @@ The stage-by-stage table, the ranked BLOCKING / FRICTION / COSMETIC list with
 file and function on every code row, the tenancy-assumption findings, and a
 one-line verdict on the portability question that a reader can check against
 the rows above it.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** (pending)
+
+**TESTS:** Read-only audit. No code changed. No tests run. The deliverable is
+a document, not a code change.
+
+**FILES CHANGED:**
+- `docs/CLIENT-TWO-PORTABILITY-2026-09-15.md` (new) — the full audit
+- `docs/qwen-tasks/RUNNING/TASK-142-can-client-two-be-onboarded-without-rewriting-the-core.md` (this file)
+
+**FINDINGS:**
+
+**One-line verdict:** Configuration and data carry almost everything; zero
+blocking code changes in the engine; 14 friction points in operator scripts
+and 3 in CLI entry points hardcode "productive" as a default.
+
+**The engine is multi-tenant ready.** The production pipeline
+(`ingest → enrich → qualify → personas → generate → render → push`) is fully
+client-parameterised. Every module reads the client config and scopes by the
+`client` field on each record. Provider bindings are per-client via
+`clients.provider_workspace()`. The killswitch, notifications, dedup and
+collision detection are all workspace-scoped.
+
+**The scripts are not.** 14 scripts in `scripts/` hardcode `clients.load("productive")`
+or `--client productive` defaults. 3 CLI entry points in `src/` do the same
+(`icpstructural.py:558`, `senderinventory.py:411`, and the demo modules).
+None are in the production path — `src/run.py` requires `--client` explicitly.
+
+**Tenancy boundary findings:**
+1. Shared queue file (`work/queue.jsonl`) — managed by `client` field filter,
+   not partitioned. `Repo` enforces scoping at construction.
+2. Provider credentials are process-global but bindings are per-client — correct.
+3. `replywatch.expected_workspace` reads process-global `BISON_WORKSPACE_ID` —
+   friction if both clients use EmailBison.
+4. Cross-client dedup exists and is off by default — correct.
+5. Killswitch defaults to NOT sending for new workspaces — safe.
+6. Notification routing has no cross-workspace fallback — correct.
+
+**Three already-known entries confirmed:**
+1. Fallback copy inline in client YAML — confirmed, `linkedin_sequence.fallbacks`.
+2. `build_intake_batch.py` hardcodes source CSV — confirmed, line 38.
+3. Scripts default to `--client productive` — confirmed, 22 hits in scripts/.
+
+**Zero BLOCKING code changes.** The production path works for client two today
+with only a YAML config file and provider workspace provisioning.
+
+**RISKS:**
+- If client two shares EmailBison, the reply poller needs to watch two
+  workspaces. Not blocking if different provider.
+- The shared queue file works today but becomes a scale decision at some point.
+  Not urgent.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Review `docs/CLIENT-TWO-PORTABILITY-2026-09-15.md` for accuracy.
+2. When ready to onboard client two: fix the 14 script friction points (one
+   afternoon), provision provider workspaces, create the YAML config.
+3. The engine needs nothing.
