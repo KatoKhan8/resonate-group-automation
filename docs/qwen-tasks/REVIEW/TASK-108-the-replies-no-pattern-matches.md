@@ -87,7 +87,7 @@ manners trap. Do not reduce unknown by guessing.
 ## RESULT BLOCK
 
     STATUS: REVIEW
-    COMMIT SHA: (pending)
+    COMMIT SHA: 19d7c0b
     TESTS: 76/76 pass in tests.test_replies. No code changes to src/.
     FILES CHANGED:
       scripts/task108_hand_labels.py          - 200 hand-labelled replies (new)
