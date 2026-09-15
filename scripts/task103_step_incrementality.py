@@ -36,7 +36,7 @@ sys.path.insert(0, ROOT)
 
 from src.providers import load_env, key as get_key, request as api_request, query
 
-CACHE_DIR = os.path.join(ROOT, ".qwen", "tmp", "task103")
+CACHE_DIR = os.path.join(ROOT, ".qwen", "tmp", "task103c")
 DB_PATH = os.path.join(CACHE_DIR, "incrementality.db")
 REPORT_PATH = os.path.join(ROOT, "docs", "STEP-INCREMENTALITY-2026-09-15.md")
 
@@ -70,7 +70,8 @@ def get(path, params=None):
 
 def init_db():
     os.makedirs(CACHE_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=60)
+    conn.execute("PRAGMA journal_mode=WAL")
     c = conn.cursor()
     c.execute("DROP TABLE IF EXISTS campaigns")
     c.execute("DROP TABLE IF EXISTS sequence_steps")
@@ -267,7 +268,7 @@ def collect_scheduled_emails_exhaustive(conn, campaign_id, order_map):
             continue
         step_id = se.get("sequence_step_id")
         conn.execute(
-            "INSERT INTO scheduled_emails VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT OR IGNORE INTO scheduled_emails VALUES (?,?,?,?,?,?,?,?)",
             (se.get("id"), campaign_id, step_id,
              order_map.get(step_id),
              str(sent_at), str(se.get("status", "")),
@@ -296,7 +297,7 @@ def collect_scheduled_emails_exhaustive(conn, campaign_id, order_map):
                 continue
             step_id = se.get("sequence_step_id")
             conn.execute(
-                "INSERT INTO scheduled_emails VALUES (?,?,?,?,?,?,?,?,?)",
+                "INSERT OR IGNORE INTO scheduled_emails VALUES (?,?,?,?,?,?,?,?)",
                 (se.get("id"), campaign_id, step_id,
                  order_map.get(step_id),
                  str(sent_at), str(se.get("status", "")),
@@ -319,18 +320,21 @@ def collect_scheduled_emails_exhaustive(conn, campaign_id, order_map):
     return total_inserted, pages_fetched, last_page, stopped_early
 
 
-def collect_replies(conn, campaign_id=None):
-    """Collect ALL replies cursor-paginated.
+def collect_replies_global(conn, campaign_id=None):
+    """Collect replies from the global cursor-paginated feed.
 
-    If campaign_id is given, still collect the full feed (cursor pagination
-    has no campaign filter) but report the count for the target campaign.
+    The /replies endpoint is cursor-paginated at 100 rows/page.
+    We walk the full feed and filter by campaign_id if given.
+    Commits are batched every 50 pages to avoid locking.
+
+    Returns (total_inserted, camp_inserted).
     """
     print("Collecting replies (cursor-paginated, full feed)...")
     sys.stdout.flush()
-    page = 1
-    cursor = None
     total_inserted = 0
     camp_inserted = 0
+    page = 1
+    cursor = None
     while True:
         params = {"pagination_type": "cursor", "per_page": 100}
         if cursor:
@@ -341,7 +345,7 @@ def collect_replies(conn, campaign_id=None):
             break
         for r in chunk:
             conn.execute(
-                "INSERT INTO replies VALUES (?,?,?,?,?,?,?,?,?)",
+                "INSERT OR IGNORE INTO replies VALUES (?,?,?,?,?,?,?,?,?)",
                 (r.get("id"), r.get("campaign_id"), r.get("lead_id"),
                  r.get("scheduled_email_id"), str(r.get("type", "")),
                  str(r.get("folder", "")),
@@ -351,11 +355,11 @@ def collect_replies(conn, campaign_id=None):
             total_inserted += 1
             if campaign_id and r.get("campaign_id") == campaign_id:
                 camp_inserted += 1
-        conn.commit()
         if page % 50 == 0:
+            conn.commit()
             meta_total = (data.get("meta") or {}).get("total", "?")
             print(f"  page {page}: {total_inserted} reply rows "
-                  f"({meta_total} total in feed), "
+                  f"({meta_total} total), "
                   f"{camp_inserted} for campaign {campaign_id}")
             sys.stdout.flush()
         meta = data.get("meta") or {}
@@ -364,7 +368,8 @@ def collect_replies(conn, campaign_id=None):
             break
         page += 1
         time.sleep(0.05)
-    print(f"  Total: {total_inserted} reply rows stored, "
+    conn.commit()
+    print(f"  Done: {total_inserted} reply rows, "
           f"{camp_inserted} for campaign {campaign_id}")
     sys.stdout.flush()
     return total_inserted, camp_inserted
@@ -1035,6 +1040,7 @@ def main():
 
     if args.collect or args.both:
         conn = init_db()
+        conn.row_factory = sqlite3.Row
         campaigns = collect_campaigns(conn)
         collect_steps(conn, campaigns)
 
@@ -1054,7 +1060,8 @@ def main():
         order_map = _build_step_info_map(conn)
         inserted, pages, total_pages, stopped = \
             collect_scheduled_emails_exhaustive(conn, target_id, order_map)
-        total_replies, camp_replies = collect_replies(conn, target_id)
+        total_replies, camp_replies = \
+            collect_replies_global(conn, target_id)
         conn.close()
     else:
         # Just analyze existing data
@@ -1067,11 +1074,6 @@ def main():
                 print("ERROR: No campaign found. Run --collect first.")
                 sys.exit(1)
             target_id = result["id"]
-
-        # Recover page budget from the data
-        pages = conn.execute(
-            "SELECT MAX(page_number) FROM scheduled_emails "
-            "WHERE campaign_id = ?", (target_id,)).fetchone()[0] or 0
 
     if args.analyze or args.both:
         # Recover page budget info
