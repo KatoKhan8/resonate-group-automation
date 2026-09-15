@@ -811,7 +811,7 @@ def _bind(campaign, provider_id, why):
     with campaigns.transaction() as rows:
         row = campaigns.get(str(campaign.get("campaign_id")), rows)
         if row is not None:
-            row["bison_campaign_id"] = provider_id
+            row["bison_campaign_id"] = str(provider_id)
             campaigns.log(row, "provider",
                           f"EmailBison campaign {provider_id} {why}")
     return provider_id
@@ -1018,7 +1018,7 @@ def _remember_lead(lead, lead_id):
                 continue
             for contact in rec.get("contacts") or []:
                 if contact.get("key") == lead["contact_key"]:
-                    contact["bison_lead_id"] = lead_id
+                    contact["bison_lead_id"] = str(lead_id)
 
 
 def _remember_leads(pairs):
@@ -1039,7 +1039,7 @@ def _remember_leads(pairs):
                 continue
             for contact in rec.get("contacts") or []:
                 if contact.get("key") == lead["contact_key"]:
-                    contact["bison_lead_id"] = lead_id
+                    contact["bison_lead_id"] = str(lead_id)
 
 
 def _variables_for(lead, campaign):
