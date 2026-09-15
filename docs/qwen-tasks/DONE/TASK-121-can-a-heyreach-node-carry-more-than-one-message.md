@@ -36,7 +36,7 @@ who were not us.** Walk them and answer:
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (pending - will be filled after commit)
+**COMMIT SHA:** 04613e6
 
 **TESTS:** Reads-only survey. No code changes to test. Scripts at
 `scripts/task121_multi_message_nodes.py` and `scripts/task121_deep_analysis.py`.
