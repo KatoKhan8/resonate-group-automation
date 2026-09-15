@@ -64,6 +64,7 @@ import json
 
 from . import (account, cadenceexposure, campaigns, events, leadobserve,
                store, touch, variants)
+from .redact import redact
 
 # ------------------------------------------------------------- provenance
 #
@@ -1052,7 +1053,7 @@ def _safety(recs, campaign_rows):
 
 # ------------------------------------------------------------- rendering
 
-def render(report):
+def render(report, record_ids=()):
     lines = [f"PRODUCTION RUN  client={report.get('client') or 'all'}  "
              f"at={report['at']}", ""]
     for row in report["stages"]:
@@ -1096,7 +1097,7 @@ def render(report):
     lines += ["",
               f"BUGS     not observable: {report['bugs']['why']}",
               f"REPLAYS  not observable: {report['replays']['why']}"]
-    return "\n".join(lines)
+    return redact("\n".join(lines), record_ids)
 
 
 def main(argv=None):
@@ -1113,10 +1114,12 @@ def main(argv=None):
     if a.client:
         recs = [r for r in recs if r.get("client") == a.client]
 
+    all_ids = [r["id"] for r in recs if r.get("id")]
+
     if a.observations:
         rows = observations(recs)
         print(json.dumps(rows, indent=1, default=str) if a.json
-              else _render_observations(rows))
+              else _render_observations(rows, all_ids))
         return 0
 
     if a.questions:
@@ -1134,11 +1137,11 @@ def main(argv=None):
 
     report = run_report(a.client, recs)
     print(json.dumps(report, indent=1, default=str) if a.json
-          else render(report))
+          else render(report, all_ids))
     return 0
 
 
-def _render_observations(rows):
+def _render_observations(rows, record_ids=()):
     if not rows:
         return ("no confirmed provider-backed action exists yet. That is a "
                 "result, not an empty screen")
@@ -1151,7 +1154,7 @@ def _render_observations(rows):
                    f"angle={row['person']['angle']}  "
                    f"delivery={row['delivery']}  "
                    f"confidence={row['confidence']}")
-    return "\n".join(out)
+    return redact("\n".join(out), record_ids)
 
 
 if __name__ == "__main__":
