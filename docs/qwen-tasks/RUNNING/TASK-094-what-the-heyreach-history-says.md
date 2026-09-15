@@ -59,3 +59,20 @@ listing what could NOT be measured and what it would cost. Separate
 OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS - and leave PROVEN
 LEARNINGS empty if nothing survives a sample-size objection. TASK-059 left it
 empty and was right to.
+
+---
+
+## RESULT BLOCK
+
+STATUS: PARTIAL - A/B/C/D table delivered, funnel numbers delivered, classifier re-measurement blocked
+COMMIT SHA: pending
+TESTS: N/A (read-only analysis, no code changes)
+FILES CHANGED: docs/HEYREACH-LEARNING-2026-09-15.md (new)
+FINDINGS:
+  - HeyReach attribution is ABSENT for step id and variant id (no equivalent to EmailBison's scheduled_email_id)
+  - Position is RECONSTRUCTABLE from thread order, but branch attribution is absent
+  - Funnel: reply rate stable at 6.5-7.6% for positions 1-6, drops to 3.68% at position 7 (n=1,821)
+  - 92% of accepted connections did not reply (acceptance-to-reply rate 8.00%)
+  - Classifier re-measurement BLOCKED: dataset missing, provider access required to re-derive
+RISKS: All attribution is inferential, not provider-certified. Variant-level A/B testing is not possible from provider data.
+RECOMMENDED CLAUDE ACTION: Review the A/B/C/D table and funnel numbers. Classifier re-measurement requires a session with provider access.
