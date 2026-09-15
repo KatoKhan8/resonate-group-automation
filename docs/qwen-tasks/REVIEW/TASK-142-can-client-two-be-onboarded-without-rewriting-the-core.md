@@ -88,3 +88,26 @@ The stage-by-stage table, the ranked BLOCKING / FRICTION / COSMETIC list with
 file and function on every code row, the tenancy-assumption findings, and a
 one-line verdict on the portability question that a reader can check against
 the rows above it.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** c8cf008
+- **TESTS:** No tests required — this is a read-only analysis task. FILES FORBIDDEN prevented any code changes.
+- **FILES CHANGED:**
+  - `docs/CLIENT-TWO-PORTABILITY-2026-09-15.md` (new — the deliverable)
+  - `docs/qwen-tasks/RUNNING/TASK-142-can-client-two-be-onboarded-without-rewriting-the-core.md` (this file — result block)
+- **FINDINGS:**
+  - **Verdict:** Client #2 can be onboarded through CONFIGURATION and DATA alone. Zero BLOCKING items in `src/`. The production loop is client-parameterised end to end.
+  - **6 FRICTION items** (all CLI defaults, none on the production execution path):
+    1. `scripts/build_intake_batch.py:19` — hardcoded Productive source CSV path
+    2. `src/icpstructural.py:558` — `--client default="productive"`
+    3. `src/senderinventory.py:411` — `--workspace default="productive"`
+    4. `scripts/build_control_cohort.py:198` — `--client default="productive"`
+    5. `scripts/campaign_ready_funnel.py:504` — `--client default="productive"`
+    6. `src/replywatch.py:97-125` — process-global `BISON_WORKSPACE_ID` pin
+  - **7 COSMETIC items** — all in `src/web/demo*.py` (test fixtures) and `src/companies.py` (benchmark tool)
+  - **5 tenancy-boundary findings** — provider credentials are process-global (T1), `bison.bound_workspace()` returns one workspace per credential (T2), reply poller pins to one workspace (T3), cross-client dedup is off by default (T4), state keys are workspace-scoped not client-scoped (T5)
+  - **Already-known items confirmed:** fallback copy inline in productive.yaml ✓, build_intake_batch.py hardcoded path ✓, scripts default to --client productive ✓
+- **RISKS:** The six FRICTION defaults should be fixed before the first operator runs a command for Client #2, because a forgotten `--client` flag will silently operate on Productive's records. The reply poller (F6/T3) is the only item that affects production rather than operator scripts — it cannot serve two clients simultaneously without a second process or credential-per-client indirection.
+- **RECOMMENDED CLAUDE ACTION:** Review the portability assessment. The six FRICTION items are safe, small fixes (remove CLI defaults, add `--source` argument) that can be batched into one task. The tenancy findings (T1-T3) are architecture decisions that should be deliberate rather than accidental.
