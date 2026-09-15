@@ -197,8 +197,19 @@ next task. Do not wait for Claude.
 
 ## How to work a task
 
-1. Take the task Claude named, or the highest-priority file in
-   `docs/qwen-tasks/TODO/`. Move it to `RUNNING/` and commit that move.
+1. **If Claude named a task, that task is the ONLY one you may touch.**
+   Move it to `RUNNING/` and commit that move as your first action, so your
+   claim is visible to the other seven workers. Do not read, open, move or
+   work on any other file in `TODO/` - every one of them is being run by
+   somebody else right now. If the file Claude named is already gone from
+   `TODO/`, STOP and report that; another worker has it.
+
+   Only when Claude named NO task may you take the highest-priority file in
+   `docs/qwen-tasks/TODO/`.
+
+   This rule exists because on 2026-09-15 six of eight workers independently
+   picked the same task off TODO and four produced the same result. Six
+   workers, one answer, five wasted.
 2. Do the work. Stay inside FILES ALLOWED.
 3. Run the tests the task asks for. Never pipe a test run into a filter and
    read the filter's exit code - that mistake is recorded in the handoff as
@@ -213,7 +224,9 @@ next task. Do not wait for Claude.
    honest "this did not finish" is worth more than a confident summary of a
    run nobody watched.
 6. Move the file to `DONE/`, commit, push `qwen-worker`.
-7. Take the next task.
+7. **STOP.** Do not take another task. Claude dispatches one task per
+   worker and will dispatch again. A worker that helps itself to the next
+   file in `TODO/` collides with the worker that was given it.
 
 ## Machine limits
 
