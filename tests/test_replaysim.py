@@ -69,7 +69,10 @@ class TestThePositiveChain(ReplayTest):
     def test_the_company_is_paused_afterwards(self):
         result, rec, *_ = self.run_one()
         self.assertTrue(rec.get("paused"))
-        self.assertEqual(result["pause_reason"], "reply_received")
+        # TASK-030: the pause records the classification as the reason,
+        # not the event type.  The positive_email scenario classifies as
+        # POSITIVE, so the reason is "positive".
+        self.assertEqual(result["pause_reason"], "positive")
 
     def test_suppression_is_observed_rather_than_assumed(self):
         """A step that could have gone out before cannot go out now."""
