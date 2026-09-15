@@ -77,7 +77,7 @@ the copy to make the readback pass.
 
 **STATUS: FAIL**
 
-**COMMIT SHA:** (pending)
+**COMMIT SHA:** fb47811
 
 **TESTS:** `py -3 scripts/bison_readback.py productive-email-liheavy-v1 --expect`
 exit code 1 (read off the process). 22 passed, 2 failed.
