@@ -85,3 +85,64 @@ The predicate, its tests, the narrowed seals with counterfactual evidence for
 each, and a written argument on PAUSED. End with exactly what Claude has to
 review in order to enable the route - a short list, because a long one means
 the design is not finished.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 488f4e7
+
+**TESTS:** 20 new tests in `tests/test_campaign_cannot_send.py`, all green.
+101 related tests across 5 modules pass (including all existing seal tests).
+
+**FILES CHANGED:**
+- `src/providers/heyreach.py` - added `campaign_cannot_send` predicate, status
+  constants (`IN_PROGRESS`, `PAUSED`, `FINISHED`), and `_STATUSES_THAT_CANNOT_SEND`
+- `src/heyreachfactory.py` - added gate 6 in `ensure_leads`, immediately before
+  the provider write
+- `tests/test_campaign_cannot_send.py` - new test file
+
+**THE PAUSED ARGUMENT:**
+
+PAUSED counts as "can send" and adding leads to a paused campaign is refused.
+A paused campaign can be resumed at any moment by a human pressing a button in
+the vendor UI. Leads added to it sit in the queue waiting for that resume. The
+window between adding and resuming is unpredictable, and the leads will be
+acted on immediately when it happens. That is prospect-facing risk - the same
+class as IN_PROGRESS.
+
+The predicate returns False for PAUSED. The gate refuses. If PAUSED were in
+`_STATUSES_THAT_CANNOT_SEND`, the test `test_removing_the_paused_check_would_allow_paused_campaigns`
+would fail - proving the guard is connected to the outcome.
+
+**WHAT FAILS CLOSED:**
+- Campaign cannot be read from provider -> ProviderError
+- Status field is empty or None -> ProviderError
+- Status is not in the known set (DRAFT, IN_PROGRESS, PAUSED, FINISHED) -> ProviderError
+- A ProviderError from the read propagates (not caught and defaulted to safe)
+
+**THE NARROWED SEALS:**
+
+The existing seals in `TheSealStillHolds` and `TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate`
+are UNCHANGED. `LINKEDIN_ADD_LEAD` is still NOT in `SUPPORTED`. The new tests
+assert the conditional permission: add_lead is refused for IN_PROGRESS and
+PAUSED, permitted only for DRAFT and FINISHED, and the refusal fires when the
+status read fails.
+
+**COUNTERFACTUAL EVIDENCE:**
+- `test_removing_the_paused_check_would_allow_paused_campaigns` - asserts PAUSED
+  is NOT in `_STATUSES_THAT_CANNOT_SEND`
+- `test_the_known_statuses_are_exhaustive` - asserts the known set is exactly
+  {DRAFT, IN_PROGRESS, PAUSED, FINISHED} and the cannot-send set is exactly
+  {DRAFT, FINISHED}
+
+**WHAT CLAUDE HAS TO REVIEW TO ENABLE THE ROUTE:**
+
+1. The predicate: `src/providers/heyreach.py:campaign_cannot_send` - reads from
+   provider, fails closed, returns True only for DRAFT and FINISHED
+2. The gate: `src/heyreachfactory.py:ensure_leads` gate 6 - calls the predicate
+   immediately before the write, refuses if campaign can send
+3. The tests: `tests/test_campaign_cannot_send.py` - 20 tests covering the
+   predicate, the gate, fail-closed, counterfactual evidence
+4. Add `LINKEDIN_ADD_LEAD` to `providerwrites.SUPPORTED` - the task explicitly
+   does NOT do this; Claude enables it after review
