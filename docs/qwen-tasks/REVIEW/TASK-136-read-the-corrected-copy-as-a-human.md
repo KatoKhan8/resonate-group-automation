@@ -76,7 +76,7 @@ cohort, and nothing else is waiting on it.
 ## RESULT BLOCK
 
 STATUS: DONE
-COMMIT: (pending)
+COMMIT: 58c27f1
 TESTS: No code changes. Read-only generation against corrected brief.
        Generation script: `scripts/task136_read_copy.py` (does not write to queue).
        Hygiene: all identifiers hashed in report.
