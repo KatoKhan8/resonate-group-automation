@@ -5,8 +5,8 @@ Two entry points, one contract:
 
     redact(text)  returns text with every forbidden token replaced by a
                   stable pseudonym.  Two mentions of the same token get the
-                  same pseudonym, so a report saying "client-a3f2b1 overlaps
-                  with client-a3f2b1" stays linkable without naming anybody.
+                  same pseudonym, so a report saying "<client-a3f2b1> overlaps
+                  with <client-a3f2b1>" stays linkable without naming anybody.
 
     scan(text)    returns a list of (token, category, position) tuples for
                   everything that *would* be redacted.  The pre-commit check
@@ -18,11 +18,10 @@ lists the guard asserts against.  A token the guard would flag, this module
 replaces.  A token the guard does not flag, this module does not touch.  The
 two stay in lockstep because they read from one source.
 
-Record IDs are domain-derived slugs: "arbona-hr", "nineyards-ie".  Every
+Record IDs are domain slugs: dots become hyphens, lowered.  Every
 forbidden domain produces a corresponding slug, and that slug is redacted
-alongside the domain itself.  A report that says "record arbona-hr had 3
-replies" becomes "record <record-7c3e2a> had 3 replies" - the count survives,
-the identifier does not.
+alongside the domain itself.  A report that names a record becomes a report
+with a pseudonym tag - the count survives, the identifier does not.
 """
 import hashlib
 import re
@@ -46,10 +45,11 @@ def _pseudonym(prefix, token):
 
 
 def _domain_slug(domain):
-    """The record-id form of a domain: dots become hyphens, lowered.
+    """The record id form of a domain: dots become hyphens, lowered.
 
-    'Arbona.hr' -> 'arbona-hr'.  This is how store.new_record keys its rows,
-    so every forbidden domain has exactly one slug that identifies it.
+    'Examplecorp.Com' becomes 'examplecorp com' with the dot replaced.  This
+    is how store.new_record keys its rows, so every forbidden domain has
+    exactly one slug that identifies it.
     """
     return domain.lower().replace(".", "-")
 
@@ -57,8 +57,8 @@ def _domain_slug(domain):
 def _build_token_map():
     """One pass: every forbidden token mapped to its replacement.
 
-    Order matters for scan/replace: longer tokens first, so "goproductive.online"
-    is caught before "goproductive" would match a substring of it.  Within the
+    Order matters for scan/replace: longer tokens first, so a full domain is
+    caught before a bare name token would match a substring of it.  Within the
     same length the order is arbitrary.
     """
     mapping = {}
@@ -143,14 +143,13 @@ def scan(text):
 def redact(text):
     """Return text with every forbidden token replaced by a stable pseudonym.
 
-    The replacement is case-insensitive for names and domains: "Nineyards" and
-    "nineyards" both become the same <client-XXXX>.  Figures are matched
-    literally, because "189,683" is a specific string, not a word.
+    The replacement is case insensitive for names and domains: both casing
+    variants become the same <client-XXXX>.  Figures are matched literally,
+    because a comma separated number is a specific string, not a word.
 
-    A record-id-shaped slug that is not in the forbidden set but matches the
-    structural pattern (lowercase-alphanumeric-hyphen, ending in a 2+ letter
-    TLD-like suffix) is also replaced, so a record id that was not anticipated
-    by the forbidden list is still caught.
+    A slug that is not in the forbidden set but matches the structural pattern
+    (alphanumeric hyphen, ending in a 2+ letter suffix) is also replaced, so
+    a record id that was not anticipated by the forbidden list is still caught.
     """
     result = text
     low = result.lower()
