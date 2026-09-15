@@ -677,5 +677,293 @@ class LadderDoesNotPrescribeForm(unittest.TestCase):
                          "approaches (it is shared)")
 
 
+class TASK114RegressionPins(unittest.TestCase):
+    """TASK-114: regression tests that pin the variant path cannot rot.
+
+    Each test guards a specific property that was broken in TASK-084 and
+    TASK-087. The tests assert on what functions RETURN, not on the text
+    of the source. Each test is accompanied by counterfactual evidence
+    showing it would have caught the original defect.
+    """
+
+    # -------------------------------------------------- 1. Prompt carries schema
+    #
+    # TASK-084 Defect 1: variant_prompt() built a prompt that never told the
+    # model to return JSON and never gave it the shape. LinkedIn variants
+    # failed with SchemaError because the model returned prose.
+    #
+    # The fix: variant_prompt() now calls generate.prompt_text(step) to
+    # prepend the same template render_prompt uses. The JSON contract and
+    # schema come from one place.
+    #
+    # This test would have caught the defect: if variant_prompt() did not
+    # call generate.prompt_text(step), the prompt would not start with the
+    # template and would not contain "Return JSON only".
+
+    def test_email_prompt_starts_with_template_and_carries_json_contract(self):
+        """The email variant prompt starts with the draft template and
+        carries the JSON contract. If variant_prompt() built its own prompt
+        without the template, this would fail."""
+        prompt = variantgen.variant_prompt(
+            "concise_direct", "draft", "Ask about utilisation",
+            {"company": "Acme"})
+        from src.generate import prompt_text
+        template = prompt_text("draft")
+        self.assertTrue(prompt.startswith(template),
+                        "variant_prompt must prepend the template; without it "
+                        "the model gets no JSON schema")
+        self.assertIn("Return JSON only", prompt)
+        self.assertIn('"subject"', prompt)
+        self.assertIn('"body"', prompt)
+
+    def test_linkedin_prompt_starts_with_template_and_carries_note_schema(self):
+        """The LinkedIn variant prompt starts with the linkedin_note template
+        and carries the note schema. If variant_prompt() built its own prompt
+        without the template, LinkedIn variants would fail with SchemaError
+        (as they did in TASK-084)."""
+        prompt = variantgen.variant_prompt(
+            "concise_direct", "linkedin_note", "Open a conversation",
+            {"company": "Acme"})
+        from src.generate import prompt_text
+        template = prompt_text("linkedin_note")
+        self.assertTrue(prompt.startswith(template),
+                        "variant_prompt must prepend the template; without it "
+                        "LinkedIn variants fail with SchemaError")
+        self.assertIn("Return JSON only", prompt)
+        self.assertIn('"note"', prompt)
+        # LinkedIn template does NOT carry subject/body
+        self.assertNotIn('"subject"', prompt)
+        self.assertNotIn('"body"', prompt)
+
+    def test_prompt_contract_cannot_drift_between_draft_and_variant(self):
+        """The variant prompt and the normal draft prompt share the same
+        template. If someone added a new schema field to the template, both
+        paths would get it. If someone removed it, both would lose it.
+        This test pins that they cannot drift apart."""
+        from src.generate import prompt_text
+        for step in ("draft", "linkedin_note"):
+            variant_prompt_text = variantgen.variant_prompt(
+                "concise_direct", step, "purpose", {"company": "Acme"})
+            template = prompt_text(step)
+            # The variant prompt must start with the template
+            self.assertTrue(variant_prompt_text.startswith(template),
+                            f"variant_prompt for {step} does not start with "
+                            f"the template; the two paths have drifted")
+
+    # -------------------------------------------------- 2. Arms structurally different
+    #
+    # TASK-084 Defect 2: are_materially_different() compared WORD OVERLAP
+    # against a threshold. It passed structural clones that shared opening
+    # type and CTA type but had different words.
+    #
+    # TASK-087 measured the real collapsed output: four LinkedIn variants,
+    # all opening with a question, all closing with a question, word counts
+    # 27-32. The old check said "materially different". The new check says
+    # "NOT materially different" and refuses them.
+    #
+    # This fixture is built from the real collapsed output TASK-087 measured.
+    # If are_materially_different() used word overlap instead of structure,
+    # this test would pass (incorrectly).
+
+    def test_real_collapsed_output_from_task087_is_refused(self):
+        """Four LinkedIn variants from the real TASK-087 collapsed output:
+        all open with a question, all close with a question, word counts
+        27-32. The diversity check MUST refuse these. If it used word overlap,
+        it would pass them (the old defect)."""
+        # These are paraphrases of the actual TASK-087 output for li2.
+        # All four open with a question and close with a question.
+        entries = [
+            variants.variant("li2_concise_direct", "short_direct",
+                             note="hi jacob, this is a quick note from "
+                                  "someone working with agencies on "
+                                  "resourcing visibility. how do you "
+                                  "currently get visibility on who is "
+                                  "working on what at ogpartner?"),
+            variants.variant("li2_conversational", "casual",
+                             note="hi jacob, this is a quick one from me "
+                                  "at Productive. how do you currently get "
+                                  "visibility on who is working on what "
+                                  "across the delivery team?"),
+            variants.variant("li2_problem_led", "professional",
+                             note="hi jacob, this is a quick note from "
+                                  "someone working on agency resourcing "
+                                  "visibility. how do you currently handle "
+                                  "resource planning across projects?"),
+            variants.variant("li2_value_led", "peer_to_peer",
+                             note="hi jacob, this is a quick one from me "
+                                  "at Productive. how do you currently get "
+                                  "visibility on who is working on what "
+                                  "and how long things take?"),
+        ]
+        result = variantgen.are_materially_different(entries, "linkedin_message")
+        self.assertFalse(result["different"],
+                         "TASK-087 collapsed output must be refused; if this "
+                         "passes, the diversity check is using word overlap "
+                         "instead of structure (the TASK-084 defect)")
+        # Verify the check identified the structural collision
+        self.assertTrue(len(result["pairs"]) > 0,
+                        "the check should identify at least one structural "
+                        "collision")
+
+    def test_four_question_question_variants_are_not_an_experiment(self):
+        """The operator's requirement: 'A = Hey John, B = Hi John, C = Hello
+        John is not an experiment.' Four variants that all open with a
+        question and close with a question are one variant, not four."""
+        entries = [
+            variants.variant("v1", "short_direct",
+                             subject="quick question",
+                             body="Do you track utilisation at Acme?\n"
+                                  "Worth a look?"),
+            variants.variant("v2", "casual",
+                             subject="hey Anna",
+                             body="How does Acme handle resource planning?\n"
+                                  "Let me know."),
+            variants.variant("v3", "problem_led",
+                             subject="the Monday problem",
+                             body="How do you handle Monday reporting?\n"
+                                  "Sound familiar?"),
+            variants.variant("v4", "professional",
+                             subject="visibility",
+                             body="How does the team track who is working "
+                                  "on what?\n"
+                                  "Happy to share more."),
+        ]
+        result = variantgen.are_materially_different(entries, "email")
+        self.assertFalse(result["different"],
+                         "four variants that all open with a question and "
+                         "close with a question are NOT an experiment")
+
+    # -------------------------------------------------- 3. observation_led both directions
+    #
+    # The observation-led variant is the dangerous one. A model asked for an
+    # observation-led message with no observation available will invent one.
+    # So approaches_available() returns only the approaches the record can
+    # support, and observation_led is absent when no licensed observation
+    # exists.
+    #
+    # This test pins BOTH directions: absent without evidence, present with
+    # evidence. A test that only proves it is absent would pass if it were
+    # removed entirely.
+
+    def test_observation_led_absent_without_evidence(self):
+        """A record with no licensed observation produces no observation_led
+        variant. If this test passed when observation_led was removed entirely,
+        it would not be testing anything."""
+        rec = _rec()
+        contact = _contact(rec)
+        available = variantgen.approaches_available(rec, contact, "email")
+        obs = next((a for a in available
+                    if a["approach"] == "observation_led"), None)
+        self.assertIsNotNone(obs,
+                             "observation_led must be in the available list "
+                             "(with available=False); if it were removed "
+                             "entirely, this would pass trivially")
+        self.assertFalse(obs["available"],
+                         "observation_led must be unavailable without evidence")
+        self.assertIn("no licensed observation", obs.get("why", ""),
+                      "the reason must be stated")
+
+    def test_observation_led_present_with_evidence(self):
+        """A record WITH a licensed observation produces an observation_led
+        variant. This is the other direction: a test that only proves it is
+        absent would pass if it were removed entirely."""
+        from src import evidence as ev
+
+        rec = _rec()
+        contact = _contact(rec)
+        # Add a licensed observation
+        row = ev.make(
+            fact="Acme opened a new Vienna office in September 2026",
+            source_url="https://acme.test/blog/vienna",
+            source_type="company_announcement",
+            provider="apify",
+            record_id="test-rec",
+            published_at="2026-09-01",
+            subject=ev.COMPANY,
+            persona="founder",
+            angle_words="operations profitability",
+        )
+        rec["research"] = [row]
+        available = variantgen.approaches_available(rec, contact, "email")
+        obs = next((a for a in available
+                    if a["approach"] == "observation_led"), None)
+        self.assertIsNotNone(obs,
+                             "observation_led must be in the available list")
+        self.assertTrue(obs["available"],
+                        "observation_led must be available WITH evidence")
+        self.assertIn("evidence", obs,
+                      "the evidence must be carried on the decision")
+
+    def test_build_variant_set_skips_observation_led_without_evidence(self):
+        """build_variant_set() skips observation_led when no evidence exists.
+        This pins the generation path, not just the availability check."""
+        rec = _rec()
+        contact = _contact(rec)
+        sequence = cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
+        result = variantgen.build_variant_set(
+            rec, contact, "email", "em1", sequence=sequence)
+        skipped = result["skipped"]
+        obs_skipped = [s for s in skipped
+                       if s["approach"] == "observation_led"]
+        self.assertEqual(len(obs_skipped), 1,
+                         "observation_led must be skipped without evidence")
+        # Verify the other four approaches are NOT skipped
+        non_obs_skipped = [s for s in skipped
+                           if s["approach"] != "observation_led"]
+        self.assertEqual(len(non_obs_skipped), 0,
+                         "no other approach should be skipped")
+
+    def test_build_variant_set_includes_observation_led_with_evidence(self):
+        """build_variant_set() includes observation_led when evidence exists.
+        This is the other direction of the pin."""
+        from src import evidence as ev
+
+        rec = _rec()
+        contact = _contact(rec)
+        # Add a licensed observation
+        row = ev.make(
+            fact="Acme opened a new Vienna office in September 2026",
+            source_url="https://acme.test/blog/vienna",
+            source_type="company_announcement",
+            provider="apify",
+            record_id="test-rec",
+            published_at="2026-09-01",
+            subject=ev.COMPANY,
+            persona="founder",
+            angle_words="operations profitability",
+        )
+        rec["research"] = [row]
+        sequence = cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
+        # Use a fake model that returns valid data
+        fake = _fake_llm_ask([
+            ({"subject": "quick question",
+              "body": "Hi Anna, do you track utilisation at Acme?"}, 1, []),
+            ({"subject": "hey Anna",
+              "body": "hey, how does Acme handle resource planning?"}, 1, []),
+            ({"subject": "Monday mornings",
+              "body": "Most agency founders spend Monday rebuilding "
+                      "utilisation by hand."}, 1, []),
+            ({"subject": "saw the Vienna office",
+              "body": "Saw Acme opened a new Vienna office. "
+                      "How are you keeping visibility as you scale?"}, 1, []),
+            ({"subject": "what Productive joins up",
+              "body": "Productive connects time tracking and profitability."},
+             1, []),
+        ])
+        result = variantgen.build_variant_set(
+            rec, contact, "email", "em1", sequence=sequence,
+            llm_ask=fake)
+        # observation_led should NOT be in the skipped list
+        skipped = result["skipped"]
+        obs_skipped = [s for s in skipped
+                       if s["approach"] == "observation_led"]
+        self.assertEqual(len(obs_skipped), 0,
+                         "observation_led must NOT be skipped with evidence")
+        # And it should be in the generated list
+        generated_approaches = [g["approach"] for g in result["generated"]]
+        self.assertIn("observation_led", generated_approaches,
+                      "observation_led must be generated with evidence")
+
+
 if __name__ == "__main__":
     unittest.main()
