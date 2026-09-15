@@ -194,6 +194,12 @@ their site says, not what our scraper stored.
 cookie notices and menu items. Those are not facts about the company. Take
 what the company says about its own work and ignore the furniture.
 
+`research` is present when sourced facts have been extracted from crawled
+pages. Each entry carries a `fact`, a `source_url`, and a `retrieved_at`
+timestamp. When `research` is present, prefer it over `public_evidence`: its
+entries are already trimmed to what the company says about its own work, and
+the `source_url` is what you may attribute a quote to.
+
 Do not recite their own firmographics back to them. They know how many people
 work there, what their revenue is, what year they were founded and which city
 the office is in. A sentence whose content is their own headcount is a

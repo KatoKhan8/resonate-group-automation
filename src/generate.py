@@ -142,6 +142,42 @@ def contact_block(contact):
             if contact.get(k)}
 
 
+def research_block(rec, contact=None, limit=5, chars=400):
+    """Sourced facts from crawled pages, filtered for usability.
+
+    TASK-135: 695 research rows sit on 203 records, but `for_prompt` returns
+    the first three regardless of quality - and 236 of 695 are "unusable"
+    (raw navigation text). The model received the furniture, not the facts,
+    and wrote filler that the claims gate correctly refused.
+
+    This function is contact-aware: entries with a matching `contact_key`
+    come first, then company-level entries fill the remainder. When no entry
+    has a `contact_key` (the current state of all 695 rows), all are
+    company-level and the contact match is a no-op.
+
+    Only entries whose quality is "medium" or "strong" are returned. The
+    claims gate reads `rec["research"]` directly and is not affected by this
+    filter - it sees everything, including the unusable rows.
+    """
+    entries = rec.get("research") or []
+    if not entries:
+        return []
+    usable = [e for e in entries
+              if e.get("quality") in ("medium", "strong")]
+    key = lint.contact_key(contact or {})
+    contact_specific = [e for e in usable if e.get("contact_key") == key]
+    company_level = [e for e in usable if not e.get("contact_key")]
+    ordered = contact_specific + company_level
+    out = []
+    for entry in ordered[:limit]:
+        out.append({
+            "fact": (entry.get("fact") or "")[:chars],
+            "source_url": entry.get("source_url"),
+            "retrieved_at": entry.get("retrieved_at"),
+        })
+    return out
+
+
 # ------------------------------------------------- which step is this, and
 #                                                    what has already gone out
 
@@ -523,6 +559,10 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
         # when it is empty the prompt must degrade safely and say what the
         # sender does (from the product block) rather than invent a name.
         block["sender_identity"] = clients.sender_identity(client or {})
+        # TASK-135: sourced facts for the LinkedIn note, same as draft.
+        rb = research_block(rec, contact)
+        if rb:
+            block["research"] = rb
         block["tone"] = ((client or {}).get("tone") or {}).get("linkedin")
         block["prior_contact"] = bool(claims.prior_contact(rec, contact))
         if step_key:
@@ -574,6 +614,13 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
         block["sender_identity"] = clients.sender_identity(client or {})
         block["evidence"] = (rec.get("evidence") or {}).get(
             lint.contact_key(contact or {}), [])
+        # TASK-135: sourced facts from crawled pages, separate from
+        # `evidence` (the model's own prior sentences) and from
+        # `public_evidence` (unfiltered raw page text). Quality-filtered
+        # to medium+strong so the model receives facts, not navigation.
+        rb = research_block(rec, contact)
+        if rb:
+            block["research"] = rb
         block["tone"] = (client or {}).get("tone")
         # WHICH MESSAGE OF THE SEQUENCE THIS IS, AND WHAT THE ONES BEFORE IT
         # SAID. Without both the model has no way to make email four differ

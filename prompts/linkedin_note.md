@@ -71,6 +71,15 @@ this prompt can produce, because nothing downstream can catch it: `lint` and
 `claims` check assertions about the RECORD, and a false statement about our
 own software is grounded in nothing they read.
 
+## `research` is what their own site says, when it is available
+
+When `research` is present, each entry carries a `fact` and a `source_url`.
+These are sourced facts about the company, trimmed from crawled pages. Use
+them for the one specific thing about their company. When `research` is
+absent, fall back to `facts` (structured firmographics) but do not recite
+them - pick what a person at the company would recognise as true about their
+own business.
+
 ## `already_sent` is what this person has actually received
 
 Every entry was confirmed sent: its channel, its day, the job that step had,
