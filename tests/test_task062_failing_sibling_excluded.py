@@ -86,7 +86,7 @@ class TestFailingSiblingExcludedFromQualityOf(unittest.TestCase):
             "id": "test-rec",
             "company": "Acme Corp",
             "contacts": [{"key": "jane-doe", "name": "Jane Doe",
-                          "email": "jane@acme.com"}],
+                          "email": "jane@acme.test"}],
             "cadence": {"jane-doe": cadence},
         }
 
