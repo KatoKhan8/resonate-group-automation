@@ -1259,6 +1259,18 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
                 f"{sorted(row.get('custom_fields', {}).keys())}")
         return report
 
+    # Gate 6: the campaign must demonstrably not be sending right now.
+    # Re-read from the provider at the moment of the write, not from local
+    # state cached at planning time. A campaign can be started by a human in
+    # the vendor UI between the plan and the write, and the whole point of
+    # this gate is that the window is small and checked.
+    if not heyreach.campaign_cannot_send(provider_id):
+        raise FactoryRefused(
+            f"HeyReach campaign {provider_id} can send (status is not DRAFT "
+            f"or FINISHED). Adding a lead to a campaign that can send is "
+            f"prospect-facing: the sequence acts on it immediately. "
+            f"The transport was not reached")
+
     # THE PROVIDER WRITE. One authorization per contact, one perform call.
     # The transport is heyreach.add_leads_to_campaign; the readback is
     # heyreach.readback_membership. THE READBACK DECIDES.

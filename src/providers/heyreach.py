@@ -1422,6 +1422,52 @@ LIST_FIELDS = ("id", "name", "listType", "totalItemsCount", "campaignIds",
 MUTABLE_STATUSES = ("DRAFT", "SCHEDULED", "PAUSED")
 
 DRAFT = "DRAFT"
+IN_PROGRESS = "IN_PROGRESS"
+PAUSED = "PAUSED"
+FINISHED = "FINISHED"
+
+# Statuses in which a campaign demonstrably cannot send right now.
+# DRAFT has never started. FINISHED has already completed.
+# PAUSED is deliberately NOT here: a paused campaign can be resumed at any
+# moment by a human pressing a button, and leads added to it sit waiting for
+# that resume. See `campaign_cannot_send` for the full argument.
+_STATUSES_THAT_CANNOT_SEND = (DRAFT, FINISHED)
+
+
+def campaign_cannot_send(campaign_id):
+    """Whether this campaign demonstrably cannot send right now.
+
+    Read from the PROVIDER, not from local state. A campaign that reports
+    DRAFT or FINISHED cannot send. A campaign that reports IN_PROGRESS or
+    PAUSED can - PAUSED because it can be resumed at any moment, and leads
+    added to it sit waiting for the resume button.
+
+    Fails closed: if the status cannot be read, the answer is REFUSE, not
+    proceed. A timeout is not a DRAFT.
+
+    Returns True if the campaign cannot send, False if it can.
+    Raises ProviderError if the campaign cannot be read at all.
+    """
+    row = campaign_read(campaign_id)
+    if not row:
+        raise ProviderError(
+            f"heyreach campaign_cannot_send: campaign {campaign_id} could "
+            f"not be read from the provider. A campaign whose status is "
+            f"unknown is not proven safe to write to. Refusing")
+    status = str(row.get("status") or "").strip()
+    if not status:
+        raise ProviderError(
+            f"heyreach campaign_cannot_send: campaign {campaign_id} returned "
+            f"no status field. Cannot prove it is safe to write to. Refusing")
+    if status in _STATUSES_THAT_CANNOT_SEND:
+        return True
+    if status in (IN_PROGRESS, PAUSED):
+        return False
+    raise ProviderError(
+        f"heyreach campaign_cannot_send: campaign {campaign_id} has status "
+        f"{status!r}, which is not in the known set "
+        f"({DRAFT}, {IN_PROGRESS}, {PAUSED}, {FINISHED}). An unrecognised "
+        f"status is not proven safe. Refusing")
 
 
 def lists(offset=0, limit=MAX_PAGE, keyword=None, list_type=None):
