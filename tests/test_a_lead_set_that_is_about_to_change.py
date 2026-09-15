@@ -293,6 +293,44 @@ def _campaign_with(leads):
     return campaign, recs, {}
 
 
+class TheApprovedSenderSetWasAlwaysEmpty(unittest.TestCase):
+    """`_ids` read `id` off a sender row that stores `provider_account_id`.
+
+    Found on the first real staging diff: campaign 599020 failed on
+    `sender_ids` alone, approved `frozenset()` against provider `{'174892'}`,
+    on a campaign whose seat was correct and had been for days.
+
+    The mismatch is the lucky case. Against a provider reporting NO seats,
+    empty would have matched empty and the field would have PASSED while
+    asserting nothing at all - a campaign with no sender assigned reading as a
+    campaign whose senders are exactly as approved. That is the direction
+    these tests are really about.
+    """
+
+    def test_a_canonical_sender_row_is_read(self):
+        self.assertEqual(
+            configdiff._ids([{"provider_account_id": 174892}]),
+            frozenset({"174892"}))
+
+    def test_a_provider_row_using_id_still_works(self):
+        """`approved_bison` passes rows the provider returns, which use `id`."""
+        self.assertEqual(configdiff._ids([{"id": 42}]), frozenset({"42"}))
+
+    def test_a_bare_value_still_works(self):
+        self.assertEqual(configdiff._ids([174892, "9"]),
+                         frozenset({"174892", "9"}))
+
+    def test_an_unassigned_campaign_does_not_read_as_approved(self):
+        """The silent direction. Two empty sets compare equal, so the bug
+        could only ever be caught where the provider HAD a seat."""
+        approved = configdiff._ids([{"provider_account_id": 174892}])
+        self.assertNotEqual(approved, configdiff._ids([]))
+
+    def test_a_row_carrying_neither_key_is_skipped(self):
+        self.assertEqual(configdiff._ids([{"name": "no id here"}]),
+                         frozenset())
+
+
 class TheDeclaredShapeIsRequiredTogether(QueueTest):
     """A row that says what its graph SAYS must say what its graph DOES."""
 

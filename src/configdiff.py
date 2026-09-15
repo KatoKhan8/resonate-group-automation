@@ -112,11 +112,35 @@ def _norm_text(value):
 
 
 def _ids(values):
-    """A comparable set of provider ids, as strings."""
+    """A comparable set of provider ids, as strings.
+
+    IT READ THE WRONG KEY OFF A SENDER ROW, and the failure was silent in the
+    direction that matters. A canonical campaign stores its senders as
+    `{"provider_account_id": 174892}` - `senderidentity` writes that key for
+    both providers and `heyreachfactory._seat_for` reads it - and this asked
+    for `id`, got None, and skipped the entry. So the APPROVED sender set of
+    every HeyReach and EmailBison campaign was the empty set.
+
+    Against a provider that reports a seat that is MISMATCH, which is how it
+    was found: campaign 599020's diff failed on `sender_ids` alone, approved
+    `frozenset()` against provider `{'174892'}`, on a campaign whose seat was
+    correct and had been correct for days.
+
+    Against a provider reporting NO seats it is worse and would not have been
+    found: empty would have matched empty and the field would have passed
+    while asserting nothing. A campaign with no sender assigned would have
+    read as a campaign whose senders were exactly as approved.
+
+    `id` is kept because `approved_bison` passes rows the provider returns,
+    which do use it. A row carrying neither key is still skipped - but it is
+    now much harder for a whole side to be empty by accident.
+    """
     out = set()
     for value in values or ():
         if isinstance(value, dict):
-            value = value.get("id")
+            value = (value.get("provider_account_id")
+                     if value.get("provider_account_id") not in (None, "")
+                     else value.get("id"))
         if value in (None, ""):
             continue
         out.add(str(value).strip())
