@@ -90,3 +90,45 @@ and if it is really two then five arms is a claim this system cannot yet make.
 - Do not assert on the text of the source; assert on returned values.
 - A zero and a wrong lookup are indistinguishable from outside. This task
   exists because a measurement was reading the wrong thing for weeks.
+
+---
+
+## RESULT
+
+**STATUS**: DONE
+
+**COMMIT SHA**: pending
+
+**TESTS**: No new tests. This was an investigation task, not a code change task.
+
+**FILES CHANGED**:
+- docs/qwen-tasks/RUNNING/TASK-115-FINDINGS.md (new) - detailed hand-judged evidence
+
+**FINDINGS**:
+
+The declared opening is **NOT consistently honored** in the generated copy. This is a generation defect, not a measurement defect.
+
+Hand-judged evidence across li2, li3, li4 (15 variants total):
+- concise_direct (statement): honored 3/3 times (100%)
+- conversational (question): honored 2/3 times (67%)
+- problem_led (pain): honored 1/3 times (33%)
+- observation_led (evidence): honored 1/3 times (33%)
+- value_led (outcome): honored 0/3 times (0%)
+
+Overall: 7/15 openings honored (47%). The most common failure mode is opening with "hi [name], i'm [name] from [company]" - an introduction - instead of the declared opening type.
+
+**The honest count of materially different LinkedIn arms per step is two, not five.**
+
+**VERDICT**: Do NOT widen the check to compare declared semantic openings. A check that reads the approach's own label proves only that five arms were tagged differently. The check must be derivable from the TEXT, and today the text does not match the label reliably enough to trust the label.
+
+The diversity check correctly refuses every LinkedIn set, and that is the property worth protecting. The defect is upstream in generation, not in measurement.
+
+**RISKS**:
+- The generation defect may be prompt-related (approach descriptions not strong enough) or a model prior (LinkedIn messages default to introductions)
+- Fixing this requires prompt engineering or generation changes, not measurement changes
+
+**RECOMMENDED CLAUDE ACTION**:
+1. Do not weaken or widen the diversity check based on this finding
+2. The generation must be fixed so declared openings are honored consistently (90%+)
+3. Only after the generation is fixed should the check be reconsidered
+4. The honest count of materially different LinkedIn arms is two, and five arms is a claim the system cannot yet make
