@@ -64,16 +64,10 @@ def heyreach_headers():
 HEYREACH_BASE = "https://api.heyreach.io/api/public"
 
 
-def heyreach_get(path, params=None):
-    url = f"{HEYREACH_BASE}{path}"
-    if params:
-        url = query(url, params)
-    status, data = api_request("GET", url, heyreach_headers())
-    if status is None or status < 200 or status >= 300:
-        raise RuntimeError(
-            f"HeyReach GET {path} -> {status}: "
-            f"{json.dumps(data)[:200] if data else 'no body'}")
-    return data if isinstance(data, dict) else {}
+def heyreach_post(path, body=None):
+    """HeyReach reads are POST-based. Use the provider module's allowlist."""
+    from src.providers.heyreach import _read
+    return _read(path, body or {})
 
 
 # ------------------------------------------------------------------ schema
@@ -351,19 +345,19 @@ def collect_heyreach_delays(conn):
     print("Collecting HeyReach campaign delays...")
     sys.stdout.flush()
 
+    from src.providers.heyreach import campaigns as hr_campaigns_fn
+    from src.providers.heyreach import campaign_sequence
+
     offset = 0
     all_campaigns = []
     while True:
-        data = heyreach_get("/campaign/List", {
-            "offset": offset, "limit": 50})
-        items = data.get("items") or []
+        items, total = hr_campaigns_fn(offset=offset, limit=50)
         if not items:
             break
         all_campaigns.extend(items)
-        total = data.get("totalCount") or data.get("total") or 0
-        offset += len(items)
-        if offset >= total:
+        if total is not None and offset + len(items) >= int(total):
             break
+        offset += len(items)
         time.sleep(0.1)
 
     print(f"  {len(all_campaigns)} HeyReach campaigns found")
@@ -375,14 +369,10 @@ def collect_heyreach_delays(conn):
         conn.execute("INSERT INTO heyreach_campaigns VALUES (?,?,?)",
                      (cid, name, status))
 
-        seq_data = camp.get("sequence") or {}
-        if not seq_data:
-            try:
-                seq_resp = heyreach_get(
-                    "/campaign/GetById", {"campaignId": int(cid)})
-                seq_data = seq_resp.get("sequence") or {}
-            except RuntimeError:
-                pass
+        try:
+            seq_data = campaign_sequence(int(cid))
+        except Exception:
+            seq_data = {}
 
         if seq_data:
             _extract_delays(conn, cid, seq_data)
@@ -441,9 +431,10 @@ def _parse_dt(s):
     if not s or s in ("None", "", "null"):
         return None
     s = str(s).strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S",
-                "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S.%f",
-                "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%S.%f",
+                "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d"):
         try:
             return datetime.strptime(s, fmt)
         except ValueError:
