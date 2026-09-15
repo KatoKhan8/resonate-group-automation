@@ -1,32 +1,18 @@
 {
-  "generated_at": "2026-09-15T07:32:38+00:00",
+  "generated_at": "2026-09-15T07:34:08+00:00",
   "generated_from": "docs/qwen-tasks/**, git, and work/claims/. Derived, never hand-edited.",
-  "master_head": "ca0a9ac",
+  "master_head": "e6cdfde",
   "counts": {
-    "QUEUED": 9,
     "CLAIMED": 8,
+    "QUEUED": 8,
     "BLOCKED": 1,
     "AWAITING_REVIEW": 8,
-    "DONE": 87
+    "DONE": 88
   },
-  "ready_count": 9,
+  "ready_count": 8,
   "workers": 8,
   "backlog_healthy": false,
   "tasks": [
-    {
-      "task": "TASK-098",
-      "file": "docs/qwen-tasks/TODO/TASK-098-does-the-current-sequence-beat-the-fallbacks.md",
-      "status": "QUEUED",
-      "stage_dir": "TODO",
-      "priority": "P0",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
     {
       "task": "TASK-099",
       "file": "docs/qwen-tasks/TODO/TASK-099-the-live-campaign-has-no-variants.md",
@@ -1595,6 +1581,20 @@
       "status": "DONE",
       "stage_dir": "DONE",
       "priority": "P4",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-098",
+      "file": "docs/qwen-tasks/DONE/TASK-098-does-the-current-sequence-beat-the-fallbacks.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
       "worker": null,
       "claimed_at": null,
       "dependencies": [],
