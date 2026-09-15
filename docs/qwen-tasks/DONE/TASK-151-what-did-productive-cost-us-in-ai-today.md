@@ -108,7 +108,7 @@ obviously correct.
 
 **STATUS:** DONE
 
-**COMMIT:** (pending)
+**COMMIT:** 73cf3e8
 
 **TESTS:** 35 tests in `tests/test_ai_spend_ledger.py`, all passing.
 No model calls. Pure writer verification with temp directories.
