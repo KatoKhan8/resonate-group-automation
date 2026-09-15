@@ -319,7 +319,13 @@ NOT_RELEVANT_PATTERNS = (
 )
 POSITIVE_PATTERNS = (
     r"\binterested\b", r"\bsounds (?:good|interesting|great)\b",
-    r"\bhappy to (?:chat|talk|speak|meet|connect)\b",
+    # "connect" is deliberately absent: on LinkedIn "happy to connect" is
+    # a connection acceptance, not interest in what we sell.  Classifying
+    # it as positive would pause the company on every accepted request,
+    # and the follow-up ("what do you do exactly?") is curiosity, not a
+    # buying signal.  A warmer reply ("happy to chat", "happy to talk")
+    # still matches through the other alternatives.
+    r"\bhappy to (?:chat|talk|speak|meet)\b",
     r"\blet'?s (?:chat|talk|speak)\b",
     r"\bbook (?:a|some) time\b", r"\bset up a (?:call|meeting)\b",
     r"\bkeen to\b", r"\bwould like to (?:know|hear) more\b",
@@ -379,6 +385,17 @@ POSITIVE_PATTERNS = (
     # a conversation; this is about the content. 3+ replies.
     r"\bhappy to (?:learn|hear|know) more\b",
 )
+# NEUTRAL: polite acknowledgments that are not buying signals.
+#
+# "Happy to connect" on LinkedIn is a connection acceptance, not interest.
+# "What do you do?" is a question about the company, not a request for
+# proof or a meeting.  These replies are genuinely lukewarm: a human
+# should read them, but they are not positive, not negative, and not
+# unclassifiable - we understood them perfectly, and the answer is "maybe".
+# NEUTRAL is the measurement; UNKNOWN is the gap.
+NEUTRAL_PATTERNS = (
+    r"\bhappy to connect\b",
+)
 RULES = (
     (ACCOUNT_DNC, ACCOUNT_DNC_PATTERNS, 0.95),
     (UNSUBSCRIBE, UNSUBSCRIBE_PATTERNS, 0.95),
@@ -393,6 +410,11 @@ RULES = (
     # both rather than two decisions that could drift apart.
     (NOT_NOW, NOT_NOW_PATTERNS, 0.8),
     (POSITIVE, POSITIVE_PATTERNS, 0.75),
+    # NEUTRAL sits between POSITIVE and REFERRAL: a polite acknowledgment
+    # that is not a buying signal.  Ranking it below POSITIVE means a reply
+    # that is genuinely warm still wins; ranking it above REFERRAL means a
+    # connection acceptance is not confused with a hand-off.
+    (NEUTRAL, NEUTRAL_PATTERNS, 0.65),
     # Last, and that is the whole design of it. `reply.on_referral` holds
     # the replier where `on_negative` and `on_wrong_person` stop them, so a
     # referral winning over either of those would leave somebody who

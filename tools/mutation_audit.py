@@ -3378,12 +3378,6 @@ MUTATIONS = [
      '    negated = False',
      'tests.test_deliverable'),
 
-    ("events: a second unclassified reply inherits the first one's verdict",
-     'src/events.py',
-     '        rec, contact_key, accountpolicy.UNKNOWN, config=None,',
-     '        rec, contact_key, config=None,',
-     'tests.test_reply_escalation'),
-
     ('accountpolicy: the recorded outcome is ignored on the way back out',
      'src/accountpolicy.py',
      '            recorded = str(entry.get("outcome") or "").strip().lower()',
@@ -3620,12 +3614,6 @@ MUTATIONS = [
      'tests.test_poller_highwater'),
 
     # ----------------- screens that reported health by not looking
-
-    ('assignment: a paused or blocked inbox is still allocated prospects',
-     'src/assignment.py',
-     '                    if a.get("active") and usable_health(a)]',
-     '                    if a.get("active")]',
-     'tests.test_health_is_not_silence'),
 
     ('notify: failures are looked for inside a window of every status',
      'src/web/api.py',

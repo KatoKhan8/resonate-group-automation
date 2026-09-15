@@ -281,7 +281,7 @@ class TheAccountIsAskedToo(GuardTest):
         auth = self.asked(self.account(
             verdict=collision.TOUCHED, emails_sent_total=9,
             people=[{"replies": 0,
-                     "campaigns": [{"status": "stopped"},
+                     "campaigns": [{"status": "sequence_finished"},
                                    {"status": "sequence_finished"}]}]))
         self.assertIn("account_collision", auth.gates)
 

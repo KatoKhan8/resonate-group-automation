@@ -111,16 +111,18 @@ class TheSENDPathReadsIt(unittest.TestCase):
 
     def test_decide_blocks_a_bounced_address(self):
         rec = self._rec(bounce("ck-1"))
+        step = {"channel": "email", "subject": "s", "body": "b" * 200}
         verdict = eligibility.decide(rec, rec["contacts"][0], "day1",
-                                     channel="email")
+                                     channel="email", step=step)
         self.assertEqual(verdict.get("verdict"), "blocked")
         self.assertEqual(verdict.get("reason"), eligibility.BLOCKED_BOUNCED)
 
     def test_without_a_bounce_it_fails_for_a_different_reason(self):
         """Guard the guard: the check must not be refusing everything."""
         rec = self._rec()
+        step = {"channel": "email", "subject": "s", "body": "b" * 200}
         verdict = eligibility.decide(rec, rec["contacts"][0], "day1",
-                                     channel="email")
+                                     channel="email", step=step)
         self.assertNotEqual(verdict.get("reason"), eligibility.BLOCKED_BOUNCED)
 
     def test_the_reason_has_a_sentence(self):

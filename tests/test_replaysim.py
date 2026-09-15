@@ -69,7 +69,10 @@ class TestThePositiveChain(ReplayTest):
     def test_the_company_is_paused_afterwards(self):
         result, rec, *_ = self.run_one()
         self.assertTrue(rec.get("paused"))
-        self.assertEqual(result["pause_reason"], "reply_received")
+        # The pause reason is the outcome (positive, neutral, unsubscribe),
+        # not a generic "reply_received". The outcome is what we made of the
+        # reply, which is what matters for the audit.
+        self.assertEqual(result["pause_reason"], "positive")
 
     def test_suppression_is_observed_rather_than_assumed(self):
         """A step that could have gone out before cannot go out now."""

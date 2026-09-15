@@ -52,11 +52,12 @@ SCENARIOS = {
         "channel": "email",
         "provider": "bison",
         "text": "\u2500\u2500\u2500\u2500\u2500",
-        # Not UNKNOWN. With no model configured, an inbound that matches no
-        # rule falls to NEUTRAL by design, and neutral already means "a human
-        # should read this" rather than "nothing happened". UNKNOWN is
-        # reserved for a classifier that answered and was not believed.
-        "expect": replies.NEUTRAL,
+        # TASK-020 changed the fallback from NEUTRAL to UNKNOWN. "No rule
+        # matched" is a gap in coverage, not a measurement. UNKNOWN means
+        # "we could not read this"; NEUTRAL means "we read this and it is
+        # genuinely lukewarm". Reporting the gap as a measurement made 35%
+        # of replies invisible.
+        "expect": replies.UNKNOWN,
         "note": "no rule matched and no model was available",
     },
 }

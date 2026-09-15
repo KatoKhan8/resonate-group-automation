@@ -23,8 +23,8 @@ class TestPhase1Csv(QueueTest):
 
     def test_queue_has_a_record_for_every_row(self):
         self.assertEqual(len(self.lines()), 5)
-        self.assertEqual(len(store.list_records(state="queued")), 2)
-        self.assertEqual(len(store.list_records(state="dropped")), 3)
+        self.assertEqual(len(store.list_records(state="queued", client="productive")), 2)
+        self.assertEqual(len(store.list_records(state="dropped", client="productive")), 3)
 
     def test_the_right_rows_are_queued(self):
         self.assertEqual(sorted(self.result["queued"]), ["harbourline", "meridian"])
@@ -37,7 +37,7 @@ class TestPhase1Csv(QueueTest):
         })
 
     def test_every_dropped_record_carries_its_reason(self):
-        for r in store.list_records(state="dropped"):
+        for r in store.list_records(state="dropped", client="productive"):
             self.assertTrue(r["drop_reason"], f"{r['id']} dropped with no reason")
 
     def test_every_record_validates_against_the_schema(self):
