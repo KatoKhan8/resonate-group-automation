@@ -65,3 +65,41 @@ denominator and the entry point it was read through, plus the worst five
 examples per defect with identifiers HASHED. Say which defects are universal
 and which are rare. That distinction is what decides whether the fix is a
 prompt change or a per-record repair.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** c6fe167
+- **TESTS:** Measurement script at `scripts/copy_defect_census.py`, run against
+  `work/queue.snapshot.jsonl` (stamp: 2026-09-14T21:52:15Z from master 0ac5e60,
+  300 records). Full JSON output at `out/copy_defect_census.json`.
+- **FILES CHANGED:**
+  - `docs/COPY-DEFECT-CENSUS-2026-09-15.md` (deliverable)
+  - `scripts/copy_defect_census.py` (measurement script)
+- **FINDINGS:**
+
+| # | Defect | Denominator | Count | Rate | Universal? |
+|---|--------|-------------|-------|------|------------|
+| 1 | Hardcoded first names (LinkedIn) | 446 steps | 159 | 35.7% | YES — 0% use `{FIRST_NAME}` |
+| 2 | Unsupported merge variables | 684 steps | 0 | 0% | Not present |
+| 3 | Duplicate follow-ups | 130 sequences | 2 | 1.5% | Rare |
+| 4 | Product unnamed | 131 sequences | 41 | 31.3% | Partial — email worse (47.1%) |
+| 5 | No greeting (email) | 238 steps | 238 | 100% | YES — universal |
+| 6 | No sender identity (email) | 238 steps | 238 | 100% | YES — universal |
+
+  Three defects are universal (1, 5, 6), one is partial (4), one is rare (3),
+  and one is not present (2). All universal defects are generator prompt
+  defects fixable by a single regeneration pass. No per-record repair needed.
+
+  Checkpoint D's claim of 0% email sender identity is CONFIRMED.
+  Checkpoint D's 68% product-naming rate is CONFIRMED (measured 68.7%).
+
+- **RISKS:** The hardcoded-name count for LinkedIn (159 steps, 35.7%) counts
+  steps where the contact's own first name appears as literal text. The deeper
+  finding is that ZERO of 446 LinkedIn steps use `{FIRST_NAME}` — the generator
+  writes all names as literals. The 159 is the subset where the name happens
+  to match a contact in the estate; the variable absence is universal.
+- **RECOMMENDED CLAUDE ACTION:** Accept the census. The four prompt-change
+  defects (1, 4, 5, 6) can be addressed in a single generator prompt revision
+  followed by regeneration. Defect 3 (near-duplicates) needs a per-sequence
+  dedup guard. Defect 2 needs nothing.
