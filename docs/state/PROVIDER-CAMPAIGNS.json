@@ -1,0 +1,91 @@
+{
+  "generated_at": "2026-09-15T06:36:15+00:00",
+  "source": "HeyReach public API, read-only. Credential env var: HEYREACH_KEY.",
+  "heyreach": {
+    "campaigns_total_in_account": 83,
+    "campaigns_created_by_resonate": 1,
+    "resonate_campaigns": [
+      {
+        "internal_campaign_id": "productive-linkedin-production-v1",
+        "heyreach_campaign_id": 599020,
+        "name": "RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1",
+        "status": "DRAFT",
+        "classification": "DRAFT",
+        "created": "2026-09-13T10:33:37.258848Z",
+        "started_at": null,
+        "lead_list_id": 933603,
+        "lead_list_name": "RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1",
+        "lead_count": 0,
+        "list_detail": {
+          "id": 933603,
+          "name": "RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1",
+          "count": 0,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174892,
+            "name": "Bruno Gudelj",
+            "active": true,
+            "found": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 24,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 7,
+            "VIEW_PROFILE": 4,
+            "END": 10,
+            "FOLLOW": 1,
+            "CONNECTION_REQUEST": 1
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 8,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "32f8dde79bfa0f27"
+        },
+        "last_provider_readback": "2026-09-15T06:36:15+00:00"
+      }
+    ],
+    "status_totals": {
+      "DRAFT": 8,
+      "PAUSED": 32,
+      "FINISHED": 31,
+      "IN_PROGRESS": 12
+    },
+    "linkedin_accounts_available": 41
+  },
+  "internal_vs_provider": {
+    "internal_records": 11,
+    "internal_heyreach_ids": [
+      "594061",
+      "599020"
+    ],
+    "claims_provider_does_not_confirm": [],
+    "consistent": true
+  }
+}

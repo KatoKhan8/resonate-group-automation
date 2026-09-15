@@ -10,11 +10,28 @@ LIVE-READINESS.md promises and the one thing in this repository that has never
 been wrong. Adding a write capability is therefore not a feature; it is the
 removal of the only guarantee that has held.
 
-So the machine is built first and given nothing to drive. `OPERATIONS` declares
-what a write would need. `SUPPORTED` is empty. Every attempt refuses, and the
-tests assert that it refuses. On the day one route is enabled, the brakes -
-authorization, idempotency, mandatory read-back, failure classification - are
-already there, already tested, and already the only path through.
+So the machine was built first and given nothing to drive. `OPERATIONS`
+declares what a write would need. The brakes - authorization, idempotency,
+mandatory read-back, failure classification - were in place and tested before
+any route was enabled, and they are still the only path through.
+
+`SUPPORTED` IS NO LONGER EMPTY. Read the tuple, not this paragraph. As of
+2026-09-15 six routes are enabled:
+
+  heyreach.pause          bison.pause           bison.stop_lead
+  heyreach.set_sequence   bison.create_campaign bison.set_sequence
+
+This docstring said "`SUPPORTED` is empty. Every attempt refuses." for long
+enough that it was quoted as current on 2026-09-15 while two sequence-write
+routes were live - one of which had already written the sequence of HeyReach
+campaign 599020. A document about the environment that is believed without
+checking is how somebody reasons correctly to a wrong conclusion, and it cost
+a whole Qwen task the night before when `QWEN.md` told a worker it had no
+credentials while it held all three.
+
+Still NOT supported, and each needs its own review before it is: adding leads
+on either provider, creating a HeyReach campaign or list, assigning a sender,
+configuring limits, and activating or unpausing anything.
 
 WHAT IS AND IS NOT AN ESTABLISHED CONTRACT.
 
