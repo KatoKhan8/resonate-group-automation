@@ -34,6 +34,7 @@ from unittest import mock
 from src import (accountpolicy, approval, actionledger, campaigns, clients, eligibility,
                  executionguard, providerwrites, store, verification)
 from src.providers import heyreach
+from src import campaigns
 from tests.base import QueueTest
 
 # TASK-137: `LINKEDIN_ADD_LEAD` IS NOW CONDITIONALLY SUPPORTED, so `perform`
@@ -44,8 +45,16 @@ from tests.base import QueueTest
 # on a real status string. Every test here failed loudly when the gate landed,
 # which is how it is known to be reached from this path.
 DRAFT_DESTINATION = 599020
-DRAFT_ROW = {"id": DRAFT_DESTINATION, "status": "DRAFT", "name": "test",
+CANON = "productive-linkedin-production-v1"
+# PAUSED, not DRAFT: the provider answers 400 "You cannot add new leads to
+# a draft campaign", so DRAFT is the one state it refuses.
+DRAFT_ROW = {"id": DRAFT_DESTINATION, "status": "PAUSED", "name": "test",
              "organizationUnitId": "174892"}
+CANON_ROW = {"campaign_id": CANON, "client": "productive",
+             "heyreach_campaign_id": str(DRAFT_DESTINATION),
+             "provider_status_expected": "PAUSED",
+             "provider_note": "{connection_note}",
+             "provider_actions": ["CHECK_IS_CONNECTION", "MESSAGE"]}
 
 OPERATION = providerwrites.LINKEDIN_ADD_LEAD
 
@@ -187,9 +196,9 @@ class TheWriteIsRefusedNotJustTheToken(QueueTest):
             sender_id="116968", rec_id="acme", contact_key="acme-1",
             step_key="day3", fingerprint=FINGERPRINT, gates=("tenancy",),
             at=store.now())
-        with mock.patch.object(providerwrites, "SUPPORTED", (OPERATION,)),              mock.patch.object(executionguard, "revalidate", revalidate),              mock.patch.object(heyreach, "campaign_read", return_value=dict(DRAFT_ROW)):
+        with mock.patch.object(providerwrites, "SUPPORTED", (OPERATION,)),              mock.patch.object(executionguard, "revalidate", revalidate),              mock.patch.object(heyreach, "campaign_read", return_value=dict(DRAFT_ROW)),              mock.patch.object(campaigns, "require", return_value=dict(CANON_ROW)):
             return providerwrites.perform(
-                OPERATION, provider_campaign_id=DRAFT_DESTINATION,
+                OPERATION, provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                 authorization=auth,
                 payload={"profile": "dana-reed", "note": STEP["note"]}, step=STEP,
                 transport=lambda p: self.calls.append("transport") or {"ok": 1},
@@ -239,10 +248,12 @@ class TheWriteIsRefusedNotJustTheToken(QueueTest):
             at=store.now())
         with mock.patch.object(providerwrites, "SUPPORTED", (OPERATION,)), \
              mock.patch.object(heyreach, "campaign_read",
-                               return_value=dict(DRAFT_ROW)):
+                               return_value=dict(DRAFT_ROW)), \
+             mock.patch.object(campaigns, "require",
+                               return_value=dict(CANON_ROW)):
             with self.assertRaises(executionguard.NotAuthorized):
                 providerwrites.perform(
-                    OPERATION, provider_campaign_id=DRAFT_DESTINATION,
+                    OPERATION, provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                     authorization=auth,
                     payload={"profile": "dana-reed", "note": STEP["note"]}, step=STEP,
                     transport=lambda p: self.calls.append("transport"),

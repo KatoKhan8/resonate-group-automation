@@ -35,6 +35,7 @@ from unittest import mock
 from src import approval, account, actionledger, collision, eligibility, events
 from src import executionguard, fatigue, linkedin, providerwrites, push, store
 from src.providers import heyreach
+from src import campaigns
 from tests.base import QueueTest
 
 # TASK-137: `LINKEDIN_ADD_LEAD` IS NOW CONDITIONALLY SUPPORTED, so `perform`
@@ -45,8 +46,16 @@ from tests.base import QueueTest
 # on a real status string. Every test here failed loudly when the gate landed,
 # which is how it is known to be reached from this path.
 DRAFT_DESTINATION = 599020
-DRAFT_ROW = {"id": DRAFT_DESTINATION, "status": "DRAFT", "name": "test",
+CANON = "productive-linkedin-production-v1"
+# PAUSED, not DRAFT: the provider answers 400 "You cannot add new leads to
+# a draft campaign", so DRAFT is the one state it refuses.
+DRAFT_ROW = {"id": DRAFT_DESTINATION, "status": "PAUSED", "name": "test",
              "organizationUnitId": "174892"}
+CANON_ROW = {"campaign_id": CANON, "client": "productive",
+             "heyreach_campaign_id": str(DRAFT_DESTINATION),
+             "provider_status_expected": "PAUSED",
+             "provider_note": "{connection_note}",
+             "provider_actions": ["CHECK_IS_CONNECTION", "MESSAGE"]}
 
 OP = providerwrites.LINKEDIN_ADD_LEAD
 PROFILE = "https://www.linkedin.com/in/dana-oyelaran"
@@ -135,6 +144,8 @@ class DuplicationTest(QueueTest):
         with mock.patch.object(providerwrites, "SUPPORTED", (OP,)), \
              mock.patch.object(heyreach, "campaign_read",
                                return_value=dict(DRAFT_ROW)), \
+             mock.patch.object(campaigns, "require",
+                               return_value=dict(CANON_ROW)), \
              mock.patch.object(executionguard, "revalidate",
                                lambda *a, **kw: True):
             yield
@@ -144,7 +155,7 @@ class DuplicationTest(QueueTest):
         spy = Spy(raises=raises)
         with self.enabled():
             result = providerwrites.perform(
-                OP, provider_campaign_id=DRAFT_DESTINATION,
+                OP, provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                 authorization=self.authorization(key, rid, step),
                 transport=spy, step=STEP, payload=APPROVED,
                 readback=lambda: (readback if readback is not None
@@ -249,7 +260,7 @@ class TheSecondAttemptIsRefused(DuplicationTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(
-                    OP, provider_campaign_id=DRAFT_DESTINATION,
+                    OP, provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                     authorization=self.authorization(key),
                     transport=spy, step=STEP, payload=APPROVED,
                     readback=lambda: {"leads": 1},
@@ -264,7 +275,7 @@ class TheSecondAttemptIsRefused(DuplicationTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(
-                    OP, provider_campaign_id=DRAFT_DESTINATION,
+                    OP, provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                     authorization=self.authorization(key),
                     transport=spy, step=STEP, payload=APPROVED,
                     readback=lambda: {"leads": 1},
@@ -430,7 +441,7 @@ class AnAmbiguousResultIsNotRetried(DuplicationTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(
-                    OP, provider_campaign_id=DRAFT_DESTINATION,
+                    OP, provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                     authorization=self.authorization(key),
                     transport=spy, step=STEP, payload=APPROVED,
                     readback=lambda: {"leads": 1},

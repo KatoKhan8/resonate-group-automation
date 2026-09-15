@@ -368,18 +368,55 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
 # It FAILS CLOSED in every direction that is not an explicit proof of
 # safety: an unreadable campaign, an absent status, a status outside the
 # known set, an exception of any kind, or a missing provider campaign id all
-# refuse. Only DRAFT admits - PAUSED does not, because a human can resume it
-# and the leads added to it are then sent to; FINISHED does not, because
-# "finished" describes the leads the campaign already held and says nothing
-# about one added afterwards.
+# refuse.
+#
+# IT USED TO ADMIT DRAFT AND ONLY DRAFT, AND THE PROVIDER REFUSES DRAFT.
+#
+# Measured 2026-09-15 by an actual write against campaign 599020:
+#
+#     POST /campaign/AddLeadsToCampaignV2 -> 400
+#     "You cannot add new leads to a draft campaign."
+#
+# So the one state this condition admitted is the one state HeyReach will not
+# accept a lead into. The condition was not strict, it was UNSATISFIABLE, and
+# the route it guards could never have been used. That is recorded in
+# docs/DRAFT-CANNOT-TAKE-LEADS-2026-09-15.md.
+#
+# WHAT REPLACED IT IS NOT "PAUSED IS FINE".
+#
+# The obvious repair - add PAUSED to `_STATUSES_THAT_CANNOT_SEND` - would be
+# wrong and is deliberately not what happened. `campaign_cannot_send` is
+# UNCHANGED and still means exactly what it says: DRAFT, and nothing else,
+# cannot send. A paused campaign CAN send, the moment somebody resumes it, and
+# that remains true of every paused campaign in the client's account.
+#
+# The permission is narrower than a status. It is:
+#
+#     this exact campaign, bound in OUR canonical state, declared by THIS
+#     deployment as a staging campaign, and PAUSED right now at the provider
+#
+# A paused campaign nobody declared, or one bound to a different provider id,
+# or one this deployment did not stage, is refused - which is most of the 83
+# campaigns in that account, including every campaign the client runs
+# themselves.
+#
+# The declaration is what carries ownership, and it cannot be asserted by a
+# caller: this predicate READS the canonical row itself rather than taking a
+# flag. `scripts/declare_campaign_shape.py` writes that declaration from a
+# provider readback, refuses a campaign it cannot prove, records who ran it,
+# and moves the campaign fingerprint so an approval taken before the
+# declaration cannot be inherited through it.
 CONDITIONAL = {}
 
 
-def _campaign_is_proven_unable_to_send(provider_campaign_id):
-    """True only if the provider says, right now, that it cannot send.
+def _campaign_is_a_declared_staging_campaign(provider_campaign_id,
+                                             campaign_id=None):
+    """True only for OUR staging campaign, PAUSED, read live, right now.
 
-    Raises `WriteRefused` otherwise - including when it cannot tell.
+    Raises `WriteRefused` otherwise - including, and especially, when it
+    cannot tell. Every branch below is a refusal except the last line.
     """
+    from . import campaigns as _campaigns
     from .providers import heyreach
 
     if provider_campaign_id in (None, "", 0):
@@ -388,26 +425,84 @@ def _campaign_is_proven_unable_to_send(provider_campaign_id):
             f"destination's state can be read at the moment of the write. "
             f"None was given, so nothing can be proven and this refuses. "
             f"The transport was not reached")
+    if campaign_id in (None, ""):
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD} requires the CANONICAL campaign id as well "
+            f"as the provider's. Without it there is no row to prove this "
+            f"campaign is one this deployment staged, and 'it is paused' is "
+            f"not on its own a permission. The transport was not reached")
+
+    # 1. OURS? The canonical row is the ownership record, and it is read here
+    #    rather than accepted as an argument.
     try:
-        cannot_send = heyreach.campaign_cannot_send(provider_campaign_id)
+        row = _campaigns.require(str(campaign_id))
+    except Exception as e:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: canonical campaign {campaign_id!r} could "
+            f"not be read ({type(e).__name__}: {e}), so nothing proves this "
+            f"provider campaign is ours. The transport was not reached"
+        ) from None
+
+    # 2. THE EXACT BINDING. A row that names a different provider campaign is
+    #    a row about a different campaign, however well it matches otherwise.
+    bound = str(row.get("heyreach_campaign_id") or "").strip()
+    if not bound or bound != str(provider_campaign_id).strip():
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: canonical campaign {campaign_id!r} is "
+            f"bound to HeyReach campaign {bound!r} and this write names "
+            f"{str(provider_campaign_id)!r}. A mismatched binding is how a "
+            f"lead reaches a campaign nobody approved. The transport was not "
+            f"reached")
+
+    # 3. DECLARED AS A STAGING CAMPAIGN BY THIS DEPLOYMENT. The declaration is
+    #    `provider_status_expected == PAUSED` plus the shape fields that only
+    #    `declare_campaign_shape.py` writes, from a readback. An undeclared
+    #    campaign - which is every campaign the client made themselves - has
+    #    none of them.
+    expected = str(row.get("provider_status_expected") or "").strip()
+    if expected != heyreach.PAUSED:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: canonical campaign {campaign_id!r} "
+            f"declares provider_status_expected={expected!r}, not "
+            f"{heyreach.PAUSED}. Staging into a campaign nobody declared as a "
+            f"staging campaign is not a thing this permission covers. The "
+            f"transport was not reached")
+    if not row.get("provider_note") or not row.get("provider_actions"):
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: canonical campaign {campaign_id!r} does "
+            f"not declare its provider shape, so this deployment cannot show "
+            f"it staged it. Run scripts/declare_campaign_shape.py against a "
+            f"provider readback first. The transport was not reached")
+
+    # 4. AND WHAT THE PROVIDER SAYS RIGHT NOW. Read live, never remembered:
+    #    a human can press Start in the vendor UI between the plan and the
+    #    write, and this is the read that catches it.
+    try:
+        live = heyreach.campaign_read(provider_campaign_id)
     except Exception as e:
         raise WriteRefused(
             f"{LINKEDIN_ADD_LEAD}: the state of HeyReach campaign "
             f"{provider_campaign_id} could not be established "
             f"({type(e).__name__}: {e}). A campaign whose status is unknown "
-            f"is not proven unable to send. The transport was not reached"
+            f"is not proven safe to stage into. The transport was not reached"
         ) from None
-    if not cannot_send:
+    if not live or str(live.get("id") or "") != str(provider_campaign_id):
         raise WriteRefused(
-            f"{LINKEDIN_ADD_LEAD}: HeyReach campaign "
-            f"{provider_campaign_id} is not proven unable to send. Only a "
-            f"DRAFT campaign is. Adding a lead to a campaign that can send "
-            f"is prospect-facing - the sequence acts on it immediately. "
-            f"The transport was not reached")
+            f"{LINKEDIN_ADD_LEAD}: HeyReach returned no campaign "
+            f"{provider_campaign_id}, or one with a different id. A missing "
+            f"campaign is not an empty one. The transport was not reached")
+    status = str(live.get("status") or "").strip()
+    if status != heyreach.PAUSED:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: HeyReach campaign {provider_campaign_id} "
+            f"is {status or 'UNKNOWN'!r}, not {heyreach.PAUSED}. A DRAFT "
+            f"campaign refuses leads outright; an IN_PROGRESS one sends to "
+            f"them immediately; a FINISHED or unrecognised one is not proven "
+            f"anything. The transport was not reached")
     return True
 
 
-CONDITIONAL[LINKEDIN_ADD_LEAD] = _campaign_is_proven_unable_to_send
+CONDITIONAL[LINKEDIN_ADD_LEAD] = _campaign_is_a_declared_staging_campaign
 
 # `perform` runs the condition at ONE call site, inside the prospect-facing
 # branch. That is correct only while every conditional operation is
@@ -429,12 +524,20 @@ def is_conditional(operation):
     return operation in CONDITIONAL
 
 
-def require_conditional_permission(operation, provider_campaign_id):
-    """Run the operation's condition, or pass through if it has none."""
+def require_conditional_permission(operation, provider_campaign_id,
+                                   campaign_id=None):
+    """Run the operation's condition, or pass through if it has none.
+
+    `campaign_id` is the CANONICAL campaign, not the provider's. A condition
+    that has to prove a campaign is ours needs the row that says so, and
+    taking it as an argument here rather than letting the predicate be handed
+    an `owned=True` flag is the difference between proving ownership and
+    being told about it.
+    """
     check = CONDITIONAL.get(operation)
     if check is None:
         return True
-    return check(provider_campaign_id)
+    return check(provider_campaign_id, campaign_id)
 
 PROSPECT_FACING = tuple(op for op, (_c, facing, _w) in OPERATIONS.items()
                         if facing)
@@ -699,7 +802,8 @@ def perform(operation, *, authorization=None, tenant=None, campaign=None,
         # that admits it. The race it closes is the window between this read
         # and the POST, and that window is now `spend`, one ledger read and
         # `revalidate` - all local.
-        require_conditional_permission(operation, provider_campaign_id)
+        require_conditional_permission(operation, provider_campaign_id,
+                                       campaign)
 
         authorization.spend()
         key = authorization.key

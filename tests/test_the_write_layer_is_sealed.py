@@ -20,6 +20,7 @@ import unittest
 from unittest import mock
 
 from src import approval, actionledger, executionguard, providerwrites, store
+from src import campaigns as campaigns_state
 
 from tests.base import QueueTest
 from src.providers import heyreach
@@ -33,8 +34,17 @@ from src.providers import heyreach
 # a real status string, and every one of these tests failed loudly when the
 # gate landed, which is how it is known the gate is on this path.
 DRAFT_DESTINATION = 599020
-DRAFT_ROW = {"id": DRAFT_DESTINATION, "status": "DRAFT", "name": "test",
+CANON = "productive-linkedin-production-v1"
+# PAUSED, not DRAFT: the provider answers 400 "You cannot add new leads to a
+# draft campaign", so DRAFT is the one state it refuses. See CONDITIONAL in
+# providerwrites and docs/DRAFT-CANNOT-TAKE-LEADS-2026-09-15.md.
+DRAFT_ROW = {"id": DRAFT_DESTINATION, "status": "PAUSED", "name": "test",
              "organizationUnitId": "174892"}
+CANON_ROW = {"campaign_id": CANON, "client": "productive",
+             "heyreach_campaign_id": str(DRAFT_DESTINATION),
+             "provider_status_expected": "PAUSED",
+             "provider_note": "{connection_note}",
+             "provider_actions": ["CHECK_IS_CONNECTION", "MESSAGE"]}
 
 
 
@@ -251,7 +261,8 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         being deleted.
         """
         with mock.patch.object(providerwrites, "SUPPORTED", (self.OP,)),              mock.patch.object(heyreach, "campaign_read",
-                               return_value=dict(DRAFT_ROW)),              mock.patch.object(executionguard, "revalidate",
+                               return_value=dict(DRAFT_ROW)),              mock.patch.object(campaigns_state, "require",
+                               return_value=dict(CANON_ROW)),              mock.patch.object(executionguard, "revalidate",
                                lambda *a, **kw: True):
             yield
 
@@ -260,7 +271,7 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        transport=spy,
                                        readback=lambda: {})
         self.assertEqual(spy.calls, [])
@@ -272,7 +283,7 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        authorization=fake,
                                        transport=spy, readback=lambda: {})
         self.assertEqual(spy.calls, [])
@@ -285,7 +296,7 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        authorization=auth,
                                        step=STEP, payload=APPROVED,
                                        transport=spy, readback=lambda: {})
@@ -301,7 +312,7 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        authorization=auth,
                                        step=STEP, payload=APPROVED,
                                        transport=spy, readback=None)
@@ -315,7 +326,7 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        authorization=auth,
                                        step=STEP, payload=APPROVED,
                                        transport=None, readback=lambda: {})
@@ -332,7 +343,7 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        authorization=auth,
                                        step=STEP, payload=APPROVED,
                                        transport=spy,
@@ -358,14 +369,14 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         spy = Spy()
         with self.enabled():
             providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        authorization=auth,
                                        step=STEP, payload=APPROVED, transport=spy,
                                    readback=lambda: {"leads": 1},
                                    expected={"leads": 1})
             with self.assertRaises(executionguard.NotAuthorized):
                 providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        authorization=auth,
                                        step=STEP, payload=APPROVED,
                                        transport=spy,
@@ -420,7 +431,8 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         being deleted.
         """
         with mock.patch.object(providerwrites, "SUPPORTED", (self.OP,)),              mock.patch.object(heyreach, "campaign_read",
-                               return_value=dict(DRAFT_ROW)),              mock.patch.object(executionguard, "revalidate",
+                               return_value=dict(DRAFT_ROW)),              mock.patch.object(campaigns_state, "require",
+                               return_value=dict(CANON_ROW)),              mock.patch.object(executionguard, "revalidate",
                                lambda *a, **kw: True):
             yield
 
@@ -430,7 +442,7 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        authorization=self.auth,
                                        step=STEP, payload=APPROVED,
                                        transport=spy, readback=lambda: {},
@@ -443,7 +455,7 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        authorization=self.auth,
                                        step=STEP, payload=APPROVED,
                                        transport=spy, readback=lambda: {},
@@ -458,7 +470,7 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        authorization=self.auth,
                                        step=STEP, payload=APPROVED,
                                        transport=Spy(), readback=boom,
@@ -470,7 +482,7 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        authorization=self.auth,
                                        step=STEP, payload=APPROVED,
                                        transport=Spy(),
@@ -484,7 +496,7 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(self.OP,
-                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                                        authorization=self.auth,
                                        step=STEP, payload=APPROVED,
                                        transport=Spy(),
@@ -494,7 +506,7 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
     def test_a_matching_readback_settles_the_key_as_sent(self):
         with self.enabled():
             found = providerwrites.perform(
-                self.OP, provider_campaign_id=DRAFT_DESTINATION,
+                self.OP, provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                 authorization=self.auth, transport=Spy(),
                 step=STEP, payload=APPROVED,
                 readback=lambda: {"leads": 1}, expected={"leads": 1})
