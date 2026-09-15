@@ -295,6 +295,7 @@ class Handler(BaseHTTPRequestHandler):
                             if session else []),
             "csrf": (session or {}).get("csrf"),
             "demo": STATE["demo"],
+            "mode": app_config.mode(),
             "super_admin": bool(
                 session and (workspaces.user(session["email"]) or {})
                 .get("super_admin")),
@@ -313,6 +314,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(int(status))
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
+        if not any(key.lower() == "cache-control" for key, _ in headers):
+            self.send_header("Cache-Control", "no-store")
         # A browser is a hostile rendering environment for text that came off
         # a crawl. These are cheap and they close the classes of mistake a
         # template author makes on a Friday.
@@ -528,14 +531,16 @@ class Handler(BaseHTTPRequestHandler):
                        status=404)
         except (security.Refused, workspaces.NotPermitted) as e:
             self._refusal(session, method, path, "refused", e)
-            self._page(pages.empty("Refused", str(e)), session, path,
+            self._page(pages.error_state("Permission denied", str(e)), session, path,
                        status=403)
         except Exception as e:                    # noqa: BLE001 - the last net
             if os.environ.get("WEB_DEBUG"):
                 traceback.print_exc()
             self._page(
-                pages.empty("Something went wrong",
-                            f"{type(e).__name__}. Nothing was changed."),
+                pages.error_state("Something went wrong",
+                                  "The request could not be completed. "
+                                  "Check the current record before repeating an action.",
+                                  path, retry=method == "GET"),
                 session, path, status=500)
 
     def _refusal(self, session, method, path, kind, error):
@@ -575,6 +580,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/assets/app.js":
             raise Handled(200, assets.JS,
                           "application/javascript; charset=utf-8",
+                          [("Cache-Control", "public, max-age=86400")])
+        if path == "/assets/resonate-logo.png":
+            raise Handled(200, assets.LOGO, "image/png",
                           [("Cache-Control", "public, max-age=86400")])
         if path == "/healthz":
             raise Handled(200, json.dumps({
@@ -725,6 +733,9 @@ class Handler(BaseHTTPRequestHandler):
                               session, path, "Batches")
         if path.startswith("/batches/"):
             batch = path.split("/", 2)[2]
+            if batch not in repo.batches():
+                return self._page(pages.empty("Not found", ""), session,
+                                  path, status=404)
             return self._page(
                 pages.batch_detail(api.batch_detail(repo, batch),
                                    api.preflight(repo, batch)),
@@ -738,13 +749,15 @@ class Handler(BaseHTTPRequestHandler):
                        if k in ("region", "vertical", "icp_status", "icp_tier",
                                 "employee_band", "country")}
             rows = api.company_rows(repo, query.get("batch"), filters or None)
+            rows = api.search_rows(rows, query.get("q"),
+                                   ("company", "domain", "segment_key", "country"))
             # One page of rows. The list assembles in well under a second
             # at thirty thousand records; it is the rendering that falls
             # over, so the window is applied here rather than deeper.
             page = api.paginate(rows, query.get("page"))
             return self._page(
                 pages.company_list(page["rows"], query.get("batch"),
-                                   page=page),
+                                   filters=filters, page=page, query=query.get("q")),
                 session, path, "Companies")
         if path.startswith("/companies/"):
             record_id = path.split("/", 2)[2]
@@ -772,10 +785,13 @@ class Handler(BaseHTTPRequestHandler):
             rows = api.contact_rows(repo, query.get("batch"),
                                     query.get("mode") or None,
                                     query.get("flag") or None)
+            rows = api.search_rows(rows, query.get("q"),
+                                   ("name", "title", "company", "email"))
             page = api.paginate(rows, query.get("page"))
             return self._page(
                 pages.contact_list(page["rows"], query.get("mode"),
-                                   query.get("flag"), page=page),
+                                   query.get("flag"), page=page,
+                                   batch=query.get("batch"), query=query.get("q")),
                 session, path, "Contacts")
         if path.startswith("/contacts/"):
             parts = path.split("/")

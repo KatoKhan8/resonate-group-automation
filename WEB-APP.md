@@ -19,8 +19,11 @@ credit. Provider payloads are generated and displayed; nothing submits them.
 
 ### The stack, and why it is not a framework
 
-`http.server` and server-rendered HTML. No Flask, no FastAPI, no React, no
-build step, no `node_modules`.
+`http.server` and server-rendered HTML, with no third-party application runtime.
+The dark Resonate OS shell uses local CSS, JavaScript and the Resonate logo.
+`python -m src.web.build` exports the exact production assets and SHA-256
+manifest; Node/Playwright are optional development tools for browser checks.
+See [the web UI implementation contract](docs/RESONATE-WEB-UI.md).
 
 That is not minimalism for its own sake. The repository has **zero third-party
 dependencies** - there is no `requirements.txt`, no `pyproject.toml`, and
@@ -39,7 +42,9 @@ What replaces each is named below.
 src/web/app.py        routing, sessions, permissions, refusals
 src/web/api.py        the service layer: arguments in, plain data out
 src/web/pages.py      HTML. Rendering only.
-src/web/assets.py     one CSS file, one small JS file, content-hashed
+src/web/assets.py     loads and content-hashes an explicit static asset allowlist
+src/web/static/       shared dark design system, progressive enhancement, logo
+src/web/build.py      dependency-free production asset export and manifest
 ```
 
 Underneath, and shared with the CLI:

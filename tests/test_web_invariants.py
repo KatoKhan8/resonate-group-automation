@@ -136,7 +136,8 @@ class TheHandlerCannotForget(unittest.TestCase):
         # every workspace at once". `test_every_admin_route_is_super_admin`
         # below is what keeps that exemption honest.
         exempt = {"/login", "/logout", "/healthz", "/assets/app.css",
-                  "/assets/app.js", "/workspaces", "/admin", "/admin/slack",
+                  "/assets/app.js", "/assets/resonate-logo.png",
+                  "/workspaces", "/admin", "/admin/slack",
                   "/admin/health",
                   # The sign-in flow itself, and a fourth kind of exemption:
                   # these run *before* anybody is anybody, so there is no

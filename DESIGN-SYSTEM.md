@@ -1,35 +1,12 @@
-# Design System
+# Resonate OS design system
 
-The visual language of Resonate Outbound OS. One place the brand is written
-down, so a new screen inherits it rather than inventing a variant.
+The application follows the current **Resonate OS — Product Design** Figma
+file, beginning with **00 — START HERE** and **27 — UX States & Frontend
+Contract**. Repository behavior and permissions remain authoritative.
 
-Read this before adding a component to `src/web/assets.py` or a colour to
-`src/clientreport.py`.
-
----
-
-## 0. Where the brand came from, and what was not available
-
-The intended reference is the public site at **https://www.resonategroup.co/**.
-
-**This build has no network access**, and the site was not reachable from it.
-Nothing below was derived from the site's pixels. It is derived from the
-brief's own description of the language to aim for - premium, editorial,
-clean, confident, minimal, agency-quality - and from what an outbound
-operations product needs.
-
-When somebody can open the site alongside the app, these are the things to
-check and correct here rather than on individual screens:
-
-- the exact brand blue, and whether it is used as sparingly here as there
-- the display typeface and whether the type scale below matches its rhythm
-- how much white space the site gives a heading, and whether §3 is close
-- whether the site's near-black is warm or cool; this product uses warm
-
-Until then, treating any hex value below as "the Resonate blue" would be a
-claim nobody has checked.
-
----
+The original Resonate Group logo is served locally from the public website
+asset. Asset provenance, screen mappings, runtime boundaries and verification
+commands are recorded in [docs/RESONATE-WEB-UI.md](docs/RESONATE-WEB-UI.md).
 
 ## 1. What this product should feel like
 
@@ -44,8 +21,8 @@ is small and the leading is generous; the page does not waste vertical space on
 decoration, and it does not crush rows together to fit more of them.
 
 **Colour means something.** Every hue in this system is semantic. Green is a
-verified fact, amber is a hold, red is a block, violet is a pause, blue is
-Resonate. Nothing is coloured because a card looked plain.
+verified fact, amber is a hold, red is a block, violet is a pause, mint identifies navigation and primary actions. Status labels also carry text.
+Nothing is coloured because a card looked plain.
 
 **An absence is stated.** The most characteristic component in this product is
 `.absent` - italic, muted, and always carrying a reason. A blank cell reads as
@@ -56,24 +33,26 @@ different facts.
 
 ## 2. Tokens
 
-Defined once on `:root` in `src/web/assets.py`. A screen that needs a colour
+Defined on `:root` in `src/web/static/app.css`. `assets.py` reads and hashes
+the allowlisted static files. A screen that needs a colour
 uses a token; a screen that needs a *new* colour adds a token here first.
 
 ### Brand and surface
 
-The ground is warm off-white, not blue-grey. The page should read as paper
-with panels sitting on it, not as a dashboard floating over a gradient.
+The control center uses a near-black ground, dark panels, restrained mint
+actions, and explicit amber, red and violet safety states. Client PDF styling
+remains owned by the existing reporting renderer.
 
 | Token | Value | Used for |
 | --- | --- | --- |
-| `--bg` | `#f7f7f5` | Page ground |
-| `--panel` | `#fff` | Cards, tables, panels |
-| `--panel-2` | `#fbfbfa` | Table headers, inset blocks |
-| `--head` | `#14161a` | Sidebar, code blocks |
-| `--accent` | `#1a4d8f` | Links, primary actions, the one accent |
-| `--accent-deep` | `#12355f` | Pressed state |
-| `--accent-soft` | `#eef3fa` | Selected rows, hover fills |
-| `--line` | `#e3e3df` | Every border |
+| `--bg` | `#07080b` | Page ground |
+| `--panel` | `#111418` | Cards, tables, panels |
+| `--panel-2` | `#151a21` | Table headers, inset blocks |
+| `--head` | `#0b0e12` | Sidebar, code blocks |
+| `--accent` | `#33d194` | Links, primary actions, the one accent |
+| `--accent-deep` | `#8eefd0` | Pressed state |
+| `--accent-soft` | `#132724` | Selected rows, hover fills |
+| `--line` | `#252d38` | Every border |
 
 **One accent, used sparingly.** Colour is semantic in this product. A screen
 that accents everything has told the reader nothing.
@@ -82,11 +61,11 @@ that accents everything has told the reader nothing.
 
 | Token | Value | Used for |
 | --- | --- | --- |
-| `--ink` | `#14161a` | Body. Warm near-black, not navy |
-| `--muted` | `#6b7280` | Labels, secondary text, table headers |
-| `--faint` | `#9aa1ab` | Footers, timestamps, absent values |
+| `--ink` | `#edf2f7` | Body text on dark surfaces |
+| `--muted` | `#9aa8ba` | Labels, secondary text, table headers |
+| `--faint` | `#8190a4` | Footers, timestamps, absent values |
 
-`.absent` (`#93a1b0`, italic) is not a token but a component - see §5.
+`.absent` (`#9aa8ba`, italic) is not a token but a component - see §5.
 
 ### Status
 
@@ -97,10 +76,10 @@ it appears on.
 
 | State | Foreground | Background | Means |
 | --- | --- | --- | --- |
-| pass | `--pass` `#1b6640` | `--pass-bg` `#dff2e7` | Verified, approved, confirmed |
-| warn | `--warn` `#7a5300` | `--warn-bg` `#fdecc8` | Held, waiting, unknown |
-| block | `--block` `#8d2020` | `--block-bg` `#fadcdc` | Blocked, invalid, failed |
-| pause | `--pause` `#4b2d85` | `--pause-bg` `#e9e0fa` | Paused, cancelled |
+| pass | `--pass` `#55dfab` | `--pass-bg` `#09261b` | Verified, approved, confirmed |
+| warn | `--warn` `#f2ba62` | `--warn-bg` `#2c1f0b` | Held, waiting, unknown |
+| block | `--block` `#ff7c87` | `--block-bg` `#2c1012` | Blocked, invalid, failed |
+| pause | `--pause` `#be9bff` | `--pause-bg` `#211733` | Paused, cancelled |
 
 "Unknown" is amber, not grey and not green. A missing timezone, an unknown
 sending limit and an unverified address are all things somebody has to decide
@@ -110,9 +89,9 @@ about, and colouring them as neutral is how they stop being decided about.
 
 | Token | Value | Channel |
 | --- | --- | --- |
-| `--email` | `#25457e` | Email |
-| `--linkedin` | `#0a66c2` | LinkedIn |
-| `--both` | `#4b2d85` | Multichannel |
+| `--email` | `#6dbaff` | Email |
+| `--linkedin` | `#64b5ef` | LinkedIn |
+| `--both` | `#be9bff` | Multichannel |
 
 Semantic, not decorative: the same hue means the same channel on the cadence
 view, the sender screens and the reply centre.
@@ -225,7 +204,7 @@ URL.
 
 ## 5. Components
 
-Every one of these lives in `src/web/assets.py` and has a helper in
+Every one of these lives in `src/web/static/app.css` and has a helper in
 `src/web/pages.py`. Use the helper; do not hand-roll the markup.
 
 | Component | Class | Helper | Notes |

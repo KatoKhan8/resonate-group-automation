@@ -446,7 +446,37 @@ def dashboard(repo):
         "jobs": jobs.summarise(jobs.for_client(repo.client)),
         # Part of the contract on every surface, not decoration.
         "would_send": 0,
+        "control_center": (operator_control(repo)
+                           if repo.may(ws.OPERATIONS_VIEW) else None),
     }
+
+
+def operator_control(repo):
+    """Presentation adapter over existing runtime and workspace audit state.
+
+    Never use system_status here: its counts and storage paths are global.
+    Health labels come from replywatch; configuration is not proof of uptime.
+    """
+    repo.require(ws.OPERATIONS_VIEW)
+    polling = [{key: entry.get(key) for key in
+                ("provider", "state", "label", "last_succeeded")}
+               for entry in replywatch.health()]
+    auth = security.sign_in_mode()
+    audit = [{key: entry.get(key) for key in
+              ("at", "action", "actor", "resource_type", "resource_id")}
+             for entry in ws.audit(workspace_slug=repo.workspace, limit=6)]
+    return {"auth": auth, "polling": polling, "audit": audit,
+            "live_sending": False,
+            "cadence_scheduler": "not implemented"}
+
+
+def search_rows(rows, query, fields):
+    """Search only the already scoped, serialized rows before pagination."""
+    needle = str(query or "").strip().casefold()[:160]
+    if not needle:
+        return rows
+    return [row for row in rows if any(
+        needle in str(row.get(field) or "").casefold() for field in fields)]
 
 
 def _reply_counts(recs):
@@ -555,6 +585,7 @@ def batch_detail(repo, batch):
         "decision_makers": report.decision_makers(recs, repo.client),
         "cost": report.credit_exposure(recs, repo.client, config),
         "segments": report.campaign_segments(recs, repo.client),
+        "jobs": job_rows(repo, batch),
         "dropped": [{"id": r["id"], "company": r.get("company"),
                      "domain": r.get("domain"), "reason": r.get("drop_reason")}
                     for r in recs if r.get("state") == "dropped"],
@@ -5306,10 +5337,15 @@ def system_health():
         "Nothing schedules work in this build. Cadence timing is computed "
         "and displayed; no process advances it."))
 
+    polling = replywatch.health()
     components.append(_component(
-        "Reply poller", NEEDS_LIVE, "not running",
-        "Inbound events are applied when handed to src/inbound.py. No "
-        "process polls a provider for them yet."))
+        "Reply poller",
+        HEALTHY if polling and all(p["state"] == replywatch.WORKING
+                                  for p in polling) else NEEDS_LIVE,
+        "; ".join(f'{p["provider"]}: {p["label"]}' for p in polling),
+        "Optional reconciliation is off by default. Its state is derived "
+        "from configuration and recorded successful polls, never inferred "
+        "from the presence of credentials."))
 
     ops_channel = notify.ops_channel()
     posting = slack.live()

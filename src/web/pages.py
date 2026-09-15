@@ -18,8 +18,9 @@ empty. A blank cell reads as a broken page, and "we did not look" and "we
 looked and found nothing" are different facts an operator needs to tell apart.
 """
 import json
+from urllib.parse import urlencode
 
-from .assets import CSS_VERSION, JS_VERSION
+from .assets import CSS_VERSION, JS_VERSION, LOGO_VERSION
 from .security import attr, esc, safe_url
 
 # (href, label, permission). An entry with no href is a section heading, and
@@ -232,13 +233,17 @@ def external(url):
 
 def table(headers, rows_html, table_id=None, filterable=False):
     ident = f' id="{attr(table_id)}"' if table_id else ""
-    head = "".join(f"<th>{esc(h)}</th>" for h in headers)
+    head = "".join(f'<th scope="col">{esc(h)}</th>' for h in headers)
     controls = ""
     if filterable and table_id:
         controls = (f'<div class="filters">'
-                    f'<input type="search" placeholder="Filter these rows"'
-                    f' data-filter="{attr(table_id)}">'
-                    f'<span class="small muted" data-count="{attr(table_id)}">'
+                    f'<label class="sr-only" for="{attr(table_id)}-filter">'
+                    f'Filter loaded {esc(table_id)} rows</label>'
+                    f'<input id="{attr(table_id)}-filter" type="search" '
+                    f'placeholder="Filter rows on this page"'
+                    f' aria-controls="{attr(table_id)}" data-filter="{attr(table_id)}">'
+                    f'<span id="{attr(table_id)}-count" class="filter-count" '
+                    f'role="status" data-count="{attr(table_id)}">'
                     f"</span></div>")
     return (f'{controls}<div class="scroll"><table{ident}><thead><tr>{head}</tr>'
             f"</thead><tbody>{rows_html}</tbody></table></div>")
@@ -256,8 +261,8 @@ def pager(page, base, query=None):
     def link_to(number):
         parts = dict(query or {})
         parts["page"] = number
-        return base + "?" + "&amp;".join(
-            f"{attr(k)}={attr(v)}" for k, v in parts.items() if v)
+        return attr(base + "?" + urlencode(
+            {k: v for k, v in parts.items() if v not in (None, "")}))
 
     if not page["truncated"]:
         return ('<p class="small muted">' + esc(page["total"])
@@ -284,7 +289,25 @@ def json_block(value):
 
 def progress(fraction):
     pct = max(0, min(100, round((fraction or 0) * 100)))
-    return f'<div class="bar"><i style="width:{pct}%"></i></div>'
+    return (f'<progress value="{pct}" max="100" '
+            f'aria-label="Progress: {pct}%">{pct}%</progress>')
+
+
+def error_state(title, detail, path="/", retry=False):
+    """A failed read can be retried. A failed write never claims no change."""
+    action = (link(path, "Reload this page") if retry
+              else link("/", "Return to dashboard"))
+    return ('<section class="empty error-state" role="alert">'
+            f'<p class="eyebrow">Request could not be completed</p>'
+            f'<h1>{esc(title)}</h1><p class="small">{esc(detail)}</p>'
+            f'<p class="small">{action}</p></section>')
+
+
+def brand():
+    return (f'<div class="brand"><img class="brand-logo" '
+            f'src="/assets/resonate-logo.png?v={attr(LOGO_VERSION)}" '
+            'width="54" height="54" alt="Resonate Group logo">'
+            '<div><b>RESONATE OS</b><span>Control center</span></div></div>')
 
 
 # ------------------------------------------------------------------ shell
@@ -339,7 +362,9 @@ def shell(body, session, ctx, path="/", title="Control Center"):
         inner = ""
         for href, child_label in entries:
             on = "on" if href == current_href else ""
-            inner += f'<a class="{on}" href="{attr(href)}">{esc(child_label)}</a>'
+            active = ' aria-current="page"' if on else ''
+            inner += (f'<a class="{on}" href="{attr(href)}"{active}>'
+                      f'{esc(child_label)}</a>')
         # Open where you are. Derived from the path rather than remembered,
         # so a refresh or a pasted deep link lands in the same place - and
         # /outreach/account/acme expands Outreach without anybody storing
@@ -364,43 +389,60 @@ def shell(body, session, ctx, path="/", title="Control Center"):
         label = (f'<span class="wsname">{esc(current)}</span>' if current
                  else '<span class="wsname none">no workspace</span>')
         picker = (
-            f'{label}'
+            f'<div class="scope-picker">{label}'
             f'<form method="post" action="/select-workspace">'
             f'<input type="hidden" name="csrf" value="{attr(ctx.get("csrf"))}">'
-            f'<span class="small muted">switch</span>'
-            f'<select name="workspace" data-autosubmit>{options}</select>'
-            f"</form>")
+            '<label class="sr-only" for="workspace-picker">Switch workspace</label>'
+            f'<select id="workspace-picker" name="workspace" data-autosubmit>{options}</select>'
+            '<noscript><button type="submit">Switch</button></noscript>'
+            '</form></div>')
 
     demo = ctx.get("demo")
-    env = "DEMO" if demo else "LOCAL"
+    env = "DEMO" if demo else str(ctx.get("mode") or "LOCAL").upper()
     safety = (
         f'<div class="safety"><span class="dot off"></span>'
         f"<span>Live sending <b>disabled</b></span></div>"
-        f'<div class="safety"><span class="dot {"demo" if demo else "off"}">'
+        f'<div class="safety environment"><span class="dot {"demo" if demo else "off"}">'
         f"</span><span>{esc(env)}</span></div>")
 
     who = ""
     if session:
         badge = tag(ctx.get("role") or "no role",
                     "pass" if ctx.get("super_admin") else "info")
-        who = (f'<span class="small muted">{esc(ctx.get("email"))}</span>'
+        who = (f'<span class="small muted user-email">{esc(ctx.get("email"))}</span>'
                f"{badge}"
                f'<a class="small" href="/logout">Sign out</a>')
+
+    search = ''
+    if session and 'workspace.view' in granted:
+        search = (f'<form action="/search" method="get" class="workspace-search">'
+                  '<label for="workspace-search" class="sr-only">Search current workspace</label>'
+                  f'<input type="hidden" name="workspace" value="{attr(ctx.get("workspace"))}">'
+                  '<input id="workspace-search" name="q" type="search" '
+                  'placeholder="Search workspace…" maxlength="160">'
+                  '<button type="submit" aria-label="Search workspace">Find</button></form>')
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)} &middot; Resonate</title>
+<link rel="icon" type="image/png" href="/assets/resonate-logo.png?v={attr(LOGO_VERSION)}">
 <link rel="stylesheet" href="/assets/app.css?v={attr(CSS_VERSION)}">
 </head><body>
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="loading-line" aria-hidden="true"></div>
+<div class="loading-skeleton" aria-hidden="true"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+<div id="page-status" class="page-status" role="status" aria-live="polite"></div>
+<button type="button" class="nav-overlay" data-nav-close aria-label="Close navigation"></button>
 <div class="shell">
-  <aside class="side">
-    <div class="brand"><b>Resonate</b><span>Outbound Control Center</span></div>
-    <nav class="nav">{nav}</nav>
+  <aside class="side" id="sidebar" aria-label="Application navigation">
+    {brand()}
+    <button type="button" class="nav-close" data-nav-close>Close menu</button>
+    <nav class="nav" aria-label="Workspace sections">{nav}</nav>
   </aside>
   <div class="main">
-    <div class="top">{picker}<div class="spacer"></div>{safety}{who}</div>
-    <div class="wrap">{body}</div>
+    <header class="top"><button type="button" id="nav-toggle" class="nav-toggle" data-nav-toggle aria-controls="sidebar" aria-expanded="false">Menu</button>{picker}{search}<div class="spacer"></div>{safety}{who}</header>
+    <main class="wrap" id="main-content" tabindex="-1">{body}</main>
   </div>
 </div>
 <script src="/assets/app.js?v={attr(JS_VERSION)}"></script>
@@ -428,7 +470,8 @@ def provider_login_page(error=None):
 <link rel="stylesheet" href="/assets/app.css?v={attr(CSS_VERSION)}">
 </head><body>
 <div class="login">
-  <h1>Resonate Outbound</h1>
+  {brand()}
+  <h1>Sign in to Resonate OS</h1>
   <p class="muted small">Control Center</p>
   {warn}
   <p><a class="btn primary" href="/auth/start">Sign in</a></p>
@@ -444,9 +487,8 @@ def provider_login_page(error=None):
 def login_page(users, error=None):
     """Sign in as a known user. No password, and that is stated on the page.
 
-    This build has no authentication. Inventing password storage would create a
-    new place for a secret to live and would not make anything safer while the
-    server binds to localhost. What it *does* have is authorisation: which
+    Demo sign-in is for local fictional data. Production uses the separate
+    OIDC sign-in page and the existing server-side authentication policy. What it *does* have is authorisation: which
     workspaces this person is in and what their role there carries, resolved on
     the server on every request.
     """
@@ -462,7 +504,8 @@ def login_page(users, error=None):
 <link rel="stylesheet" href="/assets/app.css?v={attr(CSS_VERSION)}">
 </head><body>
 <div class="login">
-  <h1>Resonate Outbound</h1>
+  {brand()}
+  <h1>Sign in to Resonate OS</h1>
   <p class="muted small">Control Center. Live sending is disabled in this
   build.</p>
   {warn}
@@ -471,7 +514,7 @@ def login_page(users, error=None):
     <select id="email" name="email">{options}</select>
     <button class="btn primary" type="submit">Sign in</button>
   </form>
-  <p class="note small">There is no password in this build, and no role is
+  <p class="note small">Demo sign-in does not verify identity, and no role is
   taken from this form. Which workspaces you can enter and what you may do in
   them is resolved from the membership table on the server, on every request
   &mdash; so a revoked role stops working immediately rather than at your next
@@ -764,7 +807,8 @@ def attention_panel(rows):
         return panel(
             "Needs attention",
             '<p class="note">Nothing is waiting. No approvals pending, no '
-            "follow-ups due, reply protection running, no failed jobs.</p>")
+            "follow-ups due or failed jobs in this workspace. "
+            "See runtime status below for reply protection.</p>")
 
     body = ""
     for row in rows:
@@ -779,6 +823,58 @@ def attention_panel(rows):
             "</tr>")
     return panel("Needs attention",
                  table(["", "", "What", ""], body))
+
+
+def operator_pipeline(can):
+    stages = (
+        ("Import", "Normalize, deduplicate, suppress", "/upload", "batch.create"),
+        ("Qualify", "Evidence and human review", "/icp", "contacts.view"),
+        ("Segment", "Region, vertical and size", "/segments", "contacts.view"),
+        ("Verify", "Consensus and channel eligibility", "/contacts", "contacts.view"),
+        ("Review", "Cadence, copy and QA", "/campaigns", "operations.view"),
+        ("Approve", "Exact campaign fingerprint", "/approvals", "approvals.review"),
+    )
+    return '<div class="pipeline-strip">' + ''.join(
+        f'<a class="pipeline-stage" href="{attr(href)}"><b>{esc(label)}</b>'
+        f'<span>{esc(detail)}</span></a>'
+        for label, detail, href, permission in stages if permission in can) + '</div>'
+
+
+def control_center(data):
+    if not data:
+        return ''
+    runtime = [row("Live sending", tag("disabled", "warn"), raw=True),
+               row("Sign-in", tag(data["auth"], "info"), raw=True),
+               row("Cadence scheduler", data["cadence_scheduler"])]
+    for poll in data["polling"]:
+        state = "pass" if poll["state"] == "working" else "warn"
+        runtime.append(row(f'{poll["provider"]} reply reconciliation',
+                           tag(poll["label"], state), raw=True))
+    activity = ''.join(
+        f'<li><b>{esc(entry["action"])}</b> '
+        f'<span class="small muted">{esc(entry["resource_id"] or "")}</span>'
+        f'<time>{esc(entry["at"])} · {esc(entry["actor"] or "system")}</time></li>'
+        for entry in data["audit"])
+    return ('<div class="grid2">' + panel("Safety & runtime", kv(runtime))
+            + panel("Recent workspace activity", '<ul class="audit-preview">'
+                    + activity + '</ul>' if activity else empty(
+                        "No audit events yet", "Workspace changes appear here when recorded."))
+            + '</div>')
+
+
+def distribution_chart(counts, title):
+    """An accessible distribution of actual counts, never a completion rate."""
+    total = sum(counts.values())
+    if not total:
+        return empty("No data yet", "Import a batch to see the qualification distribution.")
+    bars = ''.join(
+        f'<div class="metric-bar"><span>{esc(name.replace("_", " "))}</span>'
+        f'<progress value="{attr(count)}" max="{attr(total)}" '
+        f'aria-label="{attr(name)}: {attr(count)} of {attr(total)}">'
+        f'{esc(count)} of {esc(total)}</progress><strong>{esc(count)}</strong></div>'
+        for name, count in counts.items())
+    return (f'<div class="metric-bars" role="group" aria-label="{attr(title)}">'
+            + bars + f'</div><p class="small muted">{esc(total)} companies with a recorded verdict.</p>')
 
 
 def dashboard(data, simple=False, slack=None):
@@ -893,12 +989,19 @@ on a guess. Nothing has been sent from this system.</p>
 """
 
     return f"""
+<p class="eyebrow">Resonate Group · Operator core</p>
 <h1>Dashboard</h1>
 <div class="crumb">Client <b>{esc(data['client'])}</b> &middot;
 {esc(data['records'])} companies across {esc(len(data['batches']))} batch(es)</div>
 {quick_actions(set(data.get('permissions') or ()))}
-{needs}
 {head}
+<h2>Operator pipeline</h2>
+{operator_pipeline(set(data.get('permissions') or ()))}
+<div class="dashboard-layout">
+{needs}
+{panel("Qualification distribution", distribution_chart(q["by_status"], "Company qualification"))}
+</div>
+{control_center(data.get('control_center'))}
 {slack_panel}
 <div class="grid2">
   <div class="panel"><h3>Batches</h3>
@@ -1001,11 +1104,24 @@ def batch_detail(data, preflight_data):
             unavailable("no provider reports per-call spend"), raw=True),
     ])
     policy = preflight_data["verification_policy"]
+    job_data = data.get("jobs") or {}
+    job_lines = ''.join(
+        f'<tr><td>{esc(j["type"])}</td><td>{tag(j["status"])}</td>'
+        f'<td>{progress(j["progress"])}<span class="small muted">'
+        f'{esc(j["processed"])} / {esc(j["total"])}</span></td>'
+        f'<td>{esc(j["cursor"] or "not started")}</td>'
+        f'<td>{esc(j["failed"])}</td><td>{esc(j["held"])}</td></tr>'
+        for j in job_data.get("rows", []))
+    jobs_panel = panel("Batch execution", (
+        table(["Stage", "State", "Progress", "Cursor", "Failures", "Holds"], job_lines)
+        if job_lines else empty("No processing jobs yet", "The intake is stored. Start a free processing stage to continue."))
+        + f'<p>{link("/jobs?" + urlencode({"batch": data["batch"]}), "Open batch processing")}</p>')
 
     return f"""
 <h1>Batch {esc(data['batch'])}</h1>
 <div class="crumb">{link("/batches", "Batches")} / {esc(data['batch'])}</div>
 {head}
+{jobs_panel}
 <div class="panel"><h3>Pre-flight: what the engine intends to do</h3>
   <h4>Free and cheap, runs on everything</h4>
   {table(["step", "scope", "cost"], free_rows)}
@@ -1241,13 +1357,13 @@ def jobs_page(data, csrf):
         if data["can_run"] and j["status"] in ("queued", "running"):
             stop = (
                 f'<form method="post" action="/jobs/cancel" '
-                f'style="display:inline">'
+                f'class="inline-form">'
                 f'<input type="hidden" name="csrf" value="{attr(csrf)}">'
                 f'<input type="hidden" name="job_id" value="{attr(j["id"])}">'
                 f'<button class="btn">Stop</button></form>')
             stop += (
                 f'<form method="post" action="/jobs/run" '
-                f'style="display:inline">'
+                f'class="inline-form">'
                 f'<input type="hidden" name="csrf" value="{attr(csrf)}">'
                 f'<input type="hidden" name="job_id" value="{attr(j["id"])}">'
                 f'<input type="hidden" name="job_type" value="{attr(j["type"])}">'
@@ -1338,11 +1454,8 @@ A crash loses a slice, never a batch.</div>
 """
 
 
-def company_list(rows, batch=None, filters=None, page=None):
-    if not rows:
-        return ("<h1>Companies</h1>"
-                + empty("Nothing here",
-                        "No company matches the current filter."))
+def company_list(rows, batch=None, filters=None, page=None, query=None):
+    filters = filters or {}
     body = ""
     for r in rows:
         reasons = "; ".join(r["reasons"][:2])
@@ -1362,16 +1475,33 @@ def company_list(rows, batch=None, filters=None, page=None):
     # The window before the rows. A reader who cannot see "1-100 of
     # 30,000" has no way to know the list is a window rather than the
     # list.
-    controls = pager(page, "/companies",
-                     {"batch": batch} if batch else None)
+    active = {"batch": batch, "q": query, **filters}
+    controls = pager(page, "/companies", active)
+    hidden = ''.join(f'<input type="hidden" name="{attr(k)}" value="{attr(v)}">'
+                     for k, v in active.items()
+                     if k not in ("q", "icp_status") and v)
+    statuses = ''.join(
+        f'<option value="{attr(value)}"'
+        f'{" selected" if filters.get("icp_status", "") == value else ""}>'
+        f'{esc(value.title() if value else "Every ICP verdict")}</option>'
+        for value in ("", "qualified", "review", "rejected", "unknown"))
+    search = (f'<form class="filters" action="/companies" method="get">{hidden}'
+              '<label class="sr-only" for="company-search">Search companies in this workspace</label>'
+              f'<input id="company-search" type="search" name="q" value="{attr(query)}" '
+              'maxlength="160" placeholder="Search company, domain or segment…">'
+              '<label class="sr-only" for="company-status">ICP verdict</label>'
+              f'<select id="company-status" name="icp_status">{statuses}</select>'
+              '<button type="submit">Search</button>'
+              '<a class="btn" href="/companies">Clear filters</a></form>')
     return f"""
 <h1>Companies</h1>
 <div class="crumb">{crumb} &middot; {esc((page or {}).get("total", len(rows)))}
 company(s)</div>
+{search}
 {controls}
 {table(["company", "ICP", "tier", "score", "confidence", "vertical", "band",
         "country", "timezone", "why"], body, table_id="companies",
-       filterable=True)}
+       filterable=True) if rows else empty("No companies match", "Clear the filters or import a batch to add companies to this workspace.")}
 {controls}
 """
 
@@ -1411,7 +1541,7 @@ def _review_form(row, csrf, can_decide, allowed_by_policy):
                     "dm_plan.allow_review_enrichment, so nothing is unlocked "
                     "by it")
     return (
-        f'<form method="post" action="/icp/decide" style="display:inline">'
+        f'<form method="post" action="/icp/decide" class="inline-form">'
         f'{common}<input type="hidden" name="note" value="">'
         f'<button class="btn primary" name="decision" value="accept" '
         f'title="{attr(accept_title)}">Accept</button> '
@@ -1743,10 +1873,7 @@ def mode_tag(mode):
             f'{esc(MODE_WORDS.get(mode, mode))}</span>')
 
 
-def contact_list(rows, mode=None, flag=None, page=None):
-    if not rows:
-        return ("<h1>Contacts</h1>"
-                + empty("Nothing here", "No contact matches this filter."))
+def contact_list(rows, mode=None, flag=None, page=None, batch=None, query=None):
     body = ""
     for r in rows:
         conf = ""
@@ -1783,19 +1910,28 @@ def contact_list(rows, mode=None, flag=None, page=None):
                      ("No email", "no_email"), ("No LinkedIn", "no_linkedin")])
     # The filters travel with the page number, so paging does not
     # silently drop the filter somebody is looking through.
-    controls = pager(page, "/contacts", {"mode": mode, "flag": flag})
+    controls = pager(page, "/contacts", {"mode": mode, "flag": flag,
+                                         "batch": batch, "q": query})
+    batch_field = (f'<input type="hidden" name="batch" value="{attr(batch)}">'
+                   if batch else '')
     return f"""
 <h1>Contacts</h1>
 <div class="crumb">{esc((page or {}).get("total", len(rows)))} contact(s)</div>
 <form class="filters" method="get" action="/contacts">
-  <select name="mode" data-autosubmit>{modes}</select>
-  <select name="flag" data-autosubmit>{flags}</select>
-  <noscript><button class="btn" type="submit">Filter</button></noscript>
+  {batch_field}
+  <label class="sr-only" for="contact-search">Search contacts in this workspace</label>
+  <input id="contact-search" type="search" name="q" value="{attr(query)}" maxlength="160" placeholder="Search name, title or company…">
+  <label class="sr-only" for="contact-mode">Channel eligibility</label>
+  <select id="contact-mode" name="mode">{modes}</select>
+  <label class="sr-only" for="contact-flag">Contact hold reason</label>
+  <select id="contact-flag" name="flag">{flags}</select>
+  <button class="btn primary" type="submit">Filter</button>
+  <a class="btn" href="/contacts">Clear filters</a>
 </form>
 {controls}
 {table(["contact", "company", "channel", "confirmations", "MX",
         "email reason", "linkedin reason"], body, table_id="contacts",
-       filterable=True)}
+       filterable=True) if rows else empty("No contacts match", "Clear the filters to see the workspace contact list. Imported people appear after a batch is committed.")}
 {controls}
 """
 
@@ -1917,7 +2053,7 @@ def evidence_block(evidence_data):
         for item in items:
             out += (
                 f'<div class="step"><div>{esc(item.get("fact"))}</div>'
-                f'<div class="small muted" style="margin-top:6px">'
+                f'<div class="small muted space-above">'
                 f'{tag(item.get("provider") or "unknown provider", "info")}'
                 f'{tag(item.get("source_type") or "unknown source")}'
                 f'{tag((item.get("quality") or "unrated") + " quality")}'
@@ -1952,7 +2088,7 @@ def personalization_block(p):
     for name, value in comps.items():
         if not isinstance(value, (int, float)):
             continue
-        bars += (f'<div class="small" style="margin:6px 0">'
+        bars += (f'<div class="small component-score">'
                  f'<span class="muted">{esc(name.replace("_", " "))}</span> '
                  f"<b>{esc(round(float(value), 2))}</b>{progress(float(value))}"
                  f"</div>")
@@ -2352,7 +2488,7 @@ def outreach_block(data):
         k = kind(s["status"])
         reasons = ""
         if not s["lint_ok"]:
-            reasons += (f'<div class="small" style="color:#8d2020">Lint: '
+            reasons += (f'<div class="small text-block">Lint: '
                         f'{esc(", ".join(s["lint"]))}</div>')
         if s["eligibility_reasons"]:
             reasons += (f'<div class="small muted">Eligibility: '
@@ -2360,7 +2496,7 @@ def outreach_block(data):
         if s.get("blocked_by"):
             blocked = s["blocked_by"]
             blocked = ", ".join(blocked) if isinstance(blocked, list) else str(blocked)
-            reasons += (f'<div class="small" style="color:#8d2020">'
+            reasons += (f'<div class="small text-block">'
                         f"Blocked by: {esc(blocked)}</div>")
         if s.get("requires"):
             reasons += (f'<div class="small muted">Requires '
@@ -2371,7 +2507,7 @@ def outreach_block(data):
         body = ""
         if s["channel"] == "email":
             if s.get("subject"):
-                body += (f'<div style="font-weight:600;margin:6px 0 3px">'
+                body += (f'<div class="message-subject">'
                          f'Subject: {esc(s["subject"])}</div>')
             body += f'<pre class="copy">{esc(s.get("text"))}</pre>'
             body += (f'<div class="small muted">{esc(s["words"])} words '
@@ -2405,7 +2541,7 @@ def outreach_block(data):
             f'<span class="day">DAY {esc(s["day"])}</span>'
             f'{tag(s["provider"], "info")}'
             f'{tag(STEP_WORDS.get(s["status"], s["status"]), k)}'
-            f'<span class="small muted" style="margin-left:auto">'
+            f'<span class="small muted push-end">'
             f'{esc(s["step"])}</span></div>{who}'
             f'{_cross_channel_block(s.get("cross_channel"))}'
             f'{body}{reasons}</div>')
@@ -2572,11 +2708,11 @@ def _pause_control(row, csrf, can_pause):
               f'value="{attr(row["campaign_id"])}">')
     if row.get("paused"):
         return (f'<form method="post" action="/campaigns/resume" '
-                f'style="display:inline">{common}'
+                f'class="inline-form">{common}'
                 f'<button class="btn">Resume</button></form>'
                 f'<div class="small muted">Resuming re-runs every check.</div>')
     return (f'<form method="post" action="/campaigns/pause" '
-            f'style="display:inline">{common}'
+            f'class="inline-form">{common}'
             f'<input name="why" placeholder="why" maxlength="200">'
             f'<button class="btn">Pause</button></form>')
 
@@ -3246,7 +3382,7 @@ def approvals(data, csrf, can_approve):
         if can_approve and offered:
             button = (
                 f'<form method="post" action="/approvals/campaign" '
-                f'style="display:inline">'
+                f'class="inline-form">'
                 f'<input type="hidden" name="csrf" value="{attr(csrf)}">'
                 f'<input type="hidden" name="campaign_id" '
                 f'value="{attr(c["campaign_id"])}">'
@@ -3350,7 +3486,7 @@ def _reply_handled(r, csrf, can_manage):
     if not can_manage:
         return '<span class="small muted">not yet</span>'
     return (
-        f'<form method="post" action="/replies/handle" style="display:inline">'
+        f'<form method="post" action="/replies/handle" class="inline-form">'
         f'<input type="hidden" name="csrf" value="{attr(csrf)}">'
         f'<input type="hidden" name="record_id" value="{attr(r["record_id"])}">'
         f'<input type="hidden" name="contact_key" '
@@ -4109,6 +4245,7 @@ reason, and none of this has been written to the queue yet.</p>
 </div>{_verification_panel(result)}{_hygiene_panel(result)}"""
 
     return f"""
+<p class="eyebrow">Operator core · Intake</p>
 <h1>New batch</h1>
 <div class="crumb">Upload a CSV of domains into
 <b>{esc(workspace)}</b>. Parsing happens before anything is written.</div>
@@ -4120,12 +4257,23 @@ routed according to workspace policy.</p>
 <div class="panel">
   <form method="post" action="/upload" enctype="multipart/form-data">
     <input type="hidden" name="csrf" value="{attr(csrf)}">
-    <label class="small muted">Batch name</label>
-    <div class="filters">
-      <input name="batch" placeholder="2026-09-uk" required>
-      <input name="notes" placeholder="Optional note" style="min-width:260px">
+    <div class="upload-fields">
+      <label for="batch-name">Batch name
+        <input id="batch-name" name="batch" placeholder="uk-agencies" required>
+      </label>
+      <label for="batch-notes">Notes (optional)
+        <input id="batch-notes" name="notes" placeholder="Describe this audience">
+      </label>
     </div>
-    <label class="small muted">CSV or Excel. A workbook's first sheet is
+    <div class="upload-dropzone" data-dropzone>
+      <strong>Drop your audience file here</strong>
+      <p>CSV or Excel · parse first, review exclusions, then commit.</p>
+      <label for="batch-file"><span id="upload-filename" class="file-name">Choose a CSV or Excel file</span></label>
+      <input id="batch-file" type="file" name="csv" data-upload aria-describedby="upload-help"
+             accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+    </div>
+    <details><summary>File format and column mapping</summary>
+    <p id="upload-help" class="small muted">CSV or Excel. A workbook's first sheet is
     read, and the preview says which sheet that was &mdash; leads on a
     second tab will not be the ones imported. Column names do not need
     changing: <code>Company
@@ -4135,12 +4283,10 @@ routed according to workspace policy.</p>
     LinkedIn identify a person, so several rows sharing a company import as
     several contacts on one account. Columns we do not recognise are kept
     with the rows and never used to decide anything &mdash; the preview
-    shows exactly how each one was read before anything is saved.</label>
-    <div class="filters">
-      <input type="file" name="csv"
-             accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-             required>
+    shows exactly how each one was read before anything is saved.</p></details>
+    <div class="form-actions">
       <button class="btn primary" type="submit">Parse and preview</button>
+      <span class="small muted">No provider spend. No records written at this step.</span>
     </div>
   </form>
   <p class="note">The suppression list is checked here, at ingest, before
@@ -4161,7 +4307,7 @@ def workspace_list(spaces, current, memberships_by_space, can_manage, csrf,
         members = ", ".join(f'{m["email"]} ({m["role"]})' for m in people[:6])
         here = " &middot; current" if w["slug"] == current else ""
         switch = (f'<form method="post" action="/select-workspace" '
-                  f'style="display:inline">'
+                  f'class="inline-form">'
                   f'<input type="hidden" name="csrf" value="{attr(csrf)}">'
                   f'<input type="hidden" name="workspace" '
                   f'value="{attr(w["slug"])}">'
@@ -4196,7 +4342,7 @@ def workspace_list(spaces, current, memberships_by_space, can_manage, csrf,
             '<input name="domain" placeholder="acme-security.com" '
             'maxlength="80">'
             '<input name="booking_link" placeholder="https://... (optional)" '
-            'maxlength="120" style="min-width:220px">'
+            'maxlength="120" class="input-wide">'
             '<button class="btn primary" type="submit">Create</button>'
             "</div></form>"
             '<p class="note">Creates the workspace and a starter '
@@ -4578,7 +4724,7 @@ def workspace_users(data, csrf, can_manage, result=None):
                 f'{" selected" if r == m["role"] else ""}>{esc(r)}</option>'
                 for r in data["roles"])
             actions = (
-                f'<form method="post" action="/users/role" style="display:inline">'
+                f'<form method="post" action="/users/role" class="inline-form">'
                 f'<input type="hidden" name="csrf" value="{attr(csrf)}">'
                 f'<input type="hidden" name="email" value="{attr(m["email"])}">'
                 f'<select name="role">{options}</select> '
@@ -4595,7 +4741,7 @@ def workspace_users(data, csrf, can_manage, result=None):
         if can_manage:
             actions = (
                 f'<form method="post" action="/users/revoke" '
-                f'style="display:inline">'
+                f'class="inline-form">'
                 f'<input type="hidden" name="csrf" value="{attr(csrf)}">'
                 f'<input type="hidden" name="email" '
                 f'value="{attr(entry["email"])}">'
@@ -4633,7 +4779,7 @@ def workspace_users(data, csrf, can_manage, result=None):
 <form method="post" action="/users/add" class="filters">
   <input type="hidden" name="csrf" value="{attr(csrf)}">
   <input name="email" type="email" placeholder="someone@example.com" required
-         style="min-width:260px">
+         class="input-wide">
   <select name="role">{roles_}</select>
   <button class="btn primary" type="submit">Add to this workspace</button>
 </form>
