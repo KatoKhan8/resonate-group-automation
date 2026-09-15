@@ -159,7 +159,7 @@ def eligible_contacts(recs, client, *, config, skip_with_history=True):
     return eligible, skipped
 
 
-def clear_of_collision(chooser, limit, *, workspace_id):
+def clear_of_collision(chooser, limit, *, workspace_id, client_slug):
     """Take the first `limit` contacts whose ACCOUNT is not already being
     worked, and say why each rejected one was.
 
@@ -208,6 +208,59 @@ def clear_of_collision(chooser, limit, *, workspace_id):
         if verdict in (collision.STOP, collision.HOLD):
             rejected.append((rec, contact, f"{verdict} - {why}"))
             continue
+
+        # AND THE PERSON'S OWN LINKEDIN HISTORY, which the account check
+        # cannot see.
+        #
+        # The account-level verdict reads the client's EMAIL estate. A
+        # conversation one of the client's own 33 LinkedIn seats is already
+        # having with this individual leaves no trace there at all, so an
+        # account can be perfectly clear while the person has been messaged
+        # four times.
+        #
+        # That is not hypothetical and it is why this is here. The first
+        # canary that got as far as the provider was refused on
+        # `austin-ball-0091076b`: four messages from seat 208242, last one
+        # 2026-07-18, sent by us, never replied to. The gate caught it -
+        # `executionguard`'s collision gate runs `check_linkedin_profile` -
+        # but it caught it after the copy was installed and the campaign's
+        # record set was written, which is the same late refusal the account
+        # check was moved out of.
+        #
+        # A person we have messaged and who did not answer is not a cold
+        # prospect, and the CONTROL arm's first line - "thought it would be
+        # good to connect" - is the wrong thing to say to them. They are held
+        # out of this cohort rather than dropped: they need a different
+        # treatment, not this one.
+        #
+        # An unreadable inbox is a REFUSAL, not a skip. The same rule as the
+        # account side: a person who cannot be checked has not been cleared.
+        # THE CLIENT SLUG, NOT THE EMAILBISON WORKSPACE ID. The two scoping
+        # identifiers sit side by side in this loop and are not
+        # interchangeable: `check_account` reads the EmailBison estate and
+        # wants the numeric workspace binding, `check_linkedin_profile` scopes
+        # by the client's own LinkedIn SEATS and wants the client slug.
+        # Passing 10 here answered "10 has no inventoried LinkedIn seats" and
+        # refused all 248 - fail-closed, and the right refusal for a wrong
+        # question. `executionguard` passes `campaign.get("client")`.
+        try:
+            li_verdict, li_detail = collision.check_linkedin_profile(
+                contact.get("linkedin"), contact.get("name"),
+                expect_workspace=client_slug)
+        except Exception as e:
+            rejected.append((rec, contact,
+                             f"linkedin inbox unreadable: "
+                             f"{type(e).__name__}: {e}"))
+            continue
+        if li_verdict != collision.CLEAR:
+            detail = li_detail if isinstance(li_detail, dict) else {}
+            rejected.append((rec, contact, (
+                f"linkedin {li_verdict} - "
+                f"{detail.get('total_messages', '?')} message(s), last "
+                f"{detail.get('last_message_at', 'unknown')}, replied="
+                f"{detail.get('they_replied')}")))
+            continue
+
         chosen.append((rec, contact, None))
     return chosen, rejected
 
@@ -305,7 +358,8 @@ def _run(a, config, texts, rows, campaign, recs):
             "client's own estate cannot be read and no account can be "
             "cleared. A lead that cannot be checked cannot be cleared")
     chosen, collided = clear_of_collision(
-        eligible, a.limit, workspace_id=workspace_id)
+        eligible, a.limit, workspace_id=workspace_id,
+        client_slug=a.client)
     print(f"collision-cleared {len(chosen)} contact(s); "
           f"{len(collided)} rejected at the account level")
     for rec, contact, why in collided[:8]:
