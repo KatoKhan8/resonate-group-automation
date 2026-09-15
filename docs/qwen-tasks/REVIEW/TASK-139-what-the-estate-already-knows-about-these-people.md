@@ -94,7 +94,7 @@ change with its consumer.
 
 **SNAPSHOT STAMP:** `2026-09-14T21:52:15Z from master 0ac5e60 300 records`
 
-**COMMIT SHA:** (to be filled after commit)
+**COMMIT SHA:** eafd777
 
 **TESTS:** No code changes in src/. Measurement script: `scripts/task139_measure.py`. Findings document: `docs/RELATIONSHIP-STATE-2026-09-15.md`.
 
