@@ -268,3 +268,49 @@ no "i noticed", no "i admire how", and no repeated greetings.
 4. If "i admire how" recurs, extend the claims module with a sentiment-
   assertion check (first-person + sentiment verb + recipient-directed
   quality assertion).
+
+---
+
+## CLAUDE REVIEW - ACCEPTED, RE-MEASURED WIDER, AND ONE CAVEAT IT DID NOT FIND
+
+All four fixes are in the BRIEF rather than in records, which is what the task
+required: rung 6 in `cadencelibrary`, the opener and sender rules in both
+prompts. Surgical - four files.
+
+**Re-measured by Claude on a WIDER sample than the 3 records it used.** 12
+records regenerated live, 73 new steps, 9 of them li6:
+
+    easy out present in li6      100%
+    referral ask in li6          100%
+    "i admire how"                 2%   (was 11 of 69, about 16%)
+    "i noticed"                    0%
+
+The fixes hold beyond the sample they were tuned on, which is the thing a
+3-record result cannot tell you.
+
+### THE CAVEAT, MEASURED
+
+    li6 pairwise similarity   median 0.62   max 0.94
+                              6 of 36 pairs above 0.8
+
+**The easy-out line is templating.** Two of the three li6 examples in the
+report above are near-verbatim, and across nine the pattern holds for a sixth
+of pairs. The median of 0.62 says the closes are not all one line; the six
+pairs above 0.8 say some prospects would receive near-identical endings - and
+if two contacts at one company sit in the same cohort, that is visible to them.
+
+This is exactly the failure this repository names: **fixing one repeated phrase
+moves the repetition to the next phrase.** The TASK-116 brief said so about
+banning "just checking in", and it has now happened in the line introduced to
+fix a different defect.
+
+**It is not a blocker.** What it replaced was worse - 58 of 69 sequences with
+no way to decline at all - and a close that repeats beats a close that does not
+exist. But the previous human read failed this copy partly on repetition, and a
+fresh read will see it.
+
+Recorded rather than hidden, as is `"i admire how"` landing at 2% rather than
+0%: reduced roughly eightfold, not eliminated.
+
+    ladder + task075 + prompt modules     216 tests  REAL_EXIT=0
+    hygiene + invariants + lint           134 tests  REAL_EXIT=0
