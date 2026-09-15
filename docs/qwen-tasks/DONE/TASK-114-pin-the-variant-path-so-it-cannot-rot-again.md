@@ -52,6 +52,84 @@ The tests, the counterfactual evidence for each, and a note in the task file
 saying which of them would have caught the original TASK-084 defects. If one
 of them would not have, say so - that is the useful part.
 
+## RESULT BLOCK
+
+STATUS: DONE
+
+COMMIT SHA: 588b624
+
+TESTS:
+  py -3 -m unittest tests.test_variantgen -v
+    56 tests, 0 failures (exit 0)
+  py -3 -m unittest tests.test_variantgen tests.test_variant_wiring tests.test_variants tests.test_variant_cadence_end_to_end tests.test_variant_attribution tests.test_invariants -v
+    223 tests, 0 failures (exit 0)
+  Conflict marker check: grep -rn "^<<<<<<< \|^======= $\|^>>>>>>> " src/ tests/ scripts/ → nothing
+
+FILES CHANGED:
+  tests/test_variantgen.py - added TASK114RegressionPins class with 9 tests
+
+FINDINGS:
+
+Nine regression tests that pin the three properties TASK-084 and TASK-087
+fixed, with counterfactual evidence each would have caught the original defect.
+
+**Property 1 - Prompt carries the schema (3 tests):**
+  variant_prompt() must prepend generate.prompt_text(step), so the JSON
+  contract and schema come from one place. Counterfactual: removing the
+  template call makes all three tests fail (confirmed).
+
+**Property 2 - Arms are structurally different (2 tests):**
+  are_materially_different() must refuse structural clones. Fixture built
+  from the real TASK-087 collapsed output: four LinkedIn variants, all
+  opening with a question, all closing with a question, words 27-32.
+  Counterfactual: making the check always return different=True makes
+  both tests fail (confirmed).
+
+**Property 3 - observation_led both directions (4 tests):**
+  Absent without evidence, present with evidence. Tests pin both the
+  availability check and the generation path. Counterfactual: removing
+  the evidence check makes the absence tests fail (confirmed).
+
+All tests assert on what functions RETURN, not on source text.
+
+**Which tests would have caught TASK-084:**
+
+  Defect 1 (no JSON schema):
+    - test_email_prompt_starts_with_template_and_carries_json_contract
+    - test_linkedin_prompt_starts_with_template_and_carries_note_schema
+    Both would have caught it. They assert the prompt starts with the template
+    and contains "Return JSON only" and the schema fields. Without the template
+    call, the prompt has none of these.
+
+  Defect 2 (diversity check passed clones):
+    - test_real_collapsed_output_from_task087_is_refused
+    - test_four_question_question_variants_are_not_an_experiment
+    Both would have caught it. They assert that structural clones (same opening
+    type, same CTA type, similar length) are refused. The old word-overlap
+    check passed them; the new structural check refuses them.
+
+**Both defects would have been caught.** The tests are behaviour-based, not
+text-based, so they survive refactoring and comment changes.
+
+RISKS:
+- The tests pin the current implementation. If the variant path is refactored
+  to use a different mechanism for the JSON contract (e.g., a shared schema
+  object instead of template prepending), the tests will need to be updated.
+  This is intentional: the pin is on the property (the prompt carries the
+  schema), not the implementation (template prepending).
+- The TASK-087 fixture is built from paraphrases of the real collapsed output,
+  not the exact strings. If the model's output changes significantly, the
+  fixture may need updating. The test is pinned to the structural property
+  (all question/question, similar length), not the exact text.
+
+RECOMMENDED CLAUDE ACTION:
+1. Accept the tests. They pin the three properties and would have caught both
+   TASK-084 defects.
+2. The counterfactual evidence is in the commit message and this result block.
+   Each property was broken and the tests failed for the intended reason.
+3. No code changes were needed. The properties are already implemented correctly
+   by TASK-084 and TASK-087. This task only added the regression tests.
+
 ## RULES THAT APPLY TO THIS TASK
 
 - Reads only at both providers. No POST/PATCH/PUT/DELETE, no sends, no
