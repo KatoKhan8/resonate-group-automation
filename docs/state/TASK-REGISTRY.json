@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-09-15T07:25:17+00:00",
+  "generated_at": "2026-09-15T07:29:55+00:00",
   "generated_from": "docs/qwen-tasks/**, git, and work/claims/. Derived, never hand-edited.",
-  "master_head": "6db151c",
+  "master_head": "f2b8493",
   "counts": {
     "CLAIMED": 8,
-    "BLOCKED": 2,
-    "QUEUED": 8,
-    "AWAITING_REVIEW": 10,
-    "DONE": 85
+    "QUEUED": 9,
+    "BLOCKED": 1,
+    "AWAITING_REVIEW": 9,
+    "DONE": 86
   },
-  "ready_count": 8,
+  "ready_count": 9,
   "workers": 8,
   "backlog_healthy": false,
   "tasks": [
@@ -34,7 +34,7 @@
       "stage_dir": "TODO",
       "priority": "P0",
       "worker": "resonate-qwen-2",
-      "claimed_at": "2026-09-15T07:19:10+00:00",
+      "claimed_at": "2026-09-15T07:26:37+00:00",
       "dependencies": [],
       "branch": null,
       "result": null,
@@ -58,7 +58,7 @@
     {
       "task": "TASK-101",
       "file": "docs/qwen-tasks/TODO/TASK-101-prepare-a-real-lead-batch.md",
-      "status": "BLOCKED",
+      "status": "QUEUED",
       "stage_dir": "TODO",
       "priority": "P1",
       "worker": null,
@@ -69,9 +69,7 @@
       "branch": null,
       "result": null,
       "review_status": "NOT_SUBMITTED",
-      "blocked_by": [
-        "TASK-096"
-      ]
+      "blocked_by": []
     },
     {
       "task": "TASK-102",
@@ -376,20 +374,6 @@
     {
       "task": "TASK-095",
       "file": "docs/qwen-tasks/REVIEW/TASK-095-the-hygiene-guard-is-red.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P4",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-096",
-      "file": "docs/qwen-tasks/REVIEW/TASK-096-what-cohorts-does-this-estate-actually-support.md",
       "status": "AWAITING_REVIEW",
       "stage_dir": "REVIEW",
       "priority": "P4",
@@ -1594,6 +1578,20 @@
     {
       "task": "TASK-089",
       "file": "docs/qwen-tasks/DONE/TASK-089-linkedin-arms-still-ask-the-same-question.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P4",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-096",
+      "file": "docs/qwen-tasks/DONE/TASK-096-what-cohorts-does-this-estate-actually-support.md",
       "status": "DONE",
       "stage_dir": "DONE",
       "priority": "P4",
