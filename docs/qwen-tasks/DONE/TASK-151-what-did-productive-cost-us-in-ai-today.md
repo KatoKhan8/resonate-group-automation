@@ -103,3 +103,54 @@ Whether the existing spend ledger fits, the bypass-check grep result, the
 record shape with hashing, the price-table versioning, the OpenRouter
 attribution verdict, and a tested writer if it is small enough to be
 obviously correct.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT:** 73cf3e8
+
+**TESTS:** 35 tests in `tests/test_ai_spend_ledger.py`, all passing.
+No model calls. Pure writer verification with temp directories.
+
+**FILES CHANGED:**
+- `docs/AI-SPEND-LEDGER-2026-09-15.md` — design document
+- `scripts/task151_ai_spend_writer.py` — tested writer module
+- `tests/test_ai_spend_ledger.py` — 35 tests
+
+**FINDINGS:**
+
+1. **The existing spend ledger does NOT fit.** It tracks provider credits
+   (ContactOut, Reoon) as integer expected costs. Model calls need currency
+   (float USD), token counts, latency, model name, and price versioning.
+   Different shapes, different questions. Verdict: beside it, not in it.
+
+2. **Bypass check: no bypasses exist.**
+   `grep -rn "\.complete(" src/` returns ONE hit: `src/llm.py:827`, inside
+   `ask()`. The three modules that import `llm` (generate.py, run.py,
+   variantgen.py) all go through `llm.ask`. The chokepoint is real.
+
+3. **OpenRouter already returns cost** in `usage.cost`, captured in
+   `self.calls` by `OpenAICompatibleModel.complete()` but never persisted.
+   The ledger's job is to persist what already exists in memory.
+
+4. **OpenRouter attribution is app-level only.** HTTP-Referer + X-Title
+   identify the app, not the stage or client. Per-request `metadata`
+   supports trace_id for observability. Our own ledger answers the
+   question OpenRouter cannot: "which stage spent what on which client."
+
+5. **The writer is ~30 lines of real logic.** Small enough to be obviously
+   correct. Not wired into production — Claude integrates.
+
+**RISKS:**
+- The writer is not wired into `llm.ask`. Until Claude integrates it, no
+  rows are recorded. The instrument exists; the measurement does not start
+  until the wiring lands.
+- No price table file was created (config/ is forbidden). The writer works
+  without one, using OpenRouter's reported cost. A price table is needed
+  for non-OpenRouter endpoints and for pre-call estimation.
+
+**RECOMMENDED CLAUDE ACTION:**
+Wire `record_call()` into `llm.ask()` after the `model.complete()` call.
+The wrapper extracts usage from `model.calls[-1]`, hashes `rec["id"]` if
+a rec is available, and appends one row. Approximately 15 lines of wiring.

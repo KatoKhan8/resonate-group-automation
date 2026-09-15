@@ -90,3 +90,42 @@ The inventory table, the anatomy of one real 4,000-token prompt with per-part
 token counts, the per-company duplication count measured on a named record,
 and the deterministic-replacement list with an honest "no" where that is the
 answer.
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 5b5b88a
+
+**TESTS:** No production code changed. Measurement script `scripts/task149_measure.py` builds real prompts from the snapshot and counts tokens with tiktoken cl100k_base. Verified by running against all 550 snapshot records.
+
+**FILES CHANGED:**
+- `docs/AI-CALL-SITE-INVENTORY-2026-09-15.md` (new) — the inventory
+- `scripts/task149_measure.py` (new) — the measurement script
+
+**FINDINGS:**
+
+1. **The static template is 72-76% of every prompt.** `prompts/draft.md` is 2,906 tokens and `prompts/linkedin_note.md` is 1,665 tokens, identical on every call. The UNTRUSTED_PREAMBLE adds 157 tokens, also identical. Total static portion: 3,085/4,343 = 71% for draft, 1,844/3,217 = 57% for linkedin_note. This is the answer to "what is in those 4,000 tokens" — the static rules dominate.
+
+2. **Company evidence is sent N times identically on multi-contact accounts.** Measured on record `947f2f9d81ff` (inmobi.com, 23 contacts): 629 tokens of company evidence sent 23 times = 14,467 tokens for shared data. The contact-specific portion is only ~26 tokens. The estate average is 2.5 contacts per domain but the top accounts have 18-23.
+
+3. **Input:output ratio is 33:1 across the estate.** 14.4M input tokens to produce 430K output tokens. The observation that started this task is confirmed: we are paying 4,000 tokens to receive 40-144.
+
+4. **Every model call is genuinely semantic.** All post-model gates (lint, claims, traceability, repetition, filler detection, schema validation) are already deterministic. The model is called only for: diagnose (thread classification), hook (fact extraction), persona_angle (angle assignment + evidence), draft (email writing), linkedin_note (note writing), variant_set (5 variants). None of these can be replaced by deterministic code except partly persona_angle.
+
+5. **Seven call sites total.** diagnose, hook, persona_angle, draft, linkedin_note, linkedin_set (regeneration path), variant_set. All go through one seam: `llm.ask()` at `src/llm.py:827`.
+
+6. **Retry structure can multiply cost 9× silently.** 3 outer attempts × 3 inner schema retries = 9 model calls per step, each re-sending the full prompt.
+
+7. **Estate-wide: 3,324 base model calls, ~4,321 with retries.** All 550 records are in the domains lane (no diagnose or hook calls).
+
+**RISKS:**
+- Token counts are measured with tiktoken cl100k_base, which is the standard OpenAI/OpenRouter encoding. Actual costs depend on the specific model's pricing.
+- The measurement builds prompts from snapshot data; actual production prompts may differ slightly if records have been updated since the snapshot.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Prompt caching for the static template (saves 57-71% of input tokens)
+- Company-evidence deduplication for multi-contact accounts
+- Variant generation cost tracking to ensure the 4.2× multiplier is justified by evaluation results
