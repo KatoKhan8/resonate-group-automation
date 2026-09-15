@@ -62,7 +62,7 @@ All 13 are campaign 481. The campaign was PAUSED before it sent anything.
 | h:748002ca4e79 | 140550 | 21 | 274, 327, 352, 481 | finished |
 
 Zero replies across all 16 at the provider. Two currently in_sequence
-(Agnieszka Sito in 352, Aurelie Bollinne in 328). One bounced (Jeremy Green).
+(h:02d4bb5076b1 in 352, h:cce930f64073 in 328). One bounced (h:14204392c2b1).
 
 **Conclusion:** The 13/16 split from TASK-147 holds exactly at the 550-record
 snapshot. No new bison_lead_id contacts were added between the two snapshots.
