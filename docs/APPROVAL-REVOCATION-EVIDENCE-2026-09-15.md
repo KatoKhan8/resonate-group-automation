@@ -139,3 +139,82 @@ land in the generator and never in the estate.
 
 **Recommendation: run the sample regeneration first, measure, then decide on
 the full run.** That needs one permission.
+
+---
+
+## 7. THE DECISION, 2026-09-15
+
+**REVOKE AND REGENERATE THE 83.** Taken under the operator's conditional
+authorisation, on the evidence above plus one correction to TASK-120.
+
+### TASK-120's central claim was wrong, and it was the load-bearing one
+
+Its finding section reads:
+
+> "The ladder purposes have not changed. The prompts have not changed. The
+> client config has not changed... A regeneration would produce new copy from
+> the same prompts against the same data."
+
+If that were true, regeneration would buy nothing and the correct decision
+would be to leave the approvals alone. It is not true. Measured against the
+diff since the last approval was granted at 2026-09-13T23:01:50:
+
+    src/cadencelibrary.py   +325 lines   8 commits   the ladder rungs
+    src/claims.py           +159 lines               the claims rule
+    prompts/draft.md         +94 lines               the email prompt
+    prompts/linkedin_note.md +60 lines               the LinkedIn prompt
+    -------------------------------------------------------------
+                            +638 lines  10 commits on generation inputs
+
+And the changes target precisely the defects TASK-098 measured:
+
+    prompts/draft.md:110         "`sender_identity` is who is writing"
+    prompts/linkedin_note.md:29  the same, for LinkedIn
+    src/cadencelibrary.py:74     "rung 1 says who is writing, rung 3 says what"
+
+Sender identity was in 0 of 18 pushable steps. The prompt that would generate
+them now has a section demanding it, added after those steps were approved.
+
+### What TASK-120 got right, and it is the strongest argument AGAINST
+
+**All 83 pass every other gate.** Zero fail lint, claims or quality. They are
+stale only on the absent fingerprint, so regeneration replaces copy that
+passes everything rather than repairing copy that fails.
+
+That is a real objection and it is answered by TASK-098: **passing every
+automated gate is exactly the condition that produced the lead block.** Copy
+that passes every gate this repository has still failed two independent human
+reads, and the operator's own hand-written fallbacks beat all of it. "Passes
+all gates" is not evidence that copy is good; it is the property the pushable
+cohort has and the reason it was trusted.
+
+### Against each of the operator's conditions
+
+    approval age                 all 2026-09-13, ~24h before the fixes landed
+    copy currently approved      fails the current standard - DOES NOT BEAT
+                                 FALLBACKS, Productive 1/18, sender 0/18
+    predates current system      YES - zero fingerprints anywhere, and 638
+                                 lines of generation-input change since
+    violates current requirements YES
+    regenerated copy improves    the INPUTS demonstrably changed and target
+                                 the measured defects. Direct measurement
+                                 requires a live sample and is BLOCKED.
+    protects human judgement     NO - 167 of 169 approvals are agent-made and
+                                 ZERO human approvals are in the revoked set
+
+**Preserved:** both operator approvals, which sit outside the stale set and
+are untouched by this.
+
+### THE EXECUTION BLOCKER
+
+The decision is made. It cannot be executed from this session.
+
+    py -3 -m src.generate --regen-stale-ladder --live --client productive
+    -> refused by the sandbox
+
+It may not be delegated to a Qwen worker: `work/*.jsonl` is a production
+ledger and approval semantics are on the list a worker may never own. Routing
+a denied action to an agent with fewer restrictions is not an acceptable
+workaround.
+
+**One permission is required, for one command.** Everything else is ready.
