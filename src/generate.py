@@ -626,6 +626,60 @@ def note_mode(rec, client=None):
     return clients.linkedin_note_mode(client)
 
 
+def store_step(rec, contact_key, step_key, step):
+    """Write a generated step, KEEPING the approval it replaces as history.
+
+    THE DEFECT THIS CLOSES, measured on the live estate 2026-09-15.
+
+    Regeneration replaced the step dict wholesale at three separate call
+    sites, so any `approval` on the outgoing step was simply gone. Comparing
+    a pre-regeneration backup against the estate afterwards:
+
+        steps approved before regeneration   169
+        approval record still present         97
+        approval record GONE                  72
+
+    Seventy-two human-readable audit records deleted, silently, by a run that
+    reported itself as regenerating copy. They were recoverable only because
+    a backup happened to exist.
+
+    THE BINDING ITSELF WAS NEVER BROKEN. `approval.is_approved` compares the
+    stored fingerprint against the CURRENT content, so regenerated copy could
+    never have inherited an old verdict - proven by changing one character and
+    watching the approval lapse. The verdict binds to exact content, which is
+    the invariant.
+
+    What was missing is the other half: a lapsed verdict is still EVIDENCE.
+    It says a person looked at this position, on this date, and said yes to
+    words that no longer exist. That belongs in the audit trail, not in the
+    bin. So the live `approval` field is correctly absent on new copy - the
+    new copy is unapproved and must be read again - and the old record moves
+    to `approval_history`, which accumulates rather than replaces.
+    """
+    cadence = rec.setdefault("cadence", {}).setdefault(contact_key, {})
+    prior = cadence.get(step_key)
+    if isinstance(prior, dict):
+        history = list(prior.get("approval_history") or [])
+        if prior.get("approval"):
+            superseded = dict(prior["approval"])
+            superseded["superseded_at"] = _now_iso()
+            superseded["superseded_by"] = "regeneration"
+            # What the approval was GIVEN TO, so the record is meaningful
+            # without the copy it referred to.
+            superseded["approved_content_fingerprint"] =                 superseded.get("fingerprint")
+            history.append(superseded)
+        if history:
+            step = dict(step)
+            step["approval_history"] = history
+    cadence[step_key] = step
+    return step
+
+
+def _now_iso():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 def plan(rec, client=None, campaign=None, regen_stale_ladder=False):
     """What this record needs from a model, and why. No call without a reason.
 
@@ -1293,7 +1347,7 @@ def _regenerate_linkedin_set(rec, contact, model, client=None):
         fp = ladder_fingerprint("linkedin", ordinal, sequence=sequence)
         if fp:
             step["ladder_fingerprint"] = fp
-        rec.setdefault("cadence", {}).setdefault(key, {})[step_key] = step
+        step = store_step(rec, key, step_key, step)
         committed.append(step)
 
     count_model_call("linkedin_set", total_calls)
@@ -1409,7 +1463,7 @@ def linkedin_note(rec, contact, model, client=None, step_key="day3",
                 fp = ladder_fingerprint("linkedin", ordinal, sequence=sequence)
                 if fp:
                     step["ladder_fingerprint"] = fp
-            rec.setdefault("cadence", {}).setdefault(key, {})[step_key] = step
+            store_step(rec, key, step_key, step)
             count_model_call("linkedin_note", total_attempts)
             store.log(rec, "linkedin_note", note[:80],
                       attempts=total_attempts, rejected=rejected)
@@ -1523,7 +1577,7 @@ def draft(rec, contact, day, model, client=None, sequence=None):
                 fp = ladder_fingerprint("email", ordinal, sequence=sequence)
                 if fp:
                     candidate["ladder_fingerprint"] = fp
-            rec.setdefault("cadence", {}).setdefault(key, {})[day] = candidate
+            store_step(rec, key, day, candidate)
             store.log(rec, "draft", f"{contact.get('name')} {day}: {data['subject']}",
                       attempts=attempt, rejected=rejected)
             count_model_call("draft", attempt)
