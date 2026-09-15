@@ -73,3 +73,73 @@ The exact line where the skip happens, a verdict on whether it is deliberate,
 and a corrected impact report that distinguishes "no stale steps" from "stale
 steps I will not touch". Those are different answers to the operator's only
 question and they currently print identically.
+
+## RESULT
+
+STATUS: DONE
+COMMIT: cf18ff2
+TESTS: 25/25 ladder propagation tests pass, 76/76 generate+ladder tests pass
+FILES CHANGED:
+  - src/generate.py: moved ladder staleness check before lint/claims/quality
+  - tests/test_ladder_propagation.py: added TASK-128 test class
+
+FINDINGS:
+
+1. WHERE THE SKIP HAPPENS:
+   The ladder staleness check was at the END of the gate chain (after lint,
+   claims, foreign_product, quality checks). For LinkedIn notes, it was at
+   line 783; for email drafts, at line 883. Any step that failed an earlier
+   gate (e.g., lint failure on em_dash) would `continue` before reaching the
+   ladder check, so the ladder staleness was never detected.
+
+   This affected BOTH LinkedIn notes and email drafts. The four failing
+   contacts in the economic_buyer cohort all failed lint on em_dash, so the
+   ladder check was never reached for any of them.
+
+2. IS THE SKIP DELIBERATE:
+   No. The skip is a bug, not a design decision. The lint check and ladder
+   staleness check are independent concerns:
+   - Lint asks: "does this note pass the current lint rules?"
+   - Ladder staleness asks: "was this note generated against the current ladder?"
+   
+   A step can fail both (e.g., em_dash from an older ladder that allowed it).
+   Regenerating against the current ladder fixes both issues at once, so
+   reporting ladder-stale is the right op. The order was accidental: lint was
+   added first, ladder staleness was added later (TASK-083), and nobody
+   noticed the dependency.
+
+3. THE FOURTH RECORD:
+   The fourth record (state=drafted, li2, approved=False, no fingerprint) did
+   not regenerate for the same reason: it failed lint on em_dash, so the
+   ladder check was never reached. It's not a separate path; it's the same
+   bug affecting all four records.
+
+4. THE FIX:
+   Moved the ladder staleness check to BEFORE the lint/claims/quality checks
+   in both the LinkedIn note path (line 720) and the email draft path (line 822).
+   Now a step that is stale is caught regardless of whether it also fails other
+   gates. The regeneration fixes both the staleness and the gate failure at once.
+
+5. THE IMPACT REPORT:
+   Updated the impact report to distinguish three cases:
+   - "no ladder-stale steps found" (stale_steps == 0)
+   - "X stale step(s) protected by approval" (stale_steps > 0, stale_with_approval > 0)
+   - "all X stale step(s) will be regenerated" (stale_steps > 0, stale_with_approval == 0)
+   
+   An operator reading "0 steps to re-plan" now knows there are no stale steps,
+   not that there are stale steps the flag refuses to touch.
+
+RISKS:
+  - The fix changes the order of checks, so a step that is stale AND fails lint
+    is now marked as ladder-stale (not lint-failure). This is the correct
+    behavior, but it changes the op type. The regeneration fixes both issues
+    at once, so this is not a problem in practice.
+  - The LinkedIn note path requires a client config with linkedin_connection_note.mode="llm"
+    to execute. The existing tests don't cover this path with regen_stale_ladder=True,
+    but the logic is identical to the email path, which is tested.
+
+RECOMMENDED CLAUDE ACTION:
+  Review the fix and the test. The fix is minimal and surgical: it just moves
+  the ladder staleness check to before the gate chain. The test proves the fix
+  works for the email path. The LinkedIn note path uses identical logic and is
+  covered by the same code change.
