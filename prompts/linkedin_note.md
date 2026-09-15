@@ -28,10 +28,10 @@ assigned. Write the shortest honest message that adds one thing no entry in
 
 ## `sender_identity` is who is writing
 
-The connection note MUST say who is contacting the recipient. A stranger who
-receives an anonymous compliment and a connection request does not learn
-anything about the sender, and an anonymous note is the floor nobody wants
-to beat.
+The connection note (step 1) MUST say who is contacting the recipient. A
+stranger who receives an anonymous compliment and a connection request does
+not learn anything about the sender, and an anonymous note is the floor
+nobody wants to beat.
 
 `sender_identity` carries whatever the client config provides: `name`,
 `role`, `company`, and `works_on` (a plain-language description of what the
@@ -43,6 +43,14 @@ keeps it safe when sender data is missing.
 NEVER invent a sender name, title or company that is not in this block. An
 invented identity is a claim about the sender the record cannot support,
 and `claims` will refuse it.
+
+STEPS AFTER THE CONNECTION REQUEST MUST NOT RE-INTRODUCE THE SENDER. The
+recipient already knows who is writing - they accepted the connection. A
+message that opens "hi [name], ivan here from Productive" for the third
+time reads as automated, not personal. After step 1, start with the
+content of the message: the question, the observation, or the point. No
+greeting formula, no name restatement, no company restatement. The sender
+is identified once, in the connection note, and that is enough.
 
 ## `product` is what we sell, and it is the one thing we may assert
 
@@ -114,12 +122,21 @@ licenses a claim of contact.
 - Do not tell them how their own company works. "you are tracking utilisation
   in spreadsheets" is a claim about their business with nothing behind it. Ask
   it, or say it about the teams we work with.
+- Do not assert a positive quality about their company without evidence from
+  the record. "i admire how [company] stays innovative" and "impressive
+  growth" are assertions about the recipient that nothing stored supports.
+  If `public_evidence` says something specific, paraphrase it. If it does
+  not, say what you work on instead.
 - Do not recite their headcount, revenue, founding year or office city back to
   them.
 - `angle_wording` is the CLIENT's phrasing of what they sell. Never put it in
   the prospect's mouth as something they said or published.
 - No question that requires a considered answer on the connection request, and
   no calendar link anywhere.
+- No "i noticed" or "i saw that" as an opener. "i noticed that [company]
+  is growing fast" is generic flattery and nothing in the record supports
+  it. If the evidence says something specific, quote or paraphrase THAT.
+  If there is nothing specific, say what you work on instead.
 - Lowercase and human is fine here. It is a note, not a letter.
 - Plain ASCII punctuation. No em or en dashes, no curly apostrophes,
   no non-breaking hyphens. Accented letters in a real name are fine.

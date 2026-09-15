@@ -228,7 +228,14 @@ LINKEDIN_DEFAULT_LADDER = (
     "business, or a different consequence. No recap of the previous "
     "messages.",
     # RUNG 6: THE CLOSE.
-    "Close the loop. The sequence has done its work. No new pitch, no "
+    # TASK-131: The rung never asked for an easy out, so 58 of 69 sequences
+    # produced a thank-you instead of a graceful exit. The fallback that
+    # beats it - "happy to leave it here if the timing is wrong. is there
+    # someone else who owns this?" - does two jobs: gives the prospect a
+    # way to decline, and asks for a redirect. State the JOB, not the form.
+    "Close the loop. Give them a graceful way to decline - say you are "
+    "happy to leave it here if the timing is wrong. Then ask whether "
+    "there is somebody else who owns this topic. No new pitch, no "
     "summary of what was said.",
 )
 
