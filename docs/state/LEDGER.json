@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-15T11:17:27+00:00",
+  "generated_at": "2026-09-15T13:38:07+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
-  "master_head": "e761a34",
-  "origin_master_head": "e761a34",
+  "master_head": "e9f84bf",
+  "origin_master_head": "e9f84bf",
   "master_pushed": true,
   "tasks": [
     {
@@ -14,11 +14,43 @@
       "reported": false
     },
     {
-      "task": "TASK-129",
-      "file": "docs/qwen-tasks/TODO/TASK-129-four-steps-that-will-not-regenerate.md",
+      "task": "TASK-131",
+      "file": "docs/qwen-tasks/TODO/TASK-131-the-four-defects-a-human-read-found.md",
       "stage": "TODO",
-      "last_commit": "e761a34",
-      "last_commit_at": "2026-09-15T13:17:04+02:00",
+      "last_commit": "30e9ce1",
+      "last_commit_at": "2026-09-15T14:46:43+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-132",
+      "file": "docs/qwen-tasks/TODO/TASK-132-establish-the-campaign-building-writes.md",
+      "stage": "TODO",
+      "last_commit": "d306521",
+      "last_commit_at": "2026-09-15T14:56:49+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-133",
+      "file": "docs/qwen-tasks/TODO/TASK-133-grow-the-qualified-inventory.md",
+      "stage": "TODO",
+      "last_commit": "b167534",
+      "last_commit_at": "2026-09-15T14:58:37+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-134",
+      "file": "docs/qwen-tasks/TODO/TASK-134-an-emailbison-cadence-that-is-a-conversation.md",
+      "stage": "TODO",
+      "last_commit": "b167534",
+      "last_commit_at": "2026-09-15T14:58:37+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-135",
+      "file": "docs/qwen-tasks/TODO/TASK-135-show-the-prompt-the-evidence-it-already-has.md",
+      "stage": "TODO",
+      "last_commit": "5a92511",
+      "last_commit_at": "2026-09-15T15:13:26+02:00",
       "reported": false
     },
     {
@@ -1214,16 +1246,35 @@
       "last_commit_at": "2026-09-15T13:13:28+02:00",
       "reported": true,
       "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-129",
+      "file": "docs/qwen-tasks/DONE/TASK-129-four-steps-that-will-not-regenerate.md",
+      "stage": "DONE",
+      "last_commit": "addcd6e",
+      "last_commit_at": "2026-09-15T13:28:18+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "4096da4"
+    },
+    {
+      "task": "TASK-130",
+      "file": "docs/qwen-tasks/DONE/TASK-130-read-the-regenerated-cohort-as-a-human.md",
+      "stage": "DONE",
+      "last_commit": "5a30c7d",
+      "last_commit_at": "2026-09-15T14:45:57+02:00",
+      "reported": true,
+      "declared_status": "DONE"
     }
   ],
   "branches": [
     {
       "branch": "master",
-      "head": "e761a34",
+      "head": "e9f84bf",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "e761a34",
-      "last_commit_at": "2026-09-15T13:17:04+02:00"
+      "remote_head": "e9f84bf",
+      "last_commit_at": "2026-09-15T15:35:10+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -1248,6 +1299,14 @@
       "pushed": true,
       "remote_head": "750103d",
       "last_commit_at": "2026-09-15T12:00:03+02:00"
+    },
+    {
+      "branch": "qwen-worker-2-r15",
+      "head": "ac878aa",
+      "commits_ahead_of_master": 4,
+      "pushed": true,
+      "remote_head": "ac878aa",
+      "last_commit_at": "2026-09-15T15:16:19+02:00"
     },
     {
       "branch": "qwen-worker-2-r2",
@@ -1330,6 +1389,14 @@
       "last_commit_at": "2026-09-15T12:03:34+02:00"
     },
     {
+      "branch": "qwen-worker-3-r15",
+      "head": "d8fbf2a",
+      "commits_ahead_of_master": 2,
+      "pushed": true,
+      "remote_head": "d8fbf2a",
+      "last_commit_at": "2026-09-15T15:03:09+02:00"
+    },
+    {
       "branch": "qwen-worker-3-r2",
       "head": "b18ff0a",
       "commits_ahead_of_master": 5,
@@ -1384,6 +1451,14 @@
       "pushed": true,
       "remote_head": "b37a1e5",
       "last_commit_at": "2026-09-15T08:55:35+02:00"
+    },
+    {
+      "branch": "qwen-worker-4-r15",
+      "head": "a8631bb",
+      "commits_ahead_of_master": 3,
+      "pushed": true,
+      "remote_head": "a8631bb",
+      "last_commit_at": "2026-09-15T15:02:56+02:00"
     },
     {
       "branch": "qwen-worker-4-r6",
@@ -1691,11 +1766,35 @@
     },
     {
       "branch": "qwen-worker-r13",
-      "head": "e761a34",
-      "commits_ahead_of_master": 0,
-      "pushed": false,
-      "remote_head": null,
-      "last_commit_at": "2026-09-15T13:17:04+02:00"
+      "head": "a0d81fc",
+      "commits_ahead_of_master": 3,
+      "pushed": true,
+      "remote_head": "a0d81fc",
+      "last_commit_at": "2026-09-15T13:23:25+02:00"
+    },
+    {
+      "branch": "qwen-worker-r14",
+      "head": "f580284",
+      "commits_ahead_of_master": 1,
+      "pushed": true,
+      "remote_head": "f580284",
+      "last_commit_at": "2026-09-15T13:34:36+02:00"
+    },
+    {
+      "branch": "qwen-worker-r15",
+      "head": "7d7351b",
+      "commits_ahead_of_master": 9,
+      "pushed": true,
+      "remote_head": "7d7351b",
+      "last_commit_at": "2026-09-15T15:02:37+02:00"
+    },
+    {
+      "branch": "qwen-worker-r16",
+      "head": "a70194c",
+      "commits_ahead_of_master": 2,
+      "pushed": true,
+      "remote_head": "a70194c",
+      "last_commit_at": "2026-09-15T15:32:12+02:00"
     },
     {
       "branch": "qwen-worker-r2",
@@ -1773,31 +1872,31 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "e761a34",
+      "head": "e9f84bf",
       "branch": "master",
-      "uncommitted_files": 0,
-      "clean": true
+      "uncommitted_files": 1,
+      "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-2",
-      "head": "750103d",
-      "branch": "qwen-worker-2-r11",
+      "head": "ac878aa",
+      "branch": "qwen-worker-2-r15",
       "uncommitted_files": 0,
       "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-3",
-      "head": "6e3592d",
-      "branch": "qwen-worker-3-r11",
+      "head": "d8fbf2a",
+      "branch": "qwen-worker-3-r15",
       "uncommitted_files": 2,
       "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-4",
-      "head": "232c47e",
-      "branch": "qwen-worker-4-r9",
-      "uncommitted_files": 1,
-      "clean": false
+      "head": "a8631bb",
+      "branch": "qwen-worker-4-r15",
+      "uncommitted_files": 0,
+      "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-5",
@@ -1829,15 +1928,15 @@
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-worker",
-      "head": "e761a34",
-      "branch": "qwen-worker-r13",
+      "head": "a70194c",
+      "branch": "qwen-worker-r16",
       "uncommitted_files": 0,
       "clean": true
     }
   ],
   "stage_counts": {
-    "TODO": 2,
+    "TODO": 6,
     "REVIEW": 1,
-    "DONE": 124
+    "DONE": 126
   }
 }
