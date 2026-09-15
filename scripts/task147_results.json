@@ -1,0 +1,712 @@
+{
+  "stamp": "2026-09-15T17:52:12+00:00 from master cf23154 550 records",
+  "total_records": 550,
+  "q1": {
+    "cold_records": 38,
+    "prior_outreach_records": 29,
+    "bison_with_reply_records": 0,
+    "unverified_records": 483
+  },
+  "q2": {
+    "checked": 29,
+    "never_emailed": 13,
+    "actually_emailed": 16,
+    "errors": 0,
+    "details": [
+      {
+        "lead_id": 203715,
+        "contact_name": "Jacob Faertz",
+        "domain": "ogpartner.dk",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "sending_paused",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 135163,
+        "contact_name": "Izabelle A",
+        "domain": "16kagency.com",
+        "overall_emails_sent": 14,
+        "campaigns": [
+          {
+            "campaign_id": 265,
+            "status": "stopped",
+            "emails_sent": 1,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 328,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 352,
+            "status": "sequence_finished",
+            "emails_sent": 5,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 144582,
+        "contact_name": "Claudia Papa",
+        "domain": "1gslab.com",
+        "overall_emails_sent": 10,
+        "campaigns": [
+          {
+            "campaign_id": 274,
+            "status": "stopped",
+            "emails_sent": 2,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 327,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 352,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 133292,
+        "contact_name": "Rachele Crumpler",
+        "domain": "2020companies.com",
+        "overall_emails_sent": 21,
+        "campaigns": [
+          {
+            "campaign_id": 264,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 274,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 327,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 352,
+            "status": "sequence_finished",
+            "emails_sent": 5,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 199963,
+        "contact_name": "Agnieszka Sito",
+        "domain": "25wat.com",
+        "overall_emails_sent": 1,
+        "campaigns": [
+          {
+            "campaign_id": 352,
+            "status": "in_sequence",
+            "emails_sent": 1,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203707,
+        "contact_name": "Janie Karas",
+        "domain": "28row.com",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 142476,
+        "contact_name": "Jeremy Green",
+        "domain": "4cite.com",
+        "overall_emails_sent": 5,
+        "campaigns": [
+          {
+            "campaign_id": 274,
+            "status": "bounced",
+            "emails_sent": 4,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 327,
+            "status": "bounced",
+            "emails_sent": 1,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 136059,
+        "contact_name": "Devon Spector",
+        "domain": "4thwhale.com",
+        "overall_emails_sent": 5,
+        "campaigns": [
+          {
+            "campaign_id": 266,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 352,
+            "status": "sequence_finished",
+            "emails_sent": 5,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 168853,
+        "contact_name": "Tobiasz Bierka",
+        "domain": "5bonsai.com",
+        "overall_emails_sent": 9,
+        "campaigns": [
+          {
+            "campaign_id": 328,
+            "status": "stopped",
+            "emails_sent": 4,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 352,
+            "status": "sequence_finished",
+            "emails_sent": 5,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 173033,
+        "contact_name": "Aurelie Bollinne",
+        "domain": "5p-retail.be",
+        "overall_emails_sent": 9,
+        "campaigns": [
+          {
+            "campaign_id": 328,
+            "status": "in_sequence",
+            "emails_sent": 4,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 352,
+            "status": "sequence_finished",
+            "emails_sent": 5,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203711,
+        "contact_name": "Rik De Veirman",
+        "domain": "anewagencyworld.com",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "sending_paused",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 142762,
+        "contact_name": "David Liljegren",
+        "domain": "adkamerica.com",
+        "overall_emails_sent": 21,
+        "campaigns": [
+          {
+            "campaign_id": 274,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 327,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 352,
+            "status": "sequence_finished",
+            "emails_sent": 5,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 174331,
+        "contact_name": "Andreas Alex",
+        "domain": "alex-gross.com",
+        "overall_emails_sent": 8,
+        "campaigns": [
+          {
+            "campaign_id": 328,
+            "status": "in_sequence",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 331,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 168654,
+        "contact_name": "Nena Berfelo",
+        "domain": "axastudios.com",
+        "overall_emails_sent": 21,
+        "campaigns": [
+          {
+            "campaign_id": 328,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 330,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 352,
+            "status": "sequence_finished",
+            "emails_sent": 5,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203708,
+        "contact_name": "Brian Price",
+        "domain": "acqcom.com",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "sending_paused",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 168616,
+        "contact_name": "Agnieszka Chrobot",
+        "domain": "adagri.com",
+        "overall_emails_sent": 9,
+        "campaigns": [
+          {
+            "campaign_id": 328,
+            "status": "stopped",
+            "emails_sent": 4,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 352,
+            "status": "sequence_finished",
+            "emails_sent": 5,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203709,
+        "contact_name": "Ranjan Damodar",
+        "domain": "adcuratio.com",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "sending_paused",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 176926,
+        "contact_name": "Erjen Rijnders",
+        "domain": "adsvibe.nl",
+        "overall_emails_sent": 8,
+        "campaigns": [
+          {
+            "campaign_id": 328,
+            "status": "in_sequence",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 330,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 141805,
+        "contact_name": "Caleb Crail",
+        "domain": "csquaredsocial.com",
+        "overall_emails_sent": 21,
+        "campaigns": [
+          {
+            "campaign_id": 274,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 327,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 352,
+            "status": "sequence_finished",
+            "emails_sent": 5,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203716,
+        "contact_name": "Collette Savoie",
+        "domain": "portsidemarketing.com",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "sending_paused",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203710,
+        "contact_name": "Al Scornaienchi",
+        "domain": "agency59.ca",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "sending_paused",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203657,
+        "contact_name": "Hussein Samnani",
+        "domain": "hotsoupgroup.com",
+        "overall_emails_sent": 1,
+        "campaigns": [
+          {
+            "campaign_id": 451,
+            "status": "sequence_finished",
+            "emails_sent": 1,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203718,
+        "contact_name": "Paula Savage Hansen",
+        "domain": "savagebrands.com",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "sending_paused",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203713,
+        "contact_name": "Michelle Payne-witten",
+        "domain": "mischacommunications.com",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "sending_paused",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203714,
+        "contact_name": "Jennie Johnson",
+        "domain": "mypersonalestatesale.com",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "sending_paused",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203712,
+        "contact_name": "Christine Xoinis",
+        "domain": "ethoscreate.com",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203717,
+        "contact_name": "Jason Baker  Advertising & Marketing Leader",
+        "domain": "roaringmedia.co",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 203719,
+        "contact_name": "Ray Kingman",
+        "domain": "semcasting.com",
+        "overall_emails_sent": 0,
+        "campaigns": [
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      },
+      {
+        "lead_id": 140550,
+        "contact_name": "Jonathan Moisan",
+        "domain": "advertisepurple.com",
+        "overall_emails_sent": 21,
+        "campaigns": [
+          {
+            "campaign_id": 274,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 327,
+            "status": "sequence_finished",
+            "emails_sent": 8,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 352,
+            "status": "sequence_finished",
+            "emails_sent": 5,
+            "replies": 0,
+            "interested": false
+          },
+          {
+            "campaign_id": 481,
+            "status": "stopped",
+            "emails_sent": 0,
+            "replies": 0,
+            "interested": false
+          }
+        ],
+        "error": null
+      }
+    ]
+  },
+  "q3": {
+    "domains_checked": 38,
+    "allow": 8,
+    "stop": 16,
+    "hold": 14
+  }
+}
