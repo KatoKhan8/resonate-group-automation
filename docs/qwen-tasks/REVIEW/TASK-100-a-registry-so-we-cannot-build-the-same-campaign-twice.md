@@ -79,3 +79,70 @@ test proving the pre-creation check is actually called by something.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: 2d9b3b9
+TESTS: 28 new tests in tests/test_campaign_registry.py, all pass. 224 related
+  tests pass (test_campaign_registry, test_campaigns, test_invariants,
+  test_campaign_qa, test_campaign_preflight, test_campaign_audit).
+
+FILES CHANGED:
+  - src/campaignregistry.py (NEW) - Core module: load(), find_duplicates(),
+    pre_creation_check()
+  - src/campaigns.py (MODIFIED) - DuplicateCampaign exception, registry check
+    wired into new_campaign(), cohort_key and hypothesis fields added
+  - scripts/campaign_registry.py (NEW) - Generation script, read-only at both
+    providers
+  - tests/test_campaign_registry.py (NEW) - 28 tests
+  - docs/state/CAMPAIGN-REGISTRY.json (NEW) - Generated registry
+
+FINDINGS:
+  - 105 campaigns total: 83 HeyReach + 22 EmailBison
+  - 3 created by Resonate (prefix "RESONATE")
+  - 539 duplicate pairs detected in the existing estate
+  - Most duplicates are the client's pre-Resonate history: multiple campaigns
+    named "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA" created minutes apart,
+    same lead lists, same sequence hashes
+  - Three "PRODUCTIVE - CANARY - 2026-09-09" campaigns with exact same name,
+    two created within 5 minutes with same shape
+  - The registry correctly identifies these without judging them as mistakes
+
+CALLER CHAIN PROVEN:
+  - `grep -rn "campaignregistry" src/` returns 3 hits: the module definition,
+    the import in campaigns.py, and the pre_creation_check call
+  - `grep -rn "DuplicateCampaign" src/` returns 2 hits: the class definition
+    and the raise in new_campaign
+  - new_campaign is called by orchestrator.py:54 and web/api.py:2637
+  - The check runs through the real entry point, not a side channel
+
+WHAT THE PRE-CREATION CHECK DOES:
+  - Called inside new_campaign before the skeleton is built
+  - Checks cohort_key, hypothesis, and name against the registry
+  - Raises DuplicateCampaign if a match is found
+  - check_registry=False skips the check (named escape hatch)
+  - Empty or missing registry permits creation with a "not generated" note
+
+WHAT THE DUPLICATE DETECTOR DOES:
+  - Same-or-near name (exact match or prefix with variant suffix)
+  - Same sequence hash
+  - Same lead list id
+  - Created within 5 minutes with same shape (status bucket + node count)
+  - Reports pairs, does not judge them
+
+RISKS:
+  - The registry is a snapshot. New campaigns created at the provider between
+    runs are not reflected until the script is re-run.
+  - EmailBison pagination is capped at 40 pages (600 campaigns). The current
+    estate has 22, well within the cap.
+  - The name similarity check uses a simple prefix match with variant suffix
+    detection. It may miss creative renamings or flag coincidental prefix
+    overlaps.
+
+RECOMMENDED CLAUDE ACTION:
+  Review the 539 duplicate pairs in docs/state/CAMPAIGN-REGISTRY.json. The
+  detector reports, does not judge - some may be deliberate geo splits. The
+  pre-creation check is now live in new_campaign and will refuse to build a
+  campaign whose name, cohort key or hypothesis matches an existing registry
+  entry.
