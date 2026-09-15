@@ -101,9 +101,9 @@ The regex matched `+93\n        (18.3` across the line boundary. Same pattern fo
 
 #### 2. `test_every_email_address_is_on_a_reserved_domain` — STALE TEST (fixture non-compliance)
 
-**Root cause:** `tests/test_task062_failing_sibling_excluded.py` line 89 uses `jane@acme.com` as a test fixture email. `acme.com` is a real, resolvable domain - not in SAFE_SUFFIXIES (RFC 2606/6761 reserved). The guard correctly flags it.
+**Root cause:** `tests/test_task062_failing_sibling_excluded.py` line 89 used a test fixture email on a real, resolvable domain (a well-known fictional company's actual .com). Not in SAFE_SUFFIXES (RFC 2606/6761 reserved). The guard correctly flagged it.
 
-**Fix:** Changed `jane@acme.com` → `jane@acme.example`. The `.example` TLD is reserved by RFC 2606 and is in SAFE_SUFFIXIES. The test's company name "Acme Corp" and person "Jane Doe" are fictional and do not trigger FORBIDDEN_NAMES. The test_task062 tests still pass (verified: 4/4 OK).
+**Fix:** Changed the fixture to use the `.example` TLD, which is reserved by RFC 2606 and is in SAFE_SUFFIXES. The test's company name "Acme Corp" and person "Jane Doe" are fictional and do not trigger FORBIDDEN_NAMES. The test_task062 tests still pass (verified: 4/4 OK).
 
 #### 3. `test_no_real_person_or_client_named` — REAL LEAK (escalated below)
 
