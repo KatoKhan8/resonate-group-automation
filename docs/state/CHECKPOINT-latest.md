@@ -146,3 +146,72 @@ through a pipe. Do not trust a Qwen "tests pass" without running the
 neighbours. Do not merge a worker branch wholesale - take named files. Do not
 believe a document about the environment without checking it; three were
 wrong this session.
+
+
+---
+
+# UPDATE - 2026-09-15 mid-run
+
+## THE OPERATOR DECISION THAT IS NOW OWED
+
+TASK-098 read the live sequence against the hand-written fallbacks and the
+verdict is **DOES NOT BEAT FALLBACKS**. The lead block holds. But the reason
+is not the one the earlier reads assumed.
+
+    Productive named    91 of 407 LinkedIn steps   ESTATE
+                         1 of  18                  PUSHABLE
+    sender identified   53 of 234 email steps      ESTATE
+                         0 of  18                  PUSHABLE
+
+The ladder fixes work. The three pushable contacts carry copy generated
+2026-09-13, before those fixes, and `plan` will not re-plan a step that still
+passes its gates. **The pushable cohort is not bad copy, it is old copy** -
+and it is the cohort a reader reaches for precisely because it passed.
+
+The mechanism exists and its price is measured, re-confirmed today:
+
+    py -3 -m src.generate --regen-stale-ladder --client productive
+      steps to re-plan:               560
+      approvals that would be revoked:  83
+
+**Revoking 83 human approvals is an operator decision**, not an engineering
+one. Approval semantics are on the list nothing may own. The flag is opt-in
+and reports before it acts, and it has not been run.
+
+Two things it would NOT fix: one pushable contact carries "as a fellow
+founder", which is structural and not stale; and 49 email openers still begin
+"I noticed", the identical count TASK-063 recorded.
+
+## WHAT WAS INTEGRATED THIS RUN
+
+    TASK-089   the opening was never measured - _opening_shape read the first
+               LINE, which on a one-paragraph LinkedIn message is the whole
+               message, so it returned what _cta_shape returned. TASK-087's
+               "every arm is question/question" was one property read twice.
+               Five arms now generate; the opening axis is still 4:1 collapsed.
+    TASK-095   the PII guard is GREEN for the first time. 16 real tokens
+               redacted across 9 files, six of them in a script checkpoint D
+               said had already been redacted.
+    TASK-096   two cohorts of 50+ exist and their UNION is 81 of 92 contacts -
+               they are mostly the same people. Its "specialties is 0%" was a
+               wrong lookup; it is 73.9%, in company_facts.
+    TASK-098   the human read above.
+
+## ORCHESTRATION NOW IN PLACE
+
+    scripts/claim_task.py    atomic claiming, O_CREAT|O_EXCL. 8 racers, 1
+                             winner, proven. --reap disabled: the recorded pid
+                             is the CLAIMER's and would free every live claim.
+    scripts/task_registry.py docs/state/TASK-REGISTRY.json, derived. Exits
+                             non-zero below 16 ready tasks.
+    scripts/pool.sh          zero-idle loop. A finished worker is reassigned on
+                             the next sweep without waiting for review.
+    docs/ORCHESTRATION.md    the policy, durable.
+
+## NEXT
+
+1. The operator decides on --regen-stale-ladder (560 steps, 83 approvals).
+2. TASK-115 - the diversity check reads punctuation where the design carries
+   angle. Running.
+3. TASK-101 - lead batch prep on the ~81-contact cohort. Running.
+4. Nothing goes live until a human read passes.
