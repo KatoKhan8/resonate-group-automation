@@ -164,13 +164,48 @@ def reap():
     return CLAIM_ERROR
 
 
+def _claimed_on_a_branch():
+    """Tasks some worker branch has already moved OUT of TODO.
+
+    A worker moves its task to RUNNING/ and later DONE/ on ITS OWN BRANCH.
+    Master's TODO does not change until Claude integrates, which can lag by
+    minutes. So a task can be finished and still sit in master's TODO looking
+    free - and the pool will hand it to a second worker, which is the
+    collision this module exists to prevent, arriving by the back door.
+
+    Asking git which branches have moved the file closes that window without
+    requiring Claude to keep up.
+    """
+    import subprocess
+    moved = set()
+    try:
+        branches = subprocess.run(
+            ["git", "-C", MAIN_REPO, "for-each-ref", "--format=%(refname:short)",
+             "refs/heads/"], capture_output=True, text=True, timeout=30).stdout.split()
+        for b in branches:
+            if b == "master":
+                continue
+            out = subprocess.run(
+                ["git", "-C", MAIN_REPO, "ls-tree", "-r", "--name-only", b,
+                 "docs/qwen-tasks/"], capture_output=True, text=True, timeout=30).stdout
+            for line in out.splitlines():
+                if "/TODO/" in line or not line.endswith(".md"):
+                    continue
+                base = os.path.basename(line)
+                if base.startswith("TASK-"):
+                    moved.add("-".join(base.split("-")[:2]))
+    except Exception:
+        return set()
+    return moved
+
+
 def ready_tasks():
-    """READY = in TODO, not claimed, dependencies satisfied. Sorted by the
-    registry's priority (P0 first), then by task id."""
+    """READY = in TODO, not claimed, not already worked on a branch, deps met.
+    Sorted by the registry's priority (P0 first), then by task id."""
     todo_dir = os.path.join(MAIN_REPO, "docs", "qwen-tasks", "TODO")
     if not os.path.isdir(todo_dir):
         return []
-    claimed = {c["task"] for c in held_claims()}
+    claimed = {c["task"] for c in held_claims()} | _claimed_on_a_branch()
     reg = {}
     if os.path.exists(REGISTRY):
         try:
