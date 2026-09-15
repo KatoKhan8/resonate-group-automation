@@ -166,10 +166,15 @@ class FakeBison:
     def attach_leads(self, cid, lead_ids):
         cid = int(cid)
         before = set(self.members.get(cid, []))
-        fresh = [i for i in lead_ids if i not in before]
-        self.members[cid] = sorted(before | set(lead_ids))
+        # Normalise to strings: the real factory now stores ids as strings,
+        # so the ids arriving here may be strings even though the fake
+        # provider issued integers.
+        lead_ids = [str(i) for i in lead_ids]
+        before_str = {str(i) for i in before}
+        fresh = [i for i in lead_ids if i not in before_str]
+        self.members[cid] = sorted(before_str | set(lead_ids), key=lambda x: int(x))
         return {"attached": fresh,
-                "already": [i for i in lead_ids if i in before],
+                "already": [i for i in lead_ids if i in before_str],
                 "members": list(self.members[cid]),
                 "count": len(self.members[cid])}
 

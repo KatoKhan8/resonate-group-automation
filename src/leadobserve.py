@@ -451,7 +451,7 @@ def scheduled_rows(campaign_id):
             "scheduled_at": row.get("scheduled_date"),
             "sent_at": row.get("sent_at"),
             "provider_message_id": row.get("raw_message_id"),
-            "provider_lead_id": lead.get("id"),
+            "provider_lead_id": str(lead.get("id")) if lead.get("id") is not None else None,
             "email": lead.get("email"),
             # Our own identifiers, read back off the provider's state. This is
             # what makes an observation attributable without a guess.

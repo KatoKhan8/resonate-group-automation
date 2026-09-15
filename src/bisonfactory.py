@@ -772,7 +772,7 @@ def _find_or_create(campaign, report, by="system"):
             f"already and this row was bound to nothing")
         report["provider"]["recovered"] = True
         report["provider"]["status_before"] = found.get("status")
-        return found["id"], str(found.get("name") or planned)
+        return str(found["id"]), str(found.get("name") or planned)
 
     payload = {"name": planned}
     # `perform` reports the response as trimmed JSON TEXT, which is right for
@@ -803,7 +803,7 @@ def _find_or_create(campaign, report, by="system"):
     # which is now recoverable by name above rather than merely narrow.
     _bind(campaign, provider_id, "created and bound")
     report["did"].append(f"created EmailBison campaign {provider_id}")
-    return provider_id, planned
+    return str(provider_id), planned
 
 
 def _bind(campaign, provider_id, why):
@@ -811,7 +811,7 @@ def _bind(campaign, provider_id, why):
     with campaigns.transaction() as rows:
         row = campaigns.get(str(campaign.get("campaign_id")), rows)
         if row is not None:
-            row["bison_campaign_id"] = provider_id
+            row["bison_campaign_id"] = str(provider_id)
             campaigns.log(row, "provider",
                           f"EmailBison campaign {provider_id} {why}")
     return provider_id
@@ -1018,7 +1018,7 @@ def _remember_lead(lead, lead_id):
                 continue
             for contact in rec.get("contacts") or []:
                 if contact.get("key") == lead["contact_key"]:
-                    contact["bison_lead_id"] = lead_id
+                    contact["bison_lead_id"] = str(lead_id)
 
 
 def _remember_leads(pairs):
@@ -1039,7 +1039,7 @@ def _remember_leads(pairs):
                 continue
             for contact in rec.get("contacts") or []:
                 if contact.get("key") == lead["contact_key"]:
-                    contact["bison_lead_id"] = lead_id
+                    contact["bison_lead_id"] = str(lead_id)
 
 
 def _variables_for(lead, campaign):
