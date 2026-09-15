@@ -62,7 +62,7 @@ free-vs-paid split, and the five reachability probes with their results.
 
 **STATUS:** DONE
 
-**COMMIT:** 77f0f42
+**COMMIT:** 8213a7b
 
 **TESTS:** Analysis scripts ran successfully against the snapshot. No unit
 tests were applicable — this is a measurement task, not a code change.
