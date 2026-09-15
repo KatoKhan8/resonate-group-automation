@@ -105,7 +105,7 @@ ALLOWED_PHONES = {
 }
 
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
-PHONE = re.compile(r"\+\d[\d\s().-]{7,}\d")
+PHONE = re.compile(r"\+\d[\d \t().-]{7,}\d")
 
 TEXT_SUFFIXES = (".py", ".json", ".jsonl", ".csv", ".txt", ".md", ".yaml",
                  ".yml", ".cfg", ".ini", ".toml", ".html", ".js", ".css")
