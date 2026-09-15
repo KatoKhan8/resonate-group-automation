@@ -1088,6 +1088,15 @@ def _mint_authorization(campaign, rec, contact, *, config=None, readback=None,
         workspace=client,
         config=config,
         readback=readback,
+        # STAGING, and the claim is provider-confirmed rather than asserted.
+        # `ensure_leads` gate 6 has already read `heyreach.campaign_cannot_
+        # send` from the provider, and `providerwrites.perform` reads it again
+        # immediately before the write. Adding a lead to a campaign that
+        # cannot send reaches nobody, so the killswitch's SEND layers are the
+        # wrong question - see the long note at that gate, and
+        # `bisonfactory._ensure_leads`, which has applied this same rule on
+        # the other channel since it was written.
+        staging=True,
         by=by)
 
 

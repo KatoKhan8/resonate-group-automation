@@ -411,6 +411,55 @@ class EachGateStopsTheProviderCallEntirely(GuardTest):
         self.assertIn("campaign", layers,
                       "the campaign layer never evaluated")
 
+    def test_a_staging_write_asks_the_workspace_layer_only(self):
+        """Adding a lead to a campaign that cannot send is not a send.
+
+        The global layer refuses SENDING - it is derived from
+        `push.run(live=True)` raising - and the campaign layer refuses a
+        campaign that is not RUNNING. Both refused the first LinkedIn lead
+        ever staged, on a DRAFT campaign the provider had just confirmed could
+        not send.
+
+        `bisonfactory._ensure_leads` has excluded both on the other channel
+        since it was written, for those exact two reasons. This is the
+        LinkedIn path being given the same answer to the same question.
+        """
+        on = {"sending": True, "why": "sending.live is on for productive"}
+        with self.allow_collision(), self.allow_sender():
+            with mock.patch.object(killswitch, "workspace_state",
+                                   return_value=on):
+                auth = self.attempt(staging=True)
+        self.assertIsInstance(auth, executionguard.Authorization)
+        # The workspace form ran and the send-stack form did not. Without the
+        # second assertion this would pass while `staging` did nothing.
+        self.assertIn("killswitch:workspace", auth.gates)
+        self.assertNotIn("killswitch", auth.gates)
+
+    def test_and_the_workspace_layer_still_refuses_it(self):
+        """`staging` must not read as "skip the killswitch".
+
+        The workspace switch is the tenant's own control and is the meaningful
+        one at staging time: a workspace never switched on, or switched off,
+        gets no leads staged for it.
+        """
+        off = {"sending": False, "why": "sending.live is off for productive"}
+        with self.allow_collision(), self.allow_sender():
+            with mock.patch.object(killswitch, "workspace_state",
+                                   return_value=off):
+                with self.assertRaises(executionguard.NotAuthorized) as caught:
+                    self.attempt(staging=True)
+        self.assertEqual(caught.exception.gate, "killswitch")
+        self.assertIn("No lead was staged", caught.exception.why)
+        self.assertEqual(self.spy.calls, [])
+
+    def test_a_non_staging_action_still_meets_the_whole_stack(self):
+        """The default is unchanged, so nothing acquires this by accident."""
+        with self.allow_collision(), self.allow_sender():
+            with self.assertRaises(executionguard.NotAuthorized) as caught:
+                self.attempt()
+        self.assertEqual(caught.exception.gate, "killswitch")
+        self.assertIn("layer", caught.exception.why.lower())
+
     def test_a_frozen_campaign_is_refused_by_the_killswitch(self):
         """The property the broken gate could not have enforced."""
         with mock.patch.object(campaigns, "is_frozen", return_value=True):

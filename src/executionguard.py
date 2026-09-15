@@ -214,7 +214,7 @@ def readback_is_fresh(verified_at, now=None, ttl=READBACK_TTL_SECONDS):
 
 def authorize(*, operation, channel, campaign, rec, contact, step_key,
               workspace, config=None, recs=None, now=None, by="system",
-              readback=None, reserve=True):
+              readback=None, reserve=True, staging=False):
     """Run every gate in order and return an `Authorization`, or raise.
 
     `readback` is the `(diff_result, verified_at)` pair from a provider
@@ -621,13 +621,63 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     # `SendingRefused` is caught by name and its message preserved. Anything
     # else is a bug in the killswitch itself and must not be laundered into a
     # refusal that reads like policy.
-    try:
-        killswitch.require(workspace=campaign.get("client"),
-                           campaign=campaign, rec=rec, contact=contact,
-                           step_key=step_key)
-    except killswitch.SendingRefused as e:
-        raise NotAuthorized("killswitch", str(e), gates) from None
-    gates.append("killswitch")
+    # A STAGING WRITE ASKS THE WORKSPACE LAYER ONLY, AND THAT IS NOT A NEW
+    # RULE - IT IS THE ONE THIS REPOSITORY ALREADY APPLIES ON THE OTHER
+    # CHANNEL.
+    #
+    # `bisonfactory._ensure_leads` creates and attaches EmailBison leads
+    # without going through `providerwrites.perform` at all, and consults the
+    # killswitch itself. Its comment states the reasoning in full:
+    #
+    #     "The GLOBAL layer is excluded because it refuses sending (which
+    #      staging is not); the CAMPAIGN layer is excluded because the
+    #      canonical campaign is not RUNNING during staging and that is the
+    #      correct state for a campaign being built."
+    #
+    # The LinkedIn path reaches the killswitch through this gate instead, so
+    # it inherited the full send stack - and was refused by exactly those two
+    # layers, for exactly those two reasons, on a campaign the provider had
+    # just confirmed cannot send. Two channels, one question, two answers.
+    #
+    # WHAT `staging` DOES NOT DO. It does not weaken the send block. The
+    # GLOBAL layer still refuses every actual send, because `push.run(live=
+    # True)` still raises and that is what the layer is derived from. The
+    # CAMPAIGN layer still refuses a campaign that is not RUNNING when
+    # something tries to SEND through it. `LINKEDIN_ACTIVATE` - the verb that
+    # turns a campaign full of staged leads into messages - is still sealed,
+    # carries no condition in `providerwrites.CONDITIONAL`, and is reached by
+    # none of this.
+    #
+    # WHAT STILL REFUSES A STAGING WRITE. The workspace switch, which is the
+    # tenant's own control: a workspace that has never been switched on, or
+    # that has been switched off, gets no leads created for it. That is the
+    # meaningful control at staging time and it is the one the EmailBison path
+    # already relies on.
+    #
+    # The caller says whether this is staging; it is not inferred here. The
+    # only caller that passes True is `heyreachfactory._mint_authorization`,
+    # which is called from `ensure_leads` AFTER its gate 6 has read
+    # `heyreach.campaign_cannot_send` from the provider - and
+    # `providerwrites.perform` reads it again immediately before the write.
+    # So the claim "this reaches nobody" is provider-confirmed twice, not
+    # asserted by a flag.
+    if staging:
+        ws_state = killswitch.workspace_state(campaign.get("client"))
+        if not ws_state["sending"]:
+            raise NotAuthorized(
+                "killswitch",
+                f"the killswitch for workspace "
+                f"{campaign.get('client')!r} is off: {ws_state['why']}. "
+                f"No lead was staged", gates)
+        gates.append("killswitch:workspace")
+    else:
+        try:
+            killswitch.require(workspace=campaign.get("client"),
+                               campaign=campaign, rec=rec, contact=contact,
+                               step_key=step_key)
+        except killswitch.SendingRefused as e:
+            raise NotAuthorized("killswitch", str(e), gates) from None
+        gates.append("killswitch")
 
     if reserve:
         # `require_clear` above already asked, and this asks again under the
