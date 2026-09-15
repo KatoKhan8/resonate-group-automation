@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-15T13:38:07+00:00",
+  "generated_at": "2026-09-15T14:18:14+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
-  "master_head": "e9f84bf",
-  "origin_master_head": "e9f84bf",
+  "master_head": "a3334d2",
+  "origin_master_head": "a3334d2",
   "master_pushed": true,
   "tasks": [
     {
@@ -14,43 +14,11 @@
       "reported": false
     },
     {
-      "task": "TASK-131",
-      "file": "docs/qwen-tasks/TODO/TASK-131-the-four-defects-a-human-read-found.md",
+      "task": "TASK-136",
+      "file": "docs/qwen-tasks/TODO/TASK-136-read-the-corrected-copy-as-a-human.md",
       "stage": "TODO",
-      "last_commit": "30e9ce1",
-      "last_commit_at": "2026-09-15T14:46:43+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-132",
-      "file": "docs/qwen-tasks/TODO/TASK-132-establish-the-campaign-building-writes.md",
-      "stage": "TODO",
-      "last_commit": "d306521",
-      "last_commit_at": "2026-09-15T14:56:49+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-133",
-      "file": "docs/qwen-tasks/TODO/TASK-133-grow-the-qualified-inventory.md",
-      "stage": "TODO",
-      "last_commit": "b167534",
-      "last_commit_at": "2026-09-15T14:58:37+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-134",
-      "file": "docs/qwen-tasks/TODO/TASK-134-an-emailbison-cadence-that-is-a-conversation.md",
-      "stage": "TODO",
-      "last_commit": "b167534",
-      "last_commit_at": "2026-09-15T14:58:37+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-135",
-      "file": "docs/qwen-tasks/TODO/TASK-135-show-the-prompt-the-evidence-it-already-has.md",
-      "stage": "TODO",
-      "last_commit": "5a92511",
-      "last_commit_at": "2026-09-15T15:13:26+02:00",
+      "last_commit": "a3334d2",
+      "last_commit_at": "2026-09-15T16:06:42+02:00",
       "reported": false
     },
     {
@@ -1265,16 +1233,63 @@
       "last_commit_at": "2026-09-15T14:45:57+02:00",
       "reported": true,
       "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-131",
+      "file": "docs/qwen-tasks/DONE/TASK-131-the-four-defects-a-human-read-found.md",
+      "stage": "DONE",
+      "last_commit": "68cf44b",
+      "last_commit_at": "2026-09-15T15:43:39+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-132",
+      "file": "docs/qwen-tasks/DONE/TASK-132-establish-the-campaign-building-writes.md",
+      "stage": "DONE",
+      "last_commit": "81fc26c",
+      "last_commit_at": "2026-09-15T16:06:09+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "401d993"
+    },
+    {
+      "task": "TASK-133",
+      "file": "docs/qwen-tasks/DONE/TASK-133-grow-the-qualified-inventory.md",
+      "stage": "DONE",
+      "last_commit": "81fc26c",
+      "last_commit_at": "2026-09-15T16:06:09+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-134",
+      "file": "docs/qwen-tasks/DONE/TASK-134-an-emailbison-cadence-that-is-a-conversation.md",
+      "stage": "DONE",
+      "last_commit": "81fc26c",
+      "last_commit_at": "2026-09-15T16:06:09+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "ed9b00f"
+    },
+    {
+      "task": "TASK-135",
+      "file": "docs/qwen-tasks/DONE/TASK-135-show-the-prompt-the-evidence-it-already-has.md",
+      "stage": "DONE",
+      "last_commit": "69080c4",
+      "last_commit_at": "2026-09-15T16:04:33+02:00",
+      "reported": true,
+      "declared_status": "DONE"
     }
   ],
   "branches": [
     {
       "branch": "master",
-      "head": "e9f84bf",
+      "head": "a3334d2",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "e9f84bf",
-      "last_commit_at": "2026-09-15T15:35:10+02:00"
+      "remote_head": "a3334d2",
+      "last_commit_at": "2026-09-15T16:06:42+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -1797,6 +1812,14 @@
       "last_commit_at": "2026-09-15T15:32:12+02:00"
     },
     {
+      "branch": "qwen-worker-r17",
+      "head": "3dff6f2",
+      "commits_ahead_of_master": 3,
+      "pushed": true,
+      "remote_head": "3dff6f2",
+      "last_commit_at": "2026-09-15T16:15:08+02:00"
+    },
+    {
       "branch": "qwen-worker-r2",
       "head": "1b1fb01",
       "commits_ahead_of_master": 4,
@@ -1872,10 +1895,10 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "e9f84bf",
+      "head": "a3334d2",
       "branch": "master",
-      "uncommitted_files": 1,
-      "clean": false
+      "uncommitted_files": 0,
+      "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-2",
@@ -1928,15 +1951,15 @@
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-worker",
-      "head": "a70194c",
-      "branch": "qwen-worker-r16",
-      "uncommitted_files": 0,
-      "clean": true
+      "head": "3dff6f2",
+      "branch": "qwen-worker-r17",
+      "uncommitted_files": 1,
+      "clean": false
     }
   ],
   "stage_counts": {
-    "TODO": 6,
+    "TODO": 2,
     "REVIEW": 1,
-    "DONE": 126
+    "DONE": 131
   }
 }

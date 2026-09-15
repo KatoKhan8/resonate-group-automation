@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-15T13:38:07+00:00",
+  "generated_at": "2026-09-15T14:18:14+00:00",
   "queue_path": "work/queue.jsonl",
   "gitignored": true,
   "present": true,
@@ -14,5 +14,5 @@
     "unset": 550
   },
   "estate_fingerprint": "d33cbd6d4ed10f26",
-  "mtime": "2026-09-15T13:37:19.279571+00:00"
+  "mtime": "2026-09-15T13:42:07.482148+00:00"
 }
