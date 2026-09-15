@@ -123,3 +123,9 @@ licenses a claim of contact.
 - Lowercase and human is fine here. It is a note, not a letter.
 - Plain ASCII punctuation. No em or en dashes, no curly apostrophes,
   no non-breaking hyphens. Accented letters in a real name are fine.
+- No "i noticed..." or "i've noticed that..." as an opener. State the fact
+  directly from the evidence if you have it.
+- Do not assert admiration or praise about their company. "i admire how
+  [company]..." is an assertion with no stored evidence. Quote what their
+  site says, or say nothing about their company beyond the operational
+  angle.

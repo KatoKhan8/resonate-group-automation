@@ -212,6 +212,12 @@ Do not tell them how their company works. "You are running utilisation in
 spreadsheets" is a claim about their business that nothing supports. Ask it
 instead, or say it about the teams we work with and leave them out of it.
 
+Do not assert admiration or praise about their company. "i admire how
+[company] has grown" or "i'm impressed by your innovation" are assertions
+about the recipient that need evidence - and the evidence is almost never
+there. Quote what their site says about their own work, or say nothing.
+A feeling about their company is not a reason to write to them.
+
 ## Constraints, all enforced by lint.py before this ships
 
 - No em dashes or en dashes anywhere. Plain ASCII punctuation only:
@@ -235,6 +241,10 @@ instead, or say it about the teams we work with and leave them out of it.
   lint refuses the draft outright if one appears, and the last step in
   the sequence is the one that reaches for them - a message closing the
   loop is not "just following up" or "circling back". Say the thing.
+- No "i noticed..." or "i've noticed that..." as an opener. This is a
+  formula that reads as surveillance rather than research. If you have
+  a specific fact from the evidence, state it directly: "your team
+  shipped X" rather than "i noticed your team shipped X".
 - Never a calendar link as the ask.
 - Never a mention of LinkedIn, a connection request or anything that happened
   on another channel.

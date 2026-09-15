@@ -192,11 +192,14 @@ LINKEDIN_DEFAULT_LADDER = (
     # to the same structure: opening=question, cta=question. The fix
     # separates the JOB (establish their current approach to X) from the
     # FORM (which the variant approach controls).
+    # TASK-131: The sender was identified in the connection note. Do not
+    # re-introduce them.
     "Establish how they handle one specific part of their operation today. "
     "Pick an angle DIFFERENT from the one the connection note used. If the "
     "note named their hiring pipeline, pick their project margin; if it "
     "named profitability, pick resourcing visibility. The connection note "
-    "already said who you are and why you connected.",
+    "already said who you are and why you connected. Do not re-introduce "
+    "yourself - the recipient already knows.",
     # RUNG 3: SECOND MESSAGE. Builds on both previous messages.
     # TASK-087: The brief used to say "this one names the consequence"
     # (prescriptive) and referenced the previous rung's form ("The first "
@@ -204,7 +207,8 @@ LINKEDIN_DEFAULT_LADDER = (
     "Name the consequence of not having visibility - what goes wrong, what "
     "gets rebuilt after the fact rather than seen during the work. Pick a "
     "DIFFERENT operational angle from both the connection note and the "
-    "first message.",
+    "first message. Do not re-introduce yourself - the sender was identified "
+    "in the connection note.",
     # RUNG 4: THE PRODUCT RUNG. The recipient learns what is being offered.
     # TASK-087: The brief used to say "it is a statement, not a question: "
     # "by now they have been asked three times and told nothing". That "it "
@@ -220,16 +224,23 @@ LINKEDIN_DEFAULT_LADDER = (
     "only the capabilities in `product.capabilities` that fit this person's "
     "angle. This is the rung where the recipient learns what they are being "
     "offered. Evidence belongs here if there is any; if there is none, "
-    "describe the pattern as ours rather than theirs.",
+    "describe the pattern as ours rather than theirs. Do not re-introduce "
+    "yourself.",
     # RUNG 5: FINAL FOLLOW-UP. Different from everything before.
     # TASK-087: The brief used to say "in one line and one question" "
     # (prescribing the form). Now describes only the job.
     "Add one new angle no previous step touched - a different part of the "
     "business, or a different consequence. No recap of the previous "
-    "messages.",
+    "messages. Do not re-introduce yourself.",
     # RUNG 6: THE CLOSE.
-    "Close the loop. The sequence has done its work. No new pitch, no "
-    "summary of what was said.",
+    # TASK-131: The close must give the prospect a graceful exit AND ask
+    # whether somebody else owns this. The fallback's connected_4 is the
+    # target shape: "happy to leave it here if the timing is wrong. is
+    # there someone else who owns this?" The brief states the JOB, not
+    # the form, per TASK-087.
+    "Close the loop. The sequence has done its work. Give them a graceful "
+    "way to decline - make it easy to say no. Ask whether somebody else "
+    "owns this. No new pitch, no summary of what was said.",
 )
 
 LADDER_REGISTRY = {
