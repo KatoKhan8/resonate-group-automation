@@ -80,3 +80,39 @@ showing the model real facts reduce unsupported-claim rejections without any
 gate moving? If yes, this is the smallest change that unblocks the copy. If
 no, say so - "the evidence was always there and it did not help" is a complete
 and useful result.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT:** 5cb9631
+- **TESTS:** 180 pass (test_generate, test_a_linkedin_note_is_claim_checked_too, test_research_audit, test_research_spend, test_invariants). 30 claim-specific tests pass.
+- **FILES CHANGED:**
+  - `src/generate.py` - added `research_block()` function (contact-aware, quality-filtered to medium+strong), wired into `context_for` for `draft` and `linkedin_note` steps as `block["research"]`
+  - `prompts/draft.md` - added paragraph describing the `research` field
+  - `prompts/linkedin_note.md` - added section describing the `research` field
+  - `tools/task135_experiment.py` - experiment script (reads snapshot, never writes queue)
+- **FINDINGS:**
+
+  **The evidence was always there and the new field did not help.**
+
+  `public_evidence` was ALREADY being passed to the prompt (set at `context_for` line 489, reading from `rec["research"]` via `research.for_prompt()`). It appears in the context block for ALL steps, including `draft` and `linkedin_note`. The model was never working blind.
+
+  The experiment measured 16 drafts (8 records with medium+strong research, each generated with and without the `research` field) and 10 more (5 records with only weak/unusable research). **Zero unsupported-claim rejections in either variant, in both cohorts.** The model extracts company facts from `public_evidence` (raw page text, including navigation) as effectively as from the quality-filtered `research` field.
+
+  Sample output comparison (identical in both variants):
+  - `2020 Companies`: "describes itself as a national retail sales agency trusted by leading brands to drive measurable in-store performance" - same sentence, both variants
+  - `Wayne Media`: "emphasizes 100% transparency and close, hands-on partnerships with clients" - same fact, both variants
+
+  The `research_block` function returns 0 entries for 22 records that have ONLY weak/unusable research. For the remaining records, it returns different entries than `public_evidence` (quality-filtered vs first-3), but the model's output is functionally identical.
+
+  **Why the original 43 rejections are not reproduced:** The task describes 43 unsupported-claim rejections on 4 blocked records. This experiment found zero rejections across 26 drafts on 13 records. Possible explanations: (1) the model has improved since the original measurement, (2) the original rejections came from a different generation pass with different context, or (3) the claims gate behavior has changed. The claims gate itself was NOT touched - `claims.py` is unmodified.
+
+  **What `research_block` actually does that `public_evidence` does not:**
+  1. Quality-filters to medium+strong (excludes 392 of 695 entries)
+  2. Is contact-aware (entries with matching `contact_key` come first)
+  3. Returns up to 5 entries instead of 3
+
+  None of these differences produced a measurable change in claims-gate outcomes.
+
+- **RISKS:** The `research` field adds context tokens to the prompt. For records with 5 medium+strong entries at 400 chars each, that is ~2000 additional tokens. This is within the prompt's budget but worth monitoring if token costs become a concern.
+- **RECOMMENDED CLAUDE ACTION:** The code change is safe and the tests pass. The `research` field is a cleaner interface than `public_evidence` for sourced facts, even though it did not change outcomes in this experiment. The real constraint on copy quality is not the absence of evidence in the prompt - it is the quality of the crawled data itself (236 of 695 entries are "unusable" raw navigation text). Improving the crawler's fact extraction would have more impact than adding fields to the prompt.
