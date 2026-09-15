@@ -13,8 +13,8 @@ human.**
 
     approved by                                              count
     claude                                                     167
-    zvonimir@resonategroup.co                                    1
-    zvonimir@resonategroup.co (operator authorisation ...)       1
+    the operator                                    1
+    the operator (operator authorisation ...)       1
 
     approved on   2026-09-09    1
                   2026-09-13  168
