@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-15T09:35:34+00:00",
+  "generated_at": "2026-09-15T09:53:54+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
-  "master_head": "6a4ec1b",
-  "origin_master_head": "6a4ec1b",
+  "master_head": "e04de9f",
+  "origin_master_head": "e04de9f",
   "master_pushed": true,
   "tasks": [
     {
@@ -14,6 +14,14 @@
       "reported": false
     },
     {
+      "task": "TASK-123",
+      "file": "docs/qwen-tasks/TODO/TASK-123-which-of-the-eleven-red-tests-are-actually-fixed.md",
+      "stage": "TODO",
+      "last_commit": "6a4ec1b",
+      "last_commit_at": "2026-09-15T11:35:11+02:00",
+      "reported": false
+    },
+    {
       "task": "TASK-059",
       "file": "docs/qwen-tasks/REVIEW/TASK-059-which-email-produced-which-reply.md",
       "stage": "REVIEW",
@@ -21,262 +29,6 @@
       "last_commit_at": "2026-09-15T08:28:05+02:00",
       "reported": true,
       "declared_status": "COMPLETE"
-    },
-    {
-      "task": "TASK-088",
-      "file": "docs/qwen-tasks/REVIEW/TASK-088-the-eleven-that-are-still-red.md",
-      "stage": "REVIEW",
-      "last_commit": "92dcbef",
-      "last_commit_at": "2026-09-15T09:18:21+02:00",
-      "reported": true
-    },
-    {
-      "task": "TASK-090",
-      "file": "docs/qwen-tasks/REVIEW/TASK-090-the-outcomes-report-contradicts-itself.md",
-      "stage": "REVIEW",
-      "last_commit": "92dcbef",
-      "last_commit_at": "2026-09-15T09:18:21+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-091",
-      "file": "docs/qwen-tasks/REVIEW/TASK-091-the-readback-that-has-never-run.md",
-      "stage": "REVIEW",
-      "last_commit": "92dcbef",
-      "last_commit_at": "2026-09-15T09:18:21+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-092",
-      "file": "docs/qwen-tasks/REVIEW/TASK-092-the-copy-checklist-nobody-has-counted.md",
-      "stage": "REVIEW",
-      "last_commit": "92dcbef",
-      "last_commit_at": "2026-09-15T09:18:21+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-093",
-      "file": "docs/qwen-tasks/REVIEW/TASK-093-the-fifth-variant-has-never-been-generated.md",
-      "stage": "REVIEW",
-      "last_commit": "92dcbef",
-      "last_commit_at": "2026-09-15T09:18:21+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-094",
-      "file": "docs/qwen-tasks/REVIEW/TASK-094-what-the-heyreach-history-says.md",
-      "stage": "REVIEW",
-      "last_commit": "398948e",
-      "last_commit_at": "2026-09-15T08:48:42+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-097",
-      "file": "docs/qwen-tasks/REVIEW/TASK-097-who-is-actually-sending-and-what-is-left.md",
-      "stage": "REVIEW",
-      "last_commit": "92dcbef",
-      "last_commit_at": "2026-09-15T09:18:21+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-099",
-      "file": "docs/qwen-tasks/REVIEW/TASK-099-the-live-campaign-has-no-variants.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-100",
-      "file": "docs/qwen-tasks/REVIEW/TASK-100-a-registry-so-we-cannot-build-the-same-campaign-twice.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-101",
-      "file": "docs/qwen-tasks/REVIEW/TASK-101-prepare-a-real-lead-batch.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-102",
-      "file": "docs/qwen-tasks/REVIEW/TASK-102-emailbison-cohorts-not-one-campaign-per-lead.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-103",
-      "file": "docs/qwen-tasks/REVIEW/TASK-103-does-step-five-earn-its-place.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-104",
-      "file": "docs/qwen-tasks/REVIEW/TASK-104-what-subject-lines-actually-did.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-105",
-      "file": "docs/qwen-tasks/REVIEW/TASK-105-same-thread-or-new-thread-with-a-denominator.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-106",
-      "file": "docs/qwen-tasks/REVIEW/TASK-106-what-the-copy-that-worked-had-in-common.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-107",
-      "file": "docs/qwen-tasks/REVIEW/TASK-107-how-long-to-wait-between-steps.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-108",
-      "file": "docs/qwen-tasks/REVIEW/TASK-108-the-replies-no-pattern-matches.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-109",
-      "file": "docs/qwen-tasks/REVIEW/TASK-109-is-the-new-interested-pattern-set-any-good.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-111",
-      "file": "docs/qwen-tasks/REVIEW/TASK-111-what-else-does-emailbison-expose.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-112",
-      "file": "docs/qwen-tasks/REVIEW/TASK-112-how-good-is-the-enrichment-really.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-113",
-      "file": "docs/qwen-tasks/REVIEW/TASK-113-the-production-dashboard-nobody-can-see.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-114",
-      "file": "docs/qwen-tasks/REVIEW/TASK-114-pin-the-variant-path-so-it-cannot-rot-again.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-115",
-      "file": "docs/qwen-tasks/REVIEW/TASK-115-the-check-asks-a-binary-question-about-a-five-valued-design.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-116",
-      "file": "docs/qwen-tasks/REVIEW/TASK-116-forty-nine-openers-that-never-moved.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-117",
-      "file": "docs/qwen-tasks/REVIEW/TASK-117-a-claim-about-the-sender-is-still-a-claim.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-118",
-      "file": "docs/qwen-tasks/REVIEW/TASK-118-a-report-that-names-a-record-is-a-leak.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-119",
-      "file": "docs/qwen-tasks/REVIEW/TASK-119-the-campaign-id-is-a-string-here-and-an-int-there.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-120",
-      "file": "docs/qwen-tasks/REVIEW/TASK-120-what-exactly-would-a-regeneration-change.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-122",
-      "file": "docs/qwen-tasks/REVIEW/TASK-122-the-bison-readback-against-481.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-123",
-      "file": "docs/qwen-tasks/REVIEW/TASK-123-which-of-the-eleven-red-tests-are-actually-fixed.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-124",
-      "file": "docs/qwen-tasks/REVIEW/TASK-124-the-add-leads-door-is-shut.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-125",
-      "file": "docs/qwen-tasks/REVIEW/TASK-125-add-leads-to-a-campaign-that-cannot-send.md",
-      "stage": "REVIEW",
-      "last_commit": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00",
-      "reported": false
     },
     {
       "task": "TASK-001",
@@ -1081,12 +833,64 @@
       "commit_sha": "b57d838"
     },
     {
+      "task": "TASK-088",
+      "file": "docs/qwen-tasks/DONE/TASK-088-the-eleven-that-are-still-red.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true
+    },
+    {
       "task": "TASK-089",
       "file": "docs/qwen-tasks/DONE/TASK-089-linkedin-arms-still-ask-the-same-question.md",
       "stage": "DONE",
       "last_commit": "ca0a9ac",
       "last_commit_at": "2026-09-15T09:32:27+02:00",
       "reported": false
+    },
+    {
+      "task": "TASK-090",
+      "file": "docs/qwen-tasks/DONE/TASK-090-the-outcomes-report-contradicts-itself.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": false
+    },
+    {
+      "task": "TASK-091",
+      "file": "docs/qwen-tasks/DONE/TASK-091-the-readback-that-has-never-run.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-092",
+      "file": "docs/qwen-tasks/DONE/TASK-092-the-copy-checklist-nobody-has-counted.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": false
+    },
+    {
+      "task": "TASK-093",
+      "file": "docs/qwen-tasks/DONE/TASK-093-the-fifth-variant-has-never-been-generated.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-094",
+      "file": "docs/qwen-tasks/DONE/TASK-094-what-the-heyreach-history-says.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "3692b58"
     },
     {
       "task": "TASK-095",
@@ -1109,6 +913,16 @@
       "commit_sha": "ce3bc84"
     },
     {
+      "task": "TASK-097",
+      "file": "docs/qwen-tasks/DONE/TASK-097-who-is-actually-sending-and-what-is-left.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "ae5b75a"
+    },
+    {
       "task": "TASK-098",
       "file": "docs/qwen-tasks/DONE/TASK-098-does-the-current-sequence-beat-the-fallbacks.md",
       "stage": "DONE",
@@ -1117,6 +931,202 @@
       "reported": true,
       "declared_status": "DONE",
       "commit_sha": "5adcf07"
+    },
+    {
+      "task": "TASK-099",
+      "file": "docs/qwen-tasks/DONE/TASK-099-the-live-campaign-has-no-variants.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "commit_sha": "146b4d7"
+    },
+    {
+      "task": "TASK-100",
+      "file": "docs/qwen-tasks/DONE/TASK-100-a-registry-so-we-cannot-build-the-same-campaign-twice.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "2d9b3b9"
+    },
+    {
+      "task": "TASK-101",
+      "file": "docs/qwen-tasks/DONE/TASK-101-prepare-a-real-lead-batch.md",
+      "stage": "DONE",
+      "last_commit": "514cab4",
+      "last_commit_at": "2026-09-15T11:41:28+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "beb6095"
+    },
+    {
+      "task": "TASK-102",
+      "file": "docs/qwen-tasks/DONE/TASK-102-emailbison-cohorts-not-one-campaign-per-lead.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "8792acc"
+    },
+    {
+      "task": "TASK-103",
+      "file": "docs/qwen-tasks/DONE/TASK-103-does-step-five-earn-its-place.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "3a54750"
+    },
+    {
+      "task": "TASK-104",
+      "file": "docs/qwen-tasks/DONE/TASK-104-what-subject-lines-actually-did.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "42e3434"
+    },
+    {
+      "task": "TASK-105",
+      "file": "docs/qwen-tasks/DONE/TASK-105-same-thread-or-new-thread-with-a-denominator.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "REVIEW",
+      "commit_sha": "73a2b9e"
+    },
+    {
+      "task": "TASK-106",
+      "file": "docs/qwen-tasks/DONE/TASK-106-what-the-copy-that-worked-had-in-common.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "acb0510"
+    },
+    {
+      "task": "TASK-107",
+      "file": "docs/qwen-tasks/DONE/TASK-107-how-long-to-wait-between-steps.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "COMPLETE",
+      "commit_sha": "34c4f09"
+    },
+    {
+      "task": "TASK-108",
+      "file": "docs/qwen-tasks/DONE/TASK-108-the-replies-no-pattern-matches.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "REVIEW",
+      "commit_sha": "19d7c0b"
+    },
+    {
+      "task": "TASK-109",
+      "file": "docs/qwen-tasks/DONE/TASK-109-is-the-new-interested-pattern-set-any-good.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "5209e9e"
+    },
+    {
+      "task": "TASK-111",
+      "file": "docs/qwen-tasks/DONE/TASK-111-what-else-does-emailbison-expose.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "183866e"
+    },
+    {
+      "task": "TASK-112",
+      "file": "docs/qwen-tasks/DONE/TASK-112-how-good-is-the-enrichment-really.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "c2334c7"
+    },
+    {
+      "task": "TASK-113",
+      "file": "docs/qwen-tasks/DONE/TASK-113-the-production-dashboard-nobody-can-see.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true
+    },
+    {
+      "task": "TASK-114",
+      "file": "docs/qwen-tasks/DONE/TASK-114-pin-the-variant-path-so-it-cannot-rot-again.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "588b624"
+    },
+    {
+      "task": "TASK-115",
+      "file": "docs/qwen-tasks/DONE/TASK-115-the-check-asks-a-binary-question-about-a-five-valued-design.md",
+      "stage": "DONE",
+      "last_commit": "68a7cf7",
+      "last_commit_at": "2026-09-15T11:40:41+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "a88e163"
+    },
+    {
+      "task": "TASK-116",
+      "file": "docs/qwen-tasks/DONE/TASK-116-forty-nine-openers-that-never-moved.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "190eb34"
+    },
+    {
+      "task": "TASK-117",
+      "file": "docs/qwen-tasks/DONE/TASK-117-a-claim-about-the-sender-is-still-a-claim.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-118",
+      "file": "docs/qwen-tasks/DONE/TASK-118-a-report-that-names-a-record-is-a-leak.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "fb9cc52"
+    },
+    {
+      "task": "TASK-119",
+      "file": "docs/qwen-tasks/DONE/TASK-119-the-campaign-id-is-a-string-here-and-an-int-there.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "66c3590"
     },
     {
       "task": "TASK-120",
@@ -1136,16 +1146,46 @@
       "reported": true,
       "declared_status": "DONE",
       "commit_sha": "1efaca6"
+    },
+    {
+      "task": "TASK-122",
+      "file": "docs/qwen-tasks/DONE/TASK-122-the-bison-readback-against-481.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "FAIL",
+      "commit_sha": "fb47811"
+    },
+    {
+      "task": "TASK-124",
+      "file": "docs/qwen-tasks/DONE/TASK-124-the-add-leads-door-is-shut.md",
+      "stage": "DONE",
+      "last_commit": "39858c9",
+      "last_commit_at": "2026-09-15T11:42:01+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "bed12e2"
+    },
+    {
+      "task": "TASK-125",
+      "file": "docs/qwen-tasks/DONE/TASK-125-add-leads-to-a-campaign-that-cannot-send.md",
+      "stage": "DONE",
+      "last_commit": "e04de9f",
+      "last_commit_at": "2026-09-15T11:45:36+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "488f4e7"
     }
   ],
   "branches": [
     {
       "branch": "master",
-      "head": "6a4ec1b",
+      "head": "e04de9f",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "6a4ec1b",
-      "last_commit_at": "2026-09-15T11:35:11+02:00"
+      "remote_head": "e04de9f",
+      "last_commit_at": "2026-09-15T11:45:36+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -1573,11 +1613,11 @@
     },
     {
       "branch": "qwen-worker-r10",
-      "head": "64568da",
-      "commits_ahead_of_master": 1,
+      "head": "23c7385",
+      "commits_ahead_of_master": 3,
       "pushed": true,
-      "remote_head": "64568da",
-      "last_commit_at": "2026-09-15T11:32:22+02:00"
+      "remote_head": "23c7385",
+      "last_commit_at": "2026-09-15T11:37:49+02:00"
     },
     {
       "branch": "qwen-worker-r2",
@@ -1655,9 +1695,9 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "6a4ec1b",
+      "head": "e04de9f",
       "branch": "master",
-      "uncommitted_files": 2,
+      "uncommitted_files": 76,
       "clean": false
     },
     {
@@ -1711,15 +1751,15 @@
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-worker",
-      "head": "64568da",
+      "head": "23c7385",
       "branch": "qwen-worker-r10",
-      "uncommitted_files": 5,
+      "uncommitted_files": 2,
       "clean": false
     }
   ],
   "stage_counts": {
-    "TODO": 1,
-    "REVIEW": 33,
-    "DONE": 90
+    "TODO": 2,
+    "REVIEW": 1,
+    "DONE": 120
   }
 }
