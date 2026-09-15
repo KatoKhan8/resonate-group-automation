@@ -70,8 +70,8 @@ APPROACHES = {
         "description": (
             "Short and direct. Open with the reason for writing in one "
             "sentence - no preamble, no setup. State what is offered in "
-            "one line. Close with a single question they can answer in a "
-            "word. Total: two to three sentences."),
+            "one line. Close with a clear next step they can confirm in "
+            "a word. Total: two to three sentences."),
         "opening": "statement",
         "tone": "direct",
         "length": "short",
@@ -83,9 +83,10 @@ APPROACHES = {
         "description": (
             "Conversational. Write the way a peer would message another "
             "peer - lower case feel, shorter sentences, no corporate "
-            "phrasing. Open with an observation about their situation, "
-            "not a pitch. Close with a casual question, not a CTA."),
-        "opening": "observation",
+            "phrasing. Open by asking about their current approach to "
+            "something specific in their operation. End casually, "
+            "leaving the door open without pressing for an answer."),
+        "opening": "question",
         "tone": "casual",
         "length": "medium",
         "cta": "casual_question",
@@ -97,8 +98,8 @@ APPROACHES = {
             "Problem-led. Open with the cost of the status quo - what "
             "the current way of working actually spends in time, risk or "
             "reconstruction. Name the pain before naming the solution. "
-            "Close with a question about whether they see the same "
-            "pattern."),
+            "Close by checking whether they recognise the same pattern "
+            "in their own operation."),
         "opening": "pain",
         "tone": "empathetic",
         "length": "medium",
@@ -110,10 +111,10 @@ APPROACHES = {
         "description": (
             "Observation-led. Open with something specific noticed about "
             "their company or role - a fact with a source, not an "
-            "invention. Connect the observation to the argument. Close "
-            "with a question about what the observation means for them. "
-            "MAY NOT invent an observation. If none is licensed, this "
-            "variant is not generated."),
+            "invention. Connect the observation to the argument. End by "
+            "inviting them to reflect on what the observation means for "
+            "their situation. MAY NOT invent an observation. If none is "
+            "licensed, this variant is not generated."),
         "opening": "evidence",
         "tone": "researched",
         "length": "contextual",
@@ -126,8 +127,8 @@ APPROACHES = {
             "Value-led. Open with what they would gain - a concrete "
             "outcome, not a feature. Name the product and say in one "
             "line what it joins up. Give one consequence a team their "
-            "size would recognise. Close with a direct CTA - a specific "
-            "next step, not an open question."),
+            "size would recognise. Close with a specific next step, not "
+            "an open question."),
         "opening": "outcome",
         "tone": "professional",
         "length": "contextual",
@@ -356,19 +357,37 @@ def _opening_shape(text):
     Two variants that both open with a question and close with a question
     are structurally the same variant, however different the words.
     """
-    first = (text or "").strip().split("\n", 1)[0].strip()
-    if not first:
+    full = (text or "").strip()
+    if not full:
         return "empty"
-    if first.endswith("?"):
+    # Find the first sentence boundary (period, question mark, or exclamation
+    # followed by a space and lowercase letter, or end of string)
+    import re
+    # Match sentence-ending punctuation followed by space
+    match = re.search(r'[.?!]\s', full)
+    if match:
+        first_sentence = full[:match.end()].strip()
+    else:
+        # No sentence boundary found - entire text is one sentence
+        first_sentence = full
+    # Check if the first sentence ends with a question mark
+    if first_sentence.rstrip().endswith("?"):
         return "question"
     return "statement"
 
 
 def _cta_shape(text):
     """How the message closes."""
-    lines = [l.strip() for l in (text or "").strip().split("\n") if l.strip()]
-    if not lines:
+    full = (text or "").strip()
+    if not full:
         return "empty"
+    # For single-paragraph messages, check if the entire text ends with "?"
+    # For multi-line messages, check the last non-empty line
+    lines = [l.strip() for l in full.split("\n") if l.strip()]
+    if len(lines) == 1:
+        # Single paragraph - check if it ends with a question
+        return "question" if full.endswith("?") else "statement"
+    # Multi-line - check the last line
     last = lines[-1]
     if last.endswith("?"):
         return "question"
