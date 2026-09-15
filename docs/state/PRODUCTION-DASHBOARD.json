@@ -1,0 +1,222 @@
+{
+  "generated_at": "2026-09-15T08:18:07+00:00",
+  "generated_by": "scripts/production_dashboard.py",
+  "snapshot_stamp": "2026-09-14T21:52:15Z  from master 0ac5e60  300 records",
+  "policy": "docs/PRODUCTION-SCALE-POLICY.md",
+  "LEADS": {
+    "snapshot_stamp": "2026-09-14T21:52:15Z  from master 0ac5e60  300 records",
+    "total_records": 300,
+    "total_contacts": 92,
+    "sendable_contacts": 56,
+    "verified_contacts": 56,
+    "by_record_state": {
+      "drafted": 41,
+      "held": 34,
+      "dropped": 106,
+      "approved": 6,
+      "queued": 99,
+      "verified": 14
+    },
+    "by_persona": {
+      "economic_buyer": 72,
+      "champion": 20
+    },
+    "by_angle": {
+      "founder": 47,
+      "operations": 23,
+      "delivery": 7,
+      "economic_buyer": 1,
+      "unknown": 11,
+      "finance": 2,
+      "growth": 1
+    },
+    "records_with_cadence": 68,
+    "cohorts_defined": 14,
+    "cohorts_above_50": 2,
+    "campaigns_with_leads": {
+      "value": "ABSENT",
+      "reason": "no campaign has started; both HeyReach and EmailBison Resonate campaigns have 0 leads attached"
+    },
+    "live_records": 0,
+    "queued_records": {
+      "value": "ABSENT",
+      "reason": "no record has reached a live/sending state; the lead block holds"
+    }
+  },
+  "HEYREACH": {
+    "campaigns_total_in_account": 83,
+    "resonate_campaigns_count": 1,
+    "resonate_live": 0,
+    "resonate_draft": 1,
+    "account_status_totals": {
+      "DRAFT": 8,
+      "PAUSED": 32,
+      "FINISHED": 31,
+      "IN_PROGRESS": 12
+    },
+    "linkedin_accounts_available": 41,
+    "senders_total": 41,
+    "healthy_senders": 33,
+    "senders_by_state": {
+      "HEALTHY": 33,
+      "AUTH_INVALID": 1,
+      "INACTIVE": 7
+    },
+    "daily_connection_capacity": 1054,
+    "daily_message_capacity": 1143,
+    "healthy_with_no_campaign": 0,
+    "utilisation": {
+      "value": "ABSENT",
+      "reason": "no Resonate campaign has started sending; utilisation is not 0%, it is unmeasured. The 12 IN_PROGRESS campaigns in the account are the client's own, not Resonate's."
+    },
+    "throughput": {
+      "value": "ABSENT",
+      "reason": "no Resonate campaign has started sending; throughput is unmeasured"
+    },
+    "resonate_campaign_details": [
+      {
+        "id": 599020,
+        "name": "RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1",
+        "status": "DRAFT",
+        "classification": "DRAFT",
+        "lead_count": 0,
+        "senders_attached": 1,
+        "sequence_nodes": 24,
+        "started_at": {
+          "value": "ABSENT",
+          "reason": "never started"
+        }
+      }
+    ]
+  },
+  "EMAILBISON": {
+    "campaigns_total": {
+      "value": "ABSENT",
+      "reason": "no BISON-CAMPAIGNS.json exists; provider truth is in docs/BISON-PROVIDER-TRUTH-2026-09-14.md (markdown only)"
+    },
+    "resonate_campaigns": {
+      "value": "ABSENT",
+      "reason": "no machine-readable EmailBison state; TASK-069 and TASK-071 mapped the API but no generator script writes a JSON state file"
+    },
+    "live_campaigns": {
+      "value": "ABSENT",
+      "reason": "no EmailBison state file to read"
+    },
+    "senders": {
+      "value": "ABSENT",
+      "reason": "no EmailBison state file to read"
+    },
+    "throughput": {
+      "value": "ABSENT",
+      "reason": "no EmailBison state file to read; the provider truth doc reports campaign 481 paused with 0 sent and campaign 451 completed with 1 sent, but these are not in a machine-readable state file"
+    }
+  },
+  "EXPERIMENTS": {
+    "copy_experiments_infrastructure": "EXISTS AND WIRED",
+    "copy_experiment_evaluator_states": [
+      "EXPLORING",
+      "INSUFFICIENT_DATA",
+      "LEADING",
+      "WINNER",
+      "NO_CLEAR_WINNER",
+      "PAUSED"
+    ],
+    "experiments_with_data": {
+      "value": "ABSENT",
+      "reason": "no campaign has started sending; the evaluator in src/variants.py has never received exposure data. INSUFFICIENT_DATA is not the verdict - the experiment has not started."
+    },
+    "running": 0,
+    "completed": 0,
+    "winner_candidates": {
+      "value": "ABSENT",
+      "reason": "no experiment has reached evaluation"
+    },
+    "inconclusive": {
+      "value": "ABSENT",
+      "reason": "no experiment has reached evaluation"
+    },
+    "failed": {
+      "value": "ABSENT",
+      "reason": "no experiment has reached evaluation"
+    },
+    "cadence_experiment_infrastructure": "EXISTS BUT UNUSED",
+    "cadence_arms_module": "src/cadencearms.py exists; no campaign carries a cadence_experiment field",
+    "cadence_is_fixed": true,
+    "cadence_steps": 7,
+    "variant_wiring": "EXISTS AND WIRED - variants.apply_to_step has a caller",
+    "exposure_tracking": "EXISTS AND WIRED - variants.journey_of, results_from",
+    "statistical_discipline": "EXISTS AND WIRED - Wilson bounds, sample floor"
+  },
+  "LEARNING": {
+    "structured_learning_registry": {
+      "value": "ABSENT",
+      "reason": "no learning registry exists; findings are in task result blocks and documentation but not in a machine-readable store"
+    },
+    "documented_findings": {
+      "interested_pattern_precision": {
+        "value": 0.44,
+        "confidence": "measured on old pattern set",
+        "sample_size": {
+          "value": "ABSENT",
+          "reason": "exact n not recorded in a machine-readable file"
+        },
+        "promoted_to_policy": false,
+        "note": "INTERESTED may NOT carry a learning claim at 0.44 precision"
+      },
+      "meeting_intent_precision": {
+        "value": 1.0,
+        "confidence": "measured",
+        "sample_size": {
+          "value": "ABSENT",
+          "reason": "exact n not recorded in a machine-readable file"
+        },
+        "promoted_to_policy": true,
+        "note": "MEETING_INTENT (1.00) may carry a learning claim, with recall stated"
+      },
+      "objection_precision": {
+        "value": 1.0,
+        "confidence": "measured",
+        "sample_size": {
+          "value": "ABSENT",
+          "reason": "exact n not recorded in a machine-readable file"
+        },
+        "promoted_to_policy": true,
+        "note": "OBJECTION (1.00) may carry a learning claim, with recall stated"
+      },
+      "open_tracking": {
+        "value": false,
+        "confidence": "estate-wide",
+        "sample_size": "all campaigns",
+        "promoted_to_policy": true,
+        "note": "open_tracking is False estate-wide; any open rate is ABSENT MEASUREMENT, not a zero. Do not quote any open rate."
+      },
+      "unknowns_are_not_negative": {
+        "value": "53.4% of unknowns are correctly unknown",
+        "confidence": "measured",
+        "sample_size": {
+          "value": "ABSENT",
+          "reason": "exact n not recorded in a machine-readable file"
+        },
+        "promoted_to_policy": true,
+        "note": "Do not count an UNKNOWN as negative"
+      }
+    },
+    "proven_learnings_with_sample_size": {
+      "value": "ABSENT",
+      "reason": "no finding survives a sample-size objection with a recorded n; TASK-059 left PROVEN LEARNINGS empty and was right to"
+    }
+  },
+  "OPERATIONS": {
+    "master_head": "e6cdfde",
+    "master_pushed": true,
+    "task_stages": {
+      "TODO": 17,
+      "REVIEW": 8,
+      "DONE": 88
+    },
+    "total_tasks": 113,
+    "branches_with_unpushed_work": 3,
+    "dirty_worktrees": 8,
+    "active_worktrees": 9
+  }
+}
