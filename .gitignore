@@ -70,3 +70,4 @@ Thumbs.db
 # 2026-09-10.
 batches/productive-*.csv
 batches/*_SAFE_INPUT.zip
+work/claims/
