@@ -63,3 +63,60 @@ rather than after:
 - Do not report a PREDICTED result. You have model access via config/.env.
 - Separate OBSERVATIONS (with n), HYPOTHESES and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection.
+
+---
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT: d7002d7
+TESTS: tests.test_piiredact - 18/18 pass (exit code read off process)
+       tests.test_fixture_hygiene - 10/11 pass (one failure in TASK-115's review file, not mine)
+       tests.test_invariants.test_no_fixme_or_hack_in_the_source - PASS
+FILES CHANGED:
+  src/piiredact.py (new) - the redact() and scan() functions
+  scripts/check_pii.py (new) - pre-commit style check, one command
+  tests/test_piiredact.py (new) - 18 tests covering redact, scan, stability, wiring
+  src/cadencereport.py (modified) - _safe_text() wraps report() output through piiredact.redact
+
+FINDINGS:
+  1. The redact() function imports FORBIDDEN_DOMAINS, FORBIDDEN_NAMES, and
+     FORBIDDEN_FIGURES from tests/test_fixture_hygiene.py, so the two stay in
+     lockstep. A token the guard flags, the redactor replaces.
+
+  2. Record IDs are domain slugs (dots become hyphens). Every forbidden domain
+     generates a corresponding slug that is redacted as <record-abcdef>. A
+     structural regex also catches record-id-shaped tokens not in the forbidden
+     list, with a safe list for common English hyphenated words.
+
+  3. Pseudonyms are stable: sha256(token)[:6] gives deterministic tags. Two
+     mentions of the same token get the same tag, so a report stays linkable
+     without naming anybody.
+
+  4. The wiring into cadencereport.report() is proven consumed:
+       grep -rn "_safe_text" src/ -> 4 hits (definition, call, recursion)
+       grep -rn "piiredact" src/ -> 3 hits (import, docstring, call)
+     Breaking the wiring (removing _safe_text from report()) causes
+     test_cadencereport_uses_redact to fail.
+
+  5. The pre-commit check is runnable as: py -3 scripts/check_pii.py <file>
+     It exits non-zero on leaks, zero on clean text.
+
+  6. The module itself had to be redacted: initial docstrings used real
+     forbidden tokens as examples, and the hygiene guard caught them. The
+     docstrings now use pseudonym-shaped examples only.
+
+RISKS:
+  - The structural record-id regex may produce false positives on hyphenated
+    words not in the safe list. The safe list covers common English compounds
+    but is not exhaustive.
+  - The TASK-115 review file contains "aubryandco" which fails the hygiene
+    guard. That is another worker's file and not addressed here.
+
+RECOMMENDED CLAUDE ACTION:
+  1. Review the wiring in cadencereport.py and confirm _safe_text covers all
+     report output paths.
+  2. Consider wiring piiredact.redact through other report generators
+     (src/reports.py, src/web/api.py report_data, src/qa.py report).
+  3. Decide whether the TASK-115 review file leak should be fixed by that
+     worker or escalated.
