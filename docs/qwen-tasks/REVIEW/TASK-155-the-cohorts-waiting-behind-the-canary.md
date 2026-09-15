@@ -69,7 +69,7 @@ cohort's arm.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** 9d7d553
+**COMMIT SHA:** cc2b82c
 
 **TESTS:**
 - `scripts/task155_cohort_ladder.py` runs clean against the snapshot, exits 0.
