@@ -88,3 +88,71 @@ provider does carry.
 
 The three-way boundary with a route and a field behind every line, and the
 strongest defensible analysis that boundary permits.
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** (pending final commit)
+
+**TESTS:** No code changes in `src/`. Two probe scripts verify the live API
+reads: `scripts/task141_attribution_probe.py` and
+`scripts/task141_variant_edge.py`. Both ran successfully against the live
+API on 2026-09-15. No test suite changes needed — this task produced
+documentation, not code.
+
+**FILES CHANGED:**
+- `docs/BISON-ATTRIBUTION-BOUNDARY-2026-09-15.md` (new) — the deliverable
+- `scripts/task141_attribution_probe.py` (new) — traces reply→step→variant chain
+- `scripts/task141_variant_edge.py` (new) — verifies parent vs variant step sends
+- Task file moved from `TODO/` to `RUNNING/`
+
+**FINDINGS:**
+
+1. **Step-level attribution is reconstructable from provider data.** The join
+   is `reply.scheduled_email_id → GET /scheduled-emails/{id} → sequence_step_id`.
+   Verified on 5 live replies. Every field is a provider fact. The causal
+   claim is a reconstruction, not a fact.
+
+2. **Variant-level attribution IS available** — this was the open question and
+   the answer is better than expected. When EmailBison sends a variant, the
+   scheduled email's `sequence_step_id` points to the VARIANT step (not the
+   parent). The sequence-steps listing states whether that step has
+   `variant: true`. The join is deterministic. Verified live: reply 1609200
+   → scheduled email 22310733 → step 4036 (variant=True, variant_from_step=4035).
+   Reply 1609203 → scheduled email 22310389 → step 4035 (variant=False, parent).
+   Both in the same campaign. The provider distinguishes them.
+
+3. **Events carry a compact variant index** (`sequence_step_variant`, 1-based)
+   but only for 10 days. The step id is the durable identifier.
+
+4. **Untracked replies are unattributable.** `scheduled_email_id: null` means
+   no join path exists. Counting them as positive or negative is a hypothesis.
+
+5. **Open rates are noise.** `open_tracking` is `false` estate-wide.
+
+6. **No disagreement with existing documentation.** The live reads confirmed
+   every field shape recorded in `BISON-API-CAPABILITY-MAP-2026-09-14.md`
+   and `BISON-API-ROUTE-EVIDENCE-2026-09-15.md`.
+
+7. **The strongest defensible analysis:** "This tracked reply was a response
+   to the email sent at step X (variant Y) on [date]." Not "this email caused
+   this reply." Step-level and variant-level attribution are both available
+   from provider data. Causation is a reconstruction.
+
+**RISKS:**
+- The 10-day event window means `sequence_step_variant` and
+  `sequence_step_order` are not available for historical analysis. The step
+  id is durable but requires the sequence-steps listing to interpret.
+- If sequence steps are deleted or renumbered, the variant mapping is lost
+  unless preserved externally.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Review `docs/BISON-ATTRIBUTION-BOUNDARY-2026-09-15.md` for accuracy.
+- TASK-059 can now use the two-hop join (`reply → scheduled_email → step`)
+  with the confidence level stated in the boundary document.
+- The variant experiment model in `COPY-EXPERIMENTS.md` is compatible with
+  EmailBison's step model — variant steps have their own ids, and the
+  scheduled email records which variant step was sent.
