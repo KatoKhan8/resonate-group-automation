@@ -63,3 +63,64 @@ rather than after:
 - Do not report a PREDICTED result. You have model access via config/.env.
 - Separate OBSERVATIONS (with n), HYPOTHESES and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection.
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: fb9cc52
+TESTS: 21/21 pass (tests.test_redact), 101/101 pass with test_invariants
+FILES CHANGED:
+  - src/redact.py (NEW) - redact() helper with stable pseudonyms
+  - tests/test_redact.py (NEW) - 21 tests covering all requirements
+  - scripts/check_leaks.py (NEW) - pre-commit leak check
+  - src/outcomes.py (MODIFIED) - render() and _render_observations() wired through redact()
+
+FINDINGS:
+
+1. redact() replaces forbidden tokens (FORBIDDEN_NAMES, FORBIDDEN_DOMAINS,
+   FORBIDDEN_FIGURES from test_fixture_hygiene) and explicit record IDs with
+   stable pseudonyms: <redacted-HASH> for forbidden tokens, <record-HASH>
+   for record IDs. Longer tokens match first so a short forbidden name
+   inside a longer record ID does not corrupt the replacement.
+
+2. scripts/check_leaks.py scans all tracked text files for forbidden tokens
+   and known record IDs from the snapshot. Excludes test files that define
+   tokens as fixtures (test_fixture_hygiene.py, test_redact.py) and the
+   redact module itself. Usage: py -3 scripts/check_leaks.py
+
+3. outcomes.render() now accepts a record_ids parameter and passes its
+   output through redact(). main() extracts record IDs from loaded records
+   and passes them through. _render_observations() is wired the same way.
+
+4. CALLER CHAIN PROVED:
+   grep -rn "from .redact\|from src.redact" src/ scripts/ tests/
+   Returns THREE consumers, not just the definition:
+   - src/outcomes.py:67   from .redact import redact
+   - scripts/check_leaks.py:24   from src.redact import _forbidden_tokens, _load_record_ids
+   - tests/test_redact.py:15   from src.redact import redact, _hash_token, ...
+
+5. WIRING TEST VERIFIED: Temporarily removing the redact() call from
+   outcomes.render() causes test_render_redacts_record_ids_when_passed to
+   FAIL. The test drives through the real entry point with a sentinel
+   record ID and checks it does not survive.
+
+6. PRE-EXISTING: The hygiene guard has 2 pre-existing failures (not caused
+   by this change): docs/APPROVAL-REVOCATION-EVIDENCE-2026-09-15.md contains
+   resonategroup.co, and TASK-120's done file contains adcuratio/28row/
+   anewagencyworld. The check_leaks script also surfaces 119 record ID hits
+   across tracked files - these are pre-existing leaks the new tool now
+   makes visible.
+
+RISKS:
+- The check_leaks script reports many pre-existing record ID leaks in
+  tracked docs and scripts. These are not regressions from this change;
+  they are the problem this change was built to surface. Fixing them is
+  out of scope for this task.
+- outcomes.render() now has a new optional parameter (record_ids). Existing
+  callers that do not pass it get an empty tuple and only forbidden tokens
+  are redacted, not record IDs. The main() CLI entry point passes all
+  loaded record IDs.
+
+RECOMMENDED CLAUDE ACTION: Review and integrate. The pre-existing record ID
+leaks surfaced by check_leaks.py may warrant a follow-up task to redact
+them from tracked docs.
