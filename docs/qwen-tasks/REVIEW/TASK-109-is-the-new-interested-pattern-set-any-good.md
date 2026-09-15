@@ -85,3 +85,56 @@ learning-claim restriction should lift.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 5209e9e
+
+**TESTS:** Not applicable — this is a measurement task, not a code change. The
+scoring script (`scripts/task109_score.py`) was run and produced the results
+in the deliverable.
+
+**FILES CHANGED:**
+- `docs/INTERESTED-REMEASURE-2026-09-15.md` — the deliverable report
+- `scripts/task109_collect_unknowns.py` — sample collection script
+- `scripts/task109_score.py` — scoring script
+- `scripts/task109_labels.json` — hand-labels for the 200-reply sample
+- `docs/qwen-tasks/REVIEW/TASK-109-is-the-new-interested-pattern-set-any-good.md` — this file
+
+**FINDINGS:**
+
+The NEW INTERESTED pattern set has **zero recall** on a fresh sample of 200
+UNKNOWN replies (seed=109, drawn from a pool of 3,893). The taxonomy fires on
+0 of 200 in the sample, and only 20 of 3,893 (0.5%) in the full pool.
+
+| Category | Precision | Recall | n (actual) |
+|----------|-----------|--------|------------|
+| INTERESTED | 0.00 (undefined) | 0.00 | 15 |
+| MEETING_INTENT | 0.00 (undefined) | 0.00 | 1 |
+| OBJECTION | 0.00 (undefined) | 0.00 | 2 |
+
+The patterns are so narrow after removing bare adjectives that they catch
+almost nothing. The old set measured 0.44 precision / 0.62 recall — wrong
+more than half the time but at least it tried. The new set is inert.
+
+**The learning-claim restriction should NOT be lifted.** Not because precision
+is bad, but because there is nothing to measure. Zero predictions is not
+perfect precision; it is zero coverage.
+
+**RISKS:**
+- The measurement is on one sample of 200. A different seed might yield a
+  different number of hand-labelled interested replies, but the taxonomy
+  would still predict zero because the patterns do not match the language
+  in the pool.
+- The full-pool scan (3,893 replies) confirmed the taxonomy fires on only
+  20, so the zero in the sample is not a fluke.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Keep the learning-claim restriction on INTERESTED.
+- Decide whether INTERESTED is worth detecting at all. If yes, the options
+  are: (a) broaden patterns carefully with negation guards, (b) use a model,
+  or (c) accept that INTERESTED stays UNKNOWN and use MEETING_INTENT for
+  positive signals.
+- The report is in `docs/INTERESTED-REMEASURE-2026-09-15.md`.
