@@ -87,3 +87,58 @@ A corrected `docs/ESTATE-BISON-OUTCOMES-2026-09-15.md` where every number has
 a denominator you can point at, plus a short section naming which of the
 original numbers were wrong and why. A report that says "we could not measure
 this" in four places is worth more than one that says 16.14%.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 6bbb0bd
+
+**TESTS:** No automated tests for report content. Verification was manual:
+inspected the cached dataset (`.qwen/tmp/bison_cache/reply_dataset.json`,
+8.4 MB, 9726 rows) to confirm the four contradictions and their root causes.
+
+**FILES CHANGED:**
+- `docs/ESTATE-BISON-OUTCOMES-2026-09-15.md` - corrected report
+
+**FINDINGS:**
+
+1. **What the 8792 rows are:** Historical replies from before the API created
+   leads. They have NO `scheduled_email_id`, NO `campaign_id` (10 of 8792
+   have one), and therefore no linked sending email. But they DO have reply
+   text: median 253 chars, range 0-5500, only 3 empty. The classifier read
+   `text_body || text || body` from the reply row itself - the correct field.
+   The "empty body" in the original report was the *sending email's* body,
+   absent by construction for rows with no `scheduled_email_id`.
+
+2. **Matched vs historical separated throughout:** Matched (n=934) has a
+   linked sending email with subject, body, step position. Historical
+   (n=8792) has reply text only. Every table and rate now shows which
+   population it covers.
+
+3. **Classification with current taxonomy:** The dataset was classified with
+   the current rules-based classifier (`replies.classify`, rules-2). Matched
+   positives: 23/934 (2.46%). Historical positives: 1547/8792 (17.57%).
+   The historical positives have real reply text (all 1547 classified via
+   `extract_method: no_quote`, median 253 chars, confidence 0.75). They are
+   not empty-string artifacts. The 17.57% is a classification share, not a
+   reply rate.
+
+4. **16.14% reconciled:** TASK-070 measured `replies / emails_sent` per
+   campaign (0.3-0.4%). This analysis measured `positive_classifications /
+   replies_fetched`. Different denominators, different measurements. A 16%
+   positive share among replies is consistent with a 0.4% reply rate among
+   sent emails. The 16.14% is retracted as a comparable rate.
+
+**RISKS:**
+- The historical positive classification share (17.57%) is reported but
+  cannot be converted to a rate without a denominator. If someone reads it
+  as a rate, they will overestimate. The report labels it "classification
+  share" throughout.
+- The raw reply cache was cleaned up after dataset generation. Re-running
+  the script would need to re-fetch from the API (hours of collection).
+
+**RECOMMENDED CLAUDE ACTION:** Review the corrected report and integrate
+if satisfactory. The script (`scripts/bison_outcomes_analysis.py`) already
+has the matched/historical separation in its `produce_report` function and
+would produce a similar corrected report if re-run against the cache.
