@@ -124,7 +124,20 @@ HARD RULES:
 - Boundary you may not cross: write it under FINDINGS, commit, push, stop.
 
 Begin with the git mv."
-  ( cd "$d" && git checkout -q -B "$br" master 2>/dev/null
+  # RESETTING THE ROUND BRANCH TO MASTER DISCARDS THE LAST TASK IT CARRIED.
+  #
+  # `-B` is what makes each dispatch start from a clean master, and on
+  # 2026-09-15 it also destroyed the local ref for five finished tasks when
+  # their workers were reused within the same round. The work survived only
+  # because it had been pushed, and `claim_task._claimed_on_a_branch` now
+  # scans remote-tracking refs for exactly that reason.
+  #
+  # Push whatever the branch is carrying before resetting it, so the reset can
+  # never be the thing that loses a result. A failure here is not fatal - the
+  # worker is told to push after every result and usually already has - but it
+  # is the last chance to catch one that did not.
+  ( cd "$d" && git push -q origin "$br" 2>/dev/null
+    git checkout -q -B "$br" master 2>/dev/null
     QWEN_CODE_SUPPRESS_YOLO_WARNING=1 "$QWEN" --approval-mode yolo "$prompt" \
       > "$LOGS/$wt.$ROUND.log" 2>&1
     echo "$(date +%H:%M:%S) DONE $wt $tid exit=$?" >> "$LOGS/pool.log"

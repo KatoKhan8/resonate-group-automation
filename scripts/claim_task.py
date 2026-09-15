@@ -175,16 +175,34 @@ def _claimed_on_a_branch():
 
     Asking git which branches have moved the file closes that window without
     requiring Claude to keep up.
+
+    IT SCANS REMOTE-TRACKING REFS TOO, AND THAT IS NOT BELT-AND-BRACES.
+
+    Measured 2026-09-15: five tasks - 139 through 143 - were each run TWICE.
+    The first sweep's workers finished, moved their files to REVIEW on their
+    own branches, and pushed. The second sweep then dispatched all five again.
+
+    The reason is in `pool.sh dispatch`, which opens with
+    `git checkout -B "$br" master`. That RESETS the round's branch to master,
+    so the local ref carrying the finished work is gone the moment the worker
+    is reused - and a scan of `refs/heads/` alone then sees a branch with
+    nothing moved out of TODO and reports the task free.
+
+    The work itself survived, because QWEN.md requires a push after every
+    result and `refs/remotes/origin/` still held all five branches. So the
+    same push that makes the work durable is what makes this detector correct,
+    and scanning only local refs threw that away.
     """
     import subprocess
     moved = set()
     try:
-        branches = subprocess.run(
+        refs = subprocess.run(
             ["git", "-C", MAIN_REPO, "for-each-ref", "--format=%(refname:short)",
-             "refs/heads/"], capture_output=True, text=True, timeout=30).stdout.split()
+             "refs/heads/", "refs/remotes/"],
+            capture_output=True, text=True, timeout=60).stdout.split()
+        branches = [r for r in refs if r not in ("master", "origin/master")
+                    and not r.endswith("/HEAD")]
         for b in branches:
-            if b == "master":
-                continue
             out = subprocess.run(
                 ["git", "-C", MAIN_REPO, "ls-tree", "-r", "--name-only", b,
                  "docs/qwen-tasks/"], capture_output=True, text=True, timeout=30).stdout
