@@ -152,17 +152,17 @@ These would be regenerated regardless of the ladder flag.
     savagebrands-com:          10 (6 LI + 4 email)
     mischacommunications-com:  10 (5 LI + 5 email)
     mypersonalestatesale-com:  10 (6 LI + 4 email)
-    anewagencyworld-com:        8 (4 LI + 4 email)
+    <record-e003e4>-com:        8 (4 LI + 4 email)
     csquaredsocial-com:         7 (3 LI + 0 email, 2 contacts)
     portsidemarketing-com:      6 (1 LI + 5 email)
     agency59-ca:                6 (2 LI + 4 email)
     ogpartner-dk:               5 (0 LI + 5 email)
     acqcom-com:                 4
-    adcuratio-com:              4
+    <record-a86dfd>-com:              4
     1gslab-com:                 3
     ethoscreate-com:            3
     roaringmedia-co:            3
-    28row-com:                  2
+    <record-abb4a2>-com:                  2
     semcasting-com:             1
     viralityllc-com:            1
 
