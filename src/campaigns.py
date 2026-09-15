@@ -143,9 +143,38 @@ def require(campaign_id, rows=None):
     return found
 
 
+class DuplicateCampaign(CampaignError):
+    """A campaign for this cohort or hypothesis already exists.
+
+    The registry check is consumed here, at the entry point every campaign
+    creation path goes through. A check that only runs in a script is a
+    check that production bypasses.
+    """
+    def __init__(self, campaign_id, matches, reasons):
+        self.matches = matches
+        self.reasons = reasons
+        super().__init__(
+            f"campaign {campaign_id} would duplicate an existing campaign: "
+            + "; ".join(reasons[:3]))
+
+
 def new_campaign(campaign_id, client, name, batch_id=None, created_by="unknown",
-                 lanes=(), personas=(), geos=()):
-    """The campaign skeleton. Field shape lives here and nowhere else."""
+                 lanes=(), personas=(), geos=(), cohort_key=None,
+                 hypothesis=None, check_registry=True):
+    """The campaign skeleton. Field shape lives here and nowhere else.
+
+    The registry check runs before the skeleton is built: if a campaign for
+    this cohort or hypothesis already exists at either provider, the
+    creation is refused. Pass `check_registry=False` to skip - the escape
+    hatch is named so a caller that uses it leaves a trace.
+    """
+    if check_registry and (cohort_key or hypothesis or name):
+        from . import campaignregistry
+        verdict = campaignregistry.pre_creation_check(
+            cohort_key=cohort_key, hypothesis=hypothesis, name=name)
+        if verdict.get("exists"):
+            raise DuplicateCampaign(campaign_id, verdict["matches"],
+                                    verdict["reasons"])
     return {
         "campaign_id": campaign_id,
         "client": client,
@@ -169,6 +198,8 @@ def new_campaign(campaign_id, client, name, batch_id=None, created_by="unknown",
         "pause": None,
         "started_at": None,
         "completed_at": None,
+        "cohort_key": cohort_key,
+        "hypothesis": hypothesis,
         "log": [],
         "events": [],
     }
