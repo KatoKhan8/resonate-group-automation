@@ -308,6 +308,48 @@ class PlanIntegrationTest(unittest.TestCase):
         self.assertEqual(len(set_ops), 0,
                          "distinct notes should not trigger set regeneration")
 
+    def test_linkedin_set_propagates_ladder_stale(self):
+        """TASK-129: when a linkedin_set absorbs ladder-stale notes, the
+        set op carries ladder_stale and stale_step_count."""
+        rec = _make_record(notes=COLLIDING_NOTES)
+        store.save([rec])
+
+        ops = generate.plan(rec, self.config, regen_stale_ladder=True)
+        set_ops = [o for o in ops if o.get("step") == "linkedin_set"]
+
+        self.assertEqual(len(set_ops), 1)
+        self.assertTrue(set_ops[0].get("ladder_stale"),
+                        "linkedin_set should carry ladder_stale when it "
+                        "absorbs stale notes")
+        # COLLIDING_NOTES has 5 notes, all without fingerprints.
+        self.assertEqual(set_ops[0].get("stale_step_count"), 5,
+                         "stale_step_count should match the number of "
+                         "ladder-stale notes absorbed")
+
+    def test_linkedin_set_without_stale_notes_has_no_ladder_stale(self):
+        """TASK-129: a linkedin_set for notes that are NOT stale does not
+        carry ladder_stale."""
+        rec = _make_record(notes=COLLIDING_NOTES)
+        # Give every note a current fingerprint so none is stale.
+        seq = generate.sequence_for(rec, self.config,
+                                    rec["contacts"][0])
+        for sk, step in rec["cadence"]["ranjan-damodar"].items():
+            channel = step.get("channel")
+            _, ordinal, _ = generate.position(seq, sk)
+            fp = generate.ladder_fingerprint(channel, ordinal,
+                                             sequence=seq)
+            if fp:
+                step["ladder_fingerprint"] = fp
+        store.save([rec])
+
+        ops = generate.plan(rec, self.config, regen_stale_ladder=True)
+        set_ops = [o for o in ops if o.get("step") == "linkedin_set"]
+
+        self.assertEqual(len(set_ops), 1)
+        self.assertFalse(set_ops[0].get("ladder_stale"),
+                         "linkedin_set should NOT carry ladder_stale when "
+                         "no absorbed notes are stale")
+
 
 class GenerateRecordIntegrationTest(unittest.TestCase):
     """generate_record: drives through the real entry point."""
