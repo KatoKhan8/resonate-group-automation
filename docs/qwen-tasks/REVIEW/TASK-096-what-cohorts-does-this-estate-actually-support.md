@@ -75,3 +75,49 @@ range/value disagreements across 300 records.
 `docs/COHORT-INVENTORY-2026-09-15.md` plus `docs/state/COHORTS.json` for the
 machine-readable definitions. Every count with the rule that produced it, so
 somebody can disagree with the rule rather than with the number.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** ce3bc84
+
+**TESTS:** Analysis script `scripts/analyze_cohorts.py` reads the snapshot and produces the coverage table and cohort counts. No unit tests were written because this is an analysis task, not a code change. The script is the verification - run it and the numbers match the report.
+
+**FILES CHANGED:**
+- `docs/COHORT-INVENTORY-2026-09-15.md` - human-readable cohort inventory
+- `docs/state/COHORTS.json` - machine-readable cohort definitions (14 cohorts)
+- `scripts/analyze_cohorts.py` - analysis script that produces the numbers
+
+**FINDINGS:**
+
+1. **Coverage verified.** The task brief said specialties at 73%. **Specialties is 0%.** The field does not exist in the contact structure or at record level. All other coverage numbers match: first name/title/company/domain/industry/headcount/persona at 100%, email at 94% (87/92), angle at 88% (81/92), employee_range at 19% (18/92).
+
+2. **Two cohorts of >= 50 leads.**
+   - Persona: economic_buyer - 70 leads
+   - Industry: Advertising Services - 51 leads
+
+3. **Five cohorts of >= 25 leads.** The two above plus:
+   - Angle: founder - 45 leads
+   - Persona + Industry: economic_buyer | Advertising Services - 40 leads
+   - Angle + Industry: founder | Advertising Services - 27 leads
+
+4. **The estate supports two clear cohorts of 50+, with several more in the 25-45 range.** It does not support dozens of cohorts of 50+. The policy says "where inventory supports it" - and the inventory supports two, maybe three with stretching.
+
+5. **Headcount is contested and was not used as a primary cohort key.** `company_facts.employees` is 100% populated but `employee_range` is only 19%. The task brief warned about conflicts and this inventory respects that warning.
+
+6. **No PII in the report.** All identifiers are hashed or omitted. The report names signals and counts, not companies or people.
+
+**RISKS:**
+
+- The specialties field is absent from the estate, contrary to the task brief's 73% figure. If specialties was expected to be a cohort signal, that signal does not exist and cannot be used.
+- The two cohorts of 50+ (economic_buyer and Advertising Services) overlap significantly (40 leads in the intersection). Running them as separate campaigns would double-count those 40 leads. The decision on whether to run them as separate campaigns or as one merged cohort is a product and positioning question, not a data question.
+- The cohorts of 25-45 are below the 50-lead target. The policy says they can be "held and accumulated, merged with a genuinely compatible cohort, or run explicitly as a small exploratory cohort with its sample size recorded." The decision on which path to take is not this task's to make.
+
+**RECOMMENDED CLAUDE ACTION:**
+
+1. Review the cohort inventory and decide which cohorts to run first. The two cohorts of 50+ are the obvious starting points.
+2. Decide whether economic_buyer (70) and Advertising Services (51) should be separate campaigns or merged, given their 40-lead overlap.
+3. For the cohorts of 25-45, decide whether to hold and accumulate, merge with compatible cohorts, or run as small exploratory cohorts.
+4. Define the message hypothesis for each cohort. This inventory provides the counts and signals; the messaging is a product and positioning question.
+5. Assign senders. The sender estate is measured and zero seats are uncommitted. Adding senders to a cohort requires reassigning seats that are already working.
