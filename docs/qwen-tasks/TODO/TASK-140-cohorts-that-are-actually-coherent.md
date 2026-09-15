@@ -89,3 +89,53 @@ project nobody asked for.
 
 The distributions, the cross-tabs, the evidenced/inferred split, the named
 cohort proposal with sizes and leftovers, and each cohort's arm.
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT:** 2cd4c8c
+
+**SNAPSHOT:** `work/queue.snapshot.jsonl` from `2026-09-14T21:52:15Z`, master `0ac5e60`, 300 records.
+
+**TESTS:** Four analysis scripts produced consistent results (scripts/task140_*.py). No unit tests applicable - this is a measurement task.
+
+**FILES CHANGED:**
+- `docs/COHORT-DESIGN-2026-09-15.md` (new) - the deliverable
+- `scripts/task140_cohort_analysis.py` (new) - dimension distributions and cross-tabs
+- `scripts/task140_deep_analysis.py` (new) - ICP flags, role families, evidenced vs inferred
+- `scripts/task140_icp_eligibility.py` (new) - ICP gate analysis, clean vs flagged split
+- `scripts/task140_evidence_audit.py` (new) - research quality, pipeline status, approval status
+
+**FINDINGS:**
+
+1. **56 eligible contacts, 1 client, 1 vertical, no signal.** All for "productive" in advertising/marketing/design services. Signal and context fields are 100% null across the entire non-dropped estate.
+
+2. **ICP gate dominates: 24 clean, 32 flagged.** 27 flagged for under client minimum headcount (<20 employees), 12 for geo outside client markets, 7 for both. These are not cohorts; they are a backlog needing client decision or data correction.
+
+3. **No evidenced signal exists.** Angle is inferred from title (only 9 of 56 have angle mentioned in research). Persona is classified from title. 13 of 54 records have "strong" quality research. 13 contacts had persona_angle held because "evidence not traceable to the record."
+
+4. **Three CONTROL-arm cohorts cover the 24 ICP-clean contacts:**
+   - C1: ICP-clean, founder-angle (11 contacts) - largest cell
+   - C2: ICP-clean, operations-angle (7 contacts) - second largest
+   - C3: ICP-clean, other (6 contacts) - residual
+   - Total: 24 contacts, 100% of ICP-clean eligible
+
+5. **No CHALLENGER cohort is defensible.** A challenger needs per-contact evidence that clears the claims gate. That evidence does not exist. Angle is inferred, not evidenced. Signal is null. Research is thin.
+
+6. **The 32 ICP-flagged contacts are a backlog, not a cohort.** They need: client decision to lower headcount minimum, client decision to expand geo markets, headcount data correction, or new evidence.
+
+7. **The design changes when:** signal is recorded, research deepens, or ICP flags are resolved. At 24 clean contacts the canary is three; at 50+ cohort splits become readable.
+
+**RISKS:**
+- The 24 clean contacts are 43% of eligible. The 32 flagged are excluded honestly, but they are still "eligible" in the email-verification sense. If the ICP flags are resolved, the cohort design needs revisiting.
+- Angle is inferred from title. If the title classification is wrong, the cohort split is wrong. The evidence check (9 of 56) is the honest number.
+- Headcount_signal is contested (7 conflicts, 64 disagreements across 300 records per PRODUCTION-SCALE-POLICY.md). The size buckets in this analysis use that field.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Read `docs/COHORT-DESIGN-2026-09-15.md` for the full analysis, cross-tabs, and proposal.
+- The 24 ICP-clean contacts are available for the CONTROL arm canary of three.
+- The 32 ICP-flagged contacts need a client decision before they enter any cohort.
+- No CHALLENGER arm is defensible until signal is recorded and research deepens.
