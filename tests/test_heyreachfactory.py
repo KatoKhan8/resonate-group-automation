@@ -495,5 +495,280 @@ class TheMappingDocumented(unittest.TestCase):
                          "inmail")
 
 
+# ========================================= TASK-126: five variants per node
+
+class MultiVariantSequence(unittest.TestCase):
+    """A node built from N variants carries N entries in payload.messages.
+
+    TASK-126. The provider carries variants per node (up to 20 for MESSAGE,
+    15 for CONNECTION_REQUEST, 5 for INMAIL). Our factory has never built a
+    multi-message node. This test pins that a node built from N variants
+    carries N entries in payload.messages, preserving order so arm identity
+    is positional.
+    """
+
+    def _step_with_variants(self, key, day, action, variants):
+        """One approved LinkedIn step carrying N variants.
+
+        Each variant needs its own approval fingerprint, computed from the
+        variant's content (channel + subject + body + note). The base step's
+        approval is not used when variants are present.
+        """
+        from src import approval as _approval
+
+        # Compute approval for each variant.
+        approved_variants = []
+        for v in variants:
+            # Build a step with this variant's content to compute fingerprint.
+            variant_step = {"key": key, "day": day, "channel": "linkedin",
+                           "linkedin_action": action, "generated": False,
+                           "note": v.get("note"),
+                           "subject": v.get("subject"),
+                           "body": v.get("body")}
+            fp = _approval.fingerprint(variant_step)
+            approved_variants.append({
+                **v,
+                "approval": {"fingerprint": fp, "at": "2026-09-15T00:00:00"}
+            })
+
+        step = {"key": key, "day": day, "channel": "linkedin",
+                "linkedin_action": action, "generated": False,
+                "variants": approved_variants}
+        return step
+
+    def _variant(self, vid, style, note):
+        """One variant entry."""
+        return {"variant_id": vid, "style": style, "note": note,
+                "status": "active", "version": 1}
+
+    def test_five_variants_produce_five_messages(self):
+        """A step with five variants produces five messages in the payload."""
+        from src import approval as _approval
+
+        variants = [
+            self._variant("v1", "casual", "Hey, noticed your work. Connect?"),
+            self._variant("v2", "short_direct", "Quick question about ops."),
+            self._variant("v3", "professional",
+                          "I noticed your delivery operations."),
+            self._variant("v4", "consultative",
+                          "Your pattern in delivery ops is interesting."),
+            self._variant("v5", "peer_to_peer",
+                          "Fellow ops leader here. Connect?"),
+        ]
+        # Build cadence_steps with variants on li1.
+        li1_spec = {"key": "li1", "day": 1, "channel": "linkedin",
+                    "linkedin_action": "connect", "generated": False,
+                    "variants": variants}
+        # Compute approval for each variant.
+        approved_variants = []
+        for v in variants:
+            variant_step = {"key": "li1", "day": 1, "channel": "linkedin",
+                           "linkedin_action": "connect", "generated": False,
+                           "note": v.get("note")}
+            fp = _approval.fingerprint(variant_step)
+            approved_variants.append({
+                **v,
+                "approval": {"fingerprint": fp, "at": "2026-09-15T00:00:00"}
+            })
+        li1_spec["variants"] = approved_variants
+
+        rec = {
+            "id": "acme", "client": "productive", "domain": "acme.test",
+            "contacts": [{"key": "pat", "name": "Pat Morgan",
+                          "linkedin": "https://www.linkedin.com/in/pat"}],
+            "cadence": {
+                "pat": {
+                    "li1": {"key": "li1", "day": 1, "channel": "linkedin",
+                            "linkedin_action": "connect", "generated": False},
+                    "li2": _approved_li_step("li2", 3, "message",
+                                             note="Message 2"),
+                    "li3": _approved_li_step("li3", 6, "message",
+                                             note="Message 3"),
+                    "li4": _approved_li_step("li4", 10, "message",
+                                             note="Message 4"),
+                    "li5": _approved_li_step("li5", 15, "message",
+                                             note="Message 5"),
+                }
+            },
+        }
+        cadence_steps = [
+            li1_spec,
+            {"key": "li2", "day": 3, "channel": "linkedin",
+             "linkedin_action": "message", "generated": True},
+            {"key": "li3", "day": 6, "channel": "linkedin",
+             "linkedin_action": "message", "generated": True},
+            {"key": "li4", "day": 10, "channel": "linkedin",
+             "linkedin_action": "message", "generated": True},
+            {"key": "li5", "day": 15, "channel": "linkedin",
+             "linkedin_action": "message", "generated": True},
+        ]
+        copy, missing = heyreachfactory.assemble_linkedin_copy(
+            rec, "pat", cadence_steps=cadence_steps,
+            campaign={"campaign_id": "test-campaign"})
+        self.assertEqual(missing, [])
+        # The connection_note should carry all five variants.
+        self.assertIn("connection_note", copy)
+        messages = copy["connection_note"]["messages"]
+        self.assertEqual(len(messages), 5,
+                         f"Expected 5 messages (one per variant), got "
+                         f"{len(messages)}. The factory must put all "
+                         f"variants into the messages list, not just one")
+        # Order is preserved: arm identity is positional.
+        self.assertEqual(messages[0], "Hey, noticed your work. Connect?")
+        self.assertEqual(messages[1], "Quick question about ops.")
+        self.assertEqual(messages[2], "I noticed your delivery operations.")
+        self.assertEqual(messages[3], "Your pattern in delivery ops is interesting.")
+        self.assertEqual(messages[4], "Fellow ops leader here. Connect?")
+
+    def test_four_variants_produce_four_messages_not_five(self):
+        """Four honest arms beat five where one is a copy.
+
+        Do not pad to five by repeating a variant. The structural diversity
+        check would refuse it anyway, correctly.
+        """
+        from src import approval as _approval
+
+        variants = [
+            self._variant("v1", "casual", "Hey, connect?"),
+            self._variant("v2", "short_direct", "Quick question."),
+            self._variant("v3", "professional", "I noticed your work."),
+            self._variant("v4", "consultative", "Your pattern is interesting."),
+        ]
+        # Build cadence_steps with variants on li1.
+        li1_spec = {"key": "li1", "day": 1, "channel": "linkedin",
+                    "linkedin_action": "connect", "generated": False,
+                    "variants": variants}
+        approved_variants = []
+        for v in variants:
+            variant_step = {"key": "li1", "day": 1, "channel": "linkedin",
+                           "linkedin_action": "connect", "generated": False,
+                           "note": v.get("note")}
+            fp = _approval.fingerprint(variant_step)
+            approved_variants.append({
+                **v,
+                "approval": {"fingerprint": fp, "at": "2026-09-15T00:00:00"}
+            })
+        li1_spec["variants"] = approved_variants
+
+        rec = {
+            "id": "acme", "client": "productive", "domain": "acme.test",
+            "contacts": [{"key": "pat", "name": "Pat Morgan",
+                          "linkedin": "https://www.linkedin.com/in/pat"}],
+            "cadence": {
+                "pat": {
+                    "li1": {"key": "li1", "day": 1, "channel": "linkedin",
+                            "linkedin_action": "connect", "generated": False},
+                    "li2": _approved_li_step("li2", 3, "message",
+                                             note="Message 2"),
+                    "li3": _approved_li_step("li3", 6, "message",
+                                             note="Message 3"),
+                    "li4": _approved_li_step("li4", 10, "message",
+                                             note="Message 4"),
+                    "li5": _approved_li_step("li5", 15, "message",
+                                             note="Message 5"),
+                }
+            },
+        }
+        cadence_steps = [
+            li1_spec,
+            {"key": "li2", "day": 3, "channel": "linkedin",
+             "linkedin_action": "message", "generated": True},
+            {"key": "li3", "day": 6, "channel": "linkedin",
+             "linkedin_action": "message", "generated": True},
+            {"key": "li4", "day": 10, "channel": "linkedin",
+             "linkedin_action": "message", "generated": True},
+            {"key": "li5", "day": 15, "channel": "linkedin",
+             "linkedin_action": "message", "generated": True},
+        ]
+        copy, missing = heyreachfactory.assemble_linkedin_copy(
+            rec, "pat", cadence_steps=cadence_steps,
+            campaign={"campaign_id": "test-campaign"})
+        self.assertEqual(missing, [])
+        messages = copy["connection_note"]["messages"]
+        self.assertEqual(len(messages), 4,
+                         f"Expected 4 messages (one per variant), got "
+                         f"{len(messages)}. Do not pad to five by repeating")
+
+    def test_validate_accepts_multi_message_node(self):
+        """validate_sequence_for_write must accept a node with multiple messages."""
+        from src import approval as _approval
+
+        variants = [
+            self._variant("v1", "casual", "Hey, connect?"),
+            self._variant("v2", "short_direct", "Quick question."),
+            self._variant("v3", "professional", "I noticed your work."),
+        ]
+        # Build cadence_steps with variants on li1.
+        li1_spec = {"key": "li1", "day": 1, "channel": "linkedin",
+                    "linkedin_action": "connect", "generated": False,
+                    "variants": variants}
+        approved_variants = []
+        for v in variants:
+            variant_step = {"key": "li1", "day": 1, "channel": "linkedin",
+                           "linkedin_action": "connect", "generated": False,
+                           "note": v.get("note")}
+            fp = _approval.fingerprint(variant_step)
+            approved_variants.append({
+                **v,
+                "approval": {"fingerprint": fp, "at": "2026-09-15T00:00:00"}
+            })
+        li1_spec["variants"] = approved_variants
+
+        rec = {
+            "id": "acme", "client": "productive", "domain": "acme.test",
+            "contacts": [{"key": "pat", "name": "Pat Morgan",
+                          "linkedin": "https://www.linkedin.com/in/pat"}],
+            "cadence": {
+                "pat": {
+                    "li1": {"key": "li1", "day": 1, "channel": "linkedin",
+                            "linkedin_action": "connect", "generated": False},
+                    "li2": _approved_li_step("li2", 3, "message",
+                                             note="Message 2"),
+                    "li3": _approved_li_step("li3", 6, "message",
+                                             note="Message 3"),
+                    "li4": _approved_li_step("li4", 10, "message",
+                                             note="Message 4"),
+                    "li5": _approved_li_step("li5", 15, "message",
+                                             note="Message 5"),
+                }
+            },
+        }
+        cadence_steps = [
+            li1_spec,
+            {"key": "li2", "day": 3, "channel": "linkedin",
+             "linkedin_action": "message", "generated": True},
+            {"key": "li3", "day": 6, "channel": "linkedin",
+             "linkedin_action": "message", "generated": True},
+            {"key": "li4", "day": 10, "channel": "linkedin",
+             "linkedin_action": "message", "generated": True},
+            {"key": "li5", "day": 15, "channel": "linkedin",
+             "linkedin_action": "message", "generated": True},
+        ]
+        copy, missing = heyreachfactory.assemble_linkedin_copy(
+            rec, "pat", cadence_steps=cadence_steps,
+            campaign={"campaign_id": "test-campaign"})
+        self.assertEqual(missing, [])
+        # Build the sequence and validate it.
+        config = {
+            "linkedin_sequence": {
+                "fallbacks": {
+                    "connection_note": "Hi there, I'd like to connect.",
+                    "connected_1": "Thanks for connecting!",
+                    "connected_2": "Great to have you in my network.",
+                    "connected_3": "Looking forward to staying in touch.",
+                    "connected_4": "Let's catch up soon.",
+                    "message_2": "Thanks for connecting. Quick question?",
+                    "message_3": "One thing that might help.",
+                    "message_4": "Happy to share more if useful.",
+                }
+            }
+        }
+        sequence, report = heyreachfactory.build_sequence(copy)
+        # The sequence should validate without raising.
+        node_count, message_nodes = heyreach.validate_sequence_for_write(sequence)
+        self.assertGreater(node_count, 0)
+        self.assertGreater(message_nodes, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

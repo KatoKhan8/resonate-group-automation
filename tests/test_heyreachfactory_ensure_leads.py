@@ -175,6 +175,12 @@ class _EnsureLeadsTestBase(_NoPatchOutlivesItsTest):
         self._draft_patch = mock.patch.object(
             heyreach, "campaign_cannot_send", return_value=True)
         self._draft_patch.start()
+        # addCleanup, for the reason this file already gives below: a patch
+        # that outlives its test leaks into every test that runs after it.
+        # Without this, the whole of test_campaign_cannot_send sees
+        # campaign_cannot_send permanently returning True and 12 of its tests
+        # fail - in a suite where each module passes alone.
+        self.addCleanup(self._draft_patch.stop)
         # THE EMAILBISON WORKSPACE, because the collision gate reads the
         # client's own EMAIL estate even for a LinkedIn campaign - the account
         # is the unit, so somebody mid-sequence by email is a reason not to
