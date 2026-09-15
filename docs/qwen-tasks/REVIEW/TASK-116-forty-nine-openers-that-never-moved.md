@@ -71,7 +71,7 @@ interesting finding than either.
 ## RESULT BLOCK
 
     STATUS: DONE
-    COMMIT SHA: (pending)
+    COMMIT SHA: 7874467
     TESTS: Read-only analysis. No code changed. No tests run.
            Measurements extracted from work/queue.snapshot.jsonl
            (stamped 2026-09-14T21:52:15Z from master 0ac5e60).
