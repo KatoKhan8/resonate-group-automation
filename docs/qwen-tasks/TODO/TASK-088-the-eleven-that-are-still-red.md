@@ -126,3 +126,26 @@ STATUS, COMMIT SHA, TESTS (exact commands, exact counts, exit codes read off
 the process and never through a pipe), FILES CHANGED, FINDINGS - per failure:
 classification, TEST-wrong or CODE-wrong, how long red - RISKS, RECOMMENDED
 CLAUDE ACTION.
+
+---
+
+## SCOPE NARROWED, 2026-09-15
+
+The three `test_fixture_hygiene` failures are split out into **TASK-095** and
+are NOT yours. They guard prospect PII rather than correctness and they need
+a leak-or-stale verdict written up separately.
+
+This task is the remaining EIGHT:
+
+    test_ingest              TestPhase1Csv x2
+    test_no_write_happens_without_every_gate   the write door
+    test_a_bounced_address_stops_being_sendable  send safety
+    test_replaysim           x2
+    test_referral            TheWholeChain
+    test_mutation_anchors    EveryAnchorStillMatches
+
+Start with the write door and send safety. Those two guard a prospect-facing
+action; the rest guard correctness. Same question for each, and it has had
+both answers in this repository within one session: **STALE TEST, or REAL
+REGRESSION?** Check it, do not accept it, and if it is real, say what breaks
+in production rather than only what the assertion says.

@@ -89,3 +89,20 @@ No unsanitised prospect PII in git.
 
 STATUS, COMMIT SHA, TESTS, FILES CHANGED, FINDINGS, RISKS, RECOMMENDED
 CLAUDE ACTION.
+
+---
+
+## RECOVERY NOTE, 2026-09-15 after unplanned shutdown
+
+The run COMPLETED. It wrote `docs/ESTATE-BISON-OUTCOMES-2026-09-15.md` at
+01:26 and the laptop shut down before the worker committed. Recovered
+verbatim from the `resonate-qwen-4` worktree and committed to branch
+`qwen-worker-4` at `f164f8c`. **The collection was NOT re-run.**
+
+STATUS: COMPLETE, NOT INTEGRATED. The report contradicts itself in four
+places - "matched" counts 8792 rows that did not match, an empty body reports
+0.0% unreadable against a previous 46.5%, 1561 of 1570 positives come from
+rows with no body at all, and 16.14% positive cannot be reconciled with the
+0.3-0.4% reply rates measured in BISON-CADENCE-FINDINGS.
+
+TASK-090 carries the rework. Do not re-run the collection.
