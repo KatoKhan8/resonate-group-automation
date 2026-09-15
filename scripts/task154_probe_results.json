@@ -1,0 +1,72 @@
+[
+  {
+    "domain": "australo.org",
+    "note": "ICP dimension need, queued",
+    "outcome": "RESEARCH_FAILED",
+    "pages_kept": 0,
+    "fallback_worthy": true,
+    "requests": 1,
+    "bytes": 0,
+    "seconds": 0.61,
+    "outcomes": [
+      "RESEARCH_FAILED"
+    ],
+    "page_fields": []
+  },
+  {
+    "domain": "hotmail.fi",
+    "note": "ICP dimension need, queued - likely email domain",
+    "outcome": "RESEARCH_FAILED",
+    "pages_kept": 0,
+    "fallback_worthy": true,
+    "requests": 1,
+    "bytes": 0,
+    "seconds": 0.1,
+    "outcomes": [
+      "RESEARCH_FAILED"
+    ],
+    "page_fields": []
+  },
+  {
+    "domain": "tateshvili.com",
+    "note": "ICP dimension need, queued",
+    "outcome": "RESEARCH_FAILED",
+    "pages_kept": 0,
+    "fallback_worthy": true,
+    "requests": 1,
+    "bytes": 0,
+    "seconds": 0.16,
+    "outcomes": [
+      "RESEARCH_FAILED"
+    ],
+    "page_fields": []
+  },
+  {
+    "domain": "22visioncg.com",
+    "note": "Stale team evidence, dropped",
+    "outcome": "HTTP_INSUFFICIENT",
+    "pages_kept": 0,
+    "fallback_worthy": false,
+    "requests": 1,
+    "bytes": 524289,
+    "seconds": 1.07,
+    "outcomes": [
+      "HTTP_INSUFFICIENT"
+    ],
+    "page_fields": []
+  },
+  {
+    "domain": "30lines.com",
+    "note": "Stale team evidence, dropped",
+    "outcome": "BLOCKED",
+    "pages_kept": 0,
+    "fallback_worthy": true,
+    "requests": 1,
+    "bytes": 0,
+    "seconds": 0.8,
+    "outcomes": [
+      "BLOCKED"
+    ],
+    "page_fields": []
+  }
+]

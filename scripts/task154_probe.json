@@ -1,0 +1,299 @@
+{
+  "probe_domains": [
+    "australo.org",
+    "hotmail.fi",
+    "tateshvili.com",
+    "22visioncg.com",
+    "30lines.com"
+  ],
+  "needs": [
+    {
+      "id": "22visioncg-com",
+      "domain": "22visioncg.com",
+      "company": "22visioncg.com",
+      "lane": "domains",
+      "reason": "public_evidence_stale_refresh_required",
+      "stale_fields": [
+        "team"
+      ],
+      "icp_verdict": "none",
+      "icp_status": "rejected",
+      "existing_rows": 2,
+      "state": "dropped"
+    },
+    {
+      "id": "30lines-com",
+      "domain": "30lines.com",
+      "company": "30 Lines",
+      "lane": "domains",
+      "reason": "public_evidence_stale_refresh_required",
+      "stale_fields": [
+        "team"
+      ],
+      "icp_verdict": "none",
+      "icp_status": "rejected",
+      "existing_rows": 5,
+      "state": "dropped"
+    },
+    {
+      "id": "australo-org",
+      "domain": "australo.org",
+      "company": "australo.org",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "halconmarketing-com",
+      "domain": "halconmarketing.com",
+      "company": "halconmarketing.com",
+      "lane": "domains",
+      "reason": "public_evidence_stale_refresh_required",
+      "stale_fields": [
+        "team"
+      ],
+      "icp_verdict": "none",
+      "icp_status": "rejected",
+      "existing_rows": 4,
+      "state": "dropped"
+    },
+    {
+      "id": "villagepress-com",
+      "domain": "villagepress.com",
+      "company": "villagepress.com",
+      "lane": "domains",
+      "reason": "public_evidence_stale_refresh_required",
+      "stale_fields": [
+        "team"
+      ],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 5,
+      "state": "queued"
+    },
+    {
+      "id": "hotmail-fi",
+      "domain": "hotmail.fi",
+      "company": "hotmail.fi",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "tateshvili-com",
+      "domain": "tateshvili.com",
+      "company": "tateshvili.com",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "mymail-pomona-edu",
+      "domain": "mymail.pomona.edu",
+      "company": "mymail.pomona.edu",
+      "lane": "domains",
+      "reason": "public_evidence_stale_refresh_required",
+      "stale_fields": [
+        "team"
+      ],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 5,
+      "state": "queued"
+    },
+    {
+      "id": "consolidated-net",
+      "domain": "consolidated.net",
+      "company": "consolidated.net",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "barkingspider-ca",
+      "domain": "barkingspider.ca",
+      "company": "barkingspider.ca",
+      "lane": "domains",
+      "reason": "public_evidence_stale_refresh_required",
+      "stale_fields": [
+        "team"
+      ],
+      "icp_verdict": "none",
+      "icp_status": "rejected",
+      "existing_rows": 5,
+      "state": "dropped"
+    },
+    {
+      "id": "grueandbleen-com",
+      "domain": "grueandbleen.com",
+      "company": "grueandbleen.com",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "twornia-pl",
+      "domain": "twornia.pl",
+      "company": "twornia.pl",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "zedi-africa",
+      "domain": "zedi.africa",
+      "company": "zedi.africa",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "omnicommediagroup-pl",
+      "domain": "omnicommediagroup.pl",
+      "company": "omnicommediagroup.pl",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "goldsocial-com-au",
+      "domain": "goldsocial.com.au",
+      "company": "goldsocial.com.au",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "vieren-be",
+      "domain": "vieren.be",
+      "company": "vieren.be",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "angletech-ai",
+      "domain": "angletech.ai",
+      "company": "angletech.ai",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "fvdsonline-com",
+      "domain": "fvdsonline.com",
+      "company": "fvdsonline.com",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "availlabs-com",
+      "domain": "availlabs.com",
+      "company": "availlabs.com",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "digivomedia-co-uk",
+      "domain": "digivomedia.co.uk",
+      "company": "digivomedia.co.uk",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "troystar-com",
+      "domain": "troystar.com",
+      "company": "troystar.com",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "creativecircle-ch",
+      "domain": "creativecircle.ch",
+      "company": "creativecircle.ch",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    },
+    {
+      "id": "e-deocom-com",
+      "domain": "e-deocom.com",
+      "company": "e-deocom.com",
+      "lane": "domains",
+      "reason": "public_evidence_required_for_icp_dimensions",
+      "stale_fields": [],
+      "icp_verdict": "none",
+      "icp_status": "review",
+      "existing_rows": 0,
+      "state": "queued"
+    }
+  ]
+}
