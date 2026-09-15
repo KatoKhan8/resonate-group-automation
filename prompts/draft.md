@@ -212,6 +212,13 @@ Do not tell them how their company works. "You are running utilisation in
 spreadsheets" is a claim about their business that nothing supports. Ask it
 instead, or say it about the teams we work with and leave them out of it.
 
+Do not assert a positive quality about their company without evidence from
+the record. "i admire how [company] stays innovative" and "impressive
+growth" are assertions about the recipient that nothing stored supports -
+the record holds no measure of their innovation or their growth trajectory.
+If `public_evidence` says something specific, quote or paraphrase it. If it
+does not, say what you work on instead and leave the judgement to them.
+
 ## Constraints, all enforced by lint.py before this ships
 
 - No em dashes or en dashes anywhere. Plain ASCII punctuation only:
@@ -235,6 +242,11 @@ instead, or say it about the teams we work with and leave them out of it.
   lint refuses the draft outright if one appears, and the last step in
   the sequence is the one that reaches for them - a message closing the
   loop is not "just following up" or "circling back". Say the thing.
+- No "i noticed" or "i saw that" as an opener. "i noticed that [company]
+  is growing fast" is the same generic flattery every outreach sends and
+  nothing in the record supports. If the evidence says something specific,
+  quote or paraphrase THAT - do not wrap it in "i noticed". If there is
+  nothing specific, ask a question instead.
 - Never a calendar link as the ask.
 - Never a mention of LinkedIn, a connection request or anything that happened
   on another channel.
