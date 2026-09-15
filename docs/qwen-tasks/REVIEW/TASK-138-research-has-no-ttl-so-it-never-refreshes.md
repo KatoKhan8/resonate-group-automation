@@ -91,7 +91,7 @@ re-crawl count with its reasoning.
 
 **STATUS: DONE**
 
-**COMMIT SHA:** 955a9d1
+**COMMIT SHA:** 3228e71
 
 **TESTS:**
 - `tests/test_research_ttl.py`: 22 tests, all pass
