@@ -176,7 +176,7 @@ All other tests in `tests/test_fixture_hygiene.py` pass:
 
 **STATUS:** PARTIAL - two stale tests fixed, one real leak escalated
 
-**COMMIT SHA:** [to be filled after commit]
+**COMMIT SHA:** bf70da8
 
 **TESTS:** 
 - `test_every_phone_number_is_a_reserved_fiction` - PASS (was FAIL)
