@@ -1,5 +1,10 @@
 # Resonate Group Automation
-docs/CONTEXT-RESET-2026-09-15-D.md is the current state: read it first.
+docs/CONTEXT-RESET-2026-09-15-E.md is the current state: read it first.
+It supersedes checkpoint D. Two things it says that nothing else does: the
+HeyReach sequence holds MERGE VARIABLES and the words arrive per lead, so no
+sequence write is needed; and ONE task - TASK-137, narrowing four seals for a
+fail-closed LINKEDIN_ADD_LEAD - stands between a ready 122-lead cohort and the
+first live campaign.
 Read BUILD-SPEC.md before changing anything. PLAYBOOK.md is the operating
 contract: the rules that outrank convenience, including the ones the LLM steps
 work to. SLACK-NOTIFICATIONS.md is the same for the notification layer: two

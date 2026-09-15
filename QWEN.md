@@ -9,6 +9,16 @@ It lives on `master` deliberately. An earlier copy existed only on
 because its brief had vanished. Durable state lives where both branches can
 see it.
 
+## READ THIS FIRST, 2026-09-15
+
+`docs/CONTEXT-RESET-2026-09-15-E.md` is the current state of the system.
+
+The one live blocker is **TASK-137**: narrowing four seals so
+`LINKEDIN_ADD_LEAD` becomes a NARROW, FAIL-CLOSED permission - DRAFT campaigns
+only, provider state re-read immediately before the write, refused when the
+campaign can send or the status read fails. **Narrow the seals, never delete
+them**, and `LINKEDIN_ACTIVATE` stays sealed.
+
 ## Where you are
 
     Claude worktree   C:\Users\Zvonimir\Desktop\resonate-group-automation   master
