@@ -13,6 +13,7 @@ blocked on.
   python -m src.research --plan --id meridian
 """
 import argparse
+import datetime
 
 from . import clients, events, evidence as ev, store
 from .providers import ProviderError, apify
@@ -23,6 +24,88 @@ NEED_HOOK_EVIDENCE = "public_evidence_required_for_hook"
 NEED_ANGLE_EVIDENCE = "public_evidence_required_for_angle"
 NEED_REBRAND_EVIDENCE = "public_evidence_required_for_rebrand"
 NEED_ICP_EVIDENCE = "public_evidence_required_for_icp_dimensions"
+NEED_REFRESH_EVIDENCE = "public_evidence_stale_and_due_for_refresh"
+
+# --------------------------------------------------------------------- TTL
+
+# Evidence has a shelf life that depends on what it is. A global TTL is wrong
+# for every fact at once: "this company builds software for agencies" is still
+# true next month, but "they are hiring five delivery managers" is not.
+#
+# The classification comes from the evidence row's own `field`, which
+# `for_prompt` already reads and passes to the prompt. The fields this system
+# crawls are: company_website, about, team, careers, blog, news.
+#
+# LONG-LIVED: positioning, core services, headquarters, categories.
+# SHORT-LIVED: hiring, job openings, announcements, launches, recent news.
+LONG_LIVED_TTL_DAYS = 30
+SHORT_LIVED_TTL_DAYS = 7
+
+SHORT_LIVED_FIELDS = frozenset(("careers", "blog", "news"))
+LONG_LIVED_FIELDS = frozenset(("company_website", "about", "team"))
+
+
+def ttl_for_field(field):
+    """How many days this kind of evidence is worth before it must refresh.
+
+    A field this system has never seen falls to the short-lived TTL: an
+    unrecognised source is a reason to look again, not a reason to trust it.
+    """
+    if field in SHORT_LIVED_FIELDS:
+        return SHORT_LIVED_TTL_DAYS
+    return LONG_LIVED_TTL_DAYS
+
+
+def age_of_entry(entry, today=None):
+    """Days since this evidence was retrieved, computed from `retrieved_at`.
+
+    The stored `age_days` field is computed from `published_at`, which is the
+    date the company published something - often None for crawled pages. What
+    matters for refresh is when WE last looked, which is `retrieved_at`. A
+    field nothing writes is not a source of truth.
+    """
+    retrieved = entry.get("retrieved_at")
+    if not retrieved:
+        return None
+    if isinstance(retrieved, datetime.datetime):
+        retrieved_date = retrieved.date()
+    elif isinstance(retrieved, datetime.date):
+        retrieved_date = retrieved
+    else:
+        text = str(retrieved).strip()
+        for pattern in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ",
+                        "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                retrieved_date = datetime.datetime.strptime(
+                    text[:len(text)], pattern).date()
+                break
+            except ValueError:
+                continue
+        else:
+            return None
+    today = today or datetime.date.today()
+    if isinstance(today, datetime.datetime):
+        today = today.date()
+    return (today - retrieved_date).days
+
+
+def aged_out_entries(rec, today=None):
+    """Evidence rows that have exceeded their field's TTL.
+
+    Returns the rows that are stale, not a boolean. A caller that needs to
+    refresh knows WHICH rows aged out - a hiring row, not the about page -
+    and can replace only those while keeping the rest.
+    """
+    stale = []
+    for entry in rec.get("research") or []:
+        age = age_of_entry(entry, today)
+        if age is None:
+            continue
+        field = entry.get("field") or "company_website"
+        ttl = ttl_for_field(field)
+        if age > ttl:
+            stale.append(entry)
+    return stale
 
 
 class RunBudget:
@@ -69,7 +152,8 @@ def icp_prose_missing(rec):
     return not any(segments._hits(text, words)
                    for words in icp.NEED_SIGNALS.values())
 
-REASONS = (NEED_HOOK_EVIDENCE, NEED_ANGLE_EVIDENCE, NEED_REBRAND_EVIDENCE)
+REASONS = (NEED_HOOK_EVIDENCE, NEED_ANGLE_EVIDENCE, NEED_REBRAND_EVIDENCE,
+           NEED_REFRESH_EVIDENCE)
 
 
 def structured_evidence(rec):
@@ -85,7 +169,7 @@ def existing_evidence(rec):
     return list(rec.get("research") or [])
 
 
-def why(rec, verdict=None):
+def why(rec, verdict=None, today=None):
     """The reason public evidence is needed, or None when it is not.
 
     `verdict` lets a caller supply a freshly computed ICP verdict that has NOT
@@ -96,11 +180,26 @@ def why(rec, verdict=None):
     it can hold the record and stop verification. So the caller computes,
     passes it here, and lets the qualify stage own what gets stored.
 
+    `today` pins the clock for TTL checks. Tests pass it; production lets it
+    default so the wall clock is the answer.
+
     Structured data wins. This only fires when a step downstream has nothing to
     work with, which is the only honest reason to go and read someone's website.
+
+    Evidence has a shelf life that depends on what it is. A record whose
+    evidence is all long-lived and three days old is not re-crawled. A record
+    carrying a hiring or announcement row older than that type's life IS
+    re-crawled, and this function says so.
     """
-    if existing_evidence(rec):
-        return None                               # already have it
+    existing = existing_evidence(rec)
+    if existing:
+        # Evidence exists, but is it stale? A hiring signal from two weeks ago
+        # is not the same as a hiring signal from yesterday, and the signal
+        # layer reads exactly those.
+        stale = aged_out_entries(rec, today=today)
+        if stale:
+            return NEED_REFRESH_EVIDENCE
+        return None                             # fresh enough
     facts = structured_evidence(rec)
 
     if rec.get("lane") == "cold" and not rec.get("hook"):
@@ -419,11 +518,16 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None,
     return evidence
 
 
-def for_prompt(rec, limit=3, chars=800):
+def for_prompt(rec, limit=3, chars=800, today=None):
     """The evidence a prompt may see: attributed, trimmed, and small.
 
     A model is given a fact and where it came from, never a page. The fence in
     src/llm.py then marks the whole thing as data rather than instruction.
+
+    `age_days` is computed from `retrieved_at` - when WE last looked - not from
+    the stored `age_days` field, which is computed from `published_at` and is
+    often None for crawled pages. A field nothing writes is not a source of
+    truth.
     """
     out = []
     for entry in existing_evidence(rec)[:limit]:
@@ -431,6 +535,7 @@ def for_prompt(rec, limit=3, chars=800):
             "field": entry.get("field"),
             "source_url": entry.get("source_url"),
             "retrieved_at": entry.get("retrieved_at"),
+            "age_days": age_of_entry(entry, today=today),
             "fact": (entry.get("fact") or "")[:chars],
         })
     return out
