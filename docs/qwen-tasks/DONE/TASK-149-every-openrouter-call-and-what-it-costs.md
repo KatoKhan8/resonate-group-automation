@@ -97,7 +97,7 @@ answer.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (pending commit)
+**COMMIT SHA:** 5b5b88a
 
 **TESTS:** No production code changed. Measurement script `scripts/task149_measure.py` builds real prompts from the snapshot and counts tokens with tiktoken cl100k_base. Verified by running against all 550 snapshot records.
 
