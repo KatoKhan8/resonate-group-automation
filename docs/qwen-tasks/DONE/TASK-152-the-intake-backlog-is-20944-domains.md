@@ -52,3 +52,34 @@ builder:
 Per-stage counts and per-record costs from the 550 real records, the terminal
 states with reasons, the measured cost of a 250 batch, and the recommended
 next batch size with the arithmetic.
+
+---
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT:** e525f6c
+- **TESTS:** Analysis scripts run against snapshot; no production code changed
+- **FILES CHANGED:**
+  - `docs/INTAKE-THROUGHPUT-2026-09-15.md` (new) — the deliverable
+  - `scripts/task152_analyze_intake.py` (new) — per-stage counts and costs
+  - `scripts/task152_deep_dive.py` (new) — held records, ICP detail, batch origins
+- **FINDINGS:**
+  - Snapshot: `2026-09-15T17:52:12+00:00 from master cf23154 550 records`
+  - 250 of 550 are raw intake (not yet qualified) from `productive-intake-00000-00250.csv`
+  - 116 dropped by ICP gate (101 for size <20 employees, 17 for geo)
+  - 66 queued for human review (ICP verdict: review/unknown)
+  - 36 held: unresolved email verification (gap, not gate)
+  - Total provider credits: 1,725 (3.14/record amortised, 25.7/sendable)
+  - Total model calls: 5,407 (9.83/record amortised, 80.7/sendable)
+  - 250-batch projection: 784 provider credits, 2,458 model calls, ~30 sendable
+  - To get 50 sendable: 410 records needed; to get 100: 821 records
+  - All pre-qualify stages are deterministic; model is called only at draft
+  - TASK-149 has not landed (still in TODO)
+- **RISKS:**
+  - The 40% ICP rejection rate is driven by the purchased list's skew toward micro-agencies (median 5 employees). This rate may not hold on later batches if they have different size distributions.
+  - 36 held records represent a gap: no resolution path for accept_all/unresolvable domains.
+- **RECOMMENDED CLAUDE ACTION:**
+  1. Run qualify on the 250 already queued (free, no credits)
+  2. Enrich whatever passes ICP (~74 expected)
+  3. Decide on next batch size based on actual yield from the 250
