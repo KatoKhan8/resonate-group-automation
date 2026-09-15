@@ -241,14 +241,14 @@ class TheComparisonRefusesRatherThanPassing(unittest.TestCase):
             configdiff.approved_heyreach({"client": "productive"})
 
     def test_a_missing_provider_campaign_is_refused_not_treated_as_empty(self):
-        with mock.patch.object(heyreach_mod(), "campaign_by_id",
+        with mock.patch.object(heyreach_mod(), "campaign_read",
                                return_value=None):
             with self.assertRaises(configdiff.DiffRefused):
                 configdiff.provider_heyreach("594061")
 
     def test_an_unwalkable_graph_is_refused(self):
         hr = heyreach_mod()
-        with mock.patch.object(hr, "campaign_by_id", return_value={"id": 1}), \
+        with mock.patch.object(hr, "campaign_read", return_value={"id": 1}), \
              mock.patch.object(hr, "campaign_sequence", return_value={}), \
              mock.patch.object(hr, "walk_sequence",
                                return_value=([], set(), True)):
@@ -258,7 +258,7 @@ class TheComparisonRefusesRatherThanPassing(unittest.TestCase):
     def test_two_provider_notes_are_refused(self):
         hr = heyreach_mod()
         node = {"nodeType": "CONNECTION_REQUEST", "actionDelay": 0}
-        with mock.patch.object(hr, "campaign_by_id", return_value={"id": 1}), \
+        with mock.patch.object(hr, "campaign_read", return_value={"id": 1}), \
              mock.patch.object(hr, "campaign_sequence", return_value=node), \
              mock.patch.object(hr, "walk_sequence",
                                return_value=([node], {"CONNECTION_REQUEST"}, False)), \
@@ -272,7 +272,7 @@ class ApprovedNeverComesFromTheProvider(unittest.TestCase):
 
     def test_the_approved_builder_makes_no_provider_call(self):
         hr = heyreach_mod()
-        with mock.patch.object(hr, "campaign_by_id") as by_id, \
+        with mock.patch.object(hr, "campaign_read") as by_id, \
              mock.patch.object(hr, "campaign_sequence") as seq:
             with self.assertRaises(configdiff.DiffRefused):
                 configdiff.approved_heyreach({"client": "productive"})

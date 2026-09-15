@@ -472,8 +472,31 @@ def provider_heyreach(campaign_id):
     from `progressStats`, which is a residual that goes negative on live
     campaigns.
     """
-    row = heyreach.campaign_by_id(campaign_id)
-    if not row:
+    # ONE REQUEST, NOT UP TO TEN PAGES OF THE WHOLE ACCOUNT.
+    #
+    # This called `campaign_by_id`, which finds a campaign by paging
+    # `/campaign/GetAll` - up to ten pages, against an account holding 83
+    # campaigns - because its docstring says "there is no confirmed GetById
+    # route (POST /campaign/GetById answers 405)".
+    #
+    # That sentence is stale in the way that matters: GetById answers as a
+    # GET, `heyreach.campaign_read` has used it that way since it was written,
+    # and `campaign_read`'s own docstring calls itself "the one-request form
+    # the write verbs read back through". Both were true at once and this
+    # function took the slow one.
+    #
+    # It stopped being merely slow during the first canary. `ensure_leads`
+    # obtains a FRESH readback per contact - deliberately, because
+    # `authorize` spends it - so three contacts meant three full account
+    # pagings, and `/campaign/GetAll` began timing out. Two consecutive write
+    # attempts died on a READ, before the transport, having written nothing.
+    #
+    # Same fields either way: `campaign_read` projects the same
+    # `CAMPAIGN_FIELDS`, and `organizationUnitId`, `linkedInUserListId` and
+    # `campaignAccountIds` - the three this function reads beyond the
+    # obvious - all come back. Verified against 599020 before the switch.
+    row = heyreach.campaign_read(campaign_id)
+    if not row or row.get("id") is None:
         raise DiffRefused(
             f"heyreach has no campaign {campaign_id}; a missing campaign is "
             f"not an empty one")

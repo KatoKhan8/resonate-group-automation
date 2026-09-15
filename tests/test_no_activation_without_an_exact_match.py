@@ -209,7 +209,7 @@ class Factory(CampaignTest):
                "linkedInUserListId": held["list_id"], "progressStats": {}}
         leads = [{"profile_url": f"https://www.linkedin.com/in/{slug}"}
                  for slug in held["leads"]]
-        with mock.patch("src.providers.heyreach.campaign_by_id",
+        with mock.patch("src.providers.heyreach.campaign_read",
                         return_value=row), \
              mock.patch("src.providers.heyreach.campaign_sequence",
                         return_value=graph), \

@@ -114,7 +114,7 @@ class ProviderHeyreachActuallyCallsIt(unittest.TestCase):
         row = {"id": 594061, "name": "C", "status": "PAUSED",
                "organizationUnitId": 118832, "campaignAccountIds": [116968],
                "linkedInUserListId": 926076, "progressStats": {"totalUsers": 1}}
-        with mock.patch("src.providers.heyreach.campaign_by_id",
+        with mock.patch("src.providers.heyreach.campaign_read",
                         return_value=row), \
              mock.patch("src.providers.heyreach.campaign_sequence",
                         return_value=self.GRAPH), \
@@ -132,7 +132,7 @@ class ProviderHeyreachActuallyCallsIt(unittest.TestCase):
         row = {"id": 594061, "name": "C", "status": "PAUSED",
                "organizationUnitId": 118832, "campaignAccountIds": [116968],
                "linkedInUserListId": 926076, "progressStats": {"totalUsers": 99}}
-        with mock.patch("src.providers.heyreach.campaign_by_id",
+        with mock.patch("src.providers.heyreach.campaign_read",
                         return_value=row), \
              mock.patch("src.providers.heyreach.campaign_sequence",
                         return_value=self.GRAPH), \
