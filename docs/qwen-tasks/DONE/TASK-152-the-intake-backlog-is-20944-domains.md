@@ -58,7 +58,7 @@ next batch size with the arithmetic.
 ## RESULT
 
 - **STATUS:** DONE
-- **COMMIT:** e525f6c
+- **COMMIT:** 43b9176
 - **TESTS:** Analysis scripts run against snapshot; no production code changed
 - **FILES CHANGED:**
   - `docs/INTAKE-THROUGHPUT-2026-09-15.md` (new) — the deliverable
