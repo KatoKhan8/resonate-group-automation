@@ -1,0 +1,2366 @@
+======================================================================
+LINKEDIN_DEFAULT_LADDER rungs:
+======================================================================
+
+--- Rung 1 ---
+A connection request note. Say who you are in one clause - your name and what you do, or what you work on if no sender detail is available. Then one line on why you are writing to them specifically, in the operational language of their angle. No ask beyond connecting, and no question that needs a considered answer. The recipient must learn WHO is contacting them from this note alone.
+
+--- Rung 2 ---
+Establish how they handle one specific part of their operation today. Pick an angle DIFFERENT from the one the connection note used. If the note named their hiring pipeline, pick their project margin; if it named profitability, pick resourcing visibility. The connection note already said who you are and why you connected.
+
+--- Rung 3 ---
+Name the consequence of not having visibility - what goes wrong, what gets rebuilt after the fact rather than seen during the work. Pick a DIFFERENT operational angle from both the connection note and the first message.
+
+--- Rung 4 ---
+The previous steps established the problem and have named no solution. Use the product's name and say in one line what it joins up, choosing only the capabilities in `product.capabilities` that fit this person's angle. This is the rung where the recipient learns what they are being offered. Evidence belongs here if there is any; if there is none, describe the pattern as ours rather than theirs.
+
+--- Rung 5 ---
+Add one new angle no previous step touched - a different part of the business, or a different consequence. No recap of the previous messages.
+
+--- Rung 6 ---
+Close the loop. The sequence has done its work. No new pitch, no summary of what was said.
+
+
+======================================================================
+EMAIL_FIVE_LADDER rungs:
+======================================================================
+
+--- Rung 1 ---
+Relevance, and who is writing. Why you are writing to THIS person at THIS company, in their own operational language, and one clause saying what the product is so the question that follows has a sender behind it. One question they can answer in a line.
+
+--- Rung 2 ---
+A different angle from the first email. Not the same argument rephrased: a different part of how the business runs, and a different question.
+
+--- Rung 3 ---
+SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Use the product's name in the message, and say in one line what it joins up - only the capabilities in `product.capabilities` that fit this person's angle - and give one concrete consequence a team their size would recognise: what changes when this is visible while the work is running rather than reconstructed afterwards.
+
+--- Rung 4 ---
+A follow-up that makes a DIFFERENT argument from every email before it. One focused idea and one question - no recap of earlier messages and no new pitch beyond the single point this message carries.
+
+--- Rung 5 ---
+Close the loop. Give them an easy no, make no new pitch, ask for nothing beyond permission to stop.
+
+
+
+======================================================================
+LINKEDIN li3 - PURPOSE (rung 3):
+======================================================================
+Name the consequence of not having visibility - what goes wrong, what gets rebuilt after the fact rather than seen during the work. Pick a DIFFERENT operational angle from both the connection note and the first message.
+
+
+
+======================================================================
+LINKEDIN li3 - RENDERED PROMPTS PER APPROACH:
+======================================================================
+
+==================================================
+APPROACH: concise_direct (Concise and direct)
+  opening: statement
+  cta: question
+  tone: direct
+  length: short
+==================================================
+# linkedin_note
+
+One LinkedIn step. It is not an email and it is not a pitch.
+
+You are given the company facts, the contact, the angle already chosen for
+them, the step this message occupies in a sequence, and what has already been
+sent to this person. Return JSON only:
+
+```json
+{"note": "one or two short sentences"}
+```
+
+## `step` says which message this is and what it is for
+
+`step.number` of `step.of` on LinkedIn, and `step.purpose` is this message's
+job.
+
+`step.number: 1` is a CONNECTION REQUEST. It sits beside a profile photo, it
+is read in two seconds, and a question that needs thought is a question that
+gets ignored. Everything after it is a message to somebody who accepted.
+
+Write to `step.purpose` and to nothing else. Sending the same observation four
+times in different words is the one failure this field exists to prevent.
+
+If `step.purpose` is null, the sequence is longer than the jobs anybody has
+assigned. Write the shortest honest message that adds one thing no entry in
+`already_sent` has said, and ask nothing more than one plain question.
+
+## `sender_identity` is who is writing
+
+The connection note MUST say who is contacting the recipient. A stranger who
+receives an anonymous compliment and a connection request does not learn
+anything about the sender, and an anonymous note is the floor nobody wants
+to beat.
+
+`sender_identity` carries whatever the client config provides: `name`,
+`role`, `company`, and `works_on` (a plain-language description of what the
+sender does). Use what is there. When the block is empty, say what you work
+on instead - "i work with agencies on project profitability" is the floor
+to beat. It says WHO without naming a specific person, which is also what
+keeps it safe when sender data is missing.
+
+NEVER invent a sender name, title or company that is not in this block. An
+invented identity is a claim about the sender the record cannot support,
+and `claims` will refuse it.
+
+## `product` is what we sell, and it is the one thing we may assert
+
+`product.name` is what it is called - use the name in the note, not
+"our product" or "our platform". `product.what_it_is` answers "what is
+this" in one line, and `product.capabilities` is a MENU, not a list to
+recite.
+
+Everything else in this context is a claim about THEIR business and needs
+evidence. This block is a claim about OUR software, so it needs none - it is
+the only subject here you may state plainly.
+
+Pick the one or two capabilities that fit this person's angle and say nothing
+about the rest. Naming six capabilities in a LinkedIn message is a brochure,
+and a brochure is the failure this block is most likely to cause. A founder
+whose angle is profitability does not need to hear about invoicing.
+
+Use the client's own words. Use the product's name. Do not translate
+`what_it_is` into marketing language, and do not promise to explain it
+later: "i'd love to share how teams like yours have improved their
+visibility" is an offer to say something, not the thing. Say the thing.
+
+If `product` is absent or empty, say nothing about any product. Do not infer
+one from the angle. An invented product description is the worst sentence
+this prompt can produce, because nothing downstream can catch it: `lint` and
+`claims` check assertions about the RECORD, and a false statement about our
+own software is grounded in nothing they read.
+
+## `already_sent` is what this person has actually received
+
+Every entry was confirmed sent: its channel, its day, the job that step had,
+and the angle it argued. LinkedIn entries also carry what went out. Entries
+from the other channel carry no words on purpose.
+
+Use it for one thing: **do not say any of it again.** Pick a different
+operational angle, not the same one reworded.
+
+It is also the only thing that licenses a sentence about a message we sent.
+Empty means we have sent nothing: "my last message", "following up on my
+note", "you may have seen" are then false. Step four is not evidence that
+steps one to three arrived.
+
+Even when it is full, do not summarise or count our previous messages. "This
+is my third note" is pressure, not information.
+
+## `siblings` are other drafts in this sequence, not sent messages
+
+`siblings` shows the notes already written for other LinkedIn steps in this
+sequence. They are DRAFTS, not sent messages. Nothing in `siblings` licenses
+any reference to a previous message: "as I mentioned", "following up on my
+note", "my last message" are all false unless `already_sent` says otherwise.
+
+The only reason you see them is so you write something DIFFERENT. If a
+sibling already used an operational angle about their hiring pipeline, pick a
+different part of how the business runs.
+
+`siblings` and `already_sent` are separate blocks with separate meanings.
+`already_sent` is confirmed history. `siblings` is draft context. Neither
+licenses a claim of contact.
+
+## Rules, all enforced before the note is stored
+
+- Under 300 characters. Every rung, not only the connection request.
+- Never mention email, a message you sent there, their inbox, or anything that
+  happened on another channel. The two channels do not know about each other.
+- Every specific claim must come from the record. If the only honest thing you
+  can say is that you work with teams like theirs, say that, and say nothing
+  about what they need.
+- Do not tell them how their own company works. "you are tracking utilisation
+  in spreadsheets" is a claim about their business with nothing behind it. Ask
+  it, or say it about the teams we work with.
+- Do not recite their headcount, revenue, founding year or office city back to
+  them.
+- `angle_wording` is the CLIENT's phrasing of what they sell. Never put it in
+  the prospect's mouth as something they said or published.
+- No question that requires a considered answer on the connection request, and
+  no calendar link anywhere.
+- Lowercase and human is fine here. It is a note, not a letter.
+- Plain ASCII punctuation. No em or en dashes, no curly apostrophes,
+  no non-breaking hyphens. Accented letters in a real name are fine.
+
+
+## Approach: Concise and direct
+
+Short and direct. Open with the reason for writing in one sentence - no preamble, no setup. State what is offered in one line. Close with a single question they can answer in a word. Total: two to three sentences.
+
+## This step's job (same for all variants)
+Name the consequence of not having visibility - what goes wrong, what gets rebuilt after the fact rather than seen during the work. Pick a DIFFERENT operational angle from both the connection note and the first message.
+
+## Record context
+Company: Test Agency
+  name: Test Agency
+  employees: 50
+  industry: Marketing
+  name: Jane Doe
+  title: CEO
+  persona: founder
+  angle: profitability
+Public evidence: Test Agency helps brands grow through data-driven marketing.
+Product: Productive - project profitability software for agencies
+Angle: profitability visible on Monday not two weeks late
+
+## Rules
+- Do not invent facts about the company or the person.
+- Do not assert a prior conversation that did not happen.
+- Do not name a product that is not listed above.
+- Every claim must be traceable to the context above.
+- The Approach section above controls your message structure: how you open, how you close, and the overall shape. The step job above describes what CONTENT to cover, not how to structure the message. If the step job mentions a form (a question, a statement), the Approach overrides it.
+
+==================================================
+APPROACH: conversational (Conversational)
+  opening: observation
+  cta: casual_question
+  tone: casual
+  length: medium
+==================================================
+# linkedin_note
+
+One LinkedIn step. It is not an email and it is not a pitch.
+
+You are given the company facts, the contact, the angle already chosen for
+them, the step this message occupies in a sequence, and what has already been
+sent to this person. Return JSON only:
+
+```json
+{"note": "one or two short sentences"}
+```
+
+## `step` says which message this is and what it is for
+
+`step.number` of `step.of` on LinkedIn, and `step.purpose` is this message's
+job.
+
+`step.number: 1` is a CONNECTION REQUEST. It sits beside a profile photo, it
+is read in two seconds, and a question that needs thought is a question that
+gets ignored. Everything after it is a message to somebody who accepted.
+
+Write to `step.purpose` and to nothing else. Sending the same observation four
+times in different words is the one failure this field exists to prevent.
+
+If `step.purpose` is null, the sequence is longer than the jobs anybody has
+assigned. Write the shortest honest message that adds one thing no entry in
+`already_sent` has said, and ask nothing more than one plain question.
+
+## `sender_identity` is who is writing
+
+The connection note MUST say who is contacting the recipient. A stranger who
+receives an anonymous compliment and a connection request does not learn
+anything about the sender, and an anonymous note is the floor nobody wants
+to beat.
+
+`sender_identity` carries whatever the client config provides: `name`,
+`role`, `company`, and `works_on` (a plain-language description of what the
+sender does). Use what is there. When the block is empty, say what you work
+on instead - "i work with agencies on project profitability" is the floor
+to beat. It says WHO without naming a specific person, which is also what
+keeps it safe when sender data is missing.
+
+NEVER invent a sender name, title or company that is not in this block. An
+invented identity is a claim about the sender the record cannot support,
+and `claims` will refuse it.
+
+## `product` is what we sell, and it is the one thing we may assert
+
+`product.name` is what it is called - use the name in the note, not
+"our product" or "our platform". `product.what_it_is` answers "what is
+this" in one line, and `product.capabilities` is a MENU, not a list to
+recite.
+
+Everything else in this context is a claim about THEIR business and needs
+evidence. This block is a claim about OUR software, so it needs none - it is
+the only subject here you may state plainly.
+
+Pick the one or two capabilities that fit this person's angle and say nothing
+about the rest. Naming six capabilities in a LinkedIn message is a brochure,
+and a brochure is the failure this block is most likely to cause. A founder
+whose angle is profitability does not need to hear about invoicing.
+
+Use the client's own words. Use the product's name. Do not translate
+`what_it_is` into marketing language, and do not promise to explain it
+later: "i'd love to share how teams like yours have improved their
+visibility" is an offer to say something, not the thing. Say the thing.
+
+If `product` is absent or empty, say nothing about any product. Do not infer
+one from the angle. An invented product description is the worst sentence
+this prompt can produce, because nothing downstream can catch it: `lint` and
+`claims` check assertions about the RECORD, and a false statement about our
+own software is grounded in nothing they read.
+
+## `already_sent` is what this person has actually received
+
+Every entry was confirmed sent: its channel, its day, the job that step had,
+and the angle it argued. LinkedIn entries also carry what went out. Entries
+from the other channel carry no words on purpose.
+
+Use it for one thing: **do not say any of it again.** Pick a different
+operational angle, not the same one reworded.
+
+It is also the only thing that licenses a sentence about a message we sent.
+Empty means we have sent nothing: "my last message", "following up on my
+note", "you may have seen" are then false. Step four is not evidence that
+steps one to three arrived.
+
+Even when it is full, do not summarise or count our previous messages. "This
+is my third note" is pressure, not information.
+
+## `siblings` are other drafts in this sequence, not sent messages
+
+`siblings` shows the notes already written for other LinkedIn steps in this
+sequence. They are DRAFTS, not sent messages. Nothing in `siblings` licenses
+any reference to a previous message: "as I mentioned", "following up on my
+note", "my last message" are all false unless `already_sent` says otherwise.
+
+The only reason you see them is so you write something DIFFERENT. If a
+sibling already used an operational angle about their hiring pipeline, pick a
+different part of how the business runs.
+
+`siblings` and `already_sent` are separate blocks with separate meanings.
+`already_sent` is confirmed history. `siblings` is draft context. Neither
+licenses a claim of contact.
+
+## Rules, all enforced before the note is stored
+
+- Under 300 characters. Every rung, not only the connection request.
+- Never mention email, a message you sent there, their inbox, or anything that
+  happened on another channel. The two channels do not know about each other.
+- Every specific claim must come from the record. If the only honest thing you
+  can say is that you work with teams like theirs, say that, and say nothing
+  about what they need.
+- Do not tell them how their own company works. "you are tracking utilisation
+  in spreadsheets" is a claim about their business with nothing behind it. Ask
+  it, or say it about the teams we work with.
+- Do not recite their headcount, revenue, founding year or office city back to
+  them.
+- `angle_wording` is the CLIENT's phrasing of what they sell. Never put it in
+  the prospect's mouth as something they said or published.
+- No question that requires a considered answer on the connection request, and
+  no calendar link anywhere.
+- Lowercase and human is fine here. It is a note, not a letter.
+- Plain ASCII punctuation. No em or en dashes, no curly apostrophes,
+  no non-breaking hyphens. Accented letters in a real name are fine.
+
+
+## Approach: Conversational
+
+Conversational. Write the way a peer would message another peer - lower case feel, shorter sentences, no corporate phrasing. Open with an observation about their situation, not a pitch. Close with a casual question, not a CTA.
+
+## This step's job (same for all variants)
+Name the consequence of not having visibility - what goes wrong, what gets rebuilt after the fact rather than seen during the work. Pick a DIFFERENT operational angle from both the connection note and the first message.
+
+## Record context
+Company: Test Agency
+  name: Test Agency
+  employees: 50
+  industry: Marketing
+  name: Jane Doe
+  title: CEO
+  persona: founder
+  angle: profitability
+Public evidence: Test Agency helps brands grow through data-driven marketing.
+Product: Productive - project profitability software for agencies
+Angle: profitability visible on Monday not two weeks late
+
+## Rules
+- Do not invent facts about the company or the person.
+- Do not assert a prior conversation that did not happen.
+- Do not name a product that is not listed above.
+- Every claim must be traceable to the context above.
+- The Approach section above controls your message structure: how you open, how you close, and the overall shape. The step job above describes what CONTENT to cover, not how to structure the message. If the step job mentions a form (a question, a statement), the Approach overrides it.
+
+==================================================
+APPROACH: problem_led (Problem-led)
+  opening: pain
+  cta: question
+  tone: empathetic
+  length: medium
+==================================================
+# linkedin_note
+
+One LinkedIn step. It is not an email and it is not a pitch.
+
+You are given the company facts, the contact, the angle already chosen for
+them, the step this message occupies in a sequence, and what has already been
+sent to this person. Return JSON only:
+
+```json
+{"note": "one or two short sentences"}
+```
+
+## `step` says which message this is and what it is for
+
+`step.number` of `step.of` on LinkedIn, and `step.purpose` is this message's
+job.
+
+`step.number: 1` is a CONNECTION REQUEST. It sits beside a profile photo, it
+is read in two seconds, and a question that needs thought is a question that
+gets ignored. Everything after it is a message to somebody who accepted.
+
+Write to `step.purpose` and to nothing else. Sending the same observation four
+times in different words is the one failure this field exists to prevent.
+
+If `step.purpose` is null, the sequence is longer than the jobs anybody has
+assigned. Write the shortest honest message that adds one thing no entry in
+`already_sent` has said, and ask nothing more than one plain question.
+
+## `sender_identity` is who is writing
+
+The connection note MUST say who is contacting the recipient. A stranger who
+receives an anonymous compliment and a connection request does not learn
+anything about the sender, and an anonymous note is the floor nobody wants
+to beat.
+
+`sender_identity` carries whatever the client config provides: `name`,
+`role`, `company`, and `works_on` (a plain-language description of what the
+sender does). Use what is there. When the block is empty, say what you work
+on instead - "i work with agencies on project profitability" is the floor
+to beat. It says WHO without naming a specific person, which is also what
+keeps it safe when sender data is missing.
+
+NEVER invent a sender name, title or company that is not in this block. An
+invented identity is a claim about the sender the record cannot support,
+and `claims` will refuse it.
+
+## `product` is what we sell, and it is the one thing we may assert
+
+`product.name` is what it is called - use the name in the note, not
+"our product" or "our platform". `product.what_it_is` answers "what is
+this" in one line, and `product.capabilities` is a MENU, not a list to
+recite.
+
+Everything else in this context is a claim about THEIR business and needs
+evidence. This block is a claim about OUR software, so it needs none - it is
+the only subject here you may state plainly.
+
+Pick the one or two capabilities that fit this person's angle and say nothing
+about the rest. Naming six capabilities in a LinkedIn message is a brochure,
+and a brochure is the failure this block is most likely to cause. A founder
+whose angle is profitability does not need to hear about invoicing.
+
+Use the client's own words. Use the product's name. Do not translate
+`what_it_is` into marketing language, and do not promise to explain it
+later: "i'd love to share how teams like yours have improved their
+visibility" is an offer to say something, not the thing. Say the thing.
+
+If `product` is absent or empty, say nothing about any product. Do not infer
+one from the angle. An invented product description is the worst sentence
+this prompt can produce, because nothing downstream can catch it: `lint` and
+`claims` check assertions about the RECORD, and a false statement about our
+own software is grounded in nothing they read.
+
+## `already_sent` is what this person has actually received
+
+Every entry was confirmed sent: its channel, its day, the job that step had,
+and the angle it argued. LinkedIn entries also carry what went out. Entries
+from the other channel carry no words on purpose.
+
+Use it for one thing: **do not say any of it again.** Pick a different
+operational angle, not the same one reworded.
+
+It is also the only thing that licenses a sentence about a message we sent.
+Empty means we have sent nothing: "my last message", "following up on my
+note", "you may have seen" are then false. Step four is not evidence that
+steps one to three arrived.
+
+Even when it is full, do not summarise or count our previous messages. "This
+is my third note" is pressure, not information.
+
+## `siblings` are other drafts in this sequence, not sent messages
+
+`siblings` shows the notes already written for other LinkedIn steps in this
+sequence. They are DRAFTS, not sent messages. Nothing in `siblings` licenses
+any reference to a previous message: "as I mentioned", "following up on my
+note", "my last message" are all false unless `already_sent` says otherwise.
+
+The only reason you see them is so you write something DIFFERENT. If a
+sibling already used an operational angle about their hiring pipeline, pick a
+different part of how the business runs.
+
+`siblings` and `already_sent` are separate blocks with separate meanings.
+`already_sent` is confirmed history. `siblings` is draft context. Neither
+licenses a claim of contact.
+
+## Rules, all enforced before the note is stored
+
+- Under 300 characters. Every rung, not only the connection request.
+- Never mention email, a message you sent there, their inbox, or anything that
+  happened on another channel. The two channels do not know about each other.
+- Every specific claim must come from the record. If the only honest thing you
+  can say is that you work with teams like theirs, say that, and say nothing
+  about what they need.
+- Do not tell them how their own company works. "you are tracking utilisation
+  in spreadsheets" is a claim about their business with nothing behind it. Ask
+  it, or say it about the teams we work with.
+- Do not recite their headcount, revenue, founding year or office city back to
+  them.
+- `angle_wording` is the CLIENT's phrasing of what they sell. Never put it in
+  the prospect's mouth as something they said or published.
+- No question that requires a considered answer on the connection request, and
+  no calendar link anywhere.
+- Lowercase and human is fine here. It is a note, not a letter.
+- Plain ASCII punctuation. No em or en dashes, no curly apostrophes,
+  no non-breaking hyphens. Accented letters in a real name are fine.
+
+
+## Approach: Problem-led
+
+Problem-led. Open with the cost of the status quo - what the current way of working actually spends in time, risk or reconstruction. Name the pain before naming the solution. Close with a question about whether they see the same pattern.
+
+## This step's job (same for all variants)
+Name the consequence of not having visibility - what goes wrong, what gets rebuilt after the fact rather than seen during the work. Pick a DIFFERENT operational angle from both the connection note and the first message.
+
+## Record context
+Company: Test Agency
+  name: Test Agency
+  employees: 50
+  industry: Marketing
+  name: Jane Doe
+  title: CEO
+  persona: founder
+  angle: profitability
+Public evidence: Test Agency helps brands grow through data-driven marketing.
+Product: Productive - project profitability software for agencies
+Angle: profitability visible on Monday not two weeks late
+
+## Rules
+- Do not invent facts about the company or the person.
+- Do not assert a prior conversation that did not happen.
+- Do not name a product that is not listed above.
+- Every claim must be traceable to the context above.
+- The Approach section above controls your message structure: how you open, how you close, and the overall shape. The step job above describes what CONTENT to cover, not how to structure the message. If the step job mentions a form (a question, a statement), the Approach overrides it.
+
+==================================================
+APPROACH: observation_led (Observation-led)
+  opening: evidence
+  cta: question
+  tone: researched
+  length: contextual
+==================================================
+# linkedin_note
+
+One LinkedIn step. It is not an email and it is not a pitch.
+
+You are given the company facts, the contact, the angle already chosen for
+them, the step this message occupies in a sequence, and what has already been
+sent to this person. Return JSON only:
+
+```json
+{"note": "one or two short sentences"}
+```
+
+## `step` says which message this is and what it is for
+
+`step.number` of `step.of` on LinkedIn, and `step.purpose` is this message's
+job.
+
+`step.number: 1` is a CONNECTION REQUEST. It sits beside a profile photo, it
+is read in two seconds, and a question that needs thought is a question that
+gets ignored. Everything after it is a message to somebody who accepted.
+
+Write to `step.purpose` and to nothing else. Sending the same observation four
+times in different words is the one failure this field exists to prevent.
+
+If `step.purpose` is null, the sequence is longer than the jobs anybody has
+assigned. Write the shortest honest message that adds one thing no entry in
+`already_sent` has said, and ask nothing more than one plain question.
+
+## `sender_identity` is who is writing
+
+The connection note MUST say who is contacting the recipient. A stranger who
+receives an anonymous compliment and a connection request does not learn
+anything about the sender, and an anonymous note is the floor nobody wants
+to beat.
+
+`sender_identity` carries whatever the client config provides: `name`,
+`role`, `company`, and `works_on` (a plain-language description of what the
+sender does). Use what is there. When the block is empty, say what you work
+on instead - "i work with agencies on project profitability" is the floor
+to beat. It says WHO without naming a specific person, which is also what
+keeps it safe when sender data is missing.
+
+NEVER invent a sender name, title or company that is not in this block. An
+invented identity is a claim about the sender the record cannot support,
+and `claims` will refuse it.
+
+## `product` is what we sell, and it is the one thing we may assert
+
+`product.name` is what it is called - use the name in the note, not
+"our product" or "our platform". `product.what_it_is` answers "what is
+this" in one line, and `product.capabilities` is a MENU, not a list to
+recite.
+
+Everything else in this context is a claim about THEIR business and needs
+evidence. This block is a claim about OUR software, so it needs none - it is
+the only subject here you may state plainly.
+
+Pick the one or two capabilities that fit this person's angle and say nothing
+about the rest. Naming six capabilities in a LinkedIn message is a brochure,
+and a brochure is the failure this block is most likely to cause. A founder
+whose angle is profitability does not need to hear about invoicing.
+
+Use the client's own words. Use the product's name. Do not translate
+`what_it_is` into marketing language, and do not promise to explain it
+later: "i'd love to share how teams like yours have improved their
+visibility" is an offer to say something, not the thing. Say the thing.
+
+If `product` is absent or empty, say nothing about any product. Do not infer
+one from the angle. An invented product description is the worst sentence
+this prompt can produce, because nothing downstream can catch it: `lint` and
+`claims` check assertions about the RECORD, and a false statement about our
+own software is grounded in nothing they read.
+
+## `already_sent` is what this person has actually received
+
+Every entry was confirmed sent: its channel, its day, the job that step had,
+and the angle it argued. LinkedIn entries also carry what went out. Entries
+from the other channel carry no words on purpose.
+
+Use it for one thing: **do not say any of it again.** Pick a different
+operational angle, not the same one reworded.
+
+It is also the only thing that licenses a sentence about a message we sent.
+Empty means we have sent nothing: "my last message", "following up on my
+note", "you may have seen" are then false. Step four is not evidence that
+steps one to three arrived.
+
+Even when it is full, do not summarise or count our previous messages. "This
+is my third note" is pressure, not information.
+
+## `siblings` are other drafts in this sequence, not sent messages
+
+`siblings` shows the notes already written for other LinkedIn steps in this
+sequence. They are DRAFTS, not sent messages. Nothing in `siblings` licenses
+any reference to a previous message: "as I mentioned", "following up on my
+note", "my last message" are all false unless `already_sent` says otherwise.
+
+The only reason you see them is so you write something DIFFERENT. If a
+sibling already used an operational angle about their hiring pipeline, pick a
+different part of how the business runs.
+
+`siblings` and `already_sent` are separate blocks with separate meanings.
+`already_sent` is confirmed history. `siblings` is draft context. Neither
+licenses a claim of contact.
+
+## Rules, all enforced before the note is stored
+
+- Under 300 characters. Every rung, not only the connection request.
+- Never mention email, a message you sent there, their inbox, or anything that
+  happened on another channel. The two channels do not know about each other.
+- Every specific claim must come from the record. If the only honest thing you
+  can say is that you work with teams like theirs, say that, and say nothing
+  about what they need.
+- Do not tell them how their own company works. "you are tracking utilisation
+  in spreadsheets" is a claim about their business with nothing behind it. Ask
+  it, or say it about the teams we work with.
+- Do not recite their headcount, revenue, founding year or office city back to
+  them.
+- `angle_wording` is the CLIENT's phrasing of what they sell. Never put it in
+  the prospect's mouth as something they said or published.
+- No question that requires a considered answer on the connection request, and
+  no calendar link anywhere.
+- Lowercase and human is fine here. It is a note, not a letter.
+- Plain ASCII punctuation. No em or en dashes, no curly apostrophes,
+  no non-breaking hyphens. Accented letters in a real name are fine.
+
+
+## Approach: Observation-led
+
+Observation-led. Open with something specific noticed about their company or role - a fact with a source, not an invention. Connect the observation to the argument. Close with a question about what the observation means for them. MAY NOT invent an observation. If none is licensed, this variant is not generated.
+
+## This step's job (same for all variants)
+Name the consequence of not having visibility - what goes wrong, what gets rebuilt after the fact rather than seen during the work. Pick a DIFFERENT operational angle from both the connection note and the first message.
+
+## Record context
+Company: Test Agency
+  name: Test Agency
+  employees: 50
+  industry: Marketing
+  name: Jane Doe
+  title: CEO
+  persona: founder
+  angle: profitability
+Public evidence: Test Agency helps brands grow through data-driven marketing.
+Product: Productive - project profitability software for agencies
+Angle: profitability visible on Monday not two weeks late
+
+## Rules
+- Do not invent facts about the company or the person.
+- Do not assert a prior conversation that did not happen.
+- Do not name a product that is not listed above.
+- Every claim must be traceable to the context above.
+- The Approach section above controls your message structure: how you open, how you close, and the overall shape. The step job above describes what CONTENT to cover, not how to structure the message. If the step job mentions a form (a question, a statement), the Approach overrides it.
+
+==================================================
+APPROACH: value_led (Value-led)
+  opening: outcome
+  cta: direct
+  tone: professional
+  length: contextual
+==================================================
+# linkedin_note
+
+One LinkedIn step. It is not an email and it is not a pitch.
+
+You are given the company facts, the contact, the angle already chosen for
+them, the step this message occupies in a sequence, and what has already been
+sent to this person. Return JSON only:
+
+```json
+{"note": "one or two short sentences"}
+```
+
+## `step` says which message this is and what it is for
+
+`step.number` of `step.of` on LinkedIn, and `step.purpose` is this message's
+job.
+
+`step.number: 1` is a CONNECTION REQUEST. It sits beside a profile photo, it
+is read in two seconds, and a question that needs thought is a question that
+gets ignored. Everything after it is a message to somebody who accepted.
+
+Write to `step.purpose` and to nothing else. Sending the same observation four
+times in different words is the one failure this field exists to prevent.
+
+If `step.purpose` is null, the sequence is longer than the jobs anybody has
+assigned. Write the shortest honest message that adds one thing no entry in
+`already_sent` has said, and ask nothing more than one plain question.
+
+## `sender_identity` is who is writing
+
+The connection note MUST say who is contacting the recipient. A stranger who
+receives an anonymous compliment and a connection request does not learn
+anything about the sender, and an anonymous note is the floor nobody wants
+to beat.
+
+`sender_identity` carries whatever the client config provides: `name`,
+`role`, `company`, and `works_on` (a plain-language description of what the
+sender does). Use what is there. When the block is empty, say what you work
+on instead - "i work with agencies on project profitability" is the floor
+to beat. It says WHO without naming a specific person, which is also what
+keeps it safe when sender data is missing.
+
+NEVER invent a sender name, title or company that is not in this block. An
+invented identity is a claim about the sender the record cannot support,
+and `claims` will refuse it.
+
+## `product` is what we sell, and it is the one thing we may assert
+
+`product.name` is what it is called - use the name in the note, not
+"our product" or "our platform". `product.what_it_is` answers "what is
+this" in one line, and `product.capabilities` is a MENU, not a list to
+recite.
+
+Everything else in this context is a claim about THEIR business and needs
+evidence. This block is a claim about OUR software, so it needs none - it is
+the only subject here you may state plainly.
+
+Pick the one or two capabilities that fit this person's angle and say nothing
+about the rest. Naming six capabilities in a LinkedIn message is a brochure,
+and a brochure is the failure this block is most likely to cause. A founder
+whose angle is profitability does not need to hear about invoicing.
+
+Use the client's own words. Use the product's name. Do not translate
+`what_it_is` into marketing language, and do not promise to explain it
+later: "i'd love to share how teams like yours have improved their
+visibility" is an offer to say something, not the thing. Say the thing.
+
+If `product` is absent or empty, say nothing about any product. Do not infer
+one from the angle. An invented product description is the worst sentence
+this prompt can produce, because nothing downstream can catch it: `lint` and
+`claims` check assertions about the RECORD, and a false statement about our
+own software is grounded in nothing they read.
+
+## `already_sent` is what this person has actually received
+
+Every entry was confirmed sent: its channel, its day, the job that step had,
+and the angle it argued. LinkedIn entries also carry what went out. Entries
+from the other channel carry no words on purpose.
+
+Use it for one thing: **do not say any of it again.** Pick a different
+operational angle, not the same one reworded.
+
+It is also the only thing that licenses a sentence about a message we sent.
+Empty means we have sent nothing: "my last message", "following up on my
+note", "you may have seen" are then false. Step four is not evidence that
+steps one to three arrived.
+
+Even when it is full, do not summarise or count our previous messages. "This
+is my third note" is pressure, not information.
+
+## `siblings` are other drafts in this sequence, not sent messages
+
+`siblings` shows the notes already written for other LinkedIn steps in this
+sequence. They are DRAFTS, not sent messages. Nothing in `siblings` licenses
+any reference to a previous message: "as I mentioned", "following up on my
+note", "my last message" are all false unless `already_sent` says otherwise.
+
+The only reason you see them is so you write something DIFFERENT. If a
+sibling already used an operational angle about their hiring pipeline, pick a
+different part of how the business runs.
+
+`siblings` and `already_sent` are separate blocks with separate meanings.
+`already_sent` is confirmed history. `siblings` is draft context. Neither
+licenses a claim of contact.
+
+## Rules, all enforced before the note is stored
+
+- Under 300 characters. Every rung, not only the connection request.
+- Never mention email, a message you sent there, their inbox, or anything that
+  happened on another channel. The two channels do not know about each other.
+- Every specific claim must come from the record. If the only honest thing you
+  can say is that you work with teams like theirs, say that, and say nothing
+  about what they need.
+- Do not tell them how their own company works. "you are tracking utilisation
+  in spreadsheets" is a claim about their business with nothing behind it. Ask
+  it, or say it about the teams we work with.
+- Do not recite their headcount, revenue, founding year or office city back to
+  them.
+- `angle_wording` is the CLIENT's phrasing of what they sell. Never put it in
+  the prospect's mouth as something they said or published.
+- No question that requires a considered answer on the connection request, and
+  no calendar link anywhere.
+- Lowercase and human is fine here. It is a note, not a letter.
+- Plain ASCII punctuation. No em or en dashes, no curly apostrophes,
+  no non-breaking hyphens. Accented letters in a real name are fine.
+
+
+## Approach: Value-led
+
+Value-led. Open with what they would gain - a concrete outcome, not a feature. Name the product and say in one line what it joins up. Give one consequence a team their size would recognise. Close with a direct CTA - a specific next step, not an open question.
+
+## This step's job (same for all variants)
+Name the consequence of not having visibility - what goes wrong, what gets rebuilt after the fact rather than seen during the work. Pick a DIFFERENT operational angle from both the connection note and the first message.
+
+## Record context
+Company: Test Agency
+  name: Test Agency
+  employees: 50
+  industry: Marketing
+  name: Jane Doe
+  title: CEO
+  persona: founder
+  angle: profitability
+Public evidence: Test Agency helps brands grow through data-driven marketing.
+Product: Productive - project profitability software for agencies
+Angle: profitability visible on Monday not two weeks late
+
+## Rules
+- Do not invent facts about the company or the person.
+- Do not assert a prior conversation that did not happen.
+- Do not name a product that is not listed above.
+- Every claim must be traceable to the context above.
+- The Approach section above controls your message structure: how you open, how you close, and the overall shape. The step job above describes what CONTENT to cover, not how to structure the message. If the step job mentions a form (a question, a statement), the Approach overrides it.
+
+
+
+======================================================================
+EMAIL em3 - PURPOSE (rung 3):
+======================================================================
+SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Use the product's name in the message, and say in one line what it joins up - only the capabilities in `product.capabilities` that fit this person's angle - and give one concrete consequence a team their size would recognise: what changes when this is visible while the work is running rather than reconstructed afterwards.
+
+==================================================
+APPROACH: concise_direct (Concise and direct)
+  opening: statement
+  cta: question
+  tone: direct
+  length: short
+==================================================
+# draft
+
+You are given the client tone block, the angle, the evidence, the recipient,
+the step this message occupies in a sequence, what has already been sent to
+this person, and the lint rules as constraints.
+
+Return JSON only:
+
+```json
+{"subject": "under 60 characters", "body": "40 to 180 words"}
+```
+
+## Read `prior_contact` first. It decides the shape.
+
+`prior_contact: false` means this person has never heard from us. Nobody has
+written to them, they have not replied, and there is no thread. Almost every
+draft is this case.
+
+`prior_contact: true` means a confirmed message reached them.
+
+### When `prior_contact` is false, a first touch
+
+1. One specific thing about THEIR company, taken from the evidence. Quote or
+   paraphrase what their own site says.
+2. One sentence on why that made you write to this person in particular.
+3. One question answerable in a single line.
+
+You may not write any of the following, because none of them is true:
+
+- "as discussed", "as promised", "following up", "circling back"
+- "we spoke", "when we last connected", "you mentioned", "you asked"
+- "sorry for the delay", "we missed the deadline", "that was on us"
+- "I have been following your work"
+- any apology, any reference to a previous email, call, thread or deliverable,
+  and any answer to a question they have not asked
+
+There is nothing to own and nothing to apologise for. You have not failed
+them; you have not met them.
+
+### When `prior_contact` is true, a reply
+
+1. Name the specific thing: the date and the sentence, or the signal.
+2. Own the failure if it was ours. No blame, no excuses, no apologies for
+   delay.
+3. One concrete piece of new information. A number, a change, an answer to
+   the question they asked.
+4. One question answerable in a single line.
+
+## `step` says which message this is and what it is for
+
+`step.number` of `step.of` on this channel, and `step.purpose` is this
+message's job. THE PURPOSE IS THE REASON THIS MESSAGE EXISTS. Write to it and
+to nothing else: a sequence is several different arguments, not one argument
+sent five times at intervals. Four paraphrases of the same pitch is the exact
+failure this field is here to prevent, and a prospect reading them learns only
+that nobody is paying attention.
+
+If `step.purpose` is null, the sequence is longer than the jobs anybody has
+assigned. Do not invent a fifth closing message. Write the shortest honest
+message that adds ONE thing no entry in `already_sent` has said, and if there
+is nothing left to add, ask one plain question about whether this is a topic
+at all.
+
+Later steps get SHORTER, not longer. A bump is a bump.
+
+## `already_sent` is what this person has actually received
+
+Every entry is a message that was confirmed sent. It carries the channel, the
+day, the job that step had, and the angle it argued. Entries on THIS channel
+also carry the subject and the opening line that went out; entries on the
+other channel deliberately do not, and you may not refer to the other channel
+at all.
+
+Use it for exactly one thing: **do not say any of it again.** A different
+angle means a different part of how their business runs, not the same claim in
+new words. If an entry says `copy_withheld`, the touch happened and what it
+said cannot be proved, so treat that argument as spent and pick another.
+
+`already_sent` is also the ONLY thing that licenses a sentence about a message
+we sent. If it is empty, we have sent nothing, whatever else the record says,
+and "I wrote last week", "my previous note" and "you may have seen my email"
+are all false. Being on message four of five is not evidence that messages one
+to three arrived; it is evidence that they were planned.
+
+Never quote, summarise or count our own previous messages even when
+`already_sent` is full. It reads as pressure, and it spends the words that
+could have carried a new argument.
+
+## `siblings` are other drafts in this sequence, not sent messages
+
+`siblings` shows the subject and opening line of other emails already written
+for this person on this channel. They are DRAFTS, not sent messages. Nothing
+in `siblings` licenses any of the following:
+
+- "as I mentioned", "as I wrote", "following up on my email"
+- "my previous note", "my last email", "earlier I said"
+- any reference to a message that was sent, delivered or received
+
+These drafts may not have been sent. They may be rewritten before they are.
+The only reason you see them is so you write something DIFFERENT from what
+they say - a different angle, a different argument, different words. If a
+sibling already made the point about their Gen Z marketing, pick a different
+part of how the business runs.
+
+`siblings` and `already_sent` are separate blocks with separate meanings.
+`already_sent` is confirmed history. `siblings` is draft context. Neither
+licenses a claim of contact; only `already_sent` can do that, and only when
+it is non-empty.
+
+## `sender_identity` is who is writing
+
+The email MUST say who is contacting the recipient. TASK-063 read all 165
+generated email steps and found sender identity in ZERO of them: not one said
+who was writing - no name, no company, no role. A stranger who receives an
+observation about their own company from nobody has learned nothing about the
+sender and has no reason to reply.
+
+`sender_identity` carries whatever the client config provides: `name`, `role`,
+`company`, and `works_on` (a plain-language description of what the sender
+does). Use what is there. When the block is empty, say what you work on
+instead - "i work with agencies on project profitability" is the floor to
+beat. It says WHO without naming a specific person, which is also what keeps
+it safe when sender data is missing.
+
+NEVER invent a sender name, title or company that is not in this block. An
+invented identity is a claim about the sender the record cannot support, and
+`claims` will refuse it.
+
+And never claim to BE the recipient's own supplier. "Our agency sees that..."
+was generated on a real record and asserts a relationship that does not
+exist. You are writing TO their agency, not FROM it.
+
+## What you are selling
+
+`angle` names the angle chosen for this recipient and `angle_wording` says
+what it MEANS for their persona - for example
+`founder: profitability visible on Monday not two weeks late`. That wording is
+the client's own, and it is the value you are offering. Write to it.
+
+Do not invent a different pitch. If `angle_wording` is absent, ask a question
+about the angle rather than describing a product you have not been told about.
+
+Where `angle_wording` lists several phrases, a later step may take a different
+phrase from the same list. That is how a second angle stays true instead of
+becoming a new product.
+
+`product` is the product itself, and it is what the sentence above means by
+"a product you have not been told about" - now you have been. `product.name`
+is what it is called - use the name in the message, not "our product" or
+"our platform". `product.what_it_is` answers "what is this" in one line,
+and `product.capabilities` is a MENU to select from, never a list to recite.
+Pick the one or two that fit this recipient's angle and stay silent about
+the rest: a finance lead does not need to hear about resource planning.
+
+This block and `angle_wording` are the only claims here that need no evidence,
+because they are about our own software rather than about their business. Say
+them plainly, in the client's own words, and do not translate them into
+marketing language.
+
+Do not promise to explain later. "I would love to share how teams like yours
+have improved their visibility" is an offer to say something rather than the
+thing itself.
+
+If `product` is absent or empty, describe no product at all. Do not infer one
+from the angle. Nothing downstream can catch an invented product description:
+lint and claims check what is asserted about the RECORD, and a false sentence
+about our own software is grounded in nothing either of them reads.
+
+## Never, in any case
+
+Do not describe the SEQUENCE. `step.number` and `step.of` tell you which rung
+you are writing so that this message can do a different job from the others.
+They are not information for the recipient, and nothing licenses a sentence
+about them.
+
+"I understand this is my final message in this sequence" was generated for
+`em5` on 2026-09-14 and it is wrong twice over: it tells a stranger they have
+been walked through an automated sequence, and it counts our messages at
+them, which is pressure rather than information. `prompts/linkedin_note.md`
+has refused the same thing for as long as it has existed - "This is my third
+note is pressure, not information" - and this file never said it.
+
+The breakup rung gives somebody an easy no. It does that by asking whether to
+stop, not by announcing that the machine has reached the end of its list.
+
+Do not describe our own records, evidence, pipeline or research. The recipient
+has no idea we keep any, and no interest in them. "The September 10 website
+record says", "the current company record lists", "we do not yet have
+account-specific evidence", "the headcount signal is 23", "the ICP flag
+indicates" - all of these describe OUR system, not their business. Write what
+their site says, not what our scraper stored.
+
+`public_evidence` is raw page text and it contains navigation, phone numbers,
+cookie notices and menu items. Those are not facts about the company. Take
+what the company says about its own work and ignore the furniture.
+
+Do not recite their own firmographics back to them. They know how many people
+work there, what their revenue is, what year they were founded and which city
+the office is in. A sentence whose content is their own headcount is a
+sentence that proves only that we bought a data feed.
+
+Do not attribute their facts to us. Their headcount is not "our team".
+
+Do not attribute our words to them, which is the same mistake pointing the
+other way. `angle_wording` is the CLIENT's phrasing of what they sell; it is
+not something the recipient has said, published or endorsed. "HSMG states that
+profitability visible on Monday not two weeks late drives its strategic focus"
+puts our sales line in their mouth and is false. Quote them only from
+`public_evidence`.
+
+Do not tell them how their company works. "You are running utilisation in
+spreadsheets" is a claim about their business that nothing supports. Ask it
+instead, or say it about the teams we work with and leave them out of it.
+
+## Constraints, all enforced by lint.py before this ships
+
+- No em dashes or en dashes anywhere. Plain ASCII punctuation only:
+  a straight apostrophe, never a curly one, and an ordinary hyphen,
+  never a non-breaking one. Accented letters in somebody's actual name
+  or company name are fine and expected - the rule is about typography
+  you substitute, not about the alphabet a name is written in.
+- No attachment talk.
+- No unfilled placeholders in the subject or the body.
+- Body 40 to 180 words. Subject under 60 characters.
+- One unbroken line per paragraph, a blank line between paragraphs.
+- No filler openers, and none of these phrases ANYWHERE in the message:
+    "i hope this email finds you well"
+    "i wanted to reach out"
+    "circling back"
+    "just following up"
+    "touching base"
+    "as per my last email"
+    "synergy"
+    "game-changer"
+  lint refuses the draft outright if one appears, and the last step in
+  the sequence is the one that reaches for them - a message closing the
+  loop is not "just following up" or "circling back". Say the thing.
+- Never a calendar link as the ask.
+- Never a mention of LinkedIn, a connection request or anything that happened
+  on another channel.
+
+Every specific claim must come from the record. If you do not have the number,
+ask a question instead of bracketing a placeholder. A draft that breaks a rule
+is regenerated, never patched.
+
+
+## Approach: Concise and direct
+
+Short and direct. Open with the reason for writing in one sentence - no preamble, no setup. State what is offered in one line. Close with a single question they can answer in a word. Total: two to three sentences.
+
+## This step's job (same for all variants)
+SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Use the product's name in the message, and say in one line what it joins up - only the capabilities in `product.capabilities` that fit this person's angle - and give one concrete consequence a team their size would recognise: what changes when this is visible while the work is running rather than reconstructed afterwards.
+
+## Record context
+Company: Test Agency
+  name: Test Agency
+  employees: 50
+  industry: Marketing
+  name: Jane Doe
+  title: CEO
+  persona: founder
+  angle: profitability
+Public evidence: Test Agency helps brands grow through data-driven marketing.
+Product: Productive - project profitability software for agencies
+Angle: profitability visible on Monday not two weeks late
+
+## Rules
+- Do not invent facts about the company or the person.
+- Do not assert a prior conversation that did not happen.
+- Do not name a product that is not listed above.
+- Every claim must be traceable to the context above.
+- The Approach section above controls your message structure: how you open, how you close, and the overall shape. The step job above describes what CONTENT to cover, not how to structure the message. If the step job mentions a form (a question, a statement), the Approach overrides it.
+
+==================================================
+APPROACH: conversational (Conversational)
+  opening: observation
+  cta: casual_question
+  tone: casual
+  length: medium
+==================================================
+# draft
+
+You are given the client tone block, the angle, the evidence, the recipient,
+the step this message occupies in a sequence, what has already been sent to
+this person, and the lint rules as constraints.
+
+Return JSON only:
+
+```json
+{"subject": "under 60 characters", "body": "40 to 180 words"}
+```
+
+## Read `prior_contact` first. It decides the shape.
+
+`prior_contact: false` means this person has never heard from us. Nobody has
+written to them, they have not replied, and there is no thread. Almost every
+draft is this case.
+
+`prior_contact: true` means a confirmed message reached them.
+
+### When `prior_contact` is false, a first touch
+
+1. One specific thing about THEIR company, taken from the evidence. Quote or
+   paraphrase what their own site says.
+2. One sentence on why that made you write to this person in particular.
+3. One question answerable in a single line.
+
+You may not write any of the following, because none of them is true:
+
+- "as discussed", "as promised", "following up", "circling back"
+- "we spoke", "when we last connected", "you mentioned", "you asked"
+- "sorry for the delay", "we missed the deadline", "that was on us"
+- "I have been following your work"
+- any apology, any reference to a previous email, call, thread or deliverable,
+  and any answer to a question they have not asked
+
+There is nothing to own and nothing to apologise for. You have not failed
+them; you have not met them.
+
+### When `prior_contact` is true, a reply
+
+1. Name the specific thing: the date and the sentence, or the signal.
+2. Own the failure if it was ours. No blame, no excuses, no apologies for
+   delay.
+3. One concrete piece of new information. A number, a change, an answer to
+   the question they asked.
+4. One question answerable in a single line.
+
+## `step` says which message this is and what it is for
+
+`step.number` of `step.of` on this channel, and `step.purpose` is this
+message's job. THE PURPOSE IS THE REASON THIS MESSAGE EXISTS. Write to it and
+to nothing else: a sequence is several different arguments, not one argument
+sent five times at intervals. Four paraphrases of the same pitch is the exact
+failure this field is here to prevent, and a prospect reading them learns only
+that nobody is paying attention.
+
+If `step.purpose` is null, the sequence is longer than the jobs anybody has
+assigned. Do not invent a fifth closing message. Write the shortest honest
+message that adds ONE thing no entry in `already_sent` has said, and if there
+is nothing left to add, ask one plain question about whether this is a topic
+at all.
+
+Later steps get SHORTER, not longer. A bump is a bump.
+
+## `already_sent` is what this person has actually received
+
+Every entry is a message that was confirmed sent. It carries the channel, the
+day, the job that step had, and the angle it argued. Entries on THIS channel
+also carry the subject and the opening line that went out; entries on the
+other channel deliberately do not, and you may not refer to the other channel
+at all.
+
+Use it for exactly one thing: **do not say any of it again.** A different
+angle means a different part of how their business runs, not the same claim in
+new words. If an entry says `copy_withheld`, the touch happened and what it
+said cannot be proved, so treat that argument as spent and pick another.
+
+`already_sent` is also the ONLY thing that licenses a sentence about a message
+we sent. If it is empty, we have sent nothing, whatever else the record says,
+and "I wrote last week", "my previous note" and "you may have seen my email"
+are all false. Being on message four of five is not evidence that messages one
+to three arrived; it is evidence that they were planned.
+
+Never quote, summarise or count our own previous messages even when
+`already_sent` is full. It reads as pressure, and it spends the words that
+could have carried a new argument.
+
+## `siblings` are other drafts in this sequence, not sent messages
+
+`siblings` shows the subject and opening line of other emails already written
+for this person on this channel. They are DRAFTS, not sent messages. Nothing
+in `siblings` licenses any of the following:
+
+- "as I mentioned", "as I wrote", "following up on my email"
+- "my previous note", "my last email", "earlier I said"
+- any reference to a message that was sent, delivered or received
+
+These drafts may not have been sent. They may be rewritten before they are.
+The only reason you see them is so you write something DIFFERENT from what
+they say - a different angle, a different argument, different words. If a
+sibling already made the point about their Gen Z marketing, pick a different
+part of how the business runs.
+
+`siblings` and `already_sent` are separate blocks with separate meanings.
+`already_sent` is confirmed history. `siblings` is draft context. Neither
+licenses a claim of contact; only `already_sent` can do that, and only when
+it is non-empty.
+
+## `sender_identity` is who is writing
+
+The email MUST say who is contacting the recipient. TASK-063 read all 165
+generated email steps and found sender identity in ZERO of them: not one said
+who was writing - no name, no company, no role. A stranger who receives an
+observation about their own company from nobody has learned nothing about the
+sender and has no reason to reply.
+
+`sender_identity` carries whatever the client config provides: `name`, `role`,
+`company`, and `works_on` (a plain-language description of what the sender
+does). Use what is there. When the block is empty, say what you work on
+instead - "i work with agencies on project profitability" is the floor to
+beat. It says WHO without naming a specific person, which is also what keeps
+it safe when sender data is missing.
+
+NEVER invent a sender name, title or company that is not in this block. An
+invented identity is a claim about the sender the record cannot support, and
+`claims` will refuse it.
+
+And never claim to BE the recipient's own supplier. "Our agency sees that..."
+was generated on a real record and asserts a relationship that does not
+exist. You are writing TO their agency, not FROM it.
+
+## What you are selling
+
+`angle` names the angle chosen for this recipient and `angle_wording` says
+what it MEANS for their persona - for example
+`founder: profitability visible on Monday not two weeks late`. That wording is
+the client's own, and it is the value you are offering. Write to it.
+
+Do not invent a different pitch. If `angle_wording` is absent, ask a question
+about the angle rather than describing a product you have not been told about.
+
+Where `angle_wording` lists several phrases, a later step may take a different
+phrase from the same list. That is how a second angle stays true instead of
+becoming a new product.
+
+`product` is the product itself, and it is what the sentence above means by
+"a product you have not been told about" - now you have been. `product.name`
+is what it is called - use the name in the message, not "our product" or
+"our platform". `product.what_it_is` answers "what is this" in one line,
+and `product.capabilities` is a MENU to select from, never a list to recite.
+Pick the one or two that fit this recipient's angle and stay silent about
+the rest: a finance lead does not need to hear about resource planning.
+
+This block and `angle_wording` are the only claims here that need no evidence,
+because they are about our own software rather than about their business. Say
+them plainly, in the client's own words, and do not translate them into
+marketing language.
+
+Do not promise to explain later. "I would love to share how teams like yours
+have improved their visibility" is an offer to say something rather than the
+thing itself.
+
+If `product` is absent or empty, describe no product at all. Do not infer one
+from the angle. Nothing downstream can catch an invented product description:
+lint and claims check what is asserted about the RECORD, and a false sentence
+about our own software is grounded in nothing either of them reads.
+
+## Never, in any case
+
+Do not describe the SEQUENCE. `step.number` and `step.of` tell you which rung
+you are writing so that this message can do a different job from the others.
+They are not information for the recipient, and nothing licenses a sentence
+about them.
+
+"I understand this is my final message in this sequence" was generated for
+`em5` on 2026-09-14 and it is wrong twice over: it tells a stranger they have
+been walked through an automated sequence, and it counts our messages at
+them, which is pressure rather than information. `prompts/linkedin_note.md`
+has refused the same thing for as long as it has existed - "This is my third
+note is pressure, not information" - and this file never said it.
+
+The breakup rung gives somebody an easy no. It does that by asking whether to
+stop, not by announcing that the machine has reached the end of its list.
+
+Do not describe our own records, evidence, pipeline or research. The recipient
+has no idea we keep any, and no interest in them. "The September 10 website
+record says", "the current company record lists", "we do not yet have
+account-specific evidence", "the headcount signal is 23", "the ICP flag
+indicates" - all of these describe OUR system, not their business. Write what
+their site says, not what our scraper stored.
+
+`public_evidence` is raw page text and it contains navigation, phone numbers,
+cookie notices and menu items. Those are not facts about the company. Take
+what the company says about its own work and ignore the furniture.
+
+Do not recite their own firmographics back to them. They know how many people
+work there, what their revenue is, what year they were founded and which city
+the office is in. A sentence whose content is their own headcount is a
+sentence that proves only that we bought a data feed.
+
+Do not attribute their facts to us. Their headcount is not "our team".
+
+Do not attribute our words to them, which is the same mistake pointing the
+other way. `angle_wording` is the CLIENT's phrasing of what they sell; it is
+not something the recipient has said, published or endorsed. "HSMG states that
+profitability visible on Monday not two weeks late drives its strategic focus"
+puts our sales line in their mouth and is false. Quote them only from
+`public_evidence`.
+
+Do not tell them how their company works. "You are running utilisation in
+spreadsheets" is a claim about their business that nothing supports. Ask it
+instead, or say it about the teams we work with and leave them out of it.
+
+## Constraints, all enforced by lint.py before this ships
+
+- No em dashes or en dashes anywhere. Plain ASCII punctuation only:
+  a straight apostrophe, never a curly one, and an ordinary hyphen,
+  never a non-breaking one. Accented letters in somebody's actual name
+  or company name are fine and expected - the rule is about typography
+  you substitute, not about the alphabet a name is written in.
+- No attachment talk.
+- No unfilled placeholders in the subject or the body.
+- Body 40 to 180 words. Subject under 60 characters.
+- One unbroken line per paragraph, a blank line between paragraphs.
+- No filler openers, and none of these phrases ANYWHERE in the message:
+    "i hope this email finds you well"
+    "i wanted to reach out"
+    "circling back"
+    "just following up"
+    "touching base"
+    "as per my last email"
+    "synergy"
+    "game-changer"
+  lint refuses the draft outright if one appears, and the last step in
+  the sequence is the one that reaches for them - a message closing the
+  loop is not "just following up" or "circling back". Say the thing.
+- Never a calendar link as the ask.
+- Never a mention of LinkedIn, a connection request or anything that happened
+  on another channel.
+
+Every specific claim must come from the record. If you do not have the number,
+ask a question instead of bracketing a placeholder. A draft that breaks a rule
+is regenerated, never patched.
+
+
+## Approach: Conversational
+
+Conversational. Write the way a peer would message another peer - lower case feel, shorter sentences, no corporate phrasing. Open with an observation about their situation, not a pitch. Close with a casual question, not a CTA.
+
+## This step's job (same for all variants)
+SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Use the product's name in the message, and say in one line what it joins up - only the capabilities in `product.capabilities` that fit this person's angle - and give one concrete consequence a team their size would recognise: what changes when this is visible while the work is running rather than reconstructed afterwards.
+
+## Record context
+Company: Test Agency
+  name: Test Agency
+  employees: 50
+  industry: Marketing
+  name: Jane Doe
+  title: CEO
+  persona: founder
+  angle: profitability
+Public evidence: Test Agency helps brands grow through data-driven marketing.
+Product: Productive - project profitability software for agencies
+Angle: profitability visible on Monday not two weeks late
+
+## Rules
+- Do not invent facts about the company or the person.
+- Do not assert a prior conversation that did not happen.
+- Do not name a product that is not listed above.
+- Every claim must be traceable to the context above.
+- The Approach section above controls your message structure: how you open, how you close, and the overall shape. The step job above describes what CONTENT to cover, not how to structure the message. If the step job mentions a form (a question, a statement), the Approach overrides it.
+
+==================================================
+APPROACH: problem_led (Problem-led)
+  opening: pain
+  cta: question
+  tone: empathetic
+  length: medium
+==================================================
+# draft
+
+You are given the client tone block, the angle, the evidence, the recipient,
+the step this message occupies in a sequence, what has already been sent to
+this person, and the lint rules as constraints.
+
+Return JSON only:
+
+```json
+{"subject": "under 60 characters", "body": "40 to 180 words"}
+```
+
+## Read `prior_contact` first. It decides the shape.
+
+`prior_contact: false` means this person has never heard from us. Nobody has
+written to them, they have not replied, and there is no thread. Almost every
+draft is this case.
+
+`prior_contact: true` means a confirmed message reached them.
+
+### When `prior_contact` is false, a first touch
+
+1. One specific thing about THEIR company, taken from the evidence. Quote or
+   paraphrase what their own site says.
+2. One sentence on why that made you write to this person in particular.
+3. One question answerable in a single line.
+
+You may not write any of the following, because none of them is true:
+
+- "as discussed", "as promised", "following up", "circling back"
+- "we spoke", "when we last connected", "you mentioned", "you asked"
+- "sorry for the delay", "we missed the deadline", "that was on us"
+- "I have been following your work"
+- any apology, any reference to a previous email, call, thread or deliverable,
+  and any answer to a question they have not asked
+
+There is nothing to own and nothing to apologise for. You have not failed
+them; you have not met them.
+
+### When `prior_contact` is true, a reply
+
+1. Name the specific thing: the date and the sentence, or the signal.
+2. Own the failure if it was ours. No blame, no excuses, no apologies for
+   delay.
+3. One concrete piece of new information. A number, a change, an answer to
+   the question they asked.
+4. One question answerable in a single line.
+
+## `step` says which message this is and what it is for
+
+`step.number` of `step.of` on this channel, and `step.purpose` is this
+message's job. THE PURPOSE IS THE REASON THIS MESSAGE EXISTS. Write to it and
+to nothing else: a sequence is several different arguments, not one argument
+sent five times at intervals. Four paraphrases of the same pitch is the exact
+failure this field is here to prevent, and a prospect reading them learns only
+that nobody is paying attention.
+
+If `step.purpose` is null, the sequence is longer than the jobs anybody has
+assigned. Do not invent a fifth closing message. Write the shortest honest
+message that adds ONE thing no entry in `already_sent` has said, and if there
+is nothing left to add, ask one plain question about whether this is a topic
+at all.
+
+Later steps get SHORTER, not longer. A bump is a bump.
+
+## `already_sent` is what this person has actually received
+
+Every entry is a message that was confirmed sent. It carries the channel, the
+day, the job that step had, and the angle it argued. Entries on THIS channel
+also carry the subject and the opening line that went out; entries on the
+other channel deliberately do not, and you may not refer to the other channel
+at all.
+
+Use it for exactly one thing: **do not say any of it again.** A different
+angle means a different part of how their business runs, not the same claim in
+new words. If an entry says `copy_withheld`, the touch happened and what it
+said cannot be proved, so treat that argument as spent and pick another.
+
+`already_sent` is also the ONLY thing that licenses a sentence about a message
+we sent. If it is empty, we have sent nothing, whatever else the record says,
+and "I wrote last week", "my previous note" and "you may have seen my email"
+are all false. Being on message four of five is not evidence that messages one
+to three arrived; it is evidence that they were planned.
+
+Never quote, summarise or count our own previous messages even when
+`already_sent` is full. It reads as pressure, and it spends the words that
+could have carried a new argument.
+
+## `siblings` are other drafts in this sequence, not sent messages
+
+`siblings` shows the subject and opening line of other emails already written
+for this person on this channel. They are DRAFTS, not sent messages. Nothing
+in `siblings` licenses any of the following:
+
+- "as I mentioned", "as I wrote", "following up on my email"
+- "my previous note", "my last email", "earlier I said"
+- any reference to a message that was sent, delivered or received
+
+These drafts may not have been sent. They may be rewritten before they are.
+The only reason you see them is so you write something DIFFERENT from what
+they say - a different angle, a different argument, different words. If a
+sibling already made the point about their Gen Z marketing, pick a different
+part of how the business runs.
+
+`siblings` and `already_sent` are separate blocks with separate meanings.
+`already_sent` is confirmed history. `siblings` is draft context. Neither
+licenses a claim of contact; only `already_sent` can do that, and only when
+it is non-empty.
+
+## `sender_identity` is who is writing
+
+The email MUST say who is contacting the recipient. TASK-063 read all 165
+generated email steps and found sender identity in ZERO of them: not one said
+who was writing - no name, no company, no role. A stranger who receives an
+observation about their own company from nobody has learned nothing about the
+sender and has no reason to reply.
+
+`sender_identity` carries whatever the client config provides: `name`, `role`,
+`company`, and `works_on` (a plain-language description of what the sender
+does). Use what is there. When the block is empty, say what you work on
+instead - "i work with agencies on project profitability" is the floor to
+beat. It says WHO without naming a specific person, which is also what keeps
+it safe when sender data is missing.
+
+NEVER invent a sender name, title or company that is not in this block. An
+invented identity is a claim about the sender the record cannot support, and
+`claims` will refuse it.
+
+And never claim to BE the recipient's own supplier. "Our agency sees that..."
+was generated on a real record and asserts a relationship that does not
+exist. You are writing TO their agency, not FROM it.
+
+## What you are selling
+
+`angle` names the angle chosen for this recipient and `angle_wording` says
+what it MEANS for their persona - for example
+`founder: profitability visible on Monday not two weeks late`. That wording is
+the client's own, and it is the value you are offering. Write to it.
+
+Do not invent a different pitch. If `angle_wording` is absent, ask a question
+about the angle rather than describing a product you have not been told about.
+
+Where `angle_wording` lists several phrases, a later step may take a different
+phrase from the same list. That is how a second angle stays true instead of
+becoming a new product.
+
+`product` is the product itself, and it is what the sentence above means by
+"a product you have not been told about" - now you have been. `product.name`
+is what it is called - use the name in the message, not "our product" or
+"our platform". `product.what_it_is` answers "what is this" in one line,
+and `product.capabilities` is a MENU to select from, never a list to recite.
+Pick the one or two that fit this recipient's angle and stay silent about
+the rest: a finance lead does not need to hear about resource planning.
+
+This block and `angle_wording` are the only claims here that need no evidence,
+because they are about our own software rather than about their business. Say
+them plainly, in the client's own words, and do not translate them into
+marketing language.
+
+Do not promise to explain later. "I would love to share how teams like yours
+have improved their visibility" is an offer to say something rather than the
+thing itself.
+
+If `product` is absent or empty, describe no product at all. Do not infer one
+from the angle. Nothing downstream can catch an invented product description:
+lint and claims check what is asserted about the RECORD, and a false sentence
+about our own software is grounded in nothing either of them reads.
+
+## Never, in any case
+
+Do not describe the SEQUENCE. `step.number` and `step.of` tell you which rung
+you are writing so that this message can do a different job from the others.
+They are not information for the recipient, and nothing licenses a sentence
+about them.
+
+"I understand this is my final message in this sequence" was generated for
+`em5` on 2026-09-14 and it is wrong twice over: it tells a stranger they have
+been walked through an automated sequence, and it counts our messages at
+them, which is pressure rather than information. `prompts/linkedin_note.md`
+has refused the same thing for as long as it has existed - "This is my third
+note is pressure, not information" - and this file never said it.
+
+The breakup rung gives somebody an easy no. It does that by asking whether to
+stop, not by announcing that the machine has reached the end of its list.
+
+Do not describe our own records, evidence, pipeline or research. The recipient
+has no idea we keep any, and no interest in them. "The September 10 website
+record says", "the current company record lists", "we do not yet have
+account-specific evidence", "the headcount signal is 23", "the ICP flag
+indicates" - all of these describe OUR system, not their business. Write what
+their site says, not what our scraper stored.
+
+`public_evidence` is raw page text and it contains navigation, phone numbers,
+cookie notices and menu items. Those are not facts about the company. Take
+what the company says about its own work and ignore the furniture.
+
+Do not recite their own firmographics back to them. They know how many people
+work there, what their revenue is, what year they were founded and which city
+the office is in. A sentence whose content is their own headcount is a
+sentence that proves only that we bought a data feed.
+
+Do not attribute their facts to us. Their headcount is not "our team".
+
+Do not attribute our words to them, which is the same mistake pointing the
+other way. `angle_wording` is the CLIENT's phrasing of what they sell; it is
+not something the recipient has said, published or endorsed. "HSMG states that
+profitability visible on Monday not two weeks late drives its strategic focus"
+puts our sales line in their mouth and is false. Quote them only from
+`public_evidence`.
+
+Do not tell them how their company works. "You are running utilisation in
+spreadsheets" is a claim about their business that nothing supports. Ask it
+instead, or say it about the teams we work with and leave them out of it.
+
+## Constraints, all enforced by lint.py before this ships
+
+- No em dashes or en dashes anywhere. Plain ASCII punctuation only:
+  a straight apostrophe, never a curly one, and an ordinary hyphen,
+  never a non-breaking one. Accented letters in somebody's actual name
+  or company name are fine and expected - the rule is about typography
+  you substitute, not about the alphabet a name is written in.
+- No attachment talk.
+- No unfilled placeholders in the subject or the body.
+- Body 40 to 180 words. Subject under 60 characters.
+- One unbroken line per paragraph, a blank line between paragraphs.
+- No filler openers, and none of these phrases ANYWHERE in the message:
+    "i hope this email finds you well"
+    "i wanted to reach out"
+    "circling back"
+    "just following up"
+    "touching base"
+    "as per my last email"
+    "synergy"
+    "game-changer"
+  lint refuses the draft outright if one appears, and the last step in
+  the sequence is the one that reaches for them - a message closing the
+  loop is not "just following up" or "circling back". Say the thing.
+- Never a calendar link as the ask.
+- Never a mention of LinkedIn, a connection request or anything that happened
+  on another channel.
+
+Every specific claim must come from the record. If you do not have the number,
+ask a question instead of bracketing a placeholder. A draft that breaks a rule
+is regenerated, never patched.
+
+
+## Approach: Problem-led
+
+Problem-led. Open with the cost of the status quo - what the current way of working actually spends in time, risk or reconstruction. Name the pain before naming the solution. Close with a question about whether they see the same pattern.
+
+## This step's job (same for all variants)
+SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Use the product's name in the message, and say in one line what it joins up - only the capabilities in `product.capabilities` that fit this person's angle - and give one concrete consequence a team their size would recognise: what changes when this is visible while the work is running rather than reconstructed afterwards.
+
+## Record context
+Company: Test Agency
+  name: Test Agency
+  employees: 50
+  industry: Marketing
+  name: Jane Doe
+  title: CEO
+  persona: founder
+  angle: profitability
+Public evidence: Test Agency helps brands grow through data-driven marketing.
+Product: Productive - project profitability software for agencies
+Angle: profitability visible on Monday not two weeks late
+
+## Rules
+- Do not invent facts about the company or the person.
+- Do not assert a prior conversation that did not happen.
+- Do not name a product that is not listed above.
+- Every claim must be traceable to the context above.
+- The Approach section above controls your message structure: how you open, how you close, and the overall shape. The step job above describes what CONTENT to cover, not how to structure the message. If the step job mentions a form (a question, a statement), the Approach overrides it.
+
+==================================================
+APPROACH: observation_led (Observation-led)
+  opening: evidence
+  cta: question
+  tone: researched
+  length: contextual
+==================================================
+# draft
+
+You are given the client tone block, the angle, the evidence, the recipient,
+the step this message occupies in a sequence, what has already been sent to
+this person, and the lint rules as constraints.
+
+Return JSON only:
+
+```json
+{"subject": "under 60 characters", "body": "40 to 180 words"}
+```
+
+## Read `prior_contact` first. It decides the shape.
+
+`prior_contact: false` means this person has never heard from us. Nobody has
+written to them, they have not replied, and there is no thread. Almost every
+draft is this case.
+
+`prior_contact: true` means a confirmed message reached them.
+
+### When `prior_contact` is false, a first touch
+
+1. One specific thing about THEIR company, taken from the evidence. Quote or
+   paraphrase what their own site says.
+2. One sentence on why that made you write to this person in particular.
+3. One question answerable in a single line.
+
+You may not write any of the following, because none of them is true:
+
+- "as discussed", "as promised", "following up", "circling back"
+- "we spoke", "when we last connected", "you mentioned", "you asked"
+- "sorry for the delay", "we missed the deadline", "that was on us"
+- "I have been following your work"
+- any apology, any reference to a previous email, call, thread or deliverable,
+  and any answer to a question they have not asked
+
+There is nothing to own and nothing to apologise for. You have not failed
+them; you have not met them.
+
+### When `prior_contact` is true, a reply
+
+1. Name the specific thing: the date and the sentence, or the signal.
+2. Own the failure if it was ours. No blame, no excuses, no apologies for
+   delay.
+3. One concrete piece of new information. A number, a change, an answer to
+   the question they asked.
+4. One question answerable in a single line.
+
+## `step` says which message this is and what it is for
+
+`step.number` of `step.of` on this channel, and `step.purpose` is this
+message's job. THE PURPOSE IS THE REASON THIS MESSAGE EXISTS. Write to it and
+to nothing else: a sequence is several different arguments, not one argument
+sent five times at intervals. Four paraphrases of the same pitch is the exact
+failure this field is here to prevent, and a prospect reading them learns only
+that nobody is paying attention.
+
+If `step.purpose` is null, the sequence is longer than the jobs anybody has
+assigned. Do not invent a fifth closing message. Write the shortest honest
+message that adds ONE thing no entry in `already_sent` has said, and if there
+is nothing left to add, ask one plain question about whether this is a topic
+at all.
+
+Later steps get SHORTER, not longer. A bump is a bump.
+
+## `already_sent` is what this person has actually received
+
+Every entry is a message that was confirmed sent. It carries the channel, the
+day, the job that step had, and the angle it argued. Entries on THIS channel
+also carry the subject and the opening line that went out; entries on the
+other channel deliberately do not, and you may not refer to the other channel
+at all.
+
+Use it for exactly one thing: **do not say any of it again.** A different
+angle means a different part of how their business runs, not the same claim in
+new words. If an entry says `copy_withheld`, the touch happened and what it
+said cannot be proved, so treat that argument as spent and pick another.
+
+`already_sent` is also the ONLY thing that licenses a sentence about a message
+we sent. If it is empty, we have sent nothing, whatever else the record says,
+and "I wrote last week", "my previous note" and "you may have seen my email"
+are all false. Being on message four of five is not evidence that messages one
+to three arrived; it is evidence that they were planned.
+
+Never quote, summarise or count our own previous messages even when
+`already_sent` is full. It reads as pressure, and it spends the words that
+could have carried a new argument.
+
+## `siblings` are other drafts in this sequence, not sent messages
+
+`siblings` shows the subject and opening line of other emails already written
+for this person on this channel. They are DRAFTS, not sent messages. Nothing
+in `siblings` licenses any of the following:
+
+- "as I mentioned", "as I wrote", "following up on my email"
+- "my previous note", "my last email", "earlier I said"
+- any reference to a message that was sent, delivered or received
+
+These drafts may not have been sent. They may be rewritten before they are.
+The only reason you see them is so you write something DIFFERENT from what
+they say - a different angle, a different argument, different words. If a
+sibling already made the point about their Gen Z marketing, pick a different
+part of how the business runs.
+
+`siblings` and `already_sent` are separate blocks with separate meanings.
+`already_sent` is confirmed history. `siblings` is draft context. Neither
+licenses a claim of contact; only `already_sent` can do that, and only when
+it is non-empty.
+
+## `sender_identity` is who is writing
+
+The email MUST say who is contacting the recipient. TASK-063 read all 165
+generated email steps and found sender identity in ZERO of them: not one said
+who was writing - no name, no company, no role. A stranger who receives an
+observation about their own company from nobody has learned nothing about the
+sender and has no reason to reply.
+
+`sender_identity` carries whatever the client config provides: `name`, `role`,
+`company`, and `works_on` (a plain-language description of what the sender
+does). Use what is there. When the block is empty, say what you work on
+instead - "i work with agencies on project profitability" is the floor to
+beat. It says WHO without naming a specific person, which is also what keeps
+it safe when sender data is missing.
+
+NEVER invent a sender name, title or company that is not in this block. An
+invented identity is a claim about the sender the record cannot support, and
+`claims` will refuse it.
+
+And never claim to BE the recipient's own supplier. "Our agency sees that..."
+was generated on a real record and asserts a relationship that does not
+exist. You are writing TO their agency, not FROM it.
+
+## What you are selling
+
+`angle` names the angle chosen for this recipient and `angle_wording` says
+what it MEANS for their persona - for example
+`founder: profitability visible on Monday not two weeks late`. That wording is
+the client's own, and it is the value you are offering. Write to it.
+
+Do not invent a different pitch. If `angle_wording` is absent, ask a question
+about the angle rather than describing a product you have not been told about.
+
+Where `angle_wording` lists several phrases, a later step may take a different
+phrase from the same list. That is how a second angle stays true instead of
+becoming a new product.
+
+`product` is the product itself, and it is what the sentence above means by
+"a product you have not been told about" - now you have been. `product.name`
+is what it is called - use the name in the message, not "our product" or
+"our platform". `product.what_it_is` answers "what is this" in one line,
+and `product.capabilities` is a MENU to select from, never a list to recite.
+Pick the one or two that fit this recipient's angle and stay silent about
+the rest: a finance lead does not need to hear about resource planning.
+
+This block and `angle_wording` are the only claims here that need no evidence,
+because they are about our own software rather than about their business. Say
+them plainly, in the client's own words, and do not translate them into
+marketing language.
+
+Do not promise to explain later. "I would love to share how teams like yours
+have improved their visibility" is an offer to say something rather than the
+thing itself.
+
+If `product` is absent or empty, describe no product at all. Do not infer one
+from the angle. Nothing downstream can catch an invented product description:
+lint and claims check what is asserted about the RECORD, and a false sentence
+about our own software is grounded in nothing either of them reads.
+
+## Never, in any case
+
+Do not describe the SEQUENCE. `step.number` and `step.of` tell you which rung
+you are writing so that this message can do a different job from the others.
+They are not information for the recipient, and nothing licenses a sentence
+about them.
+
+"I understand this is my final message in this sequence" was generated for
+`em5` on 2026-09-14 and it is wrong twice over: it tells a stranger they have
+been walked through an automated sequence, and it counts our messages at
+them, which is pressure rather than information. `prompts/linkedin_note.md`
+has refused the same thing for as long as it has existed - "This is my third
+note is pressure, not information" - and this file never said it.
+
+The breakup rung gives somebody an easy no. It does that by asking whether to
+stop, not by announcing that the machine has reached the end of its list.
+
+Do not describe our own records, evidence, pipeline or research. The recipient
+has no idea we keep any, and no interest in them. "The September 10 website
+record says", "the current company record lists", "we do not yet have
+account-specific evidence", "the headcount signal is 23", "the ICP flag
+indicates" - all of these describe OUR system, not their business. Write what
+their site says, not what our scraper stored.
+
+`public_evidence` is raw page text and it contains navigation, phone numbers,
+cookie notices and menu items. Those are not facts about the company. Take
+what the company says about its own work and ignore the furniture.
+
+Do not recite their own firmographics back to them. They know how many people
+work there, what their revenue is, what year they were founded and which city
+the office is in. A sentence whose content is their own headcount is a
+sentence that proves only that we bought a data feed.
+
+Do not attribute their facts to us. Their headcount is not "our team".
+
+Do not attribute our words to them, which is the same mistake pointing the
+other way. `angle_wording` is the CLIENT's phrasing of what they sell; it is
+not something the recipient has said, published or endorsed. "HSMG states that
+profitability visible on Monday not two weeks late drives its strategic focus"
+puts our sales line in their mouth and is false. Quote them only from
+`public_evidence`.
+
+Do not tell them how their company works. "You are running utilisation in
+spreadsheets" is a claim about their business that nothing supports. Ask it
+instead, or say it about the teams we work with and leave them out of it.
+
+## Constraints, all enforced by lint.py before this ships
+
+- No em dashes or en dashes anywhere. Plain ASCII punctuation only:
+  a straight apostrophe, never a curly one, and an ordinary hyphen,
+  never a non-breaking one. Accented letters in somebody's actual name
+  or company name are fine and expected - the rule is about typography
+  you substitute, not about the alphabet a name is written in.
+- No attachment talk.
+- No unfilled placeholders in the subject or the body.
+- Body 40 to 180 words. Subject under 60 characters.
+- One unbroken line per paragraph, a blank line between paragraphs.
+- No filler openers, and none of these phrases ANYWHERE in the message:
+    "i hope this email finds you well"
+    "i wanted to reach out"
+    "circling back"
+    "just following up"
+    "touching base"
+    "as per my last email"
+    "synergy"
+    "game-changer"
+  lint refuses the draft outright if one appears, and the last step in
+  the sequence is the one that reaches for them - a message closing the
+  loop is not "just following up" or "circling back". Say the thing.
+- Never a calendar link as the ask.
+- Never a mention of LinkedIn, a connection request or anything that happened
+  on another channel.
+
+Every specific claim must come from the record. If you do not have the number,
+ask a question instead of bracketing a placeholder. A draft that breaks a rule
+is regenerated, never patched.
+
+
+## Approach: Observation-led
+
+Observation-led. Open with something specific noticed about their company or role - a fact with a source, not an invention. Connect the observation to the argument. Close with a question about what the observation means for them. MAY NOT invent an observation. If none is licensed, this variant is not generated.
+
+## This step's job (same for all variants)
+SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Use the product's name in the message, and say in one line what it joins up - only the capabilities in `product.capabilities` that fit this person's angle - and give one concrete consequence a team their size would recognise: what changes when this is visible while the work is running rather than reconstructed afterwards.
+
+## Record context
+Company: Test Agency
+  name: Test Agency
+  employees: 50
+  industry: Marketing
+  name: Jane Doe
+  title: CEO
+  persona: founder
+  angle: profitability
+Public evidence: Test Agency helps brands grow through data-driven marketing.
+Product: Productive - project profitability software for agencies
+Angle: profitability visible on Monday not two weeks late
+
+## Rules
+- Do not invent facts about the company or the person.
+- Do not assert a prior conversation that did not happen.
+- Do not name a product that is not listed above.
+- Every claim must be traceable to the context above.
+- The Approach section above controls your message structure: how you open, how you close, and the overall shape. The step job above describes what CONTENT to cover, not how to structure the message. If the step job mentions a form (a question, a statement), the Approach overrides it.
+
+==================================================
+APPROACH: value_led (Value-led)
+  opening: outcome
+  cta: direct
+  tone: professional
+  length: contextual
+==================================================
+# draft
+
+You are given the client tone block, the angle, the evidence, the recipient,
+the step this message occupies in a sequence, what has already been sent to
+this person, and the lint rules as constraints.
+
+Return JSON only:
+
+```json
+{"subject": "under 60 characters", "body": "40 to 180 words"}
+```
+
+## Read `prior_contact` first. It decides the shape.
+
+`prior_contact: false` means this person has never heard from us. Nobody has
+written to them, they have not replied, and there is no thread. Almost every
+draft is this case.
+
+`prior_contact: true` means a confirmed message reached them.
+
+### When `prior_contact` is false, a first touch
+
+1. One specific thing about THEIR company, taken from the evidence. Quote or
+   paraphrase what their own site says.
+2. One sentence on why that made you write to this person in particular.
+3. One question answerable in a single line.
+
+You may not write any of the following, because none of them is true:
+
+- "as discussed", "as promised", "following up", "circling back"
+- "we spoke", "when we last connected", "you mentioned", "you asked"
+- "sorry for the delay", "we missed the deadline", "that was on us"
+- "I have been following your work"
+- any apology, any reference to a previous email, call, thread or deliverable,
+  and any answer to a question they have not asked
+
+There is nothing to own and nothing to apologise for. You have not failed
+them; you have not met them.
+
+### When `prior_contact` is true, a reply
+
+1. Name the specific thing: the date and the sentence, or the signal.
+2. Own the failure if it was ours. No blame, no excuses, no apologies for
+   delay.
+3. One concrete piece of new information. A number, a change, an answer to
+   the question they asked.
+4. One question answerable in a single line.
+
+## `step` says which message this is and what it is for
+
+`step.number` of `step.of` on this channel, and `step.purpose` is this
+message's job. THE PURPOSE IS THE REASON THIS MESSAGE EXISTS. Write to it and
+to nothing else: a sequence is several different arguments, not one argument
+sent five times at intervals. Four paraphrases of the same pitch is the exact
+failure this field is here to prevent, and a prospect reading them learns only
+that nobody is paying attention.
+
+If `step.purpose` is null, the sequence is longer than the jobs anybody has
+assigned. Do not invent a fifth closing message. Write the shortest honest
+message that adds ONE thing no entry in `already_sent` has said, and if there
+is nothing left to add, ask one plain question about whether this is a topic
+at all.
+
+Later steps get SHORTER, not longer. A bump is a bump.
+
+## `already_sent` is what this person has actually received
+
+Every entry is a message that was confirmed sent. It carries the channel, the
+day, the job that step had, and the angle it argued. Entries on THIS channel
+also carry the subject and the opening line that went out; entries on the
+other channel deliberately do not, and you may not refer to the other channel
+at all.
+
+Use it for exactly one thing: **do not say any of it again.** A different
+angle means a different part of how their business runs, not the same claim in
+new words. If an entry says `copy_withheld`, the touch happened and what it
+said cannot be proved, so treat that argument as spent and pick another.
+
+`already_sent` is also the ONLY thing that licenses a sentence about a message
+we sent. If it is empty, we have sent nothing, whatever else the record says,
+and "I wrote last week", "my previous note" and "you may have seen my email"
+are all false. Being on message four of five is not evidence that messages one
+to three arrived; it is evidence that they were planned.
+
+Never quote, summarise or count our own previous messages even when
+`already_sent` is full. It reads as pressure, and it spends the words that
+could have carried a new argument.
+
+## `siblings` are other drafts in this sequence, not sent messages
+
+`siblings` shows the subject and opening line of other emails already written
+for this person on this channel. They are DRAFTS, not sent messages. Nothing
+in `siblings` licenses any of the following:
+
+- "as I mentioned", "as I wrote", "following up on my email"
+- "my previous note", "my last email", "earlier I said"
+- any reference to a message that was sent, delivered or received
+
+These drafts may not have been sent. They may be rewritten before they are.
+The only reason you see them is so you write something DIFFERENT from what
+they say - a different angle, a different argument, different words. If a
+sibling already made the point about their Gen Z marketing, pick a different
+part of how the business runs.
+
+`siblings` and `already_sent` are separate blocks with separate meanings.
+`already_sent` is confirmed history. `siblings` is draft context. Neither
+licenses a claim of contact; only `already_sent` can do that, and only when
+it is non-empty.
+
+## `sender_identity` is who is writing
+
+The email MUST say who is contacting the recipient. TASK-063 read all 165
+generated email steps and found sender identity in ZERO of them: not one said
+who was writing - no name, no company, no role. A stranger who receives an
+observation about their own company from nobody has learned nothing about the
+sender and has no reason to reply.
+
+`sender_identity` carries whatever the client config provides: `name`, `role`,
+`company`, and `works_on` (a plain-language description of what the sender
+does). Use what is there. When the block is empty, say what you work on
+instead - "i work with agencies on project profitability" is the floor to
+beat. It says WHO without naming a specific person, which is also what keeps
+it safe when sender data is missing.
+
+NEVER invent a sender name, title or company that is not in this block. An
+invented identity is a claim about the sender the record cannot support, and
+`claims` will refuse it.
+
+And never claim to BE the recipient's own supplier. "Our agency sees that..."
+was generated on a real record and asserts a relationship that does not
+exist. You are writing TO their agency, not FROM it.
+
+## What you are selling
+
+`angle` names the angle chosen for this recipient and `angle_wording` says
+what it MEANS for their persona - for example
+`founder: profitability visible on Monday not two weeks late`. That wording is
+the client's own, and it is the value you are offering. Write to it.
+
+Do not invent a different pitch. If `angle_wording` is absent, ask a question
+about the angle rather than describing a product you have not been told about.
+
+Where `angle_wording` lists several phrases, a later step may take a different
+phrase from the same list. That is how a second angle stays true instead of
+becoming a new product.
+
+`product` is the product itself, and it is what the sentence above means by
+"a product you have not been told about" - now you have been. `product.name`
+is what it is called - use the name in the message, not "our product" or
+"our platform". `product.what_it_is` answers "what is this" in one line,
+and `product.capabilities` is a MENU to select from, never a list to recite.
+Pick the one or two that fit this recipient's angle and stay silent about
+the rest: a finance lead does not need to hear about resource planning.
+
+This block and `angle_wording` are the only claims here that need no evidence,
+because they are about our own software rather than about their business. Say
+them plainly, in the client's own words, and do not translate them into
+marketing language.
+
+Do not promise to explain later. "I would love to share how teams like yours
+have improved their visibility" is an offer to say something rather than the
+thing itself.
+
+If `product` is absent or empty, describe no product at all. Do not infer one
+from the angle. Nothing downstream can catch an invented product description:
+lint and claims check what is asserted about the RECORD, and a false sentence
+about our own software is grounded in nothing either of them reads.
+
+## Never, in any case
+
+Do not describe the SEQUENCE. `step.number` and `step.of` tell you which rung
+you are writing so that this message can do a different job from the others.
+They are not information for the recipient, and nothing licenses a sentence
+about them.
+
+"I understand this is my final message in this sequence" was generated for
+`em5` on 2026-09-14 and it is wrong twice over: it tells a stranger they have
+been walked through an automated sequence, and it counts our messages at
+them, which is pressure rather than information. `prompts/linkedin_note.md`
+has refused the same thing for as long as it has existed - "This is my third
+note is pressure, not information" - and this file never said it.
+
+The breakup rung gives somebody an easy no. It does that by asking whether to
+stop, not by announcing that the machine has reached the end of its list.
+
+Do not describe our own records, evidence, pipeline or research. The recipient
+has no idea we keep any, and no interest in them. "The September 10 website
+record says", "the current company record lists", "we do not yet have
+account-specific evidence", "the headcount signal is 23", "the ICP flag
+indicates" - all of these describe OUR system, not their business. Write what
+their site says, not what our scraper stored.
+
+`public_evidence` is raw page text and it contains navigation, phone numbers,
+cookie notices and menu items. Those are not facts about the company. Take
+what the company says about its own work and ignore the furniture.
+
+Do not recite their own firmographics back to them. They know how many people
+work there, what their revenue is, what year they were founded and which city
+the office is in. A sentence whose content is their own headcount is a
+sentence that proves only that we bought a data feed.
+
+Do not attribute their facts to us. Their headcount is not "our team".
+
+Do not attribute our words to them, which is the same mistake pointing the
+other way. `angle_wording` is the CLIENT's phrasing of what they sell; it is
+not something the recipient has said, published or endorsed. "HSMG states that
+profitability visible on Monday not two weeks late drives its strategic focus"
+puts our sales line in their mouth and is false. Quote them only from
+`public_evidence`.
+
+Do not tell them how their company works. "You are running utilisation in
+spreadsheets" is a claim about their business that nothing supports. Ask it
+instead, or say it about the teams we work with and leave them out of it.
+
+## Constraints, all enforced by lint.py before this ships
+
+- No em dashes or en dashes anywhere. Plain ASCII punctuation only:
+  a straight apostrophe, never a curly one, and an ordinary hyphen,
+  never a non-breaking one. Accented letters in somebody's actual name
+  or company name are fine and expected - the rule is about typography
+  you substitute, not about the alphabet a name is written in.
+- No attachment talk.
+- No unfilled placeholders in the subject or the body.
+- Body 40 to 180 words. Subject under 60 characters.
+- One unbroken line per paragraph, a blank line between paragraphs.
+- No filler openers, and none of these phrases ANYWHERE in the message:
+    "i hope this email finds you well"
+    "i wanted to reach out"
+    "circling back"
+    "just following up"
+    "touching base"
+    "as per my last email"
+    "synergy"
+    "game-changer"
+  lint refuses the draft outright if one appears, and the last step in
+  the sequence is the one that reaches for them - a message closing the
+  loop is not "just following up" or "circling back". Say the thing.
+- Never a calendar link as the ask.
+- Never a mention of LinkedIn, a connection request or anything that happened
+  on another channel.
+
+Every specific claim must come from the record. If you do not have the number,
+ask a question instead of bracketing a placeholder. A draft that breaks a rule
+is regenerated, never patched.
+
+
+## Approach: Value-led
+
+Value-led. Open with what they would gain - a concrete outcome, not a feature. Name the product and say in one line what it joins up. Give one consequence a team their size would recognise. Close with a direct CTA - a specific next step, not an open question.
+
+## This step's job (same for all variants)
+SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Use the product's name in the message, and say in one line what it joins up - only the capabilities in `product.capabilities` that fit this person's angle - and give one concrete consequence a team their size would recognise: what changes when this is visible while the work is running rather than reconstructed afterwards.
+
+## Record context
+Company: Test Agency
+  name: Test Agency
+  employees: 50
+  industry: Marketing
+  name: Jane Doe
+  title: CEO
+  persona: founder
+  angle: profitability
+Public evidence: Test Agency helps brands grow through data-driven marketing.
+Product: Productive - project profitability software for agencies
+Angle: profitability visible on Monday not two weeks late
+
+## Rules
+- Do not invent facts about the company or the person.
+- Do not assert a prior conversation that did not happen.
+- Do not name a product that is not listed above.
+- Every claim must be traceable to the context above.
+- The Approach section above controls your message structure: how you open, how you close, and the overall shape. The step job above describes what CONTENT to cover, not how to structure the message. If the step job mentions a form (a question, a statement), the Approach overrides it.
+
+
+
+======================================================================
+DIFF: concise_direct vs problem_led at li3 (LinkedIn)
+======================================================================
+--- concise_direct@li3
++++ problem_led@li3
+@@ -125,9 +125,9 @@
+   no non-breaking hyphens. Accented letters in a real name are fine.
+ 
+ 
+-## Approach: Concise and direct
++## Approach: Problem-led
+ 
+-Short and direct. Open with the reason for writing in one sentence - no preamble, no setup. State what is offered in one line. Close with a single question they can answer in a word. Total: two to three sentences.
++Problem-led. Open with the cost of the status quo - what the current way of working actually spends in time, risk or reconstruction. Name the pain before naming the solution. Close with a question about whether they see the same pattern.
+ 
+ ## This step's job (same for all variants)
+ Name the consequence of not having visibility - what goes wrong, what gets rebuilt after the fact rather than seen during the work. Pick a DIFFERENT operational angle from both the connection note and the first message.
+
+
+
+======================================================================
+DIFF: concise_direct vs problem_led at em3 (Email)
+======================================================================
+--- concise_direct@em3
++++ problem_led@em3
+@@ -244,9 +244,9 @@
+ is regenerated, never patched.
+ 
+ 
+-## Approach: Concise and direct
+-
+-Short and direct. Open with the reason for writing in one sentence - no preamble, no setup. State what is offered in one line. Close with a single question they can answer in a word. Total: two to three sentences.
++## Approach: Problem-led
++
++Problem-led. Open with the cost of the status quo - what the current way of working actually spends in time, risk or reconstruction. Name the pain before naming the solution. Close with a question about whether they see the same pattern.
+ 
+ ## This step's job (same for all variants)
+ SAY WHAT THE PRODUCT IS AND WHAT IT IS WORTH. Use the product's name in the message, and say in one line what it joins up - only the capabilities in `product.capabilities` that fit this person's angle - and give one concrete consequence a team their size would recognise: what changes when this is visible while the work is running rather than reconstructed afterwards.
+
+
+
+======================================================================
+APPROACH STRUCTURAL SPECS:
+======================================================================
+
+concise_direct:
+  opening: statement
+  cta: question
+  tone: direct
+  length: short
+  proof: none
+
+conversational:
+  opening: observation
+  cta: casual_question
+  tone: casual
+  length: medium
+  proof: none
+
+problem_led:
+  opening: pain
+  cta: question
+  tone: empathetic
+  length: medium
+  proof: consequence
+
+observation_led:
+  opening: evidence
+  cta: question
+  tone: researched
+  length: contextual
+  proof: attributed_fact
+
+value_led:
+  opening: outcome
+  cta: direct
+  tone: professional
+  length: contextual
+  proof: product_capability
+
+
+
+======================================================================
+LINKEDIN_NOTE PROMPT TEMPLATE - checking for form instructions:
+======================================================================
+
+  'question' appears in 3 lines:
+    L19: is read in two seconds, and a question that needs thought is a question that
+    L27: `already_sent` has said, and ask nothing more than one plain question.
+    L121: - No question that requires a considered answer on the connection request, and
+
+  'statement' appears in 1 lines:
+    L71: `claims` check assertions about the RECORD, and a false statement about our
+
+  'ask' appears in 2 lines:
+    L27: `already_sent` has said, and ask nothing more than one plain question.
+    L115: in spreadsheets" is a claim about their business with nothing behind it. Ask

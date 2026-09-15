@@ -703,9 +703,22 @@ def account_policy(account):
                       f"right now, and an unread status is not a finished one")
     if account.get("any_bounce"):
         return HOLD, "an address at this account bounced; the data is suspect"
+    # History before ambiguity.  When emails were sent and nobody replied,
+    # the account has been worked and answered - a suspect status like
+    # "stopped" on a finished campaign is not a live conflict, it is the
+    # normal end of a campaign that ran its course.  Checking sent count
+    # first is what stops a blanket HOLD on every touched account: nine
+    # cold emails across two campaigns with zero replies is history, not
+    # a collision, and refusing it would stop the product.
+    sent = int(account.get("emails_sent_total") or 0)
+    if sent:
+        return ALLOW, (f"{sent} email(s) were sent to this account in finished "
+                       f"campaigns with no reply; history, not a live conflict")
     # Terminal, and the status does not say who ended it. A person should look
     # before we spend again - this used to reach the same HOLD through not
     # knowing the word at all, which said nothing useful to whoever read it.
+    # Only fires when nothing was sent, so there is no reply evidence to
+    # read: the ambiguity is genuine rather than already answered.
     suspect = sorted({_norm(c.get("status")) for p in people
                       for c in (p.get("campaigns") or [])
                       if _norm(c.get("status")) in SUSPECT_STATUSES})
@@ -714,10 +727,6 @@ def account_policy(account):
                       f"({', '.join(suspect)}) and the status does not say "
                       f"whether we stopped it, they unsubscribed, or the "
                       f"provider stopped it on a reply")
-    sent = int(account.get("emails_sent_total") or 0)
-    if sent:
-        return ALLOW, (f"{sent} email(s) were sent to this account in finished "
-                       f"campaigns with no reply; history, not a live conflict")
     return ALLOW, "no prior contact at this account"
 
 

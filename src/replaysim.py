@@ -52,11 +52,12 @@ SCENARIOS = {
         "channel": "email",
         "provider": "bison",
         "text": "\u2500\u2500\u2500\u2500\u2500",
-        # Not UNKNOWN. With no model configured, an inbound that matches no
-        # rule falls to NEUTRAL by design, and neutral already means "a human
-        # should read this" rather than "nothing happened". UNKNOWN is
-        # reserved for a classifier that answered and was not believed.
-        "expect": replies.NEUTRAL,
+        # TASK-020 established that no rule matched is UNKNOWN, not NEUTRAL.
+        # NEUTRAL is a measurement ("we read this and it is lukewarm");
+        # UNKNOWN is a gap ("we could not read this").  A line of dashes
+        # is a gap, not a measurement.  The pause still fires: both
+        # UNKNOWN and NEUTRAL pause the company, so safety is unchanged.
+        "expect": replies.UNKNOWN,
         "note": "no rule matched and no model was available",
     },
 }

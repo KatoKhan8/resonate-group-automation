@@ -603,6 +603,13 @@ def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
                                  campaign=campaign).get("contacts") or {}
     steps = timeline.get((contact or {}).get("key")) or {}
     planned = steps.get(step_key)
+    # A bounced address blocks email regardless of whether this step exists
+    # in the cadence.  A dead mailbox is a fact about the contact, not about
+    # the step, and checking it here - before the step-existence test - is
+    # what stops a missing step from masking the bounce with "skipped".
+    if channel == "email" and channels._bounced(rec, contact):
+        return _decide(BLOCKED, [BLOCKED_BOUNCED], step=step_key,
+                       channel=channel)
     if planned is None and step is None:
         return _decide(SKIPPED, [SKIPPED_NO_STEP], step=step_key)
     # Content comes from the caller when it has one; status and dependency

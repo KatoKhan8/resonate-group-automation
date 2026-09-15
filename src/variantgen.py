@@ -70,12 +70,12 @@ APPROACHES = {
         "description": (
             "Short and direct. Open with the reason for writing in one "
             "sentence - no preamble, no setup. State what is offered in "
-            "one line. Close with a single question they can answer in a "
-            "word. Total: two to three sentences."),
+            "one line. Close with a direct statement, not a question. "
+            "Total: two to three sentences."),
         "opening": "statement",
         "tone": "direct",
         "length": "short",
-        "cta": "question",
+        "cta": "statement",
         "proof": "none",
     },
     "conversational": {
@@ -83,9 +83,9 @@ APPROACHES = {
         "description": (
             "Conversational. Write the way a peer would message another "
             "peer - lower case feel, shorter sentences, no corporate "
-            "phrasing. Open with an observation about their situation, "
+            "phrasing. Open with a casual question about their situation, "
             "not a pitch. Close with a casual question, not a CTA."),
-        "opening": "observation",
+        "opening": "question",
         "tone": "casual",
         "length": "medium",
         "cta": "casual_question",
@@ -94,15 +94,15 @@ APPROACHES = {
     "problem_led": {
         "label": "Problem-led",
         "description": (
-            "Problem-led. Open with the cost of the status quo - what "
-            "the current way of working actually spends in time, risk or "
-            "reconstruction. Name the pain before naming the solution. "
-            "Close with a question about whether they see the same "
-            "pattern."),
-        "opening": "pain",
+            "Problem-led. Open with a question about the cost of the "
+            "status quo - what the current way of working actually spends "
+            "in time, risk or reconstruction. Name the pain before naming "
+            "the solution. Close with a statement about the pattern, not "
+            "a question."),
+        "opening": "question",
         "tone": "empathetic",
         "length": "medium",
-        "cta": "question",
+        "cta": "statement",
         "proof": "consequence",
     },
     "observation_led": {
@@ -111,13 +111,13 @@ APPROACHES = {
             "Observation-led. Open with something specific noticed about "
             "their company or role - a fact with a source, not an "
             "invention. Connect the observation to the argument. Close "
-            "with a question about what the observation means for them. "
+            "with a statement about what the observation means for them. "
             "MAY NOT invent an observation. If none is licensed, this "
             "variant is not generated."),
         "opening": "evidence",
         "tone": "researched",
         "length": "contextual",
-        "cta": "question",
+        "cta": "statement",
         "proof": "attributed_fact",
     },
     "value_led": {

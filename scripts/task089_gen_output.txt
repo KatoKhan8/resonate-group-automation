@@ -1,0 +1,169 @@
+Model connected: OpenAICompatibleModel
+
+======================================================================
+Generating variants for li1 (LinkedIn step 1)
+======================================================================
+
+Purpose (rung 1):
+  A connection request note. Say who you are in one clause - your name and what you do, or what you work on if no sender detail is available. Then one line on why you are writing to them specifically, in the operational language of their angle. No ask beyond connecting, and no question that needs a considered answer. The recipient must learn WHO is contacting them from this note alone.
+
+  Generating concise_direct...
+    Approach spec: opening=statement, cta=question, tone=direct
+    Generated: 30 words, 183 chars
+    Opening: statement - hi jane, i知 reaching out as i work with agencies on improving project profitabi
+    CTA: statement - hi jane, i知 reaching out as i work with agencies on improving project profitabi
+    Full note: hi jane, i知 reaching out as i work with agencies on improving project profitability using Productive, which tracks margin per project in real time. happy to connect here on linkedin.
+
+  Generating conversational...
+    Approach spec: opening=observation, cta=casual_question, tone=casual
+    Generated: 27 words, 164 chars
+    Opening: statement - hi jane, i知 reaching out from Productive where we help agencies see project mar
+    CTA: statement - hi jane, i知 reaching out from Productive where we help agencies see project mar
+    Full note: hi jane, i知 reaching out from Productive where we help agencies see project margins in real time to boost profitability. thought it might be worth connecting here.
+
+  Generating problem_led...
+    Approach spec: opening=pain, cta=question, tone=empathetic
+    Generated: 27 words, 169 chars
+    Opening: statement - hi jane, i'm reaching out as i work with agencies on improving project profitabi
+    CTA: statement - hi jane, i'm reaching out as i work with agencies on improving project profitabi
+    Full note: hi jane, i'm reaching out as i work with agencies on improving project profitability by connecting budgets and time tracking in one place. looking forward to connecting.
+
+  observation_led: SKIPPED - no licensed observation: the record carries nothing checkable a message could point at
+
+  Generating value_led...
+    Approach spec: opening=outcome, cta=direct, tone=professional
+    Generated: 31 words, 194 chars
+    Opening: statement - hi jane, i'm reaching out as i work with agencies on improving profitability by 
+    CTA: statement - hi jane, i'm reaching out as i work with agencies on improving profitability by 
+    Full note: hi jane, i'm reaching out as i work with agencies on improving profitability by connecting budgets, time tracking, and resourcing in one place with Productive. happy to connect here on linkedin.
+
+======================================================================
+Generating variants for li2 (LinkedIn step 2)
+======================================================================
+
+Purpose (rung 2):
+  Establish how they handle one specific part of their operation today. Pick an angle DIFFERENT from the one the connection note used. If the note named their hiring pipeline, pick their project margin; if it named profitability, pick resourcing visibility. The connection note already said who you are and why you connected.
+
+  Generating concise_direct...
+    Approach spec: opening=statement, cta=question, tone=direct
+    Generated: 34 words, 205 chars
+    Opening: question - i'm reaching out to share how Productive helps agencies improve resourcing visib
+    CTA: question - i'm reaching out to share how Productive helps agencies improve resourcing visib
+    Full note: i'm reaching out to share how Productive helps agencies improve resourcing visibility by showing who is booked on what next week and where the next hire fits. how do you currently manage resource plan
+
+  Generating conversational...
+    Approach spec: opening=observation, cta=casual_question, tone=casual
+    Generated: 26 words, 153 chars
+    Opening: statement - hi jane, curious how test agency keeps track of who痴 booked on what and plans f
+    CTA: statement - hi jane, curious how test agency keeps track of who痴 booked on what and plans f
+    Full note: hi jane, curious how test agency keeps track of who痴 booked on what and plans for new hires? i知 andrew, working with agencies on resourcing visibility.
+
+  Generating problem_led...
+    Approach spec: opening=pain, cta=question, tone=empathetic
+    Generated: 29 words, 158 chars
+    Opening: question - hi jane, managing who is booked on what next week can be a real challenge and of
+    CTA: question - hi jane, managing who is booked on what next week can be a real challenge and of
+    Full note: hi jane, managing who is booked on what next week can be a real challenge and often leads to last-minute scrambling. do you see that happening at test agency?
+
+  observation_led: SKIPPED - no licensed observation: the record carries nothing checkable a message could point at
+
+  Generating value_led...
+    Approach spec: opening=outcome, cta=direct, tone=professional
+    Generated: 32 words, 202 chars
+    Opening: question - hi jane, i知 reaching out from Productive, which connects budgeting, time tracki
+    CTA: question - hi jane, i知 reaching out from Productive, which connects budgeting, time tracki
+    Full note: hi jane, i知 reaching out from Productive, which connects budgeting, time tracking, and resourcing in one place. how do you currently get visibility on who痴 booked for upcoming projects at Test Agenc
+
+======================================================================
+Generating variants for li3 (LinkedIn step 3)
+======================================================================
+
+Purpose (rung 3):
+  Name the consequence of not having visibility - what goes wrong, what gets rebuilt after the fact rather than seen during the work. Pick a DIFFERENT operational angle from both the connection note and the first message.
+
+  Generating concise_direct...
+    Approach spec: opening=statement, cta=question, tone=direct
+    Generated: 37 words, 242 chars
+    Opening: question - hi jane, i知 reaching out from Productive where we help agencies avoid rebuildin
+    CTA: question - hi jane, i知 reaching out from Productive where we help agencies avoid rebuildin
+    Full note: hi jane, i知 reaching out from Productive where we help agencies avoid rebuilding work after the fact by improving project management and resource planning. does your team currently have clear visibil
+
+  Generating conversational...
+    Approach spec: opening=observation, cta=casual_question, tone=casual
+    Generated: 43 words, 247 chars
+    Opening: question - hi jane, i知 curious how often your team has to redo work because of unclear res
+    CTA: question - hi jane, i知 curious how often your team has to redo work because of unclear res
+    Full note: hi jane, i知 curious how often your team has to redo work because of unclear resource planning. i知 andrew from product management at Productive, where we help agencies see who痴 booked and where the 
+
+  Generating problem_led...
+    Approach spec: opening=pain, cta=question, tone=empathetic
+    Generated: 41 words, 249 chars
+    Opening: question - hi jane, without clear visibility on resource planning, agencies often rebuild s
+    CTA: question - hi jane, without clear visibility on resource planning, agencies often rebuild s
+    Full note: hi jane, without clear visibility on resource planning, agencies often rebuild schedules after the fact, costing time and focus. i知 andrew from productive, where we help teams see who痴 booked and wh
+
+  observation_led: SKIPPED - no licensed observation: the record carries nothing checkable a message could point at
+
+  Generating value_led...
+    Approach spec: opening=outcome, cta=direct, tone=professional
+    Generated: 43 words, 264 chars
+    Opening: question - hi jane, i'm reaching out from Productive, which connects budgets, time tracking
+    CTA: question - hi jane, i'm reaching out from Productive, which connects budgets, time tracking
+    Full note: hi jane, i'm reaching out from Productive, which connects budgets, time tracking, and resourcing in one place. without clear visibility, teams often rebuild work instead of spotting issues early謡ould
+
+
+
+======================================================================
+SUMMARY TABLE: Opening type / CTA type / Word count per approach
+======================================================================
+
+li1:
+Approach             Spec Open    Spec CTA        Actual Open  Actual CTA   Words    Chars   
+------------------------------------------------------------------------------------------
+concise_direct       statement    question        statement    statement    30       183     
+conversational       observation  casual_question statement    statement    27       164     
+problem_led          pain         question        statement    statement    27       169     
+value_led            outcome      direct          statement    statement    31       194     
+
+li2:
+Approach             Spec Open    Spec CTA        Actual Open  Actual CTA   Words    Chars   
+------------------------------------------------------------------------------------------
+concise_direct       statement    question        question     question     34       205     
+conversational       observation  casual_question statement    statement    26       153     
+problem_led          pain         question        question     question     29       158     
+value_led            outcome      direct          question     question     32       202     
+
+li3:
+Approach             Spec Open    Spec CTA        Actual Open  Actual CTA   Words    Chars   
+------------------------------------------------------------------------------------------
+concise_direct       statement    question        question     question     37       242     
+conversational       observation  casual_question question     question     43       247     
+problem_led          pain         question        question     question     41       249     
+value_led            outcome      direct          question     question     43       264     
+
+
+
+======================================================================
+DIVERSITY COLLISIONS: Pairs with same opening AND same CTA
+======================================================================
+
+li1: 6 collisions
+  - concise_direct vs conversational: both statement/statement
+  - concise_direct vs problem_led: both statement/statement
+  - concise_direct vs value_led: both statement/statement
+  - conversational vs problem_led: both statement/statement
+  - conversational vs value_led: both statement/statement
+  - problem_led vs value_led: both statement/statement
+
+li2: 3 collisions
+  - concise_direct vs problem_led: both question/question
+  - concise_direct vs value_led: both question/question
+  - problem_led vs value_led: both question/question
+
+li3: 6 collisions
+  - concise_direct vs conversational: both question/question
+  - concise_direct vs problem_led: both question/question
+  - concise_direct vs value_led: both question/question
+  - conversational vs problem_led: both question/question
+  - conversational vs value_led: both question/question
+  - problem_led vs value_led: both question/question
