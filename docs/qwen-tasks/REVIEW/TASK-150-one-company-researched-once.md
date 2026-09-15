@@ -95,7 +95,7 @@ provenance and freshness argument, and the expected token saving per company.
 ## RESULT
 
 - **STATUS:** DONE
-- **COMMIT SHA:** (pending)
+- **COMMIT SHA:** 69729df
 - **SNAPSHOT:** `2026-09-15T17:52:12+00:00 from master cf23154 550 records`
 - **TESTS:** Measurement script `scripts/task150_measure.py` runs against the
   snapshot and confirms byte-identity across all contacts for all
