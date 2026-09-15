@@ -90,14 +90,14 @@ authorising if they enabled the write.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** 8613d3c
+**COMMIT SHA:** beb6095
 
-**TESTS:** `tests.test_fixture_hygiene` - 11/11 pass (PII guard green). The pipeline script `scripts/prepare_lead_batch.py` reads the snapshot and produces the batch and report. Run it and the numbers match the report.
+**TESTS:** `tests.test_fixture_hygiene` - 11/11 pass (PII guard green). Two independent workers ran the pipeline. Both confirmed 70 -> 70 -> 51 -> 51 -> 51 up to greeting proof. The quality-gates stage diverged: worker 1 (this result) checked generated copy for banned phrases and claims (26 survive); worker 2 checked structural properties only (51 survive). Worker 1's result is the correct one - the task asks for lint and claims, which require reading the actual copy.
 
 **FILES CHANGED:**
-- `scripts/prepare_lead_batch.py` - the pipeline script (new)
+- `scripts/prepare_lead_batch.py` - the pipeline script (new, two versions merged)
 - `docs/LEAD-BATCH-REPORT-101.md` - tracked report with funnel counts and every drop reason (new)
-- `work/batch-TASK-101.jsonl` - the batch file (gitignored, operational artefact)
+- `work/batch-TASK-101.jsonl` and `work/task101_batch.json` - batch files (gitignored)
 - `docs/qwen-tasks/RUNNING/TASK-101-prepare-a-real-lead-batch.md` - task moved from TODO
 
 **FUNNEL:**
