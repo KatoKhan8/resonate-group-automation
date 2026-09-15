@@ -340,7 +340,7 @@ class TestNoSendPathAnywhere(unittest.TestCase):
         # slack.py posts a message, behind SLACK_LIVE and a token; heyreach
         # posts to read routes only, checked against an allowlist above.
         allowed = ("aiark.py", "apify.py", "blitz.py", "contactout.py",
-                   "heyreach.py", "slack.py", "bison.py")
+                   "heyreach.py", "slack.py", "bison.py", "xai.py")
         issued = []
         for root, _, files in os.walk("src"):
             for name in files:

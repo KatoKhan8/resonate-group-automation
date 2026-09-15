@@ -95,6 +95,10 @@ ALLOWED = {
     # through because it is still egress that SPENDS MONEY, and the point of
     # this list is that somebody chose each row on purpose.
     ("src/llm.py", "POST"),
+    # xAI chat completions: a POST that reads intelligence, not a send.
+    # No campaign, no lead, no prospect-facing action.  Declared on purpose
+    # for TASK-157 (the Grok lane).
+    ("src/providers/xai.py", "POST"),
 }
 
 # Calls that name a verb. `request("POST", ...)` is this repo's own transport;
