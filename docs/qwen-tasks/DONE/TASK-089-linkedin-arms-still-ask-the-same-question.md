@@ -133,7 +133,7 @@ not whether the OPENING was a question. This caused false collision reports.
 
 4. Fixed _cta_shape to handle single-paragraph messages correctly.
 
-**MEASURED RESULTS (aubryandco-com, li2/li3/li4, real model):**
+**MEASURED RESULTS (<client-c67745>-com, li2/li3/li4, real model):**
 
 BEFORE (all question/question):
 ```
