@@ -7,13 +7,16 @@ KNOWLEDGE, or does it require editing Resonate OS core logic?
 
 ## ONE-LINE VERDICT
 
-**Configuration and data carry almost everything; three blocking code changes
-and seven friction points remain, all in CLI defaults and operator scripts
-that hardcode "productive" rather than in engine logic.** The core pipeline
+**Configuration and data carry almost everything; zero blocking code changes
+and twenty friction points remain: six in engine modules (hardcoded template
+copy, subject vocabulary, pain model, CLI defaults), eleven in operator
+scripts, and three in demo fixtures.** The core production path
 (`src/run.py`, `src/enrich.py`, `src/qualify.py`, `src/personas.py`,
 `src/generate.py`, `src/push.py`, `src/heyreachfactory.py`) is already
-client-parameterised end to end. The blockers are in the scripts and CLI
-entry points an operator touches before the engine runs.
+client-parameterised end to end. Three engine-level items would produce
+wrong output for a second client using template steps or a different product
+vocabulary, but none block the production send path for a client whose
+cadence uses generated copy.
 
 ---
 
@@ -63,24 +66,40 @@ None at the engine level. The production pipeline is fully client-parameterised.
 
 ### FRICTION — Client #2 works but somebody edits code to do it
 
+**Engine-level friction (in `src/`, code that could run for client two):**
+
 | # | File | Function / Line | What is hardcoded | Fix |
 |---|------|----------------|-------------------|-----|
-| F1 | `scripts/build_intake_batch.py` | Module-level `SOURCE` (line 38) | Source CSV path `work/Software_Agencies_All_Geo_cleaned - Sheet1.csv` | Add `--source` argument |
-| F2 | `scripts/build_intake_batch.py` | `main()` (line 87) | Output pattern `productive-intake-%05d-%05d.csv` | Derive from `--client` argument |
-| F3 | `src/senderinventory.py` | `main()` (line 411) | `--workspace` defaults to `"productive"` | Remove default or require explicit |
-| F4 | `src/icpstructural.py` | `main()` (line 558) | `--client` defaults to `"productive"` | Remove default or require explicit |
-| F5 | `scripts/campaign_ready_funnel.py` | Fallback (line 101) and CLI (line 504) | `rec.get("client") or "productive"` and `--client` defaults to `"productive"` | Remove fallback, require explicit |
-| F6 | `scripts/build_control_cohort.py` | `main()` (line 252) | `--client` defaults to `"productive"` | Remove default |
-| F7 | `scripts/sample_regen_task131.py` | Line 99 | `clients.load("productive")` hardcoded | Parameterise |
-| F8 | `scripts/task077_run_variants.py` | Lines 25, 136 | `client="productive"` default and `clients.load("productive")` | Parameterise |
-| F9 | `scripts/task077_detailed.py` | Lines 39, 95 | `"client": "productive"` hardcoded and `clients.load("productive")` | Parameterise |
-| F10 | `scripts/task065_run.py` / `task065_run_bcd.py` | Lines 195/205 | `clients.load("productive")` hardcoded | Parameterise |
-| F11 | `scripts/task065_measure.py` | Lines 31, 269 | `PRODUCT_NAME = "productive"` and `clients.load("productive")` | Parameterise |
-| F12 | `scripts/task089_diagnose_linkedin.py` | Line 154 | `rec.get("client", "productive")` fallback | Remove fallback |
-| F13 | `scripts/task120_quality.py` / `task120_analysis.py` | Lines 96/276, 285 | `"productive"` string search and `clients.load("productive")` | Parameterise |
-| F14 | `src/web/demodata.py` | Lines 46, 107, 127-154 | Demo data fixtures use `"productive"` as workspace/client slug | Cosmetic for demo; would need own fixture data for client two |
-| F15 | `src/web/demoaccount.py` | Line 36 | `WORKSPACE = "productive"` | Demo-only |
-| F16 | `src/web/demodiscovery.py` / `demogtm.py` | Lines 66/76, 22/88 | `workspace="productive"` defaults | Demo-only |
+| F1 | `src/cadence.py` | `TEMPLATES` dict (lines 357-424) | Four template bodies contain Productive-specific language: `persona_pain` mentions "Utilisation and margin are known at the end of the month"; `comparable_proof` and `comparable_proof_short` mention "project margin" and "finance view and delivery view stop being two different spreadsheets"; `breakup` mentions "project lands under margin" | Move template bodies to client config, or parameterise via `product` block. LinkedIn templates (`linkedin_intro`, `linkedin_followup`) are already generic with `{angle_phrase}` placeholders. |
+| F2 | `src/quality.py` | `SUBJECT_VOCABULARY` (line 584) | Hardcoded to `("profitability", "margin", "utilisation", "utilization")` — Productive's topic words, used to discount known subjects from repetition detection | Read from client config (e.g., `config["quality"]["subject_vocabulary"]`) |
+| F3 | `src/strategy.py` | `PAINS`, `PAIN_WORDS`, `PERSONA_PAINS`, `VERTICAL_ANGLES` (lines 28-80) | Entire pain model is Productive-specific: RESOURCE_PLANNING, UTILIZATION, PROJECT_MARGIN, etc. Persona-pain mappings hardcoded for founder/operations/finance/delivery | Make pain model configurable per-client, or accept that strategy recommendations are Productive-shaped until overridden |
+| F4 | `src/senderinventory.py` | `main()` (line 411) | `--workspace` defaults to `"productive"` | Remove default or require explicit |
+| F5 | `src/icpstructural.py` | `main()` (line 558) | `--client` defaults to `"productive"` | Remove default or require explicit |
+| F6 | `src/icp.py` | `NEED_SIGNALS` (lines 89-104) | Pain-signal keywords are Productive-specific: "resource planning", "utilisation", "time tracking", "project profitability". Harmless for a second client (they simply will not match and score zero), but a client with different pain dimensions cannot express them through config | Accept as-is (harmless defaults) or extend to support custom pain dimensions in config |
+
+**Script-level friction (in `scripts/`, operator tools):**
+
+| # | File | Function / Line | What is hardcoded | Fix |
+|---|------|----------------|-------------------|-----|
+| F7 | `scripts/build_intake_batch.py` | Module-level `SOURCE` (line 38) | Source CSV path `work/Software_Agencies_All_Geo_cleaned - Sheet1.csv` | Add `--source` argument |
+| F8 | `scripts/build_intake_batch.py` | `main()` (line 87) | Output pattern `productive-intake-%05d-%05d.csv` | Derive from `--client` argument |
+| F9 | `scripts/campaign_ready_funnel.py` | Fallback (line 101) and CLI (line 504) | `rec.get("client") or "productive"` and `--client` defaults to `"productive"` | Remove fallback, require explicit |
+| F10 | `scripts/build_control_cohort.py` | `main()` (line 252) | `--client` defaults to `"productive"` | Remove default |
+| F11 | `scripts/sample_regen_task131.py` | Line 99 | `clients.load("productive")` hardcoded | Parameterise |
+| F12 | `scripts/task077_run_variants.py` | Lines 25, 136 | `client="productive"` default and `clients.load("productive")` | Parameterise |
+| F13 | `scripts/task077_detailed.py` | Lines 39, 95 | `"client": "productive"` hardcoded and `clients.load("productive")` | Parameterise |
+| F14 | `scripts/task065_run.py` / `task065_run_bcd.py` | Lines 195/205 | `clients.load("productive")` hardcoded | Parameterise |
+| F15 | `scripts/task065_measure.py` | Lines 31, 269 | `PRODUCT_NAME = "productive"` and `clients.load("productive")` | Parameterise |
+| F16 | `scripts/task089_diagnose_linkedin.py` | Line 154 | `rec.get("client", "productive")` fallback | Remove fallback |
+| F17 | `scripts/task120_quality.py` / `task120_analysis.py` | Lines 96/276, 285 | `"productive"` string search and `clients.load("productive")` | Parameterise |
+
+**Demo-layer friction (in `src/web/demo*.py`, fixture data only):**
+
+| # | File | Function / Line | What is hardcoded | Fix |
+|---|------|----------------|-------------------|-----|
+| F18 | `src/web/demodata.py` | Lines 46, 107, 127-154 | Demo data fixtures use `"productive"` as workspace/client slug | Would need own fixture data for client two demo |
+| F19 | `src/web/demoaccount.py` | Line 36 | `WORKSPACE = "productive"` | Demo-only |
+| F20 | `src/web/demodiscovery.py` / `demogtm.py` | Lines 66/76, 22/88 | `workspace="productive"` defaults | Demo-only |
 
 ### COSMETIC — Looks client-specific, does not affect function
 
@@ -206,19 +225,28 @@ batches, diagnose issues and measure results.
 2. **Provision provider workspaces** — a HeyReach org unit and an EmailBison
    workspace for the new client. Record the IDs in the YAML.
 
-3. **Fix the 14 script friction points** — add `--client` / `--source`
+3. **Decide on cadence shape** — if client two uses generated copy (LLM), the
+   hardcoded `TEMPLATES` in `cadence.py` are never reached and no code change
+   is needed. If it uses template-based steps, the four Productive-specific
+   template bodies must be moved to config or parameterised.
+
+4. **Fix the 11 script friction points** — add `--client` / `--source`
    arguments and remove `"productive"` defaults. Estimated effort: one afternoon.
 
-4. **Decide on the reply poller** — if client two uses EmailBison, the poller
+5. **Optionally fix the 3 engine friction points** — `quality.py` subject
+   vocabulary and `strategy.py` pain model would produce better output for a
+   non-agency client if configurable, but are harmless defaults.
+
+6. **Decide on the reply poller** — if client two uses EmailBison, the poller
    must watch two workspaces. If it uses a different provider, this is moot.
 
-5. **Run `src/run.py --client client-two`** — the engine handles the rest.
+7. **Run `src/run.py --client client-two`** — the engine handles the rest.
 
 ### What does NOT need to change
 
-- No engine module needs editing
 - No provider module needs editing
-- No gate (lint, claims, quality) needs editing
 - No tenancy guard needs adding — they already exist
 - No state file format needs changing
 - No config parser needs changing
+- The production send path works today for a client whose cadence uses
+  generated copy and whose provider workspaces are provisioned
