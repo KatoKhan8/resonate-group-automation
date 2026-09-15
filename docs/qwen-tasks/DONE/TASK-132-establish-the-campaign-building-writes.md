@@ -83,7 +83,7 @@ short, because a long list means the establishment is not finished.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** 63b237c
+**COMMIT SHA:** 401d993
 
 **TESTS:** 36 tests in `test_the_heyreach_write_contract` and
 `test_the_factory_verbs_exist_and_are_sealed`, all passing (4 skipped as
