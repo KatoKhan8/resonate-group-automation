@@ -7,7 +7,12 @@ levels, no fallback between them. EMAILBISON-COPY-REQUIREMENTS.md is the
 standing contract for email generation: a sequence is one conversation,
 same-thread follow-ups use the provider's thread_reply rather than a new
 subject every step, no name is ever hardcoded and no greeting may render
-empty. ACCOUNT-OUTREACH.md and CADENCE-MODEL.md
+empty. PRODUCTION-SCALE-POLICY.md is the standing policy on how campaigns are
+shaped and leads grouped: a campaign is a COHORT and never a person,
+~50 qualified leads per normal cohort where inventory supports it,
+signal-based grouping backed by evidence that actually exists, consolidation
+over proliferation, and a sender estate that is never made to carry more by
+raising a limit. ACCOUNT-OUTREACH.md and CADENCE-MODEL.md
 cover account-based orchestration: the account is the unit of outreach, and a
 message may only claim what the event log supports. OPERATOR-PLAYBOOK.md is
 the workflow those rules govern; PRODUCT-INVENTORY.md says what exists.
