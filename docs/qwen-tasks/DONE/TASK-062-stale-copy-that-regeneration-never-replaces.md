@@ -8,10 +8,10 @@ still holds copy that `lint` refuses:
     stored steps scanned                    630
     containing forbidden punctuation         13
 
-    1gslab-com  li1, li3, li4    em dash
-    25wat-com   li1              em dash
-    28row-com   li1              em dash
-    28row-com   li4              em dash AND curly apostrophe
+    [REDACTED-record-1]  li1, li3, li4    em dash
+    [REDACTED-record-2]  li1              em dash
+    [REDACTED-record-3]  li1              em dash
+    [REDACTED-record-3]  li4              em dash AND curly apostrophe
 
 `lint.SUBSTITUTED_PUNCTUATION` refuses all of those, and `generate.plan`
 re-plans a note that fails lint - so these WERE re-planned. The regeneration

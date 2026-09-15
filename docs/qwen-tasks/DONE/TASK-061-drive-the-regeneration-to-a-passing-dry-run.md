@@ -6,8 +6,8 @@
 LinkedIn copy repeats itself. The refusal names one contact at a time, so the
 blocker MOVES as each is fixed. Observed today, in order:
 
-    pass 1   acqcom-com/brian-price      connected_1 vs connected_4
-    pass 2   adcuratio-com/ranjan-damodar connected_1 vs 2, 3, 4; 2 vs 4; 3 vs 4
+    pass 1   [REDACTED-record-a]         connected_1 vs connected_4
+    pass 2   [REDACTED-record-b]         connected_1 vs 2, 3, 4; 2 vs 4; 3 vs 4
 
 That second one is worse than the first: five colliding pairs on one contact,
 all sharing "across", "capacity", "projects". Four messages arguing capacity
@@ -71,7 +71,7 @@ every prospect and `src/store.py` is its only door.
 
 **FINDINGS:**
 
-Pass 1 blocker: `adcuratio-com/ranjan-damodar`
+Pass 1 blocker: `[REDACTED-record-b]`
 - `connected_1` vs `connected_2`: 4 shared words (across, capacity, currently, projects)
 - `connected_1` vs `connected_3`: 3 shared words (across, capacity, projects)
 - `connected_1` vs `connected_4`: 3 shared words (across, capacity, projects)
@@ -91,12 +91,12 @@ The current stored notes:
 
 The model is not paraphrasing the same idea four times (which would be a ladder failure). The model is being asked to write four messages about capacity management without using the words "capacity", "projects", or "utilisation" - which is the entire subject.
 
-**Model calls per pass:** 18 per record that fails (6 steps × 3 attempts). Pass 1 spent 18 calls on adcuratio-com alone.
+**Model calls per pass:** 18 per record that fails (6 steps × 3 attempts). Pass 1 spent 18 calls on [REDACTED-record-b] alone.
 
-**Records still failing after last pass:** 1 contact on 1 record (`adcuratio-com/ranjan-damodar`)
+**Records still failing after last pass:** 1 contact on 1 record (`[REDACTED-record-b]`)
 
 **RISKS:**
-- The scratch queue at `C:\Users\Zvonimir\Desktop\task061-scratch\queue.jsonl` has 18 failed generation attempts logged in adcuratio-com's event history but the stored notes are unchanged
+- The scratch queue at `C:\Users\Zvonimir\Desktop\task061-scratch\queue.jsonl` has 18 failed generation attempts logged in [REDACTED-record-b]'s event history but the stored notes are unchanged
 - The generation is idempotent and safe to re-run
 - No provider writes were made; dry run only
 

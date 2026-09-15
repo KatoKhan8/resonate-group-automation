@@ -362,11 +362,11 @@ planner correctly finding no failing step.
 The dry run still refuses, and **the blocker MOVED**, which is what
 convergence looks like when the refusal names one contact at a time:
 
-    before   acqcom-com/brian-price        connected_1 vs connected_4
-    after    adcuratio-com/ranjan-damodar  five colliding pairs, all sharing
+    before   [REDACTED-record-a]           connected_1 vs connected_4
+    after    [REDACTED-record-b]           five colliding pairs, all sharing
                                            "across", "capacity", "projects"
 
-`brian-price` is fixed. `ranjan-damodar` is worse than he was: four messages
+Record A is fixed. Record B is worse than it was: four messages
 arguing capacity in four different sentences, which is precisely the defect
 the operator named at the start of the day.
 
@@ -474,7 +474,7 @@ to beat.
 13 of 630 stored steps still carry an em dash or curly apostrophe AFTER a
 full regeneration pass:
 
-    1gslab-com li1 li3 li4, 25wat-com li1, 28row-com li1 li4, and others
+    [REDACTED-record-1] li1 li3 li4, [REDACTED-record-2] li1, [REDACTED-record-3] li1 li4, and others
 
 `lint` refuses those characters, so `plan` DID re-plan them. The regeneration
 then failed to produce a replacement that passed the other gates, and
@@ -496,7 +496,7 @@ is dropped with a reason rather than deleted.
 `docs/WHY-REGENERATION-CANNOT-CONVERGE-2026-09-14.md` is the important read.
 Short version, measured on the contact that is blocking the dry run:
 
-**The copy really is bad.** `adcuratio-com/ranjan-damodar` asks the same
+**The copy really is bad.** `[REDACTED-record-b]` asks the same
 question four times - "utilisation and capacity across your projects" - which
 is the original defect with a different noun, plus a fabricated "our previous
 discussions" on a record whose `prior_contact` is False.

@@ -2,7 +2,7 @@
 
 ## THE MECHANISM, MEASURED
 
-`adcuratio-com/ranjan-damodar` blocks the HeyReach dry run. Its six LinkedIn
+`[REDACTED-record-b]` blocks the HeyReach dry run. Its six LinkedIn
 notes say, in order:
 
     li1  "share insights on operations and project capacity"
@@ -58,10 +58,10 @@ rather than picking a threshold.
 
 ## PROVE IT ON THE REAL BLOCKER
 
-    QUEUE=<scratch copy> py -3 -m src.generate --live --id adcuratio-com
+    QUEUE=<scratch copy> py -3 -m src.generate --live --id [REDACTED-record-b]
     py -3 scripts/write_heyreach_sequence.py productive-linkedin-production-v1
 
-The second command must stop naming `ranjan-damodar`. If it names a different
+The second command must stop naming `[REDACTED-contact]`. If it names a different
 contact, that is progress and the loop continues; report the sequence of
 blockers as TASK-061 did.
 
@@ -141,16 +141,16 @@ FINDINGS
    as instructed. The command Claude needs to run:
    
    QUEUE=C:\Users\Zvonimir\Desktop\resonate-qwen-2-scratch\queue.jsonl ^
-   py -3 -m src.generate --live --id adcuratio-com
-   
+   py -3 -m src.generate --live --id [REDACTED-record-b]
+
    Then:
    py -3 scripts/write_heyreach_sequence.py productive-linkedin-production-v1
-   
-   The second command must stop naming ranjan-damodar. If it names a
+
+   The second command must stop naming [REDACTED-contact]. If it names a
    different contact, that is progress and the loop continues.
 
 7. MODEL CALLS. Set regeneration costs N calls per contact (one per LinkedIn
-   step, plus retries). For ranjan-damodar with 6 LinkedIn steps, that is
+   step, plus retries). For [REDACTED-contact] with 6 LinkedIn steps, that is
    at least 6 model calls. The old approach spent 3 attempts per step and
    never converged; the new approach spends up to 3 attempts per step but
    terminates because the old siblings are not constraining the new ones.
@@ -180,15 +180,15 @@ RISKS
 RECOMMENDED CLAUDE ACTION
 
 1. Run the live generation against the scratch copy:
-   QUEUE=<scratch> py -3 -m src.generate --live --id adcuratio-com
-   
-2. Check the output: ranjan-damodar's notes should be replaced with
+   QUEUE=<scratch> py -3 -m src.generate --live --id [REDACTED-record-b]
+
+2. Check the output: [REDACTED-contact]'s notes should be replaced with
    genuinely different notes that pass campaign_repetition.
-   
+
 3. Run the HeyReach dry run:
    py -3 scripts/write_heyreach_sequence.py productive-linkedin-production-v1
-   
-4. If it stops naming ranjan-damodar, the blocker is cleared. If it names
+
+4. If it stops naming [REDACTED-contact], the blocker is cleared. If it names
    a different contact, continue the regeneration loop on that contact.
    
 5. Do NOT run write_heyreach_sequence.py with --live. That is Claude's

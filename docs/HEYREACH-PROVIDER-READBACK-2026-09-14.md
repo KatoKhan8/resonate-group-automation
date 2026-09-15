@@ -26,7 +26,7 @@ There are two, not one, and only the second is the production target.
     productive-linkedin-production-v1   599020       DRAFT       0
 
 `594061` is the old one-person canary: 3 nodes, a single CONNECTION_REQUEST,
-one real lead (`linkedin.com/in/brookebaron`), seat 116968, PAUSED. It is not
+one real lead (`[REDACTED-linkedin-url]`), seat 116968, PAUSED. It is not
 the production campaign and nothing here proposes touching it.
 
 **`599020` IS THE CAMPAIGN.** Everything below is that one.

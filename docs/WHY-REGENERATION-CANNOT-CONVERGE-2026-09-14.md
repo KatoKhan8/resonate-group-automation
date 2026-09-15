@@ -1,6 +1,6 @@
 # Why the regeneration cannot converge, and which task actually unblocks it
 
-Measured on `adcuratio-com/ranjan-damodar`, the contact currently blocking the
+Measured on `[REDACTED-record-b]`, the contact currently blocking the
 HeyReach dry run.
 
 ## THE COPY IS GENUINELY BAD - THE GATE IS RIGHT
