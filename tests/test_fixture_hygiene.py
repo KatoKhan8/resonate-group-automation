@@ -105,7 +105,11 @@ ALLOWED_PHONES = {
 }
 
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
-PHONE = re.compile(r"\+\d[\d\s().-]{7,}\d")
+# Phone numbers: + followed by country code (1-3 digits, first digit 1-9), then
+# digits/spaces/dashes/parens. Uses [ \t] not \s so it cannot span newlines.
+# Requires at least 7 digits total after the + to avoid matching decimal numbers
+# like "+0.664858" from statistical reports.
+PHONE = re.compile(r"\+[1-9]\d{0,2}[\d \t().-]{5,17}\d")
 
 TEXT_SUFFIXES = (".py", ".json", ".jsonl", ".csv", ".txt", ".md", ".yaml",
                  ".yml", ".cfg", ".ini", ".toml", ".html", ".js", ".css")
