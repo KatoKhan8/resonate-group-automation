@@ -73,3 +73,82 @@ experiment design that would convert the second into the first.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+## RESULT BLOCK
+
+**STATUS:** REVIEW
+
+**COMMIT SHA:** (pending)
+
+**TESTS:** No code changes to test. This is a measurement and analysis task.
+Verification script `scripts/task105_verify_control_group.py` walks all 22
+campaigns and their step definitions via the provider API (READS ONLY) and
+independently confirms the control-group finding.
+
+**FILES CHANGED:**
+- `docs/THREADING-EVIDENCE-2026-09-15.md` (new) — the deliverable
+- `scripts/task105_verify_control_group.py` (new) — independent verification
+- `scripts/task105_reply_pages.py` (new) — reply feed collection
+- `scripts/task105_reply_comparison.py` (new) — reply comparison (initial)
+- `scripts/task105_step2_sample.py` (new) — step-2 scheduled email sampling
+
+**FINDINGS:**
+
+1. **The no-control-group claim is PARTIALLY REFUTED.** Five archived
+   campaigns (262-266) use `thread_reply=False` at step 2 with 3,163
+   combined sends. TASK-080 missed these because it inspected 10 of 22
+   campaigns. The control group EXISTS but is too small (3.2K vs 235K
+   sends), too old (archived), and too structurally different (6-step
+   sequences) for a clean observational comparison.
+
+2. **Position-level analysis:** Positions 2 and 4 both have campaigns with
+   thread_reply=True and False with sends > 0. Position 2 has a 62:1
+   imbalance (treatment vs control). Position 4 is more balanced but the
+   True campaigns (352, 274) differ structurally from the False ones.
+
+3. **The 857/571 body-length numbers are survivorship-biased.** They
+   measure emails that GOT REPLIES, not all sent emails. The TASK-080
+   methodology is documented and reproducible but the underlying SQLite
+   cache was not available in this worktree for independent re-derivation.
+
+4. **The experiment design:** A within-campaign A/B test at step 2 with
+   ~7,000 leads per arm would detect a 100% relative improvement
+   (doubling the reply rate) at 80% power. This requires ~14,000 total
+   step-2 sends.
+
+**OBSERVATIONS (with n):**
+- 22 campaigns in the estate (n=22), 20 with accessible step data
+- 5 control campaigns at step 2 (n=5): 262-266, all archived, 3,163 sends
+- 9 treatment campaigns at step 2 (n=9): 274, 327-335, 352, 235,651 sends
+- The control campaigns' reply data is not accessible in the API's reply
+  feed window (observed: 0 control replies in 750+ feed rows collected)
+
+**HYPOTHESES:**
+- The control campaigns (262-266) were the estate's earliest and may have
+  different copy quality, audience, and sender characteristics from the
+  treatment group. Even if their reply data were accessible, the confounds
+  would prevent a clean comparison.
+- The alternating F,T,F,T,F structure remains a design choice, not an
+  evidence-backed one.
+
+**PROVEN LEARNINGS:** (empty — nothing survives a sample-size objection
+for the control group)
+
+**RISKS:**
+- The control group campaigns are archived and their reply data may be
+  permanently outside the API's accessible window.
+- The experiment design assumes a 0.5% baseline step-2 reply rate. If the
+  true baseline is lower, the required sample size increases proportionally.
+- The variant system may not support thread_reply divergence on the same
+  parent step, requiring the split-campaign design instead.
+
+**RECOMMENDED CLAUDE ACTION:**
+
+1. **Acknowledge the partial refutation.** TASK-080's "no control group"
+   claim was based on 10 of 22 campaigns. The control group exists but is
+   too weak for observational inference.
+2. **Run the experiment.** The design in `docs/THREADING-EVIDENCE-2026-09-15.md`
+   specifies a within-campaign A/B test at step 2 with ~7,000 leads per arm.
+3. **Do not quote 857/571 without the survivorship caveat.** The numbers
+   describe replied-to emails, not all emails.
+4. **Update TASK-080's findings** to reflect the control group discovery.
