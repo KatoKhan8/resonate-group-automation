@@ -95,3 +95,71 @@ real rows, both kinds.
 The pre-stated threshold, the two-group comparison, the verdict among the
 three candidates with the numbers behind it, and - if the answer is (2) - what
 good evidence looks like, in examples.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+**COMMIT:** 192510f
+**SNAPSHOT:** work/queue.snapshot.jsonl — 2026-09-14T21:52:15Z from master 0ac5e60, 300 records
+
+**TESTS:** Analysis script at `scripts/task143_analysis.py`. Run with `py -3 scripts/task143_analysis.py`. No unit tests needed — this is a measurement, not a code change.
+
+**FILES CHANGED:**
+- `docs/RESEARCH-QUALITY-IMPACT-2026-09-15.md` (new) — full report with numbers, examples, and verdict
+- `scripts/task143_analysis.py` (new) — the measurement script
+- `docs/qwen-tasks/RUNNING/TASK-143-*.md` (moved from TODO)
+
+**FINDINGS:**
+
+The answer is **(2): In the copy, silently.**
+
+The two groups (32 JUNK-FED vs 119 FACT-FED) differ on exactly one metric
+outside the noise: **evidence-reference rate** (0% vs 7.3%). The model
+receives navigation text and ignores it entirely, writing from `company_facts`
+alone. No gate catches this — rejection rates are similar, unsupported claims
+are rare in both groups (1.2% vs 2.7%, a 1.5pp difference inside noise).
+
+The damage is invisible to every gate and visible to a human read:
+- JUNK-FED drafts never reference evidence facts (0 of 49)
+- FACT-FED drafts reference evidence only 7.3% of the time (27 of 371)
+- Generic phrase rates are similar or LOWER in JUNK-FED (20.4% vs 27.2%)
+- Navigation leakage is only slightly higher in JUNK-FED (16.3% vs 11.6%)
+- Vocabulary overlap is low across both groups (Jaccard 0.281)
+
+31 of 32 JUNK-FED records have NO usable evidence at any position. Reordering
+or expanding the limit would help exactly 1 record. The extraction, not the
+filtering, is the bottleneck.
+
+**What good evidence looks like** (from the report):
+1. Contains a complete sentence about the company, not a fragment
+2. Names something specific — a service, speciality, or client outcome
+3. Is not the company's own tagline repeated back to them
+4. Survives the "so what?" test — gives the model something to build on
+
+**The real constraint:** Even when given usable facts, the model references
+them only 7.3% of the time. Filtering works (TASK-135 already does it). The
+extraction itself is the bottleneck — the crawler needs to extract better
+prose, not the system needs to sort worse.
+
+**RISKS:**
+- Sample size is small (32 JUNK-FED). The comparison can detect only large
+  differences (>= 20pp at 80% power). The pre-stated threshold was 15pp.
+- The 0% vs 7.3% evidence-reference difference is real but small. It tells
+  us the model CAN use evidence but usually does not, regardless of quality.
+- This measurement is against existing copy, not a fresh generation. The
+  TASK-135 changes (quality filtering, contact-awareness, 5 entries) are
+  integrated but the copy in the snapshot predates them.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Accept the finding: junk evidence causes silent degradation, not rejections.
+2. The useful deliverable is NOT a filter (TASK-135 already did that). It is
+   the measurement of what "good evidence" means, with examples from real rows.
+3. If generation quality matters, the bottleneck is extraction, not filtering.
+   The crawler needs to skip navigation-dominant pages and prioritize pages
+   with actual prose (/about, /services, /team).
+4. A new gate that checks whether the draft references ANY evidence fact
+   (not just whether claims are supported) would catch silent degradation.
+   This is a new gate, and the task forbids widening gates — so this is a
+   recommendation, not a deliverable.
