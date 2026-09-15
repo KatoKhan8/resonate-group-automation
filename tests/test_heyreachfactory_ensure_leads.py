@@ -209,6 +209,17 @@ class _EnsureLeadsTestBase(_NoPatchOutlivesItsTest):
                           "campaignAccountIds": [174892],
                           "organizationUnitId": "174892"})
         self._draft_patch.start()
+        # Gate 6 asks the write door's condition, which
+        # is RESEALED in production: the vendor
+        # activates a campaign the moment a lead is
+        # added. These tests are about the gates
+        # underneath that, so the reseal is lifted here
+        # and pinned in `TheResealHolds`.
+        self._staging_patch = mock.patch.object(
+            providerwrites,
+            "CAMPAIGN_LEVEL_STAGING_IS_PROVEN", True)
+        self._staging_patch.start()
+        self.addCleanup(self._staging_patch.stop)
         # addCleanup, for the reason this file already gives below: a patch
         # that outlives its test leaks into every test that runs after it.
         # Without this, the whole of test_campaign_cannot_send sees

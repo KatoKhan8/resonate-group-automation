@@ -196,7 +196,9 @@ class TheWriteIsRefusedNotJustTheToken(QueueTest):
             sender_id="116968", rec_id="acme", contact_key="acme-1",
             step_key="day3", fingerprint=FINGERPRINT, gates=("tenancy",),
             at=store.now())
-        with mock.patch.object(providerwrites, "SUPPORTED", (OPERATION,)),              mock.patch.object(executionguard, "revalidate", revalidate),              mock.patch.object(heyreach, "campaign_read", return_value=dict(DRAFT_ROW)),              mock.patch.object(campaigns, "require", return_value=dict(CANON_ROW)):
+        with mock.patch.object(providerwrites, "SUPPORTED", (OPERATION,)),              mock.patch.object(providerwrites,
+                               "CAMPAIGN_LEVEL_STAGING_IS_PROVEN",
+                               True), mock.patch.object(executionguard, "revalidate", revalidate),              mock.patch.object(heyreach, "campaign_read", return_value=dict(DRAFT_ROW)),              mock.patch.object(campaigns, "require", return_value=dict(CANON_ROW)):
             return providerwrites.perform(
                 OPERATION, provider_campaign_id=DRAFT_DESTINATION, campaign=CANON,
                 authorization=auth,
@@ -247,6 +249,9 @@ class TheWriteIsRefusedNotJustTheToken(QueueTest):
             step_key="day3", fingerprint=FINGERPRINT, gates=("tenancy",),
             at=store.now())
         with mock.patch.object(providerwrites, "SUPPORTED", (OPERATION,)), \
+             mock.patch.object(providerwrites,
+                               "CAMPAIGN_LEVEL_STAGING_IS_PROVEN",
+                               True), \
              mock.patch.object(heyreach, "campaign_read",
                                return_value=dict(DRAFT_ROW)), \
              mock.patch.object(campaigns, "require",

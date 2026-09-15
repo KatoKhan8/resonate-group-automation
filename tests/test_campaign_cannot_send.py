@@ -19,6 +19,7 @@ import unittest
 from unittest import mock
 
 from src.providers import heyreach
+from src import providerwrites
 
 
 class ThePredicateReadsProviderTruth(unittest.TestCase):
@@ -126,6 +127,14 @@ class TheGateRefusesACampaignThatCanSend(unittest.TestCase):
                       "custom_fields": {}}]
 
         return [
+            # Gate 6 asks the write door's condition, which is
+            # RESEALED in production - the vendor activates a campaign
+            # the moment a lead is added. These tests are about the
+            # gates underneath that, and `TheResealHolds` pins what
+            # production does.
+            mock.patch.object(providerwrites,
+                              "CAMPAIGN_LEVEL_STAGING_IS_PROVEN",
+                              True),
             mock.patch.object(_campaigns, "load", return_value=[]),
             mock.patch.object(_campaigns, "require",
                               return_value={

@@ -208,7 +208,16 @@ def _enabled(status=heyreach.PAUSED, row=None, canonical=None):
             raise KeyError(cid)
         return canonical
 
-    with mock.patch.object(heyreach, "campaign_read", return_value=live), \
+    # THE RESEAL IS LIFTED INSIDE THE TEST ONLY, deliberately.
+    # `CAMPAIGN_LEVEL_STAGING_IS_PROVEN` is False in production because
+    # the vendor activates a campaign the moment a lead is added to it.
+    # The checks BELOW it - ownership, binding, declaration, live status
+    # - are still correct and are the ones that will guard whatever
+    # replaces this, so they keep their tests. `TheResealHolds` pins what
+    # production actually does.
+    with mock.patch.object(providerwrites,
+                           "CAMPAIGN_LEVEL_STAGING_IS_PROVEN", True), \
+         mock.patch.object(heyreach, "campaign_read", return_value=live), \
          mock.patch.object(campaigns, "require", _require), \
          mock.patch.object(executionguard, "revalidate",
                            lambda *a, **kw: True):
@@ -891,6 +900,39 @@ class TheSealStillHolds(unittest.TestCase):
             heyreach._write_body("/campaign/Resume", {"campaignId": 1})
 
 
+class TheResealHolds(unittest.TestCase):
+    """Production refuses an add-lead outright, and the reason is recorded.
+
+    The vendor activates a campaign the moment a lead is added to it - for a
+    PAUSED campaign and for a FINISHED one - so `LINKEDIN_ADD_LEAD` against a
+    campaign is the prospect-facing moment rather than staging. The permission
+    that admitted PAUSED rested on the premise that a paused campaign does not
+    send, and that premise is false.
+
+    Every test in `TheConditionIsTheRealPermission` lifts the flag to exercise
+    the ownership, binding and status checks underneath it - those are correct
+    and will guard whatever replaces this. THIS class says what production
+    does.
+    """
+
+    def test_campaign_level_staging_is_not_proven(self):
+        self.assertFalse(providerwrites.CAMPAIGN_LEVEL_STAGING_IS_PROVEN)
+
+    def test_a_perfect_campaign_is_still_refused(self):
+        """Declared, bound, PAUSED, ours - and still refused, because the
+        state it was in was never the thing that made it safe."""
+        with mock.patch.object(campaigns, "require",
+                               lambda *a, **kw: _declared_row()), \
+             mock.patch.object(
+                 heyreach, "campaign_read",
+                 return_value={"id": CAMPAIGN_A, "status": heyreach.PAUSED,
+                               "name": "t"}):
+            with self.assertRaises(providerwrites.WriteRefused) as caught:
+                providerwrites.require_conditional_permission(
+                    providerwrites.LINKEDIN_ADD_LEAD, CAMPAIGN_A, CANON)
+        self.assertIn("RESEALED", str(caught.exception))
+
+
 # --------------------------------- the condition IS the permission
 
 class TheConditionIsTheRealPermission(QueueTest):
@@ -947,7 +989,11 @@ class TheConditionIsTheRealPermission(QueueTest):
                 raise KeyError(cid)
             return canonical
 
-        with campaign_read, mock.patch.object(campaigns, "require", _require), \
+        with mock.patch.object(
+                providerwrites, "CAMPAIGN_LEVEL_STAGING_IS_PROVEN",
+                True), \
+             campaign_read, \
+             mock.patch.object(campaigns, "require", _require), \
              mock.patch.object(executionguard, "revalidate",
                                lambda *a, **kw: True):
             with self.assertRaises(providerwrites.WriteRefused) as caught:
@@ -1096,7 +1142,10 @@ class TheConditionIsTheRealPermission(QueueTest):
                  {"id": CAMPAIGN_A, "status": heyreach.IN_PROGRESS,
                   "name": "t", "organizationUnitId": ORG_UNIT_PRODUCTIVE}]
         canonical = _declared_row()
-        with mock.patch.object(heyreach, "campaign_read",
+        with mock.patch.object(
+                providerwrites, "CAMPAIGN_LEVEL_STAGING_IS_PROVEN",
+                True), \
+             mock.patch.object(heyreach, "campaign_read",
                                side_effect=reads), \
              mock.patch.object(campaigns, "require",
                                lambda *a, **kw: canonical), \

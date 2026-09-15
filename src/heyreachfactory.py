@@ -64,8 +64,8 @@ import re
 import sys
 
 from . import (cadence, cadencelibrary, campaigns, clients, configdiff,
-               collision, eligibility, executionguard, killswitch, lint,
-               providerwrites, store)
+               collision, eligibility, executionguard, killswitch, linkedin,
+               lint, providerwrites, store)
 from .providers import ProviderError, heyreach
 
 
@@ -1400,16 +1400,46 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
     #
     # An authorization names a record, a contact and a step. The write it
     # drives must carry that contact and no one else.
+    # THE PROFILE URL IS A SLUG ON DISK, AND THE PROVIDER NEEDS A URL.
+    #
+    # Every one of the estate's 277 contacts stores `linkedin` as a bare
+    # vanity - "jamal-fraiser-5a10051a2" - and nothing between the record and
+    # the wire turned it into a URL. So `build_lead_pairs` sent
+    # `profileUrl: "jamal-fraiser-5a10051a2"`, the provider accepted the call,
+    # and the campaign held zero leads afterwards.
+    #
+    # `linkedin.canonical` has handled this shape since it was written - "a
+    # bare vanity name, which is how some exports store it" - so the producer
+    # knew and the consumer did not. It is applied HERE, at the boundary,
+    # rather than by rewriting the estate: the slug is a perfectly good
+    # internal identifier and `collision.profile_slug` compares on it.
+    #
+    # The READBACK has to speak the same form or it compares a URL from the
+    # provider against a slug from us and reports every lead missing, which
+    # is what turned a silent no-op into a DRIFTED verdict - the one piece of
+    # luck here, because a readback that agreed would have recorded a
+    # confirmed touch for a lead that does not exist.
+    def _profile_url(row):
+        url = linkedin.canonical(row["linkedin_url"])
+        if not url:
+            raise FactoryRefused(
+                f"contact {row['contact_key']!r} has "
+                f"{row['linkedin_url']!r} in its `linkedin` field and that is "
+                f"not a readable profile. A lead with no profile URL is a "
+                f"lead the provider cannot act on and we could not read back")
+        return url
+
     def _transport_for(row):
         def _transport(payload):
             return heyreach.add_leads_to_campaign(
-                provider_id, [row], linkedin_account_id)
+                provider_id, [dict(row, linkedin_url=_profile_url(row))],
+                linkedin_account_id)
         return _transport
 
     def _readback_for(row):
         def _readback():
             return heyreach.readback_membership(
-                provider_id, [row["linkedin_url"]])
+                provider_id, [_profile_url(row)])
         return _readback
 
     for row in new_contacts:

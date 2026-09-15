@@ -142,6 +142,9 @@ class DuplicationTest(QueueTest):
         guards and `push.mark_pushed` are all the real ones.
         """
         with mock.patch.object(providerwrites, "SUPPORTED", (OP,)), \
+             mock.patch.object(providerwrites,
+                               "CAMPAIGN_LEVEL_STAGING_IS_PROVEN",
+                               True), \
              mock.patch.object(heyreach, "campaign_read",
                                return_value=dict(DRAFT_ROW)), \
              mock.patch.object(campaigns, "require",

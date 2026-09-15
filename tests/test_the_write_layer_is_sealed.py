@@ -267,7 +267,9 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         before the transport, by call order, so this stub cannot hide the call
         being deleted.
         """
-        with mock.patch.object(providerwrites, "SUPPORTED", (self.OP,)),              mock.patch.object(heyreach, "campaign_read",
+        with mock.patch.object(providerwrites, "SUPPORTED", (self.OP,)),              mock.patch.object(providerwrites,
+                               "CAMPAIGN_LEVEL_STAGING_IS_PROVEN",
+                               True), mock.patch.object(heyreach, "campaign_read",
                                return_value=dict(DRAFT_ROW)),              mock.patch.object(campaigns_state, "require",
                                return_value=dict(CANON_ROW)),              mock.patch.object(executionguard, "revalidate",
                                lambda *a, **kw: True):
@@ -437,7 +439,9 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         before the transport, by call order, so this stub cannot hide the call
         being deleted.
         """
-        with mock.patch.object(providerwrites, "SUPPORTED", (self.OP,)),              mock.patch.object(heyreach, "campaign_read",
+        with mock.patch.object(providerwrites, "SUPPORTED", (self.OP,)),              mock.patch.object(providerwrites,
+                               "CAMPAIGN_LEVEL_STAGING_IS_PROVEN",
+                               True), mock.patch.object(heyreach, "campaign_read",
                                return_value=dict(DRAFT_ROW)),              mock.patch.object(campaigns_state, "require",
                                return_value=dict(CANON_ROW)),              mock.patch.object(executionguard, "revalidate",
                                lambda *a, **kw: True):

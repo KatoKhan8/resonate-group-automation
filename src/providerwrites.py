@@ -438,6 +438,33 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
 CONDITIONAL = {}
 
 
+# IS THERE A CAMPAIGN STATE THAT ACCEPTS A LEAD WITHOUT SENDING TO IT?
+#
+# NO, AND THE PROVIDER SAYS SO. This was False in every direction the code
+# could reach and the argument for PAUSED rested on a premise that is simply
+# wrong:
+#
+#   "Even if the campaign is paused, adding leads via API or integration
+#    directly into that campaign will activate the campaign."
+#   "Finished campaigns - as soon as new leads are added campaign will get
+#    activated."
+#   https://help.heyreach.io/en/articles/11657798-how-to-add-leads-to-campaigns
+#
+# So `LINKEDIN_ADD_LEAD` against a campaign is not staging. It is the
+# prospect-facing moment, and the permission below - which admits a PAUSED
+# campaign on the grounds that a paused campaign does not send - would cause
+# the send it was written to prevent.
+#
+# The invariant is RESEALED rather than quietly corrected, because a
+# permission whose safety argument has been falsified must stop admitting
+# things before anybody decides what replaces it. Every other check below is
+# left standing and still runs: when a route to safe staging is established -
+# a list, or add-lead carrying the full activation evidence - this flips with
+# the reason recorded beside it, and the ownership and binding proofs are
+# already here.
+CAMPAIGN_LEVEL_STAGING_IS_PROVEN = False
+
+
 def _campaign_is_a_declared_staging_campaign(provider_campaign_id,
                                              campaign_id=None):
     """True only for OUR staging campaign, PAUSED, read live, right now.
@@ -447,6 +474,16 @@ def _campaign_is_a_declared_staging_campaign(provider_campaign_id,
     """
     from . import campaigns as _campaigns
     from .providers import heyreach
+
+    if not CAMPAIGN_LEVEL_STAGING_IS_PROVEN:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD} is RESEALED. Adding a lead to a HeyReach "
+            f"campaign activates that campaign - the vendor documents it for "
+            f"both PAUSED and FINISHED - so this operation is the "
+            f"prospect-facing moment and not staging. The permission that "
+            f"admitted a paused campaign rested on the premise that a paused "
+            f"campaign does not send, and that premise is false. Nothing was "
+            f"reached")
 
     if provider_campaign_id in (None, "", 0):
         raise WriteRefused(
