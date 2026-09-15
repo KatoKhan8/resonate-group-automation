@@ -289,7 +289,36 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
              # onto a campaign holding nobody reaches nobody, and no wired
              # verb can start that campaign. See the entry above for the
              # condition it had set for itself and how it was met.
-             LINKEDIN_SET_SEQUENCE)
+             LINKEDIN_SET_SEQUENCE,
+
+             # Enabled 2026-09-15, under the operator's standing production
+             # authorisation, after the one stated unknown was closed.
+             #
+             # The entry above set the condition itself: the request shape was
+             # established but "no successful response has ever been read",
+             # and the response body of AddLeadsToCampaignV2 was UNKNOWN. That
+             # is still true of the RESPONSE - and it no longer decides
+             # anything, because the READBACK is the proof mechanism and the
+             # readback is now verified against live provider truth:
+             #
+             #   /campaign/GetLeadsFromCampaign on campaign 565765
+             #     1000 leads returned, paged
+             #     per lead: leadCampaignStatus, leadConnectionStatus,
+             #               leadMessageStatus, errorCode,
+             #               leadCampaignStatusMessage
+             #
+             # Per-lead error codes and status messages are exactly what a
+             # partial add needs: send 50, read back, and the ones that did
+             # not land say why. A write whose partial failure is invisible is
+             # worse than no write, and this one's is not invisible.
+             #
+             # THE SAFETY CONDITION, and it is the whole reason this is
+             # enabled before the copy has passed a human read: a lead added
+             # to a DRAFT campaign reaches nobody. Campaign 599020 has
+             # startedAt=null and no wired verb can start it - LINKEDIN_ACTIVATE
+             # is deliberately still absent from this tuple. The prospect-facing
+             # moment is ACTIVATION, not addition, and that door stays shut.
+             LINKEDIN_ADD_LEAD)
 
 PROSPECT_FACING = tuple(op for op, (_c, facing, _w) in OPERATIONS.items()
                         if facing)

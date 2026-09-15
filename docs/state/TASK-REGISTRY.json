@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-09-15T08:49:11+00:00",
+  "generated_at": "2026-09-15T08:49:15+00:00",
   "generated_from": "docs/qwen-tasks/**, git, and work/claims/. Derived, never hand-edited.",
-  "master_head": "0a01911",
+  "master_head": "7d022c9",
   "counts": {
     "QUEUED": 17,
     "CLAIMED": 8,
