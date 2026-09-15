@@ -274,3 +274,78 @@ is not, and a TTL would be needed before those are trusted.
 
 **Still no new tool. The free leg works; what is missing is a refresh policy
 and prompt visibility, neither of which needs a crawler.**
+
+---
+
+# PART 3: A CORRECTION. THE MODEL WAS NEVER BLIND.
+
+**Part 1 of this document is wrong on its central claim, and TASK-135 found
+it.** Recording it here rather than editing it away, because the operator acted
+on the wrong version.
+
+## What Part 1 said
+
+> the generation prompt reads that same model-authored key ... Ninety of
+> ninety-two contacts are handed an EMPTY evidence list when their copy is
+> written, while 695 rows of real, source-backed, timestamped web evidence sit
+> in `rec["research"]` that the prompt never reads.
+
+## What is actually true
+
+`src/generate.py:490` - **five lines above the `block["evidence"]` line I did
+read** - has always done this:
+
+    public = research.for_prompt(rec)
+    if public:
+        block["public_evidence"] = public
+
+And `research.for_prompt` reads `existing_evidence(rec)`, which is
+`rec["research"]`, returning `field`, `source_url`, `retrieved_at` and `fact`
+per row. Its docstring: *"A model is given a fact and where it came from, never
+a page."*
+
+**The prompt has been receiving attributed, sourced, timestamped facts all
+along.** `block["evidence"]` is a second, additional channel; its emptiness
+meant much less than I claimed.
+
+### How I got it wrong
+
+`block["public_evidence"] = public` appeared in my own grep output at line 493.
+I read `block["evidence"]` at 575, recognised the model-authored key from
+`claims.py`'s comment, and stopped - I had a complete-sounding story and did
+not follow the line above it. **A confident narrative is the most effective way
+to stop looking**, and this one survived a full write-up because every other
+fact in it was true.
+
+## What TASK-135 measured
+
+26 drafts across 13 records, generated with and without a new quality-filtered
+`research` field: **zero unsupported-claim rejections in either variant.** The
+model extracted the same company facts from `public_evidence` as from the new
+field, producing functionally identical sentences.
+
+The 43 rejections Part 1 cited came from log entries on the four blocked
+records, from an earlier generation pass. They were real when written and are
+not reproduced now.
+
+## THE REAL CONSTRAINT, which this does expose
+
+Verified independently by Claude:
+
+    research rows that are navigation text, not prose   237 of 695  (34%)
+    records whose FIRST THREE rows are all junk          47 of 203
+
+`for_prompt` takes `existing_evidence(rec)[:3]` - **the first three, in stored
+order, with no quality ordering at all.** So for 47 records the model is shown
+three fragments of menu text and nothing else. Not blind, but shown the wrong
+three things.
+
+That is what the TASK-135 change fixes: quality-filtering to medium+strong,
+contact-awareness, and five entries instead of three. It changed no
+claims-gate outcome in the sample and it still makes 47 records show facts
+instead of navigation.
+
+**And it reframes the crawler work.** The constraint was never that evidence
+does not reach the model. It is that a third of what was extracted is not
+evidence - it is page furniture. Improving extraction beats adding prompt
+fields, which is exactly what TASK-135 concluded.
