@@ -89,7 +89,7 @@ and valuable result.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (pending)
+**COMMIT SHA:** 5adcf07
 
 **TESTS:** Read-only task. No code changed. Provider read via
 `heyreach.campaign_sequence(599020)` confirmed READ-ONLY (GET route on the
