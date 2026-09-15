@@ -99,7 +99,7 @@ counterfactual, and an honest statement of the expected effect size given the
 
 **STATUS:** DONE
 
-**COMMIT:** (pending)
+**COMMIT:** 2ea7405
 
 **TESTS:**
 - `tests/test_for_prompt_quality.py` - 7 new tests, all pass
