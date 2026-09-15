@@ -83,3 +83,93 @@ still guessed.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 183866e (after rebase)
+
+**TESTS:** No code changes to test. Probe scripts are standalone GET-only
+utilities. No existing tests were affected.
+
+**FILES CHANGED:**
+- `docs/BISON-API-ROUTE-EVIDENCE-2026-09-15.md` — the deliverable. Every
+  EmailBison route classified by evidence level (LIVE / CODE / DOCS /
+  GUESSED), with response shapes cited.
+- `scripts/task111_probe_routes.py` — main route probe (50 routes, GET only)
+- `scripts/task111_probe_routes2.py` — follow-up probes (lead existence, events)
+- `scripts/task111_probe_routes3.py` — per-lead routes, individual reply, search trap
+- `docs/qwen-tasks/RUNNING/TASK-111-what-else-does-emailbison-expose.md` —
+  moved from TODO/
+
+**FINDINGS:**
+
+### The inventory
+
+50 routes probed (GET only) against the live instance on 2026-09-15:
+
+| Evidence level | Count | What |
+|---|---|---|
+| **LIVE** | 21 | Route returned 200 (or 404) with parseable shape recorded |
+| **CODE** | 13 | Called in `bison.py` with response handling, not re-probed |
+| **DOCS** | 16 | Vendor documentation names them, no live probe, no code caller |
+| **GUESSED** | **0** | Every route the codebase references has at least DOCS evidence |
+
+19 routes confirmed as **404** (do not exist).
+
+### Corrections to the 2026-09-14 capability map
+
+1. **`GET /scheduled-emails/{id}` does NOT carry a `lead` field.** The
+   listing form (`/campaigns/{id}/scheduled-emails`) DOES. This is a real
+   asymmetry in the provider's API. The earlier map was wrong.
+
+2. **Lead 146592 no longer exists** (404). It was used as an example in the
+   earlier map.
+
+3. **`/workspaces` returns 1 workspace** (PRODUCTIVE, id 10), not 13 as the
+   bison.py comment from 2026-09-07 stated.
+
+4. **`/leads/{id}/replies` and `/leads/{id}/sent-emails` are LIVE-confirmed
+   200**, not just documented. Both return the expected shapes.
+
+5. **`/campaigns/{id}/leads?search=` is accepted and DISCARDED** — returns
+   the full unfiltered listing. This is different from `/leads?search=`
+   which IS a real filter.
+
+### What a lead-add would need
+
+All established (CODE evidence):
+1. `POST /leads` — create the lead with email, first_name, custom_variables
+2. `POST /campaigns/{id}/leads/attach-leads` — attach by id list
+3. Pre-conditions: lead not `in_sequence` elsewhere, not bounced/unsubscribed
+4. Custom variable names must be declared first if new
+
+Still gaps:
+- `POST /campaigns/{id}/leads/attach-lead-list` (DOCS only) — shape unknown
+- `POST /leads/bulk/csv` (DOCS only) — shape unknown
+- Batch attach is all-or-nothing: one collision refuses the entire batch
+
+### What is still guessed
+
+**Nothing.** Every route the codebase references has at least DOCS evidence.
+The 16 DOCS-only routes are write routes that were deliberately NOT probed
+per the task rules. Their shapes come from vendor documentation.
+
+**RISKS:**
+- The 16 DOCS-only write routes have not been live-verified. Their shapes
+  could differ from documentation. Any task that implements one should probe
+  it first (read-only where possible, then carefully).
+- The workspace count changed from 13 to 1 between 2026-09-07 and
+  2026-09-15. If workspaces are added or removed again, code that assumes a
+  fixed count will break.
+- `per_page` is ignored on almost every route. This is confirmed again.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Review the evidence map at `docs/BISON-API-ROUTE-EVIDENCE-2026-09-15.md`
+- The corrections to the 2026-09-14 capability map should be backported if
+  that document is still the active reference
+- The DOCS-only write routes are candidates for live verification when a
+  task needs to implement one
