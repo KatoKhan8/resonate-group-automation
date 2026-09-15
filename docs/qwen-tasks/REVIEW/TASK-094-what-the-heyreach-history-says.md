@@ -59,3 +59,50 @@ listing what could NOT be measured and what it would cost. Separate
 OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS - and leave PROVEN
 LEARNINGS empty if nothing survives a sample-size objection. TASK-059 left it
 empty and was right to.
+
+## RESULT
+
+- **STATUS**: DONE
+- **COMMIT SHA**: d79aae4
+- **TESTS**: No code changed. Read-only analysis of cached data from
+  TASK-058 (26,174 conversations, 76,315 touches) and TASK-066 (3,869
+  unknown reply texts). Re-classification used `replies.classify(model=None)`
+  with VERSION="rules-3". No provider calls made.
+- **FILES CHANGED**:
+  - `docs/HEYREACH-LEARNING-2026-09-15.md` (new) - the deliverable
+- **FINDINGS**:
+  1. **Attribution A/B/C/D table**: A (touches with timestamps) =
+     RECONSTRUCTABLE. B (reply->step) = RECONSTRUCTABLE, one hop, no ID
+     anchor. C (position) = RECONSTRUCTABLE. D (variant identifier) =
+     ABSENT. `campaignIds` is null on all 26,174 conversations. No message
+     field carries a variant ID, step ID, or campaign reference.
+  2. **LinkedIn funnel**: 76,315 touches, 26,113 conversations. Inferred
+     connection acceptance 89.9% (n=10,975 CR conversations). Reply rate
+     flat at positions 1-5 (6.5-7.6%), declines at 6-7. Positive reply
+     rate 0.233% per touch (178/76,315). Zero InMail messages in estate.
+  3. **Classifier re-measurement**: rules-3 resolves 556 of 3,869 former
+     unknowns (14.4%). Unknown dropped from 73.6% to 62.6%. Remaining
+     3,313 unknowns: 79.2% no pattern matched (addressable), 20.8%
+     correctly unknown (greetings/ack/emoji/short). New categories
+     interested (n=8), meeting_intent (n=3), objection (n=6) - none
+     survive sample-size objection for learning claims.
+  4. **PROVEN LEARNINGS left empty** - same standard as TASK-059. Nothing
+     survives both sample-size and confounding objections without
+     campaign-level attribution, which is absent.
+- **RISKS**:
+  - The 89.9% connection acceptance rate is inferred, not observed.
+    `CONNECTION_STATUS_AVAILABLE = False`. The inference is: follow-ups
+    sent = connection accepted. This is necessary but not sufficient
+    (could be Open Profile receiving InMails, but zero InMails exist).
+  - The classifier re-measurement assumes rules only ADDED patterns since
+    TASK-066, never removed or changed precedence. A reply that matched
+    before still matches. This is verifiable from the git history of
+    `src/replies.py` but was not done here.
+- **RECOMMENDED CLAUDE ACTION**:
+  - Review the A/B/C/D table and confirm the attribution gap assessment.
+  - Decide whether wiring the `MESSAGE_SENT` webhook (if it carries
+    campaign/step IDs) is worth the effort to close gap D.
+  - The classifier improvement (73.6% -> 62.6% unknown) is real but the
+    remaining 62.6% is still mostly "no pattern matched" (79.2% of
+    remaining). A model-based approach or a richer LinkedIn-specific
+    taxonomy would be needed to go further.
