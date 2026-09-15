@@ -56,7 +56,7 @@ skeleton carries `client` as a required field. The workspace module is a hard
 tenancy boundary. The client config loader (`src/clients.py`) accepts any
 valid slug and refuses only templates and reserved names.
 
-### FRICTION — six items, ranked by impact
+### FRICTION — eight items, ranked by impact
 
 **F1. `scripts/build_intake_batch.py:19` — hardcoded source CSV path**
 - `SOURCE = os.path.join(ROOT, "work", "Software_Agencies_All_Geo_cleaned - Sheet1.csv")`
@@ -65,27 +65,39 @@ valid slug and refuses only templates and reserved names.
 - **Impact:** The operator must edit the script or pass `--out` for the output; the source path has no override
 - **Fix:** Add `--source` argument; parameterise the output pattern on `--client`
 
-**F2. `src/icpstructural.py:558` — `--client` defaults to `"productive"`**
+**F2. `src/cadence.py:357-430` — TEMPLATES dict carries Productive-specific copy**
+- Four templates (`persona_pain`, `comparable_proof`, `comparable_proof_short`, `breakup`) contain verbatim Productive value-proposition text: "Utilisation and margin are known at the end of the month", "seeing project margin while the project is still running", "finance view and the delivery view stop being two different spreadsheets", "a project lands under margin"
+- These templates are used by the `productive_balanced_v1` cadence; a cadence with `generated: True` steps does not touch them
+- **Impact:** If Client #2 uses a cadence that references these template keys, their prospects receive Productive's pitch. If they use only generated steps, this is never reached.
+- **Fix:** Make templates configurable per client, or ensure Client #2's cadence uses `generated: True` for all steps
+
+**F3. `src/icp.py:138-155` — NEED_SIGNALS keyword dictionary is hardcoded**
+- Six keyword tuples (`resource_planning_need`, `profitability_need`, `utilization_need`, `time_tracking_need`, `operational_complexity`, `delivery_complexity`) contain English phrases tuned for project-management software buyers
+- These are not loaded from config; `settings(config)` overrides weights, penalties and thresholds but not the keyword vocabulary
+- **Impact:** A client selling a different product (HR software, accounting tools) would have their companies scored on irrelevant need-signal keywords. The scoring still runs, but the "need" dimension is silent for any product that is not agency tooling.
+- **Fix:** Add a `need_signals:` block to the client config that overrides the hardcoded dictionary
+
+**F4. `src/icpstructural.py:558` — `--client` defaults to `"productive"`**
 - An operator running `python -m src.icpstructural` without `--client` qualifies Productive's records
 - **Impact:** Silent wrong-client qualification if the flag is forgotten
 - **Fix:** Remove the default, make `--client` required (as `ingest.py` already does)
 
-**F3. `src/senderinventory.py:411` — `--workspace` defaults to `"productive"`**
+**F5. `src/senderinventory.py:411` — `--workspace` defaults to `"productive"`**
 - An operator running `python -m src.senderinventory` without `--workspace` reads Productive's sender estate
 - **Impact:** Silent wrong-workspace inventory if the flag is forgotten
 - **Fix:** Remove the default, require explicit `--workspace`
 
-**F4. `scripts/build_control_cohort.py:198` — `--client` defaults to `"productive"`**
+**F6. `scripts/build_control_cohort.py:198` — `--client` defaults to `"productive"`**
 - A control-cohort build without `--client` draws from Productive
 - **Impact:** Wrong-client cohort if the flag is forgotten
 - **Fix:** Remove the default
 
-**F5. `scripts/campaign_ready_funnel.py:504-505` — `--client` defaults to `"productive"`**
+**F7. `scripts/campaign_ready_funnel.py:504-505` — `--client` defaults to `"productive"`**
 - A funnel report without `--client` reports on Productive
 - **Impact:** Misleading report if the flag is forgotten
 - **Fix:** Remove the default
 
-**F6. `src/replywatch.py:97-125` — process-global workspace pin**
+**F8. `src/replywatch.py:97-125` — process-global workspace pin**
 - `expected_workspace("emailbison")` reads `BISON_WORKSPACE_ID` from `os.environ`
 - One credential, one workspace, one pin — the poller cannot serve two clients simultaneously
 - **Impact:** Client #2's replies cannot be polled at the same time as Productive's without a second process or a credential per client
@@ -156,6 +168,22 @@ a wrong default is visible; an assumption is not.
 **What it means:** Most state files are workspace-scoped through the workspace table, not through a `client` field on every row. The workspace IS the tenancy boundary. This is correct — a workspace maps 1:1 to a client config — but it means a bug in workspace resolution would cross tenants.
 
 **Risk:** Low. `workspaces.py` is described as "a hard tenancy boundary, not a filter" and the permission model checks at the service boundary.
+
+### T6. `outcomes.py` programmatic API loads the entire estate
+
+**Where:** `src/outcomes.py:359` (`observations()`), `src/outcomes.py:661` (`answer()`), `src/outcomes.py:729` (`answers()`), `src/outcomes.py:742` (`readiness()`).
+
+**What it means:** When called without pre-filtered rows, these functions load ALL records across ALL clients. The CLI entry point filters by `--client`, but any programmatic caller that does not pass pre-filtered rows gets a cross-client analysis. The observation rows DO carry `"client": rec.get("client")`, so the data is labeled, but it is not separated.
+
+**Risk:** Medium. A dashboard or API endpoint calling `answer("persona")` without a client filter would mix two clients' outcomes. The fix is to add a `client` parameter to `observations()` and propagate it.
+
+### T7. `events.py` cross-client record search
+
+**Where:** `src/events.py:341-389` (`match_record()`), `src/events.py:391-429` (`correspondents()`).
+
+**What it means:** Both functions search ALL records across ALL clients for matching contacts. The client check at line 481 only fires when the event carries a `client` field, which LinkedIn replies do not. A reply from a person who appears on two clients' records will stop both clients' outreach to that person.
+
+**Risk:** Low-to-medium. This is partly deliberate — the unattributed-reply stop (`inbound.py:128`) needs to search across clients to catch replies that cannot be attributed. But it means a shared contact across two clients causes both to be held, which is the correct safety behaviour for reply protection and a false positive for targeting.
 
 ---
 
@@ -256,11 +284,18 @@ writes this starter and a workspace row together.
 ## SUMMARY
 
 The production loop is client-parameterised end to end. The engine (`src/`)
-has two FRICTION defaults (`icpstructural.py` and `senderinventory.py`) and
-zero BLOCKING items. The scripts directory has three FRICTION defaults and
-one hardcoded path. The tenancy boundary is the workspace, and it holds.
+has four FRICTION items in code (`cadence.py` templates, `icp.py`
+need-signals, `icpstructural.py` CLI default, `senderinventory.py` CLI
+default) and zero BLOCKING items. The scripts directory has four FRICTION
+defaults and one hardcoded path. The tenancy boundary is the workspace, and
+it holds, with two additional cross-client data exposure paths in
+`outcomes.py` and `events.py` that should be reviewed before a second
+client shares the estate.
 
 Client #2 onboarding is a configuration and data exercise, not a code
-change. The six FRICTION items should be fixed before the first operator
+change. The eight FRICTION items should be fixed before the first operator
 runs a command for Client #2, because a forgotten `--client` flag will
-silently operate on Productive's records.
+silently operate on Productive's records, and the two hardcoded code items
+(`cadence.py` templates, `icp.py` need-signals) will silently inject
+Productive's vocabulary into Client #2's scoring and copy if their cadence
+or ICP model reaches them.
