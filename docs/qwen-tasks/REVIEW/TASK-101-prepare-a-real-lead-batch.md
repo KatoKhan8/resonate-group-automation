@@ -85,3 +85,74 @@ authorising if they enabled the write.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 8613d3c
+
+**TESTS:** `tests.test_fixture_hygiene` - 11/11 pass (PII guard green). The pipeline script `scripts/prepare_lead_batch.py` reads the snapshot and produces the batch and report. Run it and the numbers match the report.
+
+**FILES CHANGED:**
+- `scripts/prepare_lead_batch.py` - the pipeline script (new)
+- `docs/LEAD-BATCH-REPORT-101.md` - tracked report with funnel counts and every drop reason (new)
+- `work/batch-TASK-101.jsonl` - the batch file (gitignored, operational artefact)
+- `docs/qwen-tasks/RUNNING/TASK-101-prepare-a-real-lead-batch.md` - task moved from TODO
+
+**FUNNEL:**
+
+| Stage | Count | Drop |
+|-------|------:|-----:|
+| cohort_selected (economic_buyer, email) | 70 | - |
+| after_dedupe | 70 | 0 |
+| after_exclusion | 51 | -19 |
+| after_personalisation | 51 | 0 |
+| after_greeting_proof | 51 | 0 |
+| after_quality_gates | 26 | -25 |
+
+**Final batch: 26 leads.**
+
+**FINDINGS:**
+
+1. **The biggest drop is at exclusion (19 of 70, 27%).** All 19 are unverified emails: 12 unknown state, 6 accept_all_uncleared, 1 held. None are sendable. These contacts have not been through the verification waterfall, or the waterfall returned an inconclusive result. They CANNOT receive outreach without spending verification credits first.
+
+2. **The second biggest drop is at quality gates (25 of 51, 49%).** 23 have banned phrases in generated copy (overwhelmingly 'just checking in' in step li5). 2 have unsupported claims in em5 ('our previous discussions' when no prior contact is recorded). These are REAL failures in existing generated copy that need regeneration through the normal pipeline.
+
+3. **5 leads were fixed by punctuation normalisation** (curly apostrophes in LinkedIn notes). This is the same preprocessing `src/lint.py` applies before checking. They pass lint after normalisation.
+
+4. **3 leads have no cadence data at all.** They pass quality gates (nothing to fail) but need copy generation before they can receive outreach.
+
+5. **Zero duplicates found.** The 70 economic buyers are all distinct people by email and LinkedIn URL.
+
+6. **Zero greeting failures.** All 51 verified leads render correct greetings.
+
+7. **No structural diversity warnings** on the final 26. Industry spread: Advertising Services 15, Marketing & Advertising 6, Marketing Services 4, Business Consulting and Services 1. Angle spread: founder 15, operations 7, None 3, economic_buyer 1.
+
+8. **16 of 26 have at least one approved step.** The remaining 10 have generated copy that passes lint but has not been through the approval workflow.
+
+**OBSERVATIONS (with n):**
+- n=70: The economic_buyer cohort is the largest honest cohort (TASK-096).
+- n=19: Verification is the first gate that matters. 27% of the cohort has no verified email.
+- n=25: Banned phrases in generated copy are the second gate. 49% of verified leads have them.
+- n=23: 'just checking in' in step li5 is the dominant banned phrase. It appears in the LinkedIn close step.
+- n=5: Punctuation normalisation fixes 5 leads that would otherwise fail lint.
+- n=26: The final batch is 37% of the original cohort.
+
+**HYPOTHESES:**
+- The 'just checking in' in li5 comes from a template or generation pattern that used this phrase as a default LinkedIn close. Regenerating li5 for the 23 affected leads would recover most of them.
+- The 19 unverified contacts could be recovered by running them through the verification waterfall (spending credits). Whether that is worth it depends on the credit cost vs. the value of recovering 19 leads.
+
+**PROVEN LEARNINGS:**
+- (none that survive a sample-size objection on a single estate of 92 contacts)
+
+**RISKS:**
+- The batch file under `work/` holds real PII (names, emails, domains). It is gitignored and is an operational artefact. The tracked report hashes all identifiers.
+- The 26 leads have NOT been written to any provider. No HeyReach campaign has been populated. The operator decision to enable `heyreach.add_leads` is still owed.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Regenerate copy for the 25 leads that failed quality gates (fix 'just checking in' in li5, fix claims in em5).
+2. Generate copy for the 3 leads with no cadence data.
+3. Run verification on the 19 unverified contacts if credit budget allows.
+4. After regeneration, re-run the pipeline to get an updated batch count.
+5. Decide whether to enable `heyreach.add_leads` for the final batch.
