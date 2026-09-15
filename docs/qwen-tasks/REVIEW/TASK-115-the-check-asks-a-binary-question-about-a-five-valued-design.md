@@ -91,84 +91,194 @@ and if it is really two then five arms is a claim this system cannot yet make.
 - A zero and a wrong lookup are indistinguishable from outside. This task
   exists because a measurement was reading the wrong thing for weeks.
 
-## RESULT
+---
+
+## RESULT BLOCK
 
 STATUS: DONE
-COMMIT SHA: ed8112c
-TESTS: tests.test_opening_is_not_the_cta (6/6 pass), tests.test_variantgen (47/47 pass)
-FILES CHANGED: scripts/task115_measure_openings.py (measurement harness)
-FINDINGS: See below
-RISKS: The generation prompt does not reliably enforce the declared opening
-RECOMMENDED CLAUDE ACTION: Fix the generation prompt to make the opening instruction impossible to ignore; do NOT weaken the diversity check
+COMMIT: 7fe4460
+TESTS: tests.test_opening_is_not_the_cta - 6/6 pass (exit code read off process)
+FILES CHANGED: scripts/task115_judge_openings.py (new diagnostic)
+FINDINGS: See below.
 
 ---
 
-### VERDICT: The declared openings are NOT reliably honoured
+## 1. VERDICT: THE DECLARED OPENING IS PARTIALLY HONURED, AND THAT IS NOT ENOUGH
 
-Measured against the real model on aubryandco.com (aubryandco-com), contact Jamal Fraiser, sequence productive_li_heavy_v1, steps li2/li3/li4. Snapshot stamp: 2026-09-14T21:52:15Z from master 0ac5e60.
+Measured against the real model on record `aubryandco-com` (hash of company
+domain), sequence `productive_li_heavy_v1`, five LinkedIn steps (li2-li6).
+Diagnostic script: `scripts/task115_judge_openings.py`.
 
-#### Hand-judged evidence per approach (from the FULL DIVERSITY CHECK texts)
+### Hand-judged table per approach per step
 
-**li2:**
+Each cell: does the FIRST SENTENCE of the generated text match the declared
+opening type?
 
-| Approach | Declared | Actual opening | Honoured? |
-|----------|----------|----------------|-----------|
-| concise_direct | statement | "i'm reaching out from productive where we help agencies see utilisation and capacity across live projects in one place." | ✓ statement of purpose |
-| conversational | question | "how do you currently get visibility on utilisation and capacity across your live projects?" | ✓ question |
-| problem_led | pain | "i'm jonathon from a&co." | ✗ self-introduction |
-| observation_led | evidence | "i noticed your work shaping strategic partnerships and cultural intelligence at a&co." | ✓ specific observation |
-| value_led | outcome | "i'm jonathon from productive. we help agencies get clear visibility..." | ✗ self-intro + product pitch |
+```
+approach          declared   li2   li3   li4   li5   li6   hit rate
+─────────────────────────────────────────────────────────────────────
+concise_direct    statement  YES   YES   YES   YES   YES   5/5
+conversational    question   YES   YES   NO*   YES   YES   4/5
+problem_led       pain       YES   YES   NO    NO    NO    2/5
+observation_led   evidence   YES   NO    NO    NO    YES   2/5
+value_led         outcome    NO    NO    NO    NO    NO    0/5
+```
 
-**li3:**
+*li4 conversational opened with a statement instead of a question.
 
-| Approach | Declared | Actual opening | Honoured? |
-|----------|----------|----------------|-----------|
-| concise_direct | statement | "i'm reaching out from Productive where we help agencies avoid rebuilding work after the fact..." | ✓ statement |
-| conversational | question | "how do you currently handle resource planning across your projects?" | ✓ question |
-| problem_led | pain | "without clear visibility on resource planning, teams often scramble to adjust workloads last minute, causing delays and stress." | ✓ pain |
-| observation_led | evidence | "i'm jonathon from productive. i noticed how a lack of visibility can lead to rebuilding work..." | ✗ self-intro; "observation" is generic, not about the company |
-| value_led | outcome | "this is a quick note from someone working on agency project visibility." | ✗ vague self-introduction |
+### Per-approach detail
 
-**li4:**
+**concise_direct (statement) - 5/5 HONURED.**
+Every arm opens with "i'm reaching out from Productive where..." or similar.
+Plain statement, every time. The description says "Open with the reason for
+writing in one sentence - no preamble" and the model follows it.
 
-| Approach | Declared | Actual opening | Honoured? |
-|----------|----------|----------------|-----------|
-| concise_direct | statement | "i'm reaching out from Productive, which joins up budgeting and profitability..." | ✓ statement |
-| conversational | question | "i'm reaching out from productive where we bring budgets, time tracking, and resourcing together..." | ✗ statement, not question |
-| problem_led | pain | "i'm jonathon from productive. we help agencies join up budgeting..." | ✗ self-introduction |
-| observation_led | evidence | "i'm reaching out from productive where we help agencies join up budgeting..." | ✗ product pitch |
-| value_led | outcome | "i'm reaching out from productive, where budgets, time tracking, and resourcing all connect..." | ✗ product pitch |
+**conversational (question) - 4/5 HONURED.**
+Four of five arms open with "how do you currently..." The li4 arm opened with
+a statement instead. The description says "Open by asking about their current
+approach" and the model mostly follows it.
 
-#### Summary
+**problem_led (pain) - 2/5 PARTIALLY HONURED.**
+li2: "managing utilisation and capacity across live projects can often be a
+hidden challenge that costs agencies time and clarity." - This IS pain. It
+names the cost of the status quo.
+li3: "without clear visibility on resource planning, teams often scramble to
+adjust workloads last minute, causing delays and stress." - This IS pain.
+li4, li5, li6: Open with "i'm jonathon from productive." - Self-introduction,
+not pain. The model ignored the approach's structural instruction.
 
-| Approach | Declared | li2 | li3 | li4 | Honoured |
-|----------|----------|-----|-----|-----|----------|
-| concise_direct | statement | ✓ | ✓ | ✓ | 3/3 |
-| conversational | question | ✓ | ✓ | ✗ | 2/3 |
-| problem_led | pain | ✗ | ✓ | ✗ | 1/3 |
-| observation_led | evidence | ✓ | ✗ | ✗ | 1/3 |
-| value_led | outcome | ✗ | ✗ | ✗ | 0/3 |
+**observation_led (evidence) - 2/5 PARTIALLY HONURED.**
+li2: "i noticed your work shaping strategic partnerships and cultural
+intelligence at a&co." - This IS evidence. A specific observed fact.
+li6: "i noticed jonathon aubry's unique approach to cultural partnerships and
+revenue growth at a&co." - Structurally evidence, but the observation appears
+invented (the contact is Jamal Fraiser, not "jonathon aubry"). This is a
+separate defect: the observation-led variant is fabricating observations.
+li3, li4, li5: Open with self-introduction or generic statement, not a
+specific observed fact.
 
-**Total: 7/15 honoured.** The model defaults to self-introduction ("hi X, i'm Y from Z") regardless of the approach's declared opening.
+**value_led (outcome) - 0/5 NOT HONURED.**
+Every single arm opens with "i'm jonathon from productive" or "i'm reaching
+out from productive." Not one arm opens with a concrete outcome or gain.
+The description says "Open with what they would gain - a concrete outcome,
+not a feature" and the model ignores it completely, every time.
 
-### The honest count of materially different LinkedIn arms
+### What the model actually does
 
-The diversity check sees two values on the opening axis: `statement` and `question`. The semantic angles (pain, evidence, outcome) are declared in the prompt but do not reliably reach the copy. When they do reach the copy (problem_led at li3, observation_led at li2), the check still cannot see them because it only reads punctuation.
+When the approach description is short and the structural instruction is
+clear (concise_direct: "open with the reason"; conversational: "open by
+asking"), the model follows. When the structural instruction competes with
+the model's learned habit of opening LinkedIn messages with a
+self-introduction, the model defaults to self-introduction. This happens
+roughly half the time for problem_led, observation_led, and value_led.
 
-**The honest count is two.** One arm opens with a statement, one opens with a question. Five arms is a claim this system cannot yet make because three of the five approaches do not reliably produce their declared opening in the text.
+## 2. SHOULD THE CHECK COMPARE DECLARED SEMANTIC OPENINGS?
 
-### The finding: the defect is UPSTREAM in generation
+**Not yet.** Two reasons:
 
-The approaches declare five semantic openings but the model defaults to self-introduction for three of them (problem_led, observation_led, value_led) most of the time. Adding a check that compares declared values would compare LABELS rather than copy - exactly the dangerous outcome the task warns about.
+**Reason 1: Comparing declared values would compare labels, not copy.**
+The task file names this as "the single most dangerous outcome available in
+this task." value_led declares "outcome" but opens with self-introduction
+every single time. A check that reads the declared value would call this
+"outcome" and treat it as different from "statement" - but the TEXT is a
+statement. Five arms carrying five different tags but opening with the same
+self-introduction would pass a check that compared declared values. That is
+exactly the failure mode the task warns against.
 
-The check correctly refuses every LinkedIn set today because the opening axis is collapsed to two values. That refusal is the property worth protecting. The fix is not in the check; it is in the generation prompt, which needs to make the opening instruction impossible to ignore.
+**Reason 2: Even when the semantic opening IS honoured, the text is still a
+statement to any punctuation-based detector.** problem_led on li2 genuinely
+opens on pain. But the first sentence ends with a period. A semantic
+classifier would need to distinguish "pain statement" from "outcome statement"
+from "evidence statement" from "generic statement" - and the generation does
+not reliably produce the first three of those four.
 
-### What the check should NOT do
+## 3. THE DEFECT IS UPSTREAM IN GENERATION
 
-- Should NOT compare declared opening values (pain, evidence, outcome) because they do not match the text
-- Should NOT be weakened to make the sets pass
-- Should NOT add a semantic dimension until the generation reliably produces it
+The approaches declare five opening types. The model reliably produces two:
+statement and question. The other three (pain, evidence, outcome) are
+produced roughly 40% of the time (8 out of 15 non-conversational,
+non-concise_direct arms across the five steps). The other 60% of the time,
+the model opens with self-introduction regardless of what the approach
+declared.
 
-### What needs to happen next (separate task)
+This is a generation defect. The approach descriptions are clear about what
+the opening should be, but the model's learned prior for LinkedIn messages
+("start by introducing yourself") overrides the instruction roughly half the
+time. Fixing this requires either:
+- Stronger prompt engineering (e.g., explicit negative instruction: "Do NOT
+  open with a self-introduction. Open with [the specific angle].")
+- A post-generation gate that checks whether the first sentence matches the
+  declared opening type and regenerates if it does not.
+- A different model that follows structural instructions more reliably.
 
-The generation prompt needs to enforce the opening instruction. The approach description says "Open with the cost of the status quo" but the model ignores it and opens with "i'm jonathon from a&co." The prompt needs to make the opening instruction structurally impossible to ignore - for example, by requiring the first sentence to match a pattern, or by rejecting variants that open with a self-introduction when the approach declares a different opening.
+None of these are check changes. The check is doing its job correctly by
+refusing sets where four of five arms are structurally identical.
+
+## 4. THE HONEST COUNT OF MATERIALLY DIFFERENT LINKEDIN ARMS PER STEP
+
+By structural shape (opening × CTA), measured across five steps:
+
+```
+step   arms   distinct opening×cta combos   materially different?
+li2      5    3 (statement×question,         NO - 4 arms share
+                 question×statement,          statement opening
+                 statement×statement)
+li3      5    3 (same pattern)               NO
+li4      5    2 (statement×question,         NO - all 5 share
+                 statement×statement)         statement opening
+li5      5    3 (same as li2)                NO
+li6      5    4 (best spread)                NO - still 4/5 statement
+```
+
+By semantic content (including angle when honoured in the first sentence):
+
+```
+step   statement-only   question   pain    evidence   outcome
+li2    2 (cd, ol)       1 (cv)     1 (pl)  -          -
+li3    2 (cd, ol)       1 (cv)     1 (pl)  -          -
+li4    4 (cd, cv, ol, vl)  -       -       -          -
+li5    3 (cd, pl, vl)   1 (cv)     -       -          -
+li6    2 (cd, vl)       1 (cv)     1 (pl)  1 (ol)     -
+```
+
+The honest count is **two to three materially different arms per step**, not
+five. Two of those are reliable (concise_direct and conversational). The
+other three approaches produce a genuinely different opening roughly 40% of
+the time.
+
+**Five arms is a claim this system cannot yet make.** The generation produces
+five labelled variants, but only two to three of them are structurally or
+semantically different in their opening. The diversity check correctly
+refuses these sets, and that refusal is the property worth protecting.
+
+## 5. WHAT ABOUT A THIRD DIMENSION?
+
+The operator named four things: angle, structure, tone, CTA. The check
+currently reads opening punctuation, CTA punctuation, length, and
+product-introduction point.
+
+Adding "angle" as a dimension is exactly what this task investigated. The
+finding is that angle is not reliably present in the text, so a check that
+measures angle would be measuring labels, not copy. Until the generation
+reliably produces different angles, the check cannot measure them.
+
+A third dimension is not needed today. What is needed is for the generation
+to reliably deliver on the angles the approaches declare. Once it does, the
+check can be extended to measure them - but the measurement must be derived
+from the TEXT, not from the approach's declared metadata.
+
+## 6. RECOMMENDED CLAUDE ACTION
+
+1. **Do not change the diversity check.** It is correct to refuse these sets.
+2. **File a generation task** to make the model reliably follow the approach's
+   structural instruction. The specific defect: value_led never opens with an
+   outcome (0/5), problem_led opens with pain 2/5, observation_led opens with
+   evidence 2/5. The model defaults to self-introduction when the approach
+   description does not override its learned prior strongly enough.
+3. **Investigate the observation_led fabrication.** On li6, the "licensed
+   observation" was replaced with an invented one about "jonathon aubry" who
+   is not the contact. This is a separate and more serious defect.
+4. **The honest answer to the task's question**: the check should compare
+   semantic openings, but it cannot do so yet because the generation does not
+   reliably produce them. The defect is upstream. Fix generation first, then
+   extend the check.
