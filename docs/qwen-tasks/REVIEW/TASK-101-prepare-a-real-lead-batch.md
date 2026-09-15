@@ -90,7 +90,7 @@ authorising if they enabled the write.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** a0b5343
+**COMMIT SHA:** 3c76909
 
 **TESTS:** Pipeline script `scripts/prepare_lead_batch.py` runs end-to-end. Fixture hygiene test (`tests.test_fixture_hygiene`) confirms no PII in the tracked report. Pre-existing failures in TASK-120 are unrelated.
 
