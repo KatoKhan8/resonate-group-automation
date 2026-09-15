@@ -77,7 +77,7 @@ LEARNINGS empty unless something genuinely survives.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (pending)
+**COMMIT SHA:** 42e3434
 
 **TESTS:** Read-only analysis script. No code changes to src/. Script at
 `scripts/subject_analysis.py` is reproducible.
