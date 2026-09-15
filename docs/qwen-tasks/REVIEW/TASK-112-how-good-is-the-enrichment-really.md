@@ -78,3 +78,75 @@ an explicit list of fields that must NOT be used as a cohort key.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** c2334c7
+
+**TESTS:**
+- `tests.test_invariants`: 80/80 passed (4.2s)
+- `tests.test_enrich`: 49/49 passed (11.0s)
+- Full suite not run (timed out at 600s; known to take ~865s). Invariant and
+  enrichment modules are the ones this task touches.
+
+**FILES CHANGED:**
+- `docs/ENRICHMENT-QUALITY-2026-09-15.md` — the deliverable: per-field verdict
+  table, correctness findings, staleness summary, cohort-key exclusions.
+- `scripts/measure_enrichment_quality.py` — the measurement script. Read-only,
+  no provider calls, reads `work/queue.snapshot.jsonl` directly.
+
+**FINDINGS:**
+
+1. **The task's pre-stated coverage numbers were wrong.** employee_range is
+   8.3% (25/300), not 19%. Specialties is 54.7% (164/300), not 73%. The
+   earlier numbers were not reproduced against this snapshot.
+
+2. **headcount_signal is NOT a headcount.** It is the number of LinkedIn
+   profiles ContactOut found at the domain (from the free people-count API).
+   `enrich.py` line 923: `headcount_signal=count.get("profiles")`. 55 of 261
+   records where both `headcount_signal` and `employees` exist diverge by
+   more than 50%. This is expected — they measure different things — but
+   using either as "the headcount" without naming which is a correctness
+   error.
+
+3. **281/300 records have `rec.company` as a domain string**, not a company
+   name. Personalising with `rec.company` inserts a domain where a name is
+   expected. The real name lives at `company_facts.name` when populated.
+
+4. **Research freshness is broken.** 661/695 items (95%) have
+   `freshness_bucket="unknown"` despite having `retrieved_at` timestamps.
+   The freshness scoring pipeline is not producing usable buckets.
+
+5. **sizing is null everywhere.** 0/300 records. Confirmed. The correct
+   lookup paths are `company_facts.industry` and
+   `company_facts.employees` / `company_facts.headcount_signal`.
+
+6. **Six fields must NOT be used as cohort keys:** employee_range (8.3%
+   coverage), subvertical (82.7% UNKNOWN), delivery_model (94.3% UNKNOWN),
+   rec.company (93.7% domain strings), headcount_signal (not a headcount),
+   employees as exact number (25/261 are band lower bounds).
+
+7. **The personalisable cohort is ~33 records**, not 113. Of 113 ICP-
+   qualified records, 74 have contacts, 54 have sendable contacts, and only
+   33 have messaging angles.
+
+8. **All 25 recovered records have firmographics from 2026-03-20** (178 days
+   old). The data has not been refreshed.
+
+**RISKS:**
+- The research freshness pipeline needs investigation — 95% unknown is not
+  a measurement, it is a broken pipe.
+- The 5 gmail.com contacts passed enrichment without being flagged as
+  personal addresses. The `FREE_MAIL` guard in `enrich.same_company` is an
+  identity check, not an address-quality filter.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Review the per-field verdict table in `docs/ENRICHMENT-QUALITY-2026-09-15.md`.
+- The cohort-key exclusion list is the most actionable output: any cohort
+  work (TASK-096) or batch work (TASK-101) that keys on one of those six
+  fields will produce wrong groups silently.
+- The research freshness pipeline is a separate defect worth a task.
