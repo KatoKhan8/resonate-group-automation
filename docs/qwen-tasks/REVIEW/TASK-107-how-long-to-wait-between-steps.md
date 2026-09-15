@@ -70,3 +70,68 @@ that claim is worth either confirming or correcting.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+---
+
+## RESULT BLOCK
+
+STATUS: COMPLETE
+COMMIT SHA: cc93c8a
+TESTS: N/A (analysis task, no code change to test)
+FILES CHANGED:
+  - scripts/task107_delay_analysis.py (new, collection + analysis script)
+  - docs/DELAY-ANALYSIS-2026-09-15.md (new, deliverable report)
+  - docs/qwen-tasks/RUNNING/TASK-107-how-long-to-wait-between-steps.md (task file)
+
+FINDINGS:
+
+1. **EmailBison delay distribution (PROVIDER FACT, n=121 step definitions):**
+   - 3 days: 40.5% of steps (49/121)
+   - 5 days: 19.0% (23/121)
+   - 4 days: 11.6% (14/121)
+   - 2 days: 11.6% (14/121)
+   - 1 day: 10.7% (13/121)
+   - 7+ days: 6.6% (8/121)
+   - Most campaigns end with a 1-day gap before the final step.
+
+2. **HeyReach delay distribution (PROVIDER FACT, n=1,218 nodes across 83 campaigns):**
+   - 5 days: 269 nodes (largest cluster)
+   - 1 day: 127 nodes
+   - 10 days: 122 nodes
+   - 0 hours: 123 nodes (immediate follow-on actions)
+   - 3 hours: 35 nodes
+   - 3 days: 41 nodes
+   - Connection campaigns (565xxx series): uniform +0H, +0H, +5D, +5D pattern
+   - Production campaign 599020: +0H, +3H, +3H, +3D, +3H, +2D, +1D, +5D, +3H, +5D, +7D, +3D, +2D, +7D
+
+3. **Time-to-reply IS available. TASK-059 was WRONG.**
+   - `date_received` present on 100% of 1,740 reply rows (PROVIDER FACT)
+   - `sent_at` present on 100% of 1,476 scheduled email rows (PROVIDER FACT)
+   - `scheduled_email_id` present on 99.8% of reply rows (PROVIDER FACT)
+   - The join works: 1 human reply matched in our sample (1.3h response time at step 6)
+   - The sample is too small for a distribution (1,476 sampled emails vs 238K+ total sends)
+   - The data was ALWAYS there. The earlier report did not perform the join.
+
+4. **HeyReach time-to-reply (PROVIDER FACT, n=5,291 from existing analysis):**
+   - Median: 6.1h
+   - P75: 33.3h (1.4 days)
+   - Mean: 41.1h (right-skewed)
+   - A 3-day (72h) follow-up arrives AFTER 75% of replies
+
+RISKS:
+- EmailBison time-to-reply sample is n=1. A larger scheduled-email sample or
+  targeted fetch of replied-to emails would give a proper distribution.
+- The HeyReach time-to-reply data is from a previous analysis (TASK-058) and
+  covers LinkedIn, not email. Email and LinkedIn reply timing may differ.
+- No causal claim: configured delay vs reply rate requires a controlled
+  experiment, not a distribution.
+
+RECOMMENDED CLAUDE ACTION:
+- Accept the report as the delay baseline.
+- If a proper EmailBison time-to-reply distribution is needed, run a targeted
+  fetch: for each human reply in the full feed, GET the scheduled email it
+  references. ~1,000 API calls for the known reply set, vs 18,000 for the
+  full feed walk.
+- The finding that 3-day follow-ups arrive after 75% of replies is actionable
+  for cadence design but is not yet a proven learning (needs a controlled
+  comparison of reply rates at different delay values).
