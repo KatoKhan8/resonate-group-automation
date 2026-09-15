@@ -78,7 +78,7 @@ experiment design that would convert the second into the first.
 
 **STATUS:** REVIEW
 
-**COMMIT SHA:** d0e7ae8
+**COMMIT SHA:** 73a2b9e
 
 **TESTS:** No code changes to test. This is a measurement and analysis task.
 Verification script `scripts/task105_verify_control_group.py` walks all 22
