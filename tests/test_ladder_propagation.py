@@ -490,5 +490,71 @@ class TestFingerprintStoredOnGeneration(LadderPropagationTestBase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestStaleStepDetectedBeforeGates(LadderPropagationTestBase):
+    """TASK-128: ladder staleness is checked BEFORE lint/claims/quality.
+
+    A step that is stale (no fingerprint or wrong fingerprint) AND fails lint
+    must be marked as ladder-stale, not as lint-failure. Otherwise the impact
+    report counts zero stale steps on an estate full of them, because the
+    lint check fires first and the ladder check is never reached.
+    """
+
+    def test_stale_email_failing_lint_is_marked_stale(self):
+        """An email with wrong fingerprint and em_dash is ladder-stale.
+
+        This is the core TASK-128 fix: the ladder staleness check now runs
+        BEFORE the lint check, so a step that is stale AND fails lint is
+        correctly marked as ladder-stale (not lint-failure). The LinkedIn
+        note path uses identical logic and is covered by the same code path.
+        """
+        c = _sendable_contact(name="Sarah")
+        # A body with em_dash (fails lint) and wrong ladder fingerprint (stale)
+        body_with_em_dash = ("Sarah, this is a test body with an em—dash "
+                             "that fails lint and it needs to be long enough "
+                             "to pass the word count check so we get past "
+                             "that gate and reach the ladder check to prove "
+                             "the ladder check fires first when the step is "
+                             "stale and that is the whole point of this test "
+                             "case for task one twenty eight")
+        rec = {
+            "id": "test-sarah",
+            "state": "drafted",
+            "lane": "domains",
+            "client": "productive",
+            "domain": "example.com",
+            "company": "Example",
+            "company_facts": {"name": "Example", "employees": 50,
+                              "email_domain": "example.com"},
+            "contacts": [c],
+            "hook": "test hook",
+            "qualification": {"icp": "approved"},
+            "cadence": {
+                lint.contact_key(c): {
+                    "em1": {
+                        "channel": "email",
+                        "generated": True,
+                        "subject": "Test subject",
+                        "body": body_with_em_dash,
+                        "ladder_fingerprint": "wrong_fingerprint",
+                    },
+                },
+            },
+        }
+        seq = _sequence()
+        ops = generate.plan(rec, regen_stale_ladder=True)
+        # The op should be marked as ladder_stale, NOT as lint-failure
+        stale_ops = [o for o in ops if o.get("ladder_stale")]
+        self.assertEqual(len(stale_ops), 1,
+                         f"Expected 1 ladder-stale op, got {len(stale_ops)}. "
+                         f"Ops: {ops}")
+        self.assertEqual(stale_ops[0]["day"], "em1")
+        self.assertIn("ladder that has since changed", stale_ops[0]["why"])
+        # Verify it's NOT marked as lint-failure
+        lint_ops = [o for o in ops if "fails lint" in o.get("why", "")]
+        self.assertEqual(len(lint_ops), 0,
+                         f"Expected 0 lint-failure ops, got {len(lint_ops)}. "
+                         f"The ladder check should fire first.")
+
+
 if __name__ == "__main__":
     unittest.main()

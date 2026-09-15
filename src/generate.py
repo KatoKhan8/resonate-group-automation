@@ -716,6 +716,36 @@ def plan(rec, client=None, campaign=None, regen_stale_ladder=False):
                                        f"{spec['key']} note",
                                 "contact": c.get("name"), "day": spec["key"]})
                     continue
+                # LADDER STALENESS FIRST (TASK-128). A step whose ladder
+                # fingerprint does not match the current ladder was generated
+                # against a brief that no longer exists. This check MUST come
+                # before lint/claims/quality, because a stale step may also
+                # fail those gates (e.g., em_dash from an older ladder), and
+                # if the lint check fires first the ladder staleness is never
+                # reached - so the impact report counts zero stale steps on
+                # an estate full of them. Regenerating against the current
+                # ladder fixes both the staleness and the lint failure at
+                # once, so reporting ladder-stale is the right op.
+                if regen_stale_ladder:
+                    has_fp = bool(note.get("ladder_fingerprint"))
+                    if ladder_stale(note, spec["key"], sequence=sequence):
+                        ops.append({"step": "linkedin_note",
+                                    "why": f"{c['name']}'s {spec['key']} note "
+                                           f"was generated against a ladder "
+                                           f"that has since changed",
+                                    "contact": c.get("name"),
+                                    "day": spec["key"],
+                                    "ladder_stale": True})
+                        continue
+                    if not has_fp:
+                        ops.append({"step": "linkedin_note",
+                                    "why": f"{c['name']}'s {spec['key']} note "
+                                           f"has no ladder fingerprint "
+                                           f"(predates TASK-083)",
+                                    "contact": c.get("name"),
+                                    "day": spec["key"],
+                                    "ladder_stale": True})
+                        continue
                 # A NOTE THAT DOES NOT PASS IS NOT A NOTE. The same defect
                 # the email branch fixed: this asked only whether a note
                 # EXISTED, so a stored note that fails the gates counted as
@@ -775,31 +805,6 @@ def plan(rec, client=None, campaign=None, regen_stale_ladder=False):
                                        f"({', '.join(note_repeats)})",
                                 "contact": c.get("name"), "day": spec["key"]})
                     continue
-                # LADDER STALENESS (TASK-083). OPT-IN: only when the flag is
-                # set. A step whose ladder fingerprint does not match the
-                # current ladder was generated against a brief that no longer
-                # exists. Without the flag, plan returns exactly what it
-                # always returned - the check does not fire.
-                if regen_stale_ladder:
-                    has_fp = bool(note.get("ladder_fingerprint"))
-                    if ladder_stale(note, spec["key"], sequence=sequence):
-                        ops.append({"step": "linkedin_note",
-                                    "why": f"{c['name']}'s {spec['key']} note "
-                                           f"was generated against a ladder "
-                                           f"that has since changed",
-                                    "contact": c.get("name"),
-                                    "day": spec["key"],
-                                    "ladder_stale": True})
-                        continue
-                    if not has_fp:
-                        ops.append({"step": "linkedin_note",
-                                    "why": f"{c['name']}'s {spec['key']} note "
-                                           f"has no ladder fingerprint "
-                                           f"(predates TASK-083)",
-                                    "contact": c.get("name"),
-                                    "day": spec["key"],
-                                    "ladder_stale": True})
-                        continue
         # EMAIL DRAFTS STAY BEHIND EMAIL VERIFICATION. CLAUDE.md: no email is
         # generated for an unverified address, and that rule is untouched -
         # only the LinkedIn note moved out from behind it.
@@ -814,6 +819,32 @@ def plan(rec, client=None, campaign=None, regen_stale_ladder=False):
                             "why": f"{c['name']} has no {spec['key']} email",
                             "contact": c.get("name"), "day": spec["key"]})
                 continue
+            # LADDER STALENESS FIRST (TASK-128). Same reason as the LinkedIn
+            # path: a stale step may also fail lint/claims/quality, and if
+            # those gates fire first the ladder staleness is never reached.
+            # The impact report counts zero stale steps on an estate full of
+            # them. Regenerating against the current ladder fixes both the
+            # staleness and the gate failure at once.
+            if regen_stale_ladder:
+                has_fp = bool(step.get("ladder_fingerprint"))
+                if ladder_stale(step, spec["key"], sequence=sequence):
+                    ops.append({"step": "draft",
+                                "why": f"{c['name']}'s {spec['key']} email "
+                                       f"was generated against a ladder "
+                                       f"that has since changed",
+                                "contact": c.get("name"),
+                                "day": spec["key"],
+                                "ladder_stale": True})
+                    continue
+                if not has_fp:
+                    ops.append({"step": "draft",
+                                "why": f"{c['name']}'s {spec['key']} email "
+                                       f"has no ladder fingerprint "
+                                       f"(predates TASK-083)",
+                                "contact": c.get("name"),
+                                "day": spec["key"],
+                                "ladder_stale": True})
+                    continue
             # A DRAFT THAT DOES NOT PASS IS NOT A DRAFT. This asked only
             # whether a body EXISTED, so a stored draft that fails lint was
             # counted as work already done - and nothing else regenerates
@@ -876,30 +907,6 @@ def plan(rec, client=None, campaign=None, regen_stale_ladder=False):
                                    f"({', '.join(quality_out)})",
                             "contact": c.get("name"), "day": spec["key"]})
                 continue
-            # LADDER STALENESS (TASK-083). Same shape as the LinkedIn check
-            # above. OPT-IN: only when the flag is set. A step whose ladder
-            # fingerprint does not match the current ladder was generated
-            # against a brief that no longer exists.
-            if regen_stale_ladder:
-                has_fp = bool(step.get("ladder_fingerprint"))
-                if ladder_stale(step, spec["key"], sequence=sequence):
-                    ops.append({"step": "draft",
-                                "why": f"{c['name']}'s {spec['key']} email "
-                                       f"was generated against a ladder "
-                                       f"that has since changed",
-                                "contact": c.get("name"),
-                                "day": spec["key"],
-                                "ladder_stale": True})
-                    continue
-                if not has_fp:
-                    ops.append({"step": "draft",
-                                "why": f"{c['name']}'s {spec['key']} email "
-                                       f"has no ladder fingerprint "
-                                       f"(predates TASK-083)",
-                                "contact": c.get("name"),
-                                "day": spec["key"],
-                                "ladder_stale": True})
-                    continue
 
     # SET REGENERATION DETECTION.
     #
@@ -1873,11 +1880,30 @@ def main(argv=None):
     # the per-record detail. Running this revokes approvals (correct but
     # expensive), so the operator sees the price before it is paid.
     if a.regen_stale_ladder:
+        stale_steps_count = result['stale_steps']
+        stale_with_approval_count = result['stale_with_approval']
         print(f"\nLADDER STALENESS REPORT (TASK-083):")
         print(f"  steps to re-plan:              "
-              f"{result['stale_steps']}")
+              f"{stale_steps_count}")
         print(f"  approvals that would be "
-              f"revoked: {result['stale_with_approval']}")
+              f"revoked: {stale_with_approval_count}")
+        # TASK-128: distinguish "no stale steps" from "stale steps I will not
+        # touch". An operator reading "0 steps to re-plan" concludes there is
+        # nothing to decide. But if there are stale steps protected by
+        # approval, the operator MUST decide: revoke and regenerate, or leave
+        # them. These are different answers to the same question, and they
+        # previously printed identically.
+        if stale_steps_count == 0:
+            print(f"  (no ladder-stale steps found)")
+        elif stale_with_approval_count > 0:
+            protected = stale_with_approval_count
+            will_regen = stale_steps_count - stale_with_approval_count
+            print(f"  {protected} stale step(s) protected by approval "
+                  f"(will not regenerate without explicit revocation)")
+            if will_regen > 0:
+                print(f"  {will_regen} stale step(s) will be regenerated")
+        else:
+            print(f"  all {stale_steps_count} stale step(s) will be regenerated")
         if not a.live:
             print(f"  (dry run - nothing was changed)")
         print()
