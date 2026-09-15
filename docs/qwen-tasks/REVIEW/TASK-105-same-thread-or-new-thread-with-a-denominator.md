@@ -78,7 +78,7 @@ experiment design that would convert the second into the first.
 
 **STATUS:** REVIEW
 
-**COMMIT SHA:** 78b814d
+**COMMIT SHA:** d0e7ae8
 
 **TESTS:** No code changes to test. This is a measurement and analysis task.
 Verification script `scripts/task105_verify_control_group.py` walks all 22
@@ -120,8 +120,9 @@ independently confirms the control-group finding.
 - 22 campaigns in the estate (n=22), 20 with accessible step data
 - 5 control campaigns at step 2 (n=5): 262-266, all archived, 3,163 sends
 - 9 treatment campaigns at step 2 (n=9): 274, 327-335, 352, 235,651 sends
-- The control campaigns' reply data is not accessible in the API's reply
-  feed window (observed: 0 control replies in 750+ feed rows collected)
+- The control campaigns' reply data is CONFIRMED outside the API's reply
+  feed window. Feed covers June-Sept 2026, only contains campaigns 327,
+  328, 352. per_page is IGNORED (15 rows/request always).
 
 **HYPOTHESES:**
 - The control campaigns (262-266) were the estate's earliest and may have
