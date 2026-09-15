@@ -72,3 +72,73 @@ LEARNINGS empty unless something genuinely survives.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** (pending)
+
+**TESTS:** Read-only analysis script. No code changes to src/. Script at
+`scripts/subject_analysis.py` is reproducible.
+
+**FILES CHANGED:**
+- `docs/SUBJECT-ANALYSIS-2026-09-15.md` — the deliverable
+- `scripts/subject_analysis.py` — the analysis script (read-only at providers)
+- `docs/qwen-tasks/RUNNING/TASK-104-what-subject-lines-actually-did.md` — this file
+
+**FINDINGS:**
+
+1,037 sent rows sampled across 9 campaigns (of ~236k total estate sends).
+332 inbound replies collected from the reply feed (80 pages, cursor paginated).
+Only 4 of 1,037 sampled sent rows appear in the reply feed — the feed covers
+a different slice of the estate.
+
+**Shape distribution (n=1,037 sent rows with a subject):**
+- statement: 838 (80.8%)
+- question: 142 (13.7%)
+- reply_prefix: 57 (5.5%)
+
+**Reply rates by shape (provider counter, 2 total replies in sample):**
+- statement: 2/838 = 0.24%
+- question: 0/142 = 0.00%
+- reply_prefix: 0/57 = 0.00%
+
+**Re: and threading:** 57/57 (100%) of reply_prefix subjects have
+`thread_reply=True`. PROVIDER FACT. Re: is a threading mechanism, not an
+independent subject choice.
+
+**Subject length:** mean 29.8 chars, median 26. The 2 emails that got
+replies (provider counter) were 24.5 chars average — no meaningful difference
+from the 1,035 that did not (n=2, not a finding).
+
+**Merge-field rendering:** 37/1,037 subjects show broken merge fields
+(leading spaces, orphaned possessives from empty {COMPANY} renders).
+
+**Generated vs sent:** The queue snapshot (300 records) generated 58%
+statement / 42% question. The sent population is 81% statement / 14%
+question / 5% reply_prefix — the sent estate is dominated by older
+campaigns (274, 327-335) whose templates were statement-heavy.
+
+**PROVEN LEARNINGS: Empty.** 2 replies across 1,037 rows cannot distinguish
+shape effects from noise. The Re:/threading observation is structural
+(100% agreement) but based on n=57 and stated as an observation, not a
+learning.
+
+**RISKS:**
+- Sample is 0.4% of estate sends. Reply counts are too sparse for
+  shape-level comparison.
+- Campaigns 328 and 274 required deep-page sampling (pages 100-500) because
+  their first pages are all unsent scheduled rows. This introduces a
+  positional bias — later pages may have different subject distributions
+  than earlier ones.
+- The reply feed (332 replies, 80 pages) covers a different time slice than
+  the scheduled email sample. Cross-reference match rate is 4/1037.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Accept `docs/SUBJECT-ANALYSIS-2026-09-15.md` as the deliverable.
+- The PROVEN LEARNINGS section is correctly empty. Nothing here changes
+  copy generation or subject line strategy.
+- The Re:/threading observation is worth noting for cadence design: a
+  `Re:` prefix is not a subject choice but a threading setting on the
+  sequence step.
