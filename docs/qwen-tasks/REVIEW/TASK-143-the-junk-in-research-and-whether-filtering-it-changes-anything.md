@@ -99,7 +99,7 @@ good evidence looks like, in examples.
 ## RESULT BLOCK
 
 - **STATUS:** DONE
-- **COMMIT SHA:** a3deefe
+- **COMMIT SHA:** eade2c6
 - **SNAPSHOT:** 2026-09-14T21:52:15Z from master 0ac5e60, 300 records
 - **TESTS:** No code changes to test. The script is a measurement, not a feature.
 - **FILES CHANGED:** `docs/RESEARCH-QUALITY-IMPACT-2026-09-15.md`, `scripts/task143_analysis.py`
