@@ -6,6 +6,61 @@ window.
 
 ---
 
+## 0. CLAUDE DOES NOT IDLE. WAITING IS NOT WORK.
+
+Set by the operator 2026-09-15, and it outranks the rest of this file.
+
+**Waiting for a worker result is not work.** When the review, integration and
+orchestration queues are temporarily empty, Claude stops being a supervisor and
+becomes an execution worker, taking the highest-value independent task that
+does not conflict with anything running.
+
+Never wait passively on one task when another independent task can advance
+production.
+
+The corollary matters as much: **do not manufacture speculative tasks to keep
+workers busy.** There is more real work than capacity. Fabricating a task to
+make a dashboard look saturated spends model budget on nothing and buries the
+real backlog.
+
+### Priority, until Productive runs autonomously
+
+    P0  LIVE PRODUCTION       first cohort into HeyReach/Bison, provider
+                              readback, leads verified to EXIST at the
+                              provider, campaign and sender state verified,
+                              sends begun, outcomes collected
+    P0  PIPELINE THROUGHPUT   consume the ~30k Productive domains in safe
+                              batches - dedupe, qualify, enrich, cohort
+    P0  EXISTING RELATIONSHIPS  old leads, prior outreach, prior replies,
+                              LinkedIn connections. Prevents a connection
+                              request or a cold first touch to somebody we
+                              already know or already answered.
+    P1  RESEARCH PIPELINE     research[] into generation, TTL for facts that
+                              need freshness, crawler reachable from the real
+                              domain pipeline, provenance preserved
+    P1  SCALE                 cohorts of >=50 compatible leads where inventory
+                              allows, grouped by signal and message strategy,
+                              senders utilised safely
+    P1  LEARNING              Bison and HeyReach cadence, reply classification,
+                              historical outcomes, variant performance
+    P2  MULTI-TENANT          find the Productive-specific assumptions that
+                              would block Client #2. Do NOT refactor working
+                              production code for elegance alone.
+
+### The success condition is a loop, not a number
+
+Not "all 30k domains finished". A durable loop that runs without babysitting:
+
+    domain queue -> account processing -> research/enrichment -> qualification
+      -> contact and relationship state -> cohort -> copy and variants
+      -> gates -> campaign -> leads -> provider readback -> sends
+      -> replies and outcomes -> learning -> next batch
+
+Neither half of the trade may win outright: no gate - claims, quality, safety,
+provider-state or human-read - is weakened for throughput, and no
+non-production perfection work is allowed to postpone a safe deployment
+indefinitely.
+
 ## 1. THE ZERO-IDLE RULE
 
     8 workers available  ->  8 useful independent tasks running
