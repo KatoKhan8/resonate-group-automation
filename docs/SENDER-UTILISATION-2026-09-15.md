@@ -73,45 +73,45 @@ None. Every healthy seat with campaigns has at least one IN_PROGRESS or PAUSED.
 
 ## 2. Real Activity Per Seat
 
-The provider exposes `/stats/GetOverallStats` which returns ALL-TIME counters per seat (connectionsSent, totalMessagesSent, totalMessageReplies, uniqueLeadsContacted). **This is NOT today's activity** — it is cumulative since the seat was connected.
+The provider exposes `/stats/GetOverallStats` which returns ALL-TIME counters per seat (connectionsSent, messagesSent, totalMessageReplies, uniqueLeadsContacted). **This is NOT today's activity** — it is cumulative since the seat was connected.
 
 **The provider does NOT expose per-day or per-period activity breakdowns per seat.** What was sent TODAY cannot be determined from the API. This is a finding, not a failure — a planner must assume the full daily ceiling is available unless operational logs say otherwise.
 
-| Seat (hash) | All-Time Connections | All-Time Messages | All-Time Replies | Leads Contacted |
-|-------------|---------------------|-------------------|------------------|-----------------|
-| `3b946d9bb7b6` | 2805 | 0 | 32 | 2808 |
-| `ba47db254958` | 2776 | 0 | 22 | 2778 |
-| `2f8cfc9a3cb6` | 2796 | 0 | 40 | 2797 |
-| `1d6bf60eb479` | 2079 | 0 | 23 | 2081 |
-| `392c37e7e961` | 2808 | 0 | 21 | 2808 |
-| `f1bcbd4d80f2` | 2797 | 0 | 22 | 2799 |
-| `1556fcf3feb2` | 2808 | 0 | 24 | 2810 |
-| `17b1e1b53e37` | 2806 | 0 | 22 | 2808 |
-| `b0af54d6bb50` | 1241 | 0 | 18 | 1241 |
-| `0b0fb227391b` | 1329 | 0 | 16 | 1329 |
-| `d198f343f114` | 1440 | 0 | 15 | 1440 |
-| `359833076bff` | 2586 | 0 | 24 | 2586 |
-| `d4b6a09b4718` | 4657 | 0 | 148 | 5068 |
-| `12b2a139eafd` | 4723 | 0 | 142 | 5140 |
-| `38b50288b045` | 4735 | 0 | 108 | 5110 |
-| `502a93d71832` | 4729 | 0 | 123 | 5131 |
-| `fca27f014c0e` | 4649 | 0 | 89 | 5028 |
-| `b23f2ef3515d` | 3758 | 0 | 53 | 3725 |
-| `644e8f47c2ea` | 4697 | 0 | 122 | 5103 |
-| `1f6544b3858e` | 4633 | 0 | 91 | 5015 |
-| `745eafbba979` | 4723 | 0 | 87 | 5118 |
-| `5aa8d21d4e05` | 4716 | 0 | 100 | 5118 |
-| `3e58112b464a` | 2750 | 0 | 31 | 2750 |
-| `9f8a9d51be40` | 1971 | 0 | 39 | 1974 |
-| `43328c3aeaff` | 1202 | 0 | 8 | 1202 |
-| `84828bd8f352` | 1440 | 0 | 16 | 1440 |
-| `7945bfbb9e9a` | 2035 | 0 | 40 | 2035 |
-| `fe7419baf5c7` | 2715 | 0 | 59 | 2723 |
-| `738779f2fe0c` | 1132 | 0 | 9 | 1132 |
-| `acfd02760a66` | 2737 | 0 | 29 | 2746 |
-| `fffe676369ee` | 2923 | 0 | 51 | 3167 |
-| `b950e5cf18cf` | 3067 | 0 | 50 | 3068 |
-| `f691fc2aa4bf` | 1650 | 0 | 19 | 1650 |
+| Seat (hash) | Connections | Accepted | Acceptance% | Messages | Replies | Reply% | Leads |
+|-------------|-------------|----------|-------------|----------|---------|--------|-------|
+| `3b946d9bb7b6` | 2805 | 302 | 10.8 | 430 | 32 | 12.3 | 2808 |
+| `ba47db254958` | 2776 | 251 | 9.0 | 375 | 22 | 10.0 | 2778 |
+| `2f8cfc9a3cb6` | 2796 | 305 | 10.9 | 404 | 40 | 15.7 | 2797 |
+| `1d6bf60eb479` | 2079 | 192 | 9.2 | 202 | 23 | 16.0 | 2081 |
+| `392c37e7e961` | 2808 | 227 | 8.1 | 329 | 21 | 10.0 | 2808 |
+| `f1bcbd4d80f2` | 2797 | 284 | 10.2 | 398 | 22 | 9.2 | 2799 |
+| `1556fcf3feb2` | 2808 | 218 | 7.8 | 312 | 24 | 13.7 | 2810 |
+| `17b1e1b53e37` | 2806 | 195 | 6.9 | 250 | 22 | 13.3 | 2808 |
+| `b0af54d6bb50` | 1241 | 154 | 12.4 | 240 | 18 | 11.6 | 1241 |
+| `0b0fb227391b` | 1329 | 152 | 11.4 | 238 | 16 | 11.8 | 1329 |
+| `d198f343f114` | 1440 | 139 | 9.7 | 199 | 15 | 12.0 | 1440 |
+| `359833076bff` | 2586 | 251 | 9.7 | 371 | 24 | 10.7 | 2586 |
+| `d4b6a09b4718` | 4657 | 680 | 14.6 | 1613 | 148 | 19.9 | 5068 |
+| `12b2a139eafd` | 4723 | 734 | 15.5 | 1955 | 142 | 16.7 | 5140 |
+| `38b50288b045` | 4735 | 596 | 12.6 | 1558 | 108 | 15.7 | 5110 |
+| `502a93d71832` | 4729 | 595 | 12.6 | 1443 | 123 | 19.2 | 5131 |
+| `fca27f014c0e` | 4649 | 450 | 9.7 | 1114 | 89 | 17.6 | 5028 |
+| `b23f2ef3515d` | 3758 | 369 | 9.8 | 661 | 53 | 14.7 | 3725 |
+| `644e8f47c2ea` | 4697 | 619 | 13.2 | 1511 | 122 | 17.9 | 5103 |
+| `1f6544b3858e` | 4633 | 619 | 13.4 | 1360 | 91 | 15.7 | 5015 |
+| `745eafbba979` | 4723 | 453 | 9.6 | 1263 | 87 | 15.2 | 5118 |
+| `5aa8d21d4e05` | 4716 | 581 | 12.3 | 1524 | 100 | 14.6 | 5118 |
+| `3e58112b464a` | 2750 | 280 | 10.2 | 374 | 31 | 13.1 | 2750 |
+| `9f8a9d51be40` | 1971 | 231 | 11.7 | 332 | 39 | 20.2 | 1974 |
+| `43328c3aeaff` | 1202 | 86 | 7.2 | 148 | 8 | 11.1 | 1202 |
+| `84828bd8f352` | 1440 | 135 | 9.4 | 172 | 16 | 14.4 | 1440 |
+| `7945bfbb9e9a` | 2035 | 236 | 11.6 | 325 | 40 | 19.5 | 2035 |
+| `fe7419baf5c7` | 2717 | 398 | 14.6 | 609 | 59 | 16.7 | 2725 |
+| `738779f2fe0c` | 1134 | 88 | 7.8 | 73 | 9 | 13.4 | 1134 |
+| `acfd02760a66` | 2737 | 271 | 9.9 | 400 | 29 | 12.2 | 2746 |
+| `fffe676369ee` | 2923 | 295 | 10.1 | 541 | 51 | 17.2 | 3167 |
+| `b950e5cf18cf` | 3067 | 371 | 12.1 | 589 | 50 | 14.8 | 3068 |
+| `f691fc2aa4bf` | 1650 | 154 | 9.3 | 220 | 19 | 14.1 | 1650 |
 
 ## 3. Remaining Safe Headroom
 
@@ -138,7 +138,7 @@ A seat in cooldown CANNOT be reused immediately. The provider does not expose co
 ## 5. The AUTH_INVALID Seat
 
 - **Seat `42ee6311bdf4`** (id 129531): `isActive: true`, `authIsValid: false`. Attached to 10 campaigns (1 IN_PROGRESS).
-  - All-time stats: 1793 connections, 0 messages, 21 replies
+  - All-time stats: 1793 connections, 240 messages, 21 replies, acceptance rate 11.9%
 
 **This seat is NOT capacity.** It accepts assignments and fails. It is attached to campaigns, which means leads may be queued behind it. It should be excluded from every plan until auth is restored. Whether it is recoverable depends on the LinkedIn re-authentication flow — the provider does not expose a diagnostic beyond `authIsValid: false`.
 
@@ -146,15 +146,27 @@ A seat in cooldown CANNOT be reused immediately. The provider does not expose co
 
 ### The question: how fast could a 50-lead cohort move through a connection-request-then-message cadence?
 
+### Two-tier seat structure
+
+The estate has two tiers:
+- **10 Sales Navigator seats**: 398 total campaign attachments (avg 39 per seat). These are the heavy users, each on 12 IN_PROGRESS campaigns plus 18-24 PAUSED/FINISHED.
+- **23 Regular seats**: 414 total campaign attachments (avg 18 per seat). Most are on 8 IN_PROGRESS campaigns plus 7-9 PAUSED.
+
+Both tiers are fully committed. No seat in either tier is idle.
+
+### Measured connection acceptance rate: 11.1%
+
+Across the estate, 10911 of 97917 connection requests have been accepted. This is the actual rate to use for planning, not a guess.
+
 #### Scenario A: Use ALL healthy seats (including those on IN_PROGRESS campaigns)
 
 - Total healthy seats: 33
 - Total daily connection request ceiling: 1054
 - 50 leads, one connection request each: needs 50 connection requests
 - **Day 1: all 50 connection requests can be sent** (1054 ceiling >> 50 needed)
-- After connection acceptance (assume 25% accept = ~13 leads), message step fires
+- After connection acceptance (measured rate 11.1% = ~6 leads accept), message step fires
 - Total daily message ceiling: 1143
-- **Day 2-3: messages to accepted leads can be sent** (1143 ceiling >> 13 needed)
+- **Day 2-3: messages to accepted leads can be sent** (1143 ceiling >> 6 needed)
 - **Total time: 2-3 days** (day 1 connect, day 2-3 message after acceptance)
 
 #### Scenario B: Use only effectively idle seats
@@ -162,9 +174,7 @@ A seat in cooldown CANNOT be reused immediately. The provider does not expose co
 - Idle healthy seats: 0
 - Idle daily connection request ceiling: 0
 - Idle daily message ceiling: 0
-- **No idle connection request capacity available.**
-- After acceptance (~25% = ~13 leads), messages needed: 13
-- **No idle message capacity available.**
+- **There are no idle seats.** Every healthy seat is on at least one IN_PROGRESS campaign. To free capacity, campaigns would need to be completed, paused, or seats detached.
 
 #### Scenario C: One seat could do it
 
@@ -178,13 +188,13 @@ A single seat with a 25-40 connection request daily limit:
 
 **One seat could move 50 leads through a connect-then-message cadence in 3-4 days.** The multi-sender question is therefore NOT URGENT for a 50-lead cohort. The constraint is not throughput — it is approval and copy quality, as TASK-096 already found.
 
-However, if the cohort grows to 200+ leads or if speed matters (e.g., time-sensitive outreach), then the idle seat capacity becomes relevant. The 0 connection requests/day across idle seats could handle 200 leads in 1-2 days.
+The real question is not 'can we fit a cohort' but 'can we add a cohort without disturbing the 12 IN_PROGRESS campaigns already running.' Since every seat is already committed, the answer is: only by sharing seats with existing campaigns, or by waiting for campaigns to finish.
 
 ### Assumptions behind this arithmetic
 
-1. **Connection acceptance rate: 25%.** This is a guess. The actual rate varies by industry, profile quality, and note personalisation. If it is 15%, fewer messages are needed; if 40%, more.
+1. **Connection acceptance rate: 11.1% measured.** Used verbatim from the estate's all-time stats. Varies by seat from 6.9% to 15.5%.
 2. **Daily ceilings are available.** The provider does not report today's usage, so we assume the full ceiling is free. This is an UPPER BOUND.
-3. **Cooldowns are not blocking.** At measurement time, 1 seats were in cooldown. This can change.
+3. **Cooldowns are not blocking.** At measurement time, 1 seat(s) were in cooldown. This can change.
 4. **Detachment from finished campaigns is possible.** Not tested.
 5. **LinkedIn tolerates the provider's configured limits.** A configured limit of 40/day is what the provider allows, not what LinkedIn will tolerate indefinitely. The provider sets these conservatively.
 
@@ -199,4 +209,4 @@ These are findings, not failures:
 
 ---
 
-*Generated 2026-09-15 06:53 UTC by `scripts/sender_utilisation.py`. Read-only. No provider mutations.*
+*Generated 2026-09-15 06:56 UTC by `scripts/sender_utilisation.py`. Read-only. No provider mutations.*

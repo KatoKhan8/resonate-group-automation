@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-15T06:53:15+00:00",
+  "generated_at": "2026-09-15T06:56:04+00:00",
   "source": "HeyRead li_account/GetAll + /campaign/GetAll + /stats/GetOverallStats, read-only. Credential env var: HEYREACH_KEY.",
   "seats_total": 41,
   "seats_by_state": {
@@ -187,9 +187,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2805,
-        "messages_sent": 0,
+        "connections_accepted": 302,
+        "acceptance_rate": 0.10766488,
+        "messages_sent": 430,
         "replies": 32,
-        "leads_contacted": 2808
+        "reply_rate": 0.12260536,
+        "leads_contacted": 2808,
+        "profile_views": 4224,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -295,9 +301,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2776,
-        "messages_sent": 0,
+        "connections_accepted": 251,
+        "acceptance_rate": 0.09041787,
+        "messages_sent": 375,
         "replies": 22,
-        "leads_contacted": 2778
+        "reply_rate": 0.1,
+        "leads_contacted": 2778,
+        "profile_views": 4050,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -403,9 +415,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2796,
-        "messages_sent": 0,
+        "connections_accepted": 305,
+        "acceptance_rate": 0.109084405,
+        "messages_sent": 404,
         "replies": 40,
-        "leads_contacted": 2797
+        "reply_rate": 0.15686275,
+        "leads_contacted": 2797,
+        "profile_views": 4226,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -491,9 +509,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2079,
-        "messages_sent": 0,
+        "connections_accepted": 192,
+        "acceptance_rate": 0.09235209,
+        "messages_sent": 202,
         "replies": 23,
-        "leads_contacted": 2081
+        "reply_rate": 0.15972222,
+        "leads_contacted": 2081,
+        "profile_views": 2930,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -599,9 +623,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2808,
-        "messages_sent": 0,
+        "connections_accepted": 227,
+        "acceptance_rate": 0.08084045,
+        "messages_sent": 329,
         "replies": 21,
-        "leads_contacted": 2808
+        "reply_rate": 0.09952607,
+        "leads_contacted": 2808,
+        "profile_views": 4306,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -707,9 +737,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2797,
-        "messages_sent": 0,
+        "connections_accepted": 284,
+        "acceptance_rate": 0.10153736,
+        "messages_sent": 398,
         "replies": 22,
-        "leads_contacted": 2799
+        "reply_rate": 0.09205021,
+        "leads_contacted": 2799,
+        "profile_views": 4174,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -815,9 +851,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2808,
-        "messages_sent": 0,
+        "connections_accepted": 218,
+        "acceptance_rate": 0.077635325,
+        "messages_sent": 312,
         "replies": 24,
-        "leads_contacted": 2810
+        "reply_rate": 0.13714285,
+        "leads_contacted": 2810,
+        "profile_views": 4229,
+        "inmail_sent": 0,
+        "inmail_replies": 1
       }
     },
     {
@@ -923,9 +965,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2806,
-        "messages_sent": 0,
+        "connections_accepted": 195,
+        "acceptance_rate": 0.06949394,
+        "messages_sent": 250,
         "replies": 22,
-        "leads_contacted": 2808
+        "reply_rate": 0.13333334,
+        "leads_contacted": 2808,
+        "profile_views": 4201,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -999,9 +1047,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 1793,
-        "messages_sent": 0,
+        "connections_accepted": 214,
+        "acceptance_rate": 0.11935304,
+        "messages_sent": 240,
         "replies": 21,
-        "leads_contacted": 1803
+        "reply_rate": 0.13043478,
+        "leads_contacted": 1803,
+        "profile_views": 2432,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -1107,9 +1161,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 1241,
-        "messages_sent": 0,
+        "connections_accepted": 154,
+        "acceptance_rate": 0.12409347,
+        "messages_sent": 240,
         "replies": 18,
-        "leads_contacted": 1241
+        "reply_rate": 0.11612903,
+        "leads_contacted": 1241,
+        "profile_views": 2108,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -1215,9 +1275,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 1329,
-        "messages_sent": 0,
+        "connections_accepted": 152,
+        "acceptance_rate": 0.11437171,
+        "messages_sent": 238,
         "replies": 16,
-        "leads_contacted": 1329
+        "reply_rate": 0.11764706,
+        "leads_contacted": 1329,
+        "profile_views": 3528,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -1383,9 +1449,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 1440,
-        "messages_sent": 0,
+        "connections_accepted": 139,
+        "acceptance_rate": 0.09652778,
+        "messages_sent": 199,
         "replies": 15,
-        "leads_contacted": 1440
+        "reply_rate": 0.12,
+        "leads_contacted": 1440,
+        "profile_views": 2640,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -1491,9 +1563,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2586,
-        "messages_sent": 0,
+        "connections_accepted": 251,
+        "acceptance_rate": 0.0970611,
+        "messages_sent": 371,
         "replies": 24,
-        "leads_contacted": 2586
+        "reply_rate": 0.10714286,
+        "leads_contacted": 2586,
+        "profile_views": 2623,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -1726,9 +1804,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 4657,
-        "messages_sent": 0,
+        "connections_accepted": 680,
+        "acceptance_rate": 0.14601675,
+        "messages_sent": 1613,
         "replies": 148,
-        "leads_contacted": 5068
+        "reply_rate": 0.19892474,
+        "leads_contacted": 5068,
+        "profile_views": 7519,
+        "inmail_sent": 0,
+        "inmail_replies": 19
       }
     },
     {
@@ -1930,9 +2014,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 4723,
-        "messages_sent": 0,
+        "connections_accepted": 734,
+        "acceptance_rate": 0.1554097,
+        "messages_sent": 1955,
         "replies": 142,
-        "leads_contacted": 5140
+        "reply_rate": 0.16705883,
+        "leads_contacted": 5140,
+        "profile_views": 7518,
+        "inmail_sent": 0,
+        "inmail_replies": 30
       }
     },
     {
@@ -2134,9 +2224,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 4735,
-        "messages_sent": 0,
+        "connections_accepted": 596,
+        "acceptance_rate": 0.12587117,
+        "messages_sent": 1558,
         "replies": 108,
-        "leads_contacted": 5110
+        "reply_rate": 0.15720524,
+        "leads_contacted": 5110,
+        "profile_views": 7542,
+        "inmail_sent": 0,
+        "inmail_replies": 16
       }
     },
     {
@@ -2338,9 +2434,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 4729,
-        "messages_sent": 0,
+        "connections_accepted": 595,
+        "acceptance_rate": 0.12581941,
+        "messages_sent": 1443,
         "replies": 123,
-        "leads_contacted": 5131
+        "reply_rate": 0.19248827,
+        "leads_contacted": 5131,
+        "profile_views": 7455,
+        "inmail_sent": 0,
+        "inmail_replies": 35
       }
     },
     {
@@ -2542,9 +2644,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 4649,
-        "messages_sent": 0,
+        "connections_accepted": 450,
+        "acceptance_rate": 0.09679501,
+        "messages_sent": 1114,
         "replies": 89,
-        "leads_contacted": 5028
+        "reply_rate": 0.17588933,
+        "leads_contacted": 5028,
+        "profile_views": 7465,
+        "inmail_sent": 0,
+        "inmail_replies": 20
       }
     },
     {
@@ -2686,9 +2794,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 3758,
-        "messages_sent": 0,
+        "connections_accepted": 369,
+        "acceptance_rate": 0.09819052,
+        "messages_sent": 661,
         "replies": 53,
-        "leads_contacted": 3725
+        "reply_rate": 0.14722222,
+        "leads_contacted": 3725,
+        "profile_views": 7612,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -2890,9 +3004,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 4697,
-        "messages_sent": 0,
+        "connections_accepted": 619,
+        "acceptance_rate": 0.13178624,
+        "messages_sent": 1511,
         "replies": 122,
-        "leads_contacted": 5103
+        "reply_rate": 0.17914832,
+        "leads_contacted": 5103,
+        "profile_views": 7492,
+        "inmail_sent": 0,
+        "inmail_replies": 16
       }
     },
     {
@@ -3066,9 +3186,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 4633,
-        "messages_sent": 0,
+        "connections_accepted": 619,
+        "acceptance_rate": 0.13360673,
+        "messages_sent": 1360,
         "replies": 91,
-        "leads_contacted": 5015
+        "reply_rate": 0.15743944,
+        "leads_contacted": 5015,
+        "profile_views": 7416,
+        "inmail_sent": 0,
+        "inmail_replies": 30
       }
     },
     {
@@ -3274,9 +3400,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 4723,
-        "messages_sent": 0,
+        "connections_accepted": 453,
+        "acceptance_rate": 0.09591361,
+        "messages_sent": 1263,
         "replies": 87,
-        "leads_contacted": 5118
+        "reply_rate": 0.15236427,
+        "leads_contacted": 5118,
+        "profile_views": 7430,
+        "inmail_sent": 0,
+        "inmail_replies": 24
       }
     },
     {
@@ -3478,9 +3610,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 4716,
-        "messages_sent": 0,
+        "connections_accepted": 581,
+        "acceptance_rate": 0.12319762,
+        "messages_sent": 1524,
         "replies": 100,
-        "leads_contacted": 5118
+        "reply_rate": 0.14577259,
+        "leads_contacted": 5118,
+        "profile_views": 7441,
+        "inmail_sent": 0,
+        "inmail_replies": 31
       }
     },
     {
@@ -3586,9 +3724,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2750,
-        "messages_sent": 0,
+        "connections_accepted": 280,
+        "acceptance_rate": 0.10181818,
+        "messages_sent": 374,
         "replies": 31,
-        "leads_contacted": 2750
+        "reply_rate": 0.13135593,
+        "leads_contacted": 2750,
+        "profile_views": 4299,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -3686,9 +3830,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 1971,
-        "messages_sent": 0,
+        "connections_accepted": 231,
+        "acceptance_rate": 0.11719939,
+        "messages_sent": 332,
         "replies": 39,
-        "leads_contacted": 1974
+        "reply_rate": 0.20207255,
+        "leads_contacted": 1974,
+        "profile_views": 2126,
+        "inmail_sent": 0,
+        "inmail_replies": 1
       }
     },
     {
@@ -3794,9 +3944,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 1202,
-        "messages_sent": 0,
+        "connections_accepted": 86,
+        "acceptance_rate": 0.07154742,
+        "messages_sent": 148,
         "replies": 8,
-        "leads_contacted": 1202
+        "reply_rate": 0.11111111,
+        "leads_contacted": 1202,
+        "profile_views": 2084,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -3962,9 +4118,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 1440,
-        "messages_sent": 0,
+        "connections_accepted": 135,
+        "acceptance_rate": 0.09375,
+        "messages_sent": 172,
         "replies": 16,
-        "leads_contacted": 1440
+        "reply_rate": 0.14414415,
+        "leads_contacted": 1440,
+        "profile_views": 1898,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -4070,9 +4232,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2035,
-        "messages_sent": 0,
+        "connections_accepted": 236,
+        "acceptance_rate": 0.115970515,
+        "messages_sent": 325,
         "replies": 40,
-        "leads_contacted": 2035
+        "reply_rate": 0.19512194,
+        "leads_contacted": 2035,
+        "profile_views": 1980,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -4241,10 +4409,16 @@
       },
       "activity_all_time": {
         "available": true,
-        "connections_sent": 2715,
-        "messages_sent": 0,
+        "connections_sent": 2717,
+        "connections_accepted": 398,
+        "acceptance_rate": 0.14648509,
+        "messages_sent": 609,
         "replies": 59,
-        "leads_contacted": 2723
+        "reply_rate": 0.16713881,
+        "leads_contacted": 2725,
+        "profile_views": 4180,
+        "inmail_sent": 0,
+        "inmail_replies": 2
       }
     },
     {
@@ -4409,10 +4583,16 @@
       },
       "activity_all_time": {
         "available": true,
-        "connections_sent": 1132,
-        "messages_sent": 0,
+        "connections_sent": 1134,
+        "connections_accepted": 88,
+        "acceptance_rate": 0.07760141,
+        "messages_sent": 73,
         "replies": 9,
-        "leads_contacted": 1132
+        "reply_rate": 0.13432837,
+        "leads_contacted": 1134,
+        "profile_views": 574,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -4558,9 +4738,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2737,
-        "messages_sent": 0,
+        "connections_accepted": 271,
+        "acceptance_rate": 0.099013515,
+        "messages_sent": 400,
         "replies": 29,
-        "leads_contacted": 2746
+        "reply_rate": 0.12236287,
+        "leads_contacted": 2746,
+        "profile_views": 4235,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     },
     {
@@ -4698,9 +4884,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 2923,
-        "messages_sent": 0,
+        "connections_accepted": 295,
+        "acceptance_rate": 0.10092371,
+        "messages_sent": 541,
         "replies": 51,
-        "leads_contacted": 3167
+        "reply_rate": 0.1722973,
+        "leads_contacted": 3167,
+        "profile_views": 4628,
+        "inmail_sent": 0,
+        "inmail_replies": 18
       }
     },
     {
@@ -4802,9 +4994,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 3067,
-        "messages_sent": 0,
+        "connections_accepted": 371,
+        "acceptance_rate": 0.120965116,
+        "messages_sent": 589,
         "replies": 50,
-        "leads_contacted": 3068
+        "reply_rate": 0.147929,
+        "leads_contacted": 3068,
+        "profile_views": 4739,
+        "inmail_sent": 0,
+        "inmail_replies": 1
       }
     },
     {
@@ -4941,9 +5139,15 @@
       "activity_all_time": {
         "available": true,
         "connections_sent": 1650,
-        "messages_sent": 0,
+        "connections_accepted": 154,
+        "acceptance_rate": 0.093333334,
+        "messages_sent": 220,
         "replies": 19,
-        "leads_contacted": 1650
+        "reply_rate": 0.14074074,
+        "leads_contacted": 1650,
+        "profile_views": 1703,
+        "inmail_sent": 0,
+        "inmail_replies": 0
       }
     }
   ]

@@ -453,7 +453,7 @@ def build_report(**kw):
     w("## 2. Real Activity Per Seat")
     w("")
     w("The provider exposes `/stats/GetOverallStats` which returns ALL-TIME "
-      "counters per seat (connectionsSent, totalMessagesSent, totalMessageReplies, "
+      "counters per seat (connectionsSent, messagesSent, totalMessageReplies, "
       "uniqueLeadsContacted). **This is NOT today's activity** — it is cumulative "
       "since the seat was connected.")
     w("")
@@ -557,6 +557,40 @@ def build_report(**kw):
     all_cr = kw["entry_cap_total"]
     all_msg = kw["msg_cap_total"]
 
+    # Compute actual measured acceptance rate across the estate
+    total_conn = sum(s["activity_all_time"].get("connections_sent", 0)
+                    for s in kw["healthy_senders"]
+                    if s["activity_all_time"].get("available"))
+    total_acc = sum(s["activity_all_time"].get("connections_accepted", 0)
+                   for s in kw["healthy_senders"]
+                   if s["activity_all_time"].get("available"))
+    measured_acc_rate = (total_acc / total_conn * 100) if total_conn > 0 else 0
+
+    w("### Two-tier seat structure")
+    w("")
+    sn_count = sum(1 for s in kw["healthy_senders"] if s["sales_navigator"])
+    non_sn_count = sum(1 for s in kw["healthy_senders"] if not s["sales_navigator"])
+    sn_camps = sum(s["campaign_attachment"]["total"]
+                  for s in kw["healthy_senders"] if s["sales_navigator"])
+    non_sn_camps = sum(s["campaign_attachment"]["total"]
+                      for s in kw["healthy_senders"] if not s["sales_navigator"])
+    w(f"The estate has two tiers:")
+    w(f"- **{sn_count} Sales Navigator seats**: {sn_camps} total campaign attachments "
+      f"(avg {sn_camps//sn_count if sn_count else 0} per seat). These are the "
+      f"heavy users, each on 12 IN_PROGRESS campaigns plus 18-24 PAUSED/FINISHED.")
+    w(f"- **{non_sn_count} Regular seats**: {non_sn_camps} total campaign attachments "
+      f"(avg {non_sn_camps//non_sn_count if non_sn_count else 0} per seat). "
+      f"Most are on 8 IN_PROGRESS campaigns plus 7-9 PAUSED.")
+    w("")
+    w("Both tiers are fully committed. No seat in either tier is idle.")
+    w("")
+
+    w(f"### Measured connection acceptance rate: {measured_acc_rate:.1f}%")
+    w("")
+    w(f"Across the estate, {total_acc} of {total_conn} connection requests have been "
+      f"accepted. This is the actual rate to use for planning, not a guess.")
+    w("")
+
     w("#### Scenario A: Use ALL healthy seats (including those on IN_PROGRESS campaigns)")
     w("")
     w(f"- Total healthy seats: {total_healthy}")
@@ -564,11 +598,12 @@ def build_report(**kw):
     w(f"- 50 leads, one connection request each: needs 50 connection requests")
     w(f"- **Day 1: all 50 connection requests can be sent** "
       f"({all_cr} ceiling >> 50 needed)")
-    w(f"- After connection acceptance (assume 25% accept = ~13 leads), "
+    w(f"- After connection acceptance (measured rate {measured_acc_rate:.1f}% "
+      f"= ~{max(1, round(50 * measured_acc_rate / 100))} leads accept), "
       f"message step fires")
     w(f"- Total daily message ceiling: {all_msg}")
     w(f"- **Day 2-3: messages to accepted leads can be sent** "
-      f"({all_msg} ceiling >> 13 needed)")
+      f"({all_msg} ceiling >> {max(1, round(50 * measured_acc_rate / 100))} needed)")
     w(f"- **Total time: 2-3 days** (day 1 connect, day 2-3 message after acceptance)")
     w("")
 
@@ -577,23 +612,18 @@ def build_report(**kw):
     w(f"- Idle healthy seats: {idle_count}")
     w(f"- Idle daily connection request ceiling: {idle_cr}")
     w(f"- Idle daily message ceiling: {idle_msg}")
-    if idle_cr >= 50:
-        w(f"- **Day 1: all 50 connection requests can be sent** "
-          f"({idle_cr} ceiling >= 50 needed)")
-    elif idle_cr > 0:
-        days_for_cr = -(-50 // idle_cr)  # ceiling division
-        w(f"- **Day 1-{days_for_cr}: connection requests** "
-          f"({idle_cr}/day, need 50, takes {days_for_cr} day(s))")
+    if idle_cr == 0:
+        w(f"- **There are no idle seats.** Every healthy seat is on at least one "
+          f"IN_PROGRESS campaign. To free capacity, campaigns would need to be "
+          f"completed, paused, or seats detached.")
     else:
-        w(f"- **No idle connection request capacity available.**")
-    w(f"- After acceptance (~25% = ~13 leads), messages needed: 13")
-    if idle_msg >= 13:
-        w(f"- **Messages fit in one day** ({idle_msg} ceiling >= 13 needed)")
-    elif idle_msg > 0:
-        days_for_msg = -(-13 // idle_msg)
-        w(f"- **Messages take {days_for_msg} day(s)** ({idle_msg}/day)")
-    else:
-        w(f"- **No idle message capacity available.**")
+        if idle_cr >= 50:
+            w(f"- **Day 1: all 50 connection requests can be sent** "
+              f"({idle_cr} ceiling >= 50 needed)")
+        elif idle_cr > 0:
+            days_for_cr = -(-50 // idle_cr)
+            w(f"- **Day 1-{days_for_cr}: connection requests** "
+              f"({idle_cr}/day, need 50, takes {days_for_cr} day(s))")
     w("")
 
     w("#### Scenario C: One seat could do it")
@@ -611,22 +641,22 @@ def build_report(**kw):
       "50-lead cohort. The constraint is not throughput — it is approval and "
       "copy quality, as TASK-096 already found.")
     w("")
-    w("However, if the cohort grows to 200+ leads or if speed matters "
-      "(e.g., time-sensitive outreach), then the idle seat capacity becomes "
-      "relevant. The {idle_cr} connection requests/day across idle seats could "
-      "handle 200 leads in 1-2 days.".format(idle_cr=idle_cr))
+    w("The real question is not 'can we fit a cohort' but 'can we add a cohort "
+      "without disturbing the 12 IN_PROGRESS campaigns already running.' Since "
+      "every seat is already committed, the answer is: only by sharing seats "
+      "with existing campaigns, or by waiting for campaigns to finish.")
     w("")
 
     w("### Assumptions behind this arithmetic")
     w("")
-    w("1. **Connection acceptance rate: 25%.** This is a guess. The actual rate "
-      "varies by industry, profile quality, and note personalisation. "
-      "If it is 15%, fewer messages are needed; if 40%, more.")
+    w(f"1. **Connection acceptance rate: {measured_acc_rate:.1f}% measured.** "
+      f"Used verbatim from the estate's all-time stats. Varies by seat from "
+      f"6.9% to 15.5%.")
     w("2. **Daily ceilings are available.** The provider does not report "
       "today's usage, so we assume the full ceiling is free. This is an "
       "UPPER BOUND.")
     w("3. **Cooldowns are not blocking.** At measurement time, "
-      f"{len(kw['any_cooldown'])} seats were in cooldown. This can change.")
+      f"{len(kw['any_cooldown'])} seat(s) were in cooldown. This can change.")
     w("4. **Detachment from finished campaigns is possible.** Not tested.")
     w("5. **LinkedIn tolerates the provider's configured limits.** "
       "A configured limit of 40/day is what the provider allows, not what "

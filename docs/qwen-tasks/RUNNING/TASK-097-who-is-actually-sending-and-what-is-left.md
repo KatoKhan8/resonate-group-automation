@@ -69,3 +69,27 @@ days", then the multi-sender question is not urgent and you should say so.
 real headroom. Separate what you MEASURED from what you ASSUMED, and give the
 cohort-throughput arithmetic explicitly so the assumption behind it can be
 attacked.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** (pending)
+- **TESTS:** `tests.test_invariants` 80/80 pass; `tests.test_audit` 16/16 pass; no conflict markers in src/, tests/, scripts/
+- **FILES CHANGED:**
+  - `scripts/sender_utilisation.py` (new) — the analysis script, reads three HeyReach endpoints
+  - `docs/SENDER-UTILISATION-2026-09-15.md` (new) — the report
+  - `docs/state/SENDER-CAPACITY.json` (updated) — per-seat campaign attachment, all-time activity, cooldown state
+- **FINDINGS:**
+  1. **Zero idle seats.** All 33 healthy seats are on at least one IN_PROGRESS campaign. There is no free capacity that can be assigned without sharing with existing campaigns.
+  2. **Two-tier estate:** 10 Sales Navigator seats (avg 39 campaigns each, 12 IN_PROGRESS) and 23 regular seats (avg 18 campaigns each, 8 IN_PROGRESS). Both fully committed.
+  3. **The provider does NOT report per-day activity.** `/stats/GetOverallStats` returns all-time counters only. What a seat sent today is unknowable from the API. Headroom = ceiling, which is an UPPER BOUND.
+  4. **Measured connection acceptance rate: 11.1%** (10,911 of 97,917). Varies by seat from 6.9% to 15.5%. The Sales Navigator seats have higher acceptance (12-15.5%) than regular seats (7-11%).
+  5. **One AUTH_INVALID seat** (`42ee6311bdf4`, seat 129531): `isActive: true, authIsValid: false`, attached to 10 campaigns (1 IN_PROGRESS). Has historically sent 1,793 connections. Not recoverable from the API — requires LinkedIn re-auth. Should be excluded from all plans.
+  6. **1 seat in cooldown** (`0b0fb227391b`, seat 143105): connection_request cooldown. Duration not exposed.
+  7. **Cohort arithmetic:** One seat can move 50 leads through connect-then-message in 3-4 days. The multi-sender question is NOT URGENT for a 50-lead cohort. The constraint is approval and copy quality, not throughput.
+  8. **The real question** is not 'can we fit a cohort' but 'can we add a cohort without disturbing the 12 IN_PROGRESS campaigns.' Since every seat is committed, the answer is: only by sharing seats with existing campaigns, or by waiting for campaigns to finish.
+- **RISKS:**
+  - All-time stats may overstate historical activity if seats were shared across workspace migrations
+  - The 11.1% acceptance rate is an estate average; individual campaigns may differ significantly
+  - Daily ceilings are assumed fully available; actual same-day usage is invisible
+- **RECOMMENDED CLAUDE ACTION:** Review the report at `docs/SENDER-UTILISATION-2026-09-15.md`. The AUTH_INVALID seat needs a LinkedIn re-auth decision. The campaign-cleanup question (32 PAUSED, 31 FINISHED campaigns still attached to seats) is an operational hygiene issue that could free attachment slots even though it would not free daily capacity.
