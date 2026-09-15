@@ -78,6 +78,56 @@ Work on branch `qwen-worker-4` so you have the script and the report.
   finding.** Keep it.
 - Do not quote 8.49%. It is unreproduced and this report correctly says so.
 - Do not quote any open rate. `open_tracking` is False on all 22 campaigns.
+
+---
+
+## RESULT
+
+**STATUS:** BLOCKED - requires branch qwen-worker-4
+
+**COMMIT SHA:** N/A
+
+**TESTS:** N/A
+
+**FILES CHANGED:** None
+
+**FINDINGS:**
+
+### Blocker
+
+This task explicitly requires working on branch `qwen-worker-4`:
+> "Work on branch `qwen-worker-4` so you have the script and the report."
+
+The script (`scripts/bison_outcomes_analysis.py`) and report (`docs/ESTATE-BISON-OUTCOMES-2026-09-15.md`) exist only on that branch. I am on branch `qwen-worker-3-r6` and cannot switch branches in this worktree.
+
+I can read the files via `git show qwen-worker-4:...` but cannot modify them or run the script from this worktree.
+
+### What the task requires
+
+1. Find what the 8792 unmatched rows actually are and what field the classifier read
+2. Fix the reporting so unmatched rows are not counted as matched
+3. Re-classify with current taxonomy, report positives separately for matched/unmatched
+4. Reconcile or retract the 16.14% positive rate
+
+All four require modifying `scripts/bison_outcomes_analysis.py` and regenerating the report, which must happen on qwen-worker-4.
+
+### What would unblock this
+
+1. **Run this task from a worktree on qwen-worker-4** (e.g., qwen-worker-4-r2)
+2. **Cherry-pick or merge the files to this branch** (but the task says to work on qwen-worker-4 deliberately)
+3. **Claude runs this task** from the qwen-worker-4 worktree
+
+### What I verified
+
+I can read the report from qwen-worker-4 and confirm the four contradictions exist:
+- Line 19: "Matched dataset rows (reply + sched) 9726" but only 934 have scheduled_email_id
+- The 8792 unmatched rows are being counted as matched
+- This inflates the positive rate to 16.14% (1561/9726) when the real matched positives are 9/934 = 0.96%
+
+The contradictions are real and the task is valid, but it must be done on qwen-worker-4.
+
+**RECOMMENDED CLAUDE ACTION:**
+Queue this task for a qwen-worker-4 session, or run it from Claude's worktree if qwen-worker-4 is not available.
 - Do not put unhashed prospect PII in the report. The existing one hashes
   addresses, company names and reply text. Keep that.
 
