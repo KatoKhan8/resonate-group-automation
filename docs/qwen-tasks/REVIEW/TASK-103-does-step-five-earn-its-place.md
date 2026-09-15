@@ -95,59 +95,62 @@ the operator what the answer would cost.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** 07856a8
+**COMMIT SHA:** 3a54750
 
 **TESTS:** N/A — analysis task, no code change to test. Script syntax verified
 with `py_compile`.
 
 **FILES CHANGED:**
-- `docs/STEP-INCREMENTALITY-2026-09-15.md` — the deliverable
+- `docs/STEP-INCREMENTALITY-2026-09-15.md` — the deliverable (rewritten)
 - `scripts/task103_step_incrementality.py` — analysis script
 
 **FINDINGS:**
 
-Campaign 330 (Dutch, 8-step, 4,028 sends, completed) was walked exhaustively:
-all 289 pages, 2,714 sent rows with `sent_at` present, 100 replies collected
-via campaign-scoped endpoint.
+Campaign 330 (Dutch, 8-step, 4,028 sends, 103 leads, completed) was the
+target. Campaign 263 (299 sends, 6 steps) was auto-selected first but had
+ALL 291 sends at step 1 only — the other steps were defined but never sent.
+
+Campaign 330 scheduled emails: 2,714 sent rows across 189 pages (pages
+101-289; pages 1-100 missing — oldest sends, predominantly step 1).
+Coverage: 67.4% of provider-reported 4,028 sends.
 
 Per-step sent: 715→656→559→411→278→69→25→1. Clear monotonic decay.
 
 Per-step replies (22 attributed of 27 human): 9→6→4→2→1→0→0→0.
 
-Step 5 specifically: 278 sends, 1 reply, 1 purely incremental (the lead did
-not reply at steps 1-4). n=1 is LOW confidence — a single data point, not a
-finding.
+Step 5 specifically: 278 sends, 1 reply (0.4%), ~1 purely incremental.
+n=1 is LOW confidence — a single data point, not a finding.
 
-Steps 6-8 combined: 95 sends, 0 replies. Suggestive but denominators are
-very small.
+Steps 6-8 combined: 95 sends, 0 replies. Strictly wasteful in this campaign.
+
+Reply rate monotonically decreases: 1.3%→0.9%→0.7%→0.5%→0.4%→0%→0%→0%.
+Step 5 is 3.5× less cost-effective than step 1 (278 vs 79 credits per reply).
 
 `lead_id` is NULL in the scheduled email API response, blocking unique-lead
-denominators per step. The survivor count at step 5 cannot be computed from
-this API.
+denominators. Incremental analysis uses send counts as proxy (valid at <1%
+reply rates where multi-reply leads are essentially impossible).
 
-Three smaller campaigns (263, 266, 264) had zero human replies — all their
-"replies" were bounces. This is itself a finding: the smallest campaigns in
-the estate did not generate any human engagement.
+Zero `interested` replies across all steps. INTERESTED may not carry a
+learning claim (0.44 precision on old pattern set).
 
-**PROVEN LEARNINGS:** Empty. One campaign is a sample, not a finding. The
-task rules say to leave this empty when nothing survives a sample-size
-objection, and n=1 at step 5 does not survive it.
+**PROVEN LEARNINGS:** Empty. One campaign is a sample, not a finding. n=1
+at step 5 does not survive a sample-size objection.
 
 **RISKS:**
-- The `lead_id` gap in the API means we cannot compute the key metric the
-  task asked for: "of the people who did NOT reply to steps 1-4, what
-  fraction replied to step 5." We can count the numerator (1) but not the
-  denominator (survivors entering step 5).
-- The 67.4% coverage gap between `emails_sent` (4,028) and sampled sent rows
-  (2,714) means some sends are not accounted for.
+- Pages 1-100 missing: step 1 denominator is undercounted. True step 1
+  count is likely ~1,000, which would lower its reply rate to ~0.9%.
+- Reply feed partially collected (3,006 of ~270,000 estate-wide). 5 of 27
+  campaign 330 replies are unattributed.
+- `lead_id` absence means survivor denominators cannot be computed from
+  this API.
 
 **RECOMMENDED CLAUDE ACTION:**
 1. Read `docs/STEP-INCREMENTALITY-2026-09-15.md` for the full analysis.
-2. The honest answer to "does step 5 earn its place?" is: **one campaign
-   says yes (1 incremental reply from 278 sends), but n=1 is not enough to
-   decide.** A second campaign measurement is needed.
-3. The next campaign to measure would be 352 (1,512 replies, 5 steps) but
-   its 6,189 pages exceed the 500-page accessible range. A sampled approach
-   or a vendor-side filter would be needed.
-4. The `lead_id` absence from the scheduled email API is a structural gap.
-   Without it, incrementality analysis cannot compute survivor denominators.
+2. The honest answer: step 5 generated 1 incremental reply from 278 sends
+   (0.4%). Steps 6-8 generated 0 from 95. The monotonic decay is clear
+   but n is too small to decide.
+3. To answer definitively: fetch pages 1-100 for campaign 330 (100 calls),
+   complete the reply feed walk (~2,700 pages), and repeat on 2-3 more
+   campaigns (329, 334, 335 all have 8 steps and real sends).
+4. The `lead_id` absence from the scheduled email API is a structural gap
+   for incrementality analysis.
