@@ -20,7 +20,9 @@ import hashlib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.providers import bison  # noqa: E402
+from src.providers import heyreach  # noqa: E402
 from src import collision  # noqa: E402
+from src import clients  # noqa: E402
 
 SNAPSHOT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -170,15 +172,112 @@ def part1_bison_reads(records):
 # PART 2: LinkedIn conversation history
 # ============================================================
 
+def establish_tenant_scope():
+    """Derive the tenant scope from campaigns + all LI accounts.
+
+    Bypasses our_linkedin_seats (needs sender inventory, absent here) and
+    uses only the provider-side tenant boundary from campaigns.
+    """
+    config = {}
+    try:
+        config = clients.load(WORKSPACE)
+    except Exception:
+        pass
+
+    expected = str(((config or {}).get("providers") or {}).get(
+        "heyreach", {}).get("org_unit") or "")
+
+    campaigns, _meta = heyreach.campaigns()
+    units = {str(c.get("organizationUnitId")) for c in campaigns
+             if c.get("organizationUnitId") is not None}
+
+    if not units:
+        raise RuntimeError("no campaign states an organisation unit")
+    if expected and units != {expected}:
+        raise RuntimeError(
+            f"multi-tenant: campaigns in {sorted(units)}, "
+            f"expected {expected}")
+
+    seats, _ = heyreach.all_li_accounts()
+    everybody = {str(a.get("id")) for a in seats if a.get("id") is not None}
+
+    print(f"  Tenant scope: org_unit={units}, "
+          f"{len(everybody)} seats from provider, "
+          f"{len(campaigns)} campaigns visible")
+    return everybody
+
+
+def check_li_profile_direct(name, linkedin_slug, tenant_seats):
+    """Check one LinkedIn profile against the HeyReach inbox.
+
+    Bypasses collision.check_linkedin_profile (needs sender inventory).
+    Uses the same algorithm: search by first name, match locally on slug,
+    scope to tenant seats.
+    """
+    slug = collision.profile_slug(linkedin_slug) if "/" in str(linkedin_slug) else (linkedin_slug or "")
+    if not slug:
+        return "error", {"why": "no usable LinkedIn slug"}
+
+    term = str(name or "").strip().split()[0] if str(name or "").strip() else slug.replace("-", " ")
+
+    try:
+        everything = collision.conversations_named(term)
+    except collision.CollisionUnknown as e:
+        return "error", {"why": str(e)[:200]}
+
+    rows = []
+    foreign = 0
+    for row in everything:
+        touches = collision.linkedin_touches_of(row)
+        if str(touches.get("our_seat")) in tenant_seats:
+            rows.append(row)
+        else:
+            foreign += 1
+
+    for row in rows:
+        found = collision.linkedin_touches_of(row)
+        if found["slug"] != slug:
+            continue
+        if found["they_replied"]:
+            return "replied", found
+        if found["total_messages"] > 0:
+            return "touched", found
+        return "touched", dict(found, note="conversation exists, 0 messages counted")
+
+    return "clear", {
+        "slug": slug,
+        "searched_as": term,
+        "conversations_for_name": len(rows),
+        "foreign_ignored": foreign,
+        "seats_searched": len(tenant_seats),
+    }
+
+
 def part2_linkedin_reads(records):
     """Check LinkedIn conversation history for verified contacts.
 
-    Uses collision.check_linkedin_profile (READ ONLY) for each contact
-    that has a LinkedIn profile URL.
+    Establishes tenant scope from campaigns + all LI accounts (provider reads),
+    then searches the HeyReach inbox for each verified contact by name,
+    matching locally on profile slug.
     """
     print("=" * 72)
     print("PART 2: LinkedIn conversation history")
     print("=" * 72)
+    print()
+
+    # Establish tenant scope first (2 provider reads)
+    print("  Establishing tenant scope...")
+    try:
+        tenant_seats = establish_tenant_scope()
+    except Exception as e:
+        print(f"  FATAL: cannot establish tenant scope: {e}")
+        return {
+            "found_conversations": [],
+            "clear_contacts": [],
+            "broad_match": [],
+            "errors": [{"error": f"tenant scope failed: {e}"}],
+            "total_checked": 0,
+        }
     print()
 
     # Collect verified contacts with LinkedIn profiles
@@ -208,49 +307,45 @@ def part2_linkedin_reads(records):
 
     for i, item in enumerate(candidates):
         hid = hash_id(f"{item['rec_id']}/{item['contact_key']}")
-        li_url = item["linkedin"]
         sys.stdout.write(f"  [{i+1}/{len(candidates)}] {hid}... ")
         sys.stdout.flush()
 
-        try:
-            verdict, detail = collision.check_linkedin_profile(
-                li_url,
-                name=item["name"],
-                expect_workspace=WORKSPACE,
-            )
-            if verdict == collision.ALLOW:
-                clear_contacts.append({
-                    "hid": hid,
-                    "name": item["name"],
-                    "verdict": verdict,
-                })
-                print(f"CLEAR")
-            elif verdict == collision.STOP:
-                found_conversations.append({
-                    "hid": hid,
-                    "name": item["name"],
-                    "verdict": verdict,
-                    "detail": str(detail)[:200],
-                })
-                print(f"HISTORY FOUND: {str(detail)[:100]}")
-            elif verdict == collision.HOLD:
-                found_conversations.append({
-                    "hid": hid,
-                    "name": item["name"],
-                    "verdict": verdict,
-                    "detail": str(detail)[:200],
-                })
-                print(f"HOLD: {str(detail)[:100]}")
-            else:
-                clear_contacts.append({
-                    "hid": hid,
-                    "name": item["name"],
-                    "verdict": verdict,
-                    "detail": str(detail)[:200] if detail else None,
-                })
-                print(f"{verdict}: {str(detail)[:80] if detail else 'no detail'}")
-        except collision.CollisionUnknown as e:
-            err_msg = str(e)[:120]
+        verdict, detail = check_li_profile_direct(
+            item["name"], item["linkedin"], tenant_seats)
+
+        if verdict == "clear":
+            clear_contacts.append({
+                "hid": hid,
+                "name": item["name"],
+                "conversations_for_name": detail.get("conversations_for_name", 0),
+            })
+            print(f"CLEAR ({detail.get('conversations_for_name', 0)} convos for name)")
+        elif verdict == "replied":
+            found_conversations.append({
+                "hid": hid,
+                "name": item["name"],
+                "verdict": "replied",
+                "detail": {k: v for k, v in detail.items()
+                           if k in ("total_messages", "they_replied",
+                                    "last_message_at", "our_seat",
+                                    "seat_name", "conversation_id")},
+            })
+            print(f"REPLIED (msgs={detail.get('total_messages')}, "
+                  f"seat={detail.get('seat_name', '?')})")
+        elif verdict == "touched":
+            found_conversations.append({
+                "hid": hid,
+                "name": item["name"],
+                "verdict": "touched",
+                "detail": {k: v for k, v in detail.items()
+                           if k in ("total_messages", "they_replied",
+                                    "last_message_at", "our_seat",
+                                    "seat_name", "conversation_id", "note")},
+            })
+            print(f"TOUCHED (msgs={detail.get('total_messages')}, "
+                  f"seat={detail.get('seat_name', '?')})")
+        elif verdict == "error":
+            err_msg = detail.get("why", "unknown")
             if "broad" in err_msg.lower() or "too many" in err_msg.lower():
                 broad_match.append({
                     "hid": hid,
@@ -264,14 +359,7 @@ def part2_linkedin_reads(records):
                     "name": item["name"],
                     "error": err_msg,
                 })
-                print(f"ERROR: {err_msg}")
-        except Exception as e:
-            errors.append({
-                "hid": hid,
-                "name": item["name"],
-                "error": str(e)[:120],
-            })
-            print(f"ERROR: {str(e)[:80]}")
+                print(f"ERROR: {err_msg[:80]}")
 
         time.sleep(0.75)
 
@@ -288,6 +376,7 @@ def part2_linkedin_reads(records):
         "broad_match": broad_match,
         "errors": errors,
         "total_checked": len(candidates),
+        "tenant_seats": len(tenant_seats),
     }
 
 
