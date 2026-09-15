@@ -85,3 +85,61 @@ authorising if they enabled the write.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** a0b5343
+
+**TESTS:** Pipeline script `scripts/prepare_lead_batch.py` runs end-to-end. Fixture hygiene test (`tests.test_fixture_hygiene`) confirms no PII in the tracked report. Pre-existing failures in TASK-120 are unrelated.
+
+**FILES CHANGED:**
+- `scripts/prepare_lead_batch.py` - the pipeline script (new)
+- `work/lead-batch-economic-buyer.json` - the batch file (gitignored, operational artefact)
+- `docs/LEAD-BATCH-REPORT-2026-09-15.md` - the tracked report (new)
+
+**FUNNEL:**
+
+| Stage | Count | Drop |
+|-------|------:|-----:|
+| Cohort (economic_buyer + email) | 70 | - |
+| After dedupe | 53 | 17 |
+| After exclusion | 36 | 17 |
+| After personalisation | 30 | 6 |
+| After greeting proof | 30 | 0 |
+| After quality gates | **23** | 7 |
+
+**Drop-off breakdown:**
+
+- **Dedupe (17 dropped):** All 17 are already claimed by one of 11 existing campaigns.
+- **Exclusion (17 dropped):** not_sendable:unknown: 7; not_sendable:accept_all_uncleared: 5; not_sendable:never_verified: 4; not_sendable:held: 1. No contacts removed by suppression list (only example domains exist), no agency DNC file found, no reply events in estate.
+- **Personalisation (6 dropped):** No email copy generated (record state is queued/held, never reached drafting).
+- **Greeting proof (0 dropped):** All 30 opening lines have resolved company references, no broken tokens.
+- **Quality gates (7 dropped):** Unsupported claims - 'profitability' asserted without evidence (2), 'utilisation/utilization' asserted without evidence (2), 'capacity' asserted without evidence (1), 'our previous discussions' asserts prior contact with no confirmed touch (4 contacts, some overlapping with other claim failures).
+
+**FINDINGS:**
+
+1. **The estate supports a batch of 23 qualified economic_buyer leads.** This is the largest honest batch the pipeline can produce from the current snapshot. The drop-off from 70 to 23 (67% loss) is real and each stage's reason is evidenced.
+
+2. **The verification gap is the largest single loss.** 17 of 53 post-dedup contacts are not sendable. 4 were never verified at all (no verification data), 7 have unknown verification state, 5 are accept-all-uncleared, 1 is held. Running the verification waterfall on these 17 could recover some.
+
+3. **6 contacts have no email copy at all.** Their records are in states queued (4) or held (2) and never reached the drafting stage. Generating copy for them would require running the generation pipeline first.
+
+4. **7 contacts fail the claims gate.** The stored copy asserts things about profitability, utilisation, capacity, and prior contact that nothing on the record supports. These are stale drafts from before `claims.check` was wired into the generation path. Regenerating the copy would fix them.
+
+5. **No provider write was performed.** The batch file is at `work/lead-batch-economic-buyer.json` and is ready for the operator's decision on enabling `heyreach.add_leads` or the EmailBison attach-leads route.
+
+**RISKS:**
+
+- The 23 leads are all from the economic_buyer persona. If the operator wants a different cohort (e.g., Advertising Services industry, 51 leads), a separate batch would be needed.
+- The 17 not-sendable contacts could potentially be recovered by running verification, but that is a provider spend (ContactOut/Reoon credits per address).
+- The 7 claims-failing contacts need copy regeneration, which is a generation run, not a batch preparation issue.
+
+**RECOMMENDED CLAUDE ACTION:**
+
+1. Review the batch of 23 leads and the funnel drop-off.
+2. Decide whether to recover the 17 not-sendable contacts by running verification.
+3. Decide whether to generate copy for the 6 contacts without email steps.
+4. Decide whether to regenerate copy for the 7 contacts with unsupported claims.
+5. If the batch of 23 is acceptable, enable the appropriate provider write route.
