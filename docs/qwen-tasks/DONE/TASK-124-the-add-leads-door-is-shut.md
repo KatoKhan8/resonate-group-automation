@@ -83,3 +83,76 @@ is known and unknown about the response, **proof that lead readback works on a
 campaign that has leads**, the partial-failure classification, and the
 corrected OPERATIONS descriptions. End with a plain list of what remains
 unknown, because that list is what Claude is reviewing when the door opens.
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** d955357
+
+**TESTS:** Not applicable — this task produced a readiness report, not code
+changes. Two read-only scripts were written and executed against the live
+HeyReach API. All prospect identifiers are hashed in the output.
+
+**FILES CHANGED:**
+- `docs/ADD-LEADS-READINESS-2026-09-15.md` — the deliverable
+- `scripts/task124_prove_readback.py` — readback proof (1-lead and 0-lead campaigns)
+- `scripts/task124_readback_larger.py` — readback proof (28-lead campaign with diverse states)
+- `docs/qwen-tasks/RUNNING/TASK-124-the-add-leads-door-is-shut.md` — moved from TODO
+
+**FINDINGS:**
+
+1. **Readback PROVED on campaigns with leads.** Campaign 594061 (1 lead,
+   request_pending) and campaign 567689 (28 leads: 25 accepted, 3 replied,
+   2 error codes, 28/28 with profile URLs) both confirm
+   `/campaign/GetLeadsFromCampaign` returns the full per-lead lifecycle and
+   `readback_membership` matches correctly. Campaign 599020 has 0 leads and
+   proves nothing.
+
+2. **Request body shape FULLY ESTABLISHED.** `build_lead_pairs` constructs
+   `{campaignId, accountLeadPairs: [{linkedInAccountId, lead: {profileUrl,
+   firstName, lastName, companyName, position, customUserFields}}]}`.
+   `supplied_field_names` derives the field intersection. `refuse_unsupported_sequence`
+   raises when the campaign's copy uses a variable the push does not supply.
+
+3. **Response shape INFERRED but not confirmed.** Third-party audit
+   (heyreach-cli, 2026-05-04) says V2 returns
+   `{addedLeadsCount, updatedLeadsCount, failedLeadsCount}`. No direct read
+   by this codebase. The response body does not determine the verdict —
+   `readback_membership` does.
+
+4. **Partial failure is VISIBLE but not retryable.** `readback_membership`
+   detects when found ≠ expected → DRIFTED → UNRESOLVED. But the key-level
+   lock blocks retry on the missing subset. Design needed for targeted retry.
+
+5. **Two OPERATIONS entries are STALE.** `LINKEDIN_CREATE_LIST` says "no
+   documented route; the list was created by hand in the vendor UI" — but
+   `/list/CreateEmptyList` is on WRITE_ROUTES and list 933603 was created by
+   this system on 2026-09-13. `LINKEDIN_CREATE_CAMPAIGN` says "no documented
+   route" — but `/campaign/Create` is on WRITE_ROUTES and campaign 599020 was
+   created by this system on 2026-09-13. Both entries predate commit f1fd6c0
+   and were not updated when the routes were added.
+
+6. **The first write buys information, not exposure.** Campaign 599020 is
+   DRAFT with 0 leads and `startedAt: null`. Adding one lead would answer
+   every remaining unknown (response shape, partial-failure behaviour, timing
+   gap) without sending anything — the campaign cannot start without
+   `/campaign/StartCampaign`, which is deliberately absent from WRITE_ROUTES.
+
+**RISKS:**
+- The OPERATIONS corrections in this report are observations, not edits.
+  `providerwrites.py` was NOT modified. Claude should review and apply the
+  corrections if agreed.
+- The response shape inference comes from a third-party audit of a different
+  workspace. The actual response may differ.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Review `docs/ADD-LEADS-READINESS-2026-09-15.md`
+2. Decide whether to enable `LINKEDIN_ADD_LEAD` in `SUPPORTED`
+3. If yes: the first write to campaign 599020 (DRAFT, 0 leads) settles every
+   remaining unknown. The campaign sends nothing in DRAFT.
+4. Apply the OPERATIONS corrections for `LINKEDIN_CREATE_LIST` and
+   `LINKEDIN_CREATE_CAMPAIGN` if the analysis is agreed.
+5. Design the targeted-retry path for partial-failure missing subsets.
