@@ -70,3 +70,51 @@ that claim is worth either confirming or correcting.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** COMPLETE
+
+**COMMIT SHA:** 34c4f09
+
+**TESTS:** No test suite applicable — this is a measurement task, not a code change. The script (`scripts/task107_delay_analysis.py`) was run against live provider APIs (reads only) and the report was generated from cached data.
+
+**FILES CHANGED:**
+- `docs/DELAY-ANALYSIS-2026-09-15.md` — the deliverable report
+- `scripts/task107_delay_analysis.py` — the collection and analysis script
+- `docs/qwen-tasks/RUNNING/TASK-107-how-long-to-wait-between-steps.md` — task moved from TODO to RUNNING
+
+**FINDINGS:**
+
+1. **EmailBison delay distribution (n=122 step instances, 21 campaigns):**
+   - 3 days: 35.2% (most common)
+   - 5 days: 23.8%
+   - 1 day: 11.5%, 2 days: 11.5%
+   - 7+ days: 5.7%
+
+2. **HeyReach delay distribution (n=1,218 delay nodes, 83 campaigns, 81 with delays):**
+   - 24h (1 day): 35.7% (most common)
+   - 120h (5 days): 25.5%
+   - 0h (immediate): 14.4%
+   - 240h (10 days): 10.0%
+
+3. **Time-to-reply IS computable.** TASK-059's claim was wrong. The `sent_at` field exists on scheduled emails and `date_received` exists on reply rows; the join via `scheduled_email_id` works. 65 pairs computed from a bounded sample (1,500 reply rows, ~10,500 scheduled email rows scanned):
+   - Median: 0.0 hours
+   - p90: 39.8 hours (1.66 days)
+   - 92.3% of replies arrive before day 3
+   - 86.2% arrive before day 1
+   - 72.3% arrive within 1 hour (likely includes auto-replies)
+
+4. **A day-3 follow-up arrives AFTER most replies.** 92.3% of observed replies arrived before day 3. This does not mean the follow-up is useless — it means the follow-up targets the 7.7% who have not yet replied.
+
+**RISKS:**
+- The time-to-reply sample (n=65) is small and biased toward recent sends. The 0.0h values likely include auto-replies that were not separated.
+- The HeyReach delay analysis reads `actionDelay`/`actionDelayUnit` from the node graph, which is the configured delay before each action fires — not the actual elapsed time between actions.
+- The EmailBison step data covers parent steps only (122 instances), not variants. Campaign 352 alone has 44 steps including variants.
+
+**RECOMMENDED CLAUDE ACTION:**
+- The time-to-reply finding corrects TASK-059's record. The correction should be noted in any future analysis that references that report.
+- The delay distributions are descriptive, not prescriptive. No delay change should be proposed on this basis alone.
+- A larger time-to-reply sample (full reply feed walk, ~270K rows) would strengthen the distribution claims. The collection script supports this with `--reply-pages`.
