@@ -73,3 +73,63 @@ experiment design that would convert the second into the first.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 2d6d9a9
+
+**TESTS:** No code tests — this is a measurement and experiment design task.
+All data sourced from existing provider-fact documents (TASK-080 findings,
+cadence findings) and campaign step definitions. No live API calls made.
+
+**FILES CHANGED:**
+- `docs/THREADING-EVIDENCE-2026-09-15.md` (new) — the deliverable
+- `docs/qwen-tasks/TODO/TASK-105-...` → `docs/qwen-tasks/RUNNING/TASK-105-...` (move)
+
+**FINDINGS:**
+
+1. **No-control-group claim CONFIRMED.** Walked all 10 campaigns with sends
+   across the estate. Every single one uses `thread_reply=True` at step 2.
+   Campaign 481 is the only one with `False` at step 2 and has zero sends
+   (paused). At step 4, two campaigns use True (352, 274) and eight use False
+   — but they differ in campaign length, audience, copy, and sender. No
+   position has both True and False across campaigns that actually sent.
+
+2. **857/571 re-derived with explicit survivorship caveat.** The numbers are
+   PROVIDER FACT about emails that GOT REPLIES in campaign 352's reply-centric
+   sample (n=153 same-thread, n=307 new-thread). They measure body length of
+   emails that earned replies, NOT body length of all emails sent. The
+   document states four reasons this cannot be quoted as a length policy:
+   wrong denominator, unknown causality direction, unmatched comparison (step
+   2/4 vs step 1/3/5), and single-campaign single-sample origin.
+
+3. **Experiment designed.** Two arms, one variable (thread_reply at step 2),
+   identical copy/senders/timing/audience. Sample size calculations:
+   - 50% lift: ~39,000 leads, ~195,000 sends
+   - 100% lift (doubling): ~11,600 leads, ~58,000 sends
+   - 200% lift (tripling): ~4,400 leads, ~22,000 sends
+   The estate's largest campaign had 21,215 leads. Even a tripling requires
+   more leads than any single campaign to date. The experiment is expensive
+   relative to current inventory (~300 qualified records).
+
+4. **PROVEN LEARNINGS left empty.** Nothing survives a sample-size objection.
+   Three observations stated with n. Three hypotheses stated as untested.
+
+**RISKS:**
+- The experiment design assumes a ~0.4% step-2 baseline reply rate, derived
+  from campaign 352's reply-centric sample. If the true rate is lower, the
+  required sample sizes increase further.
+- The estate's ~300 qualified records are insufficient for a fully powered
+  test at realistic effect sizes. Accumulating leads over multiple months or
+  batching multiple cohorts into one experiment would be required.
+- Campaign 481 already has 23 leads staged with all-new-thread. Using it as
+  one arm would save staging effort but the 23-lead sample has essentially
+  zero statistical power.
+
+**RECOMMENDED CLAUDE ACTION:**
+The deliverable is ready for review. The experiment is the right next step
+but is not feasible at current inventory levels. The decision of whether to
+accumulate leads for a powered test, run an underpowered exploratory version,
+or leave the question as a standing bet is an operator call.
