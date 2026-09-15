@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-09-15T15:01:46+00:00",
+  "generated_at": "2026-09-15T15:33:02+00:00",
   "queue_path": "work/queue.jsonl",
   "gitignored": true,
   "present": true,
   "records": 550,
   "unparseable": 0,
-  "contacts": 151,
+  "contacts": 277,
   "dropped": 0,
   "clients": {
     "productive": 550
@@ -14,5 +14,5 @@
     "unset": 550
   },
   "estate_fingerprint": "d33cbd6d4ed10f26",
-  "mtime": "2026-09-15T14:29:40.823256+00:00"
+  "mtime": "2026-09-15T15:28:48.341865+00:00"
 }

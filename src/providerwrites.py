@@ -151,8 +151,30 @@ OPERATIONS = {
         "is the opposite of EmailBison's sequence route and is why writing "
         "this one twice is safe where writing that one twice is not."),
     LINKEDIN_ASSIGN_SENDER: ("linkedin", False,
-        "no documented route. campaignAccountIds is readable on the campaign "
-        "object, so a write would be verifiable; assignment was done by hand"),
+        "STILL NOT IN SUPPORTED, AND THIS ENTRY WAS STALE. It read 'no "
+        "documented route ... assignment was done by hand', and TASK-144 "
+        "found that false: `/campaign/AddLinkedInAccountsToCampaign` and "
+        "`/campaign/RemoveLinkedInAccountsFromCampaign` are BOTH on "
+        "`heyreach.WRITE_ROUTES` and both have implementations - "
+        "`heyreach.add_senders` and `heyreach.remove_senders`. The route is "
+        "not the obstacle and has not been for some time.\n"
+        "        This repository has been bitten twice by a paragraph about "
+        "the environment that was believed without checking - once here, "
+        "where this module's own docstring said SUPPORTED was empty while "
+        "two sequence-write routes were live, and once in QWEN.md, where a "
+        "worker was told it had no credentials while holding all three. So "
+        "the correction is recorded rather than the sentence quietly "
+        "deleted.\n"
+        "        What keeps it out of SUPPORTED is a different question now: "
+        "nothing needs it. TASK-144 measured the estate - 33 healthy seats, "
+        "all 33 already carrying IN_PROGRESS campaigns, zero uncommitted - "
+        "and one seat at 40 connection requests a day clears a 50-lead "
+        "cohort in 1.25 working days. The cadence's own 1-3 day delays "
+        "dominate the elapsed time, so a second sender does not make the "
+        "first campaign faster; it adds load to a seat already serving the "
+        "client's own active campaigns. Enable this when a cohort is "
+        "genuinely larger than one seat's ceiling, not before, and read "
+        "docs/SENDER-UTILISATION-2026-09-15.md for the arithmetic"),
     LINKEDIN_SET_LIMITS: ("linkedin", False,
         "no documented route, and no read route exposes a per-campaign limit "
         "either, so a write could not be verified even if it existed"),

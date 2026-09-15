@@ -13,6 +13,7 @@ blocked on.
   python -m src.research --plan --id meridian
 """
 import argparse
+import datetime
 
 from . import clients, events, evidence as ev, store
 from .providers import ProviderError, apify
@@ -23,6 +24,73 @@ NEED_HOOK_EVIDENCE = "public_evidence_required_for_hook"
 NEED_ANGLE_EVIDENCE = "public_evidence_required_for_angle"
 NEED_REBRAND_EVIDENCE = "public_evidence_required_for_rebrand"
 NEED_ICP_EVIDENCE = "public_evidence_required_for_icp_dimensions"
+NEED_REFRESH = "public_evidence_stale_refresh_required"
+
+# -------------------------------------------------------------- evidence TTL
+
+# A hiring post from last week is not the same kind of fact as "this company
+# builds software for agencies". One expires in days, the other in months.
+# A single global TTL is wrong for every fact at once, so the shelf life comes
+# from the evidence row's own `field` - the same field `for_prompt` already
+# reads and passes to the prompt.
+
+SHORT_LIVED_FIELDS = frozenset((
+    "team", "careers", "hiring", "jobs", "news", "announcements", "launches",
+))
+
+LONG_LIVED_DAYS = 30
+SHORT_LIVED_DAYS = 3
+
+
+def ttl_for(field):
+    """How many days this kind of evidence is worth before a refresh."""
+    if (field or "") in SHORT_LIVED_FIELDS:
+        return SHORT_LIVED_DAYS
+    return LONG_LIVED_DAYS
+
+
+def age_of(entry, today=None):
+    """Days since this evidence was retrieved, computed from `retrieved_at`.
+
+    `age_days` is NULL on every row in the estate - nothing ever wrote it.
+    `retrieved_at` is always present. Reading the NULL column would make this
+    function return None for every row and the TTL would refuse to fire, which
+    is exactly the defect an evaluator once hit for the same reason: it read
+    INSUFFICIENT_DATA forever because nothing wrote the field it read.
+    """
+    retrieved = entry.get("retrieved_at")
+    if not retrieved:
+        return None
+    today = today or datetime.datetime.now(datetime.timezone.utc)
+    if isinstance(today, str):
+        today = datetime.datetime.fromisoformat(today)
+    if isinstance(today, datetime.datetime):
+        today_date = today.date()
+    else:
+        today_date = today
+    try:
+        retrieved_dt = datetime.datetime.fromisoformat(retrieved)
+    except (ValueError, TypeError):
+        return None
+    return (today_date - retrieved_dt.date()).days
+
+
+def stale_evidence(rec, today=None):
+    """Evidence rows that have outlived their field's TTL.
+
+    Returns the rows, not just a bool, so `why()` can say WHICH row aged out.
+    A record with no `research` has no stale rows; a record whose evidence is
+    all long-lived and three days old has no stale rows; a record carrying a
+    `team` row from six days ago has one.
+    """
+    stale = []
+    for entry in rec.get("research") or []:
+        age = age_of(entry, today)
+        if age is None:
+            continue
+        if age > ttl_for(entry.get("field")):
+            stale.append(entry)
+    return stale
 
 
 class RunBudget:
@@ -69,7 +137,8 @@ def icp_prose_missing(rec):
     return not any(segments._hits(text, words)
                    for words in icp.NEED_SIGNALS.values())
 
-REASONS = (NEED_HOOK_EVIDENCE, NEED_ANGLE_EVIDENCE, NEED_REBRAND_EVIDENCE)
+REASONS = (NEED_HOOK_EVIDENCE, NEED_ANGLE_EVIDENCE, NEED_REBRAND_EVIDENCE,
+           NEED_REFRESH)
 
 
 def structured_evidence(rec):
@@ -85,7 +154,7 @@ def existing_evidence(rec):
     return list(rec.get("research") or [])
 
 
-def why(rec, verdict=None):
+def why(rec, verdict=None, today=None):
     """The reason public evidence is needed, or None when it is not.
 
     `verdict` lets a caller supply a freshly computed ICP verdict that has NOT
@@ -96,11 +165,19 @@ def why(rec, verdict=None):
     it can hold the record and stop verification. So the caller computes,
     passes it here, and lets the qualify stage own what gets stored.
 
+    `today` pins the clock for test determinism. Production callers leave it
+    None and get the wall clock.
+
     Structured data wins. This only fires when a step downstream has nothing to
     work with, which is the only honest reason to go and read someone's website.
+    Evidence has a shelf life that depends on what it is: a team page from six
+    days ago is stale, a services page from six days ago is not.
     """
+    stale = stale_evidence(rec, today)
+    if stale:
+        return NEED_REFRESH
     if existing_evidence(rec):
-        return None                               # already have it
+        return None                               # already have it, and fresh
     facts = structured_evidence(rec)
 
     if rec.get("lane") == "cold" and not rec.get("hook"):
@@ -128,11 +205,11 @@ def why(rec, verdict=None):
     return None
 
 
-def plan(rec, config=None, verdict=None):
+def plan(rec, config=None, verdict=None, today=None):
     """What a run would do for this record, or why it will not happen."""
     config = config or {}
     conf = apify.settings(config)
-    reason = why(rec, verdict=verdict)
+    reason = why(rec, verdict=verdict, today=today)
     if not reason:
         return {"record": rec["id"], "planned": False,
                 "why_not": "structured evidence is sufficient"}
@@ -215,7 +292,7 @@ def _from_the_site_itself(rec, config):
 
 
 def run(rec, config=None, live=False, spend=None, scrape_budget=None,
-        verdict=None):
+        verdict=None, today=None):
     """Gather public evidence. Returns what was retained, never the raw dataset.
 
     `live` is a second gate on top of the client's own `enabled`: a plan is
@@ -234,7 +311,7 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None,
     being invisible, and silence is the failure this guards against.
     """
     config = config or {}
-    proposal = plan(rec, config, verdict=verdict)
+    proposal = plan(rec, config, verdict=verdict, today=today)
     if not proposal.get("planned"):
         events.record(rec, events.PROVIDER_CALL_SKIPPED, provider="apify",
                       operation="research", reason=proposal.get("why_not"))

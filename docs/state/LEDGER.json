@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-15T15:01:46+00:00",
+  "generated_at": "2026-09-15T15:33:02+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
-  "master_head": "14354e3",
-  "origin_master_head": "14354e3",
+  "master_head": "871c206",
+  "origin_master_head": "871c206",
   "master_pushed": true,
   "tasks": [
     {
@@ -14,11 +14,51 @@
       "reported": false
     },
     {
-      "task": "TASK-137",
-      "file": "docs/qwen-tasks/TODO/TASK-137-narrow-four-seals-then-ship-the-control-arm.md",
+      "task": "TASK-138",
+      "file": "docs/qwen-tasks/TODO/TASK-138-research-has-no-ttl-so-it-never-refreshes.md",
       "stage": "TODO",
-      "last_commit": "14354e3",
-      "last_commit_at": "2026-09-15T16:51:38+02:00",
+      "last_commit": "871c206",
+      "last_commit_at": "2026-09-15T17:32:29+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-139",
+      "file": "docs/qwen-tasks/TODO/TASK-139-what-the-estate-already-knows-about-these-people.md",
+      "stage": "TODO",
+      "last_commit": "871c206",
+      "last_commit_at": "2026-09-15T17:32:29+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-140",
+      "file": "docs/qwen-tasks/TODO/TASK-140-cohorts-that-are-actually-coherent.md",
+      "stage": "TODO",
+      "last_commit": "871c206",
+      "last_commit_at": "2026-09-15T17:32:29+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-141",
+      "file": "docs/qwen-tasks/TODO/TASK-141-what-bison-can-actually-prove-about-a-reply.md",
+      "stage": "TODO",
+      "last_commit": "871c206",
+      "last_commit_at": "2026-09-15T17:32:29+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-142",
+      "file": "docs/qwen-tasks/TODO/TASK-142-can-client-two-be-onboarded-without-rewriting-the-core.md",
+      "stage": "TODO",
+      "last_commit": "871c206",
+      "last_commit_at": "2026-09-15T17:32:29+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-143",
+      "file": "docs/qwen-tasks/TODO/TASK-143-the-junk-in-research-and-whether-filtering-it-changes-anything.md",
+      "stage": "TODO",
+      "last_commit": "871c206",
+      "last_commit_at": "2026-09-15T17:32:29+02:00",
       "reported": false
     },
     {
@@ -1289,16 +1329,25 @@
       "last_commit_at": "2026-09-15T16:32:19+02:00",
       "reported": true,
       "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-137",
+      "file": "docs/qwen-tasks/DONE/TASK-137-narrow-four-seals-then-ship-the-control-arm.md",
+      "stage": "DONE",
+      "last_commit": "871c206",
+      "last_commit_at": "2026-09-15T17:32:29+02:00",
+      "reported": true,
+      "declared_status": "DONE"
     }
   ],
   "branches": [
     {
       "branch": "master",
-      "head": "14354e3",
+      "head": "871c206",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "14354e3",
-      "last_commit_at": "2026-09-15T16:51:38+02:00"
+      "remote_head": "871c206",
+      "last_commit_at": "2026-09-15T17:32:29+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -1912,9 +1961,9 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "14354e3",
+      "head": "871c206",
       "branch": "master",
-      "uncommitted_files": 7,
+      "uncommitted_files": 1,
       "clean": false
     },
     {
@@ -1975,8 +2024,8 @@
     }
   ],
   "stage_counts": {
-    "TODO": 2,
+    "TODO": 7,
     "REVIEW": 1,
-    "DONE": 132
+    "DONE": 133
   }
 }
