@@ -226,14 +226,27 @@ class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
             "/campaign/AddLeadsToCampaignV2",
         })
 
-    def test_the_add_leads_route_is_not_enabled(self):
-        """Built, proven offline, and refused by the door until enabled."""
+    def test_the_add_leads_route_is_enabled_only_against_a_draft(self):
+        """NARROWED, TASK-137. It said the route was refused by the door
+        until enabled. It is enabled, and the door still refuses it for
+        every destination but one.
+
+        The condition, not the tuple, is the permission - and the refusals
+        are proven behaviourally in
+        `test_a_person_can_enter_a_heyreach_campaign.TheConditionIsThe
+        RealPermission`, which drives each rejected campaign state through
+        `perform` and asserts the transport was never reached. What is
+        asserted here is the declaration that makes that possible.
+        """
         from src import providerwrites
 
         self.assertIn(providerwrites.LINKEDIN_ADD_LEAD,
                       providerwrites.OPERATIONS)
-        self.assertNotIn(providerwrites.LINKEDIN_ADD_LEAD,
-                         providerwrites.SUPPORTED)
+        self.assertIn(providerwrites.LINKEDIN_ADD_LEAD,
+                      providerwrites.SUPPORTED)
+        self.assertTrue(
+            providerwrites.is_conditional(providerwrites.LINKEDIN_ADD_LEAD),
+            "add_lead is enabled with no condition on its destination")
 
     def test_starting_a_campaign_is_still_absent(self):
         """The one that must never arrive by accident."""
@@ -272,20 +285,40 @@ class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
         # verb can start that campaign. The verbs that can reach a person,
         # `add_lead` and `activate`, are still sealed and are the ones this
         # test is really about.
+        # `heyreach.add_lead` left this list on 2026-09-15, TASK-137, and it
+        # is the first prospect-facing verb ever enabled here. It is enabled
+        # CONDITIONALLY: the door additionally re-reads the destination
+        # campaign and admits only one proven unable to send. It is asserted
+        # below rather than merely removed, because "it is no longer on a
+        # list" is not a statement about what it may do.
         for operation in ("heyreach.create_campaign", "heyreach.create_list",
                           "heyreach.assign_sender",
-                          "heyreach.set_limits", "heyreach.add_lead",
-                          "heyreach.activate"):
+                          "heyreach.set_limits", "heyreach.activate"):
             with self.subTest(operation=operation):
                 self.assertFalse(providerwrites.is_supported(operation))
+        self.assertTrue(providerwrites.is_supported("heyreach.add_lead"))
+        self.assertTrue(providerwrites.is_conditional("heyreach.add_lead"))
 
-    def test_the_two_verbs_that_reach_a_person_are_still_sealed(self):
-        """The distinction the list above now rests on, asserted directly."""
-        for operation in ("heyreach.add_lead", "heyreach.activate"):
-            with self.subTest(operation=operation):
-                channel, facing, _why = providerwrites.OPERATIONS[operation]
-                self.assertTrue(facing, "this test is about prospect-facing verbs")
-                self.assertFalse(providerwrites.is_supported(operation))
+    def test_the_verb_that_starts_a_campaign_is_still_sealed(self):
+        """NARROWED, TASK-137. Both verbs that reach a person were sealed;
+        `add_lead` is now conditionally open and `activate` is not.
+
+        They were always different in kind and the old test treated them as
+        one. Adding a lead to a DRAFT campaign reaches nobody - the campaign
+        cannot send, which is exactly what the condition proves before the
+        write. Activating is the moment those staged leads become messages,
+        and no campaign state makes it safe, so it carries no condition that
+        could ever admit it.
+        """
+        channel, facing, _why = providerwrites.OPERATIONS["heyreach.activate"]
+        self.assertTrue(facing, "this test is about a prospect-facing verb")
+        self.assertFalse(providerwrites.is_supported("heyreach.activate"))
+        self.assertFalse(providerwrites.is_conditional("heyreach.activate"))
+
+        channel, facing, _why = providerwrites.OPERATIONS["heyreach.add_lead"]
+        self.assertTrue(facing)
+        self.assertTrue(providerwrites.is_supported("heyreach.add_lead"))
+        self.assertTrue(providerwrites.is_conditional("heyreach.add_lead"))
 
     def test_the_enabled_sequence_write_is_not_prospect_facing(self):
         """What licenses enabling it, asserted rather than asserted-in-prose."""

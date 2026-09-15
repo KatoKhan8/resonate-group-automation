@@ -34,7 +34,19 @@ from unittest import mock
 
 from src import approval, account, actionledger, collision, eligibility, events
 from src import executionguard, fatigue, linkedin, providerwrites, push, store
+from src.providers import heyreach
 from tests.base import QueueTest
+
+# TASK-137: `LINKEDIN_ADD_LEAD` IS NOW CONDITIONALLY SUPPORTED, so `perform`
+# refuses it unless a provider read proves the destination campaign cannot
+# send. This module uses that operation as its vehicle for a different
+# question, so it names a DRAFT destination and fakes the one read the
+# condition makes. It does NOT stub the condition itself - the predicate runs,
+# on a real status string. Every test here failed loudly when the gate landed,
+# which is how it is known to be reached from this path.
+DRAFT_DESTINATION = 599020
+DRAFT_ROW = {"id": DRAFT_DESTINATION, "status": "DRAFT", "name": "test",
+             "organizationUnitId": "174892"}
 
 OP = providerwrites.LINKEDIN_ADD_LEAD
 PROFILE = "https://www.linkedin.com/in/dana-oyelaran"
@@ -121,6 +133,8 @@ class DuplicationTest(QueueTest):
         guards and `push.mark_pushed` are all the real ones.
         """
         with mock.patch.object(providerwrites, "SUPPORTED", (OP,)), \
+             mock.patch.object(heyreach, "campaign_read",
+                               return_value=dict(DRAFT_ROW)), \
              mock.patch.object(executionguard, "revalidate",
                                lambda *a, **kw: True):
             yield
@@ -130,7 +144,8 @@ class DuplicationTest(QueueTest):
         spy = Spy(raises=raises)
         with self.enabled():
             result = providerwrites.perform(
-                OP, authorization=self.authorization(key, rid, step),
+                OP, provider_campaign_id=DRAFT_DESTINATION,
+                authorization=self.authorization(key, rid, step),
                 transport=spy, step=STEP, payload=APPROVED,
                 readback=lambda: (readback if readback is not None
                                   else {"leads": 1}),
@@ -234,7 +249,8 @@ class TheSecondAttemptIsRefused(DuplicationTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(
-                    OP, authorization=self.authorization(key),
+                    OP, provider_campaign_id=DRAFT_DESTINATION,
+                    authorization=self.authorization(key),
                     transport=spy, step=STEP, payload=APPROVED,
                     readback=lambda: {"leads": 1},
                     expected={"leads": 1})
@@ -248,7 +264,8 @@ class TheSecondAttemptIsRefused(DuplicationTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(
-                    OP, authorization=self.authorization(key),
+                    OP, provider_campaign_id=DRAFT_DESTINATION,
+                    authorization=self.authorization(key),
                     transport=spy, step=STEP, payload=APPROVED,
                     readback=lambda: {"leads": 1},
                     expected={"leads": 1})
@@ -413,7 +430,8 @@ class AnAmbiguousResultIsNotRetried(DuplicationTest):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(
-                    OP, authorization=self.authorization(key),
+                    OP, provider_campaign_id=DRAFT_DESTINATION,
+                    authorization=self.authorization(key),
                     transport=spy, step=STEP, payload=APPROVED,
                     readback=lambda: {"leads": 1},
                     expected={"leads": 1})

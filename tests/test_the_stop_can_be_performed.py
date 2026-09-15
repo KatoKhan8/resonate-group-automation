@@ -99,20 +99,47 @@ class ThePauseIsPerformable(QueueTest):
         # Not prospect-facing: a sequence on a campaign holding nobody
         # reaches nobody, and the campaign has no list, no leads and no wired
         # verb that can start it.
+        # `heyreach.add_lead` joined on 2026-09-15, TASK-137, and it is the
+        # first prospect-facing verb ever enabled. It did not arrive by
+        # drift: it is enabled CONDITIONALLY, and the condition - the
+        # destination campaign must be proven by a provider read, taken at
+        # the moment of the write, to be unable to send - is the permission.
+        # The test below asserts that property rather than this membership.
         proven = {"heyreach.pause", "bison.pause", "bison.stop_lead",
                   "bison.create_campaign", "bison.set_sequence",
-                  "heyreach.set_sequence"}
+                  "heyreach.set_sequence", "heyreach.add_lead"}
         for operation in providerwrites.OPERATIONS:
             if operation in proven:
                 continue
             self.assertFalse(providerwrites.is_supported(operation), operation)
 
-    def test_no_supported_verb_reaches_a_prospect(self):
-        """The property that has to survive every addition to that set."""
+    def test_no_supported_verb_reaches_a_prospect_unconditionally(self):
+        """NARROWED, TASK-137. The property that has to survive every
+        addition to that set, restated for the first addition that could
+        reach a person.
+
+        It used to read: nothing prospect-facing is supported. That was a
+        true statement about a system that had never written to a prospect,
+        and it could not distinguish staging a lead into a campaign that
+        cannot send from sending somebody a message. The property that
+        actually has to hold is that no prospect-facing verb is enabled
+        WITHOUT a condition deciding, per write, whether it reaches anyone.
+        """
         for operation, (_c, facing, _w) in providerwrites.OPERATIONS.items():
-            if facing:
+            if not facing:
+                continue
+            if providerwrites.is_supported(operation):
+                self.assertTrue(
+                    providerwrites.is_conditional(operation),
+                    f"{operation} reaches a prospect and is enabled with no "
+                    f"condition on when it may run")
+            else:
                 self.assertFalse(providerwrites.is_supported(operation),
                                  operation)
+        # The one that is open, named, so a second one is a decision.
+        facing_and_open = [op for op in providerwrites.PROSPECT_FACING
+                           if providerwrites.is_supported(op)]
+        self.assertEqual(facing_and_open, [providerwrites.LINKEDIN_ADD_LEAD])
 
     def test_it_performs_and_is_confirmed_by_the_read_back(self):
         spy = Spy(status="PAUSED")

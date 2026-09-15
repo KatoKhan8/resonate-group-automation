@@ -626,6 +626,117 @@ class ReadbackDisagrees(_EnsureLeadsTestBase):
             _stop_all(mocks)
 
 
+# =========================================== what perform is actually told
+
+class WhatTheFactoryHandsTheDoor(_EnsureLeadsTestBase):
+    """The two arguments the door cannot work without, asserted on the call.
+
+    Every other test in this module mocks `providerwrites.perform` and looks
+    at what happened around it. None looked at what it was HANDED, and two
+    defects lived in that blind spot:
+
+      - `provider_campaign_id` was added to `perform` so the destination's
+        state could be re-read at the moment of the write. Deleting it from
+        this factory's call broke nothing in this module - the write would
+        have refused in production and no test would have said so first.
+
+      - the transport closure took the WHOLE batch while the loop calls
+        `perform` once per contact, so N contacts meant N writes each
+        carrying all N leads. Every test here pushes a single contact, where
+        N squared and N are the same number.
+
+    Both are asserted here, on the arguments, with two contacts.
+    """
+
+    def _push_two(self):
+        """Push two contacts live and return the recorded perform calls."""
+        recs = [_make_record("acme", "pat"),
+                _make_record("beta", "sam", domain="beta.test")]
+        camp = _make_campaign(record_ids=["acme", "beta"])
+        self._seed(recs, camp)
+
+        perform_mock = mock.MagicMock(return_value={"class": "accepted"})
+        mocks = {
+            "tenant": mock.patch.object(heyreach, "check_tenant",
+                                        return_value=True),
+            "readback": mock.patch.object(
+                heyreach, "readback_membership",
+                return_value={"found": set(), "missing": set(),
+                              "total": 0, "per_lead": []}),
+            "add": mock.patch.object(heyreach, "add_leads_to_campaign",
+                                     return_value={"ok": True}),
+            "perform": mock.patch.object(providerwrites, "perform",
+                                         perform_mock),
+            "collision": mock.patch.object(
+                collision, "check_account",
+                return_value={"domain": "acme.test", "verdict": "clear",
+                              "anyone_in_sequence": False,
+                              "emails_sent_total": 0, "leads": 0,
+                              "people": [], "unknown_statuses": [],
+                              "any_bounce": False,
+                              "workspace": "productive"}),
+        }
+        mocks.update(_auth_patches())
+        _start_all(mocks, self)
+        try:
+            heyreachfactory.ensure_leads(
+                "test-li-campaign", config=self._config(), live=True)
+        finally:
+            _stop_all(mocks)
+        return perform_mock
+
+    def test_the_destination_campaign_is_named_on_every_call(self):
+        """Without it the door cannot read the campaign's state, and refuses.
+
+        `599020` is the campaign row's `heyreach_campaign_id`, so this also
+        pins that the PROVIDER id is passed rather than the local one - the
+        two are different strings and only one can be read from HeyReach.
+        """
+        perform_mock = self._push_two()
+        self.assertEqual(perform_mock.call_count, 2)
+        for call in perform_mock.call_args_list:
+            self.assertEqual(call.kwargs.get("provider_campaign_id"), 599020)
+
+    def test_each_write_carries_exactly_the_contact_it_was_authorised_for(self):
+        """One authorization names one record, one contact, one step. The
+        write it drives must carry that person and nobody else."""
+        perform_mock = self._push_two()
+        self.assertEqual(perform_mock.call_count, 2)
+
+        sent = []
+        for call in perform_mock.call_args_list:
+            transport = call.kwargs["transport"]
+            with mock.patch.object(heyreach, "add_leads_to_campaign") as add:
+                transport(call.kwargs.get("payload"))
+            _campaign_id, rows, _seat = add.call_args[0]
+            self.assertEqual(
+                len(rows), 1,
+                "this write carries more than the one contact its "
+                "authorization named")
+            sent.append(rows[0]["contact_key"])
+        self.assertEqual(sorted(sent), ["pat", "sam"])
+
+    def test_each_readback_asks_only_about_that_contact(self):
+        """A readback scoped to the whole batch passes on somebody else's
+        lead: after the first write every later one finds what a different
+        authorization put there."""
+        perform_mock = self._push_two()
+        asked = []
+        for call in perform_mock.call_args_list:
+            readback = call.kwargs["readback"]
+            with mock.patch.object(
+                    heyreach, "readback_membership",
+                    return_value={"found": set(), "missing": set(),
+                                  "total": 0, "per_lead": []}) as rb:
+                readback()
+            _campaign_id, urls = rb.call_args[0]
+            self.assertEqual(len(urls), 1)
+            asked.append(urls[0])
+            self.assertEqual(call.kwargs["expected"],
+                             {"found": {urls[0].strip().lower()}})
+        self.assertEqual(len(set(asked)), 2)
+
+
 # =============================================== unclassifiable response
 
 class UnclassifiableResponse(_EnsureLeadsTestBase):
@@ -764,11 +875,27 @@ class GuardBreaking(_EnsureLeadsTestBase):
 # =============================================== LINKEDIN_ADD_LEAD not enabled
 
 class LinkAddLeadNotEnabled(_NoPatchOutlivesItsTest):
-    """LINKEDIN_ADD_LEAD is NOT in SUPPORTED. This is deliberate."""
+    """NARROWED, TASK-137. It is in SUPPORTED, and that is not the
+    permission - the condition on its destination is."""
 
-    def test_linkedin_add_lead_is_not_in_supported(self):
-        self.assertNotIn(providerwrites.LINKEDIN_ADD_LEAD,
-                         providerwrites.SUPPORTED)
+    def test_linkedin_add_lead_is_enabled_only_conditionally(self):
+        self.assertIn(providerwrites.LINKEDIN_ADD_LEAD,
+                      providerwrites.SUPPORTED)
+        self.assertTrue(
+            providerwrites.is_conditional(providerwrites.LINKEDIN_ADD_LEAD))
+
+    def test_the_condition_has_no_way_to_admit_an_activation(self):
+        """Nothing in CONDITIONAL could ever turn activation on.
+
+        `add_lead` is conditionally open because a campaign state exists -
+        DRAFT - in which the write reaches nobody. No campaign state makes
+        activation reach nobody, so it carries no condition at all and there
+        is no value anybody can pass to `perform` that admits it.
+        """
+        for operation in (providerwrites.LINKEDIN_ACTIVATE,
+                          providerwrites.EMAIL_ACTIVATE):
+            self.assertNotIn(operation, providerwrites.CONDITIONAL)
+            self.assertNotIn(operation, providerwrites.SUPPORTED)
 
     def test_linkedin_add_lead_is_declared(self):
         channel, facing, why = providerwrites.describe(

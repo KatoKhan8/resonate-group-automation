@@ -151,7 +151,13 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
         # AddLeadsToCampaignV2 is on WRITE_ROUTES but not in SUPPORTED.
         self.assertIn("/campaign/AddLeadsToCampaignV2", heyreach.WRITE_ROUTES)
         from src import providerwrites as pw
-        self.assertNotIn(pw.LINKEDIN_ADD_LEAD, pw.SUPPORTED)
+        # NARROWED, TASK-137. `LINKEDIN_ADD_LEAD` is in SUPPORTED and
+        # the door still refuses it for every destination that can
+        # send. What this test is about - that no route which STARTS
+        # outreach exists - is untouched and is asserted above.
+        self.assertIn(pw.LINKEDIN_ADD_LEAD, pw.SUPPORTED)
+        self.assertTrue(pw.is_conditional(pw.LINKEDIN_ADD_LEAD))
+        self.assertNotIn(pw.LINKEDIN_ACTIVATE, pw.SUPPORTED)
 
 
     def test_the_write_layer_is_still_sealed(self):
@@ -161,7 +167,12 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
             (pw.LINKEDIN_PAUSE, pw.EMAIL_PAUSE, pw.EMAIL_STOP_LEAD,
              pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE,
              # Added 2026-09-14, not prospect-facing.
-             pw.LINKEDIN_SET_SEQUENCE))
+             pw.LINKEDIN_SET_SEQUENCE,
+             # Added 2026-09-15, TASK-137, and prospect-facing - the first
+             # one ever. Enabled CONDITIONALLY: the door re-reads the
+             # destination campaign and admits only one proven unable to
+             # send. Asserted below.
+             pw.LINKEDIN_ADD_LEAD))
         # `heyreach.pause` left this list on 2026-09-12: a live pause of
         # campaign 594061 returned 200 and read back PAUSED, so it is
         # live-validated and declared. It was never a campaign-BUILDING verb
@@ -175,19 +186,33 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
         # implied by membership of a list.
         for operation in ("heyreach.create_campaign", "heyreach.create_list",
                           "heyreach.assign_sender",
-                          "heyreach.set_limits", "heyreach.add_lead",
+                          "heyreach.set_limits",
                           "heyreach.activate"):
             with self.subTest(operation=operation):
                 self.assertFalse(providerwrites.is_supported(operation))
 
-    def test_the_two_verbs_that_reach_a_person_are_sealed(self):
-        """The property the list above now rests on, asserted directly."""
-        for operation in ("heyreach.add_lead", "heyreach.activate",
+    def test_the_verbs_that_reach_a_person_are_sealed_but_one(self):
+        """NARROWED, TASK-137. Three of the four are still sealed outright.
+
+        `heyreach.add_lead` is the exception and it is not an exception to
+        the property - it is an exception to expressing the property as
+        membership of a tuple. It may run only against a campaign the
+        provider says, at the moment of the write, cannot send, so the lead
+        it stages reaches nobody until a separate and still-sealed decision
+        activates the campaign.
+        """
+        for operation in ("heyreach.activate",
                           "bison.add_lead", "bison.activate"):
             with self.subTest(operation=operation):
                 _channel, facing, _why = providerwrites.OPERATIONS[operation]
                 self.assertTrue(facing, "this test is about prospect-facing verbs")
                 self.assertFalse(providerwrites.is_supported(operation))
+                self.assertFalse(providerwrites.is_conditional(operation))
+
+        _channel, facing, _why = providerwrites.OPERATIONS["heyreach.add_lead"]
+        self.assertTrue(facing)
+        self.assertTrue(providerwrites.is_supported("heyreach.add_lead"))
+        self.assertTrue(providerwrites.is_conditional("heyreach.add_lead"))
 
     def test_the_discovered_read_routes_are_wired_now(self):
         """They were recorded as unwired; the campaign factory needed them.

@@ -151,21 +151,32 @@ def _save_record(auth, url=URL_ADA, first="Ada"):
 
 
 @contextlib.contextmanager
-def _enabled():
-    """Enable LINKEDIN_ADD_LEAD inside the test only, and stub revalidate.
+def _enabled(status=heyreach.DRAFT):
+    """Put the destination in a state that admits the write, and stub
+    revalidate.
 
-    `perform` calls `executionguard.revalidate`, which re-reads the record
-    from disk and re-runs the stops. These tests are about the write layer's
-    response classification, not about the guard chain. Stubbing revalidate
-    is safe because `test_a_stop_beats_an_authorization` pins the call order.
+    THIS NO LONGER PATCHES `SUPPORTED`. It used to, because
+    `LINKEDIN_ADD_LEAD` was not in it; as of TASK-137 it is, conditionally,
+    and patching the tuple here would have hidden that from every test in
+    this file.
+
+    What it patches instead is the PROVIDER READ the condition makes.
+    `perform` now calls `heyreach.campaign_cannot_send` against the campaign
+    id it is given, immediately before the write, and refuses unless the
+    answer is a proven DRAFT. These tests must not make a live HeyReach call,
+    so the campaign row is faked - but THE CONDITION ITSELF RUNS, on the real
+    predicate, against a real status string. Pass `status` to put the
+    destination in a state that refuses; `TheConditionIsTheRealPermission`
+    does exactly that.
+
+    `executionguard.revalidate` is still stubbed: it re-reads the record from
+    disk and re-runs the stops, and these tests are about the write layer's
+    response classification rather than the guard chain. That is safe because
+    `test_a_stop_beats_an_authorization` pins the call order.
     """
-    with mock.patch.object(providerwrites, "SUPPORTED",
-                           (providerwrites.LINKEDIN_PAUSE,
-                            providerwrites.EMAIL_PAUSE,
-                            providerwrites.EMAIL_STOP_LEAD,
-                            providerwrites.EMAIL_CREATE_CAMPAIGN,
-                            providerwrites.EMAIL_SET_SEQUENCE,
-                            providerwrites.LINKEDIN_ADD_LEAD)), \
+    row = {"id": CAMPAIGN_A, "status": status, "name": "test",
+           "organizationUnitId": ORG_UNIT_PRODUCTIVE}
+    with mock.patch.object(heyreach, "campaign_read", return_value=row), \
          mock.patch.object(executionguard, "revalidate",
                            lambda *a, **kw: True):
         yield
@@ -198,7 +209,7 @@ class TheProviderContract(QueueTest):
         with _enabled():
             providerwrites.perform(
                 providerwrites.LINKEDIN_ADD_LEAD,
-                authorization=auth, step=STEP, payload=APPROVED,
+                provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                 transport=transport,
                 readback=membership,
                 expected={"found": {URL_ADA.lower(), URL_GRACE.lower()}})
@@ -239,7 +250,7 @@ class TheProviderContract(QueueTest):
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=transport, readback=membership,
                     expected={"found": {URL_ADA.lower()}})
         self.assertEqual(actionledger.state_of(auth.key),
@@ -268,7 +279,7 @@ class Idempotency(QueueTest):
         with _enabled():
             result = providerwrites.perform(
                 providerwrites.LINKEDIN_ADD_LEAD,
-                authorization=auth, step=STEP, payload=APPROVED,
+                provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                 transport=transport, readback=membership,
                 expected={"found": {URL_ADA.lower()}})
         self.assertEqual(result["class"], providerwrites.ACCEPTED)
@@ -290,7 +301,7 @@ class Idempotency(QueueTest):
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=transport,
                     readback=FakeMembership(),
                     expected={"found": {URL_ADA.lower()}})
@@ -302,7 +313,7 @@ class Idempotency(QueueTest):
             with self.assertRaises(executionguard.NotAuthorized):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=transport2,
                     readback=FakeMembership(),
                     expected={"found": {URL_ADA.lower()}})
@@ -334,7 +345,7 @@ class DuplicatePrevention(QueueTest):
         with _enabled():
             result = providerwrites.perform(
                 providerwrites.LINKEDIN_ADD_LEAD,
-                authorization=auth, step=STEP, payload=APPROVED,
+                provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                 transport=transport, readback=membership,
                 expected={"found": {URL_ADA.lower()}})
         self.assertEqual(result["class"], providerwrites.ACCEPTED)
@@ -406,7 +417,7 @@ class WrongCampaign(QueueTest):
         with _enabled():
             providerwrites.perform(
                 providerwrites.LINKEDIN_ADD_LEAD,
-                authorization=auth, step=STEP, payload=APPROVED,
+                provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                 transport=transport, readback=membership,
                 expected={"found": {URL_ADA.lower()}})
         self.assertEqual(len(transport.calls), 1)
@@ -424,7 +435,7 @@ class WrongCampaign(QueueTest):
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=transport, readback=wrong_membership,
                     expected={"found": {URL_ADA.lower()}})
 
@@ -445,7 +456,7 @@ class RestartAndRetry(QueueTest):
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=transport,
                     readback=FakeMembership(),
                     expected={"found": {URL_ADA.lower()}})
@@ -462,7 +473,7 @@ class RestartAndRetry(QueueTest):
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=FakeTransport(), readback=boom,
                     expected={"found": {URL_ADA.lower()}})
         self.assertEqual(actionledger.state_of(auth.key),
@@ -477,7 +488,7 @@ class RestartAndRetry(QueueTest):
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=transport,
                     readback=FakeMembership(),
                     expected={"found": {URL_ADA.lower()}})
@@ -502,7 +513,7 @@ class RestartAndRetry(QueueTest):
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=transport, readback=membership,
                     expected={"found": {URL_ADA.lower(),
                                         URL_GRACE.lower()}})
@@ -529,7 +540,7 @@ class ReadbackVerification(QueueTest):
         with _enabled():
             result = providerwrites.perform(
                 providerwrites.LINKEDIN_ADD_LEAD,
-                authorization=auth, step=STEP, payload=APPROVED,
+                provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                 transport=transport, readback=membership,
                 expected={"found": {URL_ADA.lower(), URL_GRACE.lower()}})
         self.assertEqual(result["class"], providerwrites.ACCEPTED)
@@ -548,7 +559,7 @@ class ReadbackVerification(QueueTest):
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=transport, readback=membership,
                     expected={"found": {URL_ADA.lower(), URL_GRACE.lower()}})
 
@@ -564,7 +575,7 @@ class ReadbackVerification(QueueTest):
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=transport, readback=membership,
                     expected=None)
 
@@ -583,7 +594,7 @@ class ReadbackVerification(QueueTest):
             with self.assertRaises(providerwrites.WriteUnverified):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=transport, readback=membership,
                     expected={})
 
@@ -722,24 +733,71 @@ class TheReadbackFunction(unittest.TestCase):
 # ------------------------------------------------- the seal still holds
 
 class TheSealStillHolds(unittest.TestCase):
-    """LINKEDIN_ADD_LEAD is NOT in SUPPORTED. The door refuses it."""
+    """NARROWED, TASK-137, 2026-09-15. Read this before changing any of it.
 
-    def test_linkedin_add_lead_is_not_supported(self):
-        self.assertNotIn(providerwrites.LINKEDIN_ADD_LEAD,
-                         providerwrites.SUPPORTED)
+    These four tests asserted that `LINKEDIN_ADD_LEAD` was not supported at
+    all. They were the last thing between a ready 122-lead cohort and the
+    first live campaign, and they were written to make lifting them an act
+    rather than a drift. Claude enabled the route once, saw all four fail,
+    and reverted rather than narrow them at the end of a long session.
+
+    They are narrowed, not deleted. Each one now asserts the CONDITIONAL
+    permission that replaced the absence of one:
+
+        add_lead is PERMITTED only against a campaign the provider says,
+        at the moment of the write, cannot send - which is DRAFT and
+        nothing else;
+        add_lead is REFUSED for IN_PROGRESS, PAUSED, FINISHED, an
+        unrecognised status, an unreadable campaign and a campaign nobody
+        named;
+        LINKEDIN_ACTIVATE is STILL refused, unconditionally, and enabling
+        add-lead is not an argument for enabling it.
+
+    The refusals live in `TheConditionIsTheRealPermission` below, which
+    drives them through `perform` and asserts the transport was never
+    reached. A tuple that says "conditional" proves nothing on its own.
+    """
+
+    def test_linkedin_add_lead_is_supported_only_conditionally(self):
+        """In SUPPORTED is necessary. It is not sufficient, and that is the
+        point: the second key is `CONDITIONAL`, and `perform` turns it."""
+        self.assertIn(providerwrites.LINKEDIN_ADD_LEAD,
+                      providerwrites.SUPPORTED)
+        self.assertTrue(
+            providerwrites.is_conditional(providerwrites.LINKEDIN_ADD_LEAD),
+            "add_lead is in SUPPORTED without a condition, which makes it an "
+            "unconditional prospect-facing write")
 
     def test_the_write_layer_still_refuses_prospect_facing_ops(self):
-        """Nothing that reaches a prospect is supported."""
+        """EXACTLY ONE prospect-facing operation is enabled, and it is
+        conditional. Every other one still refuses by name.
+
+        The original form of this test asserted the list was empty. The
+        narrowed form asserts what may be in it - so a second prospect-facing
+        route cannot arrive quietly, and one arriving WITHOUT a condition
+        fails here even if somebody remembered to update the tuple below.
+        """
         enabled = [op for op in providerwrites.PROSPECT_FACING
                    if providerwrites.is_supported(op)]
-        self.assertEqual(enabled, [])
+        self.assertEqual(enabled, [providerwrites.LINKEDIN_ADD_LEAD])
+        unconditional = [op for op in enabled
+                         if not providerwrites.is_conditional(op)]
+        self.assertEqual(
+            unconditional, [],
+            "a prospect-facing operation is enabled with no condition on it")
 
     def test_supported_is_exactly_this(self):
-        """The whole list, so enabling a route is an act rather than a drift.
+        """The whole tuple, so enabling a route is an act rather than a drift.
 
-        `LINKEDIN_SET_SEQUENCE` joined it on 2026-09-14 - not prospect-facing,
-        route established, campaign unstartable. `LINKEDIN_ADD_LEAD` did NOT,
-        and that is what this file is about.
+        DELIBERATELY STILL AN EXACT-TUPLE COMPARISON. The instruction with
+        TASK-137 was to update the expected value and never to loosen this
+        into a subset check: its entire worth is that an addition has to be
+        made here, by hand, by somebody who read the rest of this class.
+
+        `LINKEDIN_SET_SEQUENCE` joined on 2026-09-14 - not prospect-facing,
+        route established, campaign unstartable. `LINKEDIN_ADD_LEAD` joined
+        on 2026-09-15 and is the first entry here that can reach a person,
+        which is why it is the first entry that also needed `CONDITIONAL`.
         """
         self.assertEqual(
             providerwrites.SUPPORTED,
@@ -747,12 +805,25 @@ class TheSealStillHolds(unittest.TestCase):
              providerwrites.EMAIL_STOP_LEAD,
              providerwrites.EMAIL_CREATE_CAMPAIGN,
              providerwrites.EMAIL_SET_SEQUENCE,
-             providerwrites.LINKEDIN_SET_SEQUENCE))
+             providerwrites.LINKEDIN_SET_SEQUENCE,
+             providerwrites.LINKEDIN_ADD_LEAD))
 
-    def test_the_add_lead_operation_is_still_not_supported(self):
-        """The one this whole module exists to keep sealed."""
-        self.assertNotIn(providerwrites.LINKEDIN_ADD_LEAD,
-                         providerwrites.SUPPORTED)
+    def test_the_activate_operations_are_still_unconditionally_sealed(self):
+        """The one this module now exists to keep sealed.
+
+        This test used to assert add-lead was unsupported. Add-lead was the
+        staging half of the pair; ACTIVATE is the half that turns a campaign
+        holding staged leads into messages sent to real people, and it is a
+        separate decision with its own evidence. It is not merely absent from
+        SUPPORTED - it has NO condition that could admit it, so there is no
+        campaign state and no argument that turns it on from here.
+        """
+        for operation in (providerwrites.LINKEDIN_ACTIVATE,
+                          providerwrites.EMAIL_ACTIVATE):
+            self.assertNotIn(operation, providerwrites.SUPPORTED)
+            self.assertFalse(providerwrites.is_conditional(operation))
+            with self.assertRaises(providerwrites.WriteUnsupported):
+                providerwrites.require_supported(operation)
 
     def test_the_route_is_on_write_routes(self):
         """The mechanism exists; the permission does not."""
@@ -762,6 +833,195 @@ class TheSealStillHolds(unittest.TestCase):
         """A route NOT on the list is refused. This pins the allowlist."""
         with self.assertRaises(heyreach.ProviderError):
             heyreach._write_body("/campaign/Resume", {"campaignId": 1})
+
+
+# --------------------------------- the condition IS the permission
+
+class TheConditionIsTheRealPermission(QueueTest):
+    """Every state that is not a proven DRAFT refuses, and the transport is
+    never reached.
+
+    `SUPPORTED` says a contract exists. This class says when it may be used,
+    and it drives every case through `providerwrites.perform` - the function
+    production calls - rather than through the predicate directly. The
+    predicate has its own twenty tests in `test_campaign_cannot_send`; what
+    is proven HERE is that the write layer CONSULTS it, that it consults it
+    before touching anything, and that the answer decides.
+
+    The transport assertion is the load-bearing one in each test. A refusal
+    that arrives after the provider has been called is not a refusal.
+    """
+
+    def _attempt(self, status=None, campaign_read=None,
+                 provider_campaign_id=CAMPAIGN_A):
+        """Try the write against a campaign in `status`. Returns the reason,
+        having asserted the transport was never reached."""
+        transport = FakeTransport()
+        membership = FakeMembership()
+        membership.add(URL_ADA)
+        auth = _auth()
+        _save_record(auth)
+        _reserve(auth)
+        if campaign_read is None:
+            campaign_read = mock.patch.object(
+                heyreach, "campaign_read",
+                return_value={"id": CAMPAIGN_A, "status": status,
+                              "name": "test",
+                              "organizationUnitId": ORG_UNIT_PRODUCTIVE})
+        with campaign_read, mock.patch.object(
+                executionguard, "revalidate", lambda *a, **kw: True):
+            with self.assertRaises(providerwrites.WriteRefused) as caught:
+                providerwrites.perform(
+                    providerwrites.LINKEDIN_ADD_LEAD,
+                    provider_campaign_id=provider_campaign_id,
+                    authorization=auth, step=STEP, payload=APPROVED,
+                    transport=transport, readback=membership,
+                    expected={"found": {URL_ADA.lower()}})
+        self.assertEqual(
+            transport.calls, [],
+            "the provider was called for a campaign that was not proven "
+            "unable to send")
+        self.assertEqual(membership.call_count, 0)
+        return str(caught.exception)
+
+    def test_a_running_campaign_refuses(self):
+        """The case the whole condition exists for: a lead added to a
+        campaign that is sending is sent to immediately."""
+        why = self._attempt(status=heyreach.IN_PROGRESS)
+        self.assertIn("not proven unable to send", why)
+
+    def test_a_paused_campaign_refuses(self):
+        """PAUSED is excluded on purpose: a human can press resume, and the
+        lead added while it was paused is then in the sequence."""
+        why = self._attempt(status=heyreach.PAUSED)
+        self.assertIn("not proven unable to send", why)
+
+    def test_a_finished_campaign_refuses(self):
+        """FINISHED describes the leads the campaign already held. It says
+        nothing about one added afterwards."""
+        why = self._attempt(status=heyreach.FINISHED)
+        self.assertIn("could not be established", why)
+
+    def test_an_unrecognised_status_refuses(self):
+        """A status outside the known set is not proven safe. It fails
+        closed rather than falling through to a default."""
+        why = self._attempt(status="ARCHIVED_OR_SOMETHING_NEW")
+        self.assertIn("could not be established", why)
+
+    def test_an_absent_status_refuses(self):
+        why = self._attempt(status="")
+        self.assertIn("could not be established", why)
+
+    def test_a_campaign_that_cannot_be_read_refuses(self):
+        """A failed read is not a DRAFT. A timeout is not a permission."""
+        why = self._attempt(campaign_read=mock.patch.object(
+            heyreach, "campaign_read",
+            side_effect=heyreach.ProviderError("connection reset")))
+        self.assertIn("could not be established", why)
+
+    def test_a_campaign_that_reads_as_nothing_refuses(self):
+        why = self._attempt(campaign_read=mock.patch.object(
+            heyreach, "campaign_read", return_value=None))
+        self.assertIn("could not be established", why)
+
+    def test_naming_no_campaign_at_all_refuses(self):
+        """The default is refusal. A caller that forgets to say where the
+        lead is going gets no write, rather than a write nobody checked."""
+        why = self._attempt(status=heyreach.DRAFT, provider_campaign_id=None)
+        self.assertIn("provider_campaign_id", why)
+
+    def test_a_draft_campaign_is_admitted(self):
+        """The admission path. Without this the class proves only that the
+        gate refuses everything, which a `return False` would also do."""
+        transport = FakeTransport()
+        membership = FakeMembership()
+        membership.add(URL_ADA)
+        auth = _auth()
+        _save_record(auth)
+        _reserve(auth)
+        with _enabled():
+            result = providerwrites.perform(
+                providerwrites.LINKEDIN_ADD_LEAD,
+                provider_campaign_id=CAMPAIGN_A,
+                authorization=auth, step=STEP, payload=APPROVED,
+                transport=transport, readback=membership,
+                expected={"found": {URL_ADA.lower()}})
+        self.assertEqual(result["class"], providerwrites.ACCEPTED)
+        self.assertEqual(len(transport.calls), 1)
+
+    def test_the_condition_is_read_at_the_write_not_at_planning(self):
+        """A campaign started between the plan and the write refuses.
+
+        This is the window the gate exists to close, and it is why the
+        predicate re-reads the provider instead of trusting the campaign row
+        the caller is holding. The first read says DRAFT - as it would at
+        planning time - and the second says IN_PROGRESS, because somebody
+        pressed Start in the vendor UI in between.
+        """
+        transport = FakeTransport()
+        membership = FakeMembership()
+        membership.add(URL_ADA)
+        auth = _auth()
+        _save_record(auth)
+        _reserve(auth)
+        reads = [{"id": CAMPAIGN_A, "status": heyreach.DRAFT, "name": "t",
+                  "organizationUnitId": ORG_UNIT_PRODUCTIVE},
+                 {"id": CAMPAIGN_A, "status": heyreach.IN_PROGRESS,
+                  "name": "t", "organizationUnitId": ORG_UNIT_PRODUCTIVE}]
+        with mock.patch.object(heyreach, "campaign_read",
+                               side_effect=reads), \
+             mock.patch.object(executionguard, "revalidate",
+                               lambda *a, **kw: True):
+            # Planning time: the caller reads DRAFT and decides to proceed.
+            self.assertTrue(heyreach.campaign_cannot_send(CAMPAIGN_A))
+            with self.assertRaises(providerwrites.WriteRefused):
+                providerwrites.perform(
+                    providerwrites.LINKEDIN_ADD_LEAD,
+                    provider_campaign_id=CAMPAIGN_A,
+                    authorization=auth, step=STEP, payload=APPROVED,
+                    transport=transport, readback=membership,
+                    expected={"found": {URL_ADA.lower()}})
+        self.assertEqual(transport.calls, [])
+
+    def test_a_refusal_costs_nothing_and_the_token_survives_it(self):
+        """A refused attempt leaves the token usable once the campaign is
+        put back into a state that admits it.
+
+        The condition runs BEFORE `authorization.spend()`, which is what
+        makes a refusal cost nothing. Were it to run after, an operator who
+        hit a running campaign would have to mint a new authorization - and
+        minting is the step that re-runs every gate, so the cheap failure
+        would push people toward the expensive one.
+        """
+        transport = FakeTransport()
+        membership = FakeMembership()
+        membership.add(URL_ADA)
+        auth = _auth()
+        _save_record(auth)
+        _reserve(auth)
+        running = {"id": CAMPAIGN_A, "status": heyreach.IN_PROGRESS,
+                   "name": "t", "organizationUnitId": ORG_UNIT_PRODUCTIVE}
+        with mock.patch.object(heyreach, "campaign_read",
+                               return_value=running), \
+             mock.patch.object(executionguard, "revalidate",
+                               lambda *a, **kw: True):
+            with self.assertRaises(providerwrites.WriteRefused):
+                providerwrites.perform(
+                    providerwrites.LINKEDIN_ADD_LEAD,
+                    provider_campaign_id=CAMPAIGN_A,
+                    authorization=auth, step=STEP, payload=APPROVED,
+                    transport=transport, readback=membership,
+                    expected={"found": {URL_ADA.lower()}})
+        # Same token, same reservation, campaign now DRAFT.
+        with _enabled():
+            result = providerwrites.perform(
+                providerwrites.LINKEDIN_ADD_LEAD,
+                provider_campaign_id=CAMPAIGN_A,
+                authorization=auth, step=STEP, payload=APPROVED,
+                transport=transport, readback=membership,
+                expected={"found": {URL_ADA.lower()}})
+        self.assertEqual(result["class"], providerwrites.ACCEPTED)
+        self.assertEqual(len(transport.calls), 1)
 
 
 # ------------------------------------------------- guard removal tests
@@ -783,7 +1043,7 @@ class GuardRemovalProvesEachGuard(QueueTest):
             with self.assertRaises(providerwrites.WriteRefused):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=transport, readback=None)
         self.assertEqual(transport.calls, [],
                          "the transport was reached without a readback")
@@ -815,14 +1075,14 @@ class GuardRemovalProvesEachGuard(QueueTest):
         with _enabled():
             providerwrites.perform(
                 providerwrites.LINKEDIN_ADD_LEAD,
-                authorization=auth, step=STEP, payload=APPROVED,
+                provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                 transport=transport, readback=membership,
                 expected={"found": {URL_ADA.lower()}})
             # Second attempt on the same key is refused.
             with self.assertRaises(executionguard.NotAuthorized):
                 providerwrites.perform(
                     providerwrites.LINKEDIN_ADD_LEAD,
-                    authorization=auth, step=STEP, payload=APPROVED,
+                    provider_campaign_id=CAMPAIGN_A, authorization=auth, step=STEP, payload=APPROVED,
                     transport=transport, readback=membership,
                     expected={"found": {URL_ADA.lower()}})
         self.assertEqual(len(transport.calls), 1,

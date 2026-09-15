@@ -29,9 +29,19 @@ checking is how somebody reasons correctly to a wrong conclusion, and it cost
 a whole Qwen task the night before when `QWEN.md` told a worker it had no
 credentials while it held all three.
 
+`LINKEDIN_ADD_LEAD` joined them on 2026-09-15 and is the first prospect-facing
+route ever enabled here. It is enabled CONDITIONALLY: `SUPPORTED` is necessary
+and not sufficient, and `perform` additionally runs the predicate in
+`CONDITIONAL`, which re-reads the destination campaign from the provider and
+admits only a campaign proven unable to send. Read `CONDITIONAL` for why the
+tuple could not carry that on its own.
+
 Still NOT supported, and each needs its own review before it is: adding leads
-on either provider, creating a HeyReach campaign or list, assigning a sender,
-configuring limits, and activating or unpausing anything.
+on EmailBison, creating a HeyReach campaign or list, assigning a sender,
+configuring limits, and activating or unpausing anything. `LINKEDIN_ACTIVATE`
+is the one to be most deliberate about: it is the verb that turns a campaign
+full of staged leads into messages, and enabling add-lead is not an argument
+for enabling it.
 
 WHAT IS AND IS NOT AN ESTABLISHED CONTRACT.
 
@@ -98,14 +108,27 @@ EMAIL_ACTIVATE = "bison.activate"
 OPERATIONS = {
     # operation: (channel, prospect_facing, why it is not supported yet)
     LINKEDIN_ADD_LEAD: ("linkedin", True,
-        "the URL is named in heyreach.add_leads_endpoint and the route is on "
-        "WRITE_ROUTES, but no successful response has ever been read. The "
-        "request shape is established from build_lead_pairs and the readback "
-        "uses /campaign/GetLeadsFromCampaign, which is already wired. The "
-        "response body of AddLeadsToCampaignV2 itself is UNKNOWN. "
-        "NOT in SUPPORTED - Claude enables after review. "
-        "Adding a lead to a RUNNING campaign is prospect-facing because the "
-        "sequence acts on it immediately"),
+        "SUPPORTED as of 2026-09-15, CONDITIONALLY, and it is the first "
+        "prospect-facing route this system has ever allowed. It is in "
+        "SUPPORTED *and* in CONDITIONAL, and the second is the real "
+        "permission: `perform` refuses unless a provider read taken at the "
+        "moment of the write proves the destination campaign cannot send. "
+        "Only DRAFT proves that. PAUSED does not - a human can resume it and "
+        "the lead is then sent to. FINISHED does not - it describes the "
+        "leads the campaign already held, not one added afterwards. An "
+        "unreadable campaign, an absent status and an unrecognised status "
+        "all refuse. "
+        "This entry previously read 'no successful response has "
+        "ever been read', and that is STILL TRUE of the response body: the "
+        "shape of AddLeadsToCampaignV2's reply is unknown and is not what "
+        "settles the verdict. The READBACK settles it - "
+        "/campaign/GetLeadsFromCampaign, verified live against campaign "
+        "565765 paging 1000 leads with leadCampaignStatus, "
+        "leadConnectionStatus and errorCode per lead. A 200 is not a lead; a "
+        "membership read that finds the asked-for profile is. "
+        "Adding a lead to a RUNNING campaign is prospect-facing "
+        "because the sequence acts on it immediately - which is precisely "
+        "the state the condition exists to exclude"),
     LINKEDIN_CREATE_LIST: ("linkedin", False,
         "no documented route; the list was created by hand in the vendor UI"),
     LINKEDIN_CREATE_CAMPAIGN: ("linkedin", False,
@@ -289,7 +312,107 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
              # onto a campaign holding nobody reaches nobody, and no wired
              # verb can start that campaign. See the entry above for the
              # condition it had set for itself and how it was met.
-             LINKEDIN_SET_SEQUENCE)
+             LINKEDIN_SET_SEQUENCE,
+             # Enabled 2026-09-15, TASK-137, AND IT IS THE FIRST
+             # PROSPECT-FACING ROUTE THIS SYSTEM HAS EVER ALLOWED.
+             # Membership of this tuple is NOT sufficient for it: see
+             # CONDITIONAL below. `perform` additionally demands that the
+             # destination campaign be proven, by a provider read taken at
+             # the moment of the write, to be unable to send.
+             LINKEDIN_ADD_LEAD)
+
+# ------------------------------------------- conditional permission
+#
+# A SECOND KEY FOR THE ONE DOOR THAT REACHES A PERSON.
+#
+# `SUPPORTED` answers "is there a provider contract for this verb". That is
+# the only question it has ever had to answer, because until now no verb in
+# it could reach a prospect: a pause reduces what somebody receives, a
+# sequence written onto an empty campaign reaches nobody.
+#
+# `LINKEDIN_ADD_LEAD` is different in kind. Adding a lead to a campaign that
+# is RUNNING is a send - the sequence acts on the lead immediately - and
+# adding the same lead to a campaign that is DRAFT is staging that reaches
+# nobody. The verb is identical; only the destination's state decides which
+# of those two things happens. A permission expressed as tuple membership
+# cannot express that, so it is not expressed that way.
+#
+# Each entry is a predicate that must return True, and is given the PROVIDER
+# campaign id. It runs inside `perform`, before the transport is touched,
+# and it may not be satisfied from local state: the campaign row we planned
+# against was read minutes ago and a human can press Start in the vendor UI
+# in between. It re-reads the provider.
+#
+# It FAILS CLOSED in every direction that is not an explicit proof of
+# safety: an unreadable campaign, an absent status, a status outside the
+# known set, an exception of any kind, or a missing provider campaign id all
+# refuse. Only DRAFT admits - PAUSED does not, because a human can resume it
+# and the leads added to it are then sent to; FINISHED does not, because
+# "finished" describes the leads the campaign already held and says nothing
+# about one added afterwards.
+CONDITIONAL = {}
+
+
+def _campaign_is_proven_unable_to_send(provider_campaign_id):
+    """True only if the provider says, right now, that it cannot send.
+
+    Raises `WriteRefused` otherwise - including when it cannot tell.
+    """
+    from .providers import heyreach
+
+    if provider_campaign_id in (None, "", 0):
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD} requires `provider_campaign_id` so the "
+            f"destination's state can be read at the moment of the write. "
+            f"None was given, so nothing can be proven and this refuses. "
+            f"The transport was not reached")
+    try:
+        cannot_send = heyreach.campaign_cannot_send(provider_campaign_id)
+    except Exception as e:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: the state of HeyReach campaign "
+            f"{provider_campaign_id} could not be established "
+            f"({type(e).__name__}: {e}). A campaign whose status is unknown "
+            f"is not proven unable to send. The transport was not reached"
+        ) from None
+    if not cannot_send:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD}: HeyReach campaign "
+            f"{provider_campaign_id} is not proven unable to send. Only a "
+            f"DRAFT campaign is. Adding a lead to a campaign that can send "
+            f"is prospect-facing - the sequence acts on it immediately. "
+            f"The transport was not reached")
+    return True
+
+
+CONDITIONAL[LINKEDIN_ADD_LEAD] = _campaign_is_proven_unable_to_send
+
+# `perform` runs the condition at ONE call site, inside the prospect-facing
+# branch. That is correct only while every conditional operation is
+# prospect-facing, so the assumption is asserted here rather than left to be
+# discovered by the first non-facing operation that quietly skips its own
+# condition. If this ever fires, add the second call site; do not delete it.
+for _op in CONDITIONAL:
+    if not OPERATIONS[_op][1]:
+        raise AssertionError(
+            f"{_op} has a condition and is not prospect-facing. `perform` "
+            f"runs conditions only in the prospect-facing branch, so this "
+            f"operation's condition would never run")
+del _op
+
+
+def is_conditional(operation):
+    """Whether this operation needs more than tuple membership."""
+    describe(operation)
+    return operation in CONDITIONAL
+
+
+def require_conditional_permission(operation, provider_campaign_id):
+    """Run the operation's condition, or pass through if it has none."""
+    check = CONDITIONAL.get(operation)
+    if check is None:
+        return True
+    return check(provider_campaign_id)
 
 PROSPECT_FACING = tuple(op for op, (_c, facing, _w) in OPERATIONS.items()
                         if facing)
@@ -487,7 +610,7 @@ def _require_approved_words(operation, authorization, step, payload):
 
 def perform(operation, *, authorization=None, tenant=None, campaign=None,
             payload=None, transport=None, readback=None, expected=None,
-            step=None, by="system"):
+            step=None, by="system", provider_campaign_id=None):
     """The single door. Refuses, in this order, before any transport is touched.
 
     `transport` and `readback` are injected so the contract can be developed
@@ -529,6 +652,33 @@ def perform(operation, *, authorization=None, tenant=None, campaign=None,
                 f"operation the token names; it is not proof for a different "
                 f"one, even on the same channel")
         _require_approved_words(operation, authorization, step, payload)
+
+        # AND IS THE DESTINATION IN A STATE THAT ADMITS THIS AT ALL?
+        #
+        # For every operation but one this is a no-op. For
+        # `LINKEDIN_ADD_LEAD` it is the whole permission: the verb is allowed
+        # only against a campaign the provider says, at this moment, cannot
+        # send. Read `CONDITIONAL` above for why membership of `SUPPORTED`
+        # could not carry that.
+        #
+        # THE PLACEMENT IS DELIBERATE AND IT MOVED ONCE. It was first written
+        # above, as the second thing `perform` did, and that was wrong twice
+        # over. It made a PROVIDER NETWORK READ before the token had been
+        # shown to be genuine, for this operation, carrying the approved
+        # words - so a caller with a bogus authorization could drive HeyReach
+        # traffic. And it fired ahead of `_require_approved_words`, so three
+        # tests that prove unapproved copy cannot ride an approved token
+        # started failing for the wrong reason: a different guard reached
+        # them first, which is the exact failure mode CLAUDE.md names.
+        #
+        # So: every cheap local check first, then this one read, then spend.
+        # It sits BEFORE `spend()` on purpose - a refusal here costs nothing
+        # and the same token works once the campaign is put back into a state
+        # that admits it. The race it closes is the window between this read
+        # and the POST, and that window is now `spend`, one ledger read and
+        # `revalidate` - all local.
+        require_conditional_permission(operation, provider_campaign_id)
+
         authorization.spend()
         key = authorization.key
         # A RESERVATION MUST ALREADY EXIST. `executionguard.authorize` writes

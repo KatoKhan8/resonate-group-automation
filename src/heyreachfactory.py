@@ -1327,12 +1327,34 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
     def _obtain_readback():
         return configdiff.compare_heyreach(campaign, recs=recs, config=config)
 
-    def _transport(payload):
-        return heyreach.add_leads_to_campaign(
-            provider_id, new_contacts, linkedin_account_id)
+    # ONE CONTACT PER WRITE, AND THAT IS A FIX.
+    #
+    # This closure took `new_contacts` - the WHOLE batch - while the loop
+    # below calls `perform` once PER CONTACT. Every iteration therefore sent
+    # every lead again: N contacts meant N calls to AddLeadsToCampaignV2 each
+    # carrying N pairs, and the readback below asked about every expected URL
+    # rather than the one that iteration was authorised for, so after the
+    # first call each later one passed trivially on leads a different
+    # authorization had put there.
+    #
+    # Nothing caught it because every test in `test_heyreachfactory_ensure_
+    # leads` pushes a single contact, where N squared and N are the same
+    # number. At 122 leads it is 14,884 pairs across 122 writes, and each of
+    # those writes is authorised by a token minted for one person.
+    #
+    # An authorization names a record, a contact and a step. The write it
+    # drives must carry that contact and no one else.
+    def _transport_for(row):
+        def _transport(payload):
+            return heyreach.add_leads_to_campaign(
+                provider_id, [row], linkedin_account_id)
+        return _transport
 
-    def _readback():
-        return heyreach.readback_membership(provider_id, expected_urls)
+    def _readback_for(row):
+        def _readback():
+            return heyreach.readback_membership(
+                provider_id, [row["linkedin_url"]])
+        return _readback
 
     for row in new_contacts:
         rec = rec_map.get(row["record_id"])
@@ -1352,8 +1374,9 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
             campaign=str(campaign_id), tenant=client,
             payload={"campaignId": provider_id,
                      "contact": row["contact_key"]},
-            transport=_transport, readback=_readback,
-            expected={"missing": set()}, by=by)
+            transport=_transport_for(row), readback=_readback_for(row),
+            expected={"found": {row["linkedin_url"].strip().lower()}},
+            provider_campaign_id=provider_id, by=by)
         report["did"].append(
             f"pushed {row['contact_key']} to HeyReach campaign "
             f"{provider_id}")

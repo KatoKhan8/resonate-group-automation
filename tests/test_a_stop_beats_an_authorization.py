@@ -33,7 +33,19 @@ from unittest import mock
 
 from src import (accountpolicy, approval, actionledger, campaigns, clients, eligibility,
                  executionguard, providerwrites, store, verification)
+from src.providers import heyreach
 from tests.base import QueueTest
+
+# TASK-137: `LINKEDIN_ADD_LEAD` IS NOW CONDITIONALLY SUPPORTED, so `perform`
+# refuses it unless a provider read proves the destination campaign cannot
+# send. This module uses that operation as its vehicle for a different
+# question, so it names a DRAFT destination and fakes the one read the
+# condition makes. It does NOT stub the condition itself - the predicate runs,
+# on a real status string. Every test here failed loudly when the gate landed,
+# which is how it is known to be reached from this path.
+DRAFT_DESTINATION = 599020
+DRAFT_ROW = {"id": DRAFT_DESTINATION, "status": "DRAFT", "name": "test",
+             "organizationUnitId": "174892"}
 
 OPERATION = providerwrites.LINKEDIN_ADD_LEAD
 
@@ -175,9 +187,10 @@ class TheWriteIsRefusedNotJustTheToken(QueueTest):
             sender_id="116968", rec_id="acme", contact_key="acme-1",
             step_key="day3", fingerprint=FINGERPRINT, gates=("tenancy",),
             at=store.now())
-        with mock.patch.object(providerwrites, "SUPPORTED", (OPERATION,)),              mock.patch.object(executionguard, "revalidate", revalidate):
+        with mock.patch.object(providerwrites, "SUPPORTED", (OPERATION,)),              mock.patch.object(executionguard, "revalidate", revalidate),              mock.patch.object(heyreach, "campaign_read", return_value=dict(DRAFT_ROW)):
             return providerwrites.perform(
-                OPERATION, authorization=auth,
+                OPERATION, provider_campaign_id=DRAFT_DESTINATION,
+                authorization=auth,
                 payload={"profile": "dana-reed", "note": STEP["note"]}, step=STEP,
                 transport=lambda p: self.calls.append("transport") or {"ok": 1},
                 readback=lambda: {"ok": 1}, expected={"ok": 1})
@@ -224,10 +237,13 @@ class TheWriteIsRefusedNotJustTheToken(QueueTest):
             sender_id="116968", rec_id="acme", contact_key="acme-1",
             step_key="day3", fingerprint=FINGERPRINT, gates=("tenancy",),
             at=store.now())
-        with mock.patch.object(providerwrites, "SUPPORTED", (OPERATION,)):
+        with mock.patch.object(providerwrites, "SUPPORTED", (OPERATION,)), \
+             mock.patch.object(heyreach, "campaign_read",
+                               return_value=dict(DRAFT_ROW)):
             with self.assertRaises(executionguard.NotAuthorized):
                 providerwrites.perform(
-                    OPERATION, authorization=auth,
+                    OPERATION, provider_campaign_id=DRAFT_DESTINATION,
+                    authorization=auth,
                     payload={"profile": "dana-reed", "note": STEP["note"]}, step=STEP,
                     transport=lambda p: self.calls.append("transport"),
                     readback=lambda: {"ok": 1})

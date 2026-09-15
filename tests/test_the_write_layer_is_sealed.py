@@ -22,6 +22,20 @@ from unittest import mock
 from src import approval, actionledger, executionguard, providerwrites, store
 
 from tests.base import QueueTest
+from src.providers import heyreach
+
+# TASK-137: `LINKEDIN_ADD_LEAD` is now conditionally supported, so `perform`
+# re-reads the destination campaign and refuses unless it is proven unable to
+# send. Several classes below use that operation as their vehicle for a
+# different question - response classification, token shape, idempotency - so
+# they name a DRAFT destination and fake the one provider read the condition
+# makes. THE CONDITION ITSELF IS NOT STUBBED: the real predicate runs against
+# a real status string, and every one of these tests failed loudly when the
+# gate landed, which is how it is known the gate is on this path.
+DRAFT_DESTINATION = 599020
+DRAFT_ROW = {"id": DRAFT_DESTINATION, "status": "DRAFT", "name": "test",
+             "organizationUnitId": "174892"}
+
 
 
 
@@ -63,8 +77,23 @@ class TheLayerIsSealed(unittest.TestCase):
         """
         enabled = [op for op in providerwrites.PROSPECT_FACING
                    if providerwrites.is_supported(op)]
-        self.assertEqual(enabled, [],
-                         "a PROSPECT-FACING provider write has been enabled")
+        self.assertEqual(
+            enabled, [providerwrites.LINKEDIN_ADD_LEAD],
+            "a PROSPECT-FACING provider write has been enabled")
+        # AND IT IS NOT ENABLED OUTRIGHT. That distinction is the whole of
+        # what changed on 2026-09-15: `add_lead` may run only against a
+        # campaign a provider read proves cannot send, so the lead it stages
+        # reaches nobody until activation - which is still sealed, carries no
+        # condition, and is a separate decision with its own evidence.
+        for operation in enabled:
+            self.assertTrue(
+                providerwrites.is_conditional(operation),
+                f"{operation} reaches a prospect and nothing decides, per "
+                f"write, whether this particular one does")
+        self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
+                         providerwrites.SUPPORTED)
+        self.assertNotIn(providerwrites.EMAIL_ACTIVATE,
+                         providerwrites.SUPPORTED)
 
     def test_nothing_is_supported_until_it_has_actually_worked_once(self):
         """Implemented is not the same as established, and the gap matters.
@@ -92,13 +121,33 @@ class TheLayerIsSealed(unittest.TestCase):
              # /campaign/UpdateSequence before it was listed. Not
              # prospect-facing, and the loop below is what actually guards
              # this file.
-             pw.LINKEDIN_SET_SEQUENCE),
+             pw.LINKEDIN_SET_SEQUENCE,
+             # 2026-09-15, TASK-137. The docstring's condition is MET for
+             # the readback and NOT for the response body, and that is the
+             # honest position: no successful AddLeadsToCampaignV2 reply has
+             # ever been read, and none is what settles the verdict.
+             # /campaign/GetLeadsFromCampaign is live-validated against
+             # campaign 565765 - 1000 leads paged with per-lead status and
+             # errorCode - and the readback is what classifies the write.
+             # Prospect-facing, so the loop below no longer merely forbids:
+             # it requires a CONDITION.
+             pw.LINKEDIN_ADD_LEAD),
             "the set of enabled provider writes changed")
         # The condition restated as a property, so it survives the list
-        # growing: nothing that reaches a prospect is supported.
+        # growing. It used to read "nothing that reaches a prospect is
+        # supported". That could not tell staging a lead into a campaign
+        # that cannot send apart from sending somebody a message, and the
+        # first is how the second ever becomes possible safely. The property
+        # that has to hold: no prospect-facing verb is enabled without a
+        # condition that decides, per write, whether it reaches anyone.
         for operation, (_c, facing, _w) in providerwrites.OPERATIONS.items():
-            if facing:
-                self.assertFalse(providerwrites.is_supported(operation),
+            if not facing:
+                continue
+            if providerwrites.is_supported(operation):
+                self.assertTrue(providerwrites.is_conditional(operation),
+                                operation)
+            else:
+                self.assertFalse(providerwrites.is_conditional(operation),
                                  operation)
 
     def test_every_other_declared_operation_refuses(self):
@@ -201,7 +250,8 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         before the transport, by call order, so this stub cannot hide the call
         being deleted.
         """
-        with mock.patch.object(providerwrites, "SUPPORTED", (self.OP,)),              mock.patch.object(executionguard, "revalidate",
+        with mock.patch.object(providerwrites, "SUPPORTED", (self.OP,)),              mock.patch.object(heyreach, "campaign_read",
+                               return_value=dict(DRAFT_ROW)),              mock.patch.object(executionguard, "revalidate",
                                lambda *a, **kw: True):
             yield
 
@@ -209,7 +259,9 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
         spy = Spy()
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
-                providerwrites.perform(self.OP, transport=spy,
+                providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       transport=spy,
                                        readback=lambda: {})
         self.assertEqual(spy.calls, [])
 
@@ -219,7 +271,9 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
                 "gates": ("tenancy", "approval", "killswitch")}
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
-                providerwrites.perform(self.OP, authorization=fake,
+                providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       authorization=fake,
                                        transport=spy, readback=lambda: {})
         self.assertEqual(spy.calls, [])
 
@@ -230,7 +284,9 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
             operation="email_first_touch")
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
-                providerwrites.perform(self.OP, authorization=auth,
+                providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       authorization=auth,
                                        step=STEP, payload=APPROVED,
                                        transport=spy, readback=lambda: {})
         self.assertEqual(spy.calls, [])
@@ -244,7 +300,9 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
             fingerprint=approval.fingerprint(STEP))
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
-                providerwrites.perform(self.OP, authorization=auth,
+                providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       authorization=auth,
                                        step=STEP, payload=APPROVED,
                                        transport=spy, readback=None)
         self.assertEqual(spy.calls, [])
@@ -256,7 +314,9 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
             fingerprint=approval.fingerprint(STEP))
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
-                providerwrites.perform(self.OP, authorization=auth,
+                providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       authorization=auth,
                                        step=STEP, payload=APPROVED,
                                        transport=None, readback=lambda: {})
 
@@ -271,7 +331,9 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
             operation="linkedin_connection_request")
         with self.enabled():
             with self.assertRaises(providerwrites.WriteRefused):
-                providerwrites.perform(self.OP, authorization=auth,
+                providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       authorization=auth,
                                        step=STEP, payload=APPROVED,
                                        transport=spy,
                                        readback=lambda: {"leads": 1},
@@ -295,12 +357,16 @@ class TheGuardsHoldWhenARouteIsEnabled(QueueTest):
             operation="linkedin_connection_request", fingerprint="fp")
         spy = Spy()
         with self.enabled():
-            providerwrites.perform(self.OP, authorization=auth,
+            providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       authorization=auth,
                                        step=STEP, payload=APPROVED, transport=spy,
                                    readback=lambda: {"leads": 1},
                                    expected={"leads": 1})
             with self.assertRaises(executionguard.NotAuthorized):
-                providerwrites.perform(self.OP, authorization=auth,
+                providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       authorization=auth,
                                        step=STEP, payload=APPROVED,
                                        transport=spy,
                                        readback=lambda: {"leads": 1},
@@ -353,7 +419,8 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         before the transport, by call order, so this stub cannot hide the call
         being deleted.
         """
-        with mock.patch.object(providerwrites, "SUPPORTED", (self.OP,)),              mock.patch.object(executionguard, "revalidate",
+        with mock.patch.object(providerwrites, "SUPPORTED", (self.OP,)),              mock.patch.object(heyreach, "campaign_read",
+                               return_value=dict(DRAFT_ROW)),              mock.patch.object(executionguard, "revalidate",
                                lambda *a, **kw: True):
             yield
 
@@ -362,7 +429,9 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         spy = Spy(raises=TimeoutError("read timed out"))
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
-                providerwrites.perform(self.OP, authorization=self.auth,
+                providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       authorization=self.auth,
                                        step=STEP, payload=APPROVED,
                                        transport=spy, readback=lambda: {},
                                        expected={"leads": 1})
@@ -373,7 +442,9 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         spy = Spy(raises=TimeoutError("read timed out"))
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
-                providerwrites.perform(self.OP, authorization=self.auth,
+                providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       authorization=self.auth,
                                        step=STEP, payload=APPROVED,
                                        transport=spy, readback=lambda: {},
                                        expected={"leads": 1})
@@ -386,7 +457,9 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
             raise ConnectionError("read-back failed")
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
-                providerwrites.perform(self.OP, authorization=self.auth,
+                providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       authorization=self.auth,
                                        step=STEP, payload=APPROVED,
                                        transport=Spy(), readback=boom,
                                        expected={"leads": 1})
@@ -396,7 +469,9 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
     def test_drift_between_asked_and_observed_is_not_success(self):
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
-                providerwrites.perform(self.OP, authorization=self.auth,
+                providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       authorization=self.auth,
                                        step=STEP, payload=APPROVED,
                                        transport=Spy(),
                                        readback=lambda: {"leads": 2},
@@ -408,7 +483,9 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
         """A write with nothing to compare against cannot be called a success."""
         with self.enabled():
             with self.assertRaises(providerwrites.WriteUnverified):
-                providerwrites.perform(self.OP, authorization=self.auth,
+                providerwrites.perform(self.OP,
+                                       provider_campaign_id=DRAFT_DESTINATION,
+                                       authorization=self.auth,
                                        step=STEP, payload=APPROVED,
                                        transport=Spy(),
                                        readback=lambda: {"leads": 1},
@@ -417,7 +494,8 @@ class AFailedWriteIsClassifiedNotRetried(QueueTest):
     def test_a_matching_readback_settles_the_key_as_sent(self):
         with self.enabled():
             found = providerwrites.perform(
-                self.OP, authorization=self.auth, transport=Spy(),
+                self.OP, provider_campaign_id=DRAFT_DESTINATION,
+                authorization=self.auth, transport=Spy(),
                 step=STEP, payload=APPROVED,
                 readback=lambda: {"leads": 1}, expected={"leads": 1})
         self.assertEqual(found["class"], providerwrites.ACCEPTED)
