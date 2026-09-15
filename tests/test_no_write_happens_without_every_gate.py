@@ -276,12 +276,48 @@ class TheAccountIsAskedToo(GuardTest):
         self.assertEqual(caught.exception.gate, "account_collision")
 
     def test_a_finished_campaign_with_no_reply_still_authorizes(self):
-        """The live case. History is not a live conflict - and refusing every
-        touched account would stop the product rather than protect anybody."""
+        """History is not a live conflict, and refusing every touched account
+        would stop the product rather than protect anybody.
+
+        REWRITTEN 2026-09-15. This asserted that an account carrying a
+        `stopped` campaign still authorizes, and production got STRICTER after
+        it was written: `stopped` joined SUSPECT_STATUSES on 2026-09-13, when
+        every membership status in the estate was read for the first time.
+
+        The strictness is right and the test was wrong. `stopped` means future
+        emails were cancelled for that person - BY US, BY AN UNSUBSCRIBE, or BY
+        THE PROVIDER ON A REPLY - and the status does not say which. Allowing
+        it is the failure mode this repository has guarded against more than
+        any other: a wrong positive that lets automation keep contacting
+        somebody who already said no.
+
+        So the assertion is inverted, and a second case below proves the gate
+        has not simply become a refusal.
+        """
+        with self.assertRaises(executionguard.NotAuthorized) as caught:
+            self.asked(self.account(
+                verdict=collision.TOUCHED, emails_sent_total=9,
+                people=[{"replies": 0,
+                         "campaigns": [{"status": "stopped"},
+                                       {"status": "sequence_finished"}]}]))
+        self.assertEqual(caught.exception.gate, "account_collision")
+        # The REASON matters as much as the refusal: a hold that cannot say
+        # why sends the next reader looking for a bug instead of a person.
+        self.assertIn("ended early", str(caught.exception))
+
+    def test_a_finished_campaign_with_no_suspect_status_authorizes(self):
+        """The other half, and the one that stops the test above from passing
+        by everything being refused.
+
+        Same shape - touched account, prior sends, zero replies - with no
+        `stopped` and no `bounced`. This MUST still authorize, or the gate has
+        become an outage rather than a guard, and `sequence_finished` on its
+        own is exactly the history the product is built to work through.
+        """
         auth = self.asked(self.account(
             verdict=collision.TOUCHED, emails_sent_total=9,
             people=[{"replies": 0,
-                     "campaigns": [{"status": "stopped"},
+                     "campaigns": [{"status": "sequence_finished"},
                                    {"status": "sequence_finished"}]}]))
         self.assertIn("account_collision", auth.gates)
 
