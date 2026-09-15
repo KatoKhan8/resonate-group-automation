@@ -48,7 +48,7 @@ import argparse
 import json
 
 from . import (cadencearms, cadenceexposure, cadencematurity, cadencereplies,
-               cadencesafety, cadencevalue, variants)
+               cadencesafety, cadencevalue, piiredact, variants)
 
 IMMATURE = "immature"
 NO_WINNER = "no_winner"
@@ -152,7 +152,7 @@ def report(exp, recs, campaign=None, today=None, config=None, objective=None):
             "value": value.get(arm_id),
         })
 
-    return {
+    return _safe_text({
         "experiment_id": exp.get("experiment_id"),
         "objective": objective,
         "objective_label": variants.OBJECTIVE_LABEL.get(objective, objective),
@@ -170,7 +170,24 @@ def report(exp, recs, campaign=None, today=None, config=None, objective=None):
         "headline": headline(maturity, evaluation, refusals, actionable),
         "note": "every rate here is computed by the module that owns the "
                 "question; this assembles them and adds none of its own",
-    }
+    })
+
+
+def _safe_text(value):
+    """Walk a structure and redact every string through piiredact.
+
+    A report dict can carry a forbidden domain in an arm label, a headline,
+    or a refusal reason.  Walking rather than redacting at one known field
+    means a new field that happens to hold text is covered without a
+    separate change here.  Non-string leaves are returned unchanged.
+    """
+    if isinstance(value, str):
+        return piiredact.redact(value)
+    if isinstance(value, dict):
+        return {k: _safe_text(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_safe_text(item) for item in value]
+    return value
 
 
 def _shape(arm):
