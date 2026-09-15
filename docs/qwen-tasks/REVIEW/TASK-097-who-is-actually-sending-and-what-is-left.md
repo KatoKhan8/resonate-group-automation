@@ -73,7 +73,7 @@ attacked.
 ## RESULT
 
 - **STATUS:** DONE
-- **COMMIT SHA:** (pending)
+- **COMMIT SHA:** ae5b75a
 - **TESTS:** `tests.test_invariants` 80/80 pass; `tests.test_audit` 16/16 pass; no conflict markers in src/, tests/, scripts/
 - **FILES CHANGED:**
   - `scripts/sender_utilisation.py` (new) — the analysis script, reads three HeyReach endpoints
