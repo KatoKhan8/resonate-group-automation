@@ -695,7 +695,9 @@ def expand_step(rec, contact, spec, config, accepted=False, context=None,
         step = dict(stored)
         step.setdefault("channel", spec.get("channel") or "email")
         step["generated"] = True
-    elif stored.get("generated") and (stored.get("note") or "").strip():
+    elif ((stored.get("note") or "").strip()
+          and (stored.get("generated")
+               or (stored.get("approval") and not stored.get("template")))):
         # A WRITTEN NOTE BEATS THE TEMPLATE IT WAS MEANT TO REPLACE, on a
         # step the SEQUENCE calls a template. This is the client having asked
         # for `linkedin_connection_note.mode: llm` against a step like the
@@ -707,9 +709,34 @@ def expand_step(rec, contact, spec, config, accepted=False, context=None,
         # cadence's connection request and matched nothing under
         # `productive_li_heavy_v1`. The condition is the stored note, not the
         # key it happens to sit on.
+        #
+        # AND IT IS NOT THE `generated` FLAG EITHER. That flag says a MODEL
+        # wrote the words, and this branch was reading it as "somebody wrote
+        # words worth keeping" - which is nearly the same thing right up
+        # until the words come from the operator.
+        #
+        # The CONTROL arm is exactly that case. `build_control_cohort.py`
+        # installs the client's own validated fallback copy onto li1..li5 and
+        # approves it, and li1 names the template `linkedin_intro` - so this
+        # branch re-rendered the template straight over the operator's
+        # approved sentence, the fingerprint moved, and the approval gate
+        # refused every contact in the cohort. The copy somebody actually
+        # chose was the one thing being thrown away.
+        #
+        # SO: an approved note that is NOT ITSELF A TEMPLATE EXPANSION beats
+        # the template. The `template` key is what tells them apart -
+        # `approve.approve_step` copies it onto the slot when the approved
+        # step came from one, and nothing writes it otherwise.
+        #
+        # That distinction is load-bearing and keeps the property this whole
+        # mechanism exists for. A note stored BECAUSE a template rendered it
+        # still re-renders, so editing that template still moves the
+        # fingerprint and still drops the approval - which is the point
+        # `approval.is_approved` makes in its own docstring. Only a note that
+        # was never a template's output is protected from one.
         step = dict(stored)
         step["channel"] = spec["channel"]
-        step["generated"] = True
+        step["generated"] = bool(stored.get("generated"))
     else:
         name = spec["template"]
         if accepted and spec.get("variant_if_accepted"):

@@ -1325,7 +1325,21 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
     # a fresh one for each contact. This is expensive but correct: each
     # authorization gets its own sealed, timestamped provider comparison.
     def _obtain_readback():
-        return configdiff.compare_heyreach(campaign, recs=recs, config=config)
+        # `staging=True` IS THE WHOLE REASON THIS CALL CAN EVER PASS.
+        #
+        # `authorize` refuses unless the diff says PASS, and this function is
+        # asking for permission to ADD leads - so comparing the lead set by
+        # equality asks the provider to already hold the people being added.
+        # It cannot pass before the write and does not need to after it.
+        # `configdiff.SUBSET_FIELDS` carries the argument; the short version
+        # is that "holds nobody we did not approve" is the property that
+        # survives a write, and it is the one worth checking.
+        #
+        # Every other field is still compared by equality, so a campaign in
+        # the wrong status, carrying a note nobody approved, or bound to the
+        # wrong tenant or list, still refuses here.
+        return configdiff.compare_heyreach(campaign, recs=recs, config=config,
+                                           staging=True)
 
     # ONE CONTACT PER WRITE, AND THAT IS A FIX.
     #

@@ -685,6 +685,68 @@ class WhatTheFactoryHandsTheDoor(_EnsureLeadsTestBase):
             _stop_all(mocks)
         return perform_mock
 
+    def test_the_readback_is_obtained_for_a_write_that_adds_people(self):
+        """`staging=True`, and without it the add-lead path cannot pass.
+
+        `authorize` refuses unless the diff says PASS, and this path is asking
+        permission to ADD leads - so comparing the lead set by equality asks
+        the provider to already hold the people being added. The flag is what
+        makes the comparison containment instead.
+
+        It was added to `configdiff`, tested there, and NOT WIRED: this
+        closure called `compare_heyreach` without it, so the live path still
+        compared by equality and still refused. A correct change that nothing
+        consumes is a change that did nothing, and this assertion is what
+        catches that - it reads the call the factory actually made.
+        """
+        recs = [_make_record("acme", "pat")]
+        camp = _make_campaign(record_ids=["acme"])
+        self._seed(recs, camp)
+
+        spy = mock.MagicMock(return_value=_auth_patches()["compare_heyreach"]
+                             .new)
+        fake = configdiff.Readback(
+            diff={"verdict": configdiff.PASS, "failures": []},
+            approved={}, provider={}, campaign_id="test-li-campaign",
+            channel="linkedin", provider_campaign_id=599020,
+            verified_at=store.now())
+        spy.return_value = fake
+        mocks = {
+            "tenant": mock.patch.object(heyreach, "check_tenant",
+                                        return_value=True),
+            "readback": mock.patch.object(
+                heyreach, "readback_membership",
+                return_value={"found": set(), "missing": set(),
+                              "total": 0, "per_lead": []}),
+            "add": mock.patch.object(heyreach, "add_leads_to_campaign",
+                                     return_value={"ok": True}),
+            "perform": mock.patch.object(providerwrites, "perform",
+                                         mock.MagicMock(
+                                             return_value={"class": "accepted"})),
+            "compare": mock.patch.object(configdiff, "compare_heyreach", spy),
+            "authorize": _auth_patches()["authorize"],
+            "collision": mock.patch.object(
+                collision, "check_account",
+                return_value={"domain": "acme.test", "verdict": "clear",
+                              "anyone_in_sequence": False,
+                              "emails_sent_total": 0, "leads": 0,
+                              "people": [], "unknown_statuses": [],
+                              "any_bounce": False,
+                              "workspace": "productive"}),
+        }
+        _start_all(mocks, self)
+        try:
+            heyreachfactory.ensure_leads(
+                "test-li-campaign", config=self._config(), live=True)
+        finally:
+            _stop_all(mocks)
+
+        self.assertTrue(spy.called, "no readback was obtained at all")
+        self.assertIs(
+            spy.call_args.kwargs.get("staging"), True,
+            "the readback compares lead sets by equality, which cannot pass "
+            "before the leads exist")
+
     def test_the_destination_campaign_is_named_on_every_call(self):
         """Without it the door cannot read the campaign's state, and refuses.
 

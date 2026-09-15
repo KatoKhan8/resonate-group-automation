@@ -236,7 +236,11 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     _require("record", bool(rec) and bool(contact),
              "no record or contact to act on")
     config = config or clients.load(campaign.get("client"))
-    step = cadence.expand_step(rec, contact, _spec_for(step_key), config)
+    step = cadence.expand_step(
+        rec, contact,
+        _spec_for(step_key, campaign=campaign, config=config, rec=rec,
+                  contact=contact),
+        config)
     _require("copy", bool(step), f"{step_key} does not render for this contact")
 
 
@@ -744,16 +748,69 @@ def revalidate(authorization, config=None, now=None):
     return True
 
 
-def _spec_for(step_key):
-    for spec in cadence.STEPS:
+def _spec_for(step_key, campaign=None, config=None, rec=None, contact=None):
+    """The spec for this step, IN THE SEQUENCE THIS CAMPAIGN ACTUALLY RUNS.
+
+    IT ASKED THE WRONG SEQUENCE. This walked `cadence.STEPS` - the module-level
+    constant, the legacy day1/day3/day5 ladder - and nothing else. A campaign
+    running any other cadence therefore had no step this function could find,
+    and the copy gate refused every contact on it with "'li1' is not a cadence
+    step".
+
+    `cadence.steps_for(campaign, config, rec, contact)` is what resolves the
+    sequence a campaign runs, including a cadence-experiment arm, and every
+    other consumer already calls it. `heyreachfactory` builds campaign 599020
+    from `productive_li_heavy_v1`, whose steps are li1..li6; the constant here
+    knew none of them.
+
+    That is the same defect in a third place today: one representation of
+    "which steps exist" sitting beside the canonical one and quietly
+    disagreeing. It falls back to `cadence.STEPS` only when it is given no
+    campaign, which is what the direct-call tests do.
+    """
+    specs = cadence.STEPS
+    if campaign is not None:
+        try:
+            specs = cadence.steps_for(campaign=campaign, config=config,
+                                      rec=rec, contact=contact) or cadence.STEPS
+        except Exception:
+            # A cadence that cannot be resolved is not a licence to fall back
+            # to a different sequence's copy - that would authorise words from
+            # a ladder this campaign does not run.
+            raise NotAuthorized(
+                "copy",
+                f"the cadence for campaign "
+                f"{(campaign or {}).get('campaign_id')!r} could not be "
+                f"resolved, so {step_key!r} cannot be located in it") from None
+    for spec in specs:
         if spec.get("key") == step_key:
             return spec
-    raise NotAuthorized("copy", f"{step_key!r} is not a cadence step")
+    raise NotAuthorized(
+        "copy",
+        f"{step_key!r} is not a step in this campaign's cadence "
+        f"({', '.join(str(s.get('key')) for s in specs)})")
 
 
 def _sender_for(campaign, channel):
+    """The one seat a guarded action is attributed to.
+
+    IT READ THE WRONG KEY, the same one `configdiff._ids` read. A canonical
+    campaign stores its senders as `{"provider_account_id": 174892}` -
+    `senderidentity` writes that key for both providers and
+    `heyreachfactory._seat_for` reads it - and this asked for `id`.
+
+    So a campaign with exactly one correctly-assigned seat produced an empty
+    list and refused with "names 0 linkedin senders". The refusal is
+    fail-closed, which is why this was an obstacle rather than an incident:
+    the wrong key could only ever make this reject a good campaign, never
+    accept a bad one.
+    """
     rows = (campaign.get("senders") or {}).get(channel) or []
-    ids = [r.get("id") if isinstance(r, dict) else r for r in rows]
+    ids = [(r.get("provider_account_id")
+            if isinstance(r, dict) and r.get("provider_account_id")
+            not in (None, "")
+            else (r.get("id") if isinstance(r, dict) else r))
+           for r in rows]
     ids = [i for i in ids if i not in (None, "")]
     if len(ids) != 1:
         raise NotAuthorized(

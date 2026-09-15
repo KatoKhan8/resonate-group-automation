@@ -34,12 +34,36 @@ class NoSenderAvailable(RuntimeError):
 
 
 def accounts(campaign, channel):
-    """Every account configured for a channel, in a stable order."""
+    """Every account configured for a channel, in a stable order.
+
+    TWO SPELLINGS OF ONE IDENTIFIER, and this is the third place that had to
+    learn about it. A campaign sender row is `{"id": ...}` here, and
+    `senderidentity` writes seats as `provider_account_id` - so a campaign row
+    populated from a seat carries a key this function did not look for, the
+    row was skipped, and `check_mapping` reported "no account configured" for
+    a campaign whose seat was correct.
+
+    Measured on campaign 599020 the same afternoon: the identical mismatch
+    also emptied `configdiff._ids` (approved sender set frozenset()) and
+    `executionguard._sender_for` ("names 0 linkedin senders"). Three readers,
+    three private re-implementations of "get the id off a sender row", one
+    bug in each.
+
+    Both spellings are accepted here rather than one being declared wrong,
+    because the data on disk already uses both and a reader that refuses real
+    data is not stricter, only broken. Consolidating the three readers onto
+    this one is recorded as a follow-up rather than done mid-deployment - it
+    is a refactor, and the failure mode in every case was fail-closed.
+    """
     rows = (campaign.get("senders") or {}).get(channel) or []
     out = []
     for row in rows:
         if isinstance(row, str):
             row = {"id": row}
+        if isinstance(row, dict) and not row.get("id"):
+            alias = row.get("provider_account_id")
+            if alias not in (None, ""):
+                row = dict(row, id=alias)
         if not isinstance(row, dict) or not row.get("id"):
             continue
         out.append({

@@ -183,6 +183,12 @@ class ContainmentIsOptIn(unittest.TestCase):
         sig = inspect.signature(configdiff.compare_heyreach)
         self.assertIs(sig.parameters["staging"].default, False)
 
+    # The assertion that `ensure_leads` actually PASSES the flag lives in
+    # `test_heyreachfactory_ensure_leads.WhatTheFactoryHandsTheDoor`, which
+    # already drives a real live push with the whole gate chain mocked around
+    # it. Asserting it here would mean rebuilding that harness, and a test
+    # that constructs its own input is testing the seam rather than the path.
+
     def test_a_boolean_is_never_treated_as_a_number(self):
         """`isinstance(True, int)` is True in Python, so a bool would sneak
         through the integer branch and `False <= True` would read as MATCH."""
