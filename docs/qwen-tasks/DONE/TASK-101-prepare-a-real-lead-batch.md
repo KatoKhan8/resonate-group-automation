@@ -90,7 +90,7 @@ authorising if they enabled the write.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** 0909add
+**COMMIT SHA:** dae0de3
 
 **TESTS:** Analysis script `scripts/task101_lead_batch.py` reads the snapshot and runs the full pipeline. No unit tests were written because this is an analysis task, not a code change. The script is the verification - run it and the numbers match the report.
 
