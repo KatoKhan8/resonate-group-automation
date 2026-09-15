@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-09-15T09:07:54+00:00",
+  "generated_at": "2026-09-15T09:31:03+00:00",
   "generated_from": "docs/qwen-tasks/**, git, and work/claims/. Derived, never hand-edited.",
-  "master_head": "7d022c9",
+  "master_head": "88173e9",
   "counts": {
-    "QUEUED": 23,
+    "QUEUED": 24,
     "CLAIMED": 2,
     "BLOCKED": 1,
     "AWAITING_REVIEW": 8,
     "DONE": 89
   },
-  "ready_count": 23,
+  "ready_count": 24,
   "workers": 8,
   "backlog_healthy": true,
   "tasks": [
@@ -374,6 +374,20 @@
     {
       "task": "TASK-124",
       "file": "docs/qwen-tasks/TODO/TASK-124-the-add-leads-door-is-shut.md",
+      "status": "QUEUED",
+      "stage_dir": "TODO",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-125",
+      "file": "docs/qwen-tasks/TODO/TASK-125-add-leads-to-a-campaign-that-cannot-send.md",
       "status": "QUEUED",
       "stage_dir": "TODO",
       "priority": "P0",
