@@ -1,0 +1,482 @@
+{
+  "source": {
+    "sender_capacity": "C:\\Users\\Zvonimir\\Desktop\\resonate-qwen-worker\\docs\\state\\SENDER-CAPACITY.json",
+    "provider_campaigns": "C:\\Users\\Zvonimir\\Desktop\\resonate-qwen-worker\\docs\\state\\PROVIDER-CAMPAIGNS.json",
+    "sender_capacity_generated_at": "2026-09-15T06:44:59+00:00",
+    "provider_campaigns_generated_at": "2026-09-15T15:24:59+00:00"
+  },
+  "estate_summary": {
+    "total_campaigns": 83,
+    "by_status": {
+      "DRAFT": 8,
+      "PAUSED": 32,
+      "FINISHED": 31,
+      "IN_PROGRESS": 12
+    },
+    "in_progress_fraction": "14.5%"
+  },
+  "seat_summary": {
+    "total": 41,
+    "by_state": {
+      "HEALTHY": 33,
+      "AUTH_INVALID": 1,
+      "INACTIVE": 7
+    },
+    "healthy_busy": 33,
+    "healthy_idle": 0,
+    "healthy_daily_capacity": {
+      "connection_requests": 1054,
+      "messages": 1143
+    },
+    "sales_navigator_healthy": 10,
+    "non_sales_navigator_healthy": 23
+  },
+  "attached_vs_busy": {
+    "key_finding": "activeCampaigns is the IN_PROGRESS campaign count, confirmed by cross-reference with the per-seat status breakdown in docs/SENDER-UTILISATION-2026-09-15.md. All 33 healthy seats carry 8-12 IN_PROGRESS campaigns each. Every healthy seat is genuinely busy.",
+    "activeCampaigns_means": "IN_PROGRESS campaigns (not total)",
+    "evidence": "SENDER-CAPACITY.json shows activeCampaigns=8 for non-SN seats and 12 for SN seats. The per-seat breakdown in SENDER-UTILISATION-2026-09-15.md shows the same seats with 8 IN_PROGRESS (non-SN) and 12 IN_PROGRESS (SN) - an exact match. Total campaigns per seat (including PAUSED/FINISHED) range from 13 to 43.",
+    "seats_with_zero_in_progress": 0,
+    "interpretation": "Zero healthy seats are idle. Every one is actively sending through 8-12 campaigns. Adding a campaign to any seat adds load to a seat that is already carrying active work. The daily ceiling (40 CR/day at max) is shared across ALL campaigns."
+  },
+  "write_route_verdict": {
+    "route_exists": true,
+    "routes": [
+      "/campaign/AddLinkedInAccountsToCampaign",
+      "/campaign/RemoveLinkedInAccountsFromCampaign"
+    ],
+    "on_write_routes": true,
+    "functions": {
+      "add_senders": "src/providers/heyreach.py:1813",
+      "remove_senders": "src/providers/heyreach.py:1831"
+    },
+    "readback": "campaignAccountIds on the campaign object, read after the write.",
+    "not_in_supported": true,
+    "stale_entry": "providerwrites.OPERATIONS says 'no documented route' - this is stale. Routes are implemented and on WRITE_ROUTES.",
+    "callers_in_src": "NONE"
+  },
+  "recommendation": {
+    "seats_for_first_campaign": 1,
+    "seat_id": 174892,
+    "reason": "Already attached. 40 CR/day handles 50 leads in 2 days and 122 leads in 3 days. The cohort is smaller than one seat's daily ceiling times 2. Multi-sender adds complexity without meaningful throughput benefit at this scale.",
+    "throughput_arithmetic": {
+      "cohort_size": "50-122 leads",
+      "one_seat_at_40": "50 leads in 2 days, 122 in 3 days",
+      "one_seat_at_25": "50 leads in 2 days, 122 in 5 days",
+      "cadence_delays": "1-3 days between steps, total elapsed time is weeks regardless of CR speed"
+    }
+  },
+  "per_seat": [
+    {
+      "sender_id": 116968,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 116973,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 116988,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 116989,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 119588,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 125748,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 125775,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 129082,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 129531,
+      "state": "AUTH_INVALID",
+      "in_progress_campaigns": 1,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 139699,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 0,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 143105,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 25,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": true,
+      "cooldown_details": {
+        "connection_request": true
+      }
+    },
+    {
+      "sender_id": 156360,
+      "state": "INACTIVE",
+      "in_progress_campaigns": 0,
+      "daily_cr_limit": 25,
+      "daily_msg_limit": 24,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 159259,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 25,
+      "daily_msg_limit": 25,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 169600,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 23,
+      "daily_msg_limit": 24,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 170308,
+      "state": "INACTIVE",
+      "in_progress_campaigns": 0,
+      "daily_cr_limit": 5,
+      "daily_msg_limit": 5,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 174332,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 12,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": true,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 174742,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 12,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": true,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 174748,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 12,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": true,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 174797,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 12,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": true,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 174803,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 12,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": true,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 174810,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 174822,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 12,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": true,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 174845,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 12,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": true,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 174892,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 12,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": true,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 175455,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 12,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": true,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 175552,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 25,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 177751,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 17,
+      "daily_msg_limit": 17,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 179527,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 19,
+      "daily_msg_limit": 18,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 181262,
+      "state": "INACTIVE",
+      "in_progress_campaigns": 0,
+      "daily_cr_limit": 15,
+      "daily_msg_limit": 5,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 181653,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 22,
+      "daily_msg_limit": 22,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 181658,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 18,
+      "daily_msg_limit": 17,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 186618,
+      "state": "INACTIVE",
+      "in_progress_campaigns": 0,
+      "daily_cr_limit": 10,
+      "daily_msg_limit": 10,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 191848,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 25,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 194061,
+      "state": "INACTIVE",
+      "in_progress_campaigns": 0,
+      "daily_cr_limit": 5,
+      "daily_msg_limit": 5,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 201959,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 15,
+      "daily_msg_limit": 5,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 201969,
+      "state": "INACTIVE",
+      "in_progress_campaigns": 0,
+      "daily_cr_limit": 15,
+      "daily_msg_limit": 5,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 201978,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 25,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 208242,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 12,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": true,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 208253,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 210951,
+      "state": "INACTIVE",
+      "in_progress_campaigns": 0,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    },
+    {
+      "sender_id": 212356,
+      "state": "HEALTHY",
+      "in_progress_campaigns": 8,
+      "daily_cr_limit": 15,
+      "daily_msg_limit": 15,
+      "sales_navigator": false,
+      "on_cooldown": false,
+      "cooldown_details": {}
+    }
+  ]
+}

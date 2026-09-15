@@ -1,5 +1,31 @@
 # Sender Utilisation Report — 2026-09-15
 
+TASK-144 deliverable. Three parts: per-seat committed-vs-busy picture, the
+write route verdict, and a recommendation for the first campaign.
+
+Machine-readable form: `docs/state/TASK144-SEAT-UTILISATION.json`, regenerate
+with `py -3 scripts/task144_seat_utilisation.py`.
+
+## CRITICAL CLARIFICATION: WHAT `activeCampaigns` MEANS
+
+Cross-referencing `SENDER-CAPACITY.json` (from `POST /li_account/GetAll`) with
+the per-seat campaign status breakdown in this report (from a live provider
+read that mapped each seat to its campaigns and their statuses) reveals:
+
+**`activeCampaigns` is the IN_PROGRESS campaign count, not the total.**
+
+Evidence: SENDER-CAPACITY.json shows `activeCampaigns: 8` for every non-SN
+healthy seat and `activeCampaigns: 12` for every SN healthy seat. The per-seat
+breakdown below shows the same seats with exactly 8 IN_PROGRESS (non-SN) and
+12 IN_PROGRESS (SN). The match is exact across all 33 seats.
+
+Total campaigns per seat (including PAUSED, FINISHED, DRAFT) range from 13 to
+43. Those additional campaigns are not counted in `activeCampaigns`.
+
+**This means all 33 healthy seats ARE genuinely busy.** There is no hidden
+headroom from seats attached to only-finished campaigns. Every healthy seat
+is actively sending through 8-12 campaigns.
+
 ## Summary
 
 | Metric | Value |
@@ -113,7 +139,70 @@ The provider exposes `/stats/GetOverallStats` which returns ALL-TIME counters pe
 | `b950e5cf18cf` | 3067 | 371 | 12.1 | 589 | 50 | 14.8 | 3068 |
 | `f691fc2aa4bf` | 1650 | 154 | 9.3 | 220 | 19 | 14.1 | 1650 |
 
-## 3. Remaining Safe Headroom
+## 3. The Write Route Verdict - TASK-144 Part 2
+
+### The route EXISTS. The OPERATIONS entry is stale.
+
+`providerwrites.py:153` says of `LINKEDIN_ASSIGN_SENDER`:
+
+> "no documented route. campaignAccountIds is readable on the campaign
+> object, so a write would be verifiable; assignment was done by hand"
+
+**This is no longer true.** The routes are documented, implemented, and on
+the write allowlist:
+
+| Route | On WRITE_ROUTES | Function | Readback |
+|---|---|---|---|
+| `/campaign/AddLinkedInAccountsToCampaign` | YES (heyreach.py:1302) | `add_senders()` at heyreach.py:1813 | `campaignAccountIds` after write |
+| `/campaign/RemoveLinkedInAccountsFromCampaign` | YES (heyreach.py:1303) | `remove_senders()` at heyreach.py:1831 | `campaignAccountIds` after write |
+
+Request shape:
+
+    POST /campaign/AddLinkedInAccountsToCampaign
+    Body: {"campaignId": <int>, "linkedInAccountIds": [<int>, ...]}
+
+    POST /campaign/RemoveLinkedInAccountsFromCampaign
+    Body: {"campaignId": <int>, "linkedInAccountIds": [<int>, ...]}
+
+Both functions:
+1. Read the campaign BEFORE the write (refuse if not in DRAFT/SCHEDULED/PAUSED)
+2. POST the write
+3. Read the campaign AFTER the write
+4. Check `campaignAccountIds` - if any requested id is missing (add) or still
+   present (remove), raise even though HTTP was 2xx
+
+`/campaign/UpdateAccounts` is deliberately NOT on WRITE_ROUTES. It is a full
+replace: any seat missing from the body is removed. On a PAUSED campaign,
+leads belonging to a removed seat are stopped and cannot be resumed. The
+additive and subtractive routes do the same job safely.
+
+### What is NOT enabled
+
+`LINKEDIN_ASSIGN_SENDER` is NOT in `providerwrites.SUPPORTED`. The
+`SUPPORTED` tuple (line 309) contains:
+
+    LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
+    EMAIL_CREATE_CAMPAIGN, EMAIL_SET_SEQUENCE,
+    LINKEDIN_SET_SEQUENCE, LINKEDIN_ADD_LEAD
+
+`LINKEDIN_ASSIGN_SENDER` is absent. The transport can do it; the permission
+gate refuses it.
+
+### Callers
+
+`add_senders()` and `remove_senders()` have NO callers in `src/`. They are
+defined, tested at the transport level, and wired into no workflow.
+
+### The verdict
+
+The write route exists at the transport layer and is fully implemented with
+readback verification. It is not enabled at the permission layer. The
+`providerwrites.OPERATIONS` entry saying "no documented route" is stale and
+should be updated. Enabling requires Claude's decision - it is a
+configuration change to `SUPPORTED`, not prospect-facing (attaching a seat
+to a DRAFT campaign sends nothing), and the readback is already wired.
+
+## 4. Remaining Safe Headroom
 
 ### What is MEASURED
 
@@ -127,7 +216,7 @@ The provider exposes `/stats/GetOverallStats` which returns ALL-TIME counters pe
 - **That a seat on a FINISHED campaign can be reused.** Detachment from the finished campaign is assumed to be possible but has not been tested.
 - **That cooldowns are temporary.** A seat in `connectionRequestCooldown` will exit cooldown, but the duration is not exposed by the API.
 
-## 4. Cooldown Analysis
+## 5. Cooldown Analysis
 
 **1 seats are currently in at least one cooldown.**
 
@@ -135,14 +224,14 @@ The provider exposes `/stats/GetOverallStats` which returns ALL-TIME counters pe
 
 A seat in cooldown CANNOT be reused immediately. The provider does not expose cooldown duration. A planner that ignores cooldowns will promise throughput the provider will not deliver.
 
-## 5. The AUTH_INVALID Seat
+## 6. The AUTH_INVALID Seat
 
 - **Seat `42ee6311bdf4`** (id 129531): `isActive: true`, `authIsValid: false`. Attached to 10 campaigns (1 IN_PROGRESS).
   - All-time stats: 1793 connections, 240 messages, 21 replies, acceptance rate 11.9%
 
 **This seat is NOT capacity.** It accepts assignments and fails. It is attached to campaigns, which means leads may be queued behind it. It should be excluded from every plan until auth is restored. Whether it is recoverable depends on the LinkedIn re-authentication flow — the provider does not expose a diagnostic beyond `authIsValid: false`.
 
-## 6. Cohort Throughput Arithmetic
+## 7. Cohort Throughput Arithmetic - TASK-144 Part 3
 
 ### The question: how fast could a 50-lead cohort move through a connection-request-then-message cadence?
 
@@ -190,6 +279,49 @@ A single seat with a 25-40 connection request daily limit:
 
 The real question is not 'can we fit a cohort' but 'can we add a cohort without disturbing the 12 IN_PROGRESS campaigns already running.' Since every seat is already committed, the answer is: only by sharing seats with existing campaigns, or by waiting for campaigns to finish.
 
+### The specific recommendation for campaign 599020
+
+**ONE sender: seat 174892 (already attached).**
+
+This seat is:
+- HEALTHY (isActive + authIsValid both true)
+- Sales Navigator (validates SN-dependent routes)
+- 40 CR/day, 40 msg/day (highest tier)
+- Not on cooldown at snapshot time
+- Already has the campaign's sequence bound to it
+
+The arithmetic:
+
+    1 seat at 40 CR/day  ->  50 leads in 2 days  (1.25 working days)
+    1 seat at 40 CR/day  ->  122 leads in 4 days (3 working days)
+
+The cohort is smaller than one seat's daily ceiling times a small number of
+days. Adding senders does not meaningfully reduce total elapsed time because
+the cadence's own delays (1-3 days between steps) dominate.
+
+**Why not multi-sender for the first campaign:**
+
+1. **The cohort is smaller than one seat's capacity.** 50 leads at 40 CR/day
+   is 1.25 days. Even 122 leads is only 3 days from one seat.
+2. **The constraint was never throughput.** Campaign 599020 carried ONE sender
+   and ZERO leads while 33 healthy seats sat at 1,054 CR/day. Approval and
+   copy quality were the blockers.
+3. **Every seat is already busy.** All 33 healthy seats carry 8-12 IN_PROGRESS
+   campaigns. Adding a seat to 599020 adds load to a seat already serving
+   the client's active campaigns.
+4. **A canary should be simple.** One seat, one sequence, one set of replies
+   to monitor. If something goes wrong, one seat to investigate.
+5. **Identity spreading matters at volume, not at 50.** One seat sending 50
+   connection requests over 2 days is indistinguishable from normal LinkedIn
+   activity.
+
+**If multi-sender IS wanted later**, the mechanism is ready:
+1. Enable `LINKEDIN_ASSIGN_SENDER` in `providerwrites.SUPPORTED`
+2. Update the stale OPERATIONS entry
+3. Call `heyreach.add_senders(599020, [seat_ids])`
+4. Assign leads to seats per row via `provider_account_id` before `build_lead_pairs`
+5. Readback verifies `campaignAccountIds` after the write
+
 ### Assumptions behind this arithmetic
 
 1. **Connection acceptance rate: 11.1% measured.** Used verbatim from the estate's all-time stats. Varies by seat from 6.9% to 15.5%.
@@ -198,7 +330,7 @@ The real question is not 'can we fit a cohort' but 'can we add a cohort without 
 4. **Detachment from finished campaigns is possible.** Not tested.
 5. **LinkedIn tolerates the provider's configured limits.** A configured limit of 40/day is what the provider allows, not what LinkedIn will tolerate indefinitely. The provider sets these conservatively.
 
-## 7. What the Provider Does NOT Report
+## 8. What the Provider Does NOT Report
 
 These are findings, not failures:
 
@@ -209,4 +341,7 @@ These are findings, not failures:
 
 ---
 
-*Generated 2026-09-15 06:56 UTC by `scripts/sender_utilisation.py`. Read-only. No provider mutations.*
+*Originally generated 2026-09-15 06:56 UTC by `scripts/sender_utilisation.py`.
+Updated for TASK-144 with write route verdict, corrected `activeCampaigns`
+interpretation, and specific campaign recommendation. Read-only. No provider
+mutations.*
