@@ -41,7 +41,30 @@ branch_for () {   # worker dir name -> branch name for this round
   esac
 }
 
-busy () {   # does this worktree hold a live claim?
+# A WORKTREE LOCK, separate from the task claim, and both are needed.
+#
+# The task claim answers "is somebody working on this task". It does NOT
+# answer "is this worktree free". On 2026-09-15 a manual sweep ran while the
+# loop was sweeping, and three worktrees were each given a second task: the
+# claims were for different tasks, so nothing collided at the claim level,
+# while two qwen agents were pointed at one directory. Two agents running
+# `git checkout -B` in the same worktree destroy each other's work.
+#
+# mkdir is the atomic primitive here - it either creates the directory or
+# fails, with no read-then-write window.
+LOCKS="$MAIN/work/worktree-locks"
+
+lock_worktree () {
+  mkdir -p "$LOCKS" 2>/dev/null
+  mkdir "$LOCKS/$1" 2>/dev/null   # exit 0 only if WE created it
+}
+
+unlock_worktree () {
+  rmdir "$LOCKS/$1" 2>/dev/null
+}
+
+busy () {   # occupied if the worktree is locked OR it holds a live claim
+  [ -d "$LOCKS/$1" ] && return 0
   py -3 "$MAIN/scripts/claim_task.py" --status 2>/dev/null | grep -q " $1 "
 }
 
@@ -56,7 +79,11 @@ file_for () {
 
 dispatch () {
   local wt="$1" br="$2" tid="$3" task="$4" d="C:/Users/Zvonimir/Desktop/$1"
-  py -3 "$MAIN/scripts/claim_task.py" --claim "$tid" --worker "$wt" >/dev/null 2>&1 || return 1
+  # Take the WORKTREE first. If another sweep already has it, stop before
+  # claiming a task - otherwise the task is claimed and then abandoned.
+  lock_worktree "$wt" || return 1
+  py -3 "$MAIN/scripts/claim_task.py" --claim "$tid" --worker "$wt" >/dev/null 2>&1 || {
+    unlock_worktree "$wt"; return 1; }
   local prompt="YOUR ONLY TASK IS $tid, file docs/qwen-tasks/TODO/$task
 
 It is already CLAIMED for you atomically. No other worker can take it, and you
@@ -101,7 +128,8 @@ Begin with the git mv."
     QWEN_CODE_SUPPRESS_YOLO_WARNING=1 "$QWEN" --approval-mode yolo "$prompt" \
       > "$LOGS/$wt.$ROUND.log" 2>&1
     echo "$(date +%H:%M:%S) DONE $wt $tid exit=$?" >> "$LOGS/pool.log"
-    py -3 "$MAIN/scripts/claim_task.py" --release "$tid" >/dev/null 2>&1 ) &
+    py -3 "$MAIN/scripts/claim_task.py" --release "$tid" >/dev/null 2>&1
+    unlock_worktree "$wt" ) &
   echo "$(date +%H:%M:%S) dispatched $wt [$br] -> $tid" | tee -a "$LOGS/pool.log"
 }
 
