@@ -240,6 +240,35 @@ RELATIONSHIP = tuple(re.compile(p, re.I) for p in (
     r"\bas\s+someone\s+who\s+(?:also\s+)?(?:runs?|owns?|manages?|leads?|"
     r"founded|built|works?|operates)\b",
     r"\bspeaking\s+as\s+a\s+fellow\s+\w+\b",
+    # TASK-117: THE CLASS OF SENDER-IDENTITY CLAIMS THAT ESCAPED.
+    #
+    # The three patterns above caught "as a fellow X", "as someone who VERBs"
+    # and "speaking as a fellow X". TASK-117 probed 28 candidate phrases and
+    # found 21 that pass. Four additional patterns below catch 7 more with
+    # zero false refusals on the must-pass set.
+    #
+    # The remaining 14 cannot be caught by phrase patterns without false
+    # refusals: "as a founder myself" shares syntax with "as a result";
+    # "i have built two agencies" shares syntax with "i have a question";
+    # "my agency has 20 people" shares syntax with "my last message".
+    # The real fix is a config-level check against sender identity, not
+    # more pattern matching. These four patterns are a partial improvement.
+    #
+    # "having run/built/scaled/founded" - participial experience claim.
+    # Bounded to identity verbs so "having said that" passes (it is a
+    # discourse marker, not an experience claim).
+    r"\bhaving\s+(?:\w+\s+){0,2}"
+    r"(?:run|rungs?|built|founded|scaled|managed|led|grown|"
+    r"operated|owned|started|created)\b",
+    # "like you ... I/we" - shared-identity framing.
+    r"\blike\s+you\b.*\b(?:i|we)\b",
+    # "I/we am/are also a/an" - shared-category assertion via "also".
+    r"\b(?:i|we)\s+(?:am|are|'m|'re)\s+also\s+(?:a|an)\b",
+    # "[role] too" - shared-category assertion via "too" after a role noun.
+    r"\b(?:founders?|ceos?|ctos?|owners?|operators?|bootstrappers?|"
+    r"marketers?|developers?|designers?|freelancers?|consultants?|"
+    r"entrepreneurs?|managers?|directors?|executives?|leads?|builders?|"
+    r"creators?|engineers?)\s+too\b",
 ))
 
 # What the record must show before any of the above may ship. Deliberately
