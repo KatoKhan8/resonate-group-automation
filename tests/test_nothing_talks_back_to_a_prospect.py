@@ -71,7 +71,13 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
              "heyreach.pause", "heyreach.activate",
              "bison.add_lead", "bison.create_campaign", "bison.set_sequence",
              "bison.assign_sender", "bison.set_limits", "bison.pause",
-             "bison.stop_lead", "bison.activate"})
+             "bison.stop_lead", "bison.activate",
+             # Added 2026-09-15. It is a LIFECYCLE verb and it belongs in this
+             # set for the reason the set exists: starting a campaign that
+             # holds ZERO leads changes a campaign's state and sends nothing.
+             # The verb that sends is `heyreach.activate`, which is still here
+             # and still sealed.
+             "heyreach.start_empty_for_staging"})
 
     def test_and_no_send_verb_is_supported(self):
         """Every declared write stops something or stages something.
@@ -87,6 +93,14 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
           bison.set_sequence      writes copy into a campaign that is stopped
           heyreach.set_sequence   writes copy into a campaign with no list,
                                   no leads, and no verb that can start it
+          heyreach.start_empty_for_staging
+                                  starts a campaign holding NOBODY so it can
+                                  be paused and staged into. The provider
+                                  refuses leads on a DRAFT campaign and
+                                  refuses to pause an inactive one, so this
+                                  is the only route to a stageable campaign -
+                                  and its condition refuses any campaign the
+                                  provider says holds a lead
           heyreach.add_lead       stages a person into a campaign the
                                   provider has just confirmed cannot send -
                                   and is REFUSED against any campaign that
@@ -104,7 +118,8 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
             providerwrites.SUPPORTED,
             (pw.LINKEDIN_PAUSE, pw.EMAIL_PAUSE, pw.EMAIL_STOP_LEAD,
              pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE,
-             pw.LINKEDIN_SET_SEQUENCE, pw.LINKEDIN_ADD_LEAD))
+             pw.LINKEDIN_SET_SEQUENCE, pw.LINKEDIN_ADD_LEAD,
+             pw.LINKEDIN_START_EMPTY_FOR_STAGING))
         for operation, (_channel, prospect_facing, _why) in                 providerwrites.OPERATIONS.items():
             # NARROWED, TASK-137. This asserted that NOTHING
             # prospect-facing was supported - true of a system that

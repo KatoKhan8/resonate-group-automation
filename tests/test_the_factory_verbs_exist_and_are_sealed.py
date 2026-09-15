@@ -142,11 +142,35 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
         # `AddLeadsToCampaignV2`. None of the three is in SUPPORTED. A system
         # that can start an outreach campaign before it can reliably stop one
         # has acquired exposure it cannot end.
-        forbidden = ("Resume", "StartCampaign", "SendMessage")
+        # NARROWED 2026-09-15. `/campaign/Resume` IS on WRITE_ROUTES now, and
+        # the property this test protects is unchanged: a system that can
+        # START AN OUTREACH CAMPAIGN before it can reliably stop one has
+        # acquired exposure it cannot end.
+        #
+        # Both halves of that sentence moved. The stop EXISTS - Pause is
+        # live-validated, SUPPORTED, and read back as PAUSED against 594061.
+        # And starting a campaign that holds ZERO LEADS starts no outreach,
+        # because there is nobody for the sequence to act on.
+        #
+        # The provider left no alternative: AddLeadsToCampaignV2 answers 400
+        # on a DRAFT campaign and Pause answers 400 on an inactive one, so
+        # DRAFT -> PAUSED is not a transition this vendor has. Start-then-pause
+        # is the only route to a stageable campaign.
+        #
+        # What still may not happen is starting a campaign that HOLDS PEOPLE.
+        # That is `heyreach.activate`, it is absent from SUPPORTED, it carries
+        # no condition, and the two verbs share a route and are told apart by
+        # a lead count the provider supplies - asserted below.
+        forbidden = ("StartCampaign", "SendMessage")
         reaching = [r for r in heyreach.WRITE_ROUTES
                     if any(v.lower() in r.lower() for v in forbidden)]
         self.assertEqual(reaching, [],
                          f"a route that reaches a prospect is writable: {reaching}")
+        self.assertIn("/campaign/Resume", heyreach.WRITE_ROUTES)
+        self.assertNotIn("heyreach.activate", providerwrites.SUPPORTED)
+        self.assertNotIn("heyreach.activate", providerwrites.CONDITIONAL)
+        self.assertIn("heyreach.start_empty_for_staging",
+                      providerwrites.CONDITIONAL)
         self.assertIn("/campaign/Pause", heyreach.WRITE_ROUTES)
         # AddLeadsToCampaignV2 is on WRITE_ROUTES but not in SUPPORTED.
         self.assertIn("/campaign/AddLeadsToCampaignV2", heyreach.WRITE_ROUTES)
@@ -172,7 +196,14 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
              # one ever. Enabled CONDITIONALLY: the door re-reads the
              # destination campaign and admits only one proven unable to
              # send. Asserted below.
-             pw.LINKEDIN_ADD_LEAD))
+             pw.LINKEDIN_ADD_LEAD,
+             # Added 2026-09-15. NOT prospect-facing and NOT activation: it
+             # starts a campaign the provider says holds ZERO leads, so it
+             # sends nothing, and its condition refuses any campaign holding
+             # anyone. The provider leaves no other route - DRAFT refuses
+             # leads and cannot be paused - so start-then-pause is the only
+             # way to a stageable campaign. heyreach.activate stays sealed.
+             pw.LINKEDIN_START_EMPTY_FOR_STAGING))
         # `heyreach.pause` left this list on 2026-09-12: a live pause of
         # campaign 594061 returned 200 and read back PAUSED, so it is
         # live-validated and declared. It was never a campaign-BUILDING verb

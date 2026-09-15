@@ -141,7 +141,14 @@ class TheLayerIsSealed(unittest.TestCase):
              # errorCode - and the readback is what classifies the write.
              # Prospect-facing, so the loop below no longer merely forbids:
              # it requires a CONDITION.
-             pw.LINKEDIN_ADD_LEAD),
+             pw.LINKEDIN_ADD_LEAD,
+             # Added 2026-09-15. NOT prospect-facing and NOT activation: it
+             # starts a campaign the provider says holds ZERO leads, so it
+             # sends nothing, and its condition refuses any campaign holding
+             # anyone. The provider leaves no other route - DRAFT refuses
+             # leads and cannot be paused - so start-then-pause is the only
+             # way to a stageable campaign. heyreach.activate stays sealed.
+             pw.LINKEDIN_START_EMPTY_FOR_STAGING),
             "the set of enabled provider writes changed")
         # The condition restated as a property, so it survives the list
         # growing. It used to read "nothing that reaches a prospect is

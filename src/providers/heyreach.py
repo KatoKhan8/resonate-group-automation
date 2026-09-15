@@ -1309,11 +1309,39 @@ WRITE_ROUTES = (
     # in SUPPORTED is a route this build WILL call. The two lists are the
     # difference between "the mechanism exists" and "it is live".
     "/campaign/AddLeadsToCampaignV2",
+    # THE START VERB, AND IT IS HERE FOR A REASON THAT IS NOT "TO SEND".
+    #
+    # This list deliberately excluded `/campaign/Resume` and
+    # `/campaign/StartCampaign`, and the argument was exactly right: a system
+    # that can start outreach before it can reliably stop one has acquired
+    # exposure it cannot end.
+    #
+    # Two things changed and both are measured, not argued. The stop EXISTS -
+    # `/campaign/Pause` is live-validated, in `providerwrites.SUPPORTED`, and
+    # was read back as PAUSED against campaign 594061. And the provider will
+    # not let a campaign be staged any other way:
+    #
+    #     AddLeadsToCampaignV2  400  "You cannot add new leads to a draft
+    #                                 campaign."
+    #     /campaign/Pause       400  "You cannot pause an inactive campaign."
+    #
+    # Only ongoing, paused and finished campaigns accept leads, so DRAFT ->
+    # PAUSED is not a transition this vendor has. The only route to a
+    # lead-accepting state that does not send is start, then pause.
+    #
+    # WHAT MAKES THAT SAFE IS THE LEAD COUNT, NOT THE VERB. Starting a
+    # campaign that holds ZERO leads sends nothing, because there is nobody
+    # for the sequence to act on - the same argument that licensed writing a
+    # sequence onto an empty campaign. `providerwrites` refuses this operation
+    # for any campaign the provider says holds a lead, read immediately
+    # before. Starting a campaign that HOLDS people is `LINKEDIN_ACTIVATE`,
+    # which remains sealed, carries no condition, and is a separate decision.
+    "/campaign/Resume",
 )
 
 # The routes that take their argument in the query string rather than a body.
 # `_write` builds both forms and this is what tells them apart.
-WRITE_QUERY_ROUTES = ("/campaign/Pause",)
+WRITE_QUERY_ROUTES = ("/campaign/Pause", "/campaign/Resume")
 
 
 def _write_body(path, body):
@@ -1390,6 +1418,22 @@ def pause_campaign(campaign_id):
     the reservation, the read-back and the classification.
     """
     return _write("/campaign/Pause", {"campaignId": int(campaign_id)})
+
+
+def resume_campaign(campaign_id):
+    """Start or resume a campaign. Returns the raw provider response.
+
+    THE TRANSPORT ONLY. It has no idea whether the campaign holds people, and
+    that is the whole question - so it is never called directly.
+    `providerwrites.perform` owns the reservation, the read-back and the
+    classification, and the condition on `LINKEDIN_START_EMPTY_FOR_STAGING`
+    refuses unless the provider says this campaign holds ZERO leads.
+
+    Starting an empty campaign sends nothing. Starting one that holds people
+    is `LINKEDIN_ACTIVATE`, which is a different operation, still sealed, and
+    a separate decision.
+    """
+    return _write("/campaign/Resume", {"campaignId": int(campaign_id)})
 
 
 def campaign_status(campaign_id):

@@ -855,7 +855,14 @@ class TheSealStillHolds(unittest.TestCase):
              providerwrites.EMAIL_CREATE_CAMPAIGN,
              providerwrites.EMAIL_SET_SEQUENCE,
              providerwrites.LINKEDIN_SET_SEQUENCE,
-             providerwrites.LINKEDIN_ADD_LEAD))
+             providerwrites.LINKEDIN_ADD_LEAD,
+             # Added 2026-09-15. NOT prospect-facing and NOT activation:
+             # it starts a campaign the provider says holds ZERO leads,
+             # so it sends nothing. The provider refuses leads on a
+             # DRAFT campaign and refuses to pause an inactive one, so
+             # start-then-pause is the only route to a stageable
+             # campaign. heyreach.activate stays sealed.
+             providerwrites.LINKEDIN_START_EMPTY_FOR_STAGING))
 
     def test_the_activate_operations_are_still_unconditionally_sealed(self):
         """The one this module now exists to keep sealed.

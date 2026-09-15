@@ -224,6 +224,16 @@ class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
             "/campaign/AddLinkedInAccountsToCampaign",
             "/campaign/RemoveLinkedInAccountsFromCampaign",
             "/campaign/AddLeadsToCampaignV2",
+            # Added 2026-09-15, and the deliberate act this docstring
+            # describes. It is the START verb, and it is here because the
+            # provider refuses every other route to a stageable campaign:
+            # AddLeadsToCampaignV2 answers 400 on a DRAFT campaign and Pause
+            # answers 400 on an inactive one. Its operation is
+            # `heyreach.start_empty_for_staging`, whose condition refuses any
+            # campaign the provider says holds a lead - so it starts campaigns
+            # that reach nobody. `heyreach.activate`, which starts a campaign
+            # holding people, remains sealed.
+            "/campaign/Resume",
         })
 
     def test_the_add_leads_route_is_enabled_only_against_a_draft(self):
@@ -248,11 +258,31 @@ class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
             providerwrites.is_conditional(providerwrites.LINKEDIN_ADD_LEAD),
             "add_lead is enabled with no condition on its destination")
 
-    def test_starting_a_campaign_is_still_absent(self):
-        """The one that must never arrive by accident."""
+    def test_starting_a_campaign_that_holds_people_is_still_absent(self):
+        """NARROWED 2026-09-15. `/campaign/Resume` is on WRITE_ROUTES and the
+        property is unchanged: nothing here may start outreach.
+
+        Starting a campaign that holds ZERO leads starts no outreach - there
+        is nobody for the sequence to act on. The provider left no
+        alternative: AddLeadsToCampaignV2 answers 400 on a DRAFT campaign and
+        Pause answers 400 on an inactive one, so start-then-pause is the only
+        route to a campaign that can be staged into.
+
+        The verb that DOES start outreach is `heyreach.activate` - the same
+        route, told apart by a lead count the provider supplies - and it is
+        absent from SUPPORTED, carries no condition, and cannot be reached.
+        """
+        from src import providerwrites
+
         for route in heyreach.WRITE_ROUTES:
-            self.assertNotIn("Resume", route)
             self.assertNotIn("StartCampaign", route)
+        self.assertIn("/campaign/Resume", heyreach.WRITE_ROUTES)
+        self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
+                         providerwrites.SUPPORTED)
+        self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
+                         providerwrites.CONDITIONAL)
+        self.assertIn(providerwrites.LINKEDIN_START_EMPTY_FOR_STAGING,
+                      providerwrites.CONDITIONAL)
 
     def test_the_campaign_building_verbs_are_refused_by_the_transport(self):
         """Every verb autonomous campaign creation would need.

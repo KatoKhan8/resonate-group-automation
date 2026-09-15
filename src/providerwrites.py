@@ -95,6 +95,10 @@ LINKEDIN_ASSIGN_SENDER = "heyreach.assign_sender"
 LINKEDIN_SET_LIMITS = "heyreach.set_limits"
 LINKEDIN_PAUSE = "heyreach.pause"
 LINKEDIN_ACTIVATE = "heyreach.activate"
+# Starting a campaign that holds NOBODY, so that it can be paused and staged
+# into. Deliberately NOT `LINKEDIN_ACTIVATE`: that one starts a campaign
+# holding people, and it stays sealed.
+LINKEDIN_START_EMPTY_FOR_STAGING = "heyreach.start_empty_for_staging"
 
 EMAIL_ADD_LEAD = "bison.add_lead"
 EMAIL_CREATE_CAMPAIGN = "bison.create_campaign"
@@ -129,6 +133,27 @@ OPERATIONS = {
         "Adding a lead to a RUNNING campaign is prospect-facing "
         "because the sequence acts on it immediately - which is precisely "
         "the state the condition exists to exclude"),
+    LINKEDIN_START_EMPTY_FOR_STAGING: ("linkedin", False,
+        "SUPPORTED as of 2026-09-15, and it exists because the provider "
+        "leaves no other route to a stageable campaign. Measured: "
+        "AddLeadsToCampaignV2 answers 400 'You cannot add new leads to a "
+        "draft campaign', and /campaign/Pause answers 400 'You cannot pause "
+        "an inactive campaign'. Only ongoing, paused and finished campaigns "
+        "accept leads, so DRAFT -> PAUSED is not a transition this vendor "
+        "has. Start then pause is the only one. "
+        "NOT PROSPECT-FACING, AND THE LEAD COUNT IS WHY: this starts a "
+        "campaign the provider says holds ZERO leads, read immediately "
+        "before the write and refused otherwise, so there is nobody for the "
+        "sequence to act on and nothing is sent. It is the argument that "
+        "licensed writing a sequence onto an empty campaign, applied to the "
+        "verb rather than to the copy. "
+        "IT IS NOT LINKEDIN_ACTIVATE AND MUST NEVER BECOME IT. Starting a "
+        "campaign that HOLDS PEOPLE is the prospect-facing moment and is a "
+        "separate operation, still sealed, carrying no condition. The two are "
+        "the same route told apart by a number the provider supplies. "
+        "Reversible: /campaign/Pause is live-validated and SUPPORTED, so a "
+        "campaign started here can be stopped by this system - which is the "
+        "condition the seals set before any start verb could be added"),
     LINKEDIN_CREATE_LIST: ("linkedin", False,
         "no documented route; the list was created by hand in the vendor UI"),
     LINKEDIN_CREATE_CAMPAIGN: ("linkedin", False,
@@ -341,7 +366,11 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
              # CONDITIONAL below. `perform` additionally demands that the
              # destination campaign be proven, by a provider read taken at
              # the moment of the write, to be unable to send.
-             LINKEDIN_ADD_LEAD)
+             LINKEDIN_ADD_LEAD,
+             # Enabled 2026-09-15. NOT prospect-facing: it starts a campaign
+             # the provider says holds zero leads, so it sends nothing, and
+             # its condition refuses it for a campaign holding anyone at all.
+             LINKEDIN_START_EMPTY_FOR_STAGING)
 
 # ------------------------------------------- conditional permission
 #
@@ -502,19 +531,96 @@ def _campaign_is_a_declared_staging_campaign(provider_campaign_id,
     return True
 
 
+def _campaign_is_ours_and_holds_nobody(provider_campaign_id,
+                                       campaign_id=None):
+    """True only for OUR declared campaign that the provider says is EMPTY.
+
+    THE LEAD COUNT IS THE WHOLE PERMISSION. Starting a campaign holding zero
+    leads sends nothing; starting one holding a single person is the
+    prospect-facing moment this system has never performed. The provider
+    supplies that number and it is read here, immediately before the write,
+    from the route that enumerates actual rows - not from `progressStats`,
+    which is a residual that goes negative on live campaigns.
+
+    Ownership is proven the same way as for a staged lead: the canonical row
+    is READ, never accepted as an argument.
+    """
+    from . import campaigns as _campaigns
+    from .providers import heyreach
+
+    if provider_campaign_id in (None, "", 0) or campaign_id in (None, ""):
+        raise WriteRefused(
+            f"{LINKEDIN_START_EMPTY_FOR_STAGING} requires both the provider "
+            f"campaign id and the canonical one: one to read the provider's "
+            f"lead count, one to prove the campaign is ours. The transport "
+            f"was not reached")
+    try:
+        row = _campaigns.require(str(campaign_id))
+    except Exception as e:
+        raise WriteRefused(
+            f"{LINKEDIN_START_EMPTY_FOR_STAGING}: canonical campaign "
+            f"{campaign_id!r} could not be read ({type(e).__name__}: {e}), so "
+            f"nothing proves this campaign is ours. The transport was not "
+            f"reached") from None
+    bound = str(row.get("heyreach_campaign_id") or "").strip()
+    if not bound or bound != str(provider_campaign_id).strip():
+        raise WriteRefused(
+            f"{LINKEDIN_START_EMPTY_FOR_STAGING}: canonical campaign "
+            f"{campaign_id!r} is bound to {bound!r} and this names "
+            f"{str(provider_campaign_id)!r}. Starting somebody else's "
+            f"campaign is the worst possible version of this mistake. The "
+            f"transport was not reached")
+
+    try:
+        _rows, total = heyreach.campaign_leads(provider_campaign_id, offset=0)
+    except Exception as e:
+        raise WriteRefused(
+            f"{LINKEDIN_START_EMPTY_FOR_STAGING}: the lead count of HeyReach "
+            f"campaign {provider_campaign_id} could not be read "
+            f"({type(e).__name__}: {e}). A campaign whose population is "
+            f"unknown is not proven empty. The transport was not reached"
+        ) from None
+    if total is None:
+        raise WriteRefused(
+            f"{LINKEDIN_START_EMPTY_FOR_STAGING}: HeyReach returned no lead "
+            f"total for campaign {provider_campaign_id}. A missing count is "
+            f"not a zero. The transport was not reached")
+    if int(total) != 0:
+        raise WriteRefused(
+            f"{LINKEDIN_START_EMPTY_FOR_STAGING}: HeyReach campaign "
+            f"{provider_campaign_id} holds {total} lead(s). Starting a "
+            f"campaign that holds people is prospect-facing, is "
+            f"{LINKEDIN_ACTIVATE}, and is sealed. The transport was not "
+            f"reached")
+    return True
+
+
 CONDITIONAL[LINKEDIN_ADD_LEAD] = _campaign_is_a_declared_staging_campaign
+CONDITIONAL[LINKEDIN_START_EMPTY_FOR_STAGING] = (
+    _campaign_is_ours_and_holds_nobody)
 
 # `perform` runs the condition at ONE call site, inside the prospect-facing
 # branch. That is correct only while every conditional operation is
 # prospect-facing, so the assumption is asserted here rather than left to be
 # discovered by the first non-facing operation that quietly skips its own
 # condition. If this ever fires, add the second call site; do not delete it.
+# `perform` runs conditions in BOTH branches now, and this assertion changed
+# with it. It used to require every conditional operation to be
+# prospect-facing, because conditions ran only in that branch and an
+# operation whose condition never ran would be an operation with no
+# permission at all - the right guard while the only conditional verb reached
+# a person.
+#
+# `LINKEDIN_START_EMPTY_FOR_STAGING` is conditional and NOT facing: it starts
+# a campaign holding nobody, and its condition is precisely what establishes
+# "holding nobody". So the guard is inverted rather than dropped - what must
+# hold is that a declared condition is reachable, and `perform` now runs them
+# on both paths.
 for _op in CONDITIONAL:
-    if not OPERATIONS[_op][1]:
+    if _op not in OPERATIONS:
         raise AssertionError(
-            f"{_op} has a condition and is not prospect-facing. `perform` "
-            f"runs conditions only in the prospect-facing branch, so this "
-            f"operation's condition would never run")
+            f"{_op} has a condition and is not a declared operation, so "
+            f"nothing describes what it does or whether it reaches anybody")
 del _op
 
 
@@ -837,6 +943,18 @@ def perform(operation, *, authorization=None, tenant=None, campaign=None,
         # refuses; change the material and the fingerprint moves and it is a
         # different write, which is what a spec fingerprint is for.
         key = None
+        # A STAGING WRITE CAN CARRY A CONDITION TOO, and until
+        # `LINKEDIN_START_EMPTY_FOR_STAGING` none did - conditions ran only in
+        # the facing branch above, and an assertion at import time kept that
+        # honest by refusing a non-facing conditional operation.
+        #
+        # Starting a campaign is safe exactly when the campaign holds nobody,
+        # which is a fact about the provider rather than about the verb. That
+        # is a condition by definition, and it belongs on the operation that
+        # needs it rather than buried in a factory - so it runs here, before
+        # the staging-repeat check and before the transport.
+        require_conditional_permission(operation, provider_campaign_id,
+                                       campaign)
         done = staged_already(campaign, operation, payload)
         if done is not None:
             raise WriteRefused(
