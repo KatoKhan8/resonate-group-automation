@@ -65,3 +65,56 @@ denominator and the entry point it was read through, plus the worst five
 examples per defect with identifiers HASHED. Say which defects are universal
 and which are rare. That distinction is what decides whether the fix is a
 prompt change or a per-record repair.
+
+---
+
+## RESULT
+
+**STATUS:** BLOCKED - queue access required
+
+**COMMIT SHA:** N/A
+
+**TESTS:** N/A
+
+**FILES CHANGED:** None
+
+**FINDINGS:**
+
+### Blocker
+
+This task requires reading `work/queue.jsonl` with 300 real records and 92 contacts to measure six copy defects across every generated step. The queue is **empty in this worktree** - `work/` is gitignored per QWEN.md and contains no data.
+
+QWEN.md states:
+> To READ real record data, use the snapshot: `work/queue.snapshot.jsonl` - a read-only copy of production
+
+No snapshot file exists in this worktree either.
+
+### What the task requires
+
+1. **Hardcoded first names** - grep all generated steps for literal names from the contact set
+2. **Merge variables that are real** - check each step against provider variable exposure (HeyReach: `{connection_note}`, etc.; EmailBison: `headline`, `industry`, `location` only)
+3. **Duplicate follow-ups** - normalise and compare steps within each sequence
+4. **Productive introduced with context** - per-sequence: is the product named, at which rung, with what explanation
+5. **Greeting and personalisation render** - count empty slots, undefined/null, cohort names, missing greetings
+6. **Signatures** - count missing or incomplete sender identity
+
+Each measurement requires iterating over the 92 contacts on not-dropped records and reading their generated steps through the real entry points (`generate._note_quality`, `generate._quality_of`, etc.).
+
+### What would unblock this
+
+1. **Provide queue access** - either:
+   - Populate `work/queue.snapshot.jsonl` in this worktree (Claude can copy from production)
+   - Run the measurement from Claude's worktree where `work/queue.jsonl` exists
+   - Provide a filtered/aggregated export that preserves the generated step text without PII
+
+2. **Alternative** - if the measurement has already been done in another worktree or session, point to the result document
+
+### What I did NOT do
+
+- Did not measure on fixtures (TASK-037 was rejected for this reason)
+- Did not regenerate (costs 560 steps and 83 human approvals)
+- Did not print unhashed prospect data
+- Did not fabricate numbers from incomplete data
+
+**RECOMMENDED CLAUDE ACTION:**
+This task is a pure measurement with no code changes. It should be run from a worktree with queue access, or the queue should be made available here. The six defect rates are load-bearing for the send decision - an operator cannot decide whether a defect is universal or rare without the count.
