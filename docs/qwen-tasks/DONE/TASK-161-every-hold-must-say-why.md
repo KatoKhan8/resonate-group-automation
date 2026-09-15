@@ -32,7 +32,7 @@ Read-only on `work/`. No provider writes. No model calls. Do not change `src/`
 ## RESULT
 
 - **STATUS:** DONE
-- **COMMIT SHA:** e2e1a72
+- **COMMIT SHA:** 4df5d18
 - **TESTS:** N/A — read-only analysis, no src/ changes
 - **FILES CHANGED:**
   - `docs/HELD-RECORDS-2026-09-15.md` (new — the deliverable)
