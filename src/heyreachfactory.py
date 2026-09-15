@@ -180,10 +180,11 @@ def assemble_linkedin_copy(source, contact_key, *, include_inmail=False,
     before deciding whether to proceed. A dry run returns the missing list;
     the live path refuses on it.
 
-    VARIANTS ARE RESOLVED HERE, the same way as the email factory. A LinkedIn
-    step carrying five variants assigns one per contact deterministically,
-    and the variant's note - not the base template's - is what the provider
-    receives. Each variant must be approved independently.
+    TASK-126: VARIANTS ARE COLLECTED, NOT RESOLVED. A LinkedIn step carrying
+    five variants puts all five into the messages list, preserving order so
+    arm identity is positional. The provider rotates them. Each variant must
+    be approved independently. A step with no variants carries one message
+    (the base template), preserving backward compatibility.
     """
     from . import cadence as _cadence
     from . import variants
@@ -199,34 +200,59 @@ def assemble_linkedin_copy(source, contact_key, *, include_inmail=False,
     for step_key, mapping in COPY_MAPPING.items():
         step = steps.get(step_key) or {}
         spec = spec_by_key.get(step_key) or {}
-        # Resolve variant if present.
-        entry = None
-        if spec.get(_cadence.VARIANTS_KEY):
-            recorded = step.get("variant_id")
-            entry = _cadence.variant_for(spec, campaign, contact_key,
-                                         recorded=recorded, config=config)
-        if entry is not None:
-            stepped = variants.apply_to_step(dict(step), entry)
-            if stepped.get("approval"):
+        # TASK-126: Collect ALL approved variants, not just one.
+        variant_entries = spec.get(_cadence.VARIANTS_KEY) or []
+        if variant_entries:
+            # Collect all approved variants for this step.
+            texts = []
+            for entry in variant_entries:
+                if entry.get("status") != "active":
+                    continue
+                # Check the variant's own approval, not the step's.
+                variant_approval = entry.get("approval")
+                if not variant_approval:
+                    continue
+                stepped = variants.apply_to_step(dict(step), entry)
                 from . import approval
-                if approval.fingerprint(stepped) == stepped["approval"].get(
+                if approval.fingerprint(stepped) != variant_approval.get(
                         "fingerprint"):
-                    text = _step_copy(stepped)
+                    continue
+                # Extract text directly from the variant content.
+                # A connect step uses `note`; a message step uses `note`;
+                # an inmail step uses `subject` and `note`/`message`.
+                action = step.get("linkedin_action")
+                if action == "connect":
+                    text = (entry.get("note") or "").strip() or None
+                elif action == "inmail":
+                    subject = (entry.get("subject") or "").strip()
+                    message = (entry.get("note") or entry.get("message") or "").strip()
+                    text = {"subject": subject, "message": message} if subject and message else None
                 else:
-                    text = None
+                    text = (entry.get("note") or entry.get("message") or "").strip() or None
+                if text:
+                    texts.append(text)
+            if texts:
+                # All variants collected. Use the first as fallback.
+                fallback = texts[0]
             else:
-                text = None
+                # No approved variants. Fall back to base template.
+                text = _step_copy(step)
+                texts = [text] if text else []
+                fallback = text
         else:
+            # No variants on this step. Use the base template.
             text = _step_copy(step)
+            texts = [text] if text else []
+            fallback = text
         roles = mapping["role"]
         if isinstance(roles, str):
             roles = (roles,)
-        if not text:
+        if not texts:
             for role in roles:
                 missing.append((contact_key, step_key, role))
             continue
         for role in roles:
-            copy[role] = {"messages": [text], "fallbackMessage": text}
+            copy[role] = {"messages": texts, "fallbackMessage": fallback}
 
     if include_inmail:
         for step_key, mapping in ALTERNATIVE_MAPPING.items():
