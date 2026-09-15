@@ -152,8 +152,12 @@ merged.
 The brief warns against crawling one company twenty times for twenty
 prospects. `research[]` is stored **per record**, which is per company, and
 rows carry an optional `contact_key` for the contact-specific ones. Company
-evidence is already gathered once and reusable across contacts, and
-`retrieved_at` / `age_days` already support a staleness policy.
+evidence is already gathered once and reusable across contacts.
+
+**CORRECTED BY PART 2:** this section originally said `retrieved_at` and
+`age_days` "already support a staleness policy". `age_days` is NULL on all
+695 rows and nothing reads `retrieved_at` back. The fields exist; the policy
+does not.
 
 ## NEXT SAFE ACTION
 
@@ -168,3 +172,105 @@ visibility to the model was.
 
 **Do not enable Apify or add a crawler.** The free leg works, runs first, and
 has produced 70 rows; the paid leg produced 625. Neither is the constraint.
+
+
+---
+
+# PART 2: THE PROVENANCE CHAIN, AND WHY NOTHING REFRESHES
+
+## The chain, traced in code
+
+    rec["research"]
+      <- research.py:204   rec.setdefault("research", []).extend(usable)
+         <- research._from_the_site_itself(rec, config)
+            <- webfetch.research(domain, config)        FREE LEG, stdlib urllib
+               <- the company own domain: homepage, then only pages that page
+                  links or a sitemap declares
+            evidence rows stamped provider="local_http"
+
+    rec["research"]
+      <- research.py:410   rec.setdefault("research", []).extend(evidence)
+         <- research.run(rec, config, live=...)         PAID LEG, Apify actor
+            evidence rows stamped provider="apify"
+
+Both legs pass every row through `evidence.boilerplate()` before
+retaining it, and both emit `SCRAPE_COMPLETED` and `EVIDENCE_ADDED` events. The free leg runs
+first; the paid one is the fallback.
+
+## What the 695 rows actually are - REAL CRAWLS OF REAL PAGES
+
+    provider        local_http 70, apify 625
+    source_url      693 https, 2 http - all real URLs
+    pages crawled   /  202,  /about 91,  /about-us 29,  /team 22,
+                    /services/ 15,  /company 15,  /about/ 7,  /services 7
+    retrieved_at    4 distinct dates, 2026-09-07 .. 2026-09-12
+
+So this is genuine website extraction from the companies own sites, with the
+page each fact came from retained. The newest evidence is **3 days old**, the
+oldest **8 days**.
+
+## THREE PROVENANCE FIELDS EXIST AND ARE NULL ON ALL 695 ROWS
+
+    age_days      None x 695
+    published_at  None x 695
+    confidence    None x 695
+
+The schema carries exactly the fields the intended architecture needs for
+freshness and evidence quality, and not one of them has a value. Staleness can
+currently only be derived from , which IS populated.
+
+## THE ROOT CAUSE: THERE IS NO REFRESH, BY CONSTRUCTION
+
+ decides whether to crawl, and it opens:
+
+    if existing_evidence(rec):
+        return None                               # already have it
+
+**Once a record has any evidence, research never runs on it again.** There is
+no TTL, no staleness comparison, no age threshold - grepping  for
+stale/refresh returns only the lines that WRITE , never one that
+reads it back to decide anything.
+
+So the intended architecture
+
+    cached research if fresh -> crawler if missing OR STALE
+
+has no  branch. It is
+
+    cached research if PRESENT -> crawler only if ABSENT
+
+ exists to answer the staleness question and is null everywhere,
+which is consistent: nothing computes it because nothing asks.
+
+## WHAT TRIGGERS A CRAWL TODAY, AND IS IT REACHABLE
+
+Reachable, and deliberately narrow.  returns a reason only when
+structured data has already failed a downstream step:
+
+    NEED_HOOK_EVIDENCE    lane=cold, no hook, and no notable/specialties
+    NEED_ANGLE_EVIDENCE   lane=domains, a contact has no angle, and neither
+                          specialties nor industry is known
+
+Its own docstring: *"Structured data wins. This only fires when a step
+downstream has nothing to work with, which is the only honest reason to go and
+read someone website."* That is a good rule and it is why the crawl is cheap.
+
+**It also explains the 8 of 51 cohort records with no research[]**: all eight
+report , meaning research never ran - they had enough
+structured data that no evidence was ever *needed*. Nothing failed. The crawler
+was simply never asked.
+
+## WHAT THIS CHANGES ABOUT THE RECOMMENDATION
+
+Nothing about the next safe action, which stands: show the prompt the 695 rows
+it already cannot see.
+
+But it adds a second, separable defect. Even after the prompt can read
+, the facts it reads will be 3-8 days old with no mechanism to
+notice when they age, because  is null and nothing consults
+. For company positioning and services that is tolerable for
+now. For hiring signals and recent announcements - which the brief names - it
+is not, and a TTL would be needed before those are trusted.
+
+**Still no new tool. The free leg works; what is missing is a refresh policy
+and prompt visibility, neither of which needs a crawler.**
