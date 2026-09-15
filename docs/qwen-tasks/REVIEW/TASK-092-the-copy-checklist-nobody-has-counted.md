@@ -69,7 +69,7 @@ prompt change or a per-record repair.
 ## RESULT
 
 - **STATUS:** DONE
-- **COMMIT SHA:** c6fe167
+- **COMMIT SHA:** 8087a34
 - **TESTS:** Measurement script at `scripts/copy_defect_census.py`, run against
   `work/queue.snapshot.jsonl` (stamp: 2026-09-14T21:52:15Z from master 0ac5e60,
   300 records). Full JSON output at `out/copy_defect_census.json`.
