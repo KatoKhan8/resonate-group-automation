@@ -61,3 +61,20 @@ Report, per step:
 the HeyReach one, with the exit code read off the process. If it FAILS, the
 failure is the deliverable and the defect is the next task; do not repair the
 copy to make the readback pass.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** dba8cbb
+- **TESTS:** `py -3 scripts/bison_readback.py productive-email-liheavy-v1 --expect` -> exit 1 (22 pass, 2 fail). `py -3 scripts/bison_readback.py productive-canary-email-2026-09-13 --expect` -> exit 1 (5 pass, 3 fail).
+- **FILES CHANGED:** `docs/BISON-READBACK-481-2026-09-15.md` (new), task file moved TODO -> REVIEW.
+- **FINDINGS:**
+  1. **thread_reply FAIL on steps 2 and 4 (campaign 481).** Expected (F,T,F,T,F) per `THREAD_REPLY_PATTERNS['email_five']`. Provider has (F,F,F,F,F). The ladder -> factory -> payload -> provider chain breaks at the last hop: the local state is correct, the provider stored `false` on every step.
+  2. **variant and variant_from_step come back** from the provider (both empty/null on all steps). TASK-073's trimmer fix is confirmed - the fields survive the round-trip.
+  3. **No greeting exists** in any body_N variable. No broken merge found (no "Hey ,", "Hi undefined,", etc.) because the body travels entirely as `{BODY_N}` with no first_name/company merge variables.
+  4. **No signature** on any step. Sender identity is absent from all five steps on all 14 populated leads.
+  5. **No duplicate bodies** across steps on any of the 14 populated leads. Three leads have duplicate subjects across steps (not bodies).
+  6. **9 of 23 leads have zero body_N variables.** If campaign 481 were resumed, these leads would receive empty emails.
+  7. **Campaign 451** has a shape mismatch: provider holds single-step `{SUBJECT}/{BODY}`, canonical moved to five-step `{SUBJECT_N}/{BODY_N}`.
+- **RISKS:** Campaign 481 is paused, so the thread_reply defect reaches nobody today. If resumed, recipients get five separate threads instead of three threads with nested follow-ups. The 9 empty leads are a separate send-safety issue.
+- **RECOMMENDED CLAUDE ACTION:** The thread_reply defect is the next task - the write path either did not send `thread_reply: true` in the POST body or the provider discarded it. Trace which.
