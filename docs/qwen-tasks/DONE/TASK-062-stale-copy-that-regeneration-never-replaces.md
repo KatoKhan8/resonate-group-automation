@@ -10,8 +10,8 @@ still holds copy that `lint` refuses:
 
     1gslab-com  li1, li3, li4    em dash
     25wat-com   li1              em dash
-    28row-com   li1              em dash
-    28row-com   li4              em dash AND curly apostrophe
+    <client-abb4a2>-com   li1              em dash
+    <client-abb4a2>-com   li4              em dash AND curly apostrophe
 
 `lint.SUBSTITUTED_PUNCTUATION` refuses all of those, and `generate.plan`
 re-plans a note that fails lint - so these WERE re-planned. The regeneration

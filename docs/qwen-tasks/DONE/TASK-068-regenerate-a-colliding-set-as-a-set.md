@@ -2,7 +2,7 @@
 
 ## THE MECHANISM, MEASURED
 
-`adcuratio-com/ranjan-damodar` blocks the HeyReach dry run. Its six LinkedIn
+`<client-a86dfd>-com/ranjan-damodar` blocks the HeyReach dry run. Its six LinkedIn
 notes say, in order:
 
     li1  "share insights on operations and project capacity"
@@ -58,7 +58,7 @@ rather than picking a threshold.
 
 ## PROVE IT ON THE REAL BLOCKER
 
-    QUEUE=<scratch copy> py -3 -m src.generate --live --id adcuratio-com
+    QUEUE=<scratch copy> py -3 -m src.generate --live --id <client-a86dfd>-com
     py -3 scripts/write_heyreach_sequence.py productive-linkedin-production-v1
 
 The second command must stop naming `ranjan-damodar`. If it names a different
@@ -141,7 +141,7 @@ FINDINGS
    as instructed. The command Claude needs to run:
    
    QUEUE=C:\Users\Zvonimir\Desktop\resonate-qwen-2-scratch\queue.jsonl ^
-   py -3 -m src.generate --live --id adcuratio-com
+   py -3 -m src.generate --live --id <client-a86dfd>-com
    
    Then:
    py -3 scripts/write_heyreach_sequence.py productive-linkedin-production-v1
@@ -180,7 +180,7 @@ RISKS
 RECOMMENDED CLAUDE ACTION
 
 1. Run the live generation against the scratch copy:
-   QUEUE=<scratch> py -3 -m src.generate --live --id adcuratio-com
+   QUEUE=<scratch> py -3 -m src.generate --live --id <client-a86dfd>-com
    
 2. Check the output: ranjan-damodar's notes should be replaced with
    genuinely different notes that pass campaign_repetition.
