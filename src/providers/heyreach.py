@@ -193,6 +193,11 @@ READ_ROUTES_ALL = READ_ROUTES + ("/lead/GetLead", "/li_account/GetAll",
                                  "/campaign/GetLeadsFromCampaign",
                                  "/stats/GetOverallStats",
                                  "/list/GetAll",
+                                 # The readback for a list write. A lead added
+                                 # to a list is only staged if something can
+                                 # read it back, and `totalItemsCount` on the
+                                 # list row is a count rather than an identity.
+                                 "/list/GetLeadsFromList",
                                  "/campaign/GetCampaignsForLead")
 
 # Read-only GETs. Separate from the POST allowlist above because these take
@@ -1355,6 +1360,18 @@ WRITE_ROUTES = (
     # anybody.
     "/campaign/Resume",
     "/campaign/StartCampaign",
+    # THE LIST WRITE, AND IT IS BEING PROBED RATHER THAN TRUSTED.
+    #
+    # Adding a lead to a CAMPAIGN activates that campaign - the vendor
+    # documents it for PAUSED and for FINISHED - so there is no campaign-level
+    # staging state. A LIST is a different object: `/list/GetAll` shows lists
+    # with `campaignIds: []`, bound to nothing at all.
+    #
+    # Whether adding to a list ALSO activates a campaign the list is attached
+    # to is NOT known and is exactly what the probe measures. Until it is
+    # measured, `providerwrites` refuses this against any list that names a
+    # campaign.
+    "/list/AddLeadsToListV2",
 )
 
 # The routes that take their argument in the query string rather than a body.
@@ -2107,6 +2124,55 @@ def add_leads_to_campaign(campaign_id, rows, linkedin_account_id):
             "has a linkedin_url")
     body = {"campaignId": int(campaign_id), "accountLeadPairs": pairs}
     return _write_body("/campaign/AddLeadsToCampaignV2", body)
+
+
+def add_leads_to_list(list_id, rows):
+    """Add leads to a LIST. Returns the raw provider response.
+
+    `{listId, leads: [{linkedInUrl, ...}]}`, max 100 per request - the vendor's
+    shape, not an inferred one. Note the field is `linkedInUrl` here and
+    `profileUrl` on the campaign route; they are different objects with
+    different schemas and assuming otherwise sends a lead nobody can find.
+
+    THE TRANSPORT ONLY. It does not know whether this list feeds a campaign,
+    and that is the whole question - `providerwrites` owns it.
+    """
+    leads = []
+    for row in rows:
+        url = str(row.get("linkedin_url") or "").strip()
+        if not url:
+            continue
+        leads.append({"linkedInUrl": url,
+                      "firstName": row.get("first_name", ""),
+                      "lastName": row.get("last_name", ""),
+                      "companyName": row.get("company", ""),
+                      "position": row.get("title", "")})
+    if not leads:
+        raise ProviderError(
+            "heyreach add_leads_to_list: no leads to send - every row lacked "
+            "a linkedin_url")
+    if len(leads) > 100:
+        raise ProviderError(
+            f"heyreach add_leads_to_list: {len(leads)} leads, and this route "
+            f"accepts 100. Page it rather than sending a request the provider "
+            f"will truncate")
+    return _write_body("/list/AddLeadsToListV2",
+                       {"listId": int(list_id), "leads": leads})
+
+
+def list_leads(list_id, offset=0, limit=MAX_PAGE):
+    """One page of a list's members. The readback for `add_leads_to_list`."""
+    data = _read("/list/GetLeadsFromList",
+                 {"listId": int(list_id), "offset": int(offset),
+                  "limit": min(int(limit), MAX_PAGE)})
+    out = []
+    for row in _collection(data, "/list/GetLeadsFromList"):
+        profile = row.get("linkedInUserProfile") or row
+        out.append({"profile_url": profile.get("profileUrl"),
+                    "provider_profile_id": row.get("linkedInUserProfileId"),
+                    "first_name": profile.get("firstName"),
+                    "last_name": profile.get("lastName")})
+    return out, data.get("totalCount")
 
 
 def readback_membership(campaign_id, expected_urls):
