@@ -1,18 +1,10 @@
 {
-  "generated_at": "2026-09-15T10:09:20+00:00",
+  "generated_at": "2026-09-15T10:54:05+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
-  "master_head": "4c1419e",
-  "origin_master_head": "4c1419e",
+  "master_head": "aaea460",
+  "origin_master_head": "aaea460",
   "master_pushed": true,
   "tasks": [
-    {
-      "task": "TASK-110",
-      "file": "docs/qwen-tasks/TODO/TASK-110-read-every-generated-sequence-as-a-set.md",
-      "stage": "TODO",
-      "last_commit": "92dcbef",
-      "last_commit_at": "2026-09-15T09:18:21+02:00",
-      "reported": false
-    },
     {
       "task": "TASK-123",
       "file": "docs/qwen-tasks/TODO/TASK-123-which-of-the-eleven-red-tests-are-actually-fixed.md",
@@ -1042,6 +1034,16 @@
       "commit_sha": "5209e9e"
     },
     {
+      "task": "TASK-110",
+      "file": "docs/qwen-tasks/DONE/TASK-110-read-every-generated-sequence-as-a-set.md",
+      "stage": "DONE",
+      "last_commit": "aaea460",
+      "last_commit_at": "2026-09-15T12:10:20+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "6463b5d"
+    },
+    {
       "task": "TASK-111",
       "file": "docs/qwen-tasks/DONE/TASK-111-what-else-does-emailbison-expose.md",
       "stage": "DONE",
@@ -1200,11 +1202,11 @@
   "branches": [
     {
       "branch": "master",
-      "head": "4c1419e",
+      "head": "aaea460",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "4c1419e",
-      "last_commit_at": "2026-09-15T12:08:37+02:00"
+      "remote_head": "aaea460",
+      "last_commit_at": "2026-09-15T12:10:20+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -1738,7 +1740,7 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "4c1419e",
+      "head": "aaea460",
       "branch": "master",
       "uncommitted_files": 1,
       "clean": false
@@ -1801,8 +1803,8 @@
     }
   ],
   "stage_counts": {
-    "TODO": 2,
+    "TODO": 1,
     "REVIEW": 1,
-    "DONE": 122
+    "DONE": 123
   }
 }
