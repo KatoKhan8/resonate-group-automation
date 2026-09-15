@@ -36,7 +36,7 @@ Check each, and say whether it is still true:
     four askings of ONE question where the ladder asks for six different jobs
     49 email openers beginning "i noticed"
 
-`ogpartner-dk/jacob-faertz` is the counter-example - a sequence where the
+`<record-b58026>/<record-c8b688>` is the counter-example - a sequence where the
 ladder DID run: six rungs, six different jobs, product named once at rung 4,
 easy out at rung 6. That is the target shape. Compare against it.
 
@@ -84,3 +84,85 @@ and valuable result.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 5adcf07
+
+**TESTS:** Read-only task. No code changed. Provider read via
+`heyreach.campaign_sequence(599020)` confirmed READ-ONLY (GET route on the
+allowlist). No POST/PATCH/PUT/DELETE.
+
+**FILES CHANGED:**
+- `docs/HUMAN-READ-599020-2026-09-15.md` (new) - the verdict document
+- `docs/qwen-tasks/RUNNING/TASK-098-...` (moved from TODO) - task claim
+
+**FINDINGS:**
+
+The live sequence DOES NOT BEAT FALLBACKS. Per-message verdict is NO for all
+three pushable contacts on all dimensions.
+
+The four specific failures, checked against `work/queue.jsonl` on 2026-09-15:
+
+| Failure | Before (TASK-064) | Now (TASK-098) | Still broken? |
+|---------|-------------------|-----------------|---------------|
+| Productive named in LI messages | 0 of 12 | 1 of 18 (pushable); 91 of 407 (estate) | YES on pushable |
+| Sender identity in email steps | 0 of 165 | 53 of 234 (estate); 0 of 18 (pushable) | YES on pushable |
+| Ladder progression (4 askings of 1 question) | 4 identical questions | 0 records with >50% exact repetition; but thematic repetition persists on pushable contacts | PARTIALLY - fixed on counter-example, not on pushable |
+| 49 email openers "I noticed" | 49 | 49 of 234 (unchanged) | YES - exact same count |
+
+The fallbacks name Productive, identify the sender, progress through four
+distinct jobs, and assert nothing about the reader. The generated copy for
+the three pushable contacts does none of those things reliably.
+
+The lead block holds.
+
+**RISKS:**
+- The pushable contacts carry copy from before the product block fix
+  (<record-646934>, <record-b15936> from 2026-09-13) or carry
+  the exact phrase the claims rule was built to catch (<record-d00a60>:
+  "as a fellow founder").
+- Regenerating the pushable contacts would improve Productive naming (the
+  ladder runs on fresh generation - <record-b58026>/<record-c8b688> proves it)
+  but would not fix "as a fellow founder" (structural, not stale-copy).
+
+**RECOMMENDED CLAUDE ACTION:**
+The deliverable is the verdict: DOES NOT BEAT FALLBACKS. The lead block
+remains in place. No copy should be sent until the pushable contacts are
+regenerated and re-read, and the "as a fellow founder" pattern is addressed
+at the prompt level.
+
+---
+
+## CLAUDE REVIEW - ACCEPTED. THE VERDICT STANDS AND THE LEAD BLOCK HOLDS.
+
+A disciplined piece of work: it was asked whether the copy BEATS the
+hand-written fallbacks, not whether it is acceptable, and it answered the
+question it was asked. Read-only throughout.
+
+VERDICT: **DOES NOT BEAT FALLBACKS**, on all three pushable contacts, on every
+dimension. No approval. No leads.
+
+The most useful thing it found is WHY, and it is not what the last read
+assumed. Across the whole estate the ladder fixes ARE working - Productive is
+named on 91 of 407 LinkedIn steps and the sender is identified on 53 of 234
+email steps. On the three PUSHABLE contacts both are zero. Those three carry
+copy generated on 2026-09-13, before the fixes, and `plan` will not re-plan a
+step that still passes its gates.
+
+**So the pushable cohort is not bad copy. It is OLD copy**, and it is the
+cohort a reader reaches for precisely because it passed. TASK-083's
+`--regen-stale-ladder` is the mechanism, and its price is already measured:
+560 steps and 83 human approvals.
+
+One failure is NOT stale copy and regeneration will not touch it: a pushable
+contact carries "as a fellow founder", the exact phrase the claims rule grew
+its fourth clause to catch. That is structural.
+
+And one number did not move at all: 49 email openers still begin "I noticed",
+exactly the count TASK-063 recorded.
+
+REDACTED ON INTEGRATION: the report named four real record identifiers and a
+real contact. Replaced with stable pseudonyms; `test_fixture_hygiene` green.
