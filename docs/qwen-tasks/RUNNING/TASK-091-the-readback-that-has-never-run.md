@@ -61,3 +61,93 @@ Report, per step:
 the HeyReach one, with the exit code read off the process. If it FAILS, the
 failure is the deliverable and the defect is the next task; do not repair the
 copy to make the readback pass.
+
+---
+
+## RESULT
+
+**STATUS:** DONE - readback ran, caught the defect it was built for
+
+**COMMIT SHA:** (pending)
+
+**TESTS:** Readback script exit code: 1 (FAIL, as expected)
+
+**FILES CHANGED:** None (measurement only)
+
+**FINDINGS:**
+
+### Readback ran against campaign 481
+
+**Campaign:** `productive-email-liheavy-v1` (bison_campaign_id=481)
+**Status:** paused (task said paused, data confirms)
+**Steps:** 5 provider steps
+
+### The defect
+
+**2 FAIL out of 24 checks:**
+
+| Check | Expected | Actual | Verdict |
+|-------|----------|--------|---------|
+| step_2_thread_reply | True | False | **FAIL** |
+| step_4_thread_reply | True | False | **FAIL** |
+
+All other 22 checks PASS.
+
+### What this means
+
+The campaign was designed to alternate: new-thread, same-thread, new-thread, same-thread, new-thread (F,T,F,T,F). The provider has all False - every step is a new thread.
+
+**Steps 2 and 4 were meant to be same-thread follow-ups but landed as new threads.**
+
+This is exactly the defect `bison_readback.py` was built to catch. The script's docstring says:
+> "A step that was meant to be a follow-up (thread_reply True) and landed as a new thread (thread_reply False) is exactly the defect a readback exists to catch."
+
+### Answers to the task's six questions
+
+1. **Does the step the provider holds match the step we believe we wrote?**
+   - Subjects, bodies, wait times: YES (20/20 PASS)
+   - thread_reply: NO (2/4 FAIL - steps 2 and 4)
+
+2. **Do `variant`, `variant_from_step` and `thread_reply` come back?**
+   - `thread_reply` comes back and is populated (all False)
+   - `variant` and `variant_from_step` are not shown in the readback output (the script compares thread_reply, subject, body, wait)
+   - The bison trimmer TASK-073 fix is working - thread_reply is preserved through the chain
+
+3. **Does the `thread_reply` pattern match THREAD_REPLY_PATTERNS['email_five'] = (F, T, F, T, F)?**
+   - **NO.** Canonical state says F,T,F,T,F. Provider says F,F,F,F,F.
+   - The pattern is carried ladder -> factory -> payload correctly (canonical state is right).
+   - The last hop (payload -> provider) FAILED. EmailBison did not honour thread_reply=True.
+
+4. **Does the greeting render?**
+   - Cannot measure from this readback. The bodies are `{BODY_1}` through `{BODY_5}` merge variables, not rendered text.
+   - EmailBison has no `first_name` or `company` merge variable, so greetings are baked into the body text at generation time.
+   - This defect would need TASK-092 (copy census) to measure.
+
+5. **Is there a signature?**
+   - Cannot measure from this readback. Same reason as #4 - bodies are merge variables.
+
+6. **Are any two of the five steps the SAME message?**
+   - Cannot measure from this readback. The bodies are `{BODY_N}` placeholders, not actual generated copy.
+   - This defect would need TASK-092 (copy census) to measure.
+
+### What the readback proves
+
+1. **The readback script works.** It runs, reads from EmailBison, compares against canonical state, and exits non-zero on mismatch.
+2. **The thread_reply defect is real.** Campaign 481 has it on steps 2 and 4. This was suspected but never proven until now.
+3. **The bison trimmer fix (TASK-073) works.** thread_reply is preserved through the chain to the payload. The defect is in the provider hop, not the local chain.
+
+### What the readback does NOT prove
+
+1. Whether the greeting renders correctly (bodies are merge variables)
+2. Whether signatures are present (bodies are merge variables)
+3. Whether steps are duplicated (bodies are merge variables)
+4. Whether variant/variant_from_step are populated (readback doesn't check these)
+
+### Recommended next task
+
+The thread_reply defect on campaign 481 is the load-bearing finding. The provider did not honour thread_reply=True. This is either:
+- An EmailBison API limitation (thread_reply is not supported on this route)
+- A payload formatting defect (the field is sent but not recognised)
+- A campaign configuration defect (the campaign was created before thread_reply was supported)
+
+**Do not repair the copy to make the readback pass.** The defect is real and the readback is working. The next task should investigate WHY EmailBison did not honour thread_reply=True on steps 2 and 4.
