@@ -59,3 +59,11 @@ listing what could NOT be measured and what it would cost. Separate
 OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS - and leave PROVEN
 LEARNINGS empty if nothing survives a sample-size objection. TASK-059 left it
 empty and was right to.
+
+---
+
+## AWAITING REVIEW - results on THREE branches, 2026-09-15
+
+Three workers ran this independently (same self-selection defect, fixed in
+55e56c8). Results on qwen-worker-3-r6, -4-r6, -5-r6, -7-r6. Compare before
+integrating; take named files from ONE branch.

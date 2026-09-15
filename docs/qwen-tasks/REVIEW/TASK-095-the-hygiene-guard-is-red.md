@@ -63,3 +63,22 @@ A verdict per test - STALE TEST or REAL LEAK - with the evidence for each,
 the fix for the stale ones, and a written escalation for any real one. Run
 the neighbours, not just the three. Read every exit code off the process,
 never through a pipe - a pipe reports the filter's status.
+
+---
+
+## AWAITING REVIEW - results on FOUR branches, 2026-09-15
+
+Four workers ran this independently because QWEN.md permitted self-selection
+(fixed in 55e56c8). Results on qwen-worker-2-r6, -4-r6, -7-r6, -8-r6 and
+qwen-worker-r6. They agree: two stale tests fixed, one real leak escalated.
+
+Claude has verified part of it directly:
+- `test_no_real_person_or_client_named` is STILL RED on master.
+- Real prospect domains remain in `scripts/task065_run_bcd.py` - checkpoint D
+  claimed this had been redacted and it has not been.
+- Real tokens remain in four docs.
+- Claude ADDED a leak on top: the LinkedIn seat holder's real name, written
+  into docs/state/PROVIDER-CAMPAIGNS.json by scripts/provider_truth.py and
+  pushed at abae39b. Scrubbed at ca53cb5; still in history.
+
+Take one worker's fix, not four. Compare them before choosing.
