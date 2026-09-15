@@ -91,3 +91,46 @@ saving in tokens per company and be sceptical of any larger claim.
 The duplication count on a named multi-contact record with the snapshot
 stamp, the design with its named consumer if duplication is real, the
 provenance and freshness argument, and the expected token saving per company.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** (pending)
+- **SNAPSHOT:** `2026-09-15T17:52:12+00:00 from master cf23154 550 records`
+- **TESTS:** Measurement script `scripts/task150_measure.py` runs against the
+  snapshot and confirms byte-identity across all contacts for all
+  company-derived keys at every pipeline step.
+- **FILES CHANGED:**
+  - `docs/COMPANY-EVIDENCE-REUSE-2026-09-15.md` (new — deliverable)
+  - `scripts/task150_measure.py` (new — measurement script)
+  - This task file (moved TODO → RUNNING → REVIEW)
+- **FINDINGS:**
+  - **The answer is N.** Company evidence is sent once per contact, and every
+    byte is identical across contacts. This holds for all five pipeline steps
+    (diagnose, hook, persona_angle, linkedin_note, draft).
+  - Record `surface51-com` (3 contacts): 561 chars/contact, 100% identical,
+    3.0× duplication.
+  - Record `directmail-com` (9 contacts): 5,265 chars/contact, 100%
+    identical, 9.0× duplication.
+  - Estate-wide (14 multi-contact records, 175 contacts): ~93,363 tokens of
+    pure duplication per generation pass.
+  - Root cause: `research.for_prompt` is not contact-aware, `research_block`
+    is contact-aware in principle but all 695 rows have no `contact_key`, and
+    `facts_block` reads per-record data. Every company-derived field is a
+    pure function of the record.
+  - The design names `generate.context_for` as the consumer, with a
+    pass-scoped `company_evidence(rec)` cache. Provenance is preserved
+    (claims.py reads `rec["research"]` directly, unaffected). Freshness is
+    preserved (cache lives only for one generation pass; `stale_evidence`
+    and `ttl_for` operate on the record, not the cache).
+- **RISKS:**
+  - The saving is real but modest at current estate size (~93K tokens/pass).
+    It scales linearly with contact count, so it grows as the estate grows.
+  - TASK-143's 7.3% evidence reference rate means this is purely a cost
+    change, not a quality change. No claim of better copy should be made.
+- **RECOMMENDED CLAUDE ACTION:**
+  - Review the design in `docs/COMPANY-EVIDENCE-REUSE-2026-09-15.md`.
+  - Integrate the `company_evidence(rec)` cache into `generate.context_for`
+    in `src/generate.py`. The change is local: one new function, one call
+    site change in `context_for`, no changes to `research.py`, `claims.py`,
+    or `evidence.py`.
