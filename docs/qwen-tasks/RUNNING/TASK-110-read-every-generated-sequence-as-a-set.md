@@ -78,7 +78,7 @@ and which are rare (a per-record problem) - that distinction decides the fix.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** 7220bfd
+**COMMIT SHA:** 6463b5d
 
 **TESTS:** PII check passed — no unhashed record IDs, contact names, or
 domains in the report. `scripts/task110_sequence_qa.py` runs clean against
