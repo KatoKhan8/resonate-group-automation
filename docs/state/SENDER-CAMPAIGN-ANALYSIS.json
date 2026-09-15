@@ -1,0 +1,5536 @@
+{
+  "summary": {
+    "total_campaigns": 83,
+    "total_healthy_senders": 33,
+    "effectively_idle_healthy_senders": 0,
+    "auth_invalid_senders": 1,
+    "campaigns_with_multiple_senders": 48,
+    "max_senders_on_one_campaign": 39,
+    "sender_count_distribution": {
+      "0": 2,
+      "1": 33,
+      "3": 1,
+      "5": 4,
+      "6": 1,
+      "8": 2,
+      "9": 9,
+      "10": 15,
+      "25": 1,
+      "33": 8,
+      "34": 1,
+      "35": 1,
+      "36": 2,
+      "38": 1,
+      "39": 2
+    },
+    "status_totals": {
+      "DRAFT": 8,
+      "PAUSED": 32,
+      "FINISHED": 31,
+      "IN_PROGRESS": 12
+    }
+  },
+  "sender_analysis": {
+    "116968": {
+      "sender_id": 116968,
+      "identity_hash": "3b946d9bb7b6",
+      "sales_navigator": false,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 19,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 9,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470039,
+          "name": "Warmup 5",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 594061,
+          "name": "PRODUCTIVE - CANARY - 2026-09-09",
+          "status": "PAUSED",
+          "lead_count": 1
+        },
+        {
+          "campaign_id": 567683,
+          "name": "PRODUCTIVE - MINA R CONNECTIONS - MARKETING AGENCIES - JELEN",
+          "status": "FINISHED",
+          "lead_count": 16
+        }
+      ]
+    },
+    "116973": {
+      "sender_id": 116973,
+      "identity_hash": "ba47db254958",
+      "sales_navigator": false,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470039,
+          "name": "Warmup 5",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567708,
+          "name": "PRODUCTIVE - LUKA N CONNECTIONS - MARKETING AGENCIES - JELEN",
+          "status": "FINISHED",
+          "lead_count": 22
+        }
+      ]
+    },
+    "116988": {
+      "sender_id": 116988,
+      "identity_hash": "2f8cfc9a3cb6",
+      "sales_navigator": false,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470039,
+          "name": "Warmup 5",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567730,
+          "name": "PRODUCTIVE - KATARINA K CONNECTIONS - MARKETING AGENCIES - J",
+          "status": "FINISHED",
+          "lead_count": 22
+        }
+      ]
+    },
+    "116989": {
+      "sender_id": 116989,
+      "identity_hash": "1d6bf60eb479",
+      "sales_navigator": false,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 13,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 0,
+        "PAUSED": 4,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470039,
+          "name": "Warmup 5",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 567733,
+          "name": "PRODUCTIVE - JOVANA K CONNECTIONS - MARKETING AGENCIES - JEL",
+          "status": "FINISHED",
+          "lead_count": 11
+        }
+      ]
+    },
+    "119588": {
+      "sender_id": 119588,
+      "identity_hash": "392c37e7e961",
+      "sales_navigator": false,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470039,
+          "name": "Warmup 5",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567747,
+          "name": "PRODUCTIVE - DJORDJE J CONNECTIONS - MARKETING AGENCIES - JE",
+          "status": "FINISHED",
+          "lead_count": 24
+        }
+      ]
+    },
+    "125748": {
+      "sender_id": 125748,
+      "identity_hash": "f1bcbd4d80f2",
+      "sales_navigator": false,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470038,
+          "name": "Warmup 4",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567721,
+          "name": "PRODUCTIVE - LUCIJA BILIC CONNECTIONS - MARKETING AGENCIES -",
+          "status": "FINISHED",
+          "lead_count": 16
+        }
+      ]
+    },
+    "125775": {
+      "sender_id": 125775,
+      "identity_hash": "1556fcf3feb2",
+      "sales_navigator": false,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470038,
+          "name": "Warmup 4",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567698,
+          "name": "PRODUCTIVE - MIHOVIL CONNECTIONS - MARKETING AGENCIES - JELE",
+          "status": "FINISHED",
+          "lead_count": 13
+        }
+      ]
+    },
+    "129082": {
+      "sender_id": 129082,
+      "identity_hash": "17b1e1b53e37",
+      "sales_navigator": false,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470038,
+          "name": "Warmup 4",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567727,
+          "name": "PRODUCTIVE - LAZAR L CONNECTIONS - MARKETING AGENCIES - JELE",
+          "status": "FINISHED",
+          "lead_count": 11
+        }
+      ]
+    },
+    "139699": {
+      "sender_id": 139699,
+      "identity_hash": "b0af54d6bb50",
+      "sales_navigator": false,
+      "daily_cr_limit": 0,
+      "daily_msg_limit": 40,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470038,
+          "name": "Warmup 4",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567738,
+          "name": "PRODUCTIVE - JELENA I CONNECTIONS - MARKETING AGENCIES - JEL",
+          "status": "FINISHED",
+          "lead_count": 29
+        }
+      ]
+    },
+    "143105": {
+      "sender_id": 143105,
+      "identity_hash": "0b0fb227391b",
+      "sales_navigator": false,
+      "daily_cr_limit": 25,
+      "daily_msg_limit": 40,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470010,
+          "name": "Warmup 1",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567745,
+          "name": "PRODUCTIVE - DOROTA P CONNECTIONS - MARKETING AGENCIES - JEL",
+          "status": "FINISHED",
+          "lead_count": 15
+        }
+      ]
+    },
+    "159259": {
+      "sender_id": 159259,
+      "identity_hash": "d198f343f114",
+      "sales_navigator": false,
+      "daily_cr_limit": 25,
+      "daily_msg_limit": 25,
+      "total_campaigns": 17,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 7,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470035,
+          "name": "Warmup 2",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567677,
+          "name": "PRODUCTIVE - VLADIMIR H CONNECTIONS - MARKETING AGENCIES - J",
+          "status": "FINISHED",
+          "lead_count": 13
+        }
+      ]
+    },
+    "169600": {
+      "sender_id": 169600,
+      "identity_hash": "359833076bff",
+      "sales_navigator": false,
+      "daily_cr_limit": 23,
+      "daily_msg_limit": 24,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470040,
+          "name": "Warmup 6",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567754,
+          "name": "PRODUCTIVE - ANITA S CONNECTIONS - MARKETING AGENCIES - JELE",
+          "status": "FINISHED",
+          "lead_count": 26
+        }
+      ]
+    },
+    "174332": {
+      "sender_id": 174332,
+      "identity_hash": "d4b6a09b4718",
+      "sales_navigator": true,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 42,
+      "by_status": {
+        "IN_PROGRESS": 12,
+        "DRAFT": 5,
+        "PAUSED": 24,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523896,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANE",
+          "status": "IN_PROGRESS",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 523913,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED -",
+          "status": "IN_PROGRESS",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524000,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES INMAIL- EU - CLEANED",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 524013,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 523938,
+          "name": "FIXED - inmail ",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583490,
+          "name": "MAYBE - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583536,
+          "name": "INTERESTED - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583549,
+          "name": "INTERESTED - Bison - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 384886,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384887,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384890,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384897,
+          "name": "CLEANED - OUT OF 50K - PRODUCTIVE - MARKETING AGENCIES - AUS",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384901,
+          "name": "PRODUCTIVE - USA - MARKETING AGNECIES - ZVONIMIR - APRIL 5TH",
+          "status": "PAUSED",
+          "lead_count": 2481
+        },
+        {
+          "campaign_id": 388938,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388939,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388942,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388947,
+          "name": "PRODUCTIVE - MARKETING AGENCIES SOFT - EUROPE - CLEANED - ZV",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388949,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388951,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388952,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1- CLEANED - ZVONIMIR",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388953,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1 ST- CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388957,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388958,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 406850,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EU - CLEANED ZVONIIMR - AF",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428674,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467951,
+          "name": "inmail",
+          "status": "PAUSED",
+          "lead_count": 218
+        },
+        {
+          "campaign_id": 562830,
+          "name": "PRODUCTIVE - BERNARDA CONNECTIONS - MARKETING AGENCIES - JEL",
+          "status": "FINISHED",
+          "lead_count": 192
+        }
+      ]
+    },
+    "174742": {
+      "sender_id": 174742,
+      "identity_hash": "12b2a139eafd",
+      "sales_navigator": true,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 42,
+      "by_status": {
+        "IN_PROGRESS": 12,
+        "DRAFT": 5,
+        "PAUSED": 24,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523896,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANE",
+          "status": "IN_PROGRESS",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 523913,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED -",
+          "status": "IN_PROGRESS",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524000,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES INMAIL- EU - CLEANED",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 524013,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 523938,
+          "name": "FIXED - inmail ",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583490,
+          "name": "MAYBE - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583536,
+          "name": "INTERESTED - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583549,
+          "name": "INTERESTED - Bison - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 384886,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384887,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384890,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384897,
+          "name": "CLEANED - OUT OF 50K - PRODUCTIVE - MARKETING AGENCIES - AUS",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384901,
+          "name": "PRODUCTIVE - USA - MARKETING AGNECIES - ZVONIMIR - APRIL 5TH",
+          "status": "PAUSED",
+          "lead_count": 2481
+        },
+        {
+          "campaign_id": 388938,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388939,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388942,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388947,
+          "name": "PRODUCTIVE - MARKETING AGENCIES SOFT - EUROPE - CLEANED - ZV",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388949,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388951,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388952,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1- CLEANED - ZVONIMIR",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388953,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1 ST- CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388957,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388958,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 406850,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EU - CLEANED ZVONIIMR - AF",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428674,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467951,
+          "name": "inmail",
+          "status": "PAUSED",
+          "lead_count": 218
+        },
+        {
+          "campaign_id": 565187,
+          "name": "PRODUCTIVE - BOJAN R CONNECTIONS - MARKETING AGENCIES - JELE",
+          "status": "FINISHED",
+          "lead_count": 273
+        }
+      ]
+    },
+    "174748": {
+      "sender_id": 174748,
+      "identity_hash": "38b50288b045",
+      "sales_navigator": true,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 42,
+      "by_status": {
+        "IN_PROGRESS": 12,
+        "DRAFT": 5,
+        "PAUSED": 24,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523896,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANE",
+          "status": "IN_PROGRESS",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 523913,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED -",
+          "status": "IN_PROGRESS",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524000,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES INMAIL- EU - CLEANED",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 524013,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 523938,
+          "name": "FIXED - inmail ",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583490,
+          "name": "MAYBE - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583536,
+          "name": "INTERESTED - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583549,
+          "name": "INTERESTED - Bison - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 384886,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384887,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384890,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384897,
+          "name": "CLEANED - OUT OF 50K - PRODUCTIVE - MARKETING AGENCIES - AUS",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384901,
+          "name": "PRODUCTIVE - USA - MARKETING AGNECIES - ZVONIMIR - APRIL 5TH",
+          "status": "PAUSED",
+          "lead_count": 2481
+        },
+        {
+          "campaign_id": 388938,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388939,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388942,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388947,
+          "name": "PRODUCTIVE - MARKETING AGENCIES SOFT - EUROPE - CLEANED - ZV",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388949,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388951,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388952,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1- CLEANED - ZVONIMIR",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388953,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1 ST- CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388957,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388958,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 406850,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EU - CLEANED ZVONIIMR - AF",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428674,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467951,
+          "name": "inmail",
+          "status": "PAUSED",
+          "lead_count": 218
+        },
+        {
+          "campaign_id": 565198,
+          "name": "PRODUCTIVE - KRESIMIR CONNECTIONS - MARKETING AGENCIES - JEL",
+          "status": "FINISHED",
+          "lead_count": 275
+        }
+      ]
+    },
+    "174797": {
+      "sender_id": 174797,
+      "identity_hash": "502a93d71832",
+      "sales_navigator": true,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 42,
+      "by_status": {
+        "IN_PROGRESS": 12,
+        "DRAFT": 5,
+        "PAUSED": 24,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523896,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANE",
+          "status": "IN_PROGRESS",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 523913,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED -",
+          "status": "IN_PROGRESS",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524000,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES INMAIL- EU - CLEANED",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 524013,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 523938,
+          "name": "FIXED - inmail ",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583490,
+          "name": "MAYBE - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583536,
+          "name": "INTERESTED - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583549,
+          "name": "INTERESTED - Bison - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 384886,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384887,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384890,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384897,
+          "name": "CLEANED - OUT OF 50K - PRODUCTIVE - MARKETING AGENCIES - AUS",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384901,
+          "name": "PRODUCTIVE - USA - MARKETING AGNECIES - ZVONIMIR - APRIL 5TH",
+          "status": "PAUSED",
+          "lead_count": 2481
+        },
+        {
+          "campaign_id": 388938,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388939,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388942,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388947,
+          "name": "PRODUCTIVE - MARKETING AGENCIES SOFT - EUROPE - CLEANED - ZV",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388949,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388951,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388952,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1- CLEANED - ZVONIMIR",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388953,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1 ST- CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388957,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388958,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 406850,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EU - CLEANED ZVONIIMR - AF",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428674,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467951,
+          "name": "inmail",
+          "status": "PAUSED",
+          "lead_count": 218
+        },
+        {
+          "campaign_id": 565195,
+          "name": "PRODUCTIVE - FRAN CONNECTIONS - MARKETING AGENCIES - JELENA ",
+          "status": "FINISHED",
+          "lead_count": 185
+        }
+      ]
+    },
+    "174803": {
+      "sender_id": 174803,
+      "identity_hash": "fca27f014c0e",
+      "sales_navigator": true,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 42,
+      "by_status": {
+        "IN_PROGRESS": 12,
+        "DRAFT": 5,
+        "PAUSED": 24,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523896,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANE",
+          "status": "IN_PROGRESS",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 523913,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED -",
+          "status": "IN_PROGRESS",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524000,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES INMAIL- EU - CLEANED",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 524013,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 523938,
+          "name": "FIXED - inmail ",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583490,
+          "name": "MAYBE - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583536,
+          "name": "INTERESTED - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583549,
+          "name": "INTERESTED - Bison - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 384886,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384887,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384890,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384897,
+          "name": "CLEANED - OUT OF 50K - PRODUCTIVE - MARKETING AGENCIES - AUS",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384901,
+          "name": "PRODUCTIVE - USA - MARKETING AGNECIES - ZVONIMIR - APRIL 5TH",
+          "status": "PAUSED",
+          "lead_count": 2481
+        },
+        {
+          "campaign_id": 388938,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388939,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388942,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388947,
+          "name": "PRODUCTIVE - MARKETING AGENCIES SOFT - EUROPE - CLEANED - ZV",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388949,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388951,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388952,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1- CLEANED - ZVONIMIR",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388953,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1 ST- CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388957,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388958,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 406850,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EU - CLEANED ZVONIIMR - AF",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428674,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467951,
+          "name": "inmail",
+          "status": "PAUSED",
+          "lead_count": 218
+        },
+        {
+          "campaign_id": 565196,
+          "name": "PRODUCTIVE - JAKOV CONNECTIONS - MARKETING AGENCIES - JELENA",
+          "status": "FINISHED",
+          "lead_count": 180
+        }
+      ]
+    },
+    "174810": {
+      "sender_id": 174810,
+      "identity_hash": "b23f2ef3515d",
+      "sales_navigator": false,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 27,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 17,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 384886,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384890,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384901,
+          "name": "PRODUCTIVE - USA - MARKETING AGNECIES - ZVONIMIR - APRIL 5TH",
+          "status": "PAUSED",
+          "lead_count": 2481
+        },
+        {
+          "campaign_id": 388938,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388942,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388947,
+          "name": "PRODUCTIVE - MARKETING AGENCIES SOFT - EUROPE - CLEANED - ZV",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388951,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388952,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1- CLEANED - ZVONIMIR",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388957,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428674,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470037,
+          "name": "Warmup 3",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 567743,
+          "name": "PRODUCTIVE - IVAN M CONNECTIONS - MARKETING AGENCIES - JELEN",
+          "status": "FINISHED",
+          "lead_count": 40
+        }
+      ]
+    },
+    "174822": {
+      "sender_id": 174822,
+      "identity_hash": "644e8f47c2ea",
+      "sales_navigator": true,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 42,
+      "by_status": {
+        "IN_PROGRESS": 12,
+        "DRAFT": 5,
+        "PAUSED": 24,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523896,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANE",
+          "status": "IN_PROGRESS",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 523913,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED -",
+          "status": "IN_PROGRESS",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524000,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES INMAIL- EU - CLEANED",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 524013,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 523938,
+          "name": "FIXED - inmail ",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583490,
+          "name": "MAYBE - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583536,
+          "name": "INTERESTED - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583549,
+          "name": "INTERESTED - Bison - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 384886,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384887,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384890,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384897,
+          "name": "CLEANED - OUT OF 50K - PRODUCTIVE - MARKETING AGENCIES - AUS",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384901,
+          "name": "PRODUCTIVE - USA - MARKETING AGNECIES - ZVONIMIR - APRIL 5TH",
+          "status": "PAUSED",
+          "lead_count": 2481
+        },
+        {
+          "campaign_id": 388938,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388939,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388942,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388947,
+          "name": "PRODUCTIVE - MARKETING AGENCIES SOFT - EUROPE - CLEANED - ZV",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388949,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388951,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388952,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1- CLEANED - ZVONIMIR",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388953,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1 ST- CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388957,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388958,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 406850,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EU - CLEANED ZVONIIMR - AF",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428674,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467951,
+          "name": "inmail",
+          "status": "PAUSED",
+          "lead_count": 218
+        },
+        {
+          "campaign_id": 565223,
+          "name": "PRODUCTIVE - MARKO CONNECTIONS - MARKETING AGENCIES - JELENA",
+          "status": "FINISHED",
+          "lead_count": 256
+        }
+      ]
+    },
+    "174845": {
+      "sender_id": 174845,
+      "identity_hash": "1f6544b3858e",
+      "sales_navigator": true,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 35,
+      "by_status": {
+        "IN_PROGRESS": 12,
+        "DRAFT": 5,
+        "PAUSED": 18,
+        "FINISHED": 0
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523896,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANE",
+          "status": "IN_PROGRESS",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 523913,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED -",
+          "status": "IN_PROGRESS",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524000,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES INMAIL- EU - CLEANED",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 524013,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 523938,
+          "name": "FIXED - inmail ",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583490,
+          "name": "MAYBE - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583536,
+          "name": "INTERESTED - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583549,
+          "name": "INTERESTED - Bison - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388938,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388939,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388947,
+          "name": "PRODUCTIVE - MARKETING AGENCIES SOFT - EUROPE - CLEANED - ZV",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388949,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388951,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388952,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1- CLEANED - ZVONIMIR",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388953,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1 ST- CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388957,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388958,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 406850,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EU - CLEANED ZVONIIMR - AF",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428674,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467951,
+          "name": "inmail",
+          "status": "PAUSED",
+          "lead_count": 218
+        }
+      ]
+    },
+    "174892": {
+      "sender_id": 174892,
+      "identity_hash": "745eafbba979",
+      "sales_navigator": true,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 43,
+      "by_status": {
+        "IN_PROGRESS": 12,
+        "DRAFT": 6,
+        "PAUSED": 24,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523896,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANE",
+          "status": "IN_PROGRESS",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 523913,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED -",
+          "status": "IN_PROGRESS",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524000,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES INMAIL- EU - CLEANED",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 524013,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 523938,
+          "name": "FIXED - inmail ",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583490,
+          "name": "MAYBE - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583536,
+          "name": "INTERESTED - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583549,
+          "name": "INTERESTED - Bison - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 599020,
+          "name": "RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 384886,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384887,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384890,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384897,
+          "name": "CLEANED - OUT OF 50K - PRODUCTIVE - MARKETING AGENCIES - AUS",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384901,
+          "name": "PRODUCTIVE - USA - MARKETING AGNECIES - ZVONIMIR - APRIL 5TH",
+          "status": "PAUSED",
+          "lead_count": 2481
+        },
+        {
+          "campaign_id": 388938,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388939,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388942,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388947,
+          "name": "PRODUCTIVE - MARKETING AGENCIES SOFT - EUROPE - CLEANED - ZV",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388949,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388951,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388952,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1- CLEANED - ZVONIMIR",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388953,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1 ST- CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388957,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388958,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 406850,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EU - CLEANED ZVONIIMR - AF",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428674,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467951,
+          "name": "inmail",
+          "status": "PAUSED",
+          "lead_count": 218
+        },
+        {
+          "campaign_id": 565193,
+          "name": "PRODUCTIVE - BRUNO CONNECTIONS - MARKETING AGENCIES - JELENA",
+          "status": "FINISHED",
+          "lead_count": 285
+        }
+      ]
+    },
+    "175455": {
+      "sender_id": 175455,
+      "identity_hash": "5aa8d21d4e05",
+      "sales_navigator": true,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 42,
+      "by_status": {
+        "IN_PROGRESS": 12,
+        "DRAFT": 5,
+        "PAUSED": 24,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523896,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANE",
+          "status": "IN_PROGRESS",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 523913,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED -",
+          "status": "IN_PROGRESS",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524000,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES INMAIL- EU - CLEANED",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 524013,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 523938,
+          "name": "FIXED - inmail ",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583490,
+          "name": "MAYBE - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583536,
+          "name": "INTERESTED - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583549,
+          "name": "INTERESTED - Bison - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 384886,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384887,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384890,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384897,
+          "name": "CLEANED - OUT OF 50K - PRODUCTIVE - MARKETING AGENCIES - AUS",
+          "status": "PAUSED",
+          "lead_count": 1142
+        },
+        {
+          "campaign_id": 384901,
+          "name": "PRODUCTIVE - USA - MARKETING AGNECIES - ZVONIMIR - APRIL 5TH",
+          "status": "PAUSED",
+          "lead_count": 2481
+        },
+        {
+          "campaign_id": 388938,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388939,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388942,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANED - ZVON",
+          "status": "PAUSED",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 388947,
+          "name": "PRODUCTIVE - MARKETING AGENCIES SOFT - EUROPE - CLEANED - ZV",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388949,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388951,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED - ZVONIMI",
+          "status": "PAUSED",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 388952,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1- CLEANED - ZVONIMIR",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388953,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1 ST- CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388957,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388958,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 406850,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - EU - CLEANED ZVONIIMR - AF",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428674,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467951,
+          "name": "inmail",
+          "status": "PAUSED",
+          "lead_count": 218
+        },
+        {
+          "campaign_id": 565211,
+          "name": "PRODUCTIVE - LUKA CONNECTIONS - MARKETING AGENCIES - JELENA ",
+          "status": "FINISHED",
+          "lead_count": 278
+        }
+      ]
+    },
+    "175552": {
+      "sender_id": 175552,
+      "identity_hash": "3e58112b464a",
+      "sales_navigator": false,
+      "daily_cr_limit": 25,
+      "daily_msg_limit": 40,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470010,
+          "name": "Warmup 1",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567703,
+          "name": "PRODUCTIVE - MARINA I CONNECTIONS - MARKETING AGENCIES - JEL",
+          "status": "FINISHED",
+          "lead_count": 19
+        }
+      ]
+    },
+    "177751": {
+      "sender_id": 177751,
+      "identity_hash": "9f8a9d51be40",
+      "sales_navigator": false,
+      "daily_cr_limit": 17,
+      "daily_msg_limit": 17,
+      "total_campaigns": 16,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 0,
+        "PAUSED": 7,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470040,
+          "name": "Warmup 6",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567736,
+          "name": "PRODUCTIVE - JELENA M CONNECTIONS - MARKETING AGENCIES - JEL",
+          "status": "FINISHED",
+          "lead_count": 17
+        }
+      ]
+    },
+    "179527": {
+      "sender_id": 179527,
+      "identity_hash": "43328c3aeaff",
+      "sales_navigator": false,
+      "daily_cr_limit": 19,
+      "daily_msg_limit": 18,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470035,
+          "name": "Warmup 2",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567693,
+          "name": "PRODUCTIVE - MILAN B CONNECTIONS - MARKETING AGENCIES - JELE",
+          "status": "FINISHED",
+          "lead_count": 7
+        }
+      ]
+    },
+    "181653": {
+      "sender_id": 181653,
+      "identity_hash": "84828bd8f352",
+      "sales_navigator": false,
+      "daily_cr_limit": 22,
+      "daily_msg_limit": 22,
+      "total_campaigns": 17,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 0
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470037,
+          "name": "Warmup 3",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        }
+      ]
+    },
+    "181658": {
+      "sender_id": 181658,
+      "identity_hash": "7945bfbb9e9a",
+      "sales_navigator": false,
+      "daily_cr_limit": 18,
+      "daily_msg_limit": 17,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470037,
+          "name": "Warmup 3",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567758,
+          "name": "PRODUCTIVE - ANA L CONNECTIONS - MARKETING AGENCIES - JELENA",
+          "status": "FINISHED",
+          "lead_count": 24
+        }
+      ]
+    },
+    "191848": {
+      "sender_id": 191848,
+      "identity_hash": "fe7419baf5c7",
+      "sales_navigator": false,
+      "daily_cr_limit": 25,
+      "daily_msg_limit": 40,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470035,
+          "name": "Warmup 2",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567689,
+          "name": "PRODUCTIVE - MARTINA H CONNECTIONS - MARKETING AGENCIES - JE",
+          "status": "FINISHED",
+          "lead_count": 28
+        }
+      ]
+    },
+    "201959": {
+      "sender_id": 201959,
+      "identity_hash": "738779f2fe0c",
+      "sales_navigator": false,
+      "daily_cr_limit": 15,
+      "daily_msg_limit": 5,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470037,
+          "name": "Warmup 3",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567681,
+          "name": "PRODUCTIVE - SNJEZANA M CONNECTIONS - MARKETING AGENCIES - J",
+          "status": "FINISHED",
+          "lead_count": 2
+        }
+      ]
+    },
+    "201978": {
+      "sender_id": 201978,
+      "identity_hash": "acfd02760a66",
+      "sales_navigator": false,
+      "daily_cr_limit": 25,
+      "daily_msg_limit": 40,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470010,
+          "name": "Warmup 1",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567752,
+          "name": "PRODUCTIVE - BOJAN S CONNECTIONS - MARKETING AGENCIES - JELE",
+          "status": "FINISHED",
+          "lead_count": 25
+        }
+      ]
+    },
+    "208242": {
+      "sender_id": 208242,
+      "identity_hash": "fffe676369ee",
+      "sales_navigator": true,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 26,
+      "by_status": {
+        "IN_PROGRESS": 12,
+        "DRAFT": 5,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523896,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - AUSTRALIA - CLEANE",
+          "status": "IN_PROGRESS",
+          "lead_count": 5133
+        },
+        {
+          "campaign_id": 523913,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - EUROPE - CLEANED -",
+          "status": "IN_PROGRESS",
+          "lead_count": 44157
+        },
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524000,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES INMAIL- EU - CLEANED",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 524013,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50469
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 523938,
+          "name": "FIXED - inmail ",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583490,
+          "name": "MAYBE - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583536,
+          "name": "INTERESTED - Heyreach - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 583549,
+          "name": "INTERESTED - Bison - Jelena - September 3",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467951,
+          "name": "inmail",
+          "status": "PAUSED",
+          "lead_count": 218
+        },
+        {
+          "campaign_id": 470037,
+          "name": "Warmup 3",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 567715,
+          "name": "PRODUCTIVE - LUCIJA BAKIC CONNECTIONS - MARKETING AGENCIES -",
+          "status": "FINISHED",
+          "lead_count": 23
+        }
+      ]
+    },
+    "208253": {
+      "sender_id": 208253,
+      "identity_hash": "b950e5cf18cf",
+      "sales_navigator": false,
+      "daily_cr_limit": 40,
+      "daily_msg_limit": 40,
+      "total_campaigns": 17,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 7,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470037,
+          "name": "Warmup 3",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 567701,
+          "name": "PRODUCTIVE - MARKO D CONNECTIONS - MARKETING AGENCIES - JELE",
+          "status": "FINISHED",
+          "lead_count": 21
+        }
+      ]
+    },
+    "212356": {
+      "sender_id": 212356,
+      "identity_hash": "f691fc2aa4bf",
+      "sales_navigator": false,
+      "daily_cr_limit": 15,
+      "daily_msg_limit": 15,
+      "total_campaigns": 18,
+      "by_status": {
+        "IN_PROGRESS": 8,
+        "DRAFT": 1,
+        "PAUSED": 8,
+        "FINISHED": 1
+      },
+      "effectively_idle": false,
+      "campaigns": [
+        {
+          "campaign_id": 523922,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523932,
+          "name": "FIXED - OMEGA 3",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523983,
+          "name": "FIXED - OMEGA 2",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 523993,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 523997,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIM",
+          "status": "IN_PROGRESS",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 524002,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED ",
+          "status": "IN_PROGRESS",
+          "lead_count": 50563
+        },
+        {
+          "campaign_id": 565765,
+          "name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+          "status": "IN_PROGRESS",
+          "lead_count": 1000
+        },
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470010,
+          "name": "Warmup 1",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 567750,
+          "name": "PRODUCTIVE - DEAN B CONNECTIONS - MARKETING AGENCIES - JELEN",
+          "status": "FINISHED",
+          "lead_count": 14
+        }
+      ]
+    }
+  },
+  "auth_invalid_senders": [
+    {
+      "sender_id": 129531,
+      "identity_hash": "42ee6311bdf4",
+      "campaigns": [
+        {
+          "campaign_id": 524026,
+          "name": "FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEAN",
+          "status": "DRAFT",
+          "lead_count": 0
+        },
+        {
+          "campaign_id": 523987,
+          "name": "FIXED - OMEGA ",
+          "status": "IN_PROGRESS",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 473854,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 470035,
+          "name": "Warmup 2",
+          "status": "PAUSED",
+          "lead_count": 178
+        },
+        {
+          "campaign_id": 467366,
+          "name": "OMEGA 3",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429680,
+          "name": "OMEGA 2",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 429679,
+          "name": "OMEGA",
+          "status": "PAUSED",
+          "lead_count": 33710
+        },
+        {
+          "campaign_id": 428676,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW A",
+          "status": "PAUSED",
+          "lead_count": 11128
+        },
+        {
+          "campaign_id": 388960,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIM",
+          "status": "PAUSED",
+          "lead_count": 50565
+        },
+        {
+          "campaign_id": 388955,
+          "name": "PRODUCTIVE - MARKETING AGENCIES - USA 1ST  - CLEANED - ZVONI",
+          "status": "PAUSED",
+          "lead_count": 50565
+        }
+      ]
+    }
+  ]
+}
