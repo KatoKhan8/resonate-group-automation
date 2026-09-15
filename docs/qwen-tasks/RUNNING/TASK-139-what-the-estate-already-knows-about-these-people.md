@@ -87,3 +87,60 @@ Smallest, with a named consumer. Not a state machine.
 The counts with their evidence fields, the consumed/not-consumed verdict per
 state traced to a named caller, the snapshot stamp, and the one proposed
 change with its consumer.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**SNAPSHOT STAMP:** `2026-09-14T21:52:15Z from master 0ac5e60 300 records`
+
+**COMMIT SHA:** (to be filled after commit)
+
+**TESTS:** No code changes in src/. Measurement script: `scripts/task139_measure.py`. Findings document: `docs/RELATIONSHIP-STATE-2026-09-15.md`.
+
+**FILES CHANGED:**
+- `docs/RELATIONSHIP-STATE-2026-09-15.md` (new) — full findings
+- `scripts/task139_measure.py` (new) — measurement script
+- `docs/qwen-tasks/RUNNING/TASK-139-*.md` (moved from TODO, result block added)
+
+**FINDINGS:**
+
+1. **Counts with evidence fields:**
+
+   | State | Count | Evidence field |
+   |-------|-------|----------------|
+   | `bison_lead_id` present | 29/92 | `contact["bison_lead_id"]` |
+   | Previously emailed, no reply | 0/92 | `events[]` type `push_marked`/`email_delivered` |
+   | Replied NEGATIVE | 0/92 | `events[]` type `reply_received` + classification |
+   | Replied POSITIVE | 0/92 | Same |
+   | Reply UNKNOWN | 0/92 | Same |
+   | Already LinkedIn connected | 0/92 | `events[]` type `linkedin_connected`/`connection_accepted` |
+   | Previous LinkedIn outreach, no reply | 0/92 | `events[]` type `push_marked` for LinkedIn |
+   | Suppressed / DNC | 0/92 | `contact["suppressed"]`, domain list, `agencydnc` |
+   | True cold (no history) | 91/92 | Absence of all touch events |
+
+2. **Consumed vs not-consumed:**
+
+   - **Suppression/DNC** → `eligibility.must_not_contact()` → `eligibility.decide()` → CONSUMED, blocks everything
+   - **LinkedIn connection state** → `linkedinstate.connection()` → `linkedinstate.plan_step()` → CONSUMED, selects branch
+   - **Reply blocking** → `eligibility._replied()` → CONSUMED, stops sequence
+   - **Confirmed touch** → `account.has_confirmed_touch()` → `outreachclaims.resolve()` → CONSUMED for claim gating, NOT for channel/copy choice
+   - **`bison_lead_id`** → `build_control_cohort.eligible_contacts()` → NOT consumed by live send path, only by a script
+   - **Reply classification** → `replies.classify()` → `accountpolicy.apply_reply()` → WIRED but has never fired (zero replies)
+
+3. **LinkedIn connection state specifically:**
+
+   The provider's `CHECK_IS_CONNECTION` root node branches at runtime and handles the already-connected case correctly. The local model (`linkedinstate.connection()`) adds planning-time knowledge (pre-staging validation, copy selection, screen display) but NOT runtime safety the provider lacks. The provider is the load-bearing gate; the local model is the map.
+
+4. **Proposed smallest change:**
+
+   `heyreachfactory._plan()` reads `contact["bison_lead_id"]` and selects the `already` branch (message chain, no connection request) instead of the `cold` branch. Consumer: `heyreachfactory._plan()`. This makes prior-outreach contacts receive warm copy rather than cold copy, instead of holding them out entirely.
+
+**RISKS:**
+- The estate is in a pre-send state with almost no relationship data. These findings describe the architecture's readiness, not its track record.
+- The `log` array carries 740 `linkedin_note` entries that are NOT structured events. If these are meant to be confirmed touches, the event model has a gap.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Review `docs/RELATIONSHIP-STATE-2026-09-15.md` for accuracy
+- Decide whether `bison_lead_id` should route contacts to the warm branch in `heyreachfactory._plan()` (the proposed change)
+- Decide whether `linkedin_note` log entries should be promoted to structured events
