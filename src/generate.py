@@ -1553,7 +1553,23 @@ def generate_variants(rec, contact, model, spec, client=None, campaign=None):
     from . import variantgen, lint
 
     key = lint.contact_key(contact)
-    node_type = spec.get("channel", "email")
+    # A CHANNEL IS NOT A NODE TYPE, and passing one where the other belongs
+    # was silent rather than loud. `variantgen.APPROACH_TO_STYLE` is keyed by
+    # node type - "linkedin_message", "connection_request", "email" - and
+    # `style_for` falls back to the EMAIL table for anything it does not
+    # recognise. So "linkedin" did not miss the mapping; it got the WRONG
+    # CHANNEL'S mapping, and every LinkedIn variant built here was styled as
+    # email. value_led resolved to `professional` where LinkedIn's table says
+    # `peer_to_peer`.
+    #
+    # `cadence.NODE_TYPE_FOR_CHANNEL` is the canonical translation and already
+    # existed; `cadence.variant_node` uses it and this path did not. A step may
+    # name its own node_type, and the channel decides otherwise - same
+    # precedence as variant_node, so the two cannot disagree.
+    from . import cadence as _cadence
+    node_type = (spec.get("node_type")
+                 or _cadence.NODE_TYPE_FOR_CHANNEL.get(spec.get("channel"))
+                 or spec.get("channel", "email"))
     sequence = sequence_for(rec, client, contact, campaign)
 
     result = variantgen.build_variant_set(
