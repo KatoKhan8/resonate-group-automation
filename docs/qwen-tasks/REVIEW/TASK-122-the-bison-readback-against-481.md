@@ -74,7 +74,7 @@ the copy to make the readback pass.
 ## RESULT
 
 **STATUS:** DONE
-**COMMIT SHA:** (owed - pending commit)
+**COMMIT SHA:** 862c425
 **TESTS:** `py -3 scripts/bison_readback.py productive-email-liheavy-v1 --expect` → exit code 1 (22 PASS, 2 FAIL)
 **FILES CHANGED:**
 - `docs/BISON-READBACK-481-2026-09-15.md` (new - deliverable)
