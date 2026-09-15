@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-15T07:34:08+00:00",
+  "generated_at": "2026-09-15T09:07:54+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
-  "master_head": "e6cdfde",
-  "origin_master_head": "e6cdfde",
+  "master_head": "7d022c9",
+  "origin_master_head": "7d022c9",
   "master_pushed": true,
   "tasks": [
     {
@@ -139,6 +139,78 @@
       "stage": "TODO",
       "last_commit": "6db151c",
       "last_commit_at": "2026-09-15T09:25:15+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-116",
+      "file": "docs/qwen-tasks/TODO/TASK-116-forty-nine-openers-that-never-moved.md",
+      "stage": "TODO",
+      "last_commit": "d7d788c",
+      "last_commit_at": "2026-09-15T09:37:09+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-117",
+      "file": "docs/qwen-tasks/TODO/TASK-117-a-claim-about-the-sender-is-still-a-claim.md",
+      "stage": "TODO",
+      "last_commit": "d7d788c",
+      "last_commit_at": "2026-09-15T09:37:09+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-118",
+      "file": "docs/qwen-tasks/TODO/TASK-118-a-report-that-names-a-record-is-a-leak.md",
+      "stage": "TODO",
+      "last_commit": "d7d788c",
+      "last_commit_at": "2026-09-15T09:37:09+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-119",
+      "file": "docs/qwen-tasks/TODO/TASK-119-the-campaign-id-is-a-string-here-and-an-int-there.md",
+      "stage": "TODO",
+      "last_commit": "d7d788c",
+      "last_commit_at": "2026-09-15T09:37:09+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-120",
+      "file": "docs/qwen-tasks/TODO/TASK-120-what-exactly-would-a-regeneration-change.md",
+      "stage": "TODO",
+      "last_commit": "d7d788c",
+      "last_commit_at": "2026-09-15T09:37:09+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-121",
+      "file": "docs/qwen-tasks/TODO/TASK-121-can-a-heyreach-node-carry-more-than-one-message.md",
+      "stage": "TODO",
+      "last_commit": "d7d788c",
+      "last_commit_at": "2026-09-15T09:37:09+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-122",
+      "file": "docs/qwen-tasks/TODO/TASK-122-the-bison-readback-against-481.md",
+      "stage": "TODO",
+      "last_commit": "d7d788c",
+      "last_commit_at": "2026-09-15T09:37:09+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-123",
+      "file": "docs/qwen-tasks/TODO/TASK-123-which-of-the-eleven-red-tests-are-actually-fixed.md",
+      "stage": "TODO",
+      "last_commit": "d7d788c",
+      "last_commit_at": "2026-09-15T09:37:09+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-124",
+      "file": "docs/qwen-tasks/TODO/TASK-124-the-add-leads-door-is-shut.md",
+      "stage": "TODO",
+      "last_commit": "0a01911",
+      "last_commit_at": "2026-09-15T10:32:16+02:00",
       "reported": false
     },
     {
@@ -1045,16 +1117,25 @@
       "reported": true,
       "declared_status": "DONE",
       "commit_sha": "5adcf07"
+    },
+    {
+      "task": "TASK-120",
+      "file": "docs/qwen-tasks/DONE/TASK-120-what-exactly-would-a-regeneration-change.md",
+      "stage": "DONE",
+      "last_commit": "1fdf680",
+      "last_commit_at": "2026-09-15T10:31:00+02:00",
+      "reported": true,
+      "declared_status": "DONE"
     }
   ],
   "branches": [
     {
       "branch": "master",
-      "head": "e6cdfde",
+      "head": "7d022c9",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "e6cdfde",
-      "last_commit_at": "2026-09-15T09:33:54+02:00"
+      "remote_head": "7d022c9",
+      "last_commit_at": "2026-09-15T10:49:11+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -1130,11 +1211,11 @@
     },
     {
       "branch": "qwen-worker-2-r9",
-      "head": "1e82b20",
-      "commits_ahead_of_master": 4,
+      "head": "0f5baaa",
+      "commits_ahead_of_master": 33,
       "pushed": true,
-      "remote_head": "1e82b20",
-      "last_commit_at": "2026-09-15T09:33:21+02:00"
+      "remote_head": "0f5baaa",
+      "last_commit_at": "2026-09-15T11:04:41+02:00"
     },
     {
       "branch": "qwen-worker-3",
@@ -1186,11 +1267,11 @@
     },
     {
       "branch": "qwen-worker-3-r9",
-      "head": "f2b8493",
-      "commits_ahead_of_master": 0,
-      "pushed": false,
-      "remote_head": null,
-      "last_commit_at": "2026-09-15T09:29:42+02:00"
+      "head": "962c6c5",
+      "commits_ahead_of_master": 41,
+      "pushed": true,
+      "remote_head": "962c6c5",
+      "last_commit_at": "2026-09-15T10:52:56+02:00"
     },
     {
       "branch": "qwen-worker-4",
@@ -1226,11 +1307,11 @@
     },
     {
       "branch": "qwen-worker-4-r9",
-      "head": "90dce63",
-      "commits_ahead_of_master": 1,
-      "pushed": false,
-      "remote_head": null,
-      "last_commit_at": "2026-09-15T09:31:07+02:00"
+      "head": "232c47e",
+      "commits_ahead_of_master": 8,
+      "pushed": true,
+      "remote_head": "232c47e",
+      "last_commit_at": "2026-09-15T10:50:26+02:00"
     },
     {
       "branch": "qwen-worker-5",
@@ -1282,11 +1363,11 @@
     },
     {
       "branch": "qwen-worker-5-r8",
-      "head": "ad4fe37",
-      "commits_ahead_of_master": 3,
+      "head": "372531b",
+      "commits_ahead_of_master": 9,
       "pushed": true,
-      "remote_head": "ad4fe37",
-      "last_commit_at": "2026-09-15T09:22:58+02:00"
+      "remote_head": "372531b",
+      "last_commit_at": "2026-09-15T09:48:25+02:00"
     },
     {
       "branch": "qwen-worker-6",
@@ -1330,11 +1411,11 @@
     },
     {
       "branch": "qwen-worker-6-r8",
-      "head": "42e2b3f",
-      "commits_ahead_of_master": 1,
-      "pushed": false,
-      "remote_head": null,
-      "last_commit_at": "2026-09-15T09:21:15+02:00"
+      "head": "3518973",
+      "commits_ahead_of_master": 3,
+      "pushed": true,
+      "remote_head": "3518973",
+      "last_commit_at": "2026-09-15T10:02:06+02:00"
     },
     {
       "branch": "qwen-worker-7",
@@ -1402,11 +1483,11 @@
     },
     {
       "branch": "qwen-worker-7-r9",
-      "head": "f2b8493",
-      "commits_ahead_of_master": 0,
-      "pushed": false,
-      "remote_head": null,
-      "last_commit_at": "2026-09-15T09:29:42+02:00"
+      "head": "d04119e",
+      "commits_ahead_of_master": 44,
+      "pushed": true,
+      "remote_head": "d04119e",
+      "last_commit_at": "2026-09-15T10:52:08+02:00"
     },
     {
       "branch": "qwen-worker-8",
@@ -1474,11 +1555,11 @@
     },
     {
       "branch": "qwen-worker-8-r9",
-      "head": "c110a49",
-      "commits_ahead_of_master": 1,
-      "pushed": false,
-      "remote_head": null,
-      "last_commit_at": "2026-09-15T09:31:23+02:00"
+      "head": "4677c44",
+      "commits_ahead_of_master": 26,
+      "pushed": true,
+      "remote_head": "4677c44",
+      "last_commit_at": "2026-09-15T10:52:51+02:00"
     },
     {
       "branch": "qwen-worker-r2",
@@ -1538,81 +1619,89 @@
     },
     {
       "branch": "qwen-worker-r9",
-      "head": "f2b8493",
-      "commits_ahead_of_master": 0,
+      "head": "01b29a7",
+      "commits_ahead_of_master": 3,
       "pushed": false,
-      "remote_head": null,
-      "last_commit_at": "2026-09-15T09:29:42+02:00"
+      "remote_head": "dbe1b5f",
+      "last_commit_at": "2026-09-15T10:56:10+02:00"
+    },
+    {
+      "branch": "write-gate-add-lead-UNVERIFIED",
+      "head": "8520dc6",
+      "commits_ahead_of_master": 1,
+      "pushed": true,
+      "remote_head": "8520dc6",
+      "last_commit_at": "2026-09-15T11:06:24+02:00"
     }
   ],
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "e6cdfde",
+      "head": "7d022c9",
       "branch": "master",
       "uncommitted_files": 1,
       "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-2",
-      "head": "1e82b20",
+      "head": "0f5baaa",
       "branch": "qwen-worker-2-r9",
       "uncommitted_files": 0,
       "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-3",
-      "head": "f2b8493",
+      "head": "962c6c5",
       "branch": "qwen-worker-3-r9",
-      "uncommitted_files": 3,
+      "uncommitted_files": 2,
       "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-4",
-      "head": "90dce63",
+      "head": "232c47e",
       "branch": "qwen-worker-4-r9",
       "uncommitted_files": 1,
       "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-5",
-      "head": "ad4fe37",
+      "head": "372531b",
       "branch": "qwen-worker-5-r8",
-      "uncommitted_files": 1,
-      "clean": false
+      "uncommitted_files": 0,
+      "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-6",
-      "head": "42e2b3f",
+      "head": "3518973",
       "branch": "qwen-worker-6-r8",
-      "uncommitted_files": 1,
-      "clean": false
+      "uncommitted_files": 0,
+      "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-7",
-      "head": "f2b8493",
+      "head": "d04119e",
       "branch": "qwen-worker-7-r9",
-      "uncommitted_files": 5,
-      "clean": false
+      "uncommitted_files": 0,
+      "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-8",
-      "head": "c110a49",
+      "head": "4677c44",
       "branch": "qwen-worker-8-r9",
-      "uncommitted_files": 1,
-      "clean": false
+      "uncommitted_files": 0,
+      "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-worker",
-      "head": "f2b8493",
+      "head": "01b29a7",
       "branch": "qwen-worker-r9",
-      "uncommitted_files": 4,
+      "uncommitted_files": 2,
       "clean": false
     }
   ],
   "stage_counts": {
-    "TODO": 17,
+    "TODO": 26,
     "REVIEW": 8,
-    "DONE": 88
+    "DONE": 89
   }
 }
