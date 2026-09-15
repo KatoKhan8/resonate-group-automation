@@ -70,7 +70,6 @@ the cold/warm/never split with its evidence.
 - `docs/HISTORICAL-ESTATE-2026-09-15.md` (new) — full findings
 - `scripts/task153_snapshot_analysis.py` (new) — snapshot-only measurement
 - `scripts/task153_provider_reads.py` (new) — provider reads (READ ONLY)
-- `scripts/task153_results.json` (new) — raw provider read results
 - `docs/qwen-tasks/RUNNING/TASK-153-*.md` (moved from TODO, result block added)
 
 **FINDINGS:**
