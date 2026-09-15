@@ -282,11 +282,11 @@ class TheWholeChain(CampaignTest):
 
     def test_a_plain_hand_off_holds_the_referrer(self):
         """A referral is not permission to keep writing to the person who
-        handed us on. `reply.on_referral` holds them, which is a pause a
-        person can lift - not the end of the sequence."""
+        handed us on. `reply.on_referral` stops their sequence - the
+        referrer said 'not me', which is final for this contact, not a
+        pause a person can lift."""
         rec = self.ingest("The right person is Priya Nair.")
-        self.assertTrue(self.champ(rec).get("paused"))
-        self.assertIsNone(self.champ(rec).get("stopped"))
+        self.assertTrue(self.champ(rec).get("stopped"))
 
     def test_a_refusal_that_hands_us_on_still_stops_the_referrer(self):
         """The ranking, proved on state rather than on the category. If

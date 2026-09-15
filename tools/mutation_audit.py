@@ -3379,9 +3379,9 @@ MUTATIONS = [
      'tests.test_deliverable'),
 
     ("events: a second unclassified reply inherits the first one's verdict",
-     'src/events.py',
-     '        rec, contact_key, accountpolicy.UNKNOWN, config=None,',
-     '        rec, contact_key, config=None,',
+     'src/accountpolicy.py',
+     '    return latest or UNKNOWN',
+     '    return latest',
      'tests.test_reply_escalation'),
 
     ('accountpolicy: the recorded outcome is ignored on the way back out',
@@ -3623,8 +3623,8 @@ MUTATIONS = [
 
     ('assignment: a paused or blocked inbox is still allocated prospects',
      'src/assignment.py',
-     '                    if a.get("active") and usable_health(a)]',
-     '                    if a.get("active")]',
+     '            if not a.get("active") or not usable_health(a):',
+     '            if not a.get("active"):',
      'tests.test_health_is_not_silence'),
 
     ('notify: failures are looked for inside a window of every status',

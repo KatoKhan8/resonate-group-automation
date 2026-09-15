@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-09-15T06:44:59+00:00",
-  "source": "HeyReach li_account/GetAll, read-only. Credential env var: HEYREACH_KEY.",
+  "generated_at": "2026-09-15T06:53:15+00:00",
+  "source": "HeyRead li_account/GetAll + /campaign/GetAll + /stats/GetOverallStats, read-only. Credential env var: HEYREACH_KEY.",
   "seats_total": 41,
   "seats_by_state": {
     "HEALTHY": 33,
@@ -9,10 +9,75 @@
   },
   "healthy_seats": 33,
   "healthy_seats_with_no_active_campaign": 0,
+  "campaign_status_distribution": {
+    "DRAFT": 8,
+    "PAUSED": 32,
+    "FINISHED": 31,
+    "IN_PROGRESS": 12
+  },
   "daily_capacity_healthy_only": {
     "connection_requests": 1054,
     "messages": 1143,
     "note": "Provider-configured ceilings summed over HEALTHY seats. This is what is ALLOWED, not what was sent, and not a promise LinkedIn tolerates it. Never raise a per-seat limit to gain throughput - add senders or add days."
+  },
+  "capacity_on_in_progress_campaigns": {
+    "connection_requests": 1054,
+    "messages": 1143,
+    "seats": 33,
+    "note": "Ceiling summed over healthy seats attached to at least one IN_PROGRESS campaign. These seats are already working."
+  },
+  "capacity_on_idle_seats": {
+    "connection_requests": 0,
+    "messages": 0,
+    "seats": 0,
+    "note": "Ceiling summed over healthy seats whose campaigns are all FINISHED/PAUSED/DRAFT. These seats look free but are still attached to campaigns and may need detachment before reuse."
+  },
+  "auth_invalid_seats": [
+    {
+      "sender_id": 129531,
+      "identity_hash": "42ee6311bdf4",
+      "campaigns_attached": 10,
+      "active_campaigns": 1,
+      "stats": {
+        "profileViews": 2432,
+        "postLikes": 1933,
+        "follows": 1460,
+        "messagesSent": 240,
+        "totalMessageStarted": 161,
+        "totalMessageReplies": 21,
+        "voiceNoteConversations": 0,
+        "repliedToVoiceNotes": 0,
+        "voiceNotesSent": 0,
+        "inmailMessagesSent": 0,
+        "totalInmailStarted": 10,
+        "totalInmailReplies": 0,
+        "connectionsSent": 1793,
+        "connectionsAccepted": 214,
+        "uniqueLeadsContacted": 1803,
+        "autoTaggedInterested": 3,
+        "totalAutoTagged": 23,
+        "messageReplyRate": 0.13043478,
+        "voiceNoteReplyRate": 0.0,
+        "inMailReplyRate": 0.0,
+        "connectionAcceptanceRate": 0.11935304,
+        "autoTaggedInterestedRate": 0.13043478
+      }
+    }
+  ],
+  "cooldown_summary": {
+    "seats_with_any_cooldown": 1,
+    "detail": [
+      {
+        "sender_id": 143105,
+        "identity_hash": "0b0fb227391b",
+        "cooldowns": {
+          "connection_request": true,
+          "connection_note": false,
+          "inmail": false,
+          "search": false
+        }
+      }
+    ]
   },
   "senders": [
     {
@@ -32,6 +97,99 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 19,
+        "in_progress": 8,
+        "paused": 9,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 594061,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 567683,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470039,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2805,
+        "messages_sent": 0,
+        "replies": 32,
+        "leads_contacted": 2808
       }
     },
     {
@@ -51,6 +209,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567708,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470039,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2776,
+        "messages_sent": 0,
+        "replies": 22,
+        "leads_contacted": 2778
       }
     },
     {
@@ -70,6 +317,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567730,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470039,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2796,
+        "messages_sent": 0,
+        "replies": 40,
+        "leads_contacted": 2797
       }
     },
     {
@@ -89,6 +425,75 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 13,
+        "in_progress": 8,
+        "paused": 4,
+        "finished": 1,
+        "draft_or_scheduled": 0,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567733,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 470039,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2079,
+        "messages_sent": 0,
+        "replies": 23,
+        "leads_contacted": 2081
       }
     },
     {
@@ -108,6 +513,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567747,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470039,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2808,
+        "messages_sent": 0,
+        "replies": 21,
+        "leads_contacted": 2808
       }
     },
     {
@@ -127,6 +621,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567721,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470038,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2797,
+        "messages_sent": 0,
+        "replies": 22,
+        "leads_contacted": 2799
       }
     },
     {
@@ -146,6 +729,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567698,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470038,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2808,
+        "messages_sent": 0,
+        "replies": 24,
+        "leads_contacted": 2810
       }
     },
     {
@@ -165,6 +837,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567727,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470038,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2806,
+        "messages_sent": 0,
+        "replies": 22,
+        "leads_contacted": 2808
       }
     },
     {
@@ -184,6 +945,63 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 10,
+        "in_progress": 1,
+        "paused": 8,
+        "finished": 0,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470035,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 1793,
+        "messages_sent": 0,
+        "replies": 21,
+        "leads_contacted": 1803
       }
     },
     {
@@ -203,6 +1021,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567738,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470038,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 1241,
+        "messages_sent": 0,
+        "replies": 18,
+        "leads_contacted": 1241
       }
     },
     {
@@ -222,6 +1129,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567745,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470010,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 1329,
+        "messages_sent": 0,
+        "replies": 16,
+        "leads_contacted": 1329
       }
     },
     {
@@ -241,6 +1237,51 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 8,
+        "in_progress": 0,
+        "paused": 8,
+        "finished": 0,
+        "draft_or_scheduled": 0,
+        "effectively_idle": true,
+        "campaigns": [
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470040,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": false
       }
     },
     {
@@ -260,6 +1301,91 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 17,
+        "in_progress": 8,
+        "paused": 7,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567677,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470035,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 1440,
+        "messages_sent": 0,
+        "replies": 15,
+        "leads_contacted": 1440
       }
     },
     {
@@ -279,6 +1405,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567754,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470040,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2586,
+        "messages_sent": 0,
+        "replies": 24,
+        "leads_contacted": 2586
       }
     },
     {
@@ -298,6 +1513,18 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 0,
+        "in_progress": 0,
+        "paused": 0,
+        "finished": 0,
+        "draft_or_scheduled": 0,
+        "effectively_idle": true,
+        "campaigns": []
+      },
+      "activity_all_time": {
+        "available": false
       }
     },
     {
@@ -317,6 +1544,191 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 42,
+        "in_progress": 12,
+        "paused": 24,
+        "finished": 1,
+        "draft_or_scheduled": 5,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 583549,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583536,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583490,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 562830,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524013,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524000,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523938,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523913,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523896,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 467951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428674,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 406850,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388958,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388957,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388953,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388952,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388949,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388947,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388942,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388939,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388938,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384901,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384897,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384890,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384887,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384886,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 4657,
+        "messages_sent": 0,
+        "replies": 148,
+        "leads_contacted": 5068
       }
     },
     {
@@ -336,6 +1748,191 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 42,
+        "in_progress": 12,
+        "paused": 24,
+        "finished": 1,
+        "draft_or_scheduled": 5,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 583549,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583536,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583490,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 565187,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524013,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524000,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523938,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523913,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523896,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 467951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428674,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 406850,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388958,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388957,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388953,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388952,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388949,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388947,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388942,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388939,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388938,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384901,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384897,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384890,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384887,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384886,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 4723,
+        "messages_sent": 0,
+        "replies": 142,
+        "leads_contacted": 5140
       }
     },
     {
@@ -355,6 +1952,191 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 42,
+        "in_progress": 12,
+        "paused": 24,
+        "finished": 1,
+        "draft_or_scheduled": 5,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 583549,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583536,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583490,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 565198,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524013,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524000,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523938,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523913,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523896,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 467951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428674,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 406850,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388958,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388957,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388953,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388952,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388949,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388947,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388942,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388939,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388938,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384901,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384897,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384890,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384887,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384886,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 4735,
+        "messages_sent": 0,
+        "replies": 108,
+        "leads_contacted": 5110
       }
     },
     {
@@ -374,6 +2156,191 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 42,
+        "in_progress": 12,
+        "paused": 24,
+        "finished": 1,
+        "draft_or_scheduled": 5,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 583549,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583536,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583490,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 565195,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524013,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524000,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523938,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523913,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523896,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 467951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428674,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 406850,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388958,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388957,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388953,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388952,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388949,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388947,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388942,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388939,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388938,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384901,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384897,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384890,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384887,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384886,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 4729,
+        "messages_sent": 0,
+        "replies": 123,
+        "leads_contacted": 5131
       }
     },
     {
@@ -393,6 +2360,191 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 42,
+        "in_progress": 12,
+        "paused": 24,
+        "finished": 1,
+        "draft_or_scheduled": 5,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 583549,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583536,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583490,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 565196,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524013,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524000,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523938,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523913,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523896,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 467951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428674,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 406850,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388958,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388957,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388953,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388952,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388949,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388947,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388942,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388939,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388938,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384901,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384897,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384890,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384887,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384886,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 4649,
+        "messages_sent": 0,
+        "replies": 89,
+        "leads_contacted": 5028
       }
     },
     {
@@ -412,6 +2564,131 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 27,
+        "in_progress": 8,
+        "paused": 17,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567743,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 470037,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428674,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388957,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388952,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388947,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388942,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388938,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384901,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384890,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384886,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 3758,
+        "messages_sent": 0,
+        "replies": 53,
+        "leads_contacted": 3725
       }
     },
     {
@@ -431,6 +2708,191 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 42,
+        "in_progress": 12,
+        "paused": 24,
+        "finished": 1,
+        "draft_or_scheduled": 5,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 583549,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583536,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583490,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 565223,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524013,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524000,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523938,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523913,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523896,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 467951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428674,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 406850,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388958,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388957,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388953,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388952,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388949,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388947,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388942,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388939,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388938,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384901,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384897,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384890,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384887,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384886,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 4697,
+        "messages_sent": 0,
+        "replies": 122,
+        "leads_contacted": 5103
       }
     },
     {
@@ -450,6 +2912,163 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 35,
+        "in_progress": 12,
+        "paused": 18,
+        "finished": 0,
+        "draft_or_scheduled": 5,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 583549,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583536,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583490,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524013,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524000,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523938,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523913,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523896,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 467951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428674,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 406850,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388958,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388957,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388953,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388952,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388949,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388947,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388939,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388938,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 4633,
+        "messages_sent": 0,
+        "replies": 91,
+        "leads_contacted": 5015
       }
     },
     {
@@ -469,6 +3088,195 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 43,
+        "in_progress": 12,
+        "paused": 24,
+        "finished": 1,
+        "draft_or_scheduled": 6,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 599020,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583549,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583536,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583490,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 565193,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524013,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524000,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523938,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523913,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523896,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 467951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428674,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 406850,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388958,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388957,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388953,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388952,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388949,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388947,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388942,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388939,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388938,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384901,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384897,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384890,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384887,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384886,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 4723,
+        "messages_sent": 0,
+        "replies": 87,
+        "leads_contacted": 5118
       }
     },
     {
@@ -488,6 +3296,191 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 42,
+        "in_progress": 12,
+        "paused": 24,
+        "finished": 1,
+        "draft_or_scheduled": 5,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 583549,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583536,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583490,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 565211,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524013,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524000,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523938,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523913,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523896,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 467951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428674,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 406850,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388958,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388957,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388953,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388952,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388949,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388947,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388942,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388939,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388938,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384901,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384897,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384890,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384887,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 384886,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 4716,
+        "messages_sent": 0,
+        "replies": 100,
+        "leads_contacted": 5118
       }
     },
     {
@@ -507,6 +3500,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567703,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470010,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2750,
+        "messages_sent": 0,
+        "replies": 31,
+        "leads_contacted": 2750
       }
     },
     {
@@ -526,6 +3608,87 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 16,
+        "in_progress": 8,
+        "paused": 7,
+        "finished": 1,
+        "draft_or_scheduled": 0,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567736,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470040,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 1971,
+        "messages_sent": 0,
+        "replies": 39,
+        "leads_contacted": 1974
       }
     },
     {
@@ -545,6 +3708,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567693,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470035,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 1202,
+        "messages_sent": 0,
+        "replies": 8,
+        "leads_contacted": 1202
       }
     },
     {
@@ -564,6 +3816,51 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 8,
+        "in_progress": 0,
+        "paused": 8,
+        "finished": 0,
+        "draft_or_scheduled": 0,
+        "effectively_idle": true,
+        "campaigns": [
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470010,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": false
       }
     },
     {
@@ -583,6 +3880,91 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 17,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 0,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470037,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 1440,
+        "messages_sent": 0,
+        "replies": 16,
+        "leads_contacted": 1440
       }
     },
     {
@@ -602,6 +3984,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567758,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470037,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2035,
+        "messages_sent": 0,
+        "replies": 40,
+        "leads_contacted": 2035
       }
     },
     {
@@ -621,6 +4092,51 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 8,
+        "in_progress": 0,
+        "paused": 8,
+        "finished": 0,
+        "draft_or_scheduled": 0,
+        "effectively_idle": true,
+        "campaigns": [
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470038,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": false
       }
     },
     {
@@ -640,6 +4156,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567689,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470035,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2715,
+        "messages_sent": 0,
+        "replies": 59,
+        "leads_contacted": 2723
       }
     },
     {
@@ -659,6 +4264,47 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 7,
+        "in_progress": 0,
+        "paused": 6,
+        "finished": 0,
+        "draft_or_scheduled": 1,
+        "effectively_idle": true,
+        "campaigns": [
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470035,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": false
       }
     },
     {
@@ -678,6 +4324,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567681,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470037,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 1132,
+        "messages_sent": 0,
+        "replies": 9,
+        "leads_contacted": 1132
       }
     },
     {
@@ -697,6 +4432,27 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 2,
+        "in_progress": 0,
+        "paused": 2,
+        "finished": 0,
+        "draft_or_scheduled": 0,
+        "effectively_idle": true,
+        "campaigns": [
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": false
       }
     },
     {
@@ -716,6 +4472,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567752,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470010,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2737,
+        "messages_sent": 0,
+        "replies": 29,
+        "leads_contacted": 2746
       }
     },
     {
@@ -735,6 +4580,127 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 26,
+        "in_progress": 12,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 5,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 583549,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583536,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 583490,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 567715,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524013,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524000,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523938,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523913,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523896,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 470037,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467951,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 2923,
+        "messages_sent": 0,
+        "replies": 51,
+        "leads_contacted": 3167
       }
     },
     {
@@ -754,6 +4720,91 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 17,
+        "in_progress": 8,
+        "paused": 7,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567701,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 470037,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 3067,
+        "messages_sent": 0,
+        "replies": 50,
+        "leads_contacted": 3068
       }
     },
     {
@@ -773,6 +4824,18 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 0,
+        "in_progress": 0,
+        "paused": 0,
+        "finished": 0,
+        "draft_or_scheduled": 0,
+        "effectively_idle": true,
+        "campaigns": []
+      },
+      "activity_all_time": {
+        "available": false
       }
     },
     {
@@ -792,6 +4855,95 @@
         "connection_note": false,
         "inmail": false,
         "search": false
+      },
+      "campaign_attachment": {
+        "total": 18,
+        "in_progress": 8,
+        "paused": 8,
+        "finished": 1,
+        "draft_or_scheduled": 1,
+        "effectively_idle": false,
+        "campaigns": [
+          {
+            "campaign_id": 567750,
+            "status": "FINISHED"
+          },
+          {
+            "campaign_id": 565765,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 524026,
+            "status": "DRAFT"
+          },
+          {
+            "campaign_id": 524002,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523997,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523993,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523987,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523983,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523932,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 523922,
+            "status": "IN_PROGRESS"
+          },
+          {
+            "campaign_id": 473854,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 470010,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 467366,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429680,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 429679,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 428676,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388960,
+            "status": "PAUSED"
+          },
+          {
+            "campaign_id": 388955,
+            "status": "PAUSED"
+          }
+        ]
+      },
+      "activity_all_time": {
+        "available": true,
+        "connections_sent": 1650,
+        "messages_sent": 0,
+        "replies": 19,
+        "leads_contacted": 1650
       }
     }
   ]
