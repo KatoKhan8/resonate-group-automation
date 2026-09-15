@@ -49,6 +49,14 @@ The five control campaigns are:
 step, including step 2. Combined sends: 3,163. All are archived. They are
 the estate's earliest campaigns (predecessors to the 327-335 series).
 
+**PROVIDER FACT.** The reply feed (cursor-paginated, 15 rows per request
+regardless of `per_page`) covers September 2026 back to approximately
+June 2026 in its accessible range. Campaigns present in the feed: 327,
+328, 352. Campaigns 262-266 do NOT appear in the feed. Their replies
+predate the accessible window. To reach them would require ~18,000 API
+calls (15 rows/page × 1,200 pages to go back 3 months), which is beyond
+the API's practical pagination limit.
+
 ### Why TASK-080 missed them
 
 TASK-080's step-level table listed 10 campaigns (274, 327-335, 352, 481).
@@ -358,8 +366,11 @@ the last step-2 send to capture delayed replies.
 20 of 22 returned step data. Parent steps only (variants excluded) for
 the thread_reply pattern analysis.
 
-**Reply feed:** `GET /replies` with `pagination_type=cursor`,
-`per_page=100`. (In progress — see scripts/task105_reply_pages.py.)
+**Reply feed:** `GET /replies` with `pagination_type=cursor`.
+`per_page` is IGNORED by the API — 15 rows per request always.
+The accessible window covers approximately June-September 2026.
+Campaigns in the feed: 327, 328, 352. Campaigns 262-266 are NOT in
+the feed (archived, replies predate the window).
 
 **Sent counts:** `emails_sent` on the campaign row (PROVIDER FACT).
 NEVER `meta.total`.
@@ -375,8 +386,9 @@ independently walks all campaigns and their step definitions.
    has 30,411 scheduled rows and a fraction are sent.
 2. **`per_page` is ignored** — 15 rows per request on every route.
 3. **No open-rate claim.** `open_tracking` is False estate-wide.
-4. **The control group (262-266) is archived.** Their reply data may be
-   outside the API's accessible reply feed window.
+4. **The control group (262-266) is archived.** Their reply data is
+   CONFIRMED outside the API's accessible reply feed window. The feed
+   covers ~June-September 2026 and only contains campaigns 327, 328, 352.
 5. **All causal statements are ATTRIBUTION HYPOTHESES** unless labelled
    PROVIDER FACT.
 6. **No PII in this report.** No emails, names, or company domains.
