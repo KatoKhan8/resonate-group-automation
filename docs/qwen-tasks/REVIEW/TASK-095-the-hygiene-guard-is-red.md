@@ -68,7 +68,7 @@ never through a pipe - a pipe reports the filter's status.
 
 **STATUS:** DONE - two stale tests fixed, one real leak escalated
 
-**COMMIT SHA:** (owed)
+**COMMIT SHA:** ad78c25
 
 **TESTS:**
 - `tests.test_fixture_hygiene` - 10/11 PASS, 1 FAIL (the real leak)
