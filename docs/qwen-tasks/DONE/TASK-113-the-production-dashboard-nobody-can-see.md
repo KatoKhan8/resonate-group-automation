@@ -85,3 +85,67 @@ with what would have to exist to populate it. That list is the roadmap.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+---
+
+## RESULT BLOCK
+
+**STATUS**: COMPLETE
+
+**COMMIT SHA**: e54de4b
+
+**TESTS**: 24/24 pass in tests/test_production_dashboard.py. Pre-existing
+fixture_hygiene failures (TASK-120, APPROVAL-REVOCATION-EVIDENCE) are
+unrelated to this change.
+
+**FILES CHANGED**:
+- `scripts/production_dashboard.py` - the generator (695 lines)
+- `tests/test_production_dashboard.py` - 24 tests covering every section
+- `docs/state/PRODUCTION-DASHBOARD.json` - machine-readable output
+- `docs/state/PRODUCTION-DASHBOARD.md` - human-readable output
+- Task file moved TODO → RUNNING
+
+**FINDINGS**:
+
+The generator reads from six existing state files and the queue snapshot.
+It does NOT call any provider. It produces 20 ABSENT fields, each with a
+reason saying what would have to exist to populate it.
+
+The ABSENT fields cluster into four groups:
+
+1. **EmailBison has no machine-readable state** (5 fields). The provider
+   truth is in markdown only. A `scripts/bison_provider_truth.py` that
+   writes `docs/state/BISON-CAMPAIGNS.json` would populate all five.
+
+2. **No experiment has data** (4 fields). The evaluator in src/variants.py
+   is wired and tested, but no campaign has started sending. These will
+   populate automatically once leads flow.
+
+3. **No structured learning registry** (5 fields). Findings are in task
+   result blocks and docs but not in a machine-readable store. A
+   `docs/state/LEARNINGS.json` would populate these.
+
+4. **Structural absences** (6 fields). No campaign has started (so
+   utilisation and throughput are unmeasured, not zero), no record has
+   reached live state, and sample sizes were never recorded for the
+   documented findings.
+
+**THE CALLER CHAIN**: The generator is a standalone script consumed by
+being run (`py -3 scripts/production_dashboard.py`). It is not imported
+by src/ modules. Its consumers are: any fresh session that reads
+`docs/state/PRODUCTION-DASHBOARD.json` or
+`docs/state/PRODUCTION-DASHBOARD.md` to answer "what is production doing."
+
+**RISKS**:
+- The queue snapshot is from 2026-09-14T21:52:15Z. If the queue changes,
+  the dashboard must be regenerated to reflect it.
+- The LEDGER.json is from 2026-09-15T07:34:08Z. Task counts may be stale.
+
+**RECOMMENDED CLAUDE ACTION**:
+1. Review and integrate.
+2. Consider adding `py -3 scripts/production_dashboard.py` to the
+   durable_state.py regeneration chain so the dashboard refreshes
+   automatically with the other state files.
+3. The EmailBison gap is the largest single group of ABSENT fields. A
+   `scripts/bison_provider_truth.py` that writes `docs/state/BISON-CAMPAIGNS.json`
+   would close 5 of 20 gaps.
