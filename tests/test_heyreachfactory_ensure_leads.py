@@ -78,10 +78,22 @@ def _fallback_config():
 
 def _make_record(rec_id="acme", contact_key="pat", *, domain="acme.test",
                  client="productive", linkedin=None):
-    """A record with one contact and a full LinkedIn cadence."""
+    """A record with one contact and a full LinkedIn cadence.
+
+    IT CARRIES A COMPANY NAME, and it did not. `cadence.company_name` refuses
+    a name that is domain-shaped - "refusing to address a prospect by their
+    own hostname" - so these records could never have been pushed in
+    production, and eight tests only passed because `authorize` was mocked and
+    nothing ever expanded their copy.
+
+    A fixture that cannot survive the path it is testing is a fixture that
+    hides the first real defect it meets.
+    """
     url = linkedin or f"https://www.linkedin.com/in/{contact_key}"
     return {
         "id": rec_id, "client": client, "domain": domain,
+        "company": "Kestrel Wharf Studio",
+        "company_facts": {"name": "Kestrel Wharf Studio"},
         "contacts": [{"key": contact_key, "name": "Pat Okafor",
                       "linkedin": url}],
         "cadence": _full_cadence(contact_key),

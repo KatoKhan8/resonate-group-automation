@@ -788,7 +788,31 @@ def revalidate(authorization, config=None, now=None):
     # The killswitch is the final word at authorize time and stays the final
     # word here. It is the control an operator reaches for when they want
     # everything to stop, so it is asked again rather than remembered.
+    #
+    # THE SAME QUESTION THE TOKEN WAS ASKED, ASKED AGAIN - not a different,
+    # stricter one. `authorize` asks the workspace layer for a staging write
+    # and the whole send stack for anything else, and re-asking the send stack
+    # here would refuse every staging write at the door after admitting it at
+    # the gate. That is what happened to the first LinkedIn lead: authorised,
+    # then refused one layer deeper by the same two send layers.
+    #
+    # The token says which form applied, because `authorize` recorded it -
+    # `killswitch:workspace` rather than `killswitch`. Reading it from the
+    # token rather than passing a flag means this cannot be told a different
+    # answer than the one the gate actually gave: a token minted through the
+    # send stack is re-checked against the send stack, always.
+    #
+    # What is re-asked either way is a LIVE read. The workspace switch can be
+    # turned off between the mint and the write, and that must still stop it.
     campaign = campaigns.require(authorization.campaign_id)
+    if "killswitch:workspace" in (authorization.gates or ()):
+        ws_state = killswitch.workspace_state(campaign.get("client"))
+        if not ws_state["sending"]:
+            raise NotAuthorized(
+                "killswitch",
+                f"the killswitch for workspace {campaign.get('client')!r} is "
+                f"off: {ws_state['why']}. No lead was staged", gates)
+        return True
     try:
         killswitch.require(workspace=authorization.workspace,
                            campaign=campaign, rec=rec, contact=contact,

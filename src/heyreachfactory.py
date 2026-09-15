@@ -1078,7 +1078,25 @@ def _mint_authorization(campaign, rec, contact, *, config=None, readback=None,
     # person being added. Derived from the cadence rather than written down
     # here, so a campaign on a different cadence asks about its own first step.
     step_key = _first_linkedin_step(campaign, config)
-    return executionguard.authorize(
+    # THE SAME STEP OBJECT `authorize` WILL BUILD, RETURNED TO THE CALLER.
+    #
+    # `providerwrites._require_approved_words` demands the step that
+    # `authorize` was given, and compares its fingerprint to the token's -
+    # then checks the approved words literally appear in the payload. It is
+    # the guard that stopped "BUY MY THING, unapproved text" riding a token
+    # minted for approved copy.
+    #
+    # `ensure_leads` passed no `step` at all, so the write refused. Rebuilding
+    # one at the call site would have satisfied the guard while proving
+    # nothing, because a step built twice can differ twice; expanding it once
+    # here and handing the same object to both is what makes the comparison
+    # mean something.
+    step = cadence.expand_step(
+        rec, contact, executionguard._spec_for(
+            step_key, campaign=campaign, config=config, rec=rec,
+            contact=contact),
+        config)
+    auth = executionguard.authorize(
         operation=providerwrites.LINKEDIN_ADD_LEAD,
         channel="linkedin",
         campaign=campaign,
@@ -1098,6 +1116,7 @@ def _mint_authorization(campaign, rec, contact, *, config=None, readback=None,
         # the other channel since it was written.
         staging=True,
         by=by)
+    return auth, step
 
 
 def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
@@ -1388,15 +1407,24 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
                 break
         # Each contact gets its own Readback because authorize() spends it.
         readback = _obtain_readback()
-        auth = _mint_authorization(
+        auth, step = _mint_authorization(
             campaign, rec, contact_obj, config=config, readback=readback,
             by=by)
         providerwrites.perform(
             providerwrites.LINKEDIN_ADD_LEAD,
             authorization=auth,
+            step=step,
             campaign=str(campaign_id), tenant=client,
+            # THE PAYLOAD CARRIES THE WORDS, because the guard checks that the
+            # approved copy literally appears in what is transported - and
+            # here it genuinely does. The lead's `custom_fields` are the merge
+            # variables HeyReach fills the sequence from, so these ARE the
+            # sentences this person will receive. A payload naming only the
+            # campaign and the contact key would have made the guard pass on a
+            # summary while the real words travelled somewhere it never looked.
             payload={"campaignId": provider_id,
-                     "contact": row["contact_key"]},
+                     "contact": row["contact_key"],
+                     "custom_fields": dict(row.get("custom_fields") or {})},
             transport=_transport_for(row), readback=_readback_for(row),
             expected={"found": {row["linkedin_url"].strip().lower()}},
             provider_campaign_id=provider_id, by=by)

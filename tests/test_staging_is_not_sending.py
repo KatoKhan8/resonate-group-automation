@@ -94,6 +94,41 @@ class TheSendBlockIsUntouched(unittest.TestCase):
 # never the risk.
 
 
+class RevalidateAsksTheSameQuestionTheTokenWasAsked(unittest.TestCase):
+    """`perform` re-runs the stops against disk, and re-ran the WRONG form.
+
+    A staging token cleared the workspace layer at `authorize`, then met the
+    full send stack again inside `revalidate` and was refused by the same two
+    layers one step deeper. A door that admits at the gate and refuses at the
+    threshold is not stricter, it is broken.
+
+    `revalidate` reads which form applied from the TOKEN'S OWN GATE TRACE
+    rather than from a flag it is handed, so it cannot be told a different
+    answer than the one the gate gave.
+    """
+
+    def test_it_reads_the_form_from_the_token(self):
+        source = inspect.getsource(executionguard.revalidate)
+        self.assertIn('"killswitch:workspace" in (authorization.gates', source)
+
+    def test_a_token_without_the_staging_gate_meets_the_send_stack(self):
+        """The default path is unchanged: no staging gate on the token means
+        the whole stack, which is what refuses a real send today."""
+        auth = executionguard.Authorization(
+            key="k", channel="linkedin", operation="heyreach.add_lead",
+            rec_id="r", contact_key="c", step_key="li1",
+            campaign_id="productive-linkedin-production-v1",
+            workspace="productive", gates=("tenancy", "killswitch"))
+        self.assertNotIn("killswitch:workspace", auth.gates)
+
+    def test_the_workspace_read_is_live_rather_than_remembered(self):
+        """The switch can be turned off between the mint and the write, and
+        that must still stop it - so this re-reads rather than trusting the
+        token's word that it was on."""
+        source = inspect.getsource(executionguard.revalidate)
+        self.assertIn("killswitch.workspace_state(", source)
+
+
 class TheAuditSaysWhichGateRan(unittest.TestCase):
     """`gates` is what an audit reads to prove which checks ran.
 
