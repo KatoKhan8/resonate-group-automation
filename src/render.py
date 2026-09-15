@@ -13,7 +13,7 @@ import json
 import os
 from collections import Counter
 
-from . import export, lint, store
+from . import export, lint, redact as _redact, store
 
 ROOT = store.ROOT
 
@@ -133,7 +133,7 @@ def review_html(recs, results):
     droplist = "".join(f'<li><b>{esc(r.get("company"))}</b> {esc(r.get("drop_reason"))}</li>'
                        for r in dropped)
     drops = f"<h1>Dropped</h1><ul>{droplist}</ul>" if dropped else ""
-    return (
+    raw = (
         "<!doctype html><meta charset=utf-8>\n<title>Batch review</title>\n"
         f"<style>{STYLE}</style>\n"
         "<div class=wrap>\n<h1>Batch review</h1>\n"
@@ -144,6 +144,8 @@ def review_html(recs, results):
         f'<b>{len(dropped)}</b> dropped record(s) &middot; '
         f'generated {esc(store.now())}</div>\n'
         f"{cards}{drops}\n</div>\n")
+    record_ids = {r.get("id") for r in recs if r.get("id")}
+    return _redact.redact(raw, record_ids=record_ids)
 
 
 def summary(recs, results):
