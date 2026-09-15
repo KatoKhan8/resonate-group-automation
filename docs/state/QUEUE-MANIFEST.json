@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-09-15T06:40:26+00:00",
+  "queue_path": "work/queue.jsonl",
+  "gitignored": true,
+  "present": true,
+  "records": 300,
+  "unparseable": 0,
+  "contacts": 92,
+  "dropped": 0,
+  "clients": {
+    "productive": 300
+  },
+  "stages": {
+    "unset": 300
+  },
+  "estate_fingerprint": "6f2a2ab90d70faeb",
+  "mtime": "2026-09-14T21:41:34.330747+00:00"
+}

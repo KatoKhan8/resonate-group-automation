@@ -64,6 +64,57 @@ Rules
   audit that reports clean because it watched nothing is worse than none.
 - Missing evidence is never positive evidence, and score and confidence are
   different questions. A guessed timezone is worse than a missing one.
+
+Durable state: GitHub is the source of truth, 2026-09-15
+
+Set after an unplanned shutdown destroyed a night's terminal state and very
+nearly destroyed two completed results. TASK-059's estate outcomes report and
+TASK-037's result block existed only as uncommitted files in worktrees. They
+were recovered by hand, which is not a plan.
+
+Assume this machine, this session, the Qwen processes, the terminal and every
+worktree can disappear between one tool call and the next. The test of durable
+state is concrete: **a fresh session on a different computer, with a clone and
+the secrets supplied separately, must be able to read the repository and say
+what happened and what to do next.** Anything that fails that test is not
+state, it is scrollback.
+
+- Commit and push continuously: production code, tests, configuration without
+  secrets, CLAUDE.md, QWEN.md, task definitions, task results, architecture
+  decisions, provider findings, historical-learning findings, classifier and
+  cadence findings, experiment definitions and results, campaign templates,
+  quality-gate changes, checkpoints, handoff documents, and any worker result
+  that has been reviewed or is waiting for review.
+- A finding that exists only in terminal output does not exist. Write it to
+  docs/ and push it before moving on.
+- The path is worker branch -> commit -> push -> Claude review -> tests and
+  gates -> master -> push. Durability is never a reason to push broken work to
+  master; it is a reason to push it to its own branch. If work is unfinished,
+  valuable, and the machine might die, checkpoint it to the worker branch with
+  a commit message that says it is unreviewed.
+- `scripts/durable_state.py` regenerates `docs/state/LEDGER.json` and
+  `docs/state/QUEUE-MANIFEST.json`. It is DERIVED from the task files and from
+  git, never hand-edited, because a ledger somebody has to remember to update
+  is a ledger that drifts - and a drifted ledger is worse than none, because
+  it is believed. It exits non-zero when a branch holds unpushed work or a
+  worktree is dirty. That exit code is a durability alarm, not a crash.
+- `scripts/provider_truth.py` writes `docs/state/PROVIDER-CAMPAIGNS.json` by
+  asking the providers. A local dry run, a generated sequence, an adapter
+  test, a "write passed" line in a handoff - none of those is evidence that a
+  campaign exists. Only a provider readback against a real campaign id is.
+- `work/` stays gitignored. It is 300 real companies and 92 real contacts and
+  it is not ours to publish. The queue is made durable instead by the
+  sanitised manifest: counts, stages and a hashed estate fingerprint, enough
+  to know whether the estate changed and how much work is in which state, and
+  deliberately not enough to rebuild the prospect list.
+- Write an autonomous-run checkpoint to docs/ periodically and push it:
+  master HEAD, active tasks, completed tasks, pending reviews, blockers,
+  production state, provider state, next actions.
+- Never commit .env, an API key, a password, a token, a provider credential
+  or a temporary credential file. If durable state has to reference a secret,
+  store the environment variable NAME and never the value. Scan the staged
+  diff before pushing; .gitignore is a guard, not a substitute for looking.
+
 How to work here
 
 These govern how the work is done. The rules above govern what the system

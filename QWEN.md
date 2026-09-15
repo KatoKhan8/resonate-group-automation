@@ -138,6 +138,45 @@ Move your task file between them and commit the move. Finished work goes to
 REVIEW, not DONE - Claude moves it to DONE after integrating, or back to
 REWORK with precise feedback.
 
+
+## COMMIT AND PUSH CONTINUOUSLY. THE MACHINE DIED ONCE ALREADY.
+
+Added 2026-09-15, the morning after an unplanned shutdown.
+
+Two finished pieces of work were nearly lost that night. TASK-059 ran for
+hours, wrote its report at 01:26, and the laptop went down before the worker
+committed. TASK-037's result block sat uncommitted in another worktree. Both
+were recovered by hand from the worktrees, and only because somebody went
+looking. The next one will not be.
+
+**Anything valuable that is uncommitted is already lost. Anything committed
+and unpushed is lost the moment the disk is.**
+
+So:
+
+- Commit an atomic result the moment you have one. Not at the end of the
+  task - when the measurement lands, when the test goes green, when the
+  finding is written down.
+- `git push -u origin <your-branch>` after every commit. Your branch is
+  yours; pushing it costs nothing and cannot break master.
+- A finding that exists only in your terminal output does not exist. Write
+  it into the task file or into docs/ and push it.
+- If you are about to run something long - a collection, a full suite, a
+  generation pass - commit and push FIRST, so the run is the only thing at
+  risk rather than the run and everything before it.
+- If you hit a boundary and must stop, that is fine, but commit and push the
+  safe work before you do. A stopped task with pushed evidence is a good
+  outcome. A stopped task with nothing pushed is a wasted worker.
+- Never push to master. Your branch, always. Claude reviews and takes named
+  files; that is the only route in.
+
+What must NEVER be committed, by you or anyone: `config/.env`, any API key,
+token, password or provider credential, and any unhashed prospect PII - real
+names, domains, addresses, or reply text. If you need to reference a secret
+in a document, write the environment variable NAME and never the value. If
+you need to reference a prospect, hash the identifier. `tests/test_fixture_hygiene`
+guards this and it has caught a real leak in this repository already.
+
 ## What you may never do
 
 - Call EmailBison, HeyReach or any other provider. There are no credentials

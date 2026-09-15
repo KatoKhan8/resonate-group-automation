@@ -43,8 +43,38 @@ Every finished task file ends with:
     RISKS
     RECOMMENDED CLAUDE ACTION
 
-## Tooling note, 2026-09-13
+## Tooling note - CORRECTED 2026-09-15
 
-The `qwen` CLI is NOT installed on this machine and is not on PATH. Checked
-from both bash and PowerShell. These tasks are therefore queued and durable
-rather than dispatched. Nothing here assumes an agent has read them.
+An earlier version of this file said the `qwen` CLI was "NOT installed on
+this machine and is not on PATH" and that these tasks were "queued and
+durable rather than dispatched. Nothing here assumes an agent has read them."
+
+**That is false and was false for two days.** Qwen Pro runs eight parallel
+workers against this queue. The CLI is not on PATH - the grain of truth the
+stale paragraph was built on - but it is installed, and it is dispatched by
+absolute path:
+
+    C:\Users\Zvonimir\AppData\Local\qwen-code\bin\qwen.cmd
+        --approval-mode yolo  "<prompt>"
+
+Run each from inside its own worktree. Do NOT pass `--max-tool-calls`.
+Credentials are present in all eight worktrees.
+
+This is the third environment document in this repository found asserting the
+opposite of the truth - `QWEN.md` told a worker it had no credentials while it
+held all three, and `src/providerwrites.py` said `SUPPORTED` was empty while
+six routes were live, one of which had written a production sequence.
+**Check a claim about the environment before you act on it.** Each of those
+cost real work.
+
+## Dispatch, 2026-09-15: one task per worker, named explicitly
+
+A worker told to "take the next task" will scan `TODO/` and collide with
+another worker. That happened on the first round-6 dispatch: two workers both
+ran TASK-095. Name the single task file in the prompt, tell the worker the
+others are being run right now by somebody else, and have it `git mv` that
+file to `RUNNING/` as its first action so the claim is visible.
+
+A worker that replies "Ready. What's the task?" has done nothing. Lead the
+prompt with the literal first command rather than with context, and check
+that each worker's branch actually moved before believing the pool is busy.
