@@ -716,7 +716,7 @@ def analyze(target_campaign_id, pages_fetched, total_pages, stopped_early,
       "scheduled email it references). The 'incremental reply' question is:")
     w("")
     w("    Of the replies attributed to step N, how many are the ONLY "
-    w("    reply from that lead in the campaign?")
+      "reply from that lead in the campaign?")
     w("")
     w("A lead that replied at step 2 AND step 5 contributes one reply to "
       "each step's count. The step-5 reply is only 'incremental' if the "
