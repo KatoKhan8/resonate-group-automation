@@ -933,14 +933,25 @@ def plan(rec, client=None, campaign=None, regen_stale_ladder=False):
             contact_li_ops = [i for i, o in enumerate(ops)
                              if o.get("step") == "linkedin_note"
                              and o.get("contact") == c.get("name")]
+            # TASK-129: propagate ladder_stale from removed individual ops
+            # to the set op. Without this, the impact report undercounts
+            # stale steps for contacts whose notes are absorbed into a set,
+            # and a direct plan() call shows zero ladder_stale ops for
+            # records that the CLI reports as stale.
+            stale_count = sum(1 for i in contact_li_ops
+                              if ops[i].get("ladder_stale"))
             for i in reversed(contact_li_ops):
                 ops.pop(i)
-            ops.append({"step": "linkedin_set",
-                        "why": f"{c['name']}'s notes pass individually but "
-                               f"collide on campaign_repetition; "
-                               f"regenerating {len(keys_to_regen)} notes "
-                               f"as a set",
-                        "contact": c.get("name")})
+            set_op = {"step": "linkedin_set",
+                      "why": f"{c['name']}'s notes pass individually but "
+                             f"collide on campaign_repetition; "
+                             f"regenerating {len(keys_to_regen)} notes "
+                             f"as a set",
+                      "contact": c.get("name")}
+            if stale_count:
+                set_op["ladder_stale"] = True
+                set_op["stale_step_count"] = stale_count
+            ops.append(set_op)
 
     # VARIANT SETS.
     #
@@ -1807,7 +1818,12 @@ def run(model=None, live=False, ids=None, limit=None, client=None,
             for op in ops:
                 if not op.get("ladder_stale"):
                     continue
-                stale_steps += 1
+                # TASK-129: a linkedin_set op with ladder_stale represents
+                # multiple stale steps (stored in stale_step_count), not one.
+                # Without this, the impact report undercounts stale steps
+                # for contacts whose notes are absorbed into a set.
+                step_weight = op.get("stale_step_count", 1)
+                stale_steps += step_weight
                 # `op["contact"]` is the DISPLAY NAME ("Jacob Faertz") and the
                 # cadence is keyed by the contact KEY ("jacob-faertz"). Building
                 # a key out of the display name misses every time, so this
@@ -1824,11 +1840,24 @@ def run(model=None, live=False, ids=None, limit=None, client=None,
                     ck = lint.contact_key(
                         {"name": op.get("contact", ""),
                          "key": op.get("contact", "")})
-                step_data = ((rec.get("cadence") or {}).get(ck) or {}) \
-                    .get(op.get("day")) or {}
-                if _approval.is_approved(rec, ck, op.get("day", ""),
-                                         step_data):
-                    stale_with_approval += 1
+                # TASK-129: for a linkedin_set op, check each step in the
+                # contact's cadence for approval, not just op["day"] (which
+                # is None for a set op).
+                if op.get("step") == "linkedin_set":
+                    contact_steps = ((rec.get("cadence") or {}).get(ck)
+                                     or {})
+                    for step_key, step_data in contact_steps.items():
+                        if not step_data.get("channel") == "linkedin":
+                            continue
+                        if _approval.is_approved(rec, ck, step_key,
+                                                 step_data):
+                            stale_with_approval += 1
+                else:
+                    step_data = ((rec.get("cadence") or {}).get(ck) or {}) \
+                        .get(op.get("day")) or {}
+                    if _approval.is_approved(rec, ck, op.get("day", ""),
+                                             step_data):
+                        stale_with_approval += 1
         report.append({"id": rec["id"], "lane": rec.get("lane"),
                        "state": state, "ops": ops})
     return {"live": live, "model": getattr(model, "name", "unknown"),

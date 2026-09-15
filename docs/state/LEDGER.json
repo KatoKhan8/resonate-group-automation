@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-15T10:54:05+00:00",
+  "generated_at": "2026-09-15T11:17:27+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
-  "master_head": "aaea460",
-  "origin_master_head": "aaea460",
+  "master_head": "e761a34",
+  "origin_master_head": "e761a34",
   "master_pushed": true,
   "tasks": [
     {
@@ -11,6 +11,14 @@
       "stage": "TODO",
       "last_commit": "24aa883",
       "last_commit_at": "2026-09-15T11:54:07+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-129",
+      "file": "docs/qwen-tasks/TODO/TASK-129-four-steps-that-will-not-regenerate.md",
+      "stage": "TODO",
+      "last_commit": "e761a34",
+      "last_commit_at": "2026-09-15T13:17:04+02:00",
       "reported": false
     },
     {
@@ -1197,16 +1205,25 @@
       "last_commit_at": "2026-09-15T12:08:37+02:00",
       "reported": true,
       "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-128",
+      "file": "docs/qwen-tasks/DONE/TASK-128-regen-stale-ladder-does-not-reach-approved-steps.md",
+      "stage": "DONE",
+      "last_commit": "2214dcc",
+      "last_commit_at": "2026-09-15T13:13:28+02:00",
+      "reported": true,
+      "declared_status": "DONE"
     }
   ],
   "branches": [
     {
       "branch": "master",
-      "head": "aaea460",
+      "head": "e761a34",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "aaea460",
-      "last_commit_at": "2026-09-15T12:10:20+02:00"
+      "remote_head": "e761a34",
+      "last_commit_at": "2026-09-15T13:17:04+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -1665,6 +1682,22 @@
       "last_commit_at": "2026-09-15T12:04:24+02:00"
     },
     {
+      "branch": "qwen-worker-r12",
+      "head": "be5b258",
+      "commits_ahead_of_master": 2,
+      "pushed": true,
+      "remote_head": "be5b258",
+      "last_commit_at": "2026-09-15T13:11:55+02:00"
+    },
+    {
+      "branch": "qwen-worker-r13",
+      "head": "e761a34",
+      "commits_ahead_of_master": 0,
+      "pushed": false,
+      "remote_head": null,
+      "last_commit_at": "2026-09-15T13:17:04+02:00"
+    },
+    {
       "branch": "qwen-worker-r2",
       "head": "1b1fb01",
       "commits_ahead_of_master": 4,
@@ -1740,10 +1773,10 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "aaea460",
+      "head": "e761a34",
       "branch": "master",
-      "uncommitted_files": 1,
-      "clean": false
+      "uncommitted_files": 0,
+      "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-2",
@@ -1796,15 +1829,15 @@
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-worker",
-      "head": "988e484",
-      "branch": "qwen-worker-r11",
+      "head": "e761a34",
+      "branch": "qwen-worker-r13",
       "uncommitted_files": 0,
       "clean": true
     }
   ],
   "stage_counts": {
-    "TODO": 1,
+    "TODO": 2,
     "REVIEW": 1,
-    "DONE": 123
+    "DONE": 124
   }
 }
