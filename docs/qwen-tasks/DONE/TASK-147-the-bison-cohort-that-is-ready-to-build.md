@@ -120,3 +120,64 @@ a person, ~50 where inventory supports it, consolidation over proliferation.
 The four answers with the snapshot stamp on every number, the per-lead
 send-or-not verdict for the 29 with its proving field, the account-collision
 survival count, and the cohort proposal with each cohort's arm.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** ccf5a20
+
+**TESTS:**
+- `scripts/task147_cohort_live.py` runs clean against the snapshot. Four-way
+  partition sums to 550. All 29 bison_lead_id contacts checked against the
+  live provider. All 38 cold-cohort domains checked via collision.check_account.
+- `scripts/task147_never_emailed_collision.py` runs clean. All 13 never-emailed
+  bison contacts checked against the live provider.
+
+**FILES CHANGED:**
+- `docs/BISON-COHORT-LIVE-2026-09-15.md` (new) — the deliverable
+- `scripts/task147_cohort_live.py` (new) — main analysis script
+- `scripts/task147_never_emailed_collision.py` (new) — supplementary collision
+- `scripts/task147_results.json` (new) — machine-readable results
+- Task file moved from TODO/ to RUNNING/
+
+**FINDINGS:**
+
+Snapshot stamp: `2026-09-15T17:52:12+00:00 from master cf23154 550 records`
+
+1. **Q1 — Who is cold:** 38 records (39 contacts) verified with no
+   bison_lead_id. 29 records (29 contacts) with bison_lead_id. 483
+   unverified. Estate grew from 300 to 550; all 250 new records are
+   unverified.
+
+2. **Q2 — Were the 29 emailed:** Split. 13 NEVER emailed (all campaign 481,
+   proven by `overall_stats.emails_sent = 0`). 16 ACTUALLY emailed across
+   older campaigns (265, 274, 327, 328, 330, 331, 352, 451). The 13 are
+   effectively cold; the 16 are not. TASK-145's assumption that "probably
+   no" was wrong for 16 of 29.
+
+3. **Q3 — Account collision:** Cold cohort: 8 ALLOW, 16 STOP, 14 HOLD out
+   of 38 domains. 31 of 39 contacts rejected (79.5%). Never-emailed bison:
+   9 ALLOW, 0 STOP, 4 HOLD out of 13. Combined: **17 contacts survive all
+   gates** (8 from cold cohort + 9 from never-emailed).
+
+4. **Q4 — Cohort proposal:** One CONTROL cohort of 17. Signal is 100% null
+   on the cold cohort (same as LinkedIn side). No CHALLENGER arm is
+   supportable because no dimension carries evidence to assert on. The
+   cohort is "nobody rejected them" — necessary but not a hypothesis.
+
+**RISKS:**
+- 17 contacts is below the ~50 target in PRODUCTION-SCALE-POLICY. Enough
+  for a canary, not enough for a meaningful cohort.
+- 14 HOLD domains in the cold cohort could become ALLOW if stopped-campaign
+  ambiguity is resolved. That is a data question, not engineering.
+- The snapshot is from 17:52 UTC on 2026-09-15. Provider reads (Q2, Q3) are
+  live, but cohort membership is from the snapshot.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Review `docs/BISON-COHORT-LIVE-2026-09-15.md`
+2. The 17 surviving contacts are the addressable email cohort
+3. Decide whether to proceed with a 17-contact CONTROL canary or wait for
+   more inventory (discovery/enrichment to populate signal, or
+   stopped-campaign resolution to release HOLD domains)
+4. The 16 actually-emailed contacts are excluded from any cold cohort
