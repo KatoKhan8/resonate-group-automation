@@ -103,7 +103,7 @@ FINDINGS, RISKS, RECOMMENDED CLAUDE ACTION), git mv to DONE/, commit, push.
 Then STOP.
 
 Worktree $d, branch $br. Context: QWEN.md, CLAUDE.md,
-docs/CONTEXT-RESET-2026-09-15-D.md, docs/PRODUCTION-SCALE-POLICY.md.
+docs/CONTEXT-RESET-2026-09-15-E.md, docs/PRODUCTION-SCALE-POLICY.md.
 
 PUSH AFTER EVERY USEFUL RESULT. This machine died without warning yesterday:
   git add -A && git commit -m '...' && git push -u origin $br
