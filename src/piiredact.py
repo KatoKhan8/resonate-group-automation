@@ -144,7 +144,7 @@ def redact(text):
     """Return text with every forbidden token replaced by a stable pseudonym.
 
     The replacement is case insensitive for names and domains: both casing
-    variants become the same <client-XXXX>.  Figures are matched literally,
+    variants become the same <client-abcdef>.  Figures are matched literally,
     because a comma separated number is a specific string, not a word.
 
     A slug that is not in the forbidden set but matches the structural pattern
