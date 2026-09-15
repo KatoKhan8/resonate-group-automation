@@ -41,8 +41,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import (approval, approve, campaigns, clients, eligibility,  # noqa: E402
-                 heyreachfactory, store)
+from src import (approval, approve, campaigns, clients, collision,  # noqa: E402
+                 eligibility, heyreachfactory, store)
+from src.providers import bison  # noqa: E402
 
 # Which cadence step carries which role's words. `heyreachfactory.COPY_MAPPING`
 # is the authority; this reads it rather than restating it, so a step that
@@ -158,6 +159,59 @@ def eligible_contacts(recs, client, *, config, skip_with_history=True):
     return eligible, skipped
 
 
+def clear_of_collision(chooser, limit, *, workspace_id):
+    """Take the first `limit` contacts whose ACCOUNT is not already being
+    worked, and say why each rejected one was.
+
+    WHY THIS IS IN SELECTION AND NOT LEFT TO THE GATE.
+
+    `heyreachfactory.ensure_leads` runs this same check as its third gate and
+    refuses the WHOLE push when any contact collides - correctly, because a
+    contact at an account the client is already working must not be opened on
+    a second channel. But a cohort assembled without asking produces exactly
+    that refusal after the copy is installed and the campaign's record set is
+    written, and the operator then has a campaign that cannot ship and no
+    statement of who to drop.
+
+    Measured the first time this ran: two of the three contacts chosen were at
+    one account carrying a STOPPED EmailBison campaign, so the canary refused
+    at the gate rather than at the roster.
+
+    The account, not the contact, is the unit - `ACCOUNT-OUTREACH.md` - so the
+    verdict is cached per domain and a second contact at a cleared account
+    costs no second read.
+
+    `collision.CollisionUnknown` is a REFUSAL, not a skip. An account whose
+    estate cannot be read is not an account that has been cleared, and the
+    difference between those two is the whole point of the gate.
+    """
+    chosen, rejected = [], []
+    verdicts = {}
+    for rec, contact, _why in chooser:
+        if len(chosen) >= limit > 0:
+            break
+        domain = rec.get("domain")
+        if not domain:
+            rejected.append((rec, contact, "record carries no domain, so its "
+                                           "account cannot be checked"))
+            continue
+        if domain not in verdicts:
+            try:
+                account = collision.check_account(
+                    domain, expect_workspace=workspace_id)
+            except collision.CollisionUnknown as e:
+                verdicts[domain] = (collision.HOLD,
+                                    f"estate unreadable: {e}")
+            else:
+                verdicts[domain] = collision.account_policy(account)
+        verdict, why = verdicts[domain]
+        if verdict in (collision.STOP, collision.HOLD):
+            rejected.append((rec, contact, f"{verdict} - {why}"))
+            continue
+        chosen.append((rec, contact, None))
+    return chosen, rejected
+
+
 def install(rec, contact_key, texts, *, config, campaign=None, by=BY):
     """Write the control copy onto one contact's steps and approve each.
 
@@ -244,7 +298,19 @@ def _run(a, config, texts, rows, campaign, recs):
     for why, count in sorted(reasons.items(), key=lambda kv: -kv[1])[:6]:
         print(f"  {count:5d}  {why}")
 
-    chosen = eligible[:a.limit] if a.limit and a.limit > 0 else eligible
+    workspace_id = (bison.bound_workspace() or {}).get("id")
+    if not workspace_id:
+        raise CohortRefused(
+            "the EmailBison credential reports no bound workspace, so the "
+            "client's own estate cannot be read and no account can be "
+            "cleared. A lead that cannot be checked cannot be cleared")
+    chosen, collided = clear_of_collision(
+        eligible, a.limit, workspace_id=workspace_id)
+    print(f"collision-cleared {len(chosen)} contact(s); "
+          f"{len(collided)} rejected at the account level")
+    for rec, contact, why in collided[:8]:
+        print(f"  collision         {rec.get('id')}/{contact.get('key')}: "
+              f"{why[:96]}")
     print(f"cohort            {len(chosen)} contact(s)")
 
     touched, already, failed = [], [], []
