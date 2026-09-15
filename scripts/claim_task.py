@@ -137,13 +137,31 @@ def _alive(pid):
 
 
 def reap():
-    freed = []
+    """DISABLED BY DEFAULT, and the reason is worth reading.
+
+    The pid in a claim is the pid of the process that WROTE the claim. Claude
+    claims on a worker's behalf before launching it, so that process has
+    already exited by the time the worker starts real work. Every claim
+    therefore looks dead to a pid check, and an automatic reap would release
+    all eight claims while all eight workers were running - handing every task
+    to a second worker and reproducing the exact collision this module exists
+    to prevent, with more confidence.
+
+    Releasing a claim is consequently an EXPLICIT, per-task act:
+
+        py -3 scripts/claim_task.py --release TASK-099
+
+    The pool loop releases each claim when its own dispatch subshell exits,
+    which is the one place that genuinely knows the worker has finished.
+    """
+    print("REFUSED: --reap is disabled. The recorded pid belongs to the "
+          "claiming process, not the worker, so a pid check would report every "
+          "live claim as dead and release all of them.")
+    print("Release one deliberately: --release TASK-NNN")
     for c in held_claims():
-        if not _alive(c.get("pid")):
-            release(c["task"])
-            freed.append(c["task"])
-    print("reaped %d stale claim(s): %s" % (len(freed), ", ".join(freed) or "none"))
-    return CLAIM_OK
+        print("  held: %-10s by %-22s since %s"
+              % (c.get("task"), c.get("worker"), c.get("claimed_at")))
+    return CLAIM_ERROR
 
 
 def ready_tasks():
