@@ -240,7 +240,8 @@ LINKEDIN_DEFAULT_LADDER = (
     # the form, per TASK-087.
     "Close the loop. The sequence has done its work. Give them a graceful "
     "way to decline - make it easy to say no. Ask whether somebody else "
-    "owns this. No new pitch, no summary of what was said.",
+    "owns this. No new pitch, no summary of what was said. Do not "
+    "re-introduce yourself.",
 )
 
 LADDER_REGISTRY = {

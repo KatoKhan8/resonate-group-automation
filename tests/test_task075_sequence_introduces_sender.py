@@ -78,6 +78,42 @@ class LadderRungsReferenceThePrevious(unittest.TestCase):
         self.assertIn("close", low,
                        "rung 6 is not the close")
 
+    def test_rung_six_requires_a_graceful_exit(self):
+        """Rung 6 must give the prospect a graceful way to decline.
+
+        TASK-131: 58 of 69 sequences lacked an easy out. The fallback's
+        connected_4 says "happy to leave it here if the timing is wrong".
+        The brief must state this job.
+        """
+        p = self._purposes()[5]
+        low = p.lower()
+        self.assertIn("graceful", low,
+                       "rung 6 does not require a graceful exit")
+
+    def test_rung_six_requires_a_referral_ask(self):
+        """Rung 6 must ask whether somebody else owns this.
+
+        TASK-131: the fallback's connected_4 asks "is there someone else
+        who owns this?" The brief must state this job.
+        """
+        p = self._purposes()[5]
+        low = p.lower()
+        self.assertIn("somebody else", low,
+                       "rung 6 does not require a referral ask")
+
+    def test_rungs_two_through_six_forbid_reintroduction(self):
+        """Rungs 2-6 must not re-introduce the sender.
+
+        TASK-131: every LinkedIn message opened "hi [name], ivan here/from
+        Productive". The sender was identified at rung 1; rungs 2-6 must
+        not repeat it.
+        """
+        purposes = self._purposes()
+        for i in range(1, 6):
+            low = purposes[i].lower()
+            self.assertIn("re-introduce", low,
+                          f"rung {i+1} does not forbid re-introducing sender")
+
     def test_all_six_rungs_are_distinct(self):
         """No two rungs have the same text."""
         purposes = self._purposes()
