@@ -70,6 +70,14 @@ Rules
 - Missing evidence is never positive evidence, and score and confidence are
   different questions. A guessed timezone is worse than a missing one.
 
+OPERATOR-AUTHORIZATION-2026-09-15.md is the standing grant of autonomous
+production authority and the list of things that remain forbidden. Read it
+before deciding whether an action needs asking: --live is not by itself a
+reason to ask, and routine status updates are not wanted. It also carries
+the batch progression (3 -> 10 -> 25 -> 50 -> larger, each gated on
+readback) and how success is measured, which is live leads rather than
+tasks completed.
+
 Durable state: GitHub is the source of truth, 2026-09-15
 
 Set after an unplanned shutdown destroyed a night's terminal state and very
