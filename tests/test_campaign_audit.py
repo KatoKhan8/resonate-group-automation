@@ -229,9 +229,26 @@ class TestNoDirectProviderMutation(CampaignTest):
         self.assertFalse(
             providerwrites.is_supported(providerwrites.LINKEDIN_ACTIVATE))
         for operation, (_channel, facing, _why) in                 providerwrites.OPERATIONS.items():
-            if facing:
-                self.assertFalse(providerwrites.is_supported(operation),
-                                 operation)
+            # NARROWED, TASK-137. This asserted that NOTHING
+            # prospect-facing was supported - true of a system that
+            # had never written to a prospect, and unable to tell
+            # staging a lead into a campaign that cannot send apart
+            # from sending somebody a message. The first is how the
+            # second becomes possible safely. The property that has
+            # to hold now: no prospect-facing verb is enabled without
+            # a condition deciding, per write, whether it reaches
+            # anyone. `heyreach.add_lead` has one; the activate verbs
+            # have none and so can never be admitted.
+            if not facing:
+                continue
+            if providerwrites.is_supported(operation):
+                self.assertTrue(
+                    providerwrites.is_conditional(operation),
+                    operation)
+            else:
+                self.assertFalse(
+                    providerwrites.is_conditional(operation),
+                    operation)
 
 
 class TestStateIsResumable(CampaignTest):

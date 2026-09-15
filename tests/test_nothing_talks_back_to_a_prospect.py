@@ -87,21 +87,45 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
           bison.set_sequence      writes copy into a campaign that is stopped
           heyreach.set_sequence   writes copy into a campaign with no list,
                                   no leads, and no verb that can start it
+          heyreach.add_lead       stages a person into a campaign the
+                                  provider has just confirmed cannot send -
+                                  and is REFUSED against any campaign that
+                                  can. This is the first entry whose safety
+                                  is a property of the destination rather
+                                  than of the verb, which is why it needed
+                                  `CONDITIONAL` and not just a place in the
+                                  tuple
 
         Enumerated rather than derived, so adding one stays a decision. The
-        assertion that actually guards this file is the loop below: nothing
-        prospect-facing is supported, whatever the list says.
+        assertion that actually guards this file is the loop below.
         """
         from src import providerwrites as pw
         self.assertEqual(
             providerwrites.SUPPORTED,
             (pw.LINKEDIN_PAUSE, pw.EMAIL_PAUSE, pw.EMAIL_STOP_LEAD,
              pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE,
-             pw.LINKEDIN_SET_SEQUENCE))
+             pw.LINKEDIN_SET_SEQUENCE, pw.LINKEDIN_ADD_LEAD))
         for operation, (_channel, prospect_facing, _why) in                 providerwrites.OPERATIONS.items():
-            if prospect_facing:
-                self.assertFalse(providerwrites.is_supported(operation),
-                                 operation)
+            # NARROWED, TASK-137. This asserted that NOTHING
+            # prospect-facing was supported - true of a system that
+            # had never written to a prospect, and unable to tell
+            # staging a lead into a campaign that cannot send apart
+            # from sending somebody a message. The first is how the
+            # second becomes possible safely. The property that has
+            # to hold now: no prospect-facing verb is enabled without
+            # a condition deciding, per write, whether it reaches
+            # anyone. `heyreach.add_lead` has one; the activate verbs
+            # have none and so can never be admitted.
+            if not prospect_facing:
+                continue
+            if providerwrites.is_supported(operation):
+                self.assertTrue(
+                    providerwrites.is_conditional(operation),
+                    operation)
+            else:
+                self.assertFalse(
+                    providerwrites.is_conditional(operation),
+                    operation)
 
 
 class NoModelIsAskedWhatToSayBack(unittest.TestCase):
