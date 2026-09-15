@@ -158,7 +158,7 @@ Exit code read from process: 1 (one failure remains - the real leak).
 ### RESULT BLOCK
 
 STATUS: PARTIAL - two stale tests fixed, one real leak escalated
-COMMIT SHA: pending
+COMMIT SHA: c085b48
 TESTS: 10 pass, 1 fail (the real leak - test working as designed)
 FILES CHANGED: tests/test_fixture_hygiene.py, tests/test_task062_failing_sibling_excluded.py
 FINDINGS: See escalation above. Real prospect and person names in 8 tracked files.
