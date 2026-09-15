@@ -85,3 +85,45 @@ authorising if they enabled the write.
 - Separate OBSERVATIONS (with n), HYPOTHESES, and PROVEN LEARNINGS. Leave
   PROVEN LEARNINGS empty if nothing survives a sample-size objection. TASK-059
   left it empty and was right to.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** (pending)
+
+**TESTS:** Analysis script `scripts/task101_lead_batch.py` reads the snapshot and runs the full pipeline. No unit tests were written because this is an analysis task, not a code change. The script is the verification - run it and the numbers match the report.
+
+**FILES CHANGED:**
+- `docs/TASK-101-LEAD-BATCH-REPORT.md` - tracked report with funnel counts and every drop reason
+- `scripts/task101_lead_batch.py` - analysis script that produces the batch and report
+- `work/task101_batch.json` - the batch file (gitignored, operational artefact)
+
+**FINDINGS:**
+
+1. **The cohort is 70 on paper but 46 in practice.** TASK-096 identified economic_buyer as the largest cohort at 70 contacts with email. After the full pipeline, 46 survive all gates. The drop-off is 24 contacts (34.3%).
+
+2. **The binding constraint is verification, not cohort size.** 19 of 70 contacts (27.1%) dropped at the exclusion step, ALL because `contact.sendable` is False. Their verification states: 8 unknown (never verified), 6 accept_all_uncleared (catch-all domain not cleared by Reoon), 4 no verification data, 1 held (verifiers disagree). Zero were blocked by engagement history, suppression, DNC, bounce, or meeting.
+
+3. **Zero cross-campaign duplicates.** All 70 contacts have `campaign_ids = []`. None are already in any of the 83 campaigns. The dedupe stage dropped zero.
+
+4. **Zero personalisation failures.** All 51 sendable contacts have 100% coverage on every required merge field. No fallbacks were needed.
+
+5. **Zero greeting defects.** All 51 leads passed greeting proof across all their email steps (~230 bodies checked). No "undefined", "null", missing names, or cohort-name-as-person-name.
+
+6. **Five contacts dropped at quality gates because generation never reached them.** Three have no cadence at all, two have LinkedIn-only cadences. This is a generation gap, not a quality failure of existing copy.
+
+7. **The batch of 46 is below the 50-lead target.** To reach 50, the operator would need to: (a) spend verification credits on the 19 dropped contacts (estimated 19 credits), and/or (b) generate cadences for the 5 contacts that lack them.
+
+**RISKS:**
+
+- The batch is 46, not 50. The task says "do not pad it to reach 50" and the batch is honest at 46.
+- `heyreach.add_lead` is NOT in `providerwrites.SUPPORTED`. Enabling it is an operator decision. The batch is ready but the write path is not open.
+- The 19 verification failures are recoverable with credits but that is a cost decision, not an engineering one.
+
+**RECOMMENDED CLAUDE ACTION:**
+
+1. Review the report at `docs/TASK-101-LEAD-BATCH-REPORT.md`.
+2. Decide whether to spend verification credits on the 19 dropped contacts to grow the batch toward 50+.
+3. Decide whether to enable `heyreach.add_lead` in `providerwrites.SUPPORTED` to allow the write.
+4. Generate cadences for the 5 contacts that lack them if the batch is to be expanded.
