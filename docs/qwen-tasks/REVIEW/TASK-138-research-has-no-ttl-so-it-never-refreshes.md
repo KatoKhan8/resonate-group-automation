@@ -86,3 +86,84 @@ why that number is the right one.
 The rule, wired into `why()`, tests driven through `why()`, the counterfactual
 (delete the call, watch the right test fail), the grep output, and the
 re-crawl count with its reasoning.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT: 0212155
+TESTS: 23 new tests in tests/test_research_ttl.py, all passing. 72 research-
+       related tests pass. 80 invariants tests pass.
+FILES CHANGED:
+  - src/research.py: added TTL system, modified why() and for_prompt()
+  - tests/test_research_ttl.py: new test module
+
+FINDINGS:
+
+The rule, wired into `why()`:
+
+    LONG_LIVED_TTL_DAYS = 30   # company_website, about, team
+    SHORT_LIVED_TTL_DAYS = 7   # careers, blog, news
+
+    def aged_out_entries(rec, today=None):
+        # Returns rows past their field's TTL
+
+    def why(rec, verdict=None, today=None):
+        existing = existing_evidence(rec)
+        if existing:
+            stale = aged_out_entries(rec, today=today)  # THE CALL
+            if stale:
+                return NEED_REFRESH_EVIDENCE
+            return None
+
+`age_of_entry(entry)` computes from `retrieved_at`, not the NULL `age_days`
+column. `for_prompt()` now includes the computed `age_days`, proving something
+reads it.
+
+The counterfactual: deleted the `aged_out_entries` call from `why()`, four
+tests failed:
+  - test_careers_page_eight_days_old_triggers_refresh
+  - test_news_page_eight_days_old_triggers_refresh
+  - test_blog_page_eight_days_old_triggers_refresh
+  - test_mixed_fresh_and_stale_triggers_refresh
+
+The grep output:
+
+    $ grep -rn "aged_out_entries\|age_of_entry\|ttl_for_field\|NEED_REFRESH_EVIDENCE" src/
+    src/research.py:27:NEED_REFRESH_EVIDENCE = "public_evidence_stale_and_due_for_refresh"
+    src/research.py:48:def ttl_for_field(field):
+    src/research.py:59:def age_of_entry(entry, today=None):
+    src/research.py:92:def aged_out_entries(rec, today=None):
+    src/research.py:101:        age = age_of_entry(entry, today)
+    src/research.py:105:        ttl = ttl_for_field(field)
+    src/research.py:156:           NEED_REFRESH_EVIDENCE)
+    src/research.py:199:        stale = aged_out_entries(rec, today=today)
+    src/research.py:201:            return NEED_REFRESH_EVIDENCE
+    src/research.py:538:            "age_days": age_of_entry(entry, today=today),
+
+Callers that are not definitions:
+  - `why()` calls `aged_out_entries()` at line 199
+  - `aged_out_entries()` calls `age_of_entry()` at line 101
+  - `aged_out_entries()` calls `ttl_for_field()` at line 105
+  - `for_prompt()` calls `age_of_entry()` at line 538
+
+Re-crawl count on the estate (snapshot 2026-09-14T21:52:15Z from master 0ac5e60):
+
+    0 of 203 records would re-crawl today (2026-09-15)
+
+This is the right number because:
+  - All 695 evidence rows are long-lived fields: company_website (478),
+    about (133), team (22), or missing field defaulting to long-lived (61)
+  - No careers, blog, or news rows exist in the estate
+  - The oldest evidence is 8 days old, well under the 30-day long-lived TTL
+  - The TTL would only trigger re-crawl when short-lived evidence (careers,
+    blog, news) ages past 7 days, or long-lived evidence ages past 30 days
+
+The rule is conservative: it does not re-crawl unnecessarily, but it WILL
+re-crawl when a hiring signal or announcement goes stale.
+
+RISKS: None identified. The TTL is configurable via the constants at the top
+of src/research.py. The change is backward-compatible: `why()` accepts the
+new `today` parameter as optional, defaulting to the wall clock.
+
+RECOMMENDED CLAUDE ACTION: Review and integrate. The change is small, focused,
+and proven by tests driven through the production entry point.
