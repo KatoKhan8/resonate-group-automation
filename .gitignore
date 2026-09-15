@@ -71,3 +71,4 @@ Thumbs.db
 batches/productive-*.csv
 batches/*_SAFE_INPUT.zip
 work/claims/
+work/worktree-locks/
