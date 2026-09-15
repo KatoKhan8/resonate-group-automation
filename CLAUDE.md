@@ -92,6 +92,20 @@ the secrets supplied separately, must be able to read the repository and say
 what happened and what to do next.** Anything that fails that test is not
 state, it is scrollback.
 
+- **Push after every integrated unit, and VERIFY THE REMOTE.** Reviewed +
+  integrated + tested is the trigger, not end of session, not /clear, not a
+  handoff, not overnight completion. `git push` then confirm
+  `git rev-parse master origin/master` agree - a push that failed silently
+  leaves the work exactly as lost as never committing it.
+- **A running or unreviewed worker branch is NOT merged early to make it
+  durable.** Push it to its own branch and leave it there. Durability and
+  integration are different problems and conflating them puts unreviewed work
+  on master.
+- **Git holds what reconstructs the system**: code, tests, docs, config
+  SCHEMAS, checkpoint and handoff state. Production runtime state and
+  sensitive datasets get their own durable storage and never git - `work/` is
+  gitignored for exactly this reason, and the intake batches under
+  `batches/productive-*.csv` with them.
 - Commit and push continuously: production code, tests, configuration without
   secrets, CLAUDE.md, QWEN.md, task definitions, task results, architecture
   decisions, provider findings, historical-learning findings, classifier and
