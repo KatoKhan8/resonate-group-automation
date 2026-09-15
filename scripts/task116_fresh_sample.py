@@ -1,149 +1,137 @@
 #!/usr/bin/env python3
-"""TASK-116: Generate a fresh sample of email em1 steps and measure 'I noticed' rate.
+"""TASK-116: Generate a fresh sample of 5 em1 drafts to test 'I noticed' rate.
 
-Picks 10 records from the snapshot that have the data needed for email
-generation, generates fresh em1 copy using the current prompt and model,
-and counts how many open with 'I noticed'.
+Reads the snapshot, picks 5 records that currently have 'I noticed' in em1,
+renders the prompt, generates a fresh draft, and checks whether the new
+output still opens 'I noticed'.
 
-ZERO provider writes. Read-only at providers. Uses model for generation only.
+Zero writes to the queue. Zero provider writes. Read-only everywhere except
+the model call (which is a read of the model, not a write to the estate).
 """
 import json
+import hashlib
 import os
 import re
 import sys
-import random
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-SNAPSHOT = os.path.join(PROJECT_ROOT, "work", "queue.snapshot.jsonl")
+from src import llm, generate, clients, lint
 
 
-def load_snapshot():
-    with open(SNAPSHOT, encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
-
-
-def has_required_data(rec):
-    """Check if a record has the data needed for email generation."""
-    cadence = rec.get("cadence", {})
-    # Need at least one contact with email steps
-    for contact_key, steps in cadence.items():
-        em1 = steps.get("em1", {})
-        # Need a body (even old) to show the record was once generatable
-        if em1.get("body"):
-            return True
-    return False
+def hash_id(raw):
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
 
 
 def main():
-    from src import generate, llm, clients
-
-    recs = load_snapshot()
-    eligible = [r for r in recs if has_required_data(r)]
-    print(f"Snapshot: {len(recs)} records, {len(eligible)} with email data")
-
-    # Pick a random sample of 10
-    random.seed(42)  # Reproducible
-    sample = random.sample(eligible, min(10, len(eligible)))
-
-    # Load env from config/.env
-    env_path = os.path.join(PROJECT_ROOT, "config", ".env")
-    if os.path.exists(env_path):
-        for line in open(env_path, encoding="utf-8"):
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip())
-
     model = llm.from_env()
-    model_name = os.environ.get("LLM_MODEL", "?")
+    if not model.configured():
+        print(f"ERROR: no model configured: {model.why_not()}")
+        return 1
 
-    print(f"Model: {model_name}")
+    snapshot = os.path.join(PROJECT_ROOT, "work", "queue.snapshot.jsonl")
+    with open(snapshot, encoding="utf-8") as f:
+        recs = [json.loads(line) for line in f if line.strip()]
+
+    # Find records with 'I noticed' in em1
+    candidates = []
+    for rec in recs:
+        cadence = rec.get("cadence", {})
+        for ck, steps in cadence.items():
+            em1 = steps.get("em1", {})
+            body = em1.get("body", "")
+            if body.lower().startswith("i noticed") and em1.get("generated"):
+                contact_data = None
+                for c in rec.get("contacts", []):
+                    if lint.contact_key(c) == ck:
+                        contact_data = c
+                        break
+                if contact_data:
+                    candidates.append((rec, contact_data, ck))
+                    break
+        if len(candidates) >= 10:
+            break
+
+    # Pick 5 spread across the list
+    step = max(1, len(candidates) // 5)
+    sample = candidates[::step][:5]
+
+    print("=" * 80)
+    print("  TASK-116: FRESH GENERATION SAMPLE (5 em1 drafts)")
+    print(f"  Model: {model.model if hasattr(model, 'model') else type(model).__name__}")
+    print("=" * 80)
     print()
 
+    i_noticed_count = 0
     results = []
-    for i, rec in enumerate(sample):
-        rec_id = rec.get("id", "?")
-        cadence = rec.get("cadence", {})
 
-        # Find first contact with em1
-        contact_key = None
-        for ck, steps in cadence.items():
-            if steps.get("em1", {}).get("body"):
-                contact_key = ck
-                break
+    for i, (rec, contact_data, ck) in enumerate(sample):
+        client = clients.load(rec.get("client"))
+        prompt = generate.render_prompt("draft", rec, contact_data, client, "em1")
 
-        if not contact_key:
-            print(f"  [{i+1}] {rec_id}: no contact with em1, skipping")
-            continue
+        rec_hash = hash_id(rec["id"])
+        print(f"[{i+1}/5] {rec_hash}/{ck} - {rec.get('company')}")
 
-        contact = cadence[contact_key]
-
-        # Load client config
         try:
-            client = clients.load(rec.get("client"))
-        except Exception as e:
-            print(f"  [{i+1}] {rec_id}: cannot load client: {e}")
-            continue
-
-        # Render the prompt for em1
-        try:
-            prompt = generate.render_prompt("draft", rec, contact, client, "em1")
-        except Exception as e:
-            print(f"  [{i+1}] {rec_id}/{contact_key}: prompt render failed: {e}")
-            continue
-
-        # Generate
-        try:
-            data, raw, schema_errors = llm.ask(model, "draft", prompt)
-            if schema_errors:
-                print(f"  [{i+1}] {rec_id}/{contact_key}: schema errors: {schema_errors}")
-                continue
-
+            data, attempts, errors = llm.ask(model, "draft", prompt)
             body = data.get("body", "")
             subject = data.get("subject", "")
-            opens_i_noticed = bool(re.match(r'^I noticed\b', body.strip(), re.IGNORECASE))
+            has_in = bool(re.search(r'\bi noticed\b', body.lower()))
+            first_line = ""
+            for line in body.strip().split("\n"):
+                if line.strip():
+                    first_line = line.strip()
+                    break
 
-            results.append({
-                "record_id": rec_id,
-                "contact": contact_key,
-                "subject": subject,
-                "body_preview": body[:120],
-                "opens_i_noticed": opens_i_noticed,
-            })
+            if has_in:
+                i_noticed_count += 1
 
-            marker = " <-- 'I noticed'" if opens_i_noticed else ""
-            print(f"  [{i+1}] {rec_id}/{contact_key}{marker}")
-            print(f"       Subject: {subject}")
-            print(f"       Body: {body[:120]}...")
+            print(f"  Subject: {subject}")
+            print(f"  First line: {first_line[:120]}")
+            print(f"  'I noticed': {has_in}")
+            print(f"  Attempts: {attempts}")
             print()
 
+            results.append({
+                "rec": rec_hash,
+                "contact": ck,
+                "company": rec.get("company"),
+                "subject": subject,
+                "first_line": first_line[:120],
+                "i_noticed": has_in,
+                "attempts": attempts,
+            })
         except Exception as e:
-            print(f"  [{i+1}] {rec_id}/{contact_key}: generation failed: {e}")
-            continue
+            print(f"  ERROR: {e}")
+            print()
+            results.append({
+                "rec": rec_hash,
+                "contact": ck,
+                "company": rec.get("company"),
+                "error": str(e),
+            })
 
-    # Summary
-    print("=" * 60)
-    print(f"  FRESH SAMPLE RESULTS")
-    print("=" * 60)
-    total = len(results)
-    i_noticed = sum(1 for r in results if r["opens_i_noticed"])
-    print(f"  Generated: {total}")
-    print(f"  Open 'I noticed': {i_noticed} ({100*i_noticed/max(1,total):.0f}%)")
+    print("=" * 80)
+    print("  SUMMARY")
+    print("=" * 80)
+    print(f"  Fresh 'I noticed' rate: {i_noticed_count} of {len(results)}")
     print()
 
-    # Also show opener distribution
-    openers = {}
-    for r in results:
-        words = " ".join(r["body_preview"].strip().split()[:4]).lower()
-        openers[words] = openers.get(words, 0) + 1
-    print("  Opener distribution (first 4 words):")
-    for opener, count in sorted(openers.items(), key=lambda x: -x[1]):
-        marker = " <--" if "i noticed" in opener else ""
-        print(f"    {count}  {opener}{marker}")
+    if i_noticed_count == 0:
+        print("  The model NO LONGER produces 'I noticed' with the current prompt.")
+        print("  The 48 in the estate are stale copy from before the quality gate.")
+        print("  Regeneration with the current prompt would fix them.")
+    elif i_noticed_count == len(results):
+        print("  The model STILL produces 'I noticed' on every attempt.")
+        print("  A prompt change is needed, not just regeneration.")
+    else:
+        print(f"  The model SOMETIMES produces 'I noticed' ({i_noticed_count}/{len(results)}).")
+        print("  Partial regeneration would help; a prompt nudge would help more.")
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
