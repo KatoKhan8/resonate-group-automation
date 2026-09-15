@@ -28,11 +28,11 @@ from src import cadencelibrary, clients, generate, llm, store
 
 RESULTS_PATH = os.path.join(tempfile.gettempdir(),
                             "task065-scratch", "results_bcd.json")
-RECORD_IDS = ['ogpartner-dk', 'nineyards-ie', '16kagency-com', '1gslab-com',
-              '2020companies-com', '20northmarketing-com', '25wat-com',
-              '28row-com', '321webmarketing-com', '4cite-com', '4thwhale-com',
-              '5bonsai-com', '5p-retail-be', 'anewagencyworld-com',
-              'aubryandco-com']
+RECORD_IDS = ['ogpartner-dk', '<client-82e1d9>-ie', '16kagency-com', '1gslab-com',
+              '2020companies-com', '<client-5144f9>-com', '25wat-com',
+              '<client-abb4a2>-com', '<client-cf34bf>-com', '4cite-com', '4thwhale-com',
+              '5bonsai-com', '5p-retail-be', '<client-e003e4>-com',
+              '<client-c67745>-com']
 
 
 def pick_records(recs):

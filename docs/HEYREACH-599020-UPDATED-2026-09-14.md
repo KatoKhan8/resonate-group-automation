@@ -45,7 +45,7 @@ door that was open, and it is the one that was used.
 ## HOW THE BLOCKER WAS ACTUALLY CLEARED
 
 Not by weakening a gate. The dry run refused for hours on
-`adcuratio-com/ranjan-damodar`, whose six LinkedIn notes asked the same
+`<client-a86dfd>-com/ranjan-damodar`, whose six LinkedIn notes asked the same
 question four times in different words.
 
 `generate.plan` regenerated ONE note at a time, so each candidate was compared
