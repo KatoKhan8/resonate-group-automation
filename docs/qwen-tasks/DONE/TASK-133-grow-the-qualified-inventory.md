@@ -66,3 +66,57 @@ counted, **the LinkedIn-reachable number stated separately from the
 email-reachable one**, the verification cost and expected yield for the 21, and
 a plain answer to "how many qualified leads could this estate support if we
 spent what it takes".
+
+## RESULT
+
+STATUS: DONE
+COMMIT: 19250c0
+TESTS: N/A — analysis task, no code changes to production modules
+FILES CHANGED:
+  - docs/INVENTORY-CEILING-2026-09-15.md (deliverable)
+  - scripts/task133_inventory_ceiling.py (analysis script)
+  - scripts/task133_detail.py (detailed breakdown script)
+  - scripts/task133_12records.py (12 contactless records script)
+
+FINDINGS:
+
+**THE KEY FINDING: LinkedIn changes the entire picture.**
+
+All 92 primary contacts carry a LinkedIn URL (100%). The estate is NOT
+inventory-limited on the LinkedIn channel. The email verification ceiling
+TASK-096 identified matters only for email.
+
+| Channel | Economic buyers | All personas |
+|---------|----------------|-------------|
+| LinkedIn (HeyReach) | 72 | 92 |
+| Email (EmailBison) | 51 | 56 |
+
+**The 21 "lost" economic_buyers are not lost for HeyReach.**
+
+The 21 break down as: 13 unknown verdict, 6 accept_all_uncleared, 2 no email.
+Re-verifying the 13 unknowns costs 13-26 credits and may recover 5-10.
+The 6 accept_all are a domain property and re-spending is likely waste.
+The 2 with no email need email discovery first (additional cost).
+
+**85 records have no contacts:**
+- 39 domain unstaffed (people-count=0) — nobody to find
+- 46 ICP-blocked (geo, size, or both) — structurally ineligible
+- 12 passed ICP, people exist, decision-makers never run — recoverable at
+  ~120 credits (12 × 10 for decision-makers)
+
+**Champion cohort cannot reach 50** by any mechanism (5 sendable + 9 unknown = 14 max).
+
+**Plain answer:** The estate supports 72 economic_buyers on LinkedIn today
+and 51 on email. With ~133-146 credits of spend, email could reach ~60-69.
+LinkedIn is already at 72 and is not limited by verification.
+
+RISKS:
+- Recovery estimates (5-10 from 13 unknowns) are extrapolated, not measured
+- The 12 contactless records may produce zero economic_buyers from discovery
+- Accept-all domains may partially resolve with Reoon, but evidence is thin
+
+RECOMMENDED CLAUDE ACTION:
+- Use the LinkedIn-reachable 72 as the HeyReach cohort ceiling
+- Decide whether the 13-26 credit verification spend is worth it for email
+- The 12 contactless ICP-passed records are low-hanging fruit for discovery
+  if person-discovery budget allows (~120 credits)
