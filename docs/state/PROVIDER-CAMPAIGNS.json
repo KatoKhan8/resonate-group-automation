@@ -1,10 +1,42 @@
 {
-  "generated_at": "2026-09-16T08:24:19+00:00",
+  "generated_at": "2026-09-16T13:20:59+00:00",
   "source": "HeyReach public API, read-only. Credential env var: HEYREACH_KEY.",
   "heyreach": {
-    "campaigns_total_in_account": 83,
-    "campaigns_created_by_resonate": 1,
+    "campaigns_total_in_account": 84,
+    "campaigns_created_by_resonate": 2,
     "resonate_campaigns": [
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 604869,
+        "name": "RESONATE - PRODUCTIVE LINKEDIN CANARY - CONTROL",
+        "status": "DRAFT",
+        "classification": "CREATED_BUT_INCOMPLETE",
+        "created": "2026-09-16T13:20:25.548645Z",
+        "started_at": null,
+        "lead_list_id": 940797,
+        "lead_list_name": "RESONATE - STAGING PROBE - DO NOT USE",
+        "lead_count": 0,
+        "list_detail": {
+          "id": 940797,
+          "name": "RESONATE - STAGING PROBE - DO NOT USE",
+          "count": 1,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174892,
+            "name_hash": "d7b929fb95a5",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": false,
+          "error": "heyreach /campaign/GetCampaignSequence: unexpected response shape"
+        },
+        "last_provider_readback": "2026-09-16T13:20:59+00:00"
+      },
       {
         "internal_campaign_id": "productive-linkedin-production-v1",
         "heyreach_campaign_id": 599020,
@@ -68,13 +100,13 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-16T08:24:19+00:00"
+        "last_provider_readback": "2026-09-16T13:20:59+00:00"
       }
     ],
     "status_totals": {
+      "DRAFT": 8,
       "FINISHED": 32,
       "PAUSED": 32,
-      "DRAFT": 7,
       "IN_PROGRESS": 12
     },
     "linkedin_accounts_available": 41
