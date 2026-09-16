@@ -136,7 +136,20 @@ Begin with the git mv."
   # never be the thing that loses a result. A failure here is not fatal - the
   # worker is told to push after every result and usually already has - but it
   # is the last chance to catch one that did not.
-  ( cd "$d" && git push -q origin "$br" 2>/dev/null
+  # PUSH THE BRANCH THE WORKTREE IS ACTUALLY ON, NOT THE ONE WE ARE ABOUT TO
+  # CREATE. `$br` is the NEW round's branch, which usually does not exist yet,
+  # so this safety push was a silent no-op for every worker carrying finished
+  # work on a PREVIOUS round's branch.
+  #
+  # Measured 2026-09-16: TASK-169, TASK-170 and TASK-172 all finished, all
+  # committed, none pushed. They survived because `checkout -B` creates the new
+  # branch rather than deleting the old one, so the commits were still on
+  # `qwen-worker-r24`, `qwen-worker-3-r24` and `qwen-worker-5-r25` locally - and
+  # they were found by hand. `_claimed_on_a_branch` scans REMOTE refs, so an
+  # unpushed result is also invisible to the collision detector, which is how
+  # TASK-164 came to be dispatched twice.
+  ( cd "$d" && cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+    [ -n "$cur" ] && [ "$cur" != "HEAD" ] && git push -q origin "$cur" 2>/dev/null
     git checkout -q -B "$br" master 2>/dev/null
     QWEN_CODE_SUPPRESS_YOLO_WARNING=1 "$QWEN" --approval-mode yolo "$prompt" \
       > "$LOGS/$wt.$ROUND.log" 2>&1
