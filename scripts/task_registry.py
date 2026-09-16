@@ -64,6 +64,51 @@ def git(*args):
         return ""
 
 
+def extract_sha(text):
+    """Pull the COMMIT SHA from a result block, if present."""
+    m = re.search(r"COMMIT\s*SHA:?\s*([0-9a-f]{7,40})", text, re.I | re.M)
+    return m.group(1) if m else None
+
+
+def sha_on_master(sha):
+    """True if sha exists and is an ancestor of master."""
+    if not sha:
+        return None
+    cat = git("cat-file", "-t", sha)
+    if cat != "commit":
+        return None
+    r = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", sha, "master"],
+        cwd=ROOT, capture_output=True, text=True, timeout=60,
+    )
+    return r.returncode == 0
+
+
+def files_on_master(task_id, text):
+    """Check whether any file the result block names landed on master.
+
+    Looks for lines like 'docs/FOO.md (new)' or 'src/bar.py (modified)'
+    in the FILES CHANGED section, then checks git log master for each.
+    """
+    files_section = re.search(
+        r"FILES\s+CHANGED:?\s*\n(.*?)(?:\n\s*\n|\n[A-Z]{2,}|\Z)",
+        text, re.S | re.M,
+    )
+    if not files_section:
+        return None
+    candidates = []
+    for line in files_section.group(1).splitlines():
+        line = line.strip().lstrip("- ")
+        m = re.match(r"(`?)(\S+?\.\w+)", line)
+        if m:
+            candidates.append(m.group(2))
+    for f in candidates[:5]:
+        log = git("log", "--oneline", "master", "--", f)
+        if log:
+            return True
+    return False if candidates else None
+
+
 def parse(path):
     """PRIORITY and DEPENDS from the file; the RESULT BLOCK's own verdict."""
     try:
@@ -81,10 +126,12 @@ def parse(path):
     m = re.search(r"^DEPENDS:[ \t]*(.*)$", text, re.M)
     out["dependencies"] = ([d.strip() for d in m.group(1).split(",") if d.strip()]
                            if m else [])
-    if "RESULT BLOCK" in text:
+    if "RESULT BLOCK" in text or "RESULT\n" in text:
         m = re.search(r"STATUS:?\s*\**\s*([A-Z_][A-Z_ ]*)", text)
         out["result"] = m.group(1).strip() if m else "REPORTED"
         out["review_status"] = "PENDING"
+        out["_sha"] = extract_sha(text)
+        out["_text"] = text
     else:
         out["result"] = None
         out["review_status"] = "NOT_SUBMITTED"
@@ -114,7 +161,7 @@ def main():
             # a second worker must not take it, even though the file has not
             # moved yet.
             eff = "CLAIMED" if (status == "QUEUED" and claim) else status
-            tasks.append({
+            entry = {
                 "task": tid,
                 "file": rel,
                 "status": eff,
@@ -126,7 +173,23 @@ def main():
                 "branch": None,
                 "result": meta.get("result"),
                 "review_status": meta.get("review_status"),
-            })
+            }
+            # For REVIEW tasks, check whether the work has landed on master.
+            # This splits AWAITING_REVIEW into two actionable states:
+            #   verified_on_master=true  — work is merged, result block awaits review
+            #   verified_on_master=false — work has NOT landed yet
+            #   verified_on_master=null  — no result block or cannot determine
+            if status == "REVIEW" and meta.get("_sha"):
+                on_master = sha_on_master(meta["_sha"])
+                if on_master is False:
+                    on_master = files_on_master(tid, meta.get("_text", ""))
+                entry["verified_on_master"] = on_master
+                entry["claimed_sha"] = meta["_sha"]
+            elif status == "REVIEW":
+                entry["verified_on_master"] = files_on_master(
+                    tid, meta.get("_text", "")
+                )
+            tasks.append(entry)
 
     done = {t["task"] for t in tasks if t["status"] == "DONE"}
     for t in tasks:

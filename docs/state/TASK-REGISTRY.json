@@ -1,16 +1,16 @@
 {
-  "generated_at": "2026-09-16T05:23:16+00:00",
+  "generated_at": "2026-09-16T05:29:17+00:00",
   "generated_from": "docs/qwen-tasks/**, git, and work/claims/. Derived, never hand-edited.",
   "branch_blindness": "This registry reads master only. Tasks finished on worker branches but not yet integrated into master appear as QUEUED here but are actually done. Run scripts/task173_scan.py --unintegrated to see the set that this registry cannot see.",
-  "master_head": "b803758",
+  "master_head": "8db8685",
   "counts": {
-    "QUEUED": 4,
-    "CLAIMED": 2,
-    "AWAITING_REVIEW": 12,
+    "QUEUED": 5,
+    "RUNNING": 1,
+    "AWAITING_REVIEW": 1,
     "BLOCKED": 2,
-    "DONE": 166
+    "DONE": 177
   },
-  "ready_count": 4,
+  "ready_count": 5,
   "workers": 8,
   "backlog_healthy": false,
   "tasks": [
@@ -31,11 +31,11 @@
     {
       "task": "TASK-182",
       "file": "docs/qwen-tasks/TODO/TASK-182-the-adapter-pins-a-deprecated-endpoint.md",
-      "status": "CLAIMED",
+      "status": "QUEUED",
       "stage_dir": "TODO",
       "priority": "P0",
-      "worker": "resonate-qwen-6",
-      "claimed_at": "2026-09-16T05:12:42+00:00",
+      "worker": null,
+      "claimed_at": null,
       "dependencies": [],
       "branch": null,
       "result": null,
@@ -45,11 +45,11 @@
     {
       "task": "TASK-185",
       "file": "docs/qwen-tasks/TODO/TASK-185-one-credit-against-twenty-cents.md",
-      "status": "CLAIMED",
+      "status": "QUEUED",
       "stage_dir": "TODO",
       "priority": "P0",
-      "worker": "resonate-qwen-4",
-      "claimed_at": "2026-09-16T05:18:45+00:00",
+      "worker": null,
+      "claimed_at": null,
       "dependencies": [],
       "branch": null,
       "result": null,
@@ -86,9 +86,9 @@
     },
     {
       "task": "TASK-188",
-      "file": "docs/qwen-tasks/TODO/TASK-188-eleven-results-nobody-signed-off.md",
-      "status": "QUEUED",
-      "stage_dir": "TODO",
+      "file": "docs/qwen-tasks/RUNNING/TASK-188-eleven-results-nobody-signed-off.md",
+      "status": "RUNNING",
+      "stage_dir": "RUNNING",
       "priority": "P2",
       "worker": null,
       "claimed_at": null,
@@ -109,160 +109,6 @@
       "dependencies": [],
       "branch": null,
       "result": "COMPLETE",
-      "review_status": "PENDING",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-155",
-      "file": "docs/qwen-tasks/REVIEW/TASK-155-the-cohorts-waiting-behind-the-canary.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P1",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-158",
-      "file": "docs/qwen-tasks/REVIEW/TASK-158-the-list-add-schema-heyreach-will-not-tell-us.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P0",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-162",
-      "file": "docs/qwen-tasks/REVIEW/TASK-162-send-company-evidence-once.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P1",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": "DONE",
-      "review_status": "PENDING",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-165",
-      "file": "docs/qwen-tasks/REVIEW/TASK-165-list-staging-is-the-primitive-we-were-told-did-not-exist.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P0",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-168",
-      "file": "docs/qwen-tasks/REVIEW/TASK-168-give-every-hold-a-reason-in-the-record.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P1",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-169",
-      "file": "docs/qwen-tasks/REVIEW/TASK-169-the-cheapest-order-to-campaign-ready.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P1",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-170",
-      "file": "docs/qwen-tasks/REVIEW/TASK-170-what-must-be-true-before-the-bison-write.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P0",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-171",
-      "file": "docs/qwen-tasks/REVIEW/TASK-171-move-the-316-through-the-free-path.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P0",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-175",
-      "file": "docs/qwen-tasks/REVIEW/TASK-175-which-lists-are-bound-and-which-are-safe.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P0",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-180",
-      "file": "docs/qwen-tasks/REVIEW/TASK-180-review-is-not-qualified.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P0",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-184",
-      "file": "docs/qwen-tasks/REVIEW/TASK-184-rehearse-the-campaign-write-against-a-fake.md",
-      "status": "AWAITING_REVIEW",
-      "stage_dir": "REVIEW",
-      "priority": "P0",
-      "worker": null,
-      "claimed_at": null,
-      "dependencies": [],
-      "branch": null,
-      "result": "DONE",
       "review_status": "PENDING",
       "blocked_by": []
     },
@@ -292,8 +138,8 @@
         "TASK-182"
       ],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "BLOCKED",
+      "review_status": "PENDING",
       "blocked_by": [
         "TASK-182"
       ]
@@ -308,8 +154,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -322,8 +168,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "REPORTED",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -336,8 +182,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -350,8 +196,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -364,8 +210,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -378,8 +224,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -392,8 +238,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -406,8 +252,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -420,8 +266,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -434,8 +280,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -448,8 +294,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -462,8 +308,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -476,8 +322,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -490,8 +336,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -504,8 +350,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -518,8 +364,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -532,8 +378,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -546,8 +392,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "REPORTED",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -588,8 +434,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -602,8 +448,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "REPORTED",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -616,8 +462,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "REPORTED",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -630,8 +476,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -644,8 +490,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "_AVAILABLE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -658,8 +504,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "REPORTED",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -672,8 +518,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "D",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -728,8 +574,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "REPORTED",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -742,8 +588,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "REPORTED",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -784,8 +630,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "REPORTED",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -826,8 +672,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -868,8 +714,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -896,8 +742,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -910,8 +756,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "REVIEW",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -924,8 +770,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -938,8 +784,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "REPORTED",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1498,8 +1344,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "REPORTED",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1526,8 +1372,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1554,8 +1400,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1568,8 +1414,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1596,8 +1442,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1610,8 +1456,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1624,8 +1470,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1638,8 +1484,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "REPORTED",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1652,8 +1498,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1668,8 +1514,8 @@
         "TASK-096"
       ],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1696,8 +1542,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1710,8 +1556,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1738,8 +1584,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1780,8 +1626,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1796,8 +1642,8 @@
         "TASK-092"
       ],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1824,8 +1670,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1868,8 +1714,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1882,8 +1728,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1910,8 +1756,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1924,8 +1770,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1952,8 +1798,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1966,8 +1812,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "FAIL",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -1994,8 +1840,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2022,8 +1868,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2036,8 +1882,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2050,8 +1896,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2064,8 +1910,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2106,8 +1952,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2120,8 +1966,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2134,8 +1980,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2176,8 +2022,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2204,8 +2050,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2218,8 +2064,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2232,8 +2078,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2260,8 +2106,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2274,8 +2120,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2290,8 +2136,8 @@
         "TASK-138"
       ],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2304,8 +2150,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2332,8 +2178,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2346,8 +2192,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2360,8 +2206,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2374,8 +2220,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2402,8 +2248,22 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-155",
+      "file": "docs/qwen-tasks/DONE/TASK-155-the-cohorts-waiting-behind-the-canary.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P1",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2416,8 +2276,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2430,8 +2290,22 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-158",
+      "file": "docs/qwen-tasks/DONE/TASK-158-the-list-add-schema-heyreach-will-not-tell-us.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2444,8 +2318,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2458,8 +2332,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2472,8 +2346,22 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-162",
+      "file": "docs/qwen-tasks/DONE/TASK-162-send-company-evidence-once.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P1",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2486,8 +2374,22 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-165",
+      "file": "docs/qwen-tasks/DONE/TASK-165-list-staging-is-the-primitive-we-were-told-did-not-exist.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2500,13 +2402,69 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
       "task": "TASK-167",
       "file": "docs/qwen-tasks/DONE/TASK-167-the-bison-payload-resolved-against-the-real-queue.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-168",
+      "file": "docs/qwen-tasks/DONE/TASK-168-give-every-hold-a-reason-in-the-record.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P1",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-169",
+      "file": "docs/qwen-tasks/DONE/TASK-169-the-cheapest-order-to-campaign-ready.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P1",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-170",
+      "file": "docs/qwen-tasks/DONE/TASK-170-what-must-be-true-before-the-bison-write.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-171",
+      "file": "docs/qwen-tasks/DONE/TASK-171-move-the-316-through-the-free-path.md",
       "status": "DONE",
       "stage_dir": "DONE",
       "priority": "P0",
@@ -2528,8 +2486,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2542,8 +2500,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2556,8 +2514,22 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-175",
+      "file": "docs/qwen-tasks/DONE/TASK-175-which-lists-are-bound-and-which-are-safe.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2570,8 +2542,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2584,8 +2556,8 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {
@@ -2617,6 +2589,20 @@
       "blocked_by": []
     },
     {
+      "task": "TASK-180",
+      "file": "docs/qwen-tasks/DONE/TASK-180-review-is-not-qualified.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
       "task": "TASK-181",
       "file": "docs/qwen-tasks/DONE/TASK-181-limit-does-not-limit-and-lane-does-not-scope.md",
       "status": "DONE",
@@ -2626,8 +2612,22 @@
       "claimed_at": null,
       "dependencies": [],
       "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-184",
+      "file": "docs/qwen-tasks/DONE/TASK-184-rehearse-the-campaign-write-against-a-fake.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     }
   ]
