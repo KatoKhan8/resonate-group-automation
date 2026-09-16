@@ -2126,12 +2126,17 @@ def add_leads_to_campaign(campaign_id, rows, linkedin_account_id):
     return _write_body("/campaign/AddLeadsToCampaignV2", body)
 
 
-def add_leads_to_list(list_id, rows):
+def add_leads_to_list(list_id, rows, extras=False):
     """Add leads to a LIST. Returns the raw provider response.
 
-    `{listId, leads: [{profileUrl, firstName, lastName, ...}]}`, max 100 per
+    `{listId, leads: [{profileUrl, firstName, lastName}]}`, max 100 per
     request - the vendor's shape, established by probe on 2026-09-15 against
     list 940797 and documented in docs/HEYREACH-LIST-SCHEMA-2026-09-15.md.
+
+    THREE FIELDS, because three is what was proven. `extras=True` adds
+    `companyName` and `position`, which were sent by default until
+    2026-09-16 and coincide with every observed silent drop. See the comment
+    at the body construction below.
 
     The field is `profileUrl` here, the same name the campaign route uses
     inside its `accountLeadPairs[].lead` wrapper. The list route takes the
@@ -2147,11 +2152,33 @@ def add_leads_to_list(list_id, rows):
         url = str(row.get("linkedin_url") or "").strip()
         if not url:
             continue
-        leads.append({"profileUrl": url,
-                      "firstName": row.get("first_name", ""),
-                      "lastName": row.get("last_name", ""),
-                      "companyName": row.get("company", ""),
-                      "position": row.get("title", "")})
+        # EXACTLY THE BODY TASK-158 PROVED, AND NOTHING ELSE BY DEFAULT.
+        #
+        # The proven-working request carried three fields: profileUrl,
+        # firstName, lastName. `companyName` and `position` were sent here as
+        # well, and every live attempt with them returned
+        # `addedLeadsCount: 0, updatedLeadsCount: 0, failedLeadsCount: 0` -
+        # the silent drop, HTTP 200, nothing added. Measured three times on
+        # 2026-09-15 and 2026-09-16, twice through the campaign route and once
+        # through this one, for a profile `/lead/GetLead` confirms HeyReach
+        # CAN resolve. So resolvability is not the cause and the extra fields
+        # are the remaining difference.
+        #
+        # TASK-158's twelve failing probes are not counter-evidence: the one
+        # that carried companyName and position also used `linkedInUrl`, the
+        # wrong field name, so extras were never tested against the right
+        # one. Sending a superset of a proven body is a guess; sending the
+        # proven body is not.
+        #
+        # `extras=True` exists so the hypothesis can be re-tested deliberately
+        # rather than by a caller who does not know it is a hypothesis.
+        lead = {"profileUrl": url,
+                "firstName": row.get("first_name", ""),
+                "lastName": row.get("last_name", "")}
+        if extras:
+            lead["companyName"] = row.get("company", "")
+            lead["position"] = row.get("title", "")
+        leads.append(lead)
     if not leads:
         # TWO LAYERS BOTH DID THE CONVERSION, AND THE ERROR SAID THE WRONG
         # THING. `liststaging.stage_lead` builds a provider-shaped payload for
