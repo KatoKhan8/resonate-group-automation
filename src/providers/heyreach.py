@@ -2153,9 +2153,31 @@ def add_leads_to_list(list_id, rows):
                       "companyName": row.get("company", ""),
                       "position": row.get("title", "")})
     if not leads:
+        # TWO LAYERS BOTH DID THE CONVERSION, AND THE ERROR SAID THE WRONG
+        # THING. `liststaging.stage_lead` builds a provider-shaped payload for
+        # the ledger and the readback - `{listId, leads:[{profileUrl,
+        # firstName, ...}]}` - and a caller that hands THAT `leads` array
+        # straight to this function trips the check below, because a
+        # provider-shaped row has no `linkedin_url`. The old message said
+        # "every row lacked a linkedin_url", which is true and reads as "these
+        # leads have no LinkedIn URLs" - so the first live canary staging
+        # attempt on 2026-09-16 looked like bad data when it was a wiring
+        # mistake, one layer up, before any HTTP call was made.
+        #
+        # This function takes INTERNAL rows and converts them itself.
+        shaped = [r for r in rows
+                  if isinstance(r, dict) and r.get("profileUrl")]
+        if shaped:
+            raise ProviderError(
+                f"heyreach add_leads_to_list: {len(shaped)} row(s) are "
+                f"already in PROVIDER shape (they carry `profileUrl`). This "
+                f"function takes INTERNAL rows - `linkedin_url`, "
+                f"`first_name`, `last_name` - and builds the provider body "
+                f"itself. Pass the internal row, not the payload's `leads` "
+                f"array. Nothing was sent")
         raise ProviderError(
             "heyreach add_leads_to_list: no leads to send - every row lacked "
-            "a linkedin_url")
+            "a linkedin_url. Nothing was sent")
     if len(leads) > 100:
         raise ProviderError(
             f"heyreach add_leads_to_list: {len(leads)} leads, and this route "
