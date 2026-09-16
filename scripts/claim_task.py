@@ -164,66 +164,172 @@ def reap():
     return CLAIM_ERROR
 
 
-def _claimed_on_a_branch():
-    """Tasks some worker branch has already moved OUT of TODO.
-
-    A worker moves its task to RUNNING/ and later DONE/ on ITS OWN BRANCH.
-    Master's TODO does not change until Claude integrates, which can lag by
-    minutes. So a task can be finished and still sit in master's TODO looking
-    free - and the pool will hand it to a second worker, which is the
-    collision this module exists to prevent, arriving by the back door.
-
-    Asking git which branches have moved the file closes that window without
-    requiring Claude to keep up.
-
-    IT SCANS REMOTE-TRACKING REFS TOO, AND THAT IS NOT BELT-AND-BRACES.
-
-    Measured 2026-09-15: five tasks - 139 through 143 - were each run TWICE.
-    The first sweep's workers finished, moved their files to REVIEW on their
-    own branches, and pushed. The second sweep then dispatched all five again.
-
-    The reason is in `pool.sh dispatch`, which opens with
-    `git checkout -B "$br" master`. That RESETS the round's branch to master,
-    so the local ref carrying the finished work is gone the moment the worker
-    is reused - and a scan of `refs/heads/` alone then sees a branch with
-    nothing moved out of TODO and reports the task free.
-
-    The work itself survived, because QWEN.md requires a push after every
-    result and `refs/remotes/origin/` still held all five branches. So the
-    same push that makes the work durable is what makes this detector correct,
-    and scanning only local refs threw that away.
-    """
+def _git(args, timeout=30):
+    """Run a git command in MAIN_REPO. Returns stdout or empty string on any
+    failure. Every git call in this module goes through here so that a missing
+    ref, a detached HEAD, a branch with no commits or a reset worktree - all
+    four have happened in production - returns empty rather than throwing."""
     import subprocess
-    moved = set()
     try:
-        refs = subprocess.run(
-            ["git", "-C", MAIN_REPO, "for-each-ref", "--format=%(refname:short)",
-             "refs/heads/", "refs/remotes/"],
-            capture_output=True, text=True, timeout=60).stdout.split()
-        branches = [r for r in refs if r not in ("master", "origin/master")
-                    and not r.endswith("/HEAD")]
-        for b in branches:
-            out = subprocess.run(
-                ["git", "-C", MAIN_REPO, "ls-tree", "-r", "--name-only", b,
-                 "docs/qwen-tasks/"], capture_output=True, text=True, timeout=30).stdout
-            for line in out.splitlines():
-                if "/TODO/" in line or not line.endswith(".md"):
-                    continue
-                base = os.path.basename(line)
-                if base.startswith("TASK-"):
-                    moved.add("-".join(base.split("-")[:2]))
+        r = subprocess.run(
+            ["git", "-C", MAIN_REPO] + args,
+            capture_output=True, text=True, timeout=timeout)
+        if r.returncode != 0:
+            return ""
+        return r.stdout
     except Exception:
-        return set()
-    return moved
+        return ""
 
 
-def ready_tasks():
+def _all_branches():
+    """Every branch ref except master and HEAD pointers. Scans both local and
+    remote-tracking refs: pool.sh's `checkout -B` destroys local refs when a
+    worker is reused, and the pushed copy in refs/remotes/origin/ is the only
+    record of the finished work (measured 2026-09-15, TASK-139 through 143)."""
+    out = _git(["for-each-ref", "--format=%(refname:short)",
+                "refs/heads/", "refs/remotes/"], timeout=60)
+    if not out:
+        return []
+    return [r for r in out.split()
+            if r not in ("master", "origin/master") and not r.endswith("/HEAD")]
+
+
+def _task_files_on(ref):
+    """{task_id: (stage, full_path)} for every TASK-* file visible on *ref*.
+
+    Returns empty dict on any failure. The stage is the directory name
+    (TODO, RUNNING, REVIEW, DONE, REWORK, BLOCKED, BLOCKED_QUOTA)."""
+    out = _git(["ls-tree", "-r", "--name-only", ref, "docs/qwen-tasks/"])
+    result = {}
+    for line in out.splitlines():
+        line = line.strip()
+        if not line or not line.endswith(".md"):
+            continue
+        base = os.path.basename(line)
+        if not base.startswith("TASK-"):
+            continue
+        parts = line.replace("\\", "/").split("/")
+        stage = parts[-2] if len(parts) >= 2 else "UNKNOWN"
+        task_id = "-".join(base.split("-")[:2])
+        result[task_id] = (stage, line)
+    return result
+
+
+def _last_touch_ts(ref, filepath):
+    """Commit timestamp (epoch seconds) of the last commit that touched
+    *filepath* on *ref*. Returns 0 if the file does not exist or the command
+    fails. Zero is safe: it loses every comparison, so a missing timestamp
+    is treated as 'this side never moved the file'."""
+    out = _git(["log", "-1", "--format=%ct", ref, "--", filepath])
+    try:
+        return int(out.strip())
+    except (ValueError, AttributeError):
+        return 0
+
+
+def _classify_branch_tasks():
+    """Separate the two questions the old code conflated.
+
+    Question 1 - IS A WORKER RUNNING ON THIS TASK?
+        Answered by claims (held_claims) AND by finding branches that have
+        moved a task file PAST what master shows, with a NEWER commit. A
+        branch whose file is in a different stage than master's, touched more
+        recently on the branch, has produced real work that must not be
+        dispatched again. This is the TASK-139-through-143 protection.
+
+    Question 2 - HAS A BRANCH PRODUCED A RESULT NOBODY INTEGRATED?
+        Same mechanism, reported separately. A task in TODO on master whose
+        branch copy is in DONE or REVIEW with a newer timestamp is finished
+        work waiting for Claude. The pool must not dispatch it again.
+
+    What changed from the old _claimed_on_a_branch
+    -------------------------------------------------
+    The old code asked "is this file NOT in TODO on some branch?" and that
+    hid tasks: five branches forked from a BLOCKED master all inherited
+    BLOCKED, and when master moved the task to TODO the branches still said
+    BLOCKED - which the old code read as 'not in TODO, therefore worked on'
+    and hid the task permanently. (TASK-183, measured 2026-09-16.)
+
+    The new code compares each branch against master's CURRENT stage for the
+    same task. A branch that has the file in the SAME stage master has it in
+    has done nothing. A branch in a DIFFERENT stage is then resolved by
+    commit timestamp: whoever touched the file more recently moved it. Master
+    moved TASK-183 from BLOCKED to TODO; its timestamp is newer; the branches
+    are stale and the task is available again.
+
+    Re-queue rule
+    -------------
+    When master moves a task backwards - BLOCKED to TODO, REVIEW to REWORK -
+    every existing branch is stale about it. The commit timestamp on master's
+    new path is newer than any branch's timestamp for the old path, so the
+    branch loses the comparison and the task becomes available. A timestamp
+    is the right signal here because it is the only ordering that survives a
+    force-free workflow: branches cannot rewrite master's history, and
+    master's move is always a new commit with a later timestamp than the
+    branch's inherited copy.
+
+    Returns (active, stale_reports):
+        active: set of task_ids with real work on a branch (do not dispatch)
+        stale_reports: list of dicts describing tasks hidden by stale branches
+    """
+    master_files = _task_files_on("master")
+    if not master_files:
+        return set(), []
+
+    active = set()
+    stale = {}
+
+    for branch in _all_branches():
+        branch_files = _task_files_on(branch)
+        for task_id, (master_stage, master_path) in master_files.items():
+            if task_id not in branch_files:
+                continue
+            branch_stage, branch_path = branch_files[task_id]
+            if branch_stage == master_stage:
+                continue
+            master_ts = _last_touch_ts("master", master_path)
+            branch_ts = _last_touch_ts(branch, branch_path)
+            if branch_ts > master_ts:
+                active.add(task_id)
+            elif master_ts > 0:
+                if task_id not in stale:
+                    stale[task_id] = {
+                        "master_stage": master_stage, "branches": []}
+                stale[task_id]["branches"].append((branch, branch_stage))
+
+    stale_list = []
+    for task_id in sorted(stale):
+        info = stale[task_id]
+        stale_list.append({
+            "task": task_id,
+            "master_stage": info["master_stage"],
+            "branches": info["branches"],
+        })
+    return active, stale_list
+
+
+def _claimed_on_a_branch():
+    """Backwards-compatible wrapper: returns the set of task_ids that have
+    active work on a branch. The old name is kept because pool.sh references
+    it in comments and task_registry.py may call it. Do not remove."""
+    active, _ = _classify_branch_tasks()
+    return active
+
+
+def ready_tasks(active_on_branch=None):
     """READY = in TODO, not claimed, not already worked on a branch, deps met.
-    Sorted by the registry's priority (P0 first), then by task id."""
+    Sorted by the registry's priority (P0 first), then by task id.
+
+    *active_on_branch* may be a pre-computed set of task_ids with active work
+    on a branch (from _classify_branch_tasks). When None, the set is computed
+    here. Callers that also need the stale-branch report should compute it
+    once and pass it in, so the branch scan runs once rather than twice."""
     todo_dir = os.path.join(MAIN_REPO, "docs", "qwen-tasks", "TODO")
     if not os.path.isdir(todo_dir):
         return []
-    claimed = {c["task"] for c in held_claims()} | _claimed_on_a_branch()
+    if active_on_branch is None:
+        active_on_branch = _claimed_on_a_branch()
+    claimed = {c["task"] for c in held_claims()} | active_on_branch
     reg = {}
     if os.path.exists(REGISTRY):
         try:
@@ -253,6 +359,29 @@ def ready_tasks():
     return out
 
 
+def _format_stale_report(stale_reports):
+    """Human-readable lines describing tasks hidden by stale branches.
+
+    Silence is what cost a night (TASK-183). Every stale task gets a line
+    that names it, says what master has, what the branches have, and how
+    many branches are stale."""
+    if not stale_reports:
+        return []
+    lines = ["stale branches hiding available tasks: %d" % len(stale_reports)]
+    for report in stale_reports:
+        tid = report["task"]
+        master_stage = report["master_stage"]
+        branches = report["branches"]
+        stage_counts = {}
+        for _br, stage in branches:
+            stage_counts[stage] = stage_counts.get(stage, 0) + 1
+        stage_parts = ", ".join("%s on %d branch%s" % (s, n, "es" if n != 1 else "")
+                                for s, n in sorted(stage_counts.items()))
+        lines.append("  %s is %s on master; %s (stale)"
+                      % (tid, master_stage, stage_parts))
+    return lines
+
+
 def main():
     p = argparse.ArgumentParser(description="Atomic task claiming across worktrees")
     p.add_argument("--claim")
@@ -270,7 +399,8 @@ def main():
     if a.reap:
         return reap()
     if a.next:
-        for _prio, tid, fn in ready_tasks():
+        active, _ = _classify_branch_tasks()
+        for _prio, tid, fn in ready_tasks(active_on_branch=active):
             if claim(tid, a.worker) == CLAIM_OK:
                 print("FILE %s" % fn)
                 return CLAIM_OK
@@ -282,10 +412,13 @@ def main():
         for c in cl:
             print("  %-10s %-12s pid=%-7s %s"
                   % (c.get("task"), c.get("worker"), c.get("pid"), c.get("claimed_at")))
-        rd = ready_tasks()
+        active, stale_reports = _classify_branch_tasks()
+        rd = ready_tasks(active_on_branch=active)
         print("ready (unclaimed, deps met): %d" % len(rd))
         for prio, tid, _fn in rd:
             print("  %-4s %s" % (prio, tid))
+        for line in _format_stale_report(stale_reports):
+            print(line)
         return CLAIM_OK
 
 

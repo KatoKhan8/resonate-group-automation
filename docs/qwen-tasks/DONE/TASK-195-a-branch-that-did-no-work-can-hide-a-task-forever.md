@@ -95,3 +95,59 @@ The two questions separated in code, the comparison made against master's
 stage, the re-queue rule with its justification, named regression tests for the
 139-143 double dispatch and for the 146/155 unintegrated case, and the tool
 reporting stale-branch hiding out loud instead of silently.
+
+## RESULT BLOCK
+
+STATUS: DONE
+
+COMMIT SHA: 5e29165
+
+TESTS: 21/21 pass in tests/test_claim_task.py (10.0s). 80/80 pass in
+tests/test_invariants.py (6.2s). No conflict markers in changed files.
+
+FILES CHANGED:
+- scripts/claim_task.py: replaced _claimed_on_a_branch with _classify_branch_tasks
+  (returns active set + stale reports), added _git/_all_branches/_task_files_on/
+  _last_touch_ts/_format_stale_report helpers, kept _claimed_on_a_branch as
+  backwards-compatible wrapper, updated ready_tasks() and main() status output
+- tests/test_claim_task.py: 21 regression tests in 9 test classes
+- docs/DISPATCH-VISIBILITY-2026-09-16.md: design documentation
+
+FINDINGS:
+1. The two questions are now separated in code:
+   - "Is a worker running?" → claims + branches with newer timestamps
+   - "Has a branch produced unintegrated work?" → same mechanism, reported separately
+2. Comparison is against master's CURRENT stage, not against TODO. A branch in
+   the same stage as master has done nothing. A branch in a different stage is
+   resolved by commit timestamp.
+3. Re-queue rule: master's commit timestamp is always newer than a branch's
+   inherited copy, so BLOCKED→TODO and REVIEW→REWORK correctly free the task.
+   Justification: timestamps are the only ordering that survives a force-free
+   workflow; branches cannot rewrite master's history.
+4. All existing protections preserved:
+   - TASK-139-143 double-dispatch: branch in DONE with newer timestamp → active
+   - TASK-146/155 unintegrated: branch in REVIEW/DONE with newer timestamp → active
+   - TASK-164 dead-branch claim: branch in RUNNING with newer timestamp → active
+   - TASK-183 stale-branch hiding: branches in BLOCKED (inherited), master in TODO
+     with newer timestamp → stale, reported out loud
+5. Stale branches are reported: "TASK-183 is TODO on master; BLOCKED on 5
+   branches (stale)" instead of silently hiding the task. Against the real repo,
+   138 stale-branch cases are now visible.
+6. _claimed_on_a_branch is kept as a wrapper returning the active set. It is
+   consumed by ready_tasks() when called without a pre-computed set, and by
+   task_registry.py which imports held_claims.
+
+RISKS:
+- Performance: the branch scan takes ~219 seconds against the real repo (132+
+  branches). This is acceptable for --status (not called in a tight loop) but
+  could be optimized by caching or parallelizing git calls if it becomes a
+  bottleneck.
+- Timestamp resolution: if two commits happen in the same second, the comparison
+  may be ambiguous. In production this is extremely rare; in tests, the helpers
+  use GIT_COMMITTER_DATE to force distinct timestamps.
+
+RECOMMENDED CLAUDE ACTION:
+Review the design in docs/DISPATCH-VISIBILITY-2026-09-16.md. The 138 stale-branch
+cases reported against the real repo are old branches that inherited stages from
+earlier masters - they are informational, not actionable. No branches need to be
+deleted or force-pushed. The detector now says what it sees instead of hiding it.
