@@ -38,7 +38,9 @@ FROM_CITY = "city"
 FROM_COUNTRY_SINGLE = "country_single_zone"
 FROM_COUNTRY_DEFAULT = "country_dominant_zone"
 FROM_REGION = "region_default"
-SOURCES = (FROM_CITY, FROM_COUNTRY_SINGLE, FROM_COUNTRY_DEFAULT, FROM_REGION)
+FROM_TLD = "tld"
+SOURCES = (FROM_CITY, FROM_COUNTRY_SINGLE, FROM_COUNTRY_DEFAULT, FROM_REGION,
+           FROM_TLD)
 
 
 # ------------------------------------------------------------- the regions
@@ -389,6 +391,100 @@ def _contains_phrase(text, phrase):
         if words[i:i + len(parts)] == parts:
             return True
     return False
+
+
+# ------------------------------------------ TLD inference (TASK-190, free geo)
+#
+# A country-code TLD is a structural fact about the domain registration, not
+# a guess. A .dk domain is registered under Denmark's namespace; that is a
+# legal fact, not an inference about where the company operates. It is weaker
+# than an office address (a company can register a .dk domain from anywhere)
+# but it is unambiguous: no .dk domain is registered outside Denmark.
+#
+# Two rules, both enforced by the task that motivated this:
+#
+# 1. Inference may only move UNKNOWN to PASS, never UNKNOWN to FAIL. A wrong
+#    inference that fails a geography criterion turns a good company into
+#    icp_fail, and FAIL on any criterion is terminal for qualification. So
+#    this function returns a country or None; it never says "not in any
+#    market". The caller decides whether the inferred country passes.
+#
+# 2. Every inferred fact carries its provenance. The returned dict names the
+#    method (FROM_TLD), the input (the domain), and the confidence (HIGH for
+#    an unambiguous ccTLD). The claims gate can tell this apart from a
+#    provider-verified fact, and copy may not be written from it - "the
+#    domain ends in .dk" is not a citation a prospect would recognise.
+#
+# Excluded deliberately:
+#   .ai  Anguilla in ISO, but universally used by AI companies worldwide
+#   .io  British Indian Ocean Territory, same pattern as .ai
+#   .co  Colombia, but used globally as a .com alternative
+#   .edu  US-focused but not exclusively, and not a company TLD
+#   .africa  continent-level, not a country
+
+TLD_TO_ISO = {
+    # Western Europe
+    "uk": "GB", "ie": "IE", "nl": "NL", "de": "DE", "fr": "FR",
+    "be": "BE", "lu": "LU",
+    # Nordics
+    "se": "SE", "no": "NO", "dk": "DK", "fi": "FI", "is": "IS",
+    # Southern Europe
+    "es": "ES", "it": "IT", "pt": "PT", "gr": "GR", "mt": "MT",
+    "cy": "CY",
+    # CEE
+    "pl": "PL", "cz": "CZ", "sk": "SK", "hu": "HU", "ro": "RO",
+    "bg": "BG", "hr": "HR", "si": "SI", "rs": "RS", "lt": "LT",
+    "lv": "LV", "ee": "EE",
+    # DACH (CH already above)
+    "at": "AT", "ch": "CH",
+    # Americas
+    "ca": "CA", "us": "US",
+    # ANZ
+    "au": "AU", "nz": "NZ",
+    # Asia
+    "jp": "JP", "kr": "KR", "in": "IN",
+    # Other
+    "ua": "UA", "za": "ZA", "ru": "RU",
+}
+
+
+def from_domain_tld(domain):
+    """Country from a ccTLD, or None. HIGH confidence, with provenance.
+
+    Returns a dict shaped like the other geo results plus provenance fields,
+    or None when the TLD is generic (.com, .io, .ai) or unrecognised. Never
+    returns a FAIL or an excluded country: inference may only move UNKNOWN to
+    PASS, and the caller checks the returned country against the include list.
+    """
+    if not domain or "." not in domain:
+        return None
+    tld = domain.rsplit(".", 1)[-1].strip().lower()
+    iso = TLD_TO_ISO.get(tld)
+    if not iso:
+        return None
+    country_name = ISO_TO_COUNTRY.get(iso)
+    if not country_name:
+        return None
+    entry = COUNTRIES.get(country_name)
+    region = entry[1] if entry else OTHER
+    return {
+        "country": country_name,
+        "country_code": iso,
+        "region": region,
+        "region_confidence": HIGH,
+        "city": None,
+        "timezone": entry[2] if entry else None,
+        "timezone_source": FROM_TLD,
+        "timezone_confidence": MEDIUM,
+        "why": (f"the domain {domain} is registered under the {tld} "
+                f"country-code TLD, which places it in "
+                f"{country_name.title()}"),
+        # Provenance: the claims gate reads these to tell inferred facts
+        # apart from provider-verified ones.
+        "inferred": True,
+        "inference_method": FROM_TLD,
+        "inference_input": domain,
+    }
 
 
 def from_record(rec, config=None):
