@@ -255,9 +255,23 @@ class TestNoSendPathAnywhere(unittest.TestCase):
                                             "activate", "send-test"))]
         self.assertEqual(starting, ["/campaigns/{campaign_id}/resume"],
                          f"unexpected starting route(s): {starting}")
+        # Scoped to ONE campaign, rather than absent.
+        #
+        # This asserted absence from the supported set, which was correct
+        # while no campaign was authorized to send. The operator authorized
+        # campaign 485 on 2026-09-16, so the guarantee moved from "nothing can
+        # activate" to "only 485 can" - which is the stronger statement,
+        # because plain membership would admit activating 481 and its 23
+        # already-worked contacts.
         from src import providerwrites
-        self.assertFalse(
+        self.assertTrue(
             providerwrites.is_supported(providerwrites.EMAIL_ACTIVATE))
+        self.assertIn(providerwrites.EMAIL_ACTIVATE,
+                      providerwrites.CONDITIONAL)
+        with self.assertRaises(providerwrites.WriteRefused):
+            providerwrites.require_conditional_permission(
+                providerwrites.EMAIL_ACTIVATE, "481",
+                "productive-email-liheavy-v1")
 
     def test_heyreach_posts_only_to_named_read_routes(self):
         """HeyReach's *read* API is POST, so the verb cannot be the test.

@@ -221,12 +221,35 @@ class TestNothingCanSend(unittest.TestCase):
                                             "activate", "send-test"))]
         self.assertEqual(starting, ["/campaigns/{campaign_id}/resume"],
                          f"unexpected starting route(s): {starting}")
-        # And nothing gated can drive it: the operation that would start a
-        # campaign is absent from the supported set, so no cadence, runner or
-        # orchestrator can reach it.
+        # And what CAN drive it is scoped to one campaign.
+        #
+        # This asserted `EMAIL_ACTIVATE` was absent from the supported set,
+        # which was the right guarantee while no campaign was authorized to
+        # send. The operator authorized campaign 485 on 2026-09-16 - sender
+        # 2736, the existing 10 approved contacts, the approved 3-step
+        # CONTROL, 20/day - so absence would now pin the opposite of the
+        # truth.
+        #
+        # The replacement guarantee is stronger than absence, because
+        # membership alone would be a channel-wide licence: it would admit
+        # activating 481, which holds 23 people with 6 to 40 historical
+        # touches each under a non-CONTROL sequence. So the verb is supported
+        # AND conditional, and the condition names one campaign.
         from src import providerwrites
-        self.assertFalse(
+        self.assertTrue(
             providerwrites.is_supported(providerwrites.EMAIL_ACTIVATE))
+        self.assertIn(providerwrites.EMAIL_ACTIVATE,
+                      providerwrites.CONDITIONAL)
+        with self.assertRaises(providerwrites.WriteRefused):
+            providerwrites.require_conditional_permission(
+                providerwrites.EMAIL_ACTIVATE, "481",
+                "productive-email-liheavy-v1")
+        with self.assertRaises(providerwrites.WriteRefused):
+            providerwrites.require_conditional_permission(
+                providerwrites.EMAIL_ACTIVATE, "485", "some-other-row")
+        self.assertTrue(providerwrites.require_conditional_permission(
+            providerwrites.EMAIL_ACTIVATE, "485",
+            "productive-email-control-v2"))
 
     def test_heyreachs_post_is_gated_on_an_allowlist(self):
         from src.providers import heyreach
