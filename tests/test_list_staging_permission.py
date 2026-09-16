@@ -116,14 +116,26 @@ class _IsolatedStore(unittest.TestCase):
     def setUp(self):
         super().setUp()
         from src import store
+        # `store.use_directory` works through ENVIRONMENT VARIABLES - it sets
+        # QUEUE and clears the STATE_OVERRIDES - not through a module
+        # attribute. An earlier version of this mixin saved
+        # `getattr(store, "DIRECTORY", None)`, which is always None, so
+        # tearDown restored nothing and every later test in the process ran
+        # against a temp directory. That surfaced as
+        # `test_every_self_writer_refuses_the_real_work_directory` failing for
+        # `spendledger` - a real invariant, failing for an unrelated reason,
+        # which is the failure mode CLAUDE.md warns about.
         self._store_tmp = tempfile.mkdtemp(prefix="rga-liststaging-")
-        self._store_prev = getattr(store, "DIRECTORY", None)
+        self._env_prev = {k: os.environ.get(k)
+                          for k in ("QUEUE",) + tuple(store.STATE_OVERRIDES)}
         store.use_directory(os.path.join(self._store_tmp, "work"))
 
     def tearDown(self):
-        from src import store
-        if self._store_prev is not None:
-            store.use_directory(self._store_prev)
+        for key, value in self._env_prev.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
         super().tearDown()
 
 

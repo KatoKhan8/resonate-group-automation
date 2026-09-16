@@ -14,7 +14,8 @@ import unittest
 from unittest import mock
 
 from src import liststaging
-from src.liststaging import (
+from src.liststaging import (canonical_profile_url,
+    
     ListStagingRefused,
     ListStagingUnverified,
     assert_list_safe,
@@ -47,7 +48,10 @@ LIST_BOUND = {
 }
 
 LEAD_OK = {
-    "linkedin_url": "https://linkedin.com/in/test-profile",
+    # canonical form: stage_lead normalises to www and compares both
+    # sides of the readback canonically, so a fixture in a different
+    # shape would be testing the normaliser rather than the path.
+    "linkedin_url": "https://www.linkedin.com/in/test-profile",
     "first_name": "Test",
     "last_name": "Person",
     "company": "TestCo",
@@ -98,14 +102,26 @@ class _IsolatedStore(unittest.TestCase):
     def setUp(self):
         super().setUp()
         from src import store
+        # `store.use_directory` works through ENVIRONMENT VARIABLES - it sets
+        # QUEUE and clears the STATE_OVERRIDES - not through a module
+        # attribute. An earlier version of this mixin saved
+        # `getattr(store, "DIRECTORY", None)`, which is always None, so
+        # tearDown restored nothing and every later test in the process ran
+        # against a temp directory. That surfaced as
+        # `test_every_self_writer_refuses_the_real_work_directory` failing for
+        # `spendledger` - a real invariant, failing for an unrelated reason,
+        # which is the failure mode CLAUDE.md warns about.
         self._store_tmp = tempfile.mkdtemp(prefix="rga-liststaging-")
-        self._store_prev = getattr(store, "DIRECTORY", None)
+        self._env_prev = {k: os.environ.get(k)
+                          for k in ("QUEUE",) + tuple(store.STATE_OVERRIDES)}
         store.use_directory(os.path.join(self._store_tmp, "work"))
 
     def tearDown(self):
-        from src import store
-        if self._store_prev is not None:
-            store.use_directory(self._store_prev)
+        for key, value in self._env_prev.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
         super().tearDown()
 
 
@@ -220,7 +236,7 @@ class TestAssertListSafe(_IsolatedStore):
 
 class TestReadbackListAdd(_IsolatedStore):
     def test_a_present_lead_and_unbound_list_is_accepted(self):
-        url = "https://linkedin.com/in/test-profile"
+        url = "https://www.linkedin.com/in/test-profile"
         members = [{"profile_url": url}]
         rb = readback_list_add(
             940797, [url],
@@ -232,14 +248,14 @@ class TestReadbackListAdd(_IsolatedStore):
 
     def test_a_missing_lead_is_reported(self):
         rb = readback_list_add(
-            940797, ["https://linkedin.com/in/test-profile"],
+            940797, ["https://www.linkedin.com/in/test-profile"],
             list_reader=fake_list_reader(LIST_UNBOUND),
             members_reader=fake_members_reader([], total=0))
         self.assertEqual(rb["found"], set())
         self.assertTrue(len(rb["missing"]) > 0)
 
     def test_a_list_that_became_bound_is_reported(self):
-        url = "https://linkedin.com/in/test-profile"
+        url = "https://www.linkedin.com/in/test-profile"
         members = [{"profile_url": url}]
         rb = readback_list_add(
             940797, [url],
@@ -248,7 +264,7 @@ class TestReadbackListAdd(_IsolatedStore):
         self.assertFalse(rb["still_unbound"])
 
     def test_total_count_is_reported(self):
-        url = "https://linkedin.com/in/test-profile"
+        url = "https://www.linkedin.com/in/test-profile"
         members = [{"profile_url": url}]
         rb = readback_list_add(
             940797, [url],
@@ -479,3 +495,50 @@ class TestGateOrdering(_IsolatedStore):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCanonicalProfileUrl(_IsolatedStore):
+    """The bug that dropped the first live canary lead.
+
+    The record's `linkedin` field held a bare 23-character vanity slug. It was
+    sent as `profileUrl`, the provider answered 200 and added nothing, and the
+    readback caught a lead that was never there. TASK-158 had established the
+    working shape months earlier and it is a full URL - the difference is
+    invisible in the response.
+    """
+
+    def test_a_bare_slug_becomes_a_full_url(self):
+        self.assertEqual(
+            canonical_profile_url("jamal-x-5a1"),
+            "https://www.linkedin.com/in/jamal-x-5a1")
+
+    def test_a_full_url_is_unchanged_apart_from_the_host(self):
+        self.assertEqual(
+            canonical_profile_url("https://linkedin.com/in/foo"),
+            "https://www.linkedin.com/in/foo")
+
+    def test_a_trailing_slash_and_a_tracking_query_are_dropped(self):
+        self.assertEqual(
+            canonical_profile_url("https://www.linkedin.com/in/foo/?trk=abc"),
+            "https://www.linkedin.com/in/foo")
+
+    def test_a_pub_style_url_is_normalised(self):
+        self.assertEqual(canonical_profile_url("linkedin.com/pub/bar"),
+                         "https://www.linkedin.com/in/bar")
+
+    def test_something_that_is_neither_is_refused_not_guessed(self):
+        """A guessed URL is a lead added for somebody who may not be the
+        prospect, so this returns None and validate_lead_row refuses."""
+        self.assertIsNone(canonical_profile_url("not a url.com"))
+        self.assertIsNone(canonical_profile_url(""))
+        self.assertIsNone(canonical_profile_url(None))
+
+    def test_validate_refuses_a_row_whose_url_cannot_be_canonicalised(self):
+        row = dict(LEAD_OK, linkedin_url="not a url.com")
+        with self.assertRaises(ListStagingRefused) as ctx:
+            validate_lead_row(row)
+        self.assertIn("canonical profile URL", str(ctx.exception))
+
+    def test_validate_accepts_a_bare_slug(self):
+        """It is normalisable, so it is not a silent-drop risk any more."""
+        self.assertTrue(validate_lead_row(dict(LEAD_OK, linkedin_url="abc-1")))

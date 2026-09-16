@@ -35,6 +35,47 @@ class ListStagingRefused(RuntimeError):
 
 # -------------------------------------------------------------- validation
 
+def canonical_profile_url(value):
+    """A full LinkedIn profile URL, or None if this cannot be made into one.
+
+    WHY THIS EXISTS, MEASURED. The first live canary staging attempt on
+    2026-09-16 sent the record's `linkedin` field straight through as
+    `profileUrl`. That field holds a bare VANITY SLUG - 23 characters, no
+    scheme, no host - and the provider accepted the request and added nothing.
+    The readback caught it (lead missing, total unchanged), which is the system
+    working, but the lead had already been silently dropped once.
+
+    TASK-158 established the working shape against the provider, and it is a
+    full URL: `https://www.linkedin.com/in/<slug>`. So a slug is not a
+    profileUrl, and the difference is invisible in a 200 response.
+
+    Returns a canonical `https://www.linkedin.com/in/<slug>` for either input
+    shape, or None for something that is neither - which `validate_lead_row`
+    turns into a refusal BEFORE the transport, where a silent drop cannot
+    happen.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    low = raw.lower()
+    if "linkedin.com" in low:
+        # Already a URL. Normalise the scheme and host, keep the slug.
+        tail = raw.split("linkedin.com", 1)[1].lstrip("/")
+        if tail.startswith("in/"):
+            slug = tail[3:]
+        elif tail.startswith("pub/"):
+            slug = tail[4:]
+        else:
+            slug = tail
+        slug = slug.split("?")[0].split("#")[0].strip("/")
+        return f"https://www.linkedin.com/in/{slug}" if slug else None
+    if "/" in raw or " " in raw or "." in raw:
+        # Not a slug and not a linkedin.com URL. Refuse rather than guess: a
+        # guessed URL is a lead added for somebody who may not be the prospect.
+        return None
+    return f"https://www.linkedin.com/in/{raw}"
+
+
 def validate_lead_row(row):
     """Refuse a lead that the provider would silently drop.
 
@@ -52,8 +93,15 @@ def validate_lead_row(row):
         problems.append("firstName is required")
     if not str(row.get("last_name") or "").strip():
         problems.append("lastName is required")
-    if not str(row.get("linkedin_url") or "").strip():
+    raw_url = str(row.get("linkedin_url") or "").strip()
+    if not raw_url:
         problems.append("linkedin_url is required")
+    elif not canonical_profile_url(raw_url):
+        problems.append(
+            f"linkedin_url {raw_url[:12]!r}... cannot be made into a "
+            f"canonical profile URL. The provider accepts "
+            f"https://www.linkedin.com/in/<slug> and silently drops anything "
+            f"else with a 200")
     if problems:
         raise ListStagingRefused(
             f"lead would be silently dropped by the provider: "
@@ -151,7 +199,14 @@ def readback_list_add(list_id, expected_urls, list_reader=None,
     read_list = list_reader or heyreach.list_by_id
     read_members = members_reader or heyreach.list_leads
 
-    expected = {str(u).strip().lower() for u in expected_urls if u}
+    # BOTH SIDES CANONICAL. Lowercasing alone compared a URL to a URL in a
+    # different shape: the provider may answer with or without `www`, with a
+    # trailing slash, or with a tracking query, and the estate stores some
+    # profiles as bare vanity slugs. Comparing raw strings made a lead that
+    # WAS in the list read as missing, which classifies as UNKNOWN and raises
+    # - a false alarm indistinguishable from a real silent drop.
+    expected = {canonical_profile_url(u).lower()
+                for u in expected_urls if u and canonical_profile_url(u)}
     if not expected:
         raise ListStagingRefused(
             "readback with no expected URLs verifies nothing")
@@ -159,9 +214,9 @@ def readback_list_add(list_id, expected_urls, list_reader=None,
     members, total = read_members(list_id)
     found = set()
     for m in members:
-        url = str(m.get("profile_url") or "").strip().lower()
-        if url in expected:
-            found.add(url)
+        canon = canonical_profile_url(m.get("profile_url"))
+        if canon and canon.lower() in expected:
+            found.add(canon.lower())
 
     list_row = read_list(list_id)
     still_unbound = list_is_unbound(list_row)
@@ -206,11 +261,16 @@ def stage_lead(list_id, row, transport, list_reader=None,
     validate_lead_row(row)
     assert_list_safe(list_id, list_reader=list_reader)
 
-    url = str(row.get("linkedin_url") or "").strip().lower()
+    # ONE canonical URL, used for the payload AND the readback comparison.
+    # They were derived separately before, so a slug went to the provider and
+    # a lowercased slug was looked for in the readback - both wrong, and
+    # consistently wrong, which is how it looked like a provider problem.
+    canonical = canonical_profile_url(row.get("linkedin_url"))
+    url = canonical.lower()
     payload = {
         "listId": int(list_id),
         "leads": [{
-            "profileUrl": str(row.get("linkedin_url") or "").strip(),
+            "profileUrl": canonical,
             "firstName": str(row.get("first_name") or "").strip(),
             "lastName": str(row.get("last_name") or "").strip(),
             "companyName": str(row.get("company") or "").strip(),
