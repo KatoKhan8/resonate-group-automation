@@ -1117,6 +1117,36 @@ def _variables_for(lead, campaign):
     return bison._variables(values)
 
 
+def _stale_clearances(sequence):
+    """Empty-valued entries for numbered copy slots the sequence does not use.
+
+    A lead that previously carried a longer sequence holds ``subject_N`` and
+    ``body_N`` variables beyond the current length. ``_variables_for`` names
+    only the positions the sequence reads, so the reconciliation in
+    ``_ensure_leads`` never compares - and never clears - the higher ones.
+    Measured on campaign 485 on 2026-09-16: ten leads held ``subject_4``,
+    ``subject_5``, ``body_4`` and ``body_5`` from a five-step era while the
+    campaign had shrunk to three steps, and nothing in the stale comparison
+    named them.
+
+    Returns explicit empties for every numbered position above the sequence
+    length up to ``MAX_SEQUENCE_STEPS``. ``_ensure_leads`` merges them into
+    the wanted set; the provider PATCH stores the empty value and the
+    template never reads a variable its sequence does not declare.
+
+    Single-step campaigns use unnumbered ``subject`` and ``body`` and have
+    no numbered positions to clear, so the answer is empty.
+    """
+    n_steps = len(sequence)
+    if n_steps < 2:
+        return []
+    entries = []
+    for pos in range(n_steps + 1, MAX_SEQUENCE_STEPS + 1):
+        entries.append({"name": f"subject_{pos}", "value": ""})
+        entries.append({"name": f"body_{pos}", "value": ""})
+    return entries
+
+
 def _refuse_colliding_leads(wanted, workspace_id):
     """Refuse leads whose account the client's estate says STOP or HOLD.
 
@@ -1270,9 +1300,22 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             # created before that still holds the old ones. Reconciled rather
             # than assumed: the provider is asked what it has, and told only
             # what differs.
+            #
+            # STALE NUMBERED VARIABLES BEYOND THE SEQUENCE LENGTH ARE
+            # CLEARED HERE. `_variables_for` names only the positions the
+            # sequence reads; `_stale_clearances` adds explicit empties for
+            # every numbered slot above that, so a lead that previously
+            # carried a longer sequence has its out-of-range copy wiped.
+            # Without this, subject_4/body_4/subject_5/body_5 from a five-
+            # step era survive silently on a three-step campaign, and the
+            # stale comparison never names them because they are not in the
+            # wanted set.
             wanted_vars = _variables_for(lead, campaign)
+            clearances = _stale_clearances(plan.get("sequence") or [])
+            all_wanted = wanted_vars + clearances
             held = bison.variables_of(bison.lead(existing))
-            stale = [v for v in wanted_vars if held.get(v["name"]) != v["value"]]
+            stale = [v for v in all_wanted
+                     if held.get(v["name"]) != v["value"]]
             if stale:
                 bison.update_lead(existing, {"custom_variables": stale})
                 refreshed += 1

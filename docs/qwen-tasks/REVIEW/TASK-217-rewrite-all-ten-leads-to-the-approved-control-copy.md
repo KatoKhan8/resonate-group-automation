@@ -119,3 +119,89 @@ The stale-variable clearing implemented and its mechanism named; all ten leads
 refreshed against the corrected approvals; a provider readback showing 30/30
 exact matches and zero non-empty out-of-range variables, per lead, hashed; and
 the regression test green with the exit code read off the process.
+
+## RESULT
+
+**STATUS:** PARTIAL - code fix and regression test done; live readback owed
+
+**COMMIT SHA:** ff8c2c21
+
+**TESTS:**
+- `tests/test_lead_variables.py`: 10/10 pass (exit code 0)
+- `tests.test_staging_a_campaign_twice_builds_one`: 16/16 pass
+- `tests.test_bison_campaign_write`: 10/10 pass
+- `tests.test_lead_writes_respect_the_killswitch`: 5/5 pass
+- `tests.test_staging_refuses_colliding_contacts`: 5/5 pass
+- `tests.test_crash_restart_idempotency`: 9/9 pass
+- `tests.test_render_preview`: 29/29 pass
+- Pre-existing failures in
+  `TheShippedConfigurationAgreesWithTheShippedCadence` (2 tests): the live
+  client config has a 3-step sequence against a 5-step cadence. Confirmed
+  pre-existing on the original code (before this change).
+
+**FILES CHANGED:**
+- `src/bisonfactory.py` - added `_stale_clearances(sequence)` function;
+  modified `_ensure_leads` reconciliation to merge clearances into the
+  wanted set before the stale comparison
+- `tests/test_lead_variables.py` - new, 10 tests: 6 unit tests on
+  `_stale_clearances` and 4 integration tests driving `stage()` through
+  the real entry point
+- `docs/LEAD-VARIABLES-2026-09-16.md` - new, mechanism documented, no
+  copy text
+
+**FINDINGS:**
+
+1. **The stale-variable clearing is implemented.** `_stale_clearances`
+   returns explicit empty-valued entries for every numbered position
+   above the sequence length up to `MAX_SEQUENCE_STEPS` (currently 6).
+   `_ensure_leads` merges them into the wanted set before the stale
+   comparison. The mechanism is `bison.update_lead` with
+   `custom_variables` entries carrying `value: ""`. The provider PATCH
+   merges custom variables, so the empty value is stored and the
+   template never reads a variable its sequence does not declare.
+
+2. **The wiring is proven.** Removing the `_stale_clearances` call in
+   `_ensure_leads` makes `test_stale_numbered_variables_are_cleared`
+   fail with `AssertionError: 'OLD subject four' != ''` - the exact
+   defect. The test drives `stage()` through the real entry point, not
+   the function directly.
+
+3. **The distinction between "sequence reads" and "sequence does not"
+   is encoded without weakening `_ensure_leads`' empty-copy refusal.**
+   A lead whose approved copy is missing for a step the sequence reads
+   is still refused. The clearances only apply to positions beyond the
+   sequence length.
+
+4. **Live readback is owed.** This worktree does not hold
+   `work/queue.jsonl` and cannot access live provider state. The 30/30
+   exact match verification and zero non-empty out-of-range variables
+   check require running against campaign 485's ten leads at the
+   provider. Claude runs the preflight and activation from Claude's
+   worktree.
+
+5. **The `_ensure_leads` refusal for missing copy is unchanged.** The
+   task's first trap is respected: the distinction between a variable
+   the sequence reads (must be approved and non-empty) and one it does
+   not (must be empty) is encoded by having `_stale_clearances` operate
+   only on positions beyond the sequence length, while the existing
+   `missing_copy` check continues to refuse leads with gaps in the
+   range the sequence reads.
+
+**RISKS:**
+- The live readback has not been performed. The code fix is proven
+  against the fake provider; the real provider's PATCH behaviour with
+  empty string values should be confirmed on the first re-stage.
+- Two pre-existing test failures in
+  `TheShippedConfigurationAgreesWithTheShippedCadence` reflect the
+  live config mismatch (3-step sequence vs 5-step cadence) that is
+  the operational context of this task.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Review the code change in `src/bisonfactory.py` (the
+   `_stale_clearances` function and its call in `_ensure_leads`).
+2. Run `py -3 -m src.bisonfactory 485 --live` from Claude's worktree
+   to re-stage campaign 485. This will trigger the reconciliation on
+   all ten leads, clearing stale variables and refreshing copy.
+3. Read back all ten leads from the provider and verify 30/30 exact
+   matches and zero non-empty out-of-range variables.
+4. Run the preflight and activation.
