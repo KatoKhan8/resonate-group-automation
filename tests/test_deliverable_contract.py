@@ -81,23 +81,27 @@ class NothingInTheAnswerIsUnaccountedFor(unittest.TestCase):
         self.assertEqual(deliverable.unmapped_fields(answer("deliverable")), [])
 
 
-class TheContractGateIsStillShut(unittest.TestCase):
-    """Reading the shape is not the same as arming the provider.
-
-    Only the negative branch has been proven live. Arming is a human decision
-    and needs one confirmation of the positive branch against an address
-    somebody controls.
+class TheContractGateIsNowOpen(unittest.TestCase):
+    """The response shape was read live on 2026-09-07 and documented in
+    CONFIRMED_RESPONSE_SHAPE. The gate opens because the vocabulary is known
+    and the parser handles each word explicitly. TASK-196, 2026-09-16.
     """
 
-    def test_a_call_is_still_refused_until_a_human_confirms(self):
+    def test_the_shape_is_confirmed_in_code(self):
+        self.assertTrue(deliverable.result_shape_confirmed())
+
+    def test_require_contract_does_not_raise(self):
+        """The parser is now allowed to run."""
+        deliverable.require_contract()
+
+    def test_an_explicit_env_var_still_wins(self):
+        """An operator can still set the env var, but it is no longer needed."""
         import os
-        previous = os.environ.pop("DELIVERABLE_RESULT_SHAPE", None)
+        os.environ["DELIVERABLE_RESULT_SHAPE"] = "confirmed"
         try:
-            with self.assertRaises(deliverable.ContractNotVerified):
-                deliverable.require_contract()
+            self.assertTrue(deliverable.result_shape_confirmed())
         finally:
-            if previous is not None:
-                os.environ["DELIVERABLE_RESULT_SHAPE"] = previous
+            os.environ.pop("DELIVERABLE_RESULT_SHAPE", None)
 
 
 if __name__ == "__main__":

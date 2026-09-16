@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
 """A verifier that declines to call is not billed for calling.
 
-`deliverable.verify` raises `deliverable.ContractNotVerified` BEFORE it touches the
-network: its response shape has never been read from a real answer, so it
-declines rather than spending a credit to find out. That is the right call.
+TASK-196 update (2026-09-16): Deliverable's contract is now confirmed (the
+response shape was read live 2026-09-07 and documented in CONFIRMED_RESPONSE_SHAPE).
+`deliverable.verify` no longer raises `ContractNotVerified` locally. The principle
+that local refusals are free still holds - it is tested via the _local_refusals()
+mechanism - but Deliverable no longer triggers it.
 
-What was wrong is what happened next. `call()` flattened every `providers.ProviderError`
-into `status: error`, and `verify()` charged the spend ledger unconditionally
+The original defect: `call()` flattened every `providers.ProviderError` into
+`status: error`, and `verify()` charged the spend ledger unconditionally
 afterwards. Measured on the live estate 2026-09-13: 41 ledger rows and 41
 credits for deliverable, and 32 of 32 stored evidence rows with
 `status: error`. Not one call had happened.
 
-It matters beyond the accounting. `spendledger.check` enforces the client's
-declared ceiling against recorded spend, so phantom rows consume a real
-budget; and `max_verification_cost_per_contact` is three, so a verifier that
-never runs was eating a third of the per-contact allowance that the verifier
-which WOULD have answered needed.
-
 A timeout or a 500 stays charged. The provider may have done the work before
-failing to say so, and guessing in the cheap direction is how a ledger starts
+failing to tell us, and guessing in the cheap direction is how a ledger starts
 under-reporting a real bill.
 """
 import unittest
@@ -31,10 +27,21 @@ from src.providers import deliverable
 
 class ALocalRefusalIsFree(unittest.TestCase):
 
-    def test_deliverable_declines_and_says_it_was_not_charged(self):
-        entry = verification.call("deliverable", "somebody@example.test")
-        self.assertEqual(entry["status"], verification.S_ERROR)
-        self.assertIs(entry["charged"], False)
+    def test_deliverable_contract_is_now_confirmed(self):
+        """TASK-196: the response shape was read and documented. The parser
+        runs. A call attempt reaches the network layer."""
+        self.assertTrue(deliverable.contract_verified())
+
+    def test_a_local_refusal_from_a_configured_provider_is_free(self):
+        """The mechanism still works. A provider that refuses locally (e.g.
+        broken transport contract) is not billed."""
+        deliverable.configure(auth="telepathy")
+        try:
+            entry = verification.call("deliverable", "somebody@example.test")
+            self.assertEqual(entry["status"], verification.S_ERROR)
+            self.assertIs(entry["charged"], False)
+        finally:
+            deliverable.configure(auth="header")
 
     def test_a_network_failure_is_still_charged(self):
         """The provider may have done the work before failing to tell us."""

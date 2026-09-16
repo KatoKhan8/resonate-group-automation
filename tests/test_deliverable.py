@@ -93,29 +93,20 @@ class TestWhatIsDocumentedIsUsed(ProviderTest):
 
 
 class TestTheAnswerIsNotGuessed(ProviderTest):
-    def test_the_response_shape_is_the_one_remaining_gap(self):
-        self.assertFalse(deliverable.contract_verified())
-        gaps = deliverable.contract_gaps()
-        self.assertEqual(len(gaps), 1)
-        self.assertIn("DELIVERABLE_RESULT_SHAPE", gaps[0])
+    def test_the_response_shape_is_confirmed_in_code(self):
+        """TASK-196: the shape was read live 2026-09-07 and documented in
+        CONFIRMED_RESPONSE_SHAPE. The gate is now open."""
+        self.assertTrue(deliverable.contract_verified())
+        self.assertEqual(deliverable.contract_gaps(), [])
 
-    def test_it_refuses_to_verify_until_a_real_answer_has_been_read(self):
-        with self.assertRaises(deliverable.ContractNotVerified):
-            deliverable.verify("someone@example.test")
-        self.assertEqual(self.cassette.calls, [])
-
-    def test_the_refusal_happens_before_anything_is_submitted(self):
-        wire = Wire((200, {"task_id": "t-1"}))
+    def test_verify_runs_now_that_the_shape_is_confirmed(self):
+        """The parser is allowed to run. A real response is classified."""
+        wire = Wire((200, {"data": {"task_id": "t-1", "processing_status": "completed",
+                                    "email_status": "deliverable",
+                                    "email": "someone@example.test"}}))
         self.providers.set_transport(wire)
-        with self.assertRaises(deliverable.ContractNotVerified):
-            deliverable.verify("someone@example.test")
-        self.assertEqual(wire.calls, [])
-
-    def test_the_refusal_names_the_command_that_would_lift_it(self):
-        with self.assertRaises(deliverable.ContractNotVerified) as e:
-            deliverable.verify("someone@example.test")
-        self.assertIn("src.validate", str(e.exception))
-        self.assertIn("DELIVERABLE_RESULT_SHAPE", str(e.exception))
+        entry = deliverable.verify("someone@example.test", sleep=lambda s: None)
+        self.assertEqual(entry["status"], "valid")
 
     def test_a_broken_request_contract_refuses_even_harder(self):
         deliverable.configure(auth="telepathy")

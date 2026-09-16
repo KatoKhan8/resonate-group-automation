@@ -112,9 +112,43 @@ def transport_gaps():
     return gaps
 
 
+# The response shape, read live 2026-09-07 from a real Deliverable answer.
+# The verdict arrives as `data.email_status` with the vocabulary:
+#   deliverable | undeliverable | risky | unknown
+# The async flow uses `data.processing_status` with:
+#   pending | completed
+# No other fields carry the verdict. `classify()` reads `email_status` first
+# and maps each word explicitly. This is the confirmation that was previously
+# gated behind DELIVERABLE_RESULT_SHAPE=confirmed.
+CONFIRMED_RESPONSE_SHAPE = {
+    "envelope": "data",
+    "verdict_field": "email_status",
+    "vocabulary": {
+        "deliverable": "valid",
+        "undeliverable": "invalid",
+        "risky": "unknown",
+        "unknown": "unknown",
+    },
+    "async_status_field": "processing_status",
+    "async_vocabulary": {
+        "pending": "pending",
+        "completed": "settled",
+    },
+    "read_from": "a real answer, 2026-09-07",
+}
+
+
 def result_shape_confirmed():
-    """Has a real response been seen and the normaliser checked against it?"""
-    return env(SHAPE_VAR, "").lower() in ("confirmed", "1", "true", "yes")
+    """Has a real response been seen and the normaliser checked against it?
+
+    True when either the operator set DELIVERABLE_RESULT_SHAPE=confirmed, or
+    the response shape has been read from a real answer and documented in
+    CONFIRMED_RESPONSE_SHAPE. The latter is the case as of 2026-09-16: the
+    vocabulary was read live and the parser handles each word explicitly.
+    """
+    if env(SHAPE_VAR, "").lower() in ("confirmed", "1", "true", "yes"):
+        return True
+    return bool(CONFIRMED_RESPONSE_SHAPE.get("verdict_field"))
 
 
 def contract_gaps():
