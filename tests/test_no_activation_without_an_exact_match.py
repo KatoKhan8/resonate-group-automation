@@ -77,10 +77,73 @@ BISON_CAMPAIGN = "9001"
 BISON_SEAT = "3131"
 BISON_WORKSPACE = 99
 
-# `approved_bison` says `day1`; `provider_bison` says `step1`; `actions` is
-# required. Named rather than tolerated, so an email assertion states which
-# failure is the mutation under test and which is the standing defect.
-STANDING_EMAIL_DEFECT = {"actions"}
+# The `actions` naming mismatch (`day1` vs `step1`) was reconciled by TASK-219:
+# both sides now use `step{N}`. No standing email defect remains.
+STANDING_EMAIL_DEFECT = frozenset()
+
+# Threaded email sequence: the opener owns the subject, follow-ups continue
+# the thread. TASK-219 made this the production invariant.
+THREADED_EMAIL_SEQUENCE = {
+    "title": "Test threaded sequence",
+    "steps": {
+        # wait_in_days is the gap AFTER a step, checked against the cadence.
+        # em1 day 1 -> em2 day 5: gap 4. em2 day 5 -> em3 day 8: gap 3.
+        # em3 is the last step; wait_in_days=1 because the provider rejects 0.
+        "em1": {"order": 1, "subject": "{SUBJECT_1}",
+                "body": "<p>{BODY_1}</p>", "wait_in_days": 4},
+        "em2": {"order": 2, "subject": "{SUBJECT_1}",
+                "body": "<p>{BODY_2}</p>", "wait_in_days": 3},
+        "em3": {"order": 3, "subject": "{SUBJECT_1}",
+                "body": "<p>{BODY_3}</p>", "wait_in_days": 1},
+    },
+    "thread_reply_pattern": [False, True, True],
+}
+
+THREADED_CADENCE_STEPS = [
+    {"key": "em1", "day": 1, "channel": "email", "generated": True},
+    {"key": "day3", "day": 3, "channel": "linkedin",
+     "template": "linkedin_intro"},
+    {"key": "em2", "day": 5, "channel": "email", "generated": True},
+    {"key": "em3", "day": 8, "channel": "email", "generated": True},
+]
+
+EMAIL_STEP_COPY = {
+    "em1": {"subject": "quick question about {company}",
+            "body": (
+                "Hi {first},\n\n"
+                "Noticed {company} runs delivery across a few teams at once. "
+                "The pattern we see in teams that size is that utilisation and "
+                "margin are only known at the end of the month, which is after "
+                "the month when anything could have been done about them. Most "
+                "operations leads we speak to lose the best part of a day every "
+                "month reconciling time before they can answer a question anyone "
+                "actually asked. Is that roughly how it works with you today, or "
+                "have you already put something in place for it?\n"
+            )},
+    "em2": {"subject": "one more thought",
+            "body": (
+                "Hi {first},\n\n"
+                "One more thought and then I will stop. The teams closest to "
+                "{company} in size tend to arrive at the same place: they stop "
+                "reconciling hours after the fact, and start seeing project "
+                "margin while the project is still running. What makes the "
+                "difference is rarely a new process for the delivery team. It "
+                "is that the finance view and the delivery view stop being two "
+                "spreadsheets maintained by two different people. Would that be "
+                "useful to see for a team your size?\n"
+            )},
+    "em3": {"subject": "last thought",
+            "body": (
+                "Hi {first},\n\n"
+                "Last thing and then I will leave it. If the current process at "
+                "{company} is working well enough, that is genuinely good news "
+                "and I will not take up more of your time. But if the month-end "
+                "reconciliation is still a pain point, a short conversation "
+                "might surface something worth considering. No pressure either "
+                "way, and I will not follow up again after this. All the best "
+                "with the rest of the quarter.\n"
+            )},
+}
 
 # No HeyReach read route exposes a per-campaign daily limit, so the field comes
 # back UNVERIFIABLE on every comparison. It is deliberately absent from
@@ -136,9 +199,46 @@ class Factory(CampaignTest):
             "does not block a launch on its own")
         return readback
 
+    def _install_threaded_config(self):
+        """Override the demo config with a threaded three-step email sequence.
+
+        The demo config has no `email_sequence`, so `_sequence_steps` returns
+        empty and `approved_bison` produces no subjects/bodies/delays. TASK-219
+        made the threaded shape the production invariant, so the fixture must
+        carry it. The cadence library entry matches the email_sequence keys so
+        `_sequence_steps` accepts the pairing.
+        """
+        self.config = dict(self.config)
+        self.config["cadence"] = "test_threaded"
+        self.config["cadences"] = {
+            "test_threaded": {"steps": THREADED_CADENCE_STEPS},
+        }
+        self.config["email_sequence"] = THREADED_EMAIL_SEQUENCE
+
+    def _write_email_copy(self, recs):
+        """Write generated email copy for em1, em2, em3 on every contact."""
+        for rec in recs:
+            for contact in rec.get("contacts") or []:
+                first = (contact.get("name") or "there").split()[0]
+                key = contact["key"]
+                stored = rec.setdefault("cadence", {}).setdefault(key, {})
+                for step_key in ("em1", "em2", "em3"):
+                    copy = EMAIL_STEP_COPY[step_key]
+                    stored.setdefault(step_key, {})
+                    stored[step_key].update({
+                        "channel": "email",
+                        "generated": True,
+                        "subject": copy["subject"].format(
+                            company=rec["company"]),
+                        "body": copy["body"].format(
+                            first=first, company=rec["company"]),
+                    })
+        return recs
+
     def stage(self, approve_email=True, approve_linkedin=True):
         recs = self.seed_records(companies=ONE_COMPANY)
-        self.draft_everything(recs)
+        self._install_threaded_config()
+        self._write_email_copy(recs)
         if approve_email:
             self.approve_drafts(recs)
         if approve_linkedin:
@@ -160,6 +260,7 @@ class Factory(CampaignTest):
             "bison_campaign_id": BISON_CAMPAIGN,
             "workspace": str(BISON_WORKSPACE),
             "provider_delays": [["HOUR", 0]],
+            "cadence_steps": THREADED_CADENCE_STEPS,
         })
         campaign["senders"] = {"email": [{"id": BISON_SEAT, "daily_limit": 40}],
                                "linkedin": [{"id": HEYREACH_SEAT,
@@ -231,20 +332,45 @@ class Factory(CampaignTest):
             "subjects": list(approved["subjects"]),
             "bodies": list(approved["bodies"]),
             "delays": list(approved["delays"]),
+            "thread_replies": list(approved.get("thread_replies", [])),
             "max_emails_per_day": approved["max_emails_per_day"],
             "max_new_leads_per_day": approved["max_new_leads_per_day"],
             "per_domain_cap": 3,
+            "_lead_copy": dict(approved.get("_lead_copy") or {}),
         }
         held.update(mutation)
         return held
 
     def compare_email(self, campaign, recs, **mutation):
         held = self.held_by_bison(campaign, recs, **mutation)
-        steps = [{"order": i + 1, "active": True, "email_subject": subject,
-                  "email_body": body, "wait_in_days": delay}
-                 for i, (subject, body, delay)
-                 in enumerate(zip(held["subjects"], held["bodies"],
-                                  held["delays"]))]
+        # Threaded shape: follow-ups carry "Re: " at the provider, which
+        # `_comparable_step` strips before comparison. The approved side
+        # stores the bare subject; the provider prepends "Re: " itself.
+        steps = []
+        for i, (subject, body, delay) in enumerate(
+                zip(held["subjects"], held["bodies"], held["delays"])):
+            tr = (held["thread_replies"][i]
+                  if i < len(held.get("thread_replies", [])) else False)
+            email_subject = "Re: " + subject if tr else subject
+            steps.append({"order": i + 1, "active": True,
+                          "email_subject": email_subject,
+                          "email_body": body, "wait_in_days": delay,
+                          "thread_reply": tr})
+        # Lead rows carry ids so `provider_bison` can read each lead's
+        # custom variables. The variables come from the approved lead copy
+        # so the per-lead comparison passes on the unmutated fixture.
+        lead_rows = []
+        lead_detail_pages = {}
+        lead_copy = held.get("_lead_copy") or {}
+        for idx, email in enumerate(held["leads"]):
+            lead_id = 7000 + idx
+            lead_rows.append({"email": email, "id": lead_id})
+            expected_vars = lead_copy.get(email, {})
+            custom_vars = [{"name": k, "value": v}
+                           for k, v in sorted(expected_vars.items())]
+            lead_detail_pages[f"/leads/{lead_id}"] = {
+                "data": {"id": lead_id, "email": email,
+                         "custom_variables": custom_vars}}
         row = {"id": held["campaign_id"], "name": held["name"],
                "status": held["status"],
                "max_emails_per_day": held["max_emails_per_day"],
@@ -257,10 +383,11 @@ class Factory(CampaignTest):
                 "data": [{"id": i} for i in held["sender_ids"]],
                 "meta": {"total": len(held["sender_ids"])}},
             f"{base}/leads?page=1": {
-                "data": [{"email": e} for e in held["leads"]],
-                "meta": {"total": len(held["leads"])}},
+                "data": lead_rows,
+                "meta": {"total": len(lead_rows)}},
             f"{base}/sequence-steps": {"data": steps},
         }
+        pages.update(lead_detail_pages)
 
         def transport(method, url, headers, body=None, timeout=None):
             path = url.split("https://bison.test", 1)[-1]
@@ -456,8 +583,9 @@ class OneEmailMutationAtATime(Factory):
                            STANDING_EMAIL_DEFECT, blocking={"lead_count"})
 
     def test_a_missing_lead(self):
-        self.check({"lead_set", "lead_count"}, blocking={"lead_count"},
-                   leads=[])
+        # Empty provider: lead_set, lead_count AND per-lead copy all fail.
+        self.check({"lead_set", "lead_count", "lead_copy"},
+                   blocking={"lead_count"}, leads=[])
 
     def test_wrong_subject(self):
         campaign, recs = self.stage()
@@ -491,7 +619,10 @@ class OneEmailMutationAtATime(Factory):
             subjects=list(approved["subjects"]) + ["one more nobody approved"],
             bodies=list(approved["bodies"]) + ["and a body nobody approved"],
             delays=list(approved["delays"]) + [30])
-        self.assert_blocks(readback, {"subjects", "bodies", "delays"},
+        # The extra step also changes actions (4 vs 3) and thread_replies
+        # (4 entries vs 3). All three are caught.
+        self.assert_blocks(readback, {"subjects", "bodies", "delays",
+                                      "actions", "thread_replies"},
                            STANDING_EMAIL_DEFECT)
 
     def test_wrong_daily_limit(self):
@@ -604,12 +735,11 @@ class MutationsThisGateCannotSee(Factory):
             {"schedule", "sending_window", "sending_days", "timezone"}
             & set(readback.diff["fields"]))
 
-    @unittest.expectedFailure
-    def test_compare_bison_should_be_able_to_pass(self):
-        """`approved_bison` says `day1`; `provider_bison` says `step1`; both are
-        the `actions` field and `actions` is in `REQUIRED_BISON`. No email
-        campaign with approved copy can ever reach PASS, so the email half of
-        this gate has never been exercised against an exact match."""
+    def test_compare_bison_can_now_pass(self):
+        """CLOSED. TASK-219 reconciled the step naming: both sides now use
+        `step{N}` and the threaded shape carries `thread_reply` and per-lead
+        custom variables. The email half of this gate is exercised against an
+        exact match and reaches PASS."""
         campaign, recs = self.stage()
         readback = self.compare_email(campaign, recs)
         self.assertEqual(readback.verdict, configdiff.PASS, readback.failures)
@@ -710,16 +840,41 @@ class TheFingerprintDoesNotCoverTheSchedule(Factory):
 class NoActivationOnAnythingLessThanAnExactMatch(Factory):
     """The diff's verdict has to actually stop the write, not merely exist."""
 
-    def test_activation_is_refused_at_the_write_door_regardless(self):
-        """Activation is BLOCKING by construction rather than by a flag, on
-        both channels. This is the outermost reason no mutation here can reach
-        a prospect, and it is asserted first so the gate tests below are read
-        as defence in depth rather than as the only defence."""
-        for operation in (providerwrites.LINKEDIN_ACTIVATE,
-                          providerwrites.EMAIL_ACTIVATE):
-            self.assertFalse(providerwrites.is_supported(operation))
-            with self.assertRaises(providerwrites.WriteUnsupported):
-                providerwrites.require_supported(operation)
+    def test_linkedin_activation_is_still_unsupported(self):
+        """LinkedIn activation is BLOCKING by construction. `LINKEDIN_ACTIVATE`
+        is not in `SUPPORTED` and never will be without an operator decision."""
+        self.assertFalse(
+            providerwrites.is_supported(providerwrites.LINKEDIN_ACTIVATE))
+        with self.assertRaises(providerwrites.WriteUnsupported):
+            providerwrites.require_supported(providerwrites.LINKEDIN_ACTIVATE)
+
+    def test_email_activation_is_scoped_to_one_campaign(self):
+        """`EMAIL_ACTIVATE` is in `SUPPORTED` and in `CONDITIONAL`, scoped to
+        campaign 485 and canonical row `productive-email-control-v2`. The
+        guarantee that replaced 'activation is impossible' is 'activation is
+        possible for exactly one named campaign', and it is the stronger
+        statement."""
+        self.assertTrue(
+            providerwrites.is_supported(providerwrites.EMAIL_ACTIVATE))
+        self.assertIn(providerwrites.EMAIL_ACTIVATE,
+                      providerwrites.CONDITIONAL)
+        # 481 holds 23 people with 6 to 40 historical touches each - wrong
+        # campaign, must refuse.
+        with self.assertRaises(providerwrites.WriteRefused):
+            providerwrites.require_conditional_permission(
+                providerwrites.EMAIL_ACTIVATE, "481",
+                campaign_id="some-other-row")
+        # Right campaign, wrong canonical row - a mismatched binding is how
+        # a send reaches a campaign nobody approved.
+        with self.assertRaises(providerwrites.WriteRefused):
+            providerwrites.require_conditional_permission(
+                providerwrites.EMAIL_ACTIVATE, "485",
+                campaign_id="wrong-row")
+        # The exact authorized pair passes.
+        result = providerwrites.require_conditional_permission(
+            providerwrites.EMAIL_ACTIVATE, "485",
+            campaign_id="productive-email-control-v2")
+        self.assertTrue(result)
 
     def test_a_failed_readback_refuses_at_the_readback_gate(self):
         """And the trace proves nothing earlier fired: tenancy, approval and
