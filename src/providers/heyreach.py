@@ -2129,10 +2129,15 @@ def add_leads_to_campaign(campaign_id, rows, linkedin_account_id):
 def add_leads_to_list(list_id, rows):
     """Add leads to a LIST. Returns the raw provider response.
 
-    `{listId, leads: [{linkedInUrl, ...}]}`, max 100 per request - the vendor's
-    shape, not an inferred one. Note the field is `linkedInUrl` here and
-    `profileUrl` on the campaign route; they are different objects with
-    different schemas and assuming otherwise sends a lead nobody can find.
+    `{listId, leads: [{profileUrl, firstName, lastName, ...}]}`, max 100 per
+    request - the vendor's shape, established by probe on 2026-09-15 against
+    list 940797 and documented in docs/HEYREACH-LIST-SCHEMA-2026-09-15.md.
+
+    The field is `profileUrl` here, the same name the campaign route uses
+    inside its `accountLeadPairs[].lead` wrapper. The list route takes the
+    lead object directly in the `leads` array. `firstName` and `lastName`
+    are required: the provider silently drops any lead missing either,
+    returning `addedLeadsCount: 0` with no error.
 
     THE TRANSPORT ONLY. It does not know whether this list feeds a campaign,
     and that is the whole question - `providerwrites` owns it.
@@ -2142,7 +2147,7 @@ def add_leads_to_list(list_id, rows):
         url = str(row.get("linkedin_url") or "").strip()
         if not url:
             continue
-        leads.append({"linkedInUrl": url,
+        leads.append({"profileUrl": url,
                       "firstName": row.get("first_name", ""),
                       "lastName": row.get("last_name", ""),
                       "companyName": row.get("company", ""),
