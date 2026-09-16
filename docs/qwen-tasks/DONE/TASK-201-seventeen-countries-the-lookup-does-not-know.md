@@ -84,3 +84,52 @@ report countries in aggregate where you can.
 What a missing code causes and where, the table completed from a named source,
 the 21 records with their resolved country and resulting verdict, whether any
 resolve onto the include list, and the coverage test.
+
+## RESULT
+
+STATUS: DONE
+
+COMMIT SHA: ee37f9a
+
+TESTS:
+  - tests/test_iso_coverage.py: 4 tests, all pass
+  - tests.test_icp + tests.test_the_client_icp_is_structural +
+    tests.test_the_structural_verdict_is_the_one_the_pipeline_reads: 177 tests,
+    all pass
+  - Break-the-wiring verified: removing CZ from ISO_TO_NAME causes
+    test_no_office_code_is_unknown to fail with ['CZ']
+
+FILES CHANGED:
+  - src/icpstructural.py: replaced 34-entry ISO_TO_NAME with complete ISO
+    3166-1 alpha-2 set (249 codes + UK alias). Source: ISO 3166 Maintenance
+    Agency, ISO Online Browsing Platform.
+  - tests/test_iso_coverage.py: new. Four tests: full ISO coverage, UK alias,
+    no unknown office codes, no empty values.
+  - docs/ISO-GAP-2026-09-16.md: new. Analysis document.
+  - scripts/task201_analysis.py: new. Per-record resolution analysis.
+
+FINDINGS:
+  1. The 17 missing codes affected 21 records. All 21 now resolve to a country.
+  2. Two records (hashes 7ea8b6c1c25f, 39ce634c18a4) PASS geography, but both
+     resolve through segment.country, not through the fixed ISO table. Their
+     verdicts were PASS before the fix and remain PASS after.
+  3. The ISO table fix changed ZERO verdicts. The 19 records that remain
+     UNKNOWN are now informed unknowns ("office is in Ukraine") rather than
+     ignorant unknowns ("no usable location evidence").
+  4. None of the 17 previously-missing codes resolve to a country on the
+     client's include list. No record was recovered for free.
+  5. Caller chain: ISO_TO_NAME → resolve_country() → _geography() →
+     structural(). The only consumer of resolve_country is _geography, which
+     is called by structural(), the public entry point.
+
+RISKS:
+  - The table now has 250 entries (249 + UK alias). This is the complete ISO
+    3166-1 alpha-2 set. Future additions to the standard will require a table
+    update, but the test catches that.
+  - Country names are not PII, but a domain plus its country narrows a company.
+    Record ids and domains are hashed in the deliverable.
+
+RECOMMENDED CLAUDE ACTION:
+  Review the completed table and the coverage test. The fix is a data completion,
+  not a logic change. No verdicts changed. The system now says what is true
+  rather than saying it cannot tell.
