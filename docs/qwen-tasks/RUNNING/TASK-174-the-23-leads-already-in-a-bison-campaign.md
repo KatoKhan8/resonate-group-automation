@@ -85,3 +85,39 @@ The 23 characterised with dates, steps and statuses; the three overlap counts
 against the 17; the per-lead verdict from today's gates; 481's five steps
 compared to CONTROL; and a recommendation among reuse, new campaign, or
 neither, with the evidence that supports it.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** (pending)
+- **TESTS:** Script ran successfully against live provider (read-only). All 23 leads read, all 5 steps read, overlap computed, gate verdicts computed.
+- **FILES CHANGED:**
+  - `scripts/task174_investigate_481.py` (new)
+  - `scripts/task174_raw_data.json` (new, raw data dump)
+  - `docs/BISON-481-POPULATION-2026-09-16.md` (new, PII hashed)
+- **FINDINGS:**
+  - **Campaign 481:** paused, created 2026-09-13T20:11:34Z, name "RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - BUYER - LIHEAVY-V1", 23 leads, 5 steps, 0 sent.
+  - **The 23 split into two groups:**
+    - Group A: 13 leads created 2026-09-13 with record_id/contact_key/client filled in. These are this system's work under the old `productive_li_heavy_v1` cadence. 9 sending_paused, 4 stopped.
+    - Group B: 10 leads created 2026-04-04 to 2026-04-23 with empty record_id/contact_key. These predate this system by 5 months. All stopped.
+  - **Overlap with TASK-167's 17:**
+    - By email: 4 in both, 19 only in 481, 13 only in TASK-167
+    - By domain: 9 in both, 14 only in 481, 8 only in TASK-167
+    - By name: 9 in both
+    - The 4 email matches are: ogpartner-dk/jacob-faertz, anewagencyworld-com/rik-de-veirman, acqcom-com/brian-price, adcuratio-com/ranjan-damodar
+  - **Gate verdicts:** 0 PASS, 23 REFUSED. Every lead has 6-40 confirmed historical touches. 14/23 have ICP flags. All have 62-116 log entries.
+  - **481's 5 steps vs CONTROL:**
+    - 481 has 5 steps using `{SUBJECT_N}`/`{BODY_N}` merge variables (provider-side). CONTROL has 3 steps with pre-resolved variables.
+    - 481 has thread_reply all FALSE. CONTROL has F,T,F.
+    - 481 delays: 3,4,4,9,1 days. CONTROL delays: 1,5,21 days.
+    - 481's copy is the old `productive_li_heavy_v1` cadence, NOT the audited CONTROL templates.
+  - **RECOMMENDATION: NEW CAMPAIGN.** The data unambiguously supports creating a new campaign for the CONTROL sequence and the 17 contacts. 481 should be left as-is.
+  - **THE CRITICAL FACT:** 481 holds 23 people. `set_sequence` APPENDS rather than replaces. Writing the CONTROL sequence onto 481 would add steps alongside the existing 5, not replace them. And even if it could replace, it would change what 23 real people receive — and the permission comment for `EMAIL_SET_SEQUENCE` justifies itself on the grounds that "a sequence written onto a campaign holding nobody reaches nobody." 481 holds somebody.
+- **RISKS:**
+  - The 10 Group B leads (pre-existing, no record_id) are unattributed and may belong to a different client or workspace. They are stopped and cannot send, but their presence in 481 is unexplained.
+  - The 9 `sending_paused` Group A leads are reversible — if 481 is resumed, they will receive emails under the old sequence.
+- **RECOMMENDED CLAUDE ACTION:**
+  - Review `docs/BISON-481-POPULATION-2026-09-16.md` for the full analysis.
+  - Create a new campaign for the CONTROL sequence and the 17 contacts from TASK-167.
+  - Decide separately what happens to the 23 in 481 (stop the Group A leads, leave Group B as-is).
+  - No provider writes were made by this task.
