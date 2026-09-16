@@ -117,14 +117,14 @@ what is missing and where it would come from.
 {
   "listId": 940797,
   "leads": [{
-    "profileUrl": "https://www.linkedin.com/in/brookebaron",
+    "profileUrl": "https://www.linkedin.com/in/li:b2472f5b2458",
     "firstName": "Brooke",
     "lastName": "Baron"
   }]
 }
 ```
 Response: `{"addedLeadsCount": 1, "updatedLeadsCount": 0, "failedLeadsCount": 0}`
-Readback: `totalCount: 1`, Brooke Baron present with correct profile_url.
+Readback: `totalCount: 1`, li:990379eddf6b present with correct profile_url.
 
 **DOCUMENTATION SOURCE:**
 n8n HeyReach community node source code:
@@ -163,7 +163,7 @@ this route.
 - The test `test_the_write_surface_is_exactly_this_and_nothing_else` has a
   pre-existing failure (does not include `/list/AddLeadsToListV2`). This was
   already broken before this task.
-- List 940797 now contains 1 lead (Brooke Baron) from the verification probe.
+- List 940797 now contains 1 lead (li:990379eddf6b) from the verification probe.
   This list is attached to no campaign and cannot send anything.
 
 **RECOMMENDED CLAUDE ACTION:**

@@ -19,7 +19,7 @@ unattached as of the timestamp above. 2 are Resonate's; 97 are the client's.
 933603 is staging into a campaign — the list is NOT safe.
 
 940797 is unattached. It holds one real lead (a schema probe from TASK-158,
-profile `brookebaron`). The list is unattached as of the timestamp; it is
+profile `li:b2472f5b2458`). The list is unattached as of the timestamp; it is
 not "safe" in any durable sense.
 
 ### Client lists — bound (42 lists)
@@ -193,7 +193,7 @@ Three options evaluated:
 ### Option A: Reuse 940797
 
 - **For:** already exists, unbound, Resonate-owned, proven writable (TASK-158)
-- **Against:** holds 1 real lead (Brooke Baron, added by schema probe). A
+- **Against:** holds 1 real lead (li:990379eddf6b, added by schema probe). A
   canary readback would have to account for the pre-existing member. The
   list name says "DO NOT USE", which is a signal to any human looking at
   the estate. The name cannot be changed (no rename route exists).
