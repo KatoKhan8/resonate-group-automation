@@ -1,15 +1,16 @@
 {
-  "generated_at": "2026-09-16T06:52:40+00:00",
+  "generated_at": "2026-09-16T07:15:52+00:00",
   "generated_from": "docs/qwen-tasks/**, git, and work/claims/. Derived, never hand-edited.",
   "branch_blindness": "This registry reads master only. Tasks finished on worker branches but not yet integrated into master appear as QUEUED here but are actually done. Run scripts/task173_scan.py --unintegrated to see the set that this registry cannot see.",
-  "master_head": "feca58c",
+  "master_head": "a701bf7",
   "counts": {
-    "CLAIMED": 2,
-    "AWAITING_REVIEW": 12,
+    "CLAIMED": 1,
+    "QUEUED": 1,
+    "AWAITING_REVIEW": 13,
     "BLOCKED": 2,
     "DONE": 191
   },
-  "ready_count": 0,
+  "ready_count": 1,
   "workers": 8,
   "backlog_healthy": false,
   "tasks": [
@@ -28,13 +29,13 @@
       "blocked_by": []
     },
     {
-      "task": "TASK-210",
-      "file": "docs/qwen-tasks/TODO/TASK-210-put-the-control-copy-where-the-approval-will-land.md",
-      "status": "CLAIMED",
+      "task": "TASK-211",
+      "file": "docs/qwen-tasks/TODO/TASK-211-run-the-estate-through-the-new-order.md",
+      "status": "QUEUED",
       "stage_dir": "TODO",
       "priority": "P0",
-      "worker": "resonate-qwen-worker",
-      "claimed_at": "2026-09-16T06:47:52+00:00",
+      "worker": null,
+      "claimed_at": null,
       "dependencies": [],
       "branch": null,
       "result": null,
@@ -198,6 +199,20 @@
     {
       "task": "TASK-207",
       "file": "docs/qwen-tasks/REVIEW/TASK-207-an-error-is-not-a-miss.md",
+      "status": "AWAITING_REVIEW",
+      "stage_dir": "REVIEW",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-210",
+      "file": "docs/qwen-tasks/REVIEW/TASK-210-put-the-control-copy-where-the-approval-will-land.md",
       "status": "AWAITING_REVIEW",
       "stage_dir": "REVIEW",
       "priority": "P0",
