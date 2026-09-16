@@ -102,7 +102,7 @@ a record count against each.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** 1da2edd
+**COMMIT SHA:** 436f5ee
 
 **TESTS:** No code changes to test. Measurement scripts at `scripts/task187_analyze.py`, `scripts/task187_deep.py`, `scripts/task187_final.py`. All read-only over the snapshot.
 
