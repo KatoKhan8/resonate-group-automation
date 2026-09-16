@@ -84,3 +84,52 @@ The full list enumeration with attachment state and ownership, the endpoint
 that answers attachment and what it costs, the one-to-many answers in both
 directions, the recommended staging list with its reason, and the binding
 operation with its verb and permission status.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** 4294cd3
+- **TESTS:** No test changes. Read-only provider enumeration, no code
+  behaviour changed. Script `scripts/task175_enumerate_lists.py` reproduces
+  the full data.
+- **FILES CHANGED:**
+  - `docs/HEYREACH-LIST-ESTATE-2026-09-16.md` (new) — the full deliverable
+  - `scripts/task175_enumerate_lists.py` (new) — the enumeration script
+- **FINDINGS:**
+  1. **99 lists, 83 campaigns.** 42 lists are bound (attached to ≥1 campaign),
+     57 are unattached as of 2026-09-16T04:57Z. 2 lists are Resonate's
+     (933603, 940797); 97 are the client's.
+  2. **Attachment discovery:** `campaignIds` array on the list object
+     (from `/list/GetAll` or `GET /list/GetById`). The campaign-side
+     counterpart is `linkedInUserListId` (singular integer) on the campaign
+     object. Cost: 2 paged reads + 42 individual campaign reads ≈ 44
+     requests, all free.
+  3. **One-to-many:** A list CAN be attached to multiple campaigns (measured
+     up to 8 — list 668409 "PRODUCTIVE - OMEGA"). A campaign holds exactly
+     one list or zero (81 of 83 campaigns hold one; 2 DRAFT canary campaigns
+     hold none).
+  4. **Staging recommendation:** Create a new list (Option B). 940797 is
+     usable but holds a probe lead and is named "DO NOT USE". 933603 is
+     BOUND and refused by the safety predicate.
+  5. **Binding step:** `POST /campaign/Create` with `linkedInUserListId` is
+     the ONLY route that attaches a list to a campaign. The verb exists in
+     `heyreach.create_campaign` but is NOT in `providerwrites.SUPPORTED`.
+     Correctly sealed — creating a campaign with a list is the moment
+     staging becomes sending.
+  6. **Safety is temporal:** "Unbound as of <timestamp>" is the correct
+     statement. `liststaging.assert_list_safe` re-reads the provider
+     immediately before every add. The enumeration is a snapshot, not
+     permission.
+- **RISKS:**
+  - The `providerwrites.OPERATIONS` entry for `LINKEDIN_CREATE_CAMPAIGN`
+    says "no documented route" — this is stale. `/campaign/Create` is on
+    `WRITE_ROUTES` and `heyreach.create_campaign` is implemented. The entry
+    should be updated, but that is an operator decision and was not in scope.
+  - 940797's probe lead (Brooke Baron) is a real person. This task did not
+    remove it and must not — that is a provider write and Claude's call.
+- **RECOMMENDED CLAUDE ACTION:**
+  1. Decide on the staging list: create new (recommended) or reuse 940797.
+  2. Update `LINKEDIN_CREATE_CAMPAIGN`'s OPERATIONS entry to reflect that
+     `/campaign/Create` is established.
+  3. The list estate document is the factual basis for TASK-172's verb
+     specification and any future canary design.
