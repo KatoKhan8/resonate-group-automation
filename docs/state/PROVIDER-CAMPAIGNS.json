@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-16T08:22:00+00:00",
+  "generated_at": "2026-09-16T08:24:19+00:00",
   "source": "HeyReach public API, read-only. Credential env var: HEYREACH_KEY.",
   "heyreach": {
     "campaigns_total_in_account": 83,
@@ -68,7 +68,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-16T08:22:00+00:00"
+        "last_provider_readback": "2026-09-16T08:24:19+00:00"
       }
     ],
     "status_totals": {

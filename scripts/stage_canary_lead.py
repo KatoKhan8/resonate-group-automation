@@ -48,6 +48,14 @@ from src.providers import heyreach                      # noqa: E402
 
 REC_HASH = "699952d14554"
 CONTACT_HASH = "f4698472e36a"
+
+# `held` IS NOT A BLOCKER FOR A LINKEDIN ADD, and TASK-209 proved it rather
+# than assumed it: `approve.py` is explicit that `held` is an EMAIL judgment,
+# and the LinkedIn staging path does not read record state at all. Five of the
+# six fully-approved LinkedIn contacts sit on `held` records, so refusing them
+# here would have left exactly one candidate - the one whose profile the
+# provider will not accept.
+STAGEABLE_STATES = ("verified", "drafted", "held")
 LIST_ID = 940797
 REQUIRED_APPROVER = "operator-control-arm"
 REQUIRED_STEPS = ("li1", "li2", "li3", "li4", "li5")
@@ -57,13 +65,13 @@ def h12(value):
     return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
 
 
-def find_canary():
+def find_canary(rec_hash=REC_HASH, contact_hash=CONTACT_HASH):
     """The record and contact, by hash. Returns (record, contact) or (None, None)."""
     for rec in store.load():
-        if h12(rec["id"]) != REC_HASH:
+        if h12(rec["id"]) != rec_hash:
             continue
         for contact in rec.get("contacts") or []:
-            if h12(contact.get("key")) == CONTACT_HASH:
+            if h12(contact.get("key")) == contact_hash:
                 return rec, contact
     return None, None
 
@@ -77,7 +85,7 @@ def preflight(rec, contact):
     provider read.
     """
     problems = []
-    if rec.get("state") not in ("verified", "drafted"):
+    if rec.get("state") not in STAGEABLE_STATES:
         problems.append(f"record state is {rec.get('state')!r}")
     if not contact.get("linkedin"):
         problems.append("contact has no LinkedIn profile URL")
@@ -101,16 +109,23 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--live", action="store_true",
                         help="perform the write; omit for a dry run")
+    parser.add_argument("--rec", help="record hash, overriding the default")
+    parser.add_argument("--contact", help="contact hash, overriding the default")
     args = parser.parse_args(argv)
 
-    rec, contact = find_canary()
+    rec_hash = args.rec or REC_HASH
+    contact_hash = args.contact or CONTACT_HASH
+    rec, contact = find_canary(rec_hash, contact_hash)
     if rec is None:
         print("REFUSED: the canary record/contact was not found in live state.")
         print("  Live state may have moved since TASK-209 selected it.")
         return 2
 
     problems = preflight(rec, contact)
-    print(f"canary        record {REC_HASH} contact {CONTACT_HASH}")
+    # PRINT WHAT WAS LOADED, not the module defaults. This line printed the
+    # constants while --rec/--contact loaded a different pair, so a dry run
+    # reported one identity and checked another.
+    print(f"canary        record {rec_hash} contact {contact_hash}")
     print(f"record state  {rec.get('state')}")
     print(f"approvals     {', '.join(REQUIRED_STEPS)} by {REQUIRED_APPROVER}")
     if problems:
