@@ -115,7 +115,7 @@ def _build_records():
         "client": CLIENT,
         "domain": "other.com",
         "contacts": [
-            {"key": "bob", "email": "bob@other.com", "sendable": True,
+            {"key": "bob", "email": "bob@example.org", "sendable": True,
              "name": "Bob Jones", "first_name": "Bob", "last_name": "Jones",
              "linkedin": "https://linkedin.com/in/bob-jones"},
         ],
@@ -244,7 +244,7 @@ class _Base(unittest.TestCase):
 
         alice_id = self.fb.add_lead("alice@example.com",
                                      first_name="Alice", last_name="Smith")
-        bob_id = self.fb.add_lead("bob@other.com",
+        bob_id = self.fb.add_lead("bob@example.org",
                                    first_name="Bob", last_name="Jones")
         self.fb.leads[alice_id]["custom_variables"] = _lead_vars(alice_copy)
         self.fb.leads[bob_id]["custom_variables"] = _lead_vars(bob_copy)
@@ -314,7 +314,7 @@ class CompareBisonFailLeadCopy(_Base):
         self._setup_provider_match()
         # Tamper with Bob's body_1 - change the resolved copy.
         bob_lead_id = [lid for lid in self.fb.members[501]
-                       if self.fb.leads[lid]["email"] == "bob@other.com"][0]
+                       if self.fb.leads[lid]["email"] == "bob@example.org"][0]
         bob_vars = self.fb.leads[bob_lead_id]["custom_variables"]
         for v in bob_vars:
             if v["name"] == "body_1":
@@ -330,7 +330,7 @@ class CompareBisonFailLeadCopy(_Base):
 
         self.assertEqual(readback.verdict, configdiff.FAIL)
         # The failure should name the contact by hashed email.
-        bob_hash = configdiff._hash_email("bob@other.com")
+        bob_hash = configdiff._hash_email("bob@example.org")
         failure_text = " ".join(readback.failures)
         self.assertIn(bob_hash, failure_text,
                       f"expected hashed email {bob_hash} in failures: "
@@ -341,7 +341,7 @@ class CompareBisonFailLeadCopy(_Base):
         """Alice's copy is correct; only Bob's is wrong."""
         self._setup_provider_match()
         bob_lead_id = [lid for lid in self.fb.members[501]
-                       if self.fb.leads[lid]["email"] == "bob@other.com"][0]
+                       if self.fb.leads[lid]["email"] == "bob@example.org"][0]
         bob_vars = self.fb.leads[bob_lead_id]["custom_variables"]
         for v in bob_vars:
             if v["name"] == "subject_2":
@@ -357,7 +357,7 @@ class CompareBisonFailLeadCopy(_Base):
 
         self.assertEqual(readback.verdict, configdiff.FAIL)
         alice_hash = configdiff._hash_email("alice@example.com")
-        bob_hash = configdiff._hash_email("bob@other.com")
+        bob_hash = configdiff._hash_email("bob@example.org")
         failure_text = " ".join(readback.failures)
         # Bob should be in the failures.
         self.assertIn(bob_hash, failure_text)
