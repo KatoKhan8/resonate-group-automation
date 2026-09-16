@@ -91,3 +91,34 @@ run for records with no research.
 The packet: per record per step rendered copy, the gate verdicts with the
 evidence row behind each claim, the rejection flags, the bands with counts at
 the top, and what approving one record causes.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: 6f3b7e7
+TESTS: Script imports verified. No src/ files modified. The script is a read-only generator that imports from src.lint and src.claims for gate checks.
+FILES CHANGED:
+  - docs/APPROVAL-PACKET-2026-09-16.md (new, 7980 lines)
+  - scripts/task200_approval_packet.py (new, 529 lines)
+
+FINDINGS:
+  - 47 records have unapproved steps (449 steps total awaiting approval)
+  - Band distribution: 1 record in band 1 (all clean), 41 in band 2 (pass with fallbacks), 5 in band 3 (gate failures), 0 in band 4
+  - 7 steps have actual gate failures: 5 claims failures (unsupported operational assertions), 1 lint failure (em_dash), 1 additional claims failure
+  - No campaigns exist yet for these records, so approving enters no campaign
+  - All records use the productive_li_heavy_v1 cadence (11 steps: em1-em5, li1-li6)
+  - Cadence spans Day 1 through Day 21 (three weeks)
+  - No sender assigned yet; workspace sender configuration applies
+  - Evidence is shown once per contact (not per step) to keep the document readable
+  - The copy itself contains unhashed prospect data (company names, first names) as the prospect would receive it, behind a clear warning at the top
+  - Record identifiers and contact keys are hashed throughout
+
+RISKS:
+  - The document is 7980 lines long. An operator reading it start to finish is a significant time commitment. The band ordering helps (band 1 is one record, fastest yes), but the total volume is the bottleneck this task was meant to reduce, not solve.
+  - No same-thread reply indicators are shown in the document. The cadence library defines thread_reply patterns per ladder, but the stored steps do not carry this flag. An operator would need to consult cadencelibrary.py to know which emails are same-thread follow-ups.
+  - The snapshot is from 2026-09-15T17:52:12+00:00. Any approvals or changes since then are not reflected.
+
+RECOMMENDED CLAUDE ACTION:
+  - Review the packet and hand it to the operator. The document is the deliverable.
+  - The 5 band-3 records have gate failures that need operator attention: unsupported claims about "utilisation" on records with no evidence, and one em_dash lint failure.
+  - Consider whether the document length is acceptable or whether it should be split per-client for easier digestion.
