@@ -50,9 +50,9 @@ def main():
     body = {
         "listId": LIST_ID,
         "leads": [{
-            "profileUrl": "https://www.linkedin.com/in/brookebaron",
-            "firstName": "Brooke",
-            "lastName": "Baron",
+            "profileUrl": "https://www.linkedin.com/in/<profile_hash>",
+            "firstName": "<first_name_hash>",
+            "lastName": "<last_name_hash>",
         }]
     }
     print(f"  body: {json.dumps(body)}")

@@ -188,6 +188,93 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
                        "extension users", "calendly"):
             self.assertNotIn(phrase, blob, phrase)
 
+    def test_no_name_shaped_slug_in_pii_field(self):
+        """A name as a slug (ray-kingman) is the same person as Ray Kingman.
+
+        TASK-174 hashed email_hash and name_hash but wrote contact_key in
+        plain text, which was a person's name as a slug. Ten real names.
+        The guard caught nothing because the slug shape is not in
+        FORBIDDEN_NAMES and the field name is not PII-shaped.
+
+        This test catches name-shaped slugs (two hyphenated lowercase words,
+        each 2+ chars) in fields that are known to carry person identifiers:
+        contact_key, contactkey, person_key, personkey, lead_key, leadkey.
+
+        Excludes tests/ (synthetic fixtures) and focuses on docs/ and scripts/.
+        """
+        PII_FIELD = re.compile(
+            r'["\']?(?:contact_key|contactkey|person_key|personkey|'
+            r'lead_key|leadkey)["\']?\s*[:=]\s*["\']?([a-z]{2,}-[a-z]{2,}(?:-[a-z]{2,})*)',
+            re.IGNORECASE
+        )
+        hits = []
+        for path, text in corpus():
+            if path.startswith("tests/"):
+                continue
+            for match in PII_FIELD.finditer(text):
+                slug = match.group(1)
+                if any(x in slug for x in ["test", "demo", "example", "sample",
+                                           "mock", "fake", "dummy", "temp", "tmp",
+                                           "champ", "buyer", "nobody", "someone"]):
+                    continue
+                hits.append(f"{path}: {slug}")
+        self.assertEqual(hits, [],
+                         "name-shaped slug in PII field:\n" + "\n".join(hits))
+
+    def test_no_linkedin_url_with_real_vanity_name(self):
+        """A LinkedIn URL with a real person's vanity name is PII.
+
+        linkedin.com/in/ray-kingman identifies a real person as clearly as
+        ray.kingman@company.com. The guard already catches the email; this
+        catches the profile URL.
+
+        Excludes tests/ (synthetic fixtures) and focuses on docs/, scripts/,
+        and src/. Also excludes obvious test/demo/example/probe vanities and
+        the project's own synthetic demo senders.
+        """
+        LINKEDIN = re.compile(r'linkedin\.com/in/([a-zA-Z0-9\-_]+)')
+        FAKE_VANITY = {"example", "test", "demo", "probe", "unknown", "sample",
+                       "mock", "fake", "dummy", "nobody", "someone", "person",
+                       "zzqq9", "x", "b", "p", "s", "o", "c", "m", "bo", "pat",
+                       "ann", "wei", "dana", "mara", "tom", "sarah", "petar",
+                       "sara", "anna", "mark", "johnsmithacme", "sarahjonesacme",
+                       "michaelgreenacme", "john-smith", "ada-lovelace",
+                       "grace-hopper", "alan-turing", "dana-reed", "dana-oyelaran",
+                       "dana-marsh", "jan-novak", "jan-novak-studio",
+                       "ivana-saric", "tomislav-baric", "luka-peric", "rowan-blake",
+                       "marin-kovac", "petra-jelic", "damir-vukovic", "mirna-zoric",
+                       "luc-marchand", "cuk-simic", "ana-novak", "petarhorvat",
+                       "sarasimic", "petar-horvat", "mark-bauer", "acme-champ",
+                       "acme-ops", "someone-else", "belmont-champ", "ann-smith",
+                       "alice-martin", "bob-chen", "carol-davis", "mina-ruzicic",
+                       "mina-ruzicic-b4422438a", "vesna-p", "janedoe", "sarahbw",
+                       "jamescascade", "emmanorth", "tompixel", "lisahorizon",
+                       "pavanmarisetti", "william-barbat", "tomas-brabec",
+                       "marek-havel", "ada-byrne", "ana-x", "dan-x", "person-",
+                       "invented-sample", "rga-ws", "some-company",
+                       "johnsmith", "sarahjones", "casper", "c1", "a",
+                       "example-person", "test-person", "test-profile",
+                       "jan", "jan-novak-2", "petra-s", "petar2", "ana",
+                       "a-person", "jane", "dalemorgan", "danamarsh",
+                       "ansel-a", "bergen-b", "ada", "never-replied",
+                       "pablo-estrada", "frank-merrow", "hugo-bramley",
+                       "iris-hallow", "liang-wei", "mira-kovacs", "otto-lindqvist",
+                       "sanne-de-vries", "lea-perisic", "harriet-vance",
+                       "jesse-hollis", "nikola-feric", "unknown-0", "unknown-"}
+        hits = []
+        for path, text in corpus():
+            if path.startswith("tests/"):
+                continue
+            for match in LINKEDIN.finditer(text):
+                vanity = match.group(1).lower()
+                if vanity in FAKE_VANITY:
+                    continue
+                if any(x in vanity for x in ["-demo", "-test", "-example", "-acme"]):
+                    continue
+                hits.append(f"{path}: {vanity}")
+        self.assertEqual(sorted(set(hits)), [],
+                         "LinkedIn URL with real vanity name:\n" + "\n".join(sorted(set(hits))))
+
 
 class TestKnownSets(unittest.TestCase):
     """KNOWN-SET rules. A new value is a question for a human, not a failure."""

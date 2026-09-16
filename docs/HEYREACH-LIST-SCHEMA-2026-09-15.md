@@ -10,9 +10,9 @@
   "listId": 940797,
   "leads": [
     {
-      "profileUrl": "https://www.linkedin.com/in/brookebaron",
-      "firstName": "Brooke",
-      "lastName": "Baron"
+      "profileUrl": "https://www.linkedin.com/in/<profile_hash>",
+      "firstName": "<first_name_hash>",
+      "lastName": "<last_name_hash>"
     }
   ]
 }
@@ -26,10 +26,10 @@
 **Readback via `/list/GetLeadsFromList`:**
 ```json
 {
-  "profile_url": "https://www.linkedin.com/in/brookebaron",
+  "profile_url": "https://www.linkedin.com/in/<profile_hash>",
   "provider_profile_id": null,
-  "first_name": "Brooke",
-  "last_name": "Baron"
+  "first_name": "<first_name_hash>",
+  "last_name": "<last_name_hash>"
 }
 ```
 
@@ -70,8 +70,8 @@ list route takes the lead object directly in the `leads` array.
 ## Shapes that silently failed (0/0/0)
 
 All tested against list 940797 with real profiles HeyReach resolves via
-`/lead/GetLead` (Brooke Baron `linkedin_id=389277834`, Pavan Marisetti
-`linkedin_id=477646648`):
+`/lead/GetLead` (`<name_hash_1>` `linkedin_id=<id_hash_1>`, `<name_hash_2>`
+`linkedin_id=<id_hash_2>`):
 
 1. `{linkedInUrl, firstName, lastName, companyName, position}` - wrong field name
 2. `{profileUrl}` alone - missing required firstName/lastName
@@ -101,9 +101,9 @@ All tested against list 940797 with real profiles HeyReach resolves via
 The lead was added and read back:
 
     POST /list/AddLeadsToListV2
-    {"listId": 940797, "leads": [{"profileUrl": "https://www.linkedin.com/in/brookebaron", "firstName": "Brooke", "lastName": "Baron"}]}
+    {"listId": 940797, "leads": [{"profileUrl": "https://www.linkedin.com/in/<profile_hash>", "firstName": "<first_name_hash>", "lastName": "<last_name_hash>"}]}
     -> {"addedLeadsCount": 1, "updatedLeadsCount": 0, "failedLeadsCount": 0}
 
     POST /list/GetLeadsFromList
     {"listId": 940797, "offset": 0, "limit": 100}
-    -> totalCount: 1, items: [{profileUrl: "https://www.linkedin.com/in/brookebaron", firstName: "Brooke", lastName: "Baron"}]
+    -> totalCount: 1, items: [{profileUrl: "https://www.linkedin.com/in/<profile_hash>", firstName: "<first_name_hash>", lastName: "<last_name_hash>"}]

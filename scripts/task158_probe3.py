@@ -18,7 +18,7 @@ from src.providers.heyreach import (
 from src.providers import request
 
 LIST_ID = 940797
-PROBE_URL = "https://www.linkedin.com/in/brookebaron"
+PROBE_URL = "https://www.linkedin.com/in/<profile_hash>"
 PROBE_ID = "389277834"
 
 
