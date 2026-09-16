@@ -97,3 +97,83 @@ specified exactly; whether ICP and the copy gate want the same evidence; the
 minimum field list to unblock a record at both ends with the cheapest source
 per field and a per-record price; and the answer to how fifteen records reached
 verified with no research.
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: 14eca22
+TESTS: Analysis scripts run against snapshot (2026-09-15T17:52:12+00:00 from
+       master cf23154, 550 records). No src/ changes.
+FILES CHANGED:
+  docs/WHAT-ONE-FACT-UNBLOCKS-2026-09-16.md     (new - the deliverable)
+  scripts/task199_count_blocked.py               (new - population counter)
+  scripts/task199_evidence_analysis.py            (new - evidence analysis)
+
+FINDINGS:
+
+1. THREE COUNTS WITH OVERLAP:
+   - Blocked at ICP (geography or company_type UNKNOWN): 349
+   - Blocked at generation (verified/held, 0 usable research): 20
+   - Overlap: 0
+   The overlap is zero because these are sequential pipeline stages.
+   ICP-blocked records sit in review and never reach verified.
+   Generation-blocked records already passed ICP (all 20 have
+   icp_pass_with_uncertainty).
+
+2. WHAT check_evidence REQUIRES:
+   - Model produces evidence[] list for persona_angle
+   - Each string must be traceable to fact_strings(rec)
+   - fact_strings walks: company, domain, context, signal, company_facts
+     (key+value pairs), contacts, sizing, research[].fact
+   - Traceability: every adjacent content-word pair in the claim must be
+     adjacent in ONE fact string; every number must appear in some fact
+   - A research row is "usable" when quality is medium or strong
+   - BUT: fact_strings includes ALL research rows regardless of quality,
+     so even records with only weak/unusable rows have those strings in
+     the pool. The failure is that the pool lacks specific prose claims
+     the model can construct traceable evidence from.
+
+3. ICP vs check_evidence EVIDENCE:
+   - company_facts serves BOTH gates (industry->ICP company_type + fact pool;
+     offices->ICP geography + fact pool; employees->ICP + fact pool)
+   - research[].fact serves ONLY check_evidence (ICP ignores research)
+   - segment.country/business_model serve ONLY ICP (not in fact pool)
+   - ONE purchase CAN serve both if it populates company_facts
+
+4. MINIMUM TO UNBLOCK BOTH ENDS:
+   - One Grok call at $0.20/domain returns industry, offices, employees,
+     specialties, notable, description with source URLs
+   - This satisfies ICP's geography+company_type AND provides prose facts
+     for check_evidence
+   - For 349 ICP-blocked + 20 gen-blocked (zero overlap): $73.80 total
+   - ContactOut company-info (1 credit/record) failed on unknown domains
+     (TASK-185: zero verdicts moved on 50 records)
+   - webfetch is free but already tried for the 20 - produced weak/unusable
+     quality rows (boilerplate)
+
+5. HOW 20 RECORDS REACHED VERIFIED WITH NO RESEARCH:
+   - THE ORDERING DEFECT: enrich.outcome() checks any(sendable contacts)
+     but NOT research, evidence, or ICP verdict
+   - Person credits spent (decision-makers: 10 + email-verifier: 1 per
+     contact) BEFORE evidence gathered
+   - All 20 have icp_pass_with_uncertainty from ContactOut structured data
+     (industry + offices) but zero usable research for copy
+   - CHEAPEST FIX: gate person-level enrichment on evidence availability
+     (research.why() already computes this). Costs zero provider credits.
+   - Scale of waste: ~240 credits on contacts where copy cannot be generated
+
+RISKS:
+- The 20 generation-blocked records have company_facts producing 27-246
+  fact strings, but persona_angle still fails because the model cannot
+  construct traceable claims from structured data alone. Grok's prose
+  (specialties, notable, description) may help but is not guaranteed to
+  produce adjacent-word-pair matches for every claim the model attempts.
+- TASK-192 is measuring whether Grok actually moves verdicts on 25 records.
+  If it also moves zero, the evidence bottleneck has a different root cause.
+
+RECOMMENDED CLAUDE ACTION:
+1. Read docs/WHAT-ONE-FACT-UNBLOCKS-2026-09-16.md
+2. Add evidence gate before person-level enrichment (costs nothing)
+3. Wait for TASK-192 results before purchasing Grok for the 349
+4. Investigate why persona_angle fails for records with large fact pools
+   (prompt issue or traceability test too strict for structured data)
