@@ -141,6 +141,6 @@ verdicts; and where the overwritten copy is backed up.
   - The CONTROL campaign must be created with a three-step `email_sequence.steps` config. Until that campaign exists, the CONTROL copy on the records is not staged to any provider.
 - **RECOMMENDED CLAUDE ACTION:**
   1. Verify the data change by reading back the 11 records.
-  2. Apply the operator's approval (`zvonimir@resonategroup.co (operator authorisation 2026-09-16)`) to each of the 33 steps.
+  2. Apply the operator's approval (`<operator email> (operator authorisation 2026-09-16)`) to each of the 33 steps.
   3. Create the CONTROL campaign with three-step sequence.
   4. Stage to provider and read back.
