@@ -5,6 +5,13 @@ HeyReach sequence holds MERGE VARIABLES and the words arrive per lead, so no
 sequence write is needed; and ONE task - TASK-137, narrowing four seals for a
 fail-closed LINKEDIN_ADD_LEAD - stands between a ready 122-lead cohort and the
 first live campaign.
+PROVIDER-ROUTING-POLICY.md is the standing provider order, set by the
+operator on 2026-09-16 and a PRODUCT priority rather than a cost
+optimisation: ContactOut first whenever capable, then its cache, then the
+free crawler, then Grok, then other paid providers, then Claude - with
+progressive spend and every qualification gate unchanged. Read it before
+adding a provider call or reordering one, and read `waterfall.describe()`
+before changing `src/waterfall.py`, which already encodes most of it.
 Read BUILD-SPEC.md before changing anything. PLAYBOOK.md is the operating
 contract: the rules that outrank convenience, including the ones the LLM steps
 work to. SLACK-NOTIFICATIONS.md is the same for the notification layer: two
