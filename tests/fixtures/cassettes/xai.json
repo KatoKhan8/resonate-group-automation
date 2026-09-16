@@ -1,91 +1,108 @@
 [
   {
     "call": "xai-check",
-    "note": "Health check: minimal chat completion confirming the key works.",
-    "match": {"method": "POST", "url_contains": "/v1/chat/completions", "body_contains": "__xai_check__"},
+    "note": "Health check: minimal response confirming the key works.",
+    "match": {"method": "POST", "url_contains": "/v1/responses", "body_contains": "__xai_check__"},
     "status": 200,
     "response": {
-      "id": "check-1",
-      "object": "chat.completion",
-      "created": 1726400000,
+      "id": "resp-check-1",
+      "object": "response",
       "model": "grok-4.6",
-      "choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
-      "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6, "cost_in_usd_ticks": 50000}
+      "status": "completed",
+      "output": [{"type": "message", "role": "assistant", "status": "completed",
+                  "content": [{"type": "output_text", "text": "ok"}]}],
+      "usage": {"input_tokens": 5, "output_tokens": 1, "total_tokens": 6, "cost_in_usd_ticks": 50000}
     }
   },
   {
-    "call": "xai-chat",
-    "note": "Regular chat completion with full usage breakdown.",
-    "match": {"method": "POST", "url_contains": "/v1/chat/completions", "body_contains": "Hello"},
+    "call": "xai-respond",
+    "note": "Regular response with full usage breakdown.  Scrubbed from a real call.",
+    "match": {"method": "POST", "url_contains": "/v1/responses", "body_contains": "Hello"},
     "status": 200,
     "response": {
-      "id": "chatcmpl-xai-1",
-      "object": "chat.completion",
-      "created": 1726400000,
+      "id": "resp-xai-1",
+      "object": "response",
       "model": "grok-4.6",
-      "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello! How can I help you today?"}, "finish_reason": "stop"}],
+      "status": "completed",
+      "output": [
+        {"type": "message", "role": "assistant", "status": "completed",
+         "content": [{"type": "output_text",
+                      "text": "Hello! How can I help you today?",
+                      "logprobs": [], "annotations": []}]}
+      ],
       "usage": {
-        "prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30,
+        "input_tokens": 10, "output_tokens": 20, "total_tokens": 30,
         "cost_in_usd_ticks": 200000,
-        "prompt_tokens_details": {"text_tokens": 8, "cached_tokens": 2, "image_tokens": 0, "audio_tokens": 0},
-        "completion_tokens_details": {"reasoning_tokens": 0, "text_tokens": 20, "audio_tokens": 0, "accepted_prediction_tokens": 20, "rejected_prediction_tokens": 0},
-        "num_sources_used": 0
+        "input_tokens_details": {"cached_tokens": 2},
+        "output_tokens_details": {"reasoning_tokens": 0},
+        "num_sources_used": 0,
+        "num_server_side_tools_used": 0
       }
     }
   },
   {
-    "call": "xai-chat-tools",
-    "note": "Chat completion with web_search tool enabled and server_side_tool_usage.",
-    "match": {"method": "POST", "url_contains": "/v1/chat/completions", "body_contains": "Search for news"},
+    "call": "xai-respond-tools",
+    "note": "Response with web_search tool enabled, including a web_search_call output item.",
+    "match": {"method": "POST", "url_contains": "/v1/responses", "body_contains": "Search for news"},
     "status": 200,
     "response": {
-      "id": "chatcmpl-xai-2",
-      "object": "chat.completion",
-      "created": 1726400001,
+      "id": "resp-xai-2",
+      "object": "response",
       "model": "grok-4.6",
-      "choices": [{"index": 0, "message": {"role": "assistant", "content": "Based on recent news..."}, "finish_reason": "stop"}],
+      "status": "completed",
+      "output": [
+        {"type": "web_search_call", "id": "wsc-1", "status": "completed",
+         "action": {"type": "search",
+                    "sources": [{"type": "url", "url": "https://example.com/news1"},
+                                {"type": "url", "url": "https://example.com/news2"}]}},
+        {"type": "message", "role": "assistant", "status": "completed",
+         "content": [{"type": "output_text",
+                      "text": "Based on recent news...",
+                      "logprobs": [], "annotations": []}]}
+      ],
       "usage": {
-        "prompt_tokens": 15, "completion_tokens": 25, "total_tokens": 40,
+        "input_tokens": 15, "output_tokens": 25, "total_tokens": 40,
         "cost_in_usd_ticks": 500000,
-        "prompt_tokens_details": {"text_tokens": 15, "cached_tokens": 0, "image_tokens": 0, "audio_tokens": 0},
-        "completion_tokens_details": {"reasoning_tokens": 5, "text_tokens": 20, "audio_tokens": 0, "accepted_prediction_tokens": 20, "rejected_prediction_tokens": 0},
-        "num_sources_used": 2
-      },
-      "server_side_tool_usage": {"web_search": 1, "x_search": 0}
+        "input_tokens_details": {"cached_tokens": 0},
+        "output_tokens_details": {"reasoning_tokens": 5},
+        "num_sources_used": 2,
+        "num_server_side_tools_used": 1
+      }
     }
   },
   {
     "call": "xai-retry-fail-1",
     "note": "First retry attempt: server error.",
-    "match": {"method": "POST", "url_contains": "/v1/chat/completions", "body_contains": "__xai_retry__"},
+    "match": {"method": "POST", "url_contains": "/v1/responses", "body_contains": "__xai_retry__"},
     "status": 500,
     "response": {"error": {"message": "internal server error", "type": "server_error"}}
   },
   {
     "call": "xai-retry-fail-2",
     "note": "Second retry attempt: server error.",
-    "match": {"method": "POST", "url_contains": "/v1/chat/completions", "body_contains": "__xai_retry__"},
+    "match": {"method": "POST", "url_contains": "/v1/responses", "body_contains": "__xai_retry__"},
     "status": 500,
     "response": {"error": {"message": "internal server error", "type": "server_error"}}
   },
   {
     "call": "xai-retry-success",
     "note": "Third attempt succeeds after two retries.",
-    "match": {"method": "POST", "url_contains": "/v1/chat/completions", "body_contains": "__xai_retry__"},
+    "match": {"method": "POST", "url_contains": "/v1/responses", "body_contains": "__xai_retry__"},
     "status": 200,
     "response": {
-      "id": "chatcmpl-xai-3",
-      "object": "chat.completion",
-      "created": 1726400002,
+      "id": "resp-xai-3",
+      "object": "response",
       "model": "grok-4.6",
-      "choices": [{"index": 0, "message": {"role": "assistant", "content": "recovered"}, "finish_reason": "stop"}],
-      "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "cost_in_usd_ticks": 100000}
+      "status": "completed",
+      "output": [{"type": "message", "role": "assistant", "status": "completed",
+                  "content": [{"type": "output_text", "text": "recovered"}]}],
+      "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15, "cost_in_usd_ticks": 100000}
     }
   },
   {
     "call": "xai-auth-error",
     "note": "Invalid API key: 401. No retry for client errors.",
-    "match": {"method": "POST", "url_contains": "/v1/chat/completions", "body_contains": "__xai_auth_error__"},
+    "match": {"method": "POST", "url_contains": "/v1/responses", "body_contains": "__xai_auth_error__"},
     "status": 401,
     "response": {"error": {"message": "invalid api key", "type": "authentication_error"}}
   }
