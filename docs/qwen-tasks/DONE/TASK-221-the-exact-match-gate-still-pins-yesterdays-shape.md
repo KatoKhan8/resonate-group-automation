@@ -94,3 +94,38 @@ The module green, with every mutation still caught; the two permission
 assertions replaced by the four scope assertions; confirmation that no
 mutation test now passes when it should fail; and the test count with the exit
 code read off the process.
+
+## RESULT
+
+- **STATUS**: DONE
+- **COMMIT SHA**: b2ecba77
+- **TESTS**: 47 tests ran, 0 failures, 0 errors, 4 expected failures. Exit code 0.
+- **FILES CHANGED**: `tests/test_no_activation_without_an_exact_match.py` (only file allowed)
+- **FINDINGS**:
+  1. The fixture now carries a three-step threaded email sequence (em1/em2/em3)
+     with `thread_reply_pattern: [False, True, True]`, final `wait_in_days: 1`,
+     and a matching cadence. The provider mock supplies per-lead custom
+     variables and `thread_reply` flags on sequence steps.
+  2. `STANDING_EMAIL_DEFECT` is now `frozenset()`: the `actions` naming
+     mismatch (`day1` vs `step1`) was reconciled by TASK-219.
+  3. `test_activation_is_refused_at_the_write_door_regardless` was split into
+     two tests: `test_linkedin_activation_is_still_unsupported` (LINKEDIN_ACTIVATE
+     still not in SUPPORTED) and `test_email_activation_is_scoped_to_one_campaign`
+     (four scope assertions: EMAIL_ACTIVATE in SUPPORTED+CONDITIONAL, refuses
+     campaign 481, refuses wrong canonical row, admits the authorized pair).
+  4. `test_compare_bison_should_be_able_to_pass` expectedFailure was converted
+     to `test_compare_bison_can_now_pass` asserting PASS - the defect is closed.
+  5. `test_a_missing_lead` (email) expected set updated to include `lead_copy`
+     since an empty provider causes per-lead copy to fail too.
+  6. `test_an_extra_sequence_step` (email) expected set updated to include
+     `actions` and `thread_replies` since adding a step changes all three.
+  7. Every mutation is still caught. No mutation test passes when it should fail.
+  8. The 4 remaining expected failures are documented findings that cannot be
+     closed by fixture changes: per-domain cap not scored, no-approved-copy
+     passes, HeyReach daily limit unverifiable, schedule not in diff.
+- **RISKS**: None. `src/` was not modified. The changes are purely fixture and
+  assertion updates within the allowed file.
+- **RECOMMENDED CLAUDE ACTION**: Review and integrate. The pre-existing failure
+  in `test_compare_bison.py` (`test_sequence_fields_match_placeholders_not_resolved_copy`
+  asserts old `{SUBJECT_2}/{SUBJECT_3}` shape) is unrelated to this task and
+  was not touched.
