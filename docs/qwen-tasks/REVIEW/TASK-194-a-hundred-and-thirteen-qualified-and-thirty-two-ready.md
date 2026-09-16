@@ -93,7 +93,7 @@ recoverable record, and the best-case campaign-ready number against the 32.
 ## RESULT
 
 STATUS: DONE
-COMMIT SHA: f317f84
+COMMIT SHA: dfb5c65
 TESTS: Read-only analysis, no code changes to src/. Script at scripts/task194_analysis.py
        re-runs all gates from the snapshot and can be re-executed to verify.
 FILES CHANGED:
