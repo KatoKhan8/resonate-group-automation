@@ -94,9 +94,30 @@ class ActivateIsSealed(unittest.TestCase):
         self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
                          providerwrites.SUPPORTED)
 
-    def test_activate_not_in_conditional(self):
+    def test_activate_has_a_condition_and_is_still_not_supported(self):
+        """A condition written BEFORE the permission, deliberately.
+
+        This asserted `LINKEDIN_ACTIVATE` had no CONDITIONAL entry, which was
+        true and was not the guarantee worth keeping. The seal is membership
+        of SUPPORTED, and that is still absent. What changed on 2026-09-16 is
+        that the condition now exists in advance and names campaign 604869 -
+        because when the operator does decide, membership alone would be a
+        channel-wide licence over an account holding 83 campaigns, 12 of them
+        the client's own and in progress.
+        """
         self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
-                         providerwrites.CONDITIONAL)
+                         providerwrites.SUPPORTED)
+        self.assertIn(providerwrites.LINKEDIN_ACTIVATE,
+                      providerwrites.CONDITIONAL)
+
+    def test_activation_cannot_name_another_campaign(self):
+        """599020 is FINISHED and holds the client's estate nearby. An
+        activation that can name any campaign is not a canary."""
+        with self.assertRaises(providerwrites.WriteRefused):
+            providerwrites.require_conditional_permission(
+                providerwrites.LINKEDIN_ACTIVATE, "599020", None)
+        self.assertTrue(providerwrites.require_conditional_permission(
+            providerwrites.LINKEDIN_ACTIVATE, "604869", None))
 
     def test_perform_refuses_activate(self):
         """The OFF switch. perform raises WriteUnsupported before transport."""

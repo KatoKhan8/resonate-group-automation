@@ -946,6 +946,51 @@ def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
 CONDITIONAL[EMAIL_ASSIGN_SENDER] = _is_the_authorized_email_campaign
 CONDITIONAL[EMAIL_ACTIVATE] = _is_the_authorized_email_campaign
 
+
+# THE ONE LINKEDIN CAMPAIGN AN ACTIVATION COULD EVER NAME.
+#
+# Written BEFORE the permission is granted, deliberately. `LINKEDIN_ACTIVATE`
+# is not in `SUPPORTED` and must not be added here - but when the operator
+# decides, membership alone would be a channel-wide licence over an account
+# holding 83 campaigns, 12 of them the client's own and IN_PROGRESS. The
+# operator's grant will name one campaign, so the condition names one campaign
+# and exists in advance.
+_AUTHORIZED_LINKEDIN_CANARY = "604869"
+
+
+def _is_the_authorized_linkedin_canary(provider_campaign_id, campaign_id=None):
+    """True only for HeyReach campaign 604869, the DRAFT canary.
+
+    604869 was created 2026-09-16 under the operator's grant for
+    `heyreach.create_campaign`: DRAFT, bound to list 940797 via
+    `linkedInUserListId`, seat 174892, holding one contact whose li1-li5 carry
+    `operator-control-arm` approval.
+
+    WHY THIS IS NOT ENOUGH ON ITS OWN. Naming the campaign stops an activation
+    reaching 599020 or a client campaign. It does NOT establish what the
+    campaign would send to: `campaign_leads` reads 0 on 604869 while its bound
+    list holds one lead, and the same is true of 599020. Until TASK-220 settles
+    whether a bound list supplies the audience, the send exposure of activating
+    this campaign is unknown - and an activation whose exposure is unknown must
+    not be requested, let alone performed.
+
+    So this condition is necessary and not sufficient, and
+    `heyreach.start_campaign`'s own `expect_leads` containment is the second
+    half: it refuses when the provider disagrees with the number the caller
+    believes.
+    """
+    if str(provider_campaign_id or "").strip() != _AUTHORIZED_LINKEDIN_CANARY:
+        raise WriteRefused(
+            f"LinkedIn activation is scoped to campaign "
+            f"{_AUTHORIZED_LINKEDIN_CANARY} and this write names "
+            f"{provider_campaign_id!r}. The account holds 83 campaigns, 12 of "
+            f"them the client's own and in progress; an activation that can "
+            f"name any of them is not a canary. The transport was not reached")
+    return True
+
+
+CONDITIONAL[LINKEDIN_ACTIVATE] = _is_the_authorized_linkedin_canary
+
 # `perform` runs the condition at ONE call site, inside the prospect-facing
 # branch. That is correct only while every conditional operation is
 # prospect-facing, so the assumption is asserted here rather than left to be
