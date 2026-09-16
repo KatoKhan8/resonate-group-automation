@@ -670,8 +670,47 @@ class TestTheProviderHierarchy(unittest.TestCase):
         self.assertIn("contactout_no_people", enrich.FALLBACK_REASONS)
 
     def test_apify_runs_last_and_only_on_a_stated_need(self):
+        """Asserted on the waterfall table, not on the text of a function.
+
+        This test used to compare `source.index("aiark")` against
+        `source.index("research")` inside `enrich.enrich_record`. TASK-205 then
+        added the evidence precondition the pipeline needed - a
+        `research.why(rec)` call earlier in that function - and the substring
+        moved, so a correct change broke an ordering assertion it had not
+        changed the ordering of. CLAUDE.md names this exact anti-pattern:
+        "Test behaviour, not the text of the source... Searching source for
+        words produces a test that fails when somebody writes a comment, which
+        has happened repeatedly here."
+
+        The intent survives and is now checked where the order actually lives:
+        Apify is the LAST provider in every stage that has it, and it is a
+        fallback, so `may_fall_back` demands a stated reason.
+        """
+        from src import waterfall
+        seen = 0
+        for stage, info in waterfall.describe().items():
+            providers = info["providers"]
+            apify_at = [i for i, p in enumerate(providers)
+                        if p["provider"] == "apify"]
+            for i in apify_at:
+                seen += 1
+                self.assertEqual(
+                    i, len(providers) - 1,
+                    f"apify is at position {i} of {len(providers)} in "
+                    f"{stage}; it must be last")
+                self.assertTrue(
+                    providers[i]["is_fallback"],
+                    f"apify in {stage} must be a fallback")
+                self.assertTrue(
+                    providers[i]["requires_reason"],
+                    f"apify in {stage} must require a stated reason")
+        self.assertGreater(seen, 0, "no apify step found in any stage")
+
+    def test_the_evidence_precondition_is_consulted(self):
+        """What the old substring check was really guarding: that the spend
+        path asks `research.why` before paying for a person. TASK-205 added
+        it; this keeps it."""
         source = inspect.getsource(enrich.enrich_record)
-        self.assertLess(source.index("aiark"), source.index("research"))
         self.assertIn("research.why(rec)", source)
 
     def test_apify_is_disabled_unless_a_client_asks(self):

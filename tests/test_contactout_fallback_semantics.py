@@ -9,7 +9,8 @@ bounded retry), and at the telemetry seam (counters).
 import unittest
 
 from src import enrich, waterfall
-from src.providers import contactout, ProviderError
+from src import providers
+from src.providers import contactout
 
 
 class TestOutcomeClasses(unittest.TestCase):
@@ -213,7 +214,7 @@ class TestBoundedRetry(unittest.TestCase):
             return 500, None
 
         self._patch(fake_request)
-        with self.assertRaises(ProviderError):
+        with self.assertRaises(providers.ProviderError):
             contactout.call("people-count", _sleep=lambda _: None)
         self.assertEqual(len(attempts), contactout.MAX_RETRIES + 1)
 
@@ -225,7 +226,7 @@ class TestBoundedRetry(unittest.TestCase):
             return 401, "unauthorized"
 
         self._patch(fake_request)
-        with self.assertRaises(ProviderError):
+        with self.assertRaises(providers.ProviderError):
             contactout.call("people-count", _sleep=lambda _: None)
         self.assertEqual(len(attempts), 1,
                          "a 401 must not be retried")
