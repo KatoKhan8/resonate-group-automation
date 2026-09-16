@@ -161,7 +161,23 @@ def main():
             print(f"  ERROR: Model error: {e}")
             per_record_results[rec["id"]] = {"error": str(e)[:100]}
             continue
+        except Exception as e:
+            print(f"  ERROR: Unexpected: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            per_record_results[rec["id"]] = {"error": str(e)[:100]}
+            continue
         elapsed = time.time() - t0
+
+        # Check what happened to the record state
+        print(f"  Record state after: {work_rec.get('state')}")
+        if work_rec.get("hold_reason"):
+            print(f"  Hold reason: {work_rec.get('hold_reason')}")
+        # Check last log entries
+        log = work_rec.get("log") or []
+        if log:
+            last = log[-1]
+            print(f"  Last log: step={last.get('step')} note={str(last.get('note',''))[:80]}")
 
         print(f"  Generated {len(done)} op(s) in {elapsed:.1f}s")
 
