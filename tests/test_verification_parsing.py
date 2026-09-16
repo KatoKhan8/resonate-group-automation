@@ -6,6 +6,7 @@ CONFIRMED_RESPONSE_SHAPE. The vocabulary is:
 
 Each word maps to an explicit classification. Unknown shapes fail closed.
 """
+import os
 import unittest
 
 from src.providers import deliverable
@@ -23,19 +24,44 @@ def real_answer(email_status, catch_all=False, processing="completed"):
 
 
 class TestConfirmedResponseShape(unittest.TestCase):
-    """The response shape is documented in CONFIRMED_RESPONSE_SHAPE."""
+    """The shape is documented AND the gate still needs the operator.
 
-    def test_the_shape_is_confirmed_in_code(self):
-        """The gate opens because the shape was read and documented."""
+    These three tests originally asserted that the gate opens because the
+    shape is documented in code. That was the weakening TASK-196 introduced
+    and 2026-09-16 reverted: `CONFIRMED_RESPONSE_SHAPE` is a literal in the
+    module, so "open when it is populated" means "always open", and opening
+    admits the verification waterfall for 159 contacts at up to three credits
+    each.
+
+    Documenting a response shape and accepting the cost of calling a provider
+    are different decisions. The tests now pin that distinction.
+    """
+
+    def setUp(self):
+        self._saved = os.environ.pop("DELIVERABLE_RESULT_SHAPE", None)
+
+    def tearDown(self):
+        os.environ.pop("DELIVERABLE_RESULT_SHAPE", None)
+        if self._saved is not None:
+            os.environ["DELIVERABLE_RESULT_SHAPE"] = self._saved
+
+    def test_the_gate_stays_shut_without_the_operator(self):
+        """Documented in code is not the same as authorized to spend."""
+        self.assertFalse(deliverable.result_shape_confirmed())
+        self.assertFalse(deliverable.contract_verified())
+        with self.assertRaises(deliverable.ContractNotVerified):
+            deliverable.require_contract()
+
+    def test_the_operator_can_open_it(self):
+        os.environ["DELIVERABLE_RESULT_SHAPE"] = "confirmed"
         self.assertTrue(deliverable.result_shape_confirmed())
 
-    def test_the_contract_is_verified_when_transport_is_complete(self):
-        """Transport is complete (endpoints, auth documented), shape is confirmed."""
-        self.assertTrue(deliverable.contract_verified())
-
-    def test_require_contract_does_not_raise(self):
-        """The parser is now allowed to run."""
-        deliverable.require_contract()
+    def test_the_refusal_says_the_shape_is_known(self):
+        """A refusal that reads as missing evidence sends the reader to look
+        for evidence that is already here. It is an unmade decision."""
+        gaps = " ".join(deliverable.contract_gaps())
+        self.assertIn("CONFIRMED_RESPONSE_SHAPE", gaps)
+        self.assertIn("credits", gaps)
 
     def test_the_documented_shape_names_the_verdict_field(self):
         self.assertEqual(deliverable.CONFIRMED_RESPONSE_SHAPE["verdict_field"],

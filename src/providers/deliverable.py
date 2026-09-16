@@ -141,14 +141,31 @@ CONFIRMED_RESPONSE_SHAPE = {
 def result_shape_confirmed():
     """Has a real response been seen and the normaliser checked against it?
 
-    True when either the operator set DELIVERABLE_RESULT_SHAPE=confirmed, or
-    the response shape has been read from a real answer and documented in
-    CONFIRMED_RESPONSE_SHAPE. The latter is the case as of 2026-09-16: the
-    vocabulary was read live and the parser handles each word explicitly.
+    ONLY the operator's environment variable answers this, and the reason is
+    worth the paragraph.
+
+    TASK-196 found that this gate had never opened - `DELIVERABLE_RESULT_SHAPE`
+    was never set, so `require_contract()` refused before any network call and
+    every Deliverable verification in the estate's history was a local refusal
+    rather than a parse failure. It then changed this function to return True
+    whenever `CONFIRMED_RESPONSE_SHAPE` was populated, which, since that
+    constant is a literal in this file, means always.
+
+    That is the gate opening itself. It was reverted on 2026-09-16.
+
+    The evidence the constant carries is real: the vocabulary below was read
+    from a live answer on 2026-09-07 and `classify()` maps each word
+    explicitly. But "a developer wrote down what the shape is" and "the
+    operator accepts the cost of calling this provider" are different
+    questions, and only the second one belongs in a gate. Opening it admits
+    the whole verification waterfall for 159 contacts with no evidence, at up
+    to three credits each - which is the spend the gate exists to make
+    somebody choose.
+
+    So: the shape is documented, the refusal message says so, and the operator
+    sets one variable when they want the calls made.
     """
-    if env(SHAPE_VAR, "").lower() in ("confirmed", "1", "true", "yes"):
-        return True
-    return bool(CONFIRMED_RESPONSE_SHAPE.get("verdict_field"))
+    return env(SHAPE_VAR, "").lower() in ("confirmed", "1", "true", "yes")
 
 
 def contract_gaps():
@@ -156,8 +173,12 @@ def contract_gaps():
     gaps = transport_gaps()
     if not result_shape_confirmed():
         gaps.append(
-            f"{SHAPE_VAR}: the response shape is undocumented and has not been "
-            "read from a real answer")
+            f"{SHAPE_VAR} is unset, so no Deliverable call is made. The shape "
+            "IS known - see CONFIRMED_RESPONSE_SHAPE in this module, read from "
+            "a real answer on 2026-09-07 - so this is not a missing-evidence "
+            f"refusal but an unmade spending decision. Set {SHAPE_VAR}"
+            "=confirmed to open it; that admits the verification waterfall at "
+            "up to 3 credits per contact")
     return gaps
 
 
