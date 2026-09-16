@@ -125,7 +125,7 @@ with provenance, and the records still short with the criterion named.
 
 1. **Geography (66 review records):**
    - 8 already PASS from existing segment data
-   - 1 resolved by offices (eski.media -> GB)
+   - 1 resolved by offices (px-bbb9723646bc -> GB)
    - 12 resolved by ccTLD (.se, .be, .fi, .nl, .pl, .au, .de, .uk, .ch)
    - 43 still unknown: 12 have office country not on include/exclude list,
      31 have no geography data at all

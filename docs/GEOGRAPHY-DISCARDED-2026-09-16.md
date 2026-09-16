@@ -231,7 +231,7 @@ The 25 records TASK-185 processed with company-info:
 
 | Domain | Offices | Countries | Geography |
 |--------|---------|-----------|-----------|
-| eski.media | England, GB | United Kingdom | UNKNOWN (segment.country="england") |
+| px-bbb9723646bc | England, GB | United Kingdom | UNKNOWN (segment.country="england") |
 | ontario.ca | Ontario, CA; Toronto, CA | Canada | PASS |
 | puffandfluffspa.com | 4 offices in Arizona, US | United States | PASS |
 | directarrowgroup.com | La Jolla, CA, US | United States | PASS |
@@ -241,10 +241,10 @@ The 25 records TASK-185 processed with company-info:
 | (18 more) | (various) | (various) | (various) |
 
 Of the 25 records:
-- 7 are shown above (all PASS except eski.media)
+- 7 are shown above (all PASS except px-bbb9723646bc)
 - 18 more were processed but not shown in the output
 - 0 moved from UNKNOWN to FAIL
-- 1 (eski.media) has offices in the UK but segment.country="england", which is not in the include list
+- 1 (px-bbb9723646bc) has offices in the UK but segment.country="england", which is not in the include list
 
 ## Script Output
 

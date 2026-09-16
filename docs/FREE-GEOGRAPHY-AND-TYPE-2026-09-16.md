@@ -76,7 +76,7 @@ blocked by UNKNOWN, not by evidence of being wrong.
 had an ISO code mapping to an included country that the structural check
 did not already find through the segment.
 
-**Yield: 1 additional record** (eski.media -> GB)
+**Yield: 1 additional record** (px-bbb9723646bc -> GB)
 
 The other 22 have ISO codes for countries not on either list:
 - Czech Republic (2), Cyprus (2), Slovenia (1), Lithuania (1), Estonia (1),
