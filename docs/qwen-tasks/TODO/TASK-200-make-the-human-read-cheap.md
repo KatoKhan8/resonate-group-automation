@@ -1,0 +1,93 @@
+PRIORITY: P1
+DEPENDS:
+
+# TASK-200 - 289 steps are waiting on a person, so make that person's job small
+
+## WHERE THIS SITS
+
+TASK-194 sorted the records that are verified but not campaign-ready and found
+zero permanent blocks. The largest bucket is not a defect and cannot be
+delegated:
+
+    289 steps held by draft_not_approved
+     23 records with cadence generated and ZERO approvals
+      3 records with partial approvals and lint or claim failures
+
+Approval is `operator-control-arm`. It means a human read the copy. Nothing in
+this system may set it, and the checkpoint names bulk-approving as the most
+damaging action available here - because `pushable` was retired as a promotion
+criterion precisely when copy that passed every automated gate failed a human
+read, and the operator's hand-written fallbacks then beat everything the model
+had produced on both channels.
+
+So the bottleneck is a person's attention, and the useful engineering is not to
+work around it but to spend as little of it as possible.
+
+## THE QUESTION
+
+Produce ONE document an operator can read start to finish and approve or reject
+from, without opening the repository.
+
+1. **Per record, per step: the rendered copy as a prospect would receive it.**
+   Subject and body, fully resolved, in send order, with the delay between
+   steps and whether each is a same-thread reply. Not a template. Not a
+   variable name. What arrives.
+2. **Beside each step, what the gates already said.** Lint verdict, claims
+   verdict, and for claims the specific evidence row each assertion rests on
+   with its `source_url` and `retrieved_at`. An operator approving a claim
+   needs to see what licenses it; that is the difference between reading copy
+   and auditing it.
+3. **Flag what a human is most likely to reject**, using what this repository
+   has already learned rather than your judgement of the prose. At minimum:
+   which steps are entirely CONTROL fallback text, which variables fell back
+   rather than resolved, and which records carry `persona=None` and therefore
+   receive an angle chosen by a default rather than by their role - TASK-167
+   found six of sixteen on the email side and TASK-176 found fifteen of
+   twenty-four variable slots falling back on LinkedIn.
+4. **Order it so the cheapest decisions come first.** Records whose every step
+   passes both gates with no fallbacks are the fastest yes. Records that are
+   entirely fallback text are the slowest. Say the count in each band at the
+   top, so the operator knows the size of the job before starting it.
+5. **State what approving one record causes.** Which campaign it would enter,
+   how many messages that contact would receive, over how many days, from which
+   sender if one is assigned. An approval whose consequence is not on the page
+   is an approval given blind.
+
+## THE TRAP
+
+**Do not set, clear, default or pre-fill `approval.by` for anything, and do not
+add a mechanism that would make it easier to set in bulk.** This task's entire
+purpose is to serve a human decision, and a convenience that approves twenty
+records in one keystroke is the damaging action wearing a helpful face.
+
+Second trap: do not edit the copy. If a step reads badly, that is information
+for the operator, not a defect for you to fix - regeneration resets what the
+human would be approving and TASK-197 established that generation cannot even
+run for records with no research.
+
+## WHAT YOU MAY NOT DO
+
+- No provider writes, no provider calls, no model calls, no generation.
+- Do not set or modify any approval field anywhere.
+- Do not regenerate, edit or reorder copy.
+- Do not include a real contact name, email, company name or domain in the
+  document - hash every identifier. The COPY ITSELF may contain a company name
+  because that is what the prospect receives; put those records' copy behind a
+  clear warning that the section carries unhashed prospect data, and say so at
+  the top, so the operator knows not to paste it anywhere public. If the PII
+  guard refuses the file for that reason, report it rather than defeating it.
+
+## FILES ALLOWED
+
+    docs/APPROVAL-PACKET-2026-09-16.md   (new)
+    scripts/task200_*.py
+
+## FILES FORBIDDEN
+
+    src/   work/   config/
+
+## DELIVERABLE
+
+The packet: per record per step rendered copy, the gate verdicts with the
+evidence row behind each claim, the rejection flags, the bands with counts at
+the top, and what approving one record causes.
