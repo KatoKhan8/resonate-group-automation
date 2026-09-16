@@ -101,7 +101,7 @@ the multi-contact record count.
 
 **STATUS:** DONE (analysis only - the run is owed from Claude's worktree)
 
-**COMMIT SHA:** 9ec2367
+**COMMIT SHA:** ef22359
 
 **TESTS:** 53 tests in test_waterfall_order, test_crawl_cache,
 test_contactout_fallback_semantics - all green.
