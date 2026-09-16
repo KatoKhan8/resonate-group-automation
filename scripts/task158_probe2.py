@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """TASK-158: probe with real profiles HeyReach already knows about.
 
-Uses Brooke Baron (in campaign 594061) and Pavan Marisetti (in inbox) to
+Uses <name_hash_1> (in campaign 594061) and <name_hash_2> (in inbox) to
 resolve linkedin_id and probe the list add schema.
 
 List 940797 ONLY. 0 items, no campaign, nothing can be sent.
@@ -19,16 +19,16 @@ from src.providers import request, ok
 
 LIST_ID = 940797
 
-# Real profiles from the HeyReach system
+# Real profiles from the HeyReach system (PII hashed)
 PROFILES = [
     # From campaign 594061 - we know the linkedInUserProfileId
-    {"url": "https://www.linkedin.com/in/brookebaron",
-     "known_id": "ACoAABcz6IoBsLz5K8VPJ6b7xMoAnKA_d1Fq1EY",
-     "name": "Brooke Baron"},
+    {"url": "https://www.linkedin.com/in/<profile_hash_1>",
+     "known_id": "<id_hash_1>",
+     "name": "<name_hash_1>"},
     # From inbox conversations
-    {"url": "https://www.linkedin.com/in/pavanmarisetti",
+    {"url": "https://www.linkedin.com/in/<profile_hash_2>",
      "known_id": None,
-     "name": "Pavan Marisetti"},
+     "name": "<name_hash_2>"},
 ]
 
 
