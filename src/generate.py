@@ -1867,6 +1867,20 @@ def generate_record(rec, model, client=None, campaign=None,
             store.log(rec, op["step"], f"held: {e}")
             if rec.get("state") not in ("dropped", "pushed"):
                 rec["state"] = "held"
+                from . import holdreasons
+                msg = str(e)
+                if "not traceable" in msg:
+                    code = holdreasons.GENERATION_EVIDENCE_TRACE
+                elif ("non-empty list" in msg
+                      or ("evidence" in msg and "empty" in msg)):
+                    code = holdreasons.GENERATION_EVIDENCE_EMPTY
+                elif "not JSON" in msg or "JSON" in msg:
+                    code = holdreasons.GENERATION_JSON_PARSE
+                elif "lint" in msg.lower():
+                    code = holdreasons.GENERATION_LINT_FAILURE
+                else:
+                    code = f"generation:{op['step']}:{e}"
+                holdreasons.set_hold_reason(rec, code, detail=str(e))
             break
     # THE FIRST EMAIL OF THE SEQUENCE, not the literal `day1`. Under a
     # sequence that names its opener `em1` the literal matched nothing, so a
