@@ -361,9 +361,6 @@ PRODUCTIVE_LI_HEAVY_V1 = (
     {"key": "li5", "day": 15, "channel": "linkedin",
      "linkedin_action": "message", "capability": CAP_MESSAGE,
      "requires": CONNECTED, "generated": True},
-    {"key": "li6", "day": 18, "channel": "linkedin",
-     "linkedin_action": "message", "capability": CAP_MESSAGE,
-     "requires": CONNECTED, "generated": True},
     {"key": "em5", "day": 21, "channel": "email", "generated": True},
 )
 

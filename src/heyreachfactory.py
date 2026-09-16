@@ -8,27 +8,26 @@ and writes the result through `providerwrites.perform`.
 THE MAPPING FROM CADENCE TO GRAPH
 ----------------------------------
 
-The cadence `PRODUCTIVE_LI_HEAVY_V1` produces six LinkedIn steps keyed
-`li1`..`li6`. The graph builder `linkedin_sequence` wants a copy block keyed
-by ROLE: `connection_note`, `connected_1`, `message_2`, `message_3`,
-`message_4`, `inmail`. The two shapes do not match one-to-one:
+The cadence `PRODUCTIVE_LI_HEAVY_V1` produces five LinkedIn steps keyed
+`li1`..`li5`. The graph builder `linkedin_sequence` wants a copy block keyed
+by ROLE: `connection_note`, `connected_1`, `connected_2`, `connected_3`,
+`connected_4`, `message_2`, `message_3`, `message_4`, `inmail`. The two
+shapes do not match one-to-one:
 
     li1  (connect, day 1)    -> connection_note
     li2  (message, day 3)    -> connected_1 AND message_2
-    li3  (message, day 6)    -> message_3
+    li3  (message, day 6)    -> connected_2 AND message_3
     li3  (alternative)       -> inmail  (InMail fallback)
-    li4  (message, day 10)   -> message_4
-    li5  (message, day 15)   -> (no slot in the graph)
-    li6  (message, day 18)   -> (no slot in the graph)
+    li4  (message, day 10)   -> connected_3 AND message_4
+    li5  (message, day 15)   -> connected_4
 
 `li2` serves two positions because the graph has two branches that both start
 with "the first message to a connection": `connected_1` on the already-
 connected branch and `message_2` on the post-connection branch. The same
 generated words fill both slots.
 
-`li5` and `li6` are cadence steps that the graph has no position for. The
-graph's longest path carries four messages; the cadence names five. The
-factory does not require them and their absence does not cause a refusal.
+Every cadence step has a graph position. The graph's longest path carries
+four messages on each branch.
 
 THE INMAIL DECISION
 -------------------
@@ -79,8 +78,8 @@ class FactoryRefused(Exception):
 # than one role (li2 fills both connected_1 and message_2), and a step's
 # alternative may fill a different role (li3's alternative fills inmail).
 #
-# li5 and li6 have no entry: the graph has no position for them. They are
-# cadence steps that exist on paper but not in the provider graph.
+# Every cadence step has an entry. The cadence and the graph agree on step
+# count: five LinkedIn steps, five entries in this mapping.
 
 # EVERY ROLE RESOLVES TO EXACTLY ONE CADENCE STEP, and no branch of the graph
 # carries the same step twice. That was not true until 2026-09-14: `li2` mapped
@@ -102,8 +101,7 @@ class FactoryRefused(Exception):
 #
 # So `li2` is genuinely the first message on both branches - `message_2` on one
 # and `connected_1` on the other - and every later position differs by one.
-# That is also what finally gives `li5` a position. `li6` still has none and is
-# reported in `touch_report` rather than silently dropped.
+# That is also what finally gives `li5` a position.
 COPY_MAPPING = {
     "li1": {"role": "connection_note", "kind": "MESSAGE"},
     "li2": {"role": ("connected_1", "message_2"), "kind": "MESSAGE"},
