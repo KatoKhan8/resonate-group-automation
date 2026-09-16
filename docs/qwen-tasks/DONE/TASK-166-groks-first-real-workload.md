@@ -101,7 +101,7 @@ FINDINGS:
    founded (3). Top 3 fields account for 80% of new facts.
 
 4. **Real contradictions (all on one domain, hash f7173b105b29):**
-   - Name: existing says "WhiteGlove Health", Grok says "AcquireUp" (rebrand,
+   - Name: existing says "company:e131fafed556 (prior name)", Grok says "company:fe152292b12a (current name)" (rebrand,
      source: PR Newswire)
    - Industry: existing says "Wellness and Fitness Services", Grok says
      "Advertising and marketing" (source: Datanyze)

@@ -55,15 +55,15 @@ The top three fields (specialties, notable, recent_developments) account for 139
 
 8 contradictions were found. After inspection, **4 are real and 4 are naming differences**.
 
-### Real Contradictions (all on one domain: whiteglove.com / hash `f7173b105b29`)
+### Real Contradictions (all on one domain: domain:f7173b105b29 / hash `f7173b105b29`)
 
 | Field | Existing Path | Grok | Grok Source |
 |-------|--------------|------|-------------|
-| name | WhiteGlove Health | AcquireUp | [PR Newswire](https://www.prnewswire.com/news-releases/white-glove-acquire-direct-and-leadjig-rebrand-as-acquireup-launch-technology-first-seminar-marketing-solutions-for-financial-professionals-302254762.html) |
+| name | company:e131fafed556 (prior name) | company:fe152292b12a (current name) | [PR Newswire](https://www.prnewswire.com/news-releases/white-glove-acquire-direct-and-leadjig-rebrand-as-acquireup-launch-technology-first-seminar-marketing-solutions-for-financial-professionals-302254762.html) |
 | industry | Wellness and Fitness Services | Advertising and marketing (seminar marketing for financial professionals) | [Datanyze](https://www.datanyze.com/companies/acquireup/5000004924) |
 | founded | 2006 | 2015 | [PitchBook](https://pitchbook.com/profiles/company/322100-56) |
 
-**This is a rebrand.** WhiteGlove Health rebranded to AcquireUp. The existing path has the old name, old industry, and old founding date. Grok found the rebrand, the new industry positioning, and a different founding date (possibly the founding of the rebranded entity vs the original). All three Grok facts carry source URLs that can be verified.
+**This is a rebrand.** company:e131fafed556 (prior name) rebranded to company:fe152292b12a (current name). The existing path has the old name, old industry, and old founding date. Grok found the rebrand, the new industry positioning, and a different founding date (possibly the founding of the rebranded entity vs the original). All three Grok facts carry source URLs that can be verified.
 
 This is exactly the kind of finding that justifies Grok's cost: a fact the free path cannot find because the company's own website may still say the old name, and the structured providers have stale data.
 
@@ -111,7 +111,7 @@ The free path's webfetch is same-domain-only by design. It reads the company's o
 
 2. **Recent developments.** 26 facts about launches, hiring, funding, and partnerships. The free path cannot find these because they are not on the company's own website (or are buried in a blog post the quality filter refuses). Grok searches news and finds them.
 
-3. **Rebrand detection.** The whiteglove.com case is the strongest argument for Grok. The company rebranded, changed industry, and the structured providers have stale data. Grok found the rebrand with a verifiable source. The free path cannot do this.
+3. **Rebrand detection.** The domain:f7173b105b29 case is the strongest argument for Grok. The company rebranded, changed industry, and the structured providers have stale data. Grok found the rebrand with a verifiable source. The free path cannot do this.
 
 4. **Domains where the free crawl found nothing.** 6 of 10 domains had zero usable research evidence. For these, Grok is the only source of public evidence beyond structured data.
 
