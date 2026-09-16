@@ -7,7 +7,8 @@
     "active_records": 194,
     "total_contacts": 92,
     "contacts_with_email": 87,
-    "task": "TASK-096"
+    "task": "TASK-096",
+    "STALE": "2026-09-16 TASK-191: estate is now 550 records (was 300). Cohort lead counts are from the 300-record snapshot and do not reflect the current state. See docs/FUNNEL-2026-09-16.md."
   },
   "cohorts": [
     {
