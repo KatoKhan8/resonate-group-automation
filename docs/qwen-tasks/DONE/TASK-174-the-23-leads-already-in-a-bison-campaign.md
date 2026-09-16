@@ -89,7 +89,7 @@ neither, with the evidence that supports it.
 ## RESULT
 
 - **STATUS:** DONE
-- **COMMIT SHA:** (pending)
+- **COMMIT SHA:** 7cc6e21
 - **TESTS:** Script ran successfully against live provider (read-only). All 23 leads read, all 5 steps read, overlap computed, gate verdicts computed.
 - **FILES CHANGED:**
   - `scripts/task174_investigate_481.py` (new)
