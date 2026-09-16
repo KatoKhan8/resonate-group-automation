@@ -1,5 +1,24 @@
 #!/usr/bin/env python3
-"""The only place a provider may be mutated, and today it may not be.
+"""The permission layer for provider writes, and NOT the complete write surface.
+
+TASK-198 (2026-09-16): this module is described elsewhere as "the single door"
+and `SUPPORTED` as the answer to "what can this system write". Neither is
+true. `bisonfactory` calls eight provider write functions directly, bypassing
+`perform`: `set_limits`, `set_schedule`, `attach_senders`,
+`ensure_custom_variables`, `create_lead`, `attach_leads`, `update_lead`, and
+`pause_campaign`. Those calls carry their own gates (killswitch, collision
+check, approval, pre-attach status re-read) that were added after measured
+incidents, but they are not enumerated here and `SUPPORTED` does not name
+them. `heyreachfactory` routes every write through `perform`; the gap is
+EmailBison-only. Read `docs/TWO-DOORS-2026-09-16.md` for the full enumeration
+of both doors and the recommendation.
+
+Adding a verb to `SUPPORTED` is an operator authorization and is not this
+module's alone to decide. What this module DOES enforce for every call that
+passes through it: the operation is declared, the authorization is genuine,
+the conditional permission holds, the idempotency check passes, and the
+readback is compared. The factory's own gates are a separate layer and are
+not weakened by this module's existence.
 
 WHY THIS SHIPS WITH EVERY ALLOWLIST EMPTY.
 

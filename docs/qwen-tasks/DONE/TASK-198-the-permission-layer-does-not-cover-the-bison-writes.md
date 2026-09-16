@@ -100,3 +100,46 @@ Both doors enumerated with the gates that actually apply to each, on both
 channels; an (a)-or-(b) recommendation with what would newly refuse under (a);
 the test that fails when an undeclared direct transport call appears; and the
 documentation corrected.
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: e748f54
+TESTS: 4 new tests in test_write_surface_enumeration.py, all pass. 53 related
+  tests (test_the_write_layer_is_sealed, test_the_factory_verbs_exist_and_are_sealed,
+  test_staging_is_not_sending) all pass. 93 invariant/fixture-hygiene tests all pass.
+FILES CHANGED:
+  src/providerwrites.py          - docstring corrected: states it is NOT the
+                                   complete write surface, points at TWO-DOORS
+  docs/TWO-DOORS-2026-09-16.md   - new: full enumeration of both doors on both
+                                   channels, (b) recommendation with reasons
+  tests/test_write_surface_enumeration.py - new: AST-based test that fails when
+                                   an undeclared direct transport call appears
+
+FINDINGS:
+  1. EmailBison has EIGHT direct provider write calls bypassing perform:
+     set_limits, set_schedule, attach_senders, ensure_custom_variables,
+     create_lead, attach_leads, update_lead, pause_campaign.
+  2. HeyReach has ZERO direct calls; every write goes through perform.
+  3. Recommendation is (b): leave the calls, correct the documentation.
+     Option (a) requires adding to SUPPORTED (forbidden) and building
+     Authorization machinery for the staging path (behaviour change).
+  4. The factory gates are real and were added after measured incidents.
+     Routing through perform would duplicate them, not replace them.
+  5. What would newly refuse under (a): set_limits and attach_senders need
+     SUPPORTED additions (forbidden); create_lead/attach_leads need an
+     Authorization the staging path does not produce; pause_campaign could
+     be routed with no new refusals.
+
+RISKS:
+  - The test's _PROVIDER_WRITE_FUNCS set must be kept current when new write
+    functions are added to provider modules. A new write function not in the
+    set would not be detected. This is documented in the test.
+  - The declared registry in the test must be updated when direct calls are
+    added or removed. The stale-entry check catches removals.
+
+RECOMMENDED CLAUDE ACTION:
+  Review the enumeration in docs/TWO-DOORS-2026-09-16.md and the test in
+  tests/test_write_surface_enumeration.py. The (b) recommendation is the
+  safe half; option (a) is an operator decision that requires adding to
+  SUPPORTED and building Authorization machinery for staging.
