@@ -11,7 +11,7 @@ around it, what gates it, and what the current state of enablement is.
 ## RESULT
 
 **STATUS:** DONE
-**COMMIT:** (see below)
+**COMMIT:** 24de8de5 (initial claim)
 **TESTS:** Not a code-change task; investigation only. Existing tests in
   `tests/test_list_staging.py`, `tests/test_list_staging_permission.py`,
   and `tests/test_list_staging_rehearsal.py` cover the path.
