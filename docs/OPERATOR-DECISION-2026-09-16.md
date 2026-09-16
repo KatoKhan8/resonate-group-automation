@@ -225,6 +225,72 @@ withdrawn (`live_search`, HTTP 410); TASK-182 moved it to the Responses API and
 added a drift test. TASK-192 measures whether Grok moves *verdicts* rather than
 adds facts - the only number that matters, and it is unmeasured.
 
+### THE ANSWER, AND IT HAS A PRICE ON IT
+
+TASK-199 closed this. **`company_facts` is the field that serves both gates:**
+industry feeds ICP's company_type and the copy gate's fact pool, offices feed
+geography and the pool, employees feed both. `research[].fact` serves only the
+copy gate; `segment.country` only ICP. So one purchase can unblock a record at
+both ends - if it populates `company_facts`.
+
+    blocked at ICP (geography or company_type UNKNOWN)      349
+    blocked at generation (verified, zero usable research)    20
+    overlap                                                    0
+      (sequential stages: an ICP-blocked record never reaches verified)
+
+One Grok call returns industry, offices, employees, specialties and description
+with source URLs, at $0.20 a domain.
+
+    **$73.80 to attempt the entire blocked estate, all 369 records.**
+
+ContactOut cannot do it - measured, zero. Free webfetch cannot - it produced
+weak boilerplate for exactly these records. TASK-192 is measuring verdict
+movement on 25 before anything is scaled, and that measurement is the gate on
+spending the $73.80.
+
+### AND A FREE FIX WORTH MORE THAN THE PURCHASE
+
+`enrich.outcome()` checks `any(sendable contacts)` and **not** research, not
+evidence, not the verdict's basis. So this pipeline pays for contacts before
+the evidence that licenses writing to them.
+
+Twenty records reached `verified` with zero usable research - all twenty
+holding `icp_pass_with_uncertainty` from ContactOut's structured fields, which
+satisfy ICP and carry no prose for a claim to trace to. TASK-197 then failed to
+generate copy for fifteen of them, at `persona_angle`, on `check_evidence`.
+
+    ~240 credits already spent on contacts who cannot be written to.
+
+`CLAUDE.md`'s company-first rule was honoured to the letter and defeated in
+substance: there IS a verdict, and the verdict is reachable without the prose
+the copy gate needs. TASK-205 is adding the precondition using
+`research.why()`, which already computes it. **Zero provider credits.** Expect
+`verified` and `enriched` counts to FALL when it lands - that is the fix
+working, not a regression.
+
+### ONE CORRECTION TO CARRY FORWARD
+
+An earlier version of this file, and a commit message, called a broken
+Deliverable parser "the largest recoverable inventory in the system" on
+TASK-194's figure of 143 contacts held by insufficient confirmations.
+
+**That figure came from the stale snapshot and is wrong.** TASK-196 measured
+it: 159 contacts have no verification evidence at all because they never
+entered the waterfall, 81 did enter and all 81 carry `Deliverable=error`, and
+68 of those were verified anyway via ContactOut + Reoon. **Exactly one contact
+would benefit from a working Deliverable.** The parser was never broken - its
+gate had never been opened, because `DELIVERABLE_RESULT_SHAPE` was never set.
+
+A tenth decision for you, therefore: **set `DELIVERABLE_RESULT_SHAPE=confirmed`
+or leave it.** The response shape IS known and documented in
+`src/providers/deliverable.py`; what the variable actually buys is the
+verification waterfall for those 159 contacts at up to 3 credits each. TASK-196
+opened that gate in code and it was reverted - documenting a response shape and
+accepting a provider's cost are different decisions.
+
+TASK-203 is establishing why the 159 were never offered to the waterfall at
+all, which is the same shape as TASK-160's answer about the 250: no runner.
+
 **Three open leads on throughput, all delegated and running:**
 
 - **TASK-190** - how much of geography/company_type is answerable for free: a
