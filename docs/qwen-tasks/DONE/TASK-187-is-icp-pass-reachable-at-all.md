@@ -97,3 +97,43 @@ records that reached campaign-ready and how they passed, the number that can
 reach `icp_pass` with every purchasable fact bought, the real predicate that
 gates person-credit spend, and - if the bar is unsatisfiable - the options with
 a record count against each.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 436f5ee
+
+**TESTS:** No code changes to test. Measurement scripts at `scripts/task187_analyze.py`, `scripts/task187_deep.py`, `scripts/task187_final.py`. All read-only over the snapshot.
+
+**FILES CHANGED:**
+- `docs/IS-THE-BAR-REACHABLE-2026-09-16.md` (new) — the deliverable
+- `scripts/task187_analyze.py` (new) — criterion distribution analysis
+- `scripts/task187_deep.py` (new) — unprocessed records and reachability
+- `scripts/task187_final.py` (new) — gate chain and complete answer
+
+**FINDINGS:**
+
+1. **The bar IS reachable. The task's premise was wrong.** `icp_pass` is NOT the gate. `icp_pass_with_uncertainty` is equally `qualified` via `FROM_STRUCTURAL`, and 113 records have reached it.
+
+2. **`verdict_of` rule:** FAIL → `icp_fail`; all five PASSING → `icp_pass`; DEFINING (geography + company_type) both PASSING → `icp_pass_with_uncertainty`; otherwise → `icp_review`. Both `icp_pass` and `icp_pass_with_uncertainty` map to `icp_status = "qualified"`.
+
+3. **All 113 qualified records** have `tracks_time=unknown`. Zero records in the estate have `tracks_time=pass`. The 6 that are not unknown are `fail` (product/ecommerce businesses).
+
+4. **The real gate to person-credit spend:** `qualify.state_of(rec) in (QUALIFIED, DM_APPROVED)`, which requires `icp_status == "qualified"`, which requires only geography + company_type to PASS and no FAIL on any criterion.
+
+5. **The 250 unprocessed records have zero data** — no company_facts, no waterfall calls, no segment classification. They cannot be evaluated.
+
+6. **The 66 review records are all blocked by geography or company_type unknown**, not by tracks_time. Resolving tracks_time alone would change the qualified count by zero.
+
+7. **Theoretical max from processed 300:** 179 qualified (if all unknowns resolved to PASS). The 121 rejected records have at least one FAIL that no resolution fixes.
+
+8. **`tracks_time` is load-bearing but not blocking.** The code was designed so that absence of billing-phrase evidence routes through `icp_pass_with_uncertainty → qualified`, not through review. The system is working as designed.
+
+**RISKS:**
+- The 250 unprocessed records need company-info enrichment before they can be evaluated. Until then, the effective pool is 300.
+- If the operator wants `icp_pass` (the pure form, not just qualified), billing-phrase evidence is needed. Zero records currently carry it. An Apify crawl of 113 domains might find some, but agencies rarely publish billing language on their websites.
+
+**RECOMMENDED CLAUDE ACTION:**
+- The queue is not blocked on `tracks_time`. The actual bottlenecks are: (a) 250 records needing first-pass enrichment, (b) 66 review records needing geography/company_type evidence.
+- If the operator wants to move records from `icp_pass_with_uncertainty` to `icp_pass`, the options are: Apify website crawl for billing phrases (113 credits), job postings as a new evidence source, or accept the current design (recommended — it is working as intended).
