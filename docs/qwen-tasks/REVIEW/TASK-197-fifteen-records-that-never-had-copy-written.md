@@ -99,7 +99,7 @@ projection across the remaining 26.
 ## RESULT
 
 STATUS: DONE
-COMMIT SHA: (see final push)
+COMMIT SHA: eb56e40
 TESTS: Read-only analysis + generation run against snapshot in memory.
        No src/ changes. Scripts at scripts/task197_identify.py and
        scripts/task197_generate.py re-run the full analysis.
