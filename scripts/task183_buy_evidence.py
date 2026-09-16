@@ -100,12 +100,31 @@ def is_third_party_url(url, domain):
     return domain not in url
 
 
+def _task169_sort_key(rec):
+    """TASK-169 enrichment ordering: headcount_signal DESC, employees DESC,
+    research_outcome=HTTP_SUCCESS first.
+
+    This is the ordering that TASK-169 measured as predicting campaign-ready
+    survival: 10+ headcount_signal -> 29.2%, 5-9 -> 16.3%, 1-4 -> 7.3%,
+    0 -> 0.0%. The task says to use this ordering if it applies, and it does.
+    """
+    facts = rec.get("company_facts") or {}
+    hs = facts.get("headcount_signal") or 0
+    emp = facts.get("employees") or 0
+    ro = facts.get("research_outcome") or ""
+    return (-hs if isinstance(hs, (int, float)) else 0,
+            -emp if isinstance(emp, (int, float)) else 0,
+            0 if ro == "HTTP_SUCCESS" else 1)
+
+
 def select_records(n=25):
     """Pick records from the snapshot: review with no/ minimal evidence.
 
     Strategy: all records in `review` with zero evidence first, then fill
-    remaining slots from records with exactly 1 evidence row, sorted by
-    descending ICP score (closest to qualifying).
+    remaining slots from records with exactly 1 evidence row. Within each
+    group, ordered by TASK-169's enrichment ordering (headcount_signal DESC,
+    employees DESC, research_outcome=HTTP_SUCCESS first) - the ordering that
+    predicts campaign-ready survival.
     """
     review_zero = []
     review_thin = []
@@ -129,10 +148,9 @@ def select_records(n=25):
             elif len(research) == 1:
                 review_thin.append(rec)
 
-    # Sort thin-evidence records by score descending
-    review_thin.sort(
-        key=lambda r: -((r.get("qualification") or {}).get("verdict") or {}).get(
-            "icp_score", 0))
+    # TASK-169 ordering: headcount_signal DESC, employees DESC, HTTP_SUCCESS first
+    review_zero.sort(key=_task169_sort_key)
+    review_thin.sort(key=_task169_sort_key)
 
     selected = review_zero[:]
     remaining = n - len(selected)
