@@ -116,7 +116,7 @@ tests green.
 
 STATUS: DONE
 
-COMMIT SHA: (pending commit)
+COMMIT SHA: 9562cd0
 
 TESTS:
 - tests/test_waterfall_order.py: 14 tests, all green
