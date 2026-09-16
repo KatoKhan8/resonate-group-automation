@@ -177,7 +177,7 @@ None of these has been taken.
 6. **Campaign 481's 23 leads.** Blocks nothing now that a new campaign is the
    plan, but somebody must eventually say what they are for.
 7. **The record-id convention.** Record ids derive from prospect domains, so
-   `adcuratio-com` identifies a prospect as well as `adcuratio.com` does.
+   a record id of the form `<company>-com` identifies a prospect as well as `<company>.com` does.
    TASK-189's verdict is that the PII guard is right to flag them and
    allowlisting would open a hole the size of the queue. Changing the
    convention reaches provider state we do not own: leads at EmailBison carry
