@@ -444,7 +444,22 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
              # prospect-facing moment. The operator's grant was specific:
              # "Do NOT interpret this as permission to bypass gates or
              # activate arbitrary campaigns."
-             LINKEDIN_ADD_LEAD_TO_LIST)
+             LINKEDIN_ADD_LEAD_TO_LIST,
+             # Enabled 2026-09-16 by written operator authorization, SCOPED TO
+             # ONE CAMPAIGN. See OPERATOR-AUTHORIZATION-2026-09-16.md.
+             #
+             # EMAIL_ACTIVATE IS PROSPECT-FACING AND IT IS THE FIRST VERB IN
+             # THIS SYSTEM THAT MAKES A CAMPAIGN SEND. The grant names
+             # campaign 485, sender 2736, the existing 10 approved contacts,
+             # the existing approved 3-step CONTROL, and a 20/day cap - and
+             # says in terms that it is not authorization to activate other
+             # campaigns, change copy, add unapproved contacts or raise a cap.
+             #
+             # So both carry a CONDITIONAL that refuses any campaign but 485.
+             # Membership of this tuple would otherwise be a channel-wide
+             # licence, and the operator did not grant one.
+             EMAIL_ASSIGN_SENDER,
+             EMAIL_ACTIVATE)
 
 # ------------------------------------------- conditional permission
 #
@@ -767,6 +782,52 @@ def _list_is_unbound_right_now(provider_list_id, campaign_id=None):
 
 
 CONDITIONAL[LINKEDIN_ADD_LEAD_TO_LIST] = _list_is_unbound_right_now
+
+
+# THE ONE CAMPAIGN THE 2026-09-16 GRANT NAMES. Both values, because the
+# provider id says which campaign at EmailBison and the canonical id says
+# which row this deployment believes it is - and a mismatch between them is
+# how a lead reaches a campaign nobody approved.
+_AUTHORIZED_EMAIL_CAMPAIGN = ("485", "productive-email-control-v2")
+
+
+def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
+    """True only for EmailBison campaign 485, the one the operator named.
+
+    Enabled 2026-09-16 under written operator authorization, which was
+    explicit about its own scope: campaign 485, sender 2736, the existing 10
+    approved contacts, the existing approved 3-step CONTROL, a 20/day cap, and
+    "NOT authorization to ... activate other campaigns, change copy, add
+    unapproved contacts, or increase caps".
+
+    WHY A CONDITION RATHER THAN PLAIN MEMBERSHIP. `EMAIL_ACTIVATE` is the
+    first verb in this system that makes a campaign send. Membership of
+    `SUPPORTED` alone is a channel-wide licence: it would admit activating 481,
+    which holds 23 people with 6 to 40 historical touches each under a
+    non-CONTROL sequence. The operator granted one campaign, so the permission
+    is one campaign.
+
+    Widening this is a new operator decision. Editing the tuple above to add a
+    campaign is not a refactor.
+    """
+    want_provider, want_canonical = _AUTHORIZED_EMAIL_CAMPAIGN
+    if str(provider_campaign_id or "").strip() != want_provider:
+        raise WriteRefused(
+            f"this authorization covers EmailBison campaign {want_provider} "
+            f"only, and this write names {provider_campaign_id!r}. The "
+            f"2026-09-16 grant is scoped to one campaign; activating another "
+            f"is a new operator decision. The transport was not reached")
+    if str(campaign_id or "").strip() != want_canonical:
+        raise WriteRefused(
+            f"provider campaign {want_provider} is authorized, but the "
+            f"canonical row offered is {campaign_id!r} rather than "
+            f"{want_canonical!r}. A mismatched binding is how a send reaches a "
+            f"campaign nobody approved. The transport was not reached")
+    return True
+
+
+CONDITIONAL[EMAIL_ASSIGN_SENDER] = _is_the_authorized_email_campaign
+CONDITIONAL[EMAIL_ACTIVATE] = _is_the_authorized_email_campaign
 
 # `perform` runs the condition at ONE call site, inside the prospect-facing
 # branch. That is correct only while every conditional operation is
