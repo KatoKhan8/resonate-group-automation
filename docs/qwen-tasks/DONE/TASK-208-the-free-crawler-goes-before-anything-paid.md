@@ -111,3 +111,42 @@ policy with the direction of each stated, the free crawl moved ahead of every
 paid step, Grok in fourth with an enforced reason and off by default with the
 switch documented, and the company-level crawl cache with both counterfactual
 tests green.
+
+## RESULT
+
+STATUS: DONE
+
+COMMIT SHA: 9562cd0
+
+TESTS:
+- tests/test_waterfall_order.py: 14 tests, all green
+- tests/test_crawl_cache.py: 7 tests, all green
+- tests/test_waterfall.py: 35 tests, all green (existing, 1 updated for free-step exception)
+- tests/test_invariants.py: all green (updated free set to include webfetch-crawl)
+- tests/test_enrich, test_providers, test_xai_adapter, test_audit: 165 tests, all green
+- Pre-existing failures in test_for_prompt_quality (5) and test_contactout_first (1) are NOT caused by this change
+
+FILES CHANGED:
+- src/waterfall.py: Added WEBFETCH and XAI constants; inserted webfetch step in company_information (position 2) and company_research (position 2); inserted xai step in company_information (position 3, after free crawl, before paid); added COST_UNITS entries
+- src/enrich.py: Added webfetch-crawl (cost 0) and xai-research (cost 2B ticks) to COSTS; added CALL_STAGE entries; added research.crawl_cache_clear() call in run()
+- src/research.py: Added company-level crawl cache (_crawl_cache, crawl_cache_get/set/clear); modified _from_the_site_itself to check cache before crawling and store results after
+- tests/test_waterfall.py: Updated test_every_step_that_leaves_contactout_declares_its_reason to skip free primary-path steps (webfetch)
+- tests/test_invariants.py: Added webfetch-crawl to the documented free set
+- tests/test_waterfall_order.py (NEW): 14 tests asserting the new order
+- tests/test_crawl_cache.py (NEW): 7 tests asserting cache behavior
+- docs/ROUTING-ORDER-2026-09-16.md (NEW): Full documentation of the routing order
+
+FINDINGS:
+1. The free crawl (webfetch) is now a named waterfall step in company_information and company_research, positioned after ContactOut and before every paid provider. Direction: free EARLIER.
+2. Grok (xai) is in layer 4 of company_information: after ContactOut and free crawl, before Blitz and Apify. It requires reason `contactout_missing_company_data` (a confirmed miss, NOT an error/timeout). It is off by default - no production caller exists. Enable via `xai.enabled: true` in workspace client config.
+3. The company-level crawl cache is pass-scoped: cleared at the start of each `enrich.run()` pass. 3 contacts on one domain produce ONE crawl; clearing the cache produces N. Provenance (source_url, content_hash, retrieved_at) is preserved.
+4. Caller chain verified: webfetch-crawl is consumed by waterfall.py (2 stages) and enrich.py (cost/routing). crawl_cache is consumed by _from_the_site_itself (get/set) and enrich.run() (clear). xai has NO production caller outside its adapter - by design.
+
+RISKS:
+- The xai step is declared in the waterfall but unreachable in production. An operator must explicitly enable it. This is intentional.
+- The crawl cache is in-memory and process-scoped. A restart clears it. This is the intended behavior (pass-scoped).
+
+RECOMMENDED CLAUDE ACTION:
+- Review the waterfall ordering in docs/ROUTING-ORDER-2026-09-16.md
+- Integrate the xai adapter into the production path when ready (behind the `xai.enabled` flag)
+- TASK-207 owns the reason taxonomy; the xai step uses existing reason `contactout_missing_company_data` which maps to the "confirmed miss" class

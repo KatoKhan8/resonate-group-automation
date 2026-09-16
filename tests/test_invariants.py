@@ -347,8 +347,8 @@ class TestProviderPayloadsAreTrimmed(unittest.TestCase):
 
 class TestCostDiscipline(unittest.TestCase):
     def test_only_documented_calls_are_zero_credit(self):
-        """people-count is free; Apify is billed in compute units, not credits."""
-        free = {"people-count", "apify-research"}
+        """people-count is free; webfetch is a free HTTP read; Apify is billed in compute units, not credits."""
+        free = {"people-count", "apify-research", "webfetch-crawl"}
         self.assertEqual(enrich.COSTS["people-count"], 0)
         for call, cost in enrich.COSTS.items():
             if call in free:

@@ -26,6 +26,32 @@ NEED_REBRAND_EVIDENCE = "public_evidence_required_for_rebrand"
 NEED_ICP_EVIDENCE = "public_evidence_required_for_icp_dimensions"
 NEED_REFRESH = "public_evidence_stale_refresh_required"
 
+# ------------------------------------------ company-level crawl cache (pass-scoped)
+#
+# One crawl per company per pass, reused across every contact on that company.
+# TASK-162 fixed the analogous waste in what gets sent into prompts - 66.7% of
+# the company context on a 3-contact record was a duplicate of itself, at
+# roughly 2.5 contacts per domain. The crawl itself gets the same treatment.
+#
+# Pass-scoped: cleared at the start of each `enrich.run()` pass. Evidence must
+# not age out mid-pass or persist across passes pretending to be current.
+_crawl_cache = {}
+
+
+def crawl_cache_get(domain):
+    """Cached crawl result for this domain, or None."""
+    return _crawl_cache.get(domain)
+
+
+def crawl_cache_set(domain, evidence):
+    """Store a crawl result for reuse across contacts on this company."""
+    _crawl_cache[domain] = evidence
+
+
+def crawl_cache_clear():
+    """Clear the pass-scoped crawl cache. Called at the start of each run."""
+    _crawl_cache.clear()
+
 # -------------------------------------------------------------- evidence TTL
 
 # A hiring post from last week is not the same kind of fact as "this company
@@ -229,6 +255,10 @@ def _from_the_site_itself(rec, config):
     gathered for free, through the same boilerplate filter and the same
     events as the paid leg, so a consumer cannot tell which leg paid for a
     fact and does not need to.
+
+    Company-level cache: one crawl per domain per pass, reused across every
+    contact on that company. The cache is pass-scoped and cleared at the
+    start of each `enrich.run()` pass so evidence does not age out.
     """
     from . import evidence as ev
     from . import webfetch
@@ -236,6 +266,22 @@ def _from_the_site_itself(rec, config):
     domain = rec.get("domain")
     if not domain:
         return None
+
+    cached = crawl_cache_get(domain)
+    if cached is not None:
+        usable = [dict(e, record_id=rec["id"]) for e in cached]
+        rec.setdefault("research", []).extend(usable)
+        events.record(rec, events.SCRAPE_COMPLETED, provider="webfetch",
+                      operation="company_website", reason="cached",
+                      items=len(usable))
+        for entry in usable:
+            events.record(rec, events.EVIDENCE_ADDED, provider="webfetch",
+                          operation=entry.get("field"),
+                          reason=entry.get("source_url"))
+        store.log(rec, "research",
+                  f"site read: {len(usable)} page(s) from company-level cache")
+        return usable
+
     try:
         got = webfetch.research(domain, config)
     except Exception as e:                       # a free leg may never break a run
@@ -277,6 +323,12 @@ def _from_the_site_itself(rec, config):
                       operation="company_website",
                       reason=f"{outcome}: every page was boilerplate")
         return None
+
+    # Cache at company level for reuse across contacts on this company.
+    # Stored without record_id so each consumer gets its own copy with its
+    # own record_id; provenance (source_url, content_hash) and retrieved_at
+    # are preserved from the original crawl.
+    crawl_cache_set(domain, [dict(e, record_id=None) for e in usable])
 
     rec.setdefault("research", []).extend(usable)
     events.record(rec, events.SCRAPE_COMPLETED, provider="webfetch",

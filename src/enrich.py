@@ -39,6 +39,8 @@ COSTS = {
     "people-count": 0,
     "decision-makers": ASSUMED_PROFILES * 2,     # 1 search + 1 email per profile
     "company-information-from-domain": 1,
+    "webfetch-crawl": 0,                         # free HTTP read
+    "xai-research": 2_000_000_000,               # ~$0.20 in xAI ticks (10B/$)
     "aiark-people-search": 2,
     "email-verifier": 1,
     "deliverable-verify": 1,
@@ -82,6 +84,8 @@ CALL_STAGE = {
     "decision-makers": "people_discovery",
     "aiark-people-search": "people_discovery",
     "company-information-from-domain": "company_information",
+    "webfetch-crawl": "company_information",
+    "xai-research": "company_information",
     "email-verifier": "email_verification",
     "deliverable-verify": "email_verification",
     "reoon-verify": "email_verification",
@@ -1338,6 +1342,10 @@ def run(live=False, cap=None, limit=None, ids=None, states=("queued", "enriched"
     # enforced. Batch-scoped, like the credit budget, because that is the
     # scope the number is written in.
     scrape_budget = research.RunBudget(None)
+    # Clear the company-level crawl cache at the start of each pass. One
+    # crawl per company per pass, reused across its contacts; evidence must
+    # not persist across passes pretending to be current.
+    research.crawl_cache_clear()
     # One MX cache for the whole run, loaded once and saved once. See the long
     # comment in `enrich_record`: this was loaded per record and never written,
     # so every run re-resolved every domain from scratch.

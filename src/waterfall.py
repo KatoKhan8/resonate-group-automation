@@ -92,6 +92,8 @@ def is_transient(reason):
 # where it cannot the comment says why rather than leaving it to be inferred.
 
 CONTACTOUT = "contactout"
+WEBFETCH = "webfetch"
+XAI = "xai"
 AIARK = "aiark"
 DELIVERABLE = "deliverable"
 REOON = "reoon"
@@ -114,6 +116,19 @@ STAGES = {
              "why": "ContactOut resolves a domain to a company record, and the "
                     "call is one credit",
              "sufficient_when": "industry, size and a name all came back"},
+            {"provider": WEBFETCH, "call": "webfetch-crawl",
+             "why": "free HTTP read of the company's own website; one crawl "
+                    "per company, cached across its contacts",
+             "sufficient_when": "usable prose came back from the site's own "
+                                "pages"},
+            {"provider": XAI, "call": "xai-research",
+             "why": "Grok with web search for current, ambiguous company facts "
+                    "that structured data and a static crawl cannot answer; "
+                    "off by default, enabled per workspace via xai.enabled",
+             "is_fallback": True,
+             "requires_reason": enrich.CONTACTOUT_MISSING_COMPANY_DATA,
+             "sufficient_when": "a sourced, current fact about the company "
+                                "came back with source URLs"},
             {"provider": BLITZ, "call": "blitz-domain-to-linkedin",
              "why": "ContactOut's /domain/enrich carries li_vanity, so this "
                     "runs only when that company record came back without a "
@@ -245,6 +260,11 @@ STAGES = {
             {"provider": CONTACTOUT, "call": "company-information-from-domain",
              "why": "structured facts are already paid for and need no parsing",
              "sufficient_when": "the facts support a hook and an angle"},
+            {"provider": WEBFETCH, "call": "webfetch-crawl",
+             "why": "free HTTP read of the company's own website; one crawl "
+                    "per company, cached across its contacts",
+             "sufficient_when": "a dated, attributable fact from the company's "
+                                "own pages came back"},
             {"provider": APIFY, "call": "apify-research",
              "why": "the structured facts do not support a specific hook, or "
                     "the client's research policy asks for web research",
@@ -276,6 +296,8 @@ STAGE_NAMES = tuple(STAGES)
 # different currency. Naming the unit keeps "0" from reading as "free".
 COST_UNITS = {
     CONTACTOUT: "contactout credits",
+    WEBFETCH: "free (HTTP read, no credit cost)",
+    XAI: "xAI ticks (10B ticks per USD)",
     AIARK: "ai ark credits",
     DELIVERABLE: "deliverable credits",
     REOON: "reoon credits",
