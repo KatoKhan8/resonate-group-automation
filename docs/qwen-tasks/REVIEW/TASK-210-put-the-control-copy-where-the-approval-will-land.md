@@ -116,3 +116,31 @@ The 11 confirmed with state and sendable; the CONTROL text written into
 `em1`-`em3` for each; what happens to `em4`/`em5` proven from the code; the
 stale `claude` approvals removed; per-contact per-step lint and claims
 verdicts; and where the overwritten copy is backed up.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT:** e1029dd (TASK-210 to REVIEW) + 7c36c4a (CONTROL copy written)
+- **BRANCH:** qwen-worker-r41
+- **TESTS:** 130 tests pass (test_store, test_cadence, test_bison_campaign_write, test_bison_prewrite_check, test_invariants). Full suite timed out at 600s; targeted modules covering store, cadence, factory and invariants all green.
+- **FILES CHANGED:**
+  - `work/queue.jsonl` — em1-em3 copy replaced for 11 records; approval field removed from those steps. em4-em5 untouched. (gitignored, not in commit)
+  - `docs/CONTROL-COPY-IN-PLACE-2026-09-16.md` — deliverable document
+  - `scripts/task210_backup.json` — backup of overwritten generated copy
+  - `scripts/task210_identify.py` — identification script
+  - `scripts/task210_matched.json` — matched contact data
+  - `scripts/task210_write_control.py` — write script
+- **FINDINGS:**
+  1. **The cohort is 11, confirmed.** 16 survive collision; 5 of 16 have persona=None; 16-5=11. The "10" in the operator authorization was 16-6, double-subtracting one contact who was both persona=None AND collision-excluded.
+  2. **All 11 are sendable=True.** 10 are state=drafted, 1 is state=approved.
+  3. **em4/em5 cannot reach a prospect.** The CONTROL campaign carries three steps. `bisonfactory._sequence_steps` builds the provider sequence from the campaign's `email_sequence.steps` config. `bisonfactory._approved_copy` iterates over sequence nodes and reads from the record by step key. A step key not in the sequence is never read. em4/em5 on the record are inert.
+  4. **Two records (digitalthirdcoast-com, viralityllc-com) never had approvals on any step, including em4/em5.** This is pre-existing state, not caused by this task.
+  5. **All 33 step-renderings pass lint and claims gate.** 11 contacts × 3 steps = 33 verdicts, all PASS.
+- **RISKS:**
+  - The approval half is NOT done. The operator's approval must be applied to each of the 33 steps by Claude. This task deliberately did not set any approval.
+  - The CONTROL campaign must be created with a three-step `email_sequence.steps` config. Until that campaign exists, the CONTROL copy on the records is not staged to any provider.
+- **RECOMMENDED CLAUDE ACTION:**
+  1. Verify the data change by reading back the 11 records.
+  2. Apply the operator's approval (`zvonimir@resonategroup.co (operator authorisation 2026-09-16)`) to each of the 33 steps.
+  3. Create the CONTROL campaign with three-step sequence.
+  4. Stage to provider and read back.
