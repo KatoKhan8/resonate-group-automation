@@ -1,19 +1,35 @@
 {
-  "generated_at": "2026-09-16T05:28:14+00:00",
+  "generated_at": "2026-09-16T05:31:53+00:00",
   "generated_from": "docs/qwen-tasks/**, git, and work/claims/. Derived, never hand-edited.",
   "branch_blindness": "This registry reads master only. Tasks finished on worker branches but not yet integrated into master appear as QUEUED here but are actually done. Run scripts/task173_scan.py --unintegrated to see the set that this registry cannot see.",
-  "master_head": "c3feb55",
+  "master_head": "4bf1851",
   "counts": {
-    "QUEUED": 3,
-    "CLAIMED": 2,
-    "AWAITING_REVIEW": 13,
-    "BLOCKED": 2,
-    "DONE": 167
+    "QUEUED": 5,
+    "CLAIMED": 1,
+    "AWAITING_REVIEW": 14,
+    "BLOCKED": 1,
+    "DONE": 168
   },
-  "ready_count": 3,
+  "ready_count": 5,
   "workers": 8,
   "backlog_healthy": false,
   "tasks": [
+    {
+      "task": "TASK-183",
+      "file": "docs/qwen-tasks/TODO/TASK-183-buy-evidence-for-twenty-five-records.md",
+      "status": "QUEUED",
+      "stage_dir": "TODO",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [
+        "TASK-182"
+      ],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
     {
       "task": "TASK-185",
       "file": "docs/qwen-tasks/TODO/TASK-185-one-credit-against-twenty-cents.md",
@@ -29,8 +45,36 @@
       "blocked_by": []
     },
     {
-      "task": "TASK-186",
-      "file": "docs/qwen-tasks/TODO/TASK-186-rehearse-the-heyreach-staging-path.md",
+      "task": "TASK-188",
+      "file": "docs/qwen-tasks/TODO/TASK-188-eleven-results-nobody-signed-off.md",
+      "status": "QUEUED",
+      "stage_dir": "TODO",
+      "priority": "P2",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-189",
+      "file": "docs/qwen-tasks/TODO/TASK-189-scrub-the-repository-and-decide-the-record-id.md",
+      "status": "CLAIMED",
+      "stage_dir": "TODO",
+      "priority": "P1",
+      "worker": "resonate-qwen-2",
+      "claimed_at": "2026-09-16T05:28:29+00:00",
+      "dependencies": [],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-190",
+      "file": "docs/qwen-tasks/TODO/TASK-190-two-criteria-and-what-we-already-know.md",
       "status": "QUEUED",
       "stage_dir": "TODO",
       "priority": "P0",
@@ -43,36 +87,8 @@
       "blocked_by": []
     },
     {
-      "task": "TASK-187",
-      "file": "docs/qwen-tasks/TODO/TASK-187-is-icp-pass-reachable-at-all.md",
-      "status": "CLAIMED",
-      "stage_dir": "TODO",
-      "priority": "P0",
-      "worker": "resonate-qwen-3",
-      "claimed_at": "2026-09-16T05:23:43+00:00",
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-188",
-      "file": "docs/qwen-tasks/TODO/TASK-188-eleven-results-nobody-signed-off.md",
-      "status": "CLAIMED",
-      "stage_dir": "TODO",
-      "priority": "P2",
-      "worker": "resonate-qwen-5",
-      "claimed_at": "2026-09-16T05:23:56+00:00",
-      "dependencies": [],
-      "branch": null,
-      "result": null,
-      "review_status": "NOT_SUBMITTED",
-      "blocked_by": []
-    },
-    {
-      "task": "TASK-189",
-      "file": "docs/qwen-tasks/TODO/TASK-189-scrub-the-repository-and-decide-the-record-id.md",
+      "task": "TASK-191",
+      "file": "docs/qwen-tasks/TODO/TASK-191-every-funnel-number-in-circulation-is-stale.md",
       "status": "QUEUED",
       "stage_dir": "TODO",
       "priority": "P1",
@@ -267,11 +283,11 @@
       "blocked_by": []
     },
     {
-      "task": "TASK-123",
-      "file": "docs/qwen-tasks/BLOCKED/TASK-123-which-of-the-eleven-red-tests-are-actually-fixed.md",
-      "status": "BLOCKED",
-      "stage_dir": "BLOCKED",
-      "priority": "P3",
+      "task": "TASK-186",
+      "file": "docs/qwen-tasks/REVIEW/TASK-186-rehearse-the-heyreach-staging-path.md",
+      "status": "AWAITING_REVIEW",
+      "stage_dir": "REVIEW",
+      "priority": "P0",
       "worker": null,
       "claimed_at": null,
       "dependencies": [],
@@ -281,16 +297,14 @@
       "blocked_by": []
     },
     {
-      "task": "TASK-183",
-      "file": "docs/qwen-tasks/BLOCKED/TASK-183-buy-evidence-for-twenty-five-records.md",
+      "task": "TASK-123",
+      "file": "docs/qwen-tasks/BLOCKED/TASK-123-which-of-the-eleven-red-tests-are-actually-fixed.md",
       "status": "BLOCKED",
       "stage_dir": "BLOCKED",
-      "priority": "P0",
+      "priority": "P3",
       "worker": null,
       "claimed_at": null,
-      "dependencies": [
-        "TASK-182"
-      ],
+      "dependencies": [],
       "branch": null,
       "result": null,
       "review_status": "NOT_SUBMITTED",
@@ -2640,6 +2654,20 @@
       "branch": null,
       "result": null,
       "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-187",
+      "file": "docs/qwen-tasks/DONE/TASK-187-is-icp-pass-reachable-at-all.md",
+      "status": "DONE",
+      "stage_dir": "DONE",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "DONE",
+      "review_status": "PENDING",
       "blocked_by": []
     }
   ]
