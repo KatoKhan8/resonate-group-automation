@@ -4,12 +4,13 @@ Hash function: SHA-256 with a fixed salt, truncated to 12 hex chars,
 prefixed with 'px-' (for 'pixelated'). The same input always produces
 the same output, so a reader can follow one entity across documents.
 
-    px-adcuratio.com   = sha256('resonate-pii-salt-2026-09-16' + 'adcuratio.com')[:12]
-    -> 'px-' + that 12-char hex
-
 The salt is public (it is in this script, which is tracked). It exists
 only to prevent rainbow-table lookup of the hashes. The hashes are not
 secrets; they are opaque replacements.
+
+The forbidden values are imported from tests/test_fixture_hygiene.py
+(the guard itself) rather than hardcoded here, so this script does not
+trigger the guard it is trying to help.
 
 Usage:
     py -3 scripts/task189_scrub_pii.py          # dry run, prints changes
@@ -20,43 +21,15 @@ import os
 import re
 import sys
 
-SALT = "resonate-pii-salt-2026-09-16"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-FORBIDDEN_DOMAINS = (
-    "arbona.hr", "bornfight.com", "five.agency", "beauhurst.com", "robotiq.ai",
-    "levelupleads.io", "whatson.ai", "fornate.com", "leapin.co", "jobadder.com",
-    "321webmarketing.com", "20northmarketing.com", "adcreations.com",
-    "adcuratio.com", "1secondleads.com", "28row.com", "adblend.co",
-    "anewagencyworld.com", "aubryandco.com", "arcoagency.se", "nineyards.ie",
-    "thirtythree-usa.com",
-    "clay.com", "relpro.com", "auvale.de", "alta.com", "tawk.to",
-    "synquery.com", "farseer.io", "q-agency.com", "netnada.com.au",
-    "nextoria.com", "cyber64.hr", "productive.io",
-    "goproductive.online", "goproductive.net", "goproductivelab.com",
-    "goproductivelabs.live", "tryproductive.online", "withproductive.online",
-    "gonetnada.com", "trynetnada.live", "netnadadigital.shop",
-    "contactout.io",
-)
+# Import forbidden values from the guard itself, so we do not duplicate
+# them here and trigger the scanner we are trying to satisfy.
+sys.path.insert(0, os.path.join(ROOT, "tests"))
+from test_fixture_hygiene import (FORBIDDEN_DOMAINS, FORBIDDEN_NAMES,
+                                  FORBIDDEN_FIGURES)
 
-FORBIDDEN_NAMES = (
-    "mahovic", "mahović", "klaric", "klarić", "blackler", "hopkins",
-    "gudelj", "galic", "galić", "ivce", "pavlovic", "pavlović",
-    "van ulden", "baauw", "karsant", "lucic", "gokdeniz", "beslic", "beslić",
-    "brooke baron", "brookebaron", "josephoneill", "joseph o'neill",
-    "lingenfelter", "dahlstrom",
-    "mediaboard", "netnada", "cyber64",
-    "nineyards", "brooke", "arbona", "bornfight", "jobadder", "adcuratio",
-    "adcreations", "321webmarketing", "20northmarketing", "1secondleads",
-    "28row", "adblend", "anewagencyworld", "aubryandco", "arcoagency",
-    "thirtythree-usa", "goproductive", "gonetnada", "trynetnada",
-)
-
-FORBIDDEN_FIGURES = (
-    "179268", "142737", "39826", "119616", "54317", "32509",
-    "189,683", "189683", "269,973", "269973", "27,144", "27144",
-    "17,362", "17362", "1,853",
-)
+SALT = "resonate-pii-salt-2026-09-16"
 
 
 def px(value):
@@ -66,7 +39,7 @@ def px(value):
 
 
 def build_replacements():
-    """Ordered longest-first so 'brooke baron' replaces before 'brooke'."""
+    """Ordered longest-first so multi-word names replace before tokens."""
     reps = []
     for d in FORBIDDEN_DOMAINS:
         reps.append((d, px(d)))
@@ -139,19 +112,8 @@ def main():
     print(f"Replacements: {len(replacements)}")
     print()
 
-    sample = [("adcuratio.com", px("adcuratio.com")),
-              ("adcuratio", px("adcuratio")),
-              ("28row.com", px("28row.com")),
-              ("brooke", px("brooke")),
-              ("nineyards", px("nineyards"))]
-    print("Sample hashes:")
-    for val, h in sample:
-        print(f"  {val!r:30s} -> {h}")
-    print()
-
     files = files_to_scrub()
     changed = 0
-    total_replacements = 0
 
     for f in files:
         path = os.path.join(ROOT, f)
@@ -168,10 +130,7 @@ def main():
         scrubbed = scrub_text(original, replacements, only_above_line=only_above)
 
         if scrubbed != original:
-            n = sum(1 for o, _ in replacements
-                    if o.lower() in original.lower())
             changed += 1
-            total_replacements += n
             if apply:
                 with open(path, "w", encoding="utf-8") as fh:
                     fh.write(scrubbed)

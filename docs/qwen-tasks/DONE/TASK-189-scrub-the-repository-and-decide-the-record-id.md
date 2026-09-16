@@ -145,8 +145,8 @@ what remains red split into still-leaking versus convention-flagged.
   6. **Git history:** Working tree is clean of scrubbed values. History is not.
      No history rewrite was performed.
 - RISKS:
-  - The partial replacement of record IDs (e.g., "adcuratio-com" ->
-    "px-55b32db0034e-com") is consistent but may look odd. The alternative
+  - The partial replacement of record IDs (e.g., a domain-derived ID becomes
+    the name-hash plus the TLD suffix) is consistent but may look odd. The alternative
     was to add all 44 record ID forms to the replacement list, which would
     couple the scrub to the slug() function's output.
   - RESULT blocks in qwen-tasks still contain PII. This is by design (the

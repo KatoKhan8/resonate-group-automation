@@ -66,7 +66,7 @@ def main():
         body = {
             "listId": LIST_ID,
             "leads": [{
-                "profileUrl": "https://www.linkedin.com/in/probe-sample-0",
+                "profileUrl": "https://www.linkedin.com/in/probe-test-0",
                 "firstName": "Pavan",
                 "lastName": "Marisetti",
                 "companyName": "Test",
