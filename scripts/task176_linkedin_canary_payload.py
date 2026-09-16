@@ -642,11 +642,11 @@ def _write_doc(stamp, results, payload_entries, all_lint_pass, all_claims_pass,
                  "So the comparison is: does each contact's `customUserFields` match "
                  "the rendering in Section 3?")
     lines.append("")
-    lines.append("**For Austin Ball (#1):** li1-li5 have operator-control-arm approval. "
+    lines.append("**For contact:d814b9bcb642 (#1):** li1-li5 have operator-control-arm approval. "
                  "The approved copy matches the CONTROL fallbacks exactly (the CONTROL "
                  "was written to be the fallback). li6 is generated but has no graph slot.")
     lines.append("")
-    lines.append("**For Sam Nielsen (#2) and Anthony Andreatos (#3):** All steps are "
+    lines.append("**For contact:ecfd847755c1 (#2) and contact:b8cf25c80e28 (#3):** All steps are "
                  "generated (no operator approval). The `customUserFields` would carry "
                  "the generated text, NOT the CONTROL fallbacks. The fallbacks fire "
                  "only when `customUserFields` is missing a variable entirely.")
@@ -701,13 +701,13 @@ def _write_doc(stamp, results, payload_entries, all_lint_pass, all_claims_pass,
                  "sends if the variable is empty), but the per-lead `customUserFields` "
                  "must carry the approved words.")
     lines.append("")
-    lines.append("**The practical effect:** 2 of 3 canary contacts (Sam Nielsen, "
-                 "Anthony Andreatos) have no operator-approved copy. Their generated "
+    lines.append("**The practical effect:** 2 of 3 canary contacts (contact:ecfd847755c1, "
+                 "contact:b8cf25c80e28) have no operator-approved copy. Their generated "
                  "copy was never approved through the CONTROL arm. They cannot be "
                  "staged until their cadence steps are replaced with CONTROL fallbacks "
                  "or operator-approved generated copy.")
     lines.append("")
-    lines.append("Only Austin Ball has operator-control-arm approval for li1-li5, "
+    lines.append("Only contact:d814b9bcb642 has operator-control-arm approval for li1-li5, "
                  "which maps to all 8 required roles. He is the only contact of the "
                  "three who can be staged today.")
     lines.append("")

@@ -220,7 +220,7 @@ def clear_of_collision(chooser, limit, *, workspace_id, client_slug):
         #
         # That is not hypothetical and it is why this is here. The first
         # canary that got as far as the provider was refused on
-        # `austin-ball-0091076b`: four messages from seat 208242, last one
+        # `contact:d814b9bcb642-0091076b`: four messages from seat 208242, last one
         # 2026-07-18, sent by us, never replied to. The gate caught it -
         # `executionguard`'s collision gate runs `check_linkedin_profile` -
         # but it caught it after the copy was installed and the campaign's

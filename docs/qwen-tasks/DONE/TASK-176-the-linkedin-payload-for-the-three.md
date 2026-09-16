@@ -88,16 +88,16 @@ the fallback count, and the exact payload.
   - `docs/LINKEDIN-CANARY-PAYLOAD-2026-09-16.md` (new) — the deliverable document
   - Task file moved TODO → DONE
 - **FINDINGS:**
-  1. **15 of 24 variable slots are CONTROL fallbacks.** Only Austin Ball (contact #1) has operator-control-arm approval for all 8 roles. Sam Nielsen has 7 fallbacks (li1 approved by claude, not operator-control-arm). Anthony Andreatos has 8 fallbacks (zero approved copy).
-  2. **Sam Nielsen's generated li1 FAILS lint and claims.** The text "noticed you're scaling operations at 2ton — i work with creative teams on capacity planning across live projects." contains an em dash (U+2014, lint fail) and a flat operational assertion ("you're scaling operations at 2ton", claims fail). This copy would be refused by the factory.
+  1. **15 of 24 variable slots are CONTROL fallbacks.** Only contact:d814b9bcb642 (contact #1) has operator-control-arm approval for all 8 roles. contact:ecfd847755c1 has 7 fallbacks (li1 approved by claude, not operator-control-arm). contact:b8cf25c80e28 has 8 fallbacks (zero approved copy).
+  2. **contact:ecfd847755c1's generated li1 FAILS lint and claims.** The text "noticed you're scaling operations at 2ton — i work with creative teams on capacity planning across live projects." contains an em dash (U+2014, lint fail) and a flat operational assertion ("you're scaling operations at 2ton", claims fail). This copy would be refused by the factory.
   3. **LinkedIn's blocking condition is approval, not a missing variable.** Email's blocker was `company` (unresolvable). LinkedIn's blocker is the absence of `approval.by` on a cadence step. The config fallback fills the graph's `fallbackMessage` but the per-lead `customUserFields` must carry approved words. 2 of 3 canary contacts cannot be staged.
   4. **The 24 nodes are the OLD sequence.** The corrected campaign 599020 carries 17 nodes with merge variables (`{connection_note}`, `{connected_1..4}`, `{message_2..4}`). The words arrive per lead in `customUserFields`. The graph structure matches the CONTROL the ladder assumes.
   5. **li6 has no graph position.** The cadence names 6 steps (li1-li6) but the HeyReach graph has positions for only 5 (li1-li5 via COPY_MAPPING). li6 exists on paper but never fires at the provider.
   6. **connected_1 and message_2 carry the same text** (both from li2), and likewise connected_2/message_3 (from li3) and connected_3/message_4 (from li4). This is by design in COPY_MAPPING, not a defect - they sit on different branches of the graph.
 - **RISKS:**
   - The two contacts without operator approval need their cadence steps replaced with CONTROL fallbacks before staging. This is a provider write (cadence data in the queue) that this task did not perform.
-  - Sam Nielsen's generated li1 contains PII ("2ton") that would be sent literally if the approval gate were bypassed.
+  - contact:ecfd847755c1's generated li1 contains PII ("2ton") that would be sent literally if the approval gate were bypassed.
 - **RECOMMENDED CLAUDE ACTION:**
-  1. Replace generated copy with CONTROL fallbacks for Sam Nielsen and Anthony Andreatos (cadence steps li1-li5 in the queue).
+  1. Replace generated copy with CONTROL fallbacks for contact:ecfd847755c1 and contact:b8cf25c80e28 (cadence steps li1-li5 in the queue).
   2. Re-run this script to confirm 0 fallbacks and all-PASS verdicts.
   3. Then stage the three contacts to campaign 599020 (requires LINKEDIN_ADD_LEAD, which is not yet in SUPPORTED).

@@ -314,9 +314,9 @@ CHECK_IS_CONNECTION (0 HOUR)
 
 The nodes carry MERGE VARIABLES (`{connection_note}`, etc.), not literal text. The actual text arrives per lead in `customUserFields`. So the comparison is: does each contact's `customUserFields` match the rendering in Section 3?
 
-**For Austin Ball (#1):** li1-li5 have operator-control-arm approval. The approved copy matches the CONTROL fallbacks exactly (the CONTROL was written to be the fallback). li6 is generated but has no graph slot.
+**For contact:d814b9bcb642 (#1):** li1-li5 have operator-control-arm approval. The approved copy matches the CONTROL fallbacks exactly (the CONTROL was written to be the fallback). li6 is generated but has no graph slot.
 
-**For Sam Nielsen (#2) and Anthony Andreatos (#3):** All steps are generated (no operator approval). The `customUserFields` would carry the generated text, NOT the CONTROL fallbacks. The fallbacks fire only when `customUserFields` is missing a variable entirely.
+**For contact:ecfd847755c1 (#2) and contact:b8cf25c80e28 (#3):** All steps are generated (no operator approval). The `customUserFields` would carry the generated text, NOT the CONTROL fallbacks. The fallbacks fire only when `customUserFields` is missing a variable entirely.
 
 **THIS IS THE FINDING.** The campaign was staged before the ladder existed. The contacts have generated copy in their cadence steps, but that copy was never operator-approved. When staging, the factory would refuse because `assemble_linkedin_copy` requires approval. The contacts would need their generated copy replaced with CONTROL fallbacks before they can be staged.
 
@@ -389,9 +389,9 @@ Email's only blocking variable was `company` - a contact without a resolvable co
 
 What LinkedIn has instead is an **approval requirement**: every merge variable must have approved copy from the cadence. If a step has no `approval.by`, the factory refuses. The fallback from config fills the GRAPH's `fallbackMessage` (what the provider sends if the variable is empty), but the per-lead `customUserFields` must carry the approved words.
 
-**The practical effect:** 2 of 3 canary contacts (Sam Nielsen, Anthony Andreatos) have no operator-approved copy. Their generated copy was never approved through the CONTROL arm. They cannot be staged until their cadence steps are replaced with CONTROL fallbacks or operator-approved generated copy.
+**The practical effect:** 2 of 3 canary contacts (contact:ecfd847755c1, contact:b8cf25c80e28) have no operator-approved copy. Their generated copy was never approved through the CONTROL arm. They cannot be staged until their cadence steps are replaced with CONTROL fallbacks or operator-approved generated copy.
 
-Only Austin Ball has operator-control-arm approval for li1-li5, which maps to all 8 required roles. He is the only contact of the three who can be staged today.
+Only contact:d814b9bcb642 has operator-control-arm approval for li1-li5, which maps to all 8 required roles. He is the only contact of the three who can be staged today.
 
 ## 10. Summary
 
