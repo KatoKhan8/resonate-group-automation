@@ -102,3 +102,54 @@ available and called; the capability-to-requirement map with a field name or
 an explicit NO CAPABILITY for each of the seven; the bounded five-record
 re-test with per-record results, or a stated reason none was warranted; and
 the confirmed capability gaps that license the later layers.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** 4de222e
+- **TESTS:** No test suite run — this is a read-only audit with no code changes
+  to src/. The deliverable is a documentation file.
+- **FILES CHANGED:**
+  - `docs/CONTACTOUT-CAPABILITY-2026-09-16.md` (new, 334 lines)
+- **FINDINGS:**
+  1. **ContactOut has 15 documented API endpoints.** The adapter implements 5
+     (people-count, people-search, decision-makers, email-verifier,
+     company-information-from-domain). 10 are not implemented.
+  2. **Of the 5 implemented, `people_search` has no production caller.** It is
+     defined in the adapter and referenced in validate.py but never called by
+     enrich.py or generate.py. The waterfall does not include it as a step.
+  3. **ContactOut is first in every waterfall stage.** The routing policy is
+     correctly implemented in src/waterfall.py.
+  4. **Capability-to-requirement map (7 requirements):**
+     - geography: CAPABILITY PRESENT (data quality issue, not a gap)
+     - company_type: CAPABILITY PRESENT (coverage partial — 159 UNKNOWN verticals)
+     - employees: CAPABILITY PRESENT
+     - prose evidence: NO CONTACTOUT CAPABILITY (genuine gap)
+     - person discovery: CAPABILITY PRESENT
+     - contact email: CAPABILITY PRESENT
+     - job-change signal: NO CONTACTOUT CAPABILITY (genuine gap)
+  5. **Re-test (item 4): not warranted.** No other ContactOut endpoint returns
+     fundamentally different geography or company_type data for a known domain.
+     The TASK-185 finding was that the data came back but did not match the
+     client's markets, not that the field was empty. Zero credits spent.
+  6. **Two genuine capability gaps license the later layers:**
+     - Prose evidence with source attribution → crawler (layer 3), Grok (layer 4)
+     - Job-change signals → external monitoring (layers 3-4)
+  7. **Geography and company_type are NOT ContactOut gaps.** The data comes
+     back; it does not match or is absent for some companies. A crawler adds
+     value by supplementing, not by filling a ContactOut failure.
+- **RISKS:**
+  - Endpoints 6-14 (not implemented) are ASSUMED available based on API docs
+    not gating by plan tier, but this is NOT LIVE-PROVEN. A single paid call
+    per endpoint would confirm.
+  - Credit costs for endpoints 6-14 are estimated from the pricing pattern
+    (1 search credit per result) but not confirmed against a price list.
+- **RECOMMENDED CLAUDE ACTION:**
+  1. Review the capability map and confirm the two genuine gaps (prose evidence,
+     job-change signals) are what license layers 3-4 in the routing policy.
+  2. TASK-207/208: consider wiring `people_search` into the enrich pipeline —
+     it is implemented and tested but has no caller.
+  3. Do NOT add `company-search` as a parallel to `company-information-from-domain`
+     — it returns the same data through a different route.
+  4. The `linkedin/enrich` endpoint could be useful for person-level enrichment
+     when the pipeline already holds a LinkedIn URL.
