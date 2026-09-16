@@ -171,3 +171,40 @@ False and `LINKEDIN_ADD_LEAD` remains sealed - we never add to campaign 599020.
 `CONDITIONAL` entry, so enabling it as-is would be a channel-wide licence
 rather than one scoped to the canary campaign. That entry must be written,
 scoped to the campaign id this grant produces, before activation is requested.
+
+---
+
+## heyreach.create_list - EXERCISED 2026-09-16
+
+Grant, verbatim: "APPROVED - enable heyreach.create_list"
+
+Exercised once. `scripts/stage_linkedin_ready_cohort.py --live` created:
+
+    list 943957   "RESONATE - PRODUCTIVE LINKEDIN COHORT 2026-09-16"
+                  campaignIds []  - UNBOUND
+                  4 leads, read back from the provider
+
+The 4 are the full cohort that passes every existing gate: operator-control-arm
+approval on li1-li5, a canonical profile URL, and an ACCOUNT whose
+`collision.account_policy` verdict is neither hold nor stop. One account
+(2 contacts) is HELD and was not staged. No gate was widened to reach 4.
+
+`LINKEDIN_CREATE_LIST` was added to `SUPPORTED` with NO `CONDITIONAL`
+predicate, deliberately: a create has no destination to check and an empty
+list reaches nobody. What bounds this is downstream -
+`LINKEDIN_ADD_LEAD_TO_LIST` requires an unbound list and
+`LINKEDIN_CREATE_CAMPAIGN` requires a list that is ours, unbound and holding
+only approved leads.
+
+### SCOPE EXTENSION NOT YET GRANTED - do not assume it
+
+The `heyreach.create_campaign` grant was worded "for list **940797**". List
+940797 is now bound to campaign 604869 and holds only the HELD contact, so it
+is a dead end. Binding a campaign to list **943957** is outside the wording of
+that grant.
+
+Likewise `heyreach.activate`'s condition is scoped to campaign **604869**, and
+`bison.activate`'s to campaign **485** - both of which are being replaced.
+
+These three re-scopings are operator decisions. They have NOT been granted and
+must not be inferred from the earlier wording.

@@ -510,7 +510,25 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
              # provider disagrees with the number the caller believes. The
              # authorization names ONE person; a campaign that turns out to
              # hold more is stopped there rather than discovered afterwards.
-             LINKEDIN_ACTIVATE)
+             LINKEDIN_ACTIVATE,
+             # Enabled 2026-09-16: "APPROVED - enable heyreach.create_list".
+             #
+             # NOT prospect-facing and NOT conditional, and the second half of
+             # that needs justifying rather than assuming. Every other
+             # conditional verb here checks a destination that already exists
+             # - a campaign that must hold nobody, a list that must be
+             # unbound. `create_list` has no destination: it makes an EMPTY
+             # list, attached to no campaign, holding nobody. There is
+             # nothing to read and nothing to prove, and a condition that
+             # checks nothing is worse than none because it reads as a gate.
+             #
+             # What bounds it instead is what comes after: a lead only enters
+             # the list through LINKEDIN_ADD_LEAD_TO_LIST, which is
+             # conditional on the list being unbound, and the list only
+             # reaches a campaign through LINKEDIN_CREATE_CAMPAIGN, which is
+             # conditional on it holding approved leads. An empty list is
+             # inert.
+             LINKEDIN_CREATE_LIST)
 
 # ------------------------------------------- conditional permission
 #

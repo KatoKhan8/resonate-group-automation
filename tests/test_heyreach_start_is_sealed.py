@@ -90,9 +90,18 @@ class ActivateIsSealed(unittest.TestCase):
     refuses before the transport is reached.
     """
 
-    def test_activate_not_in_supported(self):
-        self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
-                         providerwrites.SUPPORTED)
+    def test_activate_is_enabled_and_scoped(self):
+        """Enabled 2026-09-16 for campaign 604869, and scoped to it.
+
+        This asserted absence from SUPPORTED. The operator authorized
+        activation, so the seal moved into the condition: membership alone
+        would be a licence over 83 campaigns, 12 of them the client's own and
+        in progress.
+        """
+        self.assertIn(providerwrites.LINKEDIN_ACTIVATE,
+                      providerwrites.SUPPORTED)
+        self.assertIn(providerwrites.LINKEDIN_ACTIVATE,
+                      providerwrites.CONDITIONAL)
 
     def test_activate_has_a_condition_and_is_still_not_supported(self):
         """A condition written BEFORE the permission, deliberately.
@@ -105,8 +114,8 @@ class ActivateIsSealed(unittest.TestCase):
         channel-wide licence over an account holding 83 campaigns, 12 of them
         the client's own and in progress.
         """
-        self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
-                         providerwrites.SUPPORTED)
+        self.assertIn(providerwrites.LINKEDIN_ACTIVATE,
+                      providerwrites.SUPPORTED)
         self.assertIn(providerwrites.LINKEDIN_ACTIVATE,
                       providerwrites.CONDITIONAL)
 
@@ -119,15 +128,26 @@ class ActivateIsSealed(unittest.TestCase):
         self.assertTrue(providerwrites.require_conditional_permission(
             providerwrites.LINKEDIN_ACTIVATE, "604869", None))
 
-    def test_perform_refuses_activate(self):
-        """The OFF switch. perform raises WriteUnsupported before transport."""
-        with self.assertRaises(providerwrites.WriteUnsupported) as ctx:
+    def test_perform_refuses_activate_without_an_authorization(self):
+        """The seal moved from membership to the gate ladder.
+
+        This asserted WriteUnsupported - the OFF switch - which was right
+        until the operator authorized campaign 604869. Now the refusal comes
+        from the requirement that a prospect-facing verb carry a real
+        `executionguard.Authorization`, which only `authorize()` mints and only
+        after every per-contact gate passes. A dict claiming the gates passed
+        is not proof they did, and that is a stronger seal than absence:
+        absence stopped everyone, this stops everyone who has not passed the
+        gates.
+        """
+        with self.assertRaises(providerwrites.WriteRefused) as ctx:
             providerwrites.perform(
                 providerwrites.LINKEDIN_ACTIVATE,
+                provider_campaign_id="604869",
                 transport=lambda p: {},
                 readback=lambda: {},
             )
-        self.assertIn("not supported", str(ctx.exception))
+        self.assertIn("Authorization", str(ctx.exception))
 
     def test_activate_is_prospect_facing(self):
         """The reason it is sealed: it reaches a person."""
@@ -189,8 +209,12 @@ class CreateCampaignCondition(unittest.TestCase):
     def test_activation_is_still_not_supported(self):
         """The half that was NOT granted. Creating a DRAFT is enabled;
         starting it is not, and StartCampaign is the verb that sends."""
-        self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
-                         providerwrites.SUPPORTED)
+        self.assertIn(providerwrites.LINKEDIN_ACTIVATE,
+                      providerwrites.SUPPORTED)
+        # And still scoped: 599020 is refused.
+        with self.assertRaises(providerwrites.WriteRefused):
+            providerwrites.require_conditional_permission(
+                providerwrites.LINKEDIN_ACTIVATE, "599020", None)
 
     def test_condition_refuses_none_list_id(self):
         """No list id means nothing can be proven."""
