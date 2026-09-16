@@ -85,3 +85,73 @@ attached to a campaign, adding to it is adding to a campaign.
 The gate sequence with the function names, the safe-list predicate, the
 readback definition, and the tests green with the exit code read off the
 process.
+
+## RESULT
+
+STATUS: DONE
+COMMIT: d7b5302
+TESTS: 42 tests in tests/test_list_staging.py, all green (exit code 0).
+       80 invariant tests also green — no AST breakage.
+FILES CHANGED:
+  src/liststaging.py              (new — the staging module)
+  tests/test_list_staging.py      (new — 42 tests, 7 classes)
+  docs/LIST-STAGING-DESIGN-2026-09-16.md  (new — design document)
+  scripts/task165_gate_analysis.py  (new — analysis script)
+
+FINDINGS:
+
+1. WHERE THE GATE GOES — two gates, two steps:
+
+   LIST STEP (not prospect-facing):
+     Function: liststaging.stage_lead(list_id, row, transport, ...)
+     Gate sequence:
+       1. validate_lead_row(row) — firstName, lastName required
+       2. assert_list_safe(list_id) — reads provider, checks campaignIds
+       3. transport(payload) — POST /list/AddLeadsToListV2
+       4. readback_list_add(list_id, expected_urls) — membership + binding
+       5. classify_readback(result) — ACCEPTED/DRIFTED/UNKNOWN
+
+   CAMPAIGN STEP (prospect-facing, existing, not modified):
+     Function: providerwrites.perform(LINKEDIN_ADD_LEAD, ...)
+     Gate: executionguard.authorize + require_conditional_permission
+     Placement: immediately before the POST, no state read between gate
+     and transport. The conditional re-reads the campaign at the moment
+     of the write.
+
+2. SAFE-LIST PREDICATE: liststaging.list_is_unbound(list_row)
+   Returns True iff campaignIds is empty.
+   assert_list_safe(list_id) reads the provider via heyreach.list_by_id
+   and refuses if the list is bound, unreadable, or missing.
+   "Our list" != "a safe list" — campaign 599020 has list 933603 ATTACHED.
+
+3. READBACK: liststaging.readback_list_add(list_id, expected_urls)
+   Two reads: heyreach.list_leads (membership) + heyreach.list_by_id (binding)
+   ACCEPTED iff found == expected AND still_unbound.
+   addedLeadsCount: 1 from the write response is NOT a readback.
+   DRIFTED if the list became bound after the write.
+
+4. THE TRAP: firstName and lastName are REQUIRED. Provider silently drops
+   leads missing either, returning 200 with 0/0/0. validate_lead_row
+   refuses BEFORE the transport. A 200 is not a success.
+
+5. MODULE PLACEMENT: src/liststaging.py, NOT src/linkedinstate.py.
+   linkedinstate.py owns connection-axis state (pending, accepted, replied)
+   and has no concept of lists or staging. List staging is a write-layer
+   concern, sitting between heyreach.py (transport) and providerwrites.py
+   (gate). When an operator promotes this to SUPPORTED, the operation name
+   is heyreach.add_lead_to_list, NOT prospect-facing, with a CONDITIONAL
+   entry pointing at assert_list_safe.
+
+RISKS:
+- The list's campaignIds can change between the assert_list_safe read and
+  the transport. The readback catches this (DRIFTED), but there is a small
+  window. This is the same shape as the campaign-level conditional
+  permission's window — bounded by the transport being in-process.
+- No tenant check beyond the binding check. A list belonging to another
+  org_unit but unbound would pass. The provider credential scopes the
+  tenant implicitly.
+
+RECOMMENDED CLAUDE ACTION:
+- Review the design doc at docs/LIST-STAGING-DESIGN-2026-09-16.md
+- Decide whether to promote LINKEDIN_ADD_LEAD_TO_LIST to SUPPORTED
+- If promoted, add to providerwrites.OPERATIONS and CONDITIONAL
