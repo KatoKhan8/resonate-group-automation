@@ -1496,6 +1496,122 @@ def resume_campaign(campaign_id):
     return _write("/campaign/Resume", {"campaignId": int(campaign_id)})
 
 
+# --------------------------------------------------------- the activation verb
+#
+# TASK-218 (2026-09-16): the start verb, implemented and sealed.
+#
+# This is the counterpart of `bison.resume_campaign`: it takes an `expect_leads`
+# containment argument, refuses if the provider disagrees, and CLASSIFIES the
+# provider's answer rather than trusting a 200. A status that is still unknown
+# when polling runs out raises rather than reporting success.
+#
+# IT IS NOT CALLED FROM ANYWHERE IN PRODUCTION. `LINKEDIN_ACTIVATE` is not in
+# `SUPPORTED` and carries no condition, so `providerwrites.perform` refuses it
+# before the transport is reached. The function exists so the operator's
+# decision is one line rather than a day of engineering - and the test that
+# proves the OFF switch refuses is the deliverable that matters most.
+
+# The statuses a HeyReach campaign can be in after StartCampaign.
+# DRAFT -> IN_PROGRESS is the expected transition.
+# NOTE: These are defined as string literals because the named constants
+# (DRAFT, IN_PROGRESS etc.) are defined later in this module.
+_STARTED_STATUSES = ("IN_PROGRESS",)
+# Statuses that mean the campaign has NOT started and is not going to.
+_NOT_STARTED_STATUSES = ("DRAFT",)
+# Statuses that mean the provider gave up.
+_FAILED_STATUSES = ()
+# Transitional states the provider may pass through.
+_STARTING_STATUSES = ()
+
+
+def activate_campaign(campaign_id, expect_leads=None, attempts=6,
+                      interval=2.0):
+    """Start a campaign and confirm from the provider that it did.
+
+    THE VERB THAT MAKES A LINKEDIN CAMPAIGN SEND. Modeled after
+    `bison.resume_campaign`: the same containment, the same classification,
+    the same refusal to report success from a 200 alone.
+
+    `expect_leads` is the containment. A started campaign sends to EVERY lead
+    it holds, so the caller states how many it believes are in there and this
+    refuses if the provider disagrees. A campaign meant to reach one person
+    that finds nine is stopped here rather than discovered afterwards.
+
+    THE 200 IS NOT THE ANSWER. HeyReach's StartCampaign returns 200 and the
+    campaign transitions DRAFT -> IN_PROGRESS, but the transition is not
+    instant. The status is polled and classified: IN_PROGRESS means started,
+    DRAFT means not yet, and an unrecognised status raises rather than
+    defaulting to success. A start whose outcome is still unknown when polling
+    runs out raises: "we do not know yet" and "it started" must not be the
+    same answer on the one verb here that reaches a person.
+
+    NOT IN SUPPORTED. `LINKEDIN_ACTIVATE` carries no condition and is not in
+    `providerwrites.SUPPORTED`, so calling `providerwrites.perform` with it
+    raises `WriteUnsupported` before this function is ever reached. The
+    transport exists so the day it is enabled, the brakes are already here.
+    """
+    import time
+
+    if expect_leads is not None:
+        held_rows, held_total = campaign_leads(campaign_id, offset=0)
+        if held_total is None:
+            raise ProviderError(
+                f"heyreach activate_campaign: campaign {campaign_id} returned "
+                f"no lead total. A missing count is not a zero and is not the "
+                f"number the caller expected. Refusing")
+        if int(held_total) != int(expect_leads):
+            raise ProviderError(
+                f"heyreach activate_campaign: campaign {campaign_id} holds "
+                f"{held_total} lead(s) and the caller expected "
+                f"{expect_leads}. Refusing to start a campaign whose reach is "
+                f"not what the caller thinks it is")
+
+    _write("/campaign/StartCampaign", {"campaignId": int(campaign_id)})
+
+    state = ""
+    for attempt in range(attempts):
+        if attempt:
+            time.sleep(interval)
+        try:
+            row = campaign_read(campaign_id)
+        except Exception as e:
+            if attempt == attempts - 1:
+                raise ProviderError(
+                    f"heyreach activate_campaign: campaign {campaign_id} "
+                    f"could not be read back after start "
+                    f"({type(e).__name__}: {e}). Whether it is sending is "
+                    f"UNKNOWN - read provider truth before starting again")
+            continue
+        state = str(row.get("status") or "").strip()
+        if state in _STARTED_STATUSES:
+            return {"campaign_id": campaign_id, "status": state,
+                    "lead_count": held_total if expect_leads is not None
+                    else None}
+        if state in _FAILED_STATUSES:
+            raise ProviderError(
+                f"heyreach activate_campaign: the provider answered the "
+                f"start and then moved campaign {campaign_id} to {state!r}. "
+                f"It is NOT sending")
+        if state in _NOT_STARTED_STATUSES:
+            if attempt == attempts - 1:
+                raise ProviderError(
+                    f"heyreach activate_campaign: campaign {campaign_id} "
+                    f"still reads back as {state!r} after "
+                    f"{attempts * interval:.0f}s. The start did not take "
+                    f"effect")
+            continue
+        if state in _STARTING_STATUSES:
+            continue
+        raise ProviderError(
+            f"heyreach activate_campaign: campaign {campaign_id} reads back "
+            f"as {state!r}, which this module cannot classify as started or "
+            f"not started. Refusing to report a send that cannot be confirmed")
+    raise ProviderError(
+        f"heyreach activate_campaign: campaign {campaign_id} is still "
+        f"{state!r} after {attempts * interval:.0f}s. Whether it is sending "
+        f"is UNKNOWN - read provider truth before starting again")
+
+
 def campaign_status(campaign_id):
     """The campaign's status as the provider currently reports it.
 

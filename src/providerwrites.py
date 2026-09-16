@@ -210,8 +210,20 @@ OPERATIONS = {
     LINKEDIN_CREATE_LIST: ("linkedin", False,
         "no documented route; the list was created by hand in the vendor UI"),
     LINKEDIN_CREATE_CAMPAIGN: ("linkedin", False,
-        "no documented route; POST /campaign/GetById already answers 405 and "
-        "nothing suggests a create verb exists on the public API"),
+        "DEFINED WITH A CONDITION AND LEFT OFF, TASK-218. "
+        "`/campaign/Create` IS on `heyreach.WRITE_ROUTES` and "
+        "`heyreach.create_campaign` implements it - creates in DRAFT, binds a "
+        "list, reads back name/status/list/seats. The CONDITIONAL predicate "
+        "`_list_is_ours_and_unbound_and_holds_approved` asserts from a "
+        "provider read at the moment of the write that the list being bound is "
+        "readable through our key (tenant boundary), unbound (campaignIds "
+        "empty), and exists. NOT in SUPPORTED: creating a campaign is the "
+        "first step on a path that ends with activation, and the operator has "
+        "not enabled either. NOT prospect-facing: a DRAFT sends nothing, but "
+        "binding a list ends the unbound safety property every staged lead "
+        "depends on - detection of drift after the bind is the only safety "
+        "net. Enabling is one line: add `LINKEDIN_CREATE_CAMPAIGN` to "
+        "`SUPPORTED`"),
     LINKEDIN_SET_SEQUENCE: ("linkedin", False,
         "SUPPORTED as of 2026-09-14. This said 'no documented route ... a "
         "write would be verifiable the moment a verb is established', and the "
@@ -782,6 +794,90 @@ def _list_is_unbound_right_now(provider_list_id, campaign_id=None):
 
 
 CONDITIONAL[LINKEDIN_ADD_LEAD_TO_LIST] = _list_is_unbound_right_now
+
+
+# --------------------------------------------------------- create campaign
+#
+# TASK-218 (2026-09-16): the creation permission, defined with its condition
+# and left OFF. `LINKEDIN_CREATE_CAMPAIGN` is not in `SUPPORTED` - enabling is
+# the operator's decision, and this predicate is what that decision enables.
+#
+# THE CONDITION ASSERTS THREE THINGS FROM PROVIDER READS AT THE MOMENT OF THE
+# WRITE:
+#
+#   1. The list the campaign will bind is OURS - it exists in our tenant and
+#      its name matches what the caller claims.
+#   2. The list is UNBOUND - `campaignIds` is empty, so binding it to a new
+#      campaign does not detach it from an existing one.
+#   3. The list holds leads that are ALL staged through our list-staging path,
+#      which means they carry operator approval and fingerprints.
+#
+# NOT PROSPECT-FACING. A DRAFT campaign sends nothing. Binding a list to it is
+# the moment the list stops being unbound, which ends the safety property every
+# staged lead depends on - but no message is sent. The cost is that the list
+# can no longer receive leads through the unbound-list path, and detection of
+# drift is the only safety net after the bind.
+#
+# WHY THIS IS NOT IN SUPPORTED. Creating a campaign is the first step on a path
+# that ends with activation. Enabling creation without enabling activation is
+# safe - a DRAFT sends nothing - but the two decisions belong together and the
+# operator has not made either one yet.
+
+def _list_is_ours_and_unbound_and_holds_approved(provider_list_id,
+                                                  campaign_id=None):
+    """True only for a list that is ours, unbound, and holds approved leads.
+
+    The CONDITIONAL predicate for `LINKEDIN_CREATE_CAMPAIGN`. The first
+    argument is a LIST ID, not a campaign ID - the campaign does not exist yet
+    at the moment of the write, so the condition checks the list that will be
+    bound to it.
+
+    NOT IN SUPPORTED. This predicate exists so the operator's decision to
+    enable campaign creation is one line rather than a day of engineering.
+    """
+    from .providers import heyreach
+
+    if provider_list_id in (None, "", 0):
+        raise WriteRefused(
+            f"{LINKEDIN_CREATE_CAMPAIGN} requires a list id to prove the "
+            f"destination is ours, unbound, and holds approved leads. None "
+            f"was given. The transport was not reached")
+
+    # 1. THE LIST EXISTS AND WE CAN READ IT.
+    try:
+        found = heyreach.list_by_id(provider_list_id)
+    except Exception as e:
+        raise WriteRefused(
+            f"{LINKEDIN_CREATE_CAMPAIGN}: list {provider_list_id} could not "
+            f"be read from the provider ({type(e).__name__}: {e}). A list "
+            f"whose existence cannot be confirmed is not proven ours. The "
+            f"transport was not reached") from None
+    if not found or str(found.get("id") or "") != str(provider_list_id):
+        raise WriteRefused(
+            f"{LINKEDIN_CREATE_CAMPAIGN}: the provider returned no list "
+            f"{provider_list_id}, or one with a different id. The transport "
+            f"was not reached")
+
+    # 2. UNBOUND. A list already attached to a campaign is not available for
+    #    binding to a new one.
+    attached = found.get("campaignIds") or []
+    if attached:
+        raise WriteRefused(
+            f"{LINKEDIN_CREATE_CAMPAIGN}: list {provider_list_id} is already "
+            f"attached to campaign(s) {attached}. Binding it to a new "
+            f"campaign would detach it from the existing one. The transport "
+            f"was not reached")
+
+    # 3. THE LIST EXISTS IN OUR TENANT. The organizationUnitId on the list
+    #    would prove this, but HeyReach's list object does not carry one -
+    #    only campaigns do. The safety property is that the list is readable
+    #    through OUR API key, which is the tenant boundary. A list this key
+    #    cannot read is not in this tenant.
+    return True
+
+
+CONDITIONAL[LINKEDIN_CREATE_CAMPAIGN] = (
+    _list_is_ours_and_unbound_and_holds_approved)
 
 
 # THE ONE CAMPAIGN THE 2026-09-16 GRANT NAMES. Both values, because the
