@@ -546,8 +546,55 @@ def provider_heyreach(campaign_id):
 
 # ------------------------------------------------------- APPROVED, EmailBison
 
+def _expected_lead_variables(contact_copy, sequence, first_name=""):
+    """The custom variables one lead should carry at the provider.
+
+    The sequence is a template of merge fields - `{SUBJECT_1}`, `{BODY_1}` -
+    so the resolved copy travels per lead in custom variables. This function
+    builds the expected variable mapping for one contact, matching the naming
+    `bisonfactory._variables_for` uses at write time.
+
+    For a multi-step sequence: `subject_1`, `body_1`, `subject_2`, etc.
+    For a single-step sequence: `subject` and `body`.
+    """
+    values = {}
+    if len(contact_copy) <= 1:
+        values["subject"] = (contact_copy[0].get("subject") or "") if contact_copy else ""
+        values["body"] = (contact_copy[0].get("body") or "") if contact_copy else ""
+    else:
+        for position, node in enumerate(contact_copy, start=1):
+            values[f"subject_{position}"] = node.get("subject") or ""
+            values[f"body_{position}"] = node.get("body") or ""
+    return {k: v for k, v in values.items() if v}
+
+
 def approved_bison(campaign, recs=None, config=None):
-    """What canonical state says this email campaign should be."""
+    """What canonical state says this email campaign should be.
+
+    TWO KINDS OF COMPARISON, AND THE OLD CODE CONFUSED THEM.
+
+    The SEQUENCE comparison asks: "does the provider's sequence template hold
+    the placeholders the config declares?" The sequence at the provider carries
+    `{SUBJECT_1}`, `<p>{BODY_1}</p>`, etc. - merge variables, not resolved
+    copy. So the approved side must state the EXPECTED PLACEHOLDERS, not the
+    per-contact resolved text. TASK-159 established that EmailBison has no
+    merge variables of its own; the sequence carries our placeholders and the
+    per-lead words travel as CUSTOM VARIABLES on the lead.
+
+    The LEAD COPY comparison asks: "does each lead's custom variables hold the
+    resolved copy that was approved for that contact?" This is per-contact and
+    per-variable, and it is where the approval fingerprint is actually enforced
+    at the provider. A lead whose custom variable differs from its approved
+    copy is a lead that would send the wrong words.
+
+    The old code compared resolved per-contact subjects/bodies against the
+    provider's sequence placeholders - two different quantities that can never
+    agree. It compared cadence DAY positions against provider `wait_in_days` -
+    a schedule position against a graph property. Both mismatches were by
+    design, not by drift.
+    """
+    from . import bisonfactory
+
     if not campaign:
         raise DiffRefused("no canonical campaign row to compare against")
     cid = campaign.get("bison_campaign_id")
@@ -560,86 +607,92 @@ def approved_bison(campaign, recs=None, config=None):
     wanted = set(campaign.get("record_ids") or ())
     rows = [r for r in recs if r.get("id") in wanted]
 
-    leads, subjects, bodies, delays, actions = set(), [], [], [], []
+    # THE SEQUENCE: what the provider's template should hold.
+    #
+    # Built from the config's `email_sequence.steps` via the same function
+    # `bisonfactory._sequence_steps` uses to write the sequence. The subjects
+    # and bodies are the PLACEHOLDERS (`{SUBJECT_1}`, `<p>{BODY_1}</p>`), not
+    # the resolved per-contact copy. The delays are the declared
+    # `wait_in_days`, not the cadence day positions.
+    cadence_steps = cadence.steps_for(campaign, config=config)
+    sequence = bisonfactory._sequence_steps(
+        (config or {}).get("email_sequence"), cadence_steps)
+
+    seq_subjects, seq_bodies, seq_delays, seq_actions = [], [], [], []
+    for node in sequence:
+        tr = bool(node.get("thread_reply"))
+        subj, body, _ = bisonfactory._comparable_step(
+            node.get("email_subject"), node.get("email_body"), tr)
+        seq_subjects.append(_norm_text(subj))
+        seq_bodies.append(_norm_text(body))
+        seq_delays.append(int(node.get("wait_in_days") or 0))
+        seq_actions.append(f"step{int(node.get('order') or 0)}")
+
+    # THE LEAD SET AND PER-LEAD COPY.
+    leads = set()
+    lead_copy = {}
+    by_id = {r.get("id"): r for r in rows}
     for rec in rows:
         for contact in rec.get("contacts") or ():
             address = (contact.get("email") or "").strip().lower()
             if not address:
                 continue
-            # THE ADDRESS JOINS THE APPROVED SET ONLY IF SOMETHING WAS
-            # APPROVED FOR IT. This ran before the approval filter below, so
-            # every emailable contact on a listed record was reported as an
-            # approved lead whether or not one word to them had been blessed -
-            # and `approved_heyreach` is strict about exactly this. A campaign
-            # naming ten records with one approved contact between them
-            # produced an approved lead set of ten. The only reason that was
-            # not already certifying strangers is that `lead_set` was missing
-            # from `REQUIRED_BISON`, so nothing compared it at all: an unread
-            # field and an unfiltered one, hiding each other.
             approved_here = False
-            # THE CAMPAIGN'S OWN CADENCE, NOT THE MODULE DEFAULT.
-            #
-            # This iterated `cadence.STEPS` - the seven-step default whose
-            # email keys are day1, day5, day10, day15, day21. A campaign
-            # carrying its own `cadence_steps` has different keys, so every
-            # approval on it was invisible here and this function refused with
-            # "no contact on any listed record has an approved email step"
-            # while thirty approvals sat on the records, fingerprints matching.
-            #
-            # Measured 2026-09-16 on campaign 485, whose cadence is the
-            # three-step CONTROL keyed em1/em2/em3. The refusal was
-            # fail-closed, so nothing unsafe happened - it just blocked a
-            # legitimate activation for a reason that was about the wrong
-            # cadence.
-            #
-            # `cadence.steps_for` is what `bisonfactory._plan` already uses to
-            # decide which steps the campaign has, so using it here makes the
-            # two agree. Two places deciding which steps a campaign runs is
-            # how they drift, and this was the drift.
-            for spec in cadence.steps_for(campaign, config=config):
+            contact_copy = []
+            for spec in cadence_steps:
                 if spec.get("channel") != "email":
                     continue
                 step = cadence.expand_step(rec, contact, spec, config)
                 if not step:
                     continue
-                # ONLY APPROVED STEPS, exactly as `approved_heyreach` does.
-                # Without this the approved side included every renderable
-                # email step whether or not anybody had blessed it, so a
-                # campaign with day5 approved and day10 unapproved produced an
-                # APPROVED_CONFIG containing both - and if the provider held
-                # both, this reported PASS. The gate whose whole purpose is
-                # "the provider holds what was approved" would have positively
-                # certified two emails nobody approved.
                 if not approval.is_approved(rec, contact["key"], spec["key"],
                                             step):
                     continue
                 approved_here = True
-                actions.append(spec["key"])
-                subjects.append(_norm_text(step.get("subject")))
-                bodies.append(_norm_text(step.get("body")))
-                delays.append(int(spec.get("day") or 0))
+                contact_copy.append({"step_key": spec["key"],
+                                     "subject": step.get("subject"),
+                                     "body": step.get("body")})
             if approved_here:
                 leads.add(address)
+                lead_copy[address] = _expected_lead_variables(
+                    contact_copy, sequence)
     if not leads:
         raise DiffRefused(
             "no contact on any listed record has an approved email step, so "
             "there is no approved lead set to compare the provider against")
 
     volume = (campaign.get("daily_volume") or {}).get("email")
+    # THE DERIVED NAME, NOT THE ROW'S HUMAN NAME.
+    #
+    # TASK-170 hit the identical problem for HeyReach and fixed it by calling
+    # `bisonfactory.provider_campaign_name`. The provider holds the derived
+    # name with the `[client/campaign_id]` suffix; the row holds the human
+    # name. Comparing the human name against the derived name is the same
+    # class of defect as comparing resolved copy against placeholders.
+    from . import bisonfactory as _bf
+
+    # WORKSPACE FROM CONFIG, NOT FROM THE ROW.
+    #
+    # The row's `workspace` field is empty for campaign 485 because
+    # `bisonfactory.stage` reads the workspace from the config and does not
+    # write it back. The comparator derives it the same way the factory does.
+    workspace = str(((config.get("providers") or {}).get("emailbison")
+                     or {}).get("workspace") or "")
     return {
         "campaign_id": str(cid),
-        "campaign_name": campaign.get("name"),
+        "campaign_name": _bf.provider_campaign_name(campaign),
         "status": campaign.get("provider_status_expected") or "paused",
-        "workspace": str(campaign.get("workspace") or ""),
+        "workspace": workspace,
         "sender_ids": _ids((campaign.get("senders") or {}).get("email")),
         "lead_set": frozenset(leads),
         "lead_count": len(leads),
-        "actions": tuple(actions),
-        "subjects": tuple(subjects),
-        "bodies": tuple(bodies),
-        "delays": tuple(delays),
+        "actions": tuple(seq_actions),
+        "subjects": tuple(seq_subjects),
+        "bodies": tuple(seq_bodies),
+        "delays": tuple(seq_delays),
         "max_emails_per_day": volume,
         "max_new_leads_per_day": volume,
+        "_lead_copy": lead_copy,
     }
 
 
@@ -727,6 +780,49 @@ def provider_bison(campaign_id, expect_workspace=None, max_pages=200):
     variants_by_step = collections.Counter(
         str(s.get("variant_from_step")) for s in variants if s.get("active"))
 
+    # PER-LEAD CUSTOM VARIABLES.
+    #
+    # The campaign leads endpoint does NOT return custom variables - confirmed
+    # against the provider. Each lead must be read individually via
+    # `GET /leads/{id}`. For a campaign with ten leads this is ten extra GETs;
+    # for a campaign with thousands it would be expensive, but the comparator
+    # runs against staged campaigns that hold a handful of people.
+    #
+    # The variables are keyed by email address so `compare_bison` can match
+    # them against the approved side's per-lead resolved copy.
+    lead_variables = {}
+    for lead_row in leads:
+        if not isinstance(lead_row, dict):
+            continue
+        lead_id = lead_row.get("id")
+        email = str(lead_row.get("email") or "").strip().lower()
+        if not lead_id or not email:
+            continue
+        try:
+            full = get(f"/leads/{lead_id}")
+            full = full.get("data") if isinstance(full.get("data"), dict) else full
+            vars_map = {v.get("name"): v.get("value")
+                        for v in (full.get("custom_variables") or [])
+                        if isinstance(v, dict) and v.get("name")}
+            lead_variables[email] = vars_map
+        except DiffRefused:
+            # A lead that cannot be read leaves its variables unverifiable
+            # rather than silently shrinking the comparison.
+            lead_variables[email] = UNVERIFIABLE
+
+    # The sequence subjects/bodies need the same `_comparable_step`
+    # normalisation the approved side applies: strip "Re: " from thread_reply
+    # steps so the two sides compare the same quantity.
+    from . import bisonfactory as _bf
+
+    prov_subjects, prov_bodies = [], []
+    for s in live:
+        tr = bool(s.get("thread_reply"))
+        subj, body, _ = _bf._comparable_step(
+            s.get("email_subject"), s.get("email_body"), tr)
+        prov_subjects.append(_norm_text(subj))
+        prov_bodies.append(_norm_text(body))
+
     return {
         "campaign_id": str(row.get("id")),
         "campaign_name": row.get("name"),
@@ -738,21 +834,18 @@ def provider_bison(campaign_id, expect_workspace=None, max_pages=200):
             for l in leads if isinstance(l, dict) and l.get("email")),
         "lead_count": int(lead_total if lead_total is not None else len(leads)),
         "actions": tuple(f"step{int(s.get('order') or 0)}" for s in live),
-        "subjects": tuple(_norm_text(s.get("email_subject")) for s in live),
-        "bodies": tuple(_norm_text(s.get("email_body")) for s in live),
+        "subjects": tuple(prov_subjects),
+        "bodies": tuple(prov_bodies),
         "delays": tuple(int(s.get("wait_in_days") or 0) for s in live),
         "max_emails_per_day": row.get("max_emails_per_day"),
         "max_new_leads_per_day": row.get("max_new_leads_per_day"),
         "_per_domain_cap": row.get("daily_max_sends_per_receiving_domain"),
         "_bounced": row.get("bounced"),
         "_emails_sent": row.get("emails_sent"),
-        # Reported, deliberately not scored - see the note above. A human
-        # reading a diff for a campaign with thirty-nine live variants needs
-        # to be told they exist even though nothing here can say whether they
-        # are the right ones.
         "_variants_per_step": {str(s.get("id")): variants_by_step.get(
             str(s.get("id")), 0) for s in live},
         "_variant_rows": len(variants),
+        "_lead_variables": lead_variables,
     }
 
 
@@ -914,15 +1007,78 @@ def compare_heyreach(campaign, recs=None, config=None, staging=False):
 
 
 def compare_bison(campaign, recs=None, config=None, expect_workspace=None):
-    """`(diff, approved, provider)` for one email campaign."""
+    """`(diff, approved, provider)` for one email campaign.
+
+    TWO COMPARISONS, ONE READBACK.
+
+    The SEQUENCE diff asks whether the provider's template holds the expected
+    placeholders, declared waits, and step names. This is the `diff()` call.
+
+    The LEAD COPY diff asks whether each lead's custom variables at the
+    provider hold the resolved copy that was approved for that contact. This
+    is a per-contact comparison that runs after the sequence diff and adds its
+    own failures to the result. A lead whose custom variable differs from its
+    approved copy FAILS loudly, naming the contact by hashed email.
+    """
     approved = approved_bison(campaign, recs, config)
     provider = provider_bison(approved["campaign_id"],
                               expect_workspace=expect_workspace)
     found = diff(approved, provider, REQUIRED_BISON)
+
+    # PER-LEAD COPY COMPARISON.
+    #
+    # The approved side's `_lead_copy` maps email -> expected custom variables.
+    # The provider side's `_lead_variables` maps email -> actual custom
+    # variables. For each approved lead, check that the provider's variables
+    # match. A mismatch names the contact by hashed email.
+    #
+    # This is where the approval fingerprint is actually enforced at the
+    # provider. The sequence comparison proves the template is right; this
+    # proves the words each prospect receives are right.
+    approved_copy = approved.get("_lead_copy") or {}
+    provider_vars = provider.get("_lead_variables") or {}
+    copy_failures = []
+    for email, expected in sorted(approved_copy.items()):
+        actual = provider_vars.get(email)
+        if actual is UNVERIFIABLE:
+            copy_failures.append(
+                f"lead_copy:{_hash_email(email)}: UNVERIFIABLE")
+            continue
+        if actual is None:
+            copy_failures.append(
+                f"lead_copy:{_hash_email(email)}: MISSING at provider")
+            continue
+        # Compare variable by variable.
+        all_keys = sorted(set(expected) | set(actual))
+        for key in all_keys:
+            want = expected.get(key, "")
+            got = actual.get(key, "")
+            if want != got:
+                copy_failures.append(
+                    f"lead_copy:{_hash_email(email)}.{key}: "
+                    f"approved {_show(want)[:60]!r} vs "
+                    f"provider {_show(got)[:60]!r}")
+    if copy_failures:
+        found["failures"].extend(copy_failures)
+        found["verdict"] = FAIL
+        # Add a synthetic field to the diff for reporting.
+        found["fields"]["lead_copy"] = {
+            "verdict": MISMATCH,
+            "approved": f"{len(approved_copy)} lead(s)",
+            "provider": f"{len(provider_vars)} lead(s)",
+            "detail": copy_failures,
+        }
+
     return Readback(diff=found, approved=approved, provider=provider,
                     campaign_id=campaign.get("campaign_id"), channel="email",
                     provider_campaign_id=approved["campaign_id"],
                     verified_at=store.now())
+
+
+def _hash_email(email):
+    """A hashed email for reporting, so the diff does not log PII."""
+    import hashlib
+    return hashlib.sha256(email.encode("utf-8")).hexdigest()[:12]
 
 
 def report(result, approved=None, provider=None):
