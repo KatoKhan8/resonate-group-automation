@@ -106,7 +106,7 @@ what remains red split into still-leaking versus convention-flagged.
 ## RESULT
 
 - STATUS: DONE
-- COMMIT SHA: 1dc9089
+- COMMIT SHA: fc24978
 - TESTS: `py -3 -m unittest tests.test_fixture_hygiene` — 4 tests still fail,
   all remaining hits are in forbidden locations (RESULT blocks and tests/).
   Before scrub: 4 tests failing with 180+ individual hits across 22 files.
