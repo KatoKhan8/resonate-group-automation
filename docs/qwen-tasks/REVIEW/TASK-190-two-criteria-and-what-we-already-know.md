@@ -102,3 +102,85 @@ What each of the two criteria accepts, every free source that can answer them
 with its per-source yield against the 66 and reliability, the free yield total,
 the count for the 250 from TLD alone, whatever you wired marked as inferred
 with provenance, and the records still short with the criterion named.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 1d2f0a9
+
+**TESTS:**
+- `tests/test_inferred_evidence.py`: 14 tests, all pass
+- `tests.test_icp`: 70 tests, all pass
+- `tests.test_the_client_icp_is_structural`: 66 tests, all pass
+- `tests.test_invariants`: 80 tests, all pass
+
+**FILES CHANGED:**
+- `src/geo.py` - added `from_domain_tld(domain)`, `TLD_TO_ISO` mapping, `FROM_TLD` source constant
+- `tests/test_inferred_evidence.py` - new, 14 tests for TLD inference
+- `scripts/task190_analysis.py` - new, analysis script measuring free yield
+- `docs/FREE-GEOGRAPHY-AND-TYPE-2026-09-16.md` - new, full report
+
+**FINDINGS:**
+
+1. **Geography (66 review records):**
+   - 8 already PASS from existing segment data
+   - 1 resolved by offices (eski.media -> GB)
+   - 12 resolved by ccTLD (.se, .be, .fi, .nl, .pl, .au, .de, .uk, .ch)
+   - 43 still unknown: 12 have office country not on include/exclude list,
+     31 have no geography data at all
+
+2. **Company type (66 review records):**
+   - 30 already PASS from existing vertical/industry data
+   - 0 resolved by existing industry (already consumed by structural check)
+   - 9 have research text vertical signals (MEDIUM reliability, not wired)
+   - 4 have domain name keywords (LOW-MEDIUM reliability, not wired)
+   - 23 still unknown with no free source
+
+3. **Combined free yield (conservative, wired sources only):**
+   - 12 of 66 reach qualified from free sources
+   - 54 still need a purchase
+
+4. **Combined free yield (optimistic, all free sources):**
+   - 20 of 66 reach qualified
+   - 46 still need a purchase
+
+5. **250 unprocessed records, TLD alone:**
+   - 2 of 250 resolve (1 .us, 1 .au) = 0.8%
+   - 225 are .com (90%), completely ambiguous
+   - TLD is essentially useless for the unprocessed batch
+
+6. **The bottleneck is geography, not company type.** 31 records have no
+   geography data at all. For these, the only free option is exhausted.
+
+7. **TLD inference wired in `geo.from_domain_tld`.** Returns country with
+   provenance (inferred=True, inference_method="tld", inference_input=domain).
+   Never returns FAIL. Not yet integrated into the qualification pipeline -
+   needs a caller to feed the result into the record before `resolve_country`.
+
+8. **The evidence model already distinguishes inferred from verified facts.**
+   `source_type`, `provider`, `confidence` fields plus the new `inferred`,
+   `inference_method`, `inference_input` fields. The claims gate can tell
+   the difference.
+
+9. **Recommendation:** Consider expanding the geography include list for CEE
+   countries. 12 review records have office countries (Czech Republic, Cyprus,
+   Slovenia, Lithuania, Estonia, Serbia, etc.) not on any list. Adding them
+   resolves 12 more records for free with no inference needed.
+
+**RISKS:**
+- TLD inference is HIGH reliability but not perfect: a company can register
+  a .dk domain from anywhere. The provenance fields ensure the claims gate
+  can treat it differently from a provider-verified fact.
+- Research text vertical signals and domain name keywords were NOT wired
+  because their reliability is below "provably correct". They are reported
+  in the document for Claude to decide on.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Wire `geo.from_domain_tld` into the qualification pipeline (call before
+   `icpstructural.structural`, feed result into the record)
+2. Decide whether to expand the geography include list for CEE countries
+3. Decide whether research text vertical signals should lower the bar for
+   the structural company_type check
+4. Scale the company-info purchase for the remaining 54 review records and
+   the 250 unprocessed (TLD contributes almost nothing for the 250)
