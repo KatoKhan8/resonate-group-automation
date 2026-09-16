@@ -96,3 +96,30 @@ The verb constant, the condition predicate, the honest statement of what the
 condition cannot promise, the refusal tests green with the exit code read off
 the process, and the operator's case for and against - on the explicit record
 that the permission is left OFF.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** 1df8e44
+- **TESTS:**
+  - `tests.test_list_staging_permission` — 31 tests, all green, exit code 0
+  - `tests.test_list_staging` — 42 tests, all green, exit code 0
+  - `tests.test_invariants` — all green
+  - `tests.test_a_person_can_enter_a_heyreach_campaign` — all green (including `test_supported_is_exactly_this`, which asserts the exact SUPPORTED tuple and still passes because the new verb is NOT in it)
+  - `tests.test_campaign_audit` — all green
+  - Combined run: 245 tests, exit code 0
+- **FILES CHANGED:**
+  - `src/providerwrites.py` — added `LINKEDIN_ADD_LEAD_TO_LIST = "heyreach.add_lead_to_list"` constant (line 108) and its OPERATIONS entry (line 164). NOT added to SUPPORTED, NOT added to CONDITIONAL.
+  - `src/liststaging.py` — changed to import `LINKEDIN_ADD_LEAD_TO_LIST` from `providerwrites` instead of defining it locally. No other changes.
+  - `tests/test_list_staging_permission.py` — NEW. 31 tests covering every refusal path the task names.
+  - `docs/LIST-VERB-PROPOSAL-2026-09-16.md` — NEW. The operator's case for and against enabling.
+- **FINDINGS:**
+  - The constant is consumed: defined in `providerwrites.py`, imported by `liststaging.py` (used in `stage_lead` result dict), and referenced in 14 test assertions. `grep -rn LINKEDIN_ADD_LEAD_TO_LIST src/` returns 4 hits across 2 modules.
+  - The verb fails closed: `providerwrites.perform(LINKEDIN_ADD_LEAD_TO_LIST, ...)` raises `WriteUnsupported` with a message naming the operation (`heyreach.add_lead_to_list`) and the channel (`linkedin`). The transport is never reached.
+  - The predicate (`assert_list_safe`) checks what it can (`campaignIds` is empty, read live from provider) and refuses everything else fail-closed. It cannot verify list ownership or tenant membership because the HeyReach list API returns no ownership field (`LIST_FIELDS = (id, name, listType, totalItemsCount, campaignIds, creationTime)`). This limitation is documented in the OPERATIONS entry and the proposal doc.
+  - The 0/0/0 silent-drop response (`addedLeadsCount: 0, totalLeads: 0, duplicateLeads: 0`) is treated as failure: the readback finds the lead absent, verdict is UNKNOWN, `stage_lead` raises `ListStagingUnverified`.
+  - Gate ordering is correct: validation runs before the safety check, the safety check runs before the transport. A validation failure does not consult the predicate.
+- **RISKS:**
+  - The predicate is a point-in-time check, not a lock. A list unbound at the moment of the write can be attached to a campaign a second later. The readback (`readback_list_add`) detects this after the fact and classifies DRIFTED, but the lead is already in the list.
+  - Enabling this verb does not enable `LINKEDIN_ADD_LEAD` or any other verb. The two are separate doors with separate keys.
+- **RECOMMENDED CLAUDE ACTION:** Review the proposal doc (`docs/LIST-VERB-PROPOSAL-2026-09-16.md`) and decide whether to enable the verb. If yes: add `LINKEDIN_ADD_LEAD_TO_LIST` to `SUPPORTED` and add `CONDITIONAL[LINKEDIN_ADD_LEAD_TO_LIST] = assert_list_safe`. The predicate and the refusals are already in place.
