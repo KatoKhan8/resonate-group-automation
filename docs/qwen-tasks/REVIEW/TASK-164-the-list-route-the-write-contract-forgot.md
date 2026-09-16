@@ -63,3 +63,52 @@ test, that test is a (b) - report it.
 
 The enumerated red tests, the (a)/(b) verdict for each with its reason, the
 registrations made, and the suite's exit code before and after.
+
+## RESULT
+
+STATUS: DONE
+COMMIT: d24cfeb
+TESTS: test_the_heyreach_write_contract OK, test_nothing_writes_to_a_provider
+       OK, test_invariants OK, test_audit OK (125 tests, 4 skipped).
+       test_fixture_hygiene still FAILED (3) - (b) cases, not this task's.
+FILES CHANGED:
+  - tests/test_the_heyreach_write_contract.py (allowlist registration)
+  - tests/test_nothing_writes_to_a_provider.py (allowlist registration)
+  - docs/RED-TESTS-2026-09-16.md (new, enumerated red tests)
+
+FINDINGS:
+  5 red tests found, 2 (a) fixed, 3 (b) reported:
+
+  (a) FIXED - test_the_write_surface_is_exactly_this_and_nothing_else:
+      /list/AddLeadsToListV2 was on heyreach.WRITE_ROUTES (TASK-158) but not
+      in the expected set. Added it.
+
+  (a) FIXED - test_every_http_write_in_the_repository_is_declared:
+      7 scripts issue POSTs not in ALLOWED. All are diagnostic reads or
+      probes, none are prospect-facing:
+      - scripts/provider_truth.py (HeyReach reads as POST)
+      - scripts/sender_capacity.py (HeyReach reads as POST)
+      - scripts/task158_probe2.py (TASK-158 schema probe)
+      - scripts/task158_probe3.py (TASK-158 schema probe)
+      - scripts/task158_probe_list_schema.py (TASK-158 schema probe)
+      - scripts/task158_verify_schema.py (TASK-158 schema verification)
+      - scripts/task166_grok_measurement.py (xAI responses API, intelligence read)
+
+  (b) NOT FIXED - test_every_email_address_is_on_a_reserved_domain:
+      Test fixtures use non-reserved domains (acme-test.com, b.com, d.com).
+      Rule is right; fixtures should use .test or .example domains.
+
+  (b) NOT FIXED - test_no_real_client_prospect_or_roster_domain:
+      17 hits: real client/prospect domains in docs/ and scripts/ files
+      (BISON-COHORT-LIVE, EMAIL-CONTROL-SEQUENCE, task147_*, task159_*,
+      task167_*). Rule is right; real data should not be in git.
+
+  (b) NOT FIXED - test_no_real_person_or_client_named:
+      42 hits: real names and company tokens in docs/ and scripts/ files.
+      Rule is right; real data should not be in git.
+
+RISKS: None. The (a) fixes are allowlist registrations only. No provider
+       writes were authorized, no providerwrites.SUPPORTED was touched.
+
+RECOMMENDED CLAUDE ACTION: Review the (b) findings. The fixture_hygiene
+       failures are real data in tracked files and need a data cleanup task.
