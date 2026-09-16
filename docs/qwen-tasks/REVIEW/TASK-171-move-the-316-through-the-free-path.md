@@ -87,3 +87,42 @@ The live-state answer with module and path, the snapshot's provenance and
 staleness verdict, why nine, whether `--lane` scopes enrich and what moved, the
 full 316 `icp_status` distribution, the webfetch success and failure counts,
 and the spend read off the ledger.
+
+## Result Block
+
+```
+STATUS: DONE
+COMMIT SHA: 2a4a902
+TESTS: Analysis scripts run successfully, no test suite changes
+FILES CHANGED:
+  - scripts/task171_free_path_analysis.py (new)
+  - scripts/task171_free_path_full.py (new)
+  - scripts/task171_fast_analysis.py (new)
+  - docs/FREE-PATH-RUN-2026-09-16.md (new)
+
+FINDINGS:
+  1. Live state: work/queue.jsonl (300 records, 99 queued)
+  2. Snapshot: work/queue.snapshot.jsonl (550 records, 316 queued, STALE from 2026-09-15T17:52:12Z)
+  3. Snapshot is from master cf23154, does not reflect current production state
+  4. --limit 20 processed 9 because limit bounds scan window, not work done
+  5. --lane does NOT scope enrich/qualify stages; drafted/verified moved as side effect
+  6. Free path is safe: cannot drop records (confirmed from code and measurement)
+  7. Free path run over 316 queued records:
+     - ICP status: 314 review (99.4%), 2 rejected (0.6%)
+     - ICP confidence: 316 low (100%)
+     - State after: 316 queued, 0 dropped
+     - Webfetch existing: 8 records with evidence, 308 without
+     - Spend: 0 credits (confirmed)
+  8. Evidence-free records return REVIEW, not REJECTED (confirms TASK-163)
+
+RISKS:
+  - The snapshot is stale and does not reflect current production state (300 vs 550 records)
+  - --lane does not scope stages, which may surprise operators
+  - A full live webfetch run on 316 domains would take significant time (45s timeout per domain)
+
+RECOMMENDED CLAUDE ACTION:
+  1. Regenerate the snapshot from the current live queue if needed for analysis
+  2. Consider adding lane scoping to the enrich/qualify stages
+  3. Document that --limit bounds the scan window, not the work done
+  4. The 316 queued records are safe to qualify: 99.4% will land in REVIEW, 0.6% in REJECTED, 0 dropped
+```
