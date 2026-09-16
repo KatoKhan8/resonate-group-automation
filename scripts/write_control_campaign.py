@@ -52,10 +52,29 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import bisonfactory, campaigns, store                 # noqa: E402
 
-CAMPAIGN_ID = "productive-email-control-v1"
+CAMPAIGN_ID = "productive-email-control-v2"
 HUMAN_NAME = "RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - CONTROL"
 CLIENT = "productive"
 DAILY_EMAILS = 20
+
+
+# THE CAMPAIGN CARRIES ITS OWN CADENCE, and v1 is abandoned rather than fixed.
+#
+# 484 was created from a client cadence with FIVE email steps, so it holds five
+# provider steps. `bison.set_sequence` APPENDS - no replace, no per-step delete
+# - so a three-step sequence can never be written onto it: `_ensure_sequence`
+# reads the five held steps, sees they are not the three wanted, and refuses.
+# Correctly. 484 is draft, holds nobody and has sent nothing, so it is
+# harmless; it is simply unusable for CONTROL.
+#
+# `cadence.steps_for` resolves a campaign's own `cadence_steps` BEFORE the
+# client's named cadence, so declaring it here scopes CONTROL to this campaign
+# instead of changing what any other campaign runs.
+CONTROL_CADENCE = [
+    {"key": "em1", "day": 1, "channel": "email", "template": "persona_pain"},
+    {"key": "em2", "day": 4, "channel": "email", "template": "comparable_proof"},
+    {"key": "em3", "day": 8, "channel": "email", "template": "breakup"},
+]
 
 
 def ensure_row():
@@ -67,6 +86,7 @@ def ensure_row():
         row = campaigns.new_campaign(CAMPAIGN_ID, CLIENT, HUMAN_NAME,
                                      created_by="operator")
         row["daily_volume"] = {"email": DAILY_EMAILS, "linkedin": 0}
+        row["cadence_steps"] = [dict(s) for s in CONTROL_CADENCE]
         rows.append(row)
     return campaigns.require(CAMPAIGN_ID), True
 

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-15T15:24:59+00:00",
+  "generated_at": "2026-09-16T08:22:00+00:00",
   "source": "HeyReach public API, read-only. Credential env var: HEYREACH_KEY.",
   "heyreach": {
     "campaigns_total_in_account": 83,
@@ -9,10 +9,10 @@
         "internal_campaign_id": "productive-linkedin-production-v1",
         "heyreach_campaign_id": 599020,
         "name": "RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1",
-        "status": "DRAFT",
-        "classification": "DRAFT",
+        "status": "FINISHED",
+        "classification": "FINISHED",
         "created": "2026-09-13T10:33:37.258848Z",
-        "started_at": null,
+        "started_at": "2026-09-15T19:38:29.894936Z",
         "lead_list_id": 933603,
         "lead_list_name": "RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1",
         "lead_count": 0,
@@ -68,19 +68,19 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-15T15:24:59+00:00"
+        "last_provider_readback": "2026-09-16T08:22:00+00:00"
       }
     ],
     "status_totals": {
-      "DRAFT": 8,
+      "FINISHED": 32,
       "PAUSED": 32,
-      "FINISHED": 31,
+      "DRAFT": 7,
       "IN_PROGRESS": 12
     },
     "linkedin_accounts_available": 41
   },
   "internal_vs_provider": {
-    "internal_records": 11,
+    "internal_records": 13,
     "internal_heyreach_ids": [
       "594061",
       "599020"

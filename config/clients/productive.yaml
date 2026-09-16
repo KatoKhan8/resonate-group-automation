@@ -481,8 +481,23 @@ providers:
 # The single-step shape - `subject`, `body`, `wait_in_days` at this level -
 # still works and is what campaign 451 was staged against. It is production
 # evidence with a scheduled send on it, so it is not migrated.
+# THE AUDITED CONTROL SEQUENCE, three steps, 2026-09-16.
+#
+# This block named em1 through em5 until the operator approved the CONTROL
+# sequence. That mattered more than it looks: the factory writes one provider
+# step per entry here, so campaign 484 was created carrying FIVE steps while
+# only em1-em3 had approved copy - and `_ensure_leads` refused all ten
+# contacts with "each missing step sends a real person an email with an empty
+# subject and an empty body, and every readback would agree the campaign was
+# correct". The gate was right; the config was wrong.
+#
+# CONTROL is persona_pain -> comparable_proof -> breakup. Three steps, waits
+# 3 and 4 with the last step carrying 0 because nothing follows it, and
+# threading F/T/F - the second step is the in-thread follow-up. EmailBison
+# prepends "Re:" to a thread reply itself, so no subject here says it.
 email_sequence:
-  title: Resonate generated cadence
+  title: Resonate CONTROL
+  thread_reply_pattern: [false, true, false]
   steps:
     em1:
       order: 1
@@ -498,16 +513,12 @@ email_sequence:
       order: 3
       subject: "{SUBJECT_3}"
       body: "<p>{BODY_3}</p>"
-      wait_in_days: 4
-    em4:
-      order: 4
-      subject: "{SUBJECT_4}"
-      body: "<p>{BODY_4}</p>"
-      wait_in_days: 9
-    em5:
-      order: 5
-      subject: "{SUBJECT_5}"
-      body: "<p>{BODY_5}</p>"
+      # 1, not 0. `wait_in_days` is the gap until the NEXT step, so on the
+      # final step it is inert - nothing follows it. But 0 was rejected by the
+      # provider: campaign 485 was created and `set_sequence` raised, leaving
+      # it at 0 steps. TASK-159 specified 3/4/0 and TASK-184 recorded the last
+      # one as "unchecked"; this is the check. The five-step config this
+      # replaced carried 1 on its own last step and wrote successfully.
       wait_in_days: 1
 
 sending_window:
