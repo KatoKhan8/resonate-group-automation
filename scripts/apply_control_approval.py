@@ -50,9 +50,22 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import approve, clients, store                 # noqa: E402
+from src import approve, campaigns, clients, store      # noqa: E402
 
 MATCHED = os.path.join("work", "approval", "task210_matched.json")
+# THE CAMPAIGN THE APPROVAL IS FOR, and it is not optional.
+#
+# `approve.approve_step` builds the step with `cadence.build(rec, config,
+# campaign=campaign)` and fingerprints THAT. Called without a campaign it
+# builds under the CLIENT cadence, so the fingerprint covers a step resolved
+# from the wrong template set - while the send path expands the CAMPAIGN's
+# cadence. Measured 2026-09-16: 30 approvals recorded that way read as valid
+# under `is_approved(rec, ck, sk)` (which compares the stored step to itself,
+# unconditionally agreeing) and as INVALID under
+# `is_approved(rec, ck, sk, expanded_step)`, which is the form
+# `configdiff.compare_bison` uses and the one that matters, because it asks
+# whether the approval covers what will actually be sent.
+CAMPAIGN_FOR_APPROVAL = "productive-email-control-v2"
 STEPS = ("em1", "em2", "em3")
 # The one record whose cadence has no em2. Hashed, so this file carries no PII.
 EXCLUDE_REC_HASH = "9d2802e5f931"
@@ -92,6 +105,7 @@ def main(argv=None):
 
     by = approver()
     config = clients.load("productive")
+    campaign = campaigns.require(CAMPAIGN_FOR_APPROVAL)
     recs = store.load()
 
     plan, refusals = [], []
@@ -101,9 +115,10 @@ def main(argv=None):
         for contact in rec.get("contacts") or []:
             if (rec["id"], contact.get("key")) not in want:
                 continue
-            cadence = (rec.get("cadence") or {}).get(contact.get("key")) or {}
+            steps_on_record = (rec.get("cadence") or {}).get(
+                contact.get("key")) or {}
             for step_key in STEPS:
-                step = cadence.get(step_key)
+                step = steps_on_record.get(step_key)
                 if not step:
                     refusals.append(
                         f"{h12(rec['id'])}/{step_key}: step does not exist")
@@ -116,13 +131,23 @@ def main(argv=None):
                 # verification, collision, tenancy, fatigue, caps and the
                 # claims/lint verdicts for this step.
                 why = approve.why_not(rec, contact.get("key"), step_key,
-                                      config=config)
+                                      config=config, campaign=campaign)
                 if why:
                     refusals.append(f"{h12(rec['id'])}/{step_key}: {why}")
                     continue
                 prior = (step.get("approval") or {}).get("by")
+                # Stale means "carries an approval that does not cover the
+                # CONTROL-expanded copy", not merely "approved by someone
+                # else". An approval of ours taken without the campaign is
+                # exactly as stale as one left by an earlier generator.
+                from src import approval as _approval, cadence as _cadence
+                timeline = _cadence.build(rec, config, campaign=campaign)
+                expanded = ((timeline["contacts"].get(contact.get("key"))
+                             or {}).get(step_key))
+                covers = bool(expanded) and _approval.is_approved(
+                    rec, contact.get("key"), step_key, expanded)
                 plan.append((rec, contact.get("key"), step_key,
-                             prior if prior and prior != by else None))
+                             prior if (prior and not covers) else None))
 
     contacts = len({(id(r), ck) for r, ck, _s, _p in plan})
     stale = [p for p in plan if p[3]]
@@ -152,7 +177,8 @@ def main(argv=None):
             approve.revoke(rec, contact_key, step_key,
                            why="copy replaced with the audited CONTROL text")
             revoked += 1
-        approve.approve_step(rec, contact_key, step_key, by=by, config=config)
+        approve.approve_step(rec, contact_key, step_key, by=by, config=config,
+                             campaign=campaign)
         approved += 1
     store.save(recs)
 

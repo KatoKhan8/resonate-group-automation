@@ -577,7 +577,26 @@ def approved_bison(campaign, recs=None, config=None):
             # from `REQUIRED_BISON`, so nothing compared it at all: an unread
             # field and an unfiltered one, hiding each other.
             approved_here = False
-            for spec in cadence.STEPS:
+            # THE CAMPAIGN'S OWN CADENCE, NOT THE MODULE DEFAULT.
+            #
+            # This iterated `cadence.STEPS` - the seven-step default whose
+            # email keys are day1, day5, day10, day15, day21. A campaign
+            # carrying its own `cadence_steps` has different keys, so every
+            # approval on it was invisible here and this function refused with
+            # "no contact on any listed record has an approved email step"
+            # while thirty approvals sat on the records, fingerprints matching.
+            #
+            # Measured 2026-09-16 on campaign 485, whose cadence is the
+            # three-step CONTROL keyed em1/em2/em3. The refusal was
+            # fail-closed, so nothing unsafe happened - it just blocked a
+            # legitimate activation for a reason that was about the wrong
+            # cadence.
+            #
+            # `cadence.steps_for` is what `bisonfactory._plan` already uses to
+            # decide which steps the campaign has, so using it here makes the
+            # two agree. Two places deciding which steps a campaign runs is
+            # how they drift, and this was the drift.
+            for spec in cadence.steps_for(campaign, config=config):
                 if spec.get("channel") != "email":
                     continue
                 step = cadence.expand_step(rec, contact, spec, config)
