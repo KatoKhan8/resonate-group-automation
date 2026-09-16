@@ -500,5 +500,100 @@ class TestFailClosed(_Base):
         self.assertFalse(r["pass"])
 
 
+class TestNotYetCreatedCampaign(unittest.TestCase):
+    """A campaign without bison_campaign_id fails closed, not vacuously."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="bison_prewrite_nocamp_")
+        self.campaigns_file = os.path.join(self.tmpdir, "campaigns.jsonl")
+        self.queue_file = os.path.join(self.tmpdir, "queue.jsonl")
+        self.clients_dir = os.path.join(self.tmpdir, "clients")
+        os.makedirs(self.clients_dir, exist_ok=True)
+
+        self._orig = {}
+        for key in ("CAMPAIGNS", "QUEUE", "CLIENTS_DIR", "BISON_KEY"):
+            self._orig[key] = os.environ.get(key)
+
+        os.environ["CAMPAIGNS"] = self.campaigns_file
+        os.environ["QUEUE"] = self.queue_file
+        os.environ["CLIENTS_DIR"] = self.clients_dir
+        os.environ["BISON_KEY"] = "test-key"
+
+        self.fb = FakeBison(workspace=10, name="PRODUCTIVE")
+        set_transport(self.fb)
+
+    def tearDown(self):
+        reset_transport()
+        for key, val in self._orig.items():
+            if val is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = val
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_no_provider_id_fails_closed(self):
+        """A campaign without bison_campaign_id returns FAIL, not PASS."""
+        _write_jsonl(self.campaigns_file, [
+            {"campaign_id": "new-campaign", "client": "productive",
+             "name": "Test Campaign", "bison_campaign_id": None}
+        ])
+        _write_jsonl(self.queue_file, [])
+        _write_client_config(self.tmpdir, "productive", {
+            "providers": {"emailbison": {"workspace": 10}}
+        })
+
+        from scripts.bison_prewrite_check import run_checks
+        results, exit_code = run_checks("new-campaign")
+
+        self.assertEqual(exit_code, 1)
+        # At least one check must FAIL.
+        self.assertTrue(any(not r["pass"] for r in results))
+        # The first check must say why.
+        self.assertIn("not been created", results[0]["detail"])
+
+    def test_no_provider_id_shows_derived_name(self):
+        """The identity check reports what the derived name WILL be."""
+        _write_jsonl(self.campaigns_file, [
+            {"campaign_id": "control-test", "client": "productive",
+             "name": "CONTROL", "bison_campaign_id": None}
+        ])
+        _write_jsonl(self.queue_file, [])
+        _write_client_config(self.tmpdir, "productive", {
+            "providers": {"emailbison": {"workspace": 10}}
+        })
+
+        from scripts.bison_prewrite_check import run_checks
+        results, _ = run_checks("control-test")
+
+        # Find the identity check.
+        identity = [r for r in results if "Identity" in r["check"]]
+        self.assertTrue(len(identity) > 0)
+        self.assertFalse(identity[0]["pass"])
+        self.assertIn("[productive/control-test]", identity[0]["detail"])
+
+    def test_local_checks_still_run(self):
+        """Tenancy config and killswitch checks still run without a
+        provider id."""
+        _write_jsonl(self.campaigns_file, [
+            {"campaign_id": "local-check", "client": "productive",
+             "name": "Test", "bison_campaign_id": None}
+        ])
+        _write_jsonl(self.queue_file, [])
+        _write_client_config(self.tmpdir, "productive", {
+            "providers": {"emailbison": {"workspace": 10}}
+        })
+
+        from scripts.bison_prewrite_check import run_checks
+        results, _ = run_checks("local-check")
+
+        check_names = [r["check"] for r in results]
+        # Tenancy config check should be present.
+        self.assertTrue(any("Tenancy" in n for n in check_names))
+        # Killswitch check should be present.
+        self.assertTrue(any("killswitch" in n.lower() or "Caps" in n
+                            for n in check_names))
+
+
 if __name__ == "__main__":
     unittest.main()

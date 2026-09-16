@@ -440,19 +440,18 @@ def check_prior_contact(plan, workspace_id, bison_module):
 # ---------------------------------------------------------------- main
 
 def run_checks(campaign_id):
-    """Run all seven checks. Returns (results, exit_code)."""
+    """Run all seven checks. Returns (results, exit_code).
+
+    For a not-yet-created campaign (no bison_campaign_id), the provider-
+    dependent checks FAIL closed with a clear reason. The local checks
+    (tenancy config, caps/killswitch) still run. The overall verdict is
+    FAIL because the identity cannot be verified against provider truth.
+    """
     from src import campaigns, clients, store
     from src.providers import bison
 
     rows_list = list(campaigns.load())
     campaign = campaigns.require(str(campaign_id), rows_list)
-
-    provider_id = campaign.get("bison_campaign_id")
-    if not provider_id:
-        return ([_result("0. Setup", False, "no bison_campaign_id",
-                         "local",
-                         "campaign has no provider id; cannot check")], 1)
-    provider_id = int(provider_id)
 
     client_name = campaign.get("client")
     if not client_name:
@@ -464,6 +463,73 @@ def run_checks(campaign_id):
         config = clients.load(client_name)
     except Exception as e:
         config = {}
+
+    provider_id = campaign.get("bison_campaign_id")
+
+    # NOT-YET-CREATED CAMPAIGN: fail closed.
+    #
+    # A campaign without a bison_campaign_id has nothing at the provider
+    # to check. The identity check has no provider campaign to compare
+    # against, the state check has no status to read, the population check
+    # has no leads to count. Passing these vacuously would be the exact
+    # defect this task closes: a pre-write check that says "all clear" for
+    # a campaign that does not exist yet.
+    #
+    # The local checks (tenancy config, caps/killswitch) can still run
+    # because they read local state. The provider checks all FAIL with a
+    # clear reason: "campaign not yet created at provider."
+    if not provider_id:
+        results = []
+        results.append(_result(
+            "0. Pre-creation", False, "no bison_campaign_id",
+            "local",
+            "campaign has not been created at EmailBison yet. "
+            "Run bisonfactory.stage() first to create the campaign and "
+            "bind its provider id. Then re-run this check. "
+            "FAIL-CLOSED: a campaign that does not exist cannot be checked"))
+        # Local checks that can still run.
+        results.append(_result(
+            "1. Identity", False, "no provider campaign to check",
+            "local",
+            "no bison_campaign_id - nothing to compare against. "
+            "After creation, the derived name is: " +
+            _derived_name(campaign)))
+        # Tenancy: check the config has the right workspace declared.
+        expected_ws = ((config.get("providers") or {}).get("emailbison") or
+                       {}).get("workspace")
+        if expected_ws is None:
+            results.append(_result(
+                "2. Tenancy (config only)", False, "no workspace in config",
+                "local",
+                "client config has no emailbison.workspace declared"))
+        else:
+            results.append(_result(
+                "2. Tenancy (config only)", True,
+                f"workspace={expected_ws}",
+                "local",
+                f"client config declares workspace {expected_ws}; "
+                f"provider check deferred until campaign exists"))
+        results.append(_result(
+            "3. State", False, "no provider campaign",
+            "local",
+            "cannot check state - campaign not yet created"))
+        results.append(_result(
+            "4. Population", False, "no provider campaign",
+            "local",
+            "cannot count leads - campaign not yet created"))
+        results.append(_result(
+            "5. Senders", False, "no provider campaign",
+            "local",
+            "cannot check senders - campaign not yet created"))
+        results.append(check_caps_and_killswitch(campaign, config))
+        results.append(_result(
+            "7. Prior contact", False, "no contacts to check yet",
+            "local",
+            "plan not buildable without provider campaign; "
+            "collision check deferred until after staging"))
+        return results, 1
+
+    provider_id = int(provider_id)
 
     results = []
 
@@ -501,6 +567,17 @@ def run_checks(campaign_id):
 
     any_fail = any(not r["pass"] for r in results)
     return results, 1 if any_fail else 0
+
+
+def _derived_name(campaign):
+    """The name bisonfactory.provider_campaign_name would derive."""
+    try:
+        from src import bisonfactory
+        return bisonfactory.provider_campaign_name(campaign)
+    except Exception:
+        human = str(campaign.get("name") or "").strip() or "resonate"
+        return (f"{human} [{campaign.get('client')}/"
+                f"{campaign.get('campaign_id')}]")
 
 
 def _build_plan(campaign, config):
