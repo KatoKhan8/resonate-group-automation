@@ -286,9 +286,9 @@ account-ALLOW):
 | # | Name | Domain | Campaign 481 status |
 |---|------|--------|---------------------|
 | 9 | Jacob Faertz | ogpartner.dk | sending_paused |
-| 10 | Rik De Veirman | anewagencyworld.com | sending_paused |
+| 10 | Rik De Veirman | px-2a51e132bab4 | sending_paused |
 | 11 | Brian Price | acqcom.com | sending_paused |
-| 12 | Ranjan Damodar | adcuratio.com | sending_paused |
+| 12 | Ranjan Damodar | px-a8ca1565fdd1 | sending_paused |
 | 13 | Collette Savoie | portsidemarketing.com | sending_paused |
 | 14 | Al Scornaienchi | agency59.ca | sending_paused |
 | 15 | Paula Savage Hansen | savagebrands.com | sending_paused |
@@ -296,7 +296,7 @@ account-ALLOW):
 | 17 | Jennie Johnson | mypersonalestatesale.com | sending_paused |
 
 **Excluded from the 17** (never-emailed but HOLD domain):
-- Janie Karas (28row.com) — HOLD
+- Janie Karas (px-6a518e690008) — HOLD
 - Christine Xoinis (ethoscreate.com) — HOLD
 - Jason Baker (roaringmedia.co) — HOLD
 - Ray Kingman (semcasting.com) — HOLD

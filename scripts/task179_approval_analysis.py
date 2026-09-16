@@ -21,7 +21,7 @@ CONFIG_PATH = os.path.join("config", "clients", "productive.yaml")
 OUTPUT_DOC = os.path.join("docs", "LI6-AND-APPROVAL-2026-09-16.md")
 
 # The three rung-3 contacts by domain (from TASK-176)
-TARGET_DOMAINS = {"20northmarketing.com", "2ton.com", "321webmarketing.com"}
+TARGET_DOMAINS = {"px-771db3f7cb5a", "2ton.com", "px-998d46ac6da9"}
 
 
 def _hash(value):

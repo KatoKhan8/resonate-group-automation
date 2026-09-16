@@ -45,11 +45,11 @@ These have `record_id`, `contact_key`, and `client=productive` filled in. They w
 | 6 | 203714 | 13a755016ef4 | c3c9e6e49e77 | 177f9fa54bfb | sending_paused | 2026-09-13T22:17:07Z | mypersonalestatesale-com  ck:a1d756d28444 |
 | 7 | 203713 | 985b119c2038 | 395be3330be3 | c243e114f58c | sending_paused | 2026-09-13T22:17:07Z | mischacommunications-com  ck:2e616319bb62 |
 | 8 | 203712 | 681ab5824248 | 663c917ceea0 | ec867fead617 | **stopped** | 2026-09-13T22:17:06Z | ethoscreate-com  ck:071bab9229e4 |
-| 9 | 203711 | d6e29c496d88 | 4efeb3fe2afd | 32ab93ceddc6 | sending_paused | 2026-09-13T21:48:21Z | anewagencyworld-com  ck:b100051cb1c0 |
+| 9 | 203711 | d6e29c496d88 | 4efeb3fe2afd | 32ab93ceddc6 | sending_paused | 2026-09-13T21:48:21Z | px-9e53b9602a01-com  ck:b100051cb1c0 |
 | 10 | 203710 | 185d72e07fc8 | ceb55a89127b | aaaba6610b02 | sending_paused | 2026-09-13T21:48:19Z | agency59-ca | al-scornaienchi |
-| 11 | 203709 | 34bc6d04c490 | 68af8ce671c1 | 8cdfd2d06cae | sending_paused | 2026-09-13T21:48:17Z | adcuratio-com  ck:9001fb6df2ea |
+| 11 | 203709 | 34bc6d04c490 | 68af8ce671c1 | 8cdfd2d06cae | sending_paused | 2026-09-13T21:48:17Z | px-55b32db0034e-com  ck:9001fb6df2ea |
 | 12 | 203708 | 529930f7e146 | c768a0660316 | dd4e53f0860a | sending_paused | 2026-09-13T21:48:15Z | acqcom-com  ck:7d1f45aff0d0 |
-| 13 | 203707 | 1462c379281a | 5aa13c5766c9 | 34cc9b5ba94c | **stopped** | 2026-09-13T21:48:11Z | 28row-com  ck:b3db105bae4c |
+| 13 | 203707 | 1462c379281a | 5aa13c5766c9 | 34cc9b5ba94c | **stopped** | 2026-09-13T21:48:11Z | px-e0df8da5442e-com  ck:b3db105bae4c |
 
 **Status breakdown:** 9 `sending_paused` (campaign paused, leads reversible), 4 `stopped`.
 
@@ -86,9 +86,9 @@ These have **empty** `record_id` and `contact_key` — they predate this system'
 
 The 4 matching email hashes:
 - `eb4715ab1b94` — lead 203715, ogpartner-dk, jacob-faertz
-- `d6e29c496d88` — lead 203711, anewagencyworld-com, ck:b100051cb1c0
+- `d6e29c496d88` — lead 203711, px-9e53b9602a01-com, ck:b100051cb1c0
 - `529930f7e146` — lead 203708, acqcom-com, ck:7d1f45aff0d0
-- `34bc6d04c490` — lead 203709, adcuratio-com, ck:9001fb6df2ea
+- `34bc6d04c490` — lead 203709, px-55b32db0034e-com, ck:9001fb6df2ea
 
 ### By domain hash
 

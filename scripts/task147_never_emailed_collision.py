@@ -16,10 +16,10 @@ from src import collision  # noqa: E402
 # The 13 never-emailed contacts and their domains (from the main run)
 NEVER_EMAILED = [
     ("Jacob Faertz", "ogpartner.dk", 203715),
-    ("Janie Karas", "28row.com", 203707),
-    ("Rik De Veirman", "anewagencyworld.com", 203711),
+    ("Janie Karas", "px-6a518e690008", 203707),
+    ("Rik De Veirman", "px-2a51e132bab4", 203711),
     ("Brian Price", "acqcom.com", 203708),
-    ("Ranjan Damodar", "adcuratio.com", 203709),
+    ("Ranjan Damodar", "px-a8ca1565fdd1", 203709),
     ("Collette Savoie", "portsidemarketing.com", 203716),
     ("Al Scornaienchi", "agency59.ca", 203710),
     ("Paula Savage Hansen", "savagebrands.com", 203718),

@@ -78,10 +78,10 @@ All 13 are campaign 481. The campaign was PAUSED before it sent anything.
 | Name | Lead ID | Domain | Campaign 481 status |
 |---|---|---|---|
 | Jacob Faertz | 203715 | ogpartner.dk | sending_paused |
-| Janie Karas | 203707 | 28row.com | stopped |
-| Rik De Veirman | 203711 | anewagencyworld.com | sending_paused |
+| Janie Karas | 203707 | px-6a518e690008 | stopped |
+| Rik De Veirman | 203711 | px-2a51e132bab4 | sending_paused |
 | Brian Price | 203708 | acqcom.com | sending_paused |
-| Ranjan Damodar | 203709 | adcuratio.com | sending_paused |
+| Ranjan Damodar | 203709 | px-a8ca1565fdd1 | sending_paused |
 | Collette Savoie | 203716 | portsidemarketing.com | sending_paused |
 | Al Scornaienchi | 203710 | agency59.ca | sending_paused |
 | Paula Savage Hansen | 203718 | savagebrands.com | sending_paused |
@@ -161,7 +161,7 @@ The breakdown of rejections:
   citycubes.be, grayloon.com, hypercrew.pl, yesandagency.com
 - **HOLD — stopped campaign** (11 domains): 8ms.com, automotiveonly.com,
   azonetwork.com, backbone.media, brandiq.com, chiefmedia.com, invnt.com,
-  mediafederation.org.au, nineyards.ie, prdirect.com, seismicproductions.com,
+  mediafederation.org.au, px-355075e3f546, prdirect.com, seismicproductions.com,
   smegateway.com.au, waynemedia.com
 - **HOLD — bounced** (1 domain): chicochamber.com
 
@@ -174,8 +174,8 @@ Same check on their 13 domains:
 
 | Verdict | Count | Contacts |
 |---|---|---|
-| ALLOW | 9 | ogpartner.dk, anewagencyworld.com, acqcom.com, adcuratio.com, portsidemarketing.com, agency59.ca, savagebrands.com, mischacommunications.com, mypersonalestatesale.com |
-| HOLD | 4 | 28row.com, ethoscreate.com, roaringmedia.co, semcasting.com |
+| ALLOW | 9 | ogpartner.dk, px-2a51e132bab4, acqcom.com, px-a8ca1565fdd1, portsidemarketing.com, agency59.ca, savagebrands.com, mischacommunications.com, mypersonalestatesale.com |
+| HOLD | 4 | px-6a518e690008, ethoscreate.com, roaringmedia.co, semcasting.com |
 | STOP | 0 | — |
 
 **9 of 13 survive.** The never-emailed group has a much better collision
