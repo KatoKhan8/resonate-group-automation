@@ -91,7 +91,7 @@ updated and stamped, and the list of documents now carrying superseded numbers.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** c96bc01
+**COMMIT SHA:** fff8f0c
 
 **TESTS:**
 - `tests.test_invariants`: 80 tests, all pass
@@ -104,6 +104,7 @@ updated and stamped, and the list of documents now carrying superseded numbers.
 - `docs/FUNNEL-2026-09-16.md` (new) - the full deliverable: three populations reconciled, funnel table, before/after comparison, snapshot recommendation, stale documents list
 - `docs/state/PRODUCTION-DASHBOARD.md` (updated) - LEADS section updated from 300 to 550 records, new state distribution
 - `docs/state/QUEUE-MANIFEST.json` (updated) - regenerated from live queue, now shows 550 records (was "absent")
+- `docs/state/COHORTS.json` (updated) - STALE marker added to metadata
 
 **FINDINGS:**
 
