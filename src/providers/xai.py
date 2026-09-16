@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""xAI (Grok) adapter.  TASK-157.
+"""xAI (Grok) adapter.  TASK-157, migrated to Responses API in TASK-182.
 
-Chat completions against https://api.x.ai/v1, Bearer token auth.
-OpenAI-compatible request/response shape.
+Responses API against https://api.x.ai/v1/responses, Bearer token auth.
+The Chat Completions endpoint (/v1/chat/completions) was DEPRECATED by xAI
+and returns HTTP 410 Gone.  Web search now lives on the Responses API with
+{"type": "web_search"} as a tool entry.
 
     https://docs.x.ai/developers/quickstart
-    https://docs.x.ai/developers/rest-api-reference/inference/chat-completions
+    https://docs.x.ai/developers/rest-api-reference/inference/responses
     https://docs.x.ai/developers/tools/overview
     https://docs.x.ai/developers/cost-tracking
 
@@ -28,6 +30,11 @@ from . import (MissingKey, ProviderError, key, ok, request, result, failed,
 
 BASE = "https://api.x.ai/v1"
 ENV_KEY = "XAI_API_KEY"
+
+# The endpoint this adapter calls.  A test asserts the cassette matches this
+# exact path so a provider-side deprecation surfaces as a red test, not a
+# silent failure against a fake that faithfully fakes a dead endpoint.
+RESPONSES_ENDPOINT = "/responses"
 
 # https://docs.x.ai/developers/models
 MODELS = (
@@ -65,10 +72,10 @@ def headers():
 
 
 def check(live=False):
-    """Configuration readiness by default; one minimal chat completion if live.
+    """Configuration readiness by default; one minimal response if live.
 
     The default spends nothing and makes no request.  A live check sends a
-    one-token completion to confirm the key is accepted; it costs a fraction
+    one-token response to confirm the key is accepted; it costs a fraction
     of a cent.
     """
     if not live:
@@ -80,10 +87,10 @@ def check(live=False):
                 "note": "key configured, no call made (--live-xai to spend)"}
     try:
         body = {"model": DEFAULT_MODEL,
-                "messages": [{"role": "user",
-                              "content": "__xai_check__"}],
-                "max_completion_tokens": 1}
-        status, data = request("POST", f"{BASE}/chat/completions",
+                "input": [{"role": "user",
+                           "content": "__xai_check__"}],
+                "max_output_tokens": 1}
+        status, data = request("POST", f"{BASE}{RESPONSES_ENDPOINT}",
                                headers(), body, XAI_TIMEOUT)
         return result("xAI", status, str(data))
     except (ProviderError, MissingKey) as e:
@@ -91,20 +98,21 @@ def check(live=False):
 
 
 # Fields returned to a caller.  Nothing else escapes the module.
-CHAT_FIELDS = ("content", "finish_reason", "model", "refusal", "tool_calls",
-               "usage")
+RESPONSE_FIELDS = ("content", "status", "model", "refusal", "tool_calls",
+                   "usage", "search_urls")
 
 
-def chat(messages, model=None, max_tokens=None, temperature=None,
-         tools=None, timeout=None, max_attempts=None, sleep=time.sleep):
-    """One chat completion.  Bounded, trimmed, usage captured.
+def respond(input_messages, model=None, max_tokens=None, temperature=None,
+            tools=None, timeout=None, max_attempts=None, sleep=time.sleep):
+    """One Responses API call.  Bounded, trimmed, usage captured.
 
-    https://docs.x.ai/developers/rest-api-reference/inference/chat-completions
+    https://docs.x.ai/developers/rest-api-reference/inference/responses
 
     Parameters
     ----------
-    messages : list[dict]
-        role/content pairs.  At least one required.
+    input_messages : list[dict]
+        role/content pairs.  At least one required.  Sent as the ``input``
+        field of the request body.
     model : str, optional
         Model name.  Must be in MODELS.  Defaults to DEFAULT_MODEL.
     max_tokens : int, optional
@@ -112,8 +120,8 @@ def chat(messages, model=None, max_tokens=None, temperature=None,
     temperature : float, optional
         Sampling temperature, 0..MAX_TEMPERATURE.
     tools : list[dict], optional
-        OPT-IN.  Server-side tools the model may invoke (web_search, x_search,
-        code_interpreter).  Never included unless the caller passes them.
+        OPT-IN.  Server-side tools the model may invoke (web_search, x_search).
+        Never included unless the caller passes them.
     timeout : int, optional
         Per-attempt seconds.  Defaults to XAI_TIMEOUT.
     max_attempts : int, optional
@@ -124,7 +132,7 @@ def chat(messages, model=None, max_tokens=None, temperature=None,
     Returns
     -------
     dict
-        Trimmed to CHAT_FIELDS.  usage carries token counts and cost.
+        Trimmed to RESPONSE_FIELDS.  usage carries token counts and cost.
 
     A Grok answer is a claim with a source, or it is not evidence.  The caller
     must not treat ``content`` as verified fact.
@@ -139,10 +147,10 @@ def chat(messages, model=None, max_tokens=None, temperature=None,
         raise ValueError(
             f"xai: temperature {temperature} out of range 0..{MAX_TEMPERATURE}")
 
-    body = {"model": model, "messages": list(messages)}
+    body = {"model": model, "input": list(input_messages)}
 
     if max_tokens is not None:
-        body["max_completion_tokens"] = min(max_tokens, MAX_TOKENS_CAP)
+        body["max_output_tokens"] = min(max_tokens, MAX_TOKENS_CAP)
 
     if temperature is not None:
         body["temperature"] = temperature
@@ -161,18 +169,16 @@ def chat(messages, model=None, max_tokens=None, temperature=None,
     status, data = _send_with_retry(body, timeout, max_attempts, sleep)
 
     if not ok(status):
-        raise ProviderError(f"xai chat: {status} {redact(str(data))[:200]}")
-
-    choice = _choice(data)
-    msg = choice.get("message") or {}
+        raise ProviderError(f"xai respond: {status} {redact(str(data))[:200]}")
 
     return {
-        "content": msg.get("content"),
-        "finish_reason": choice.get("finish_reason"),
+        "content": _content(data),
+        "status": (data or {}).get("status"),
         "model": (data or {}).get("model"),
-        "refusal": msg.get("refusal"),
-        "tool_calls": _tool_calls(msg),
+        "refusal": _refusal(data),
+        "tool_calls": _tool_calls(data),
         "usage": _usage(data),
+        "search_urls": _search_urls(data),
     }
 
 
@@ -191,7 +197,7 @@ def _send_with_retry(body, timeout, max_attempts, sleep):
     for attempt in range(max_attempts):
         try:
             last_status, last_data = request(
-                "POST", f"{BASE}/chat/completions", hdrs, body, timeout)
+                "POST", f"{BASE}{RESPONSES_ENDPOINT}", hdrs, body, timeout)
             if ok(last_status):
                 return last_status, last_data
             # 4xx is a client error; retrying won't help.
@@ -207,22 +213,63 @@ def _send_with_retry(body, timeout, max_attempts, sleep):
     return last_status, last_data
 
 
-def _choice(data):
-    """The first choice from the response, or {} if absent."""
-    choices = (data or {}).get("choices") or []
-    return choices[0] if choices else {}
+def _content(data):
+    """Extract text content from the output array.
+
+    The Responses API returns output as an array of typed items.  Text content
+    lives in items with type="message", under content[].text.
+    """
+    output = (data or {}).get("output") or []
+    parts = []
+    for item in output:
+        if item.get("type") == "message":
+            for c in item.get("content") or []:
+                if c.get("type") == "output_text":
+                    text = c.get("text")
+                    if text:
+                        parts.append(text)
+    return "\n".join(parts) if parts else None
 
 
-def _tool_calls(message):
-    """Tool calls from the message, trimmed to id/name/arguments."""
-    raw = message.get("tool_calls")
-    if not raw:
-        return None
-    return [{"id": tc.get("id"),
-             "type": tc.get("type"),
-             "name": (tc.get("function") or {}).get("name"),
-             "arguments": (tc.get("function") or {}).get("arguments")}
-            for tc in raw if isinstance(tc, dict)]
+def _refusal(data):
+    """Extract refusal from the output array, if present."""
+    output = (data or {}).get("output") or []
+    for item in output:
+        if item.get("type") == "message":
+            for c in item.get("content") or []:
+                if c.get("type") == "refusal":
+                    return c.get("text")
+    return None
+
+
+def _tool_calls(data):
+    """Tool calls from the output array, trimmed to id/name/type."""
+    output = (data or {}).get("output") or []
+    calls = []
+    for item in output:
+        if item.get("type") in ("web_search_call", "x_search_call",
+                                "function_call"):
+            calls.append({
+                "id": item.get("id"),
+                "type": item.get("type"),
+                "status": item.get("status"),
+            })
+    return calls if calls else None
+
+
+def _search_urls(data):
+    """URLs from web_search_call items in the output array."""
+    output = (data or {}).get("output") or []
+    urls = []
+    for item in output:
+        if item.get("type") == "web_search_call":
+            action = item.get("action") or {}
+            for src in action.get("sources") or []:
+                if src.get("type") == "url":
+                    url = src.get("url", "")
+                    if url:
+                        urls.append(url)
+    return urls
 
 
 def _usage(data):
@@ -231,22 +278,33 @@ def _usage(data):
     https://docs.x.ai/developers/cost-tracking
     cost_in_usd_ticks: 10_000_000_000 ticks = $1 USD.  The field covers all
     model decodes and every tool invocation within the agentic loop.
+
+    The Responses API uses different field names than Chat Completions:
+        input_tokens  (was prompt_tokens)
+        output_tokens (was completion_tokens)
+        input_tokens_details.cached_tokens  (was prompt_tokens_details.cached_tokens)
+        output_tokens_details.reasoning_tokens (was completion_tokens_details.reasoning_tokens)
+
+    The normalised return dict keeps the descriptive names.
     """
     u = (data or {}).get("usage") or {}
-    pd = u.get("prompt_tokens_details") or {}
-    cd = u.get("completion_tokens_details") or {}
+    input_details = u.get("input_tokens_details") or {}
+    output_details = u.get("output_tokens_details") or {}
     out = {
-        "prompt_tokens": u.get("prompt_tokens"),
-        "completion_tokens": u.get("completion_tokens"),
+        "prompt_tokens": u.get("input_tokens"),
+        "completion_tokens": u.get("output_tokens"),
         "total_tokens": u.get("total_tokens"),
-        "cached_tokens": pd.get("cached_tokens"),
-        "reasoning_tokens": (cd or {}).get("reasoning_tokens"),
+        "cached_tokens": input_details.get("cached_tokens"),
+        "reasoning_tokens": output_details.get("reasoning_tokens"),
         "cost_in_usd_ticks": u.get("cost_in_usd_ticks"),
         "num_sources_used": u.get("num_sources_used"),
     }
-    sstu = (data or {}).get("server_side_tool_usage")
-    if sstu:
-        out["server_side_tool_usage"] = sstu
+    # num_server_side_tools_used is a count on the Responses API, replacing
+    # the per-tool breakdown that server_side_tool_usage carried on Chat
+    # Completions.  Only included when non-zero, matching the old pattern.
+    nsstu = u.get("num_server_side_tools_used")
+    if nsstu:
+        out["num_server_side_tools_used"] = nsstu
     return out
 
 
@@ -264,7 +322,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="python -m src.providers.xai")
     p.add_argument("--check", action="store_true")
     p.add_argument("--live", action="store_true",
-                   help="spend a fraction of a cent on a real completion")
+                   help="spend a fraction of a cent on a real response")
     a = p.parse_args(argv)
     r = check(live=a.live)
     print(f"{'ok  ' if r.get('ok') else 'FAIL'} {r['provider']:<12} "

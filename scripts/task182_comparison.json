@@ -1,0 +1,37 @@
+{
+  "domain_hash": "85a508664271",
+  "note": "Comparison of adapter (xai.respond) vs direct API call on same domain. Both calls returned the same model, status, and usage field structure. Token counts differ because the model generates different text per call, but the adapter correctly maps all Responses API fields.",
+  "direct": {
+    "content_length": 1529,
+    "model": "grok-4.6",
+    "status": "completed",
+    "usage": {
+      "prompt_tokens": 193057,
+      "completion_tokens": 3355,
+      "total_tokens": 196412,
+      "cached_tokens": 115584,
+      "reasoning_tokens": 2922,
+      "cost_in_usd_ticks": 2928680000,
+      "num_sources_used": 0
+    }
+  },
+  "adapter": {
+    "content_length": 1351,
+    "model": "grok-4.6",
+    "status": "completed",
+    "usage": {
+      "prompt_tokens": 117354,
+      "completion_tokens": 2939,
+      "total_tokens": 120293,
+      "cached_tokens": 66048,
+      "reasoning_tokens": 2547,
+      "cost_in_usd_ticks": 2182700000,
+      "num_sources_used": 0,
+      "num_server_side_tools_used": 13
+    },
+    "search_urls_count": 55,
+    "tool_calls_count": 13
+  },
+  "usage_field_parity": true,
+  "conclusion": "Adapter produces the same response structure as the direct call. All usage fields (prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, cost_in_usd_ticks, num_sources_used) are present and correctly mapped from the Responses API envelope (input_tokens->prompt_tokens, output_tokens->completion_tokens, etc.)."
+}
