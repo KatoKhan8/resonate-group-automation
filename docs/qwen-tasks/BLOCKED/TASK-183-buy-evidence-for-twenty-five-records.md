@@ -102,7 +102,7 @@ cost per verdict, and the projection to 308 that replaces TASK-166's estimate.
 
 **STATUS: BLOCKED - no XAI_API_KEY in this worktree**
 
-**COMMIT SHA:** 16b187f
+**COMMIT SHA:** 72795bf
 
 **TESTS:** Script dry-run passes; live run refused correctly on missing key.
 
@@ -129,9 +129,11 @@ cost per verdict, and the projection to 308 that replaces TASK-166's estimate.
 
 3. **Selection strategy implemented and verified via dry-run:**
    - All 17 records in `review` with zero evidence
-   - 8 records in `review` with exactly 1 evidence row, sorted by descending
-     ICP score (closest to qualifying, most likely to tip with evidence)
+   - 8 records in `review` with exactly 1 evidence row
+   - Ordered by TASK-169 enrichment ordering: headcount_signal DESC,
+     employees DESC, research_outcome=HTTP_SUCCESS first
    - Total: 25 records
+   - Top record: e-deocom-com (38 LinkedIn profiles, 45 employees)
    - Score range: 0.0 to 24.0
 
 4. **The script is complete and ready to run.** It:
