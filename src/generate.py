@@ -85,6 +85,76 @@ NOTE_MUST_NOT_MENTION = cadence_note_words()
 # Cost accounting hook: every model call this module makes, by step.
 model_calls = {}
 
+# ------------------------------------------------- company evidence cache
+#
+# TASK-162: every company-derived key in the context block is byte-identical
+# across all contacts at the same record. At 2.5 contacts per domain that is
+# 2.5x the input tokens for the same text. Built once per record per pass,
+# cached for the duration of the pass. The cache does not outlive the process
+# that built it, so evidence cannot age out during a pass and a stale cache
+# is structurally impossible.
+#
+# `clear_company_cache()` resets between passes (and in tests).
+
+_company_cache = {}
+
+
+def clear_company_cache():
+    """Reset the company evidence cache. Call between passes and in tests."""
+    _company_cache.clear()
+
+
+def _evidence_fingerprint(rec):
+    """Hash of (field, source_url, retrieved_at) for every research row.
+
+    Changes when the record's research rows change (a refresh replaced stale
+    rows), so the cache misses. The cache does not outlive the pass, so a
+    stale fingerprint cannot survive.
+    """
+    parts = []
+    for entry in rec.get("research") or []:
+        parts.append(f"{entry.get('field', '')}|"
+                     f"{entry.get('source_url', '')}|"
+                     f"{entry.get('retrieved_at', '')}")
+    material = "\n".join(parts)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
+def company_evidence(rec):
+    """Company-level context, built once per record per generation pass.
+
+    Returns a dict with the fields every contact at this record shares:
+    company, domain, facts, public_evidence, research, evidence_fingerprint,
+    and built_at. The cache is keyed by rec["id"] and lives for the duration
+    of one pass.
+
+    Provenance survives: every fact in public_evidence and research keeps
+    source_url and retrieved_at verbatim. The claims gate reads rec["research"]
+    directly and is not affected by this projection.
+    """
+    rid = rec.get("id")
+    if rid and rid in _company_cache:
+        return _company_cache[rid]
+
+    block = {
+        "company": rec.get("company"),
+        "domain": rec.get("domain"),
+        "facts": facts_block(rec),
+    }
+    public = research.for_prompt(rec)
+    if public:
+        block["public_evidence"] = public
+    rb = research_block(rec)
+    if rb:
+        block["research"] = rb
+    block["evidence_fingerprint"] = _evidence_fingerprint(rec)
+    from datetime import datetime, timezone
+    block["built_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    if rid:
+        _company_cache[rid] = block
+    return block
+
 
 def count_model_call(step, attempts=1):
     model_calls[step] = model_calls.get(step, 0) + int(attempts)
@@ -521,12 +591,16 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
     # kept out of the prompt. The branches below still read `rec["lane"]` and
     # add what the lane MEANS - a diagnosis, a hook - which is the part that
     # carries information.
-    block = {"company": rec.get("company"), "domain": rec.get("domain"),
-             "facts": facts_block(rec)}
-    public = research.for_prompt(rec)
-    if public:
+    # TASK-162: company-level data is built once per record and cached.
+    # Every contact at the same record gets the same bytes for company,
+    # domain, facts, public_evidence and research. The cache lives for the
+    # duration of one pass; clear_company_cache() resets between passes.
+    ce = company_evidence(rec)
+    block = {"company": ce["company"], "domain": ce["domain"],
+             "facts": ce["facts"]}
+    if "public_evidence" in ce:
         # Attributed and trimmed. The fence in llm.py marks it as data.
-        block["public_evidence"] = public
+        block["public_evidence"] = ce["public_evidence"]
     if step == "diagnose":
         block["thread"] = rec.get("context") or ""
     elif step == "hook":
@@ -560,9 +634,9 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
         # sender does (from the product block) rather than invent a name.
         block["sender_identity"] = clients.sender_identity(client or {})
         # TASK-135: sourced facts for the LinkedIn note, same as draft.
-        rb = research_block(rec, contact)
-        if rb:
-            block["research"] = rb
+        # TASK-162: from the company evidence cache, not rebuilt per contact.
+        if ce.get("research"):
+            block["research"] = ce["research"]
         block["tone"] = ((client or {}).get("tone") or {}).get("linkedin")
         block["prior_contact"] = bool(claims.prior_contact(rec, contact))
         if step_key:
@@ -618,9 +692,9 @@ def context_for(step, rec, contact=None, client=None, step_key=None,
         # `evidence` (the model's own prior sentences) and from
         # `public_evidence` (unfiltered raw page text). Quality-filtered
         # to medium+strong so the model receives facts, not navigation.
-        rb = research_block(rec, contact)
-        if rb:
-            block["research"] = rb
+        # TASK-162: from the company evidence cache, not rebuilt per contact.
+        if ce.get("research"):
+            block["research"] = ce["research"]
         block["tone"] = (client or {}).get("tone")
         # WHICH MESSAGE OF THE SEQUENCE THIS IS, AND WHAT THE ONES BEFORE IT
         # SAID. Without both the model has no way to make email four differ
@@ -1874,6 +1948,9 @@ def run(model=None, live=False, ids=None, limit=None, client=None,
     whose ladder fingerprint does not match the current ladder as needing
     regeneration. When False (the default), plan behaves exactly as before.
     """
+    # TASK-162: reset the company evidence cache at the start of each pass.
+    # The cache lives for the duration of one pass, not across sessions.
+    clear_company_cache()
     recs = store.load()
     model = model or llm.NoModel()
     targets = [r for r in recs if ids is None or r["id"] in ids]
