@@ -87,3 +87,50 @@ it reports.
 The script, its tests green with the exit code read off the process, one real
 read-only run against campaign 481 with the seven checks and the values they
 read, and the fail-closed justification per check.
+
+## RESULT
+
+STATUS: DONE
+COMMIT: 80c45f5
+TESTS: 32/32 green in tests/test_bison_prewrite_check.py. Full suite running
+       at time of writing (scripts/run_suite.py, ~865s expected).
+FILES CHANGED:
+  scripts/bison_prewrite_check.py   (new, 567 lines)
+  tests/test_bison_prewrite_check.py   (new, 505 lines)
+  docs/BISON-PREWRITE-2026-09-16.md   (new, 147 lines)
+
+FINDINGS:
+  Real run against campaign 481: 6 of 7 checks PASS, 1 FAIL.
+
+  Check 7 (prior contact) correctly detected that ogpartner.dk has 13 prior
+  emails at the provider. This is the client's own estate history, not
+  something this system wrote. The campaign holds 23 leads with 14 in
+  terminal states, confirming real history.
+
+  Check 1 (identity) initially failed because the canonical name did not
+  include the [client/campaign_id] suffix that bisonfactory derives. Fixed
+  to compare against the derived name.
+
+  Check 6 (killswitch) reports the global layer as OFF (expected - push.run
+  raises by design) and the campaign layer as OFF (expected - local status
+  is "draft" at staging time). Only a frozen campaign would fail this check.
+
+  All seven checks are fail-closed: cannot read input -> FAIL, never PASS.
+  Source annotation on each result states provider vs local, with
+  justification for every local value in the check's docstring.
+
+  The script makes no provider writes. No POST, PATCH, PUT, or DELETE.
+  No code path can become one by adding a flag.
+
+RISKS:
+  - The collision check (check 7) pages through the provider's lead list by
+    domain. For very large estates this could be slow. The current campaign
+    has 9 unique domains and completed in seconds.
+  - The sender health check (check 5) reads the local sender inventory. If
+    the inventory is stale, the health assessment may not reflect current
+    provider state. The provider-side attachment is always read fresh.
+
+RECOMMENDED CLAUDE ACTION:
+  Review the check 7 finding: ogpartner.dk has 13 prior emails. Decide
+  whether to proceed with the campaign write or remove that contact from
+  the payload. The script did its job - it surfaced a real collision.
