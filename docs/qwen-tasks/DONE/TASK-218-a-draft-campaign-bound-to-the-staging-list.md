@@ -111,3 +111,71 @@ prospect-facing argument made from the provider; the creation readback; the
 sequence-reproduction answer; `StartCampaign` implemented with containment and
 answer classification; and the test proving activation refuses while
 `LINKEDIN_ACTIVATE` is not in `SUPPORTED`.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** c2b54314
+
+**TESTS:**
+- `tests/test_heyreach_start_is_sealed.py` - 21 tests, all pass
+- `tests/test_draft_campaign_bind.py` - 16 tests, all pass
+- Full relevant suite (test_invariants, test_audit, test_heyreach_readback,
+  test_heyreachfactory, plus the two new files): 184 tests, all pass
+- Pre-existing failures in `test_the_factory_verbs_exist_and_are_sealed` and
+  `test_heyreachfactory_ensure_leads` are from TASK-216/217 changes that
+  added `EMAIL_ACTIVATE`, `EMAIL_ASSIGN_SENDER`, and `LINKEDIN_ADD_LEAD_TO_LIST`
+  to SUPPORTED/CONDITIONAL without updating those tests. Not caused by this
+  task.
+
+**FILES CHANGED:**
+- `src/providers/heyreach.py` - added `activate_campaign` function with
+  `expect_leads` containment and status classification
+- `src/providerwrites.py` - added `_list_is_ours_and_unbound_and_holds_approved`
+  CONDITIONAL predicate for `LINKEDIN_CREATE_CAMPAIGN`; updated OPERATIONS entry
+- `tests/test_heyreach_start_is_sealed.py` - new, 21 tests
+- `tests/test_draft_campaign_bind.py` - new, 16 tests
+- `docs/HEYREACH-DRAFT-CANARY-2026-09-16.md` - new, full documentation
+
+**FINDINGS:**
+
+1. **`activate_campaign` has no production caller.** `grep -rn "activate_campaign"
+   src/` returns only the definition and its own error messages. This is the
+   point: the verb exists so the operator's decision is one line, and the test
+   proving the OFF switch refuses is the deliverable that matters most.
+
+2. **`LINKEDIN_CREATE_CAMPAIGN` has a CONDITIONAL but is NOT in SUPPORTED.**
+   `perform` refuses it with `WriteUnsupported` before the condition runs.
+   Enabling is one line: add the constant to `SUPPORTED`.
+
+3. **The prospect-facing argument is from the provider.** A DRAFT cannot take
+   leads (400 from AddLeadsToCampaignV2), cannot be paused (400 from
+   /campaign/Pause), and the only route to running is StartCampaign which is
+   not in SUPPORTED. Creation is not prospect-facing; binding a list ends the
+   unbound safety property but sends no message.
+
+4. **The sequence hash is reproducible.** `heyreach._fingerprint` is
+   deterministic, survives JSON round-tripping, and `sequence_matches`
+   tolerates the provider's added bare END nodes. The hash `32f8dde79bfa0f27`
+   for 599020's sequence is reproducible for the same graph.
+
+5. **The readback proves four things from the provider:** DRAFT status, list
+   binding, seats, and name. All four are read from `GET /campaign/GetById`,
+   a separate request from the create.
+
+**RISKS:**
+- The CONDITIONAL predicate for `LINKEDIN_CREATE_CAMPAIGN` checks list
+  unboundness at the moment of the write, but a list can be attached to a
+  campaign a second later by anyone with provider access. This is detection,
+  not prevention.
+- `activate_campaign` polls for status changes but HeyReach has no known
+  transitional states between DRAFT and IN_PROGRESS. If the provider adds one,
+  the function will raise on an unrecognised status rather than waiting.
+
+**RECOMMENDED CLAUDE ACTION:**
+Review the CONDITIONAL predicate and the `activate_campaign` function. If
+satisfied, the two enabling decisions are:
+1. Add `LINKEDIN_CREATE_CAMPAIGN` to `SUPPORTED` (safe: a DRAFT sends nothing)
+2. Add `LINKEDIN_ACTIVATE` to `SUPPORTED` with a CONDITIONAL (the prospect-facing
+   decision that requires operator authorization)
