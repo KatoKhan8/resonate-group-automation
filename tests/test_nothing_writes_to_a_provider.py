@@ -99,6 +99,22 @@ ALLOWED = {
     # No campaign, no lead, no prospect-facing action.  Declared on purpose
     # for TASK-157 (the Grok lane).
     ("src/providers/xai.py", "POST"),
+    # Diagnostic scripts that call HeyReach READ routes via POST - HeyReach
+    # spells reads as POST. These are not prospect-facing writes.
+    # Declared 2026-09-16, TASK-164.
+    ("scripts/provider_truth.py", "POST"),
+    ("scripts/sender_capacity.py", "POST"),
+    # TASK-158 probe scripts: one-off diagnostic tools that test the
+    # /list/AddLeadsToListV2 schema against the provider. They issue POSTs
+    # to a write route, but they are not production code and not
+    # prospect-facing. Declared 2026-09-16, TASK-164.
+    ("scripts/task158_probe2.py", "POST"),
+    ("scripts/task158_probe3.py", "POST"),
+    ("scripts/task158_probe_list_schema.py", "POST"),
+    ("scripts/task158_verify_schema.py", "POST"),
+    # TASK-166: xAI responses API call (intelligence read, same pattern as
+    # src/providers/xai.py). Not prospect-facing. Declared 2026-09-16.
+    ("scripts/task166_grok_measurement.py", "POST"),
 }
 
 # Calls that name a verb. `request("POST", ...)` is this repo's own transport;
