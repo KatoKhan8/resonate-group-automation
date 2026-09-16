@@ -105,7 +105,7 @@ batch, so if you cannot prove it, say which measurement is missing.
 
 **The code path that decides it:** `icpstructural.verdict_of` (line ~310 in icpstructural.py). All five structural criteria return UNKNOWN when evidence is absent. UNKNOWN is not FAIL. `verdict_of` requires at least one FAIL to produce ICP_FAIL. With all UNKNOWN, the answer is ICP_REVIEW, which maps to `icp_status = "review"`.
 
-**COMMIT SHA:** e4258ba
+**COMMIT SHA:** 92763c6
 
 **TESTS:** `scripts/task163_measure.py` and `scripts/task163_research_trigger.py` both pass. No existing tests broken (no src/ changes).
 
