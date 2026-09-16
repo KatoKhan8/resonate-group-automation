@@ -107,3 +107,16 @@ email_security:
 
     # MX changes rarely. One lookup per domain per week is plenty.
     cache_days: 7
+
+
+# The demo client's provider identities, declared so the tenancy check has
+# something to check. `stage()` compares this against
+# `bison.bound_workspace()` and SKIPS the comparison when it is absent -
+# `if expected is not None` - so an undeclared workspace means the refusal
+# that stops one client's campaign being built inside another's estate never
+# fires. It also means configdiff derives an empty workspace and the
+# comparison can never match. 99 is the value tests/
+# test_no_activation_without_an_exact_match.py has always asserted.
+providers:
+  emailbison:
+    workspace: 99

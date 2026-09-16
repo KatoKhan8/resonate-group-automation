@@ -53,12 +53,13 @@ CONTROL_SEQUENCE_CONFIG = {
     "steps": {
         "em1": {"order": 1, "subject": "{SUBJECT_1}",
                 "body": "<p>{BODY_1}</p>", "wait_in_days": 3},
-        "em2": {"order": 2, "subject": "{SUBJECT_2}",
+        "em2": {"order": 2, "subject": "{SUBJECT_1}",
                 "body": "<p>{BODY_2}</p>", "wait_in_days": 4},
-        "em3": {"order": 3, "subject": "{SUBJECT_3}",
-                "body": "<p>{BODY_3}</p>", "wait_in_days": 0},
+        "em3": {"order": 3, "subject": "{SUBJECT_1}",
+                "body": "<p>{BODY_3}</p>", "wait_in_days": 1},
     },
-    "thread_reply_pattern": [False, True, False],
+    # Threaded: the opener is a new email, the follow-ups continue it.
+    "thread_reply_pattern": [False, True, True],
 }
 
 CONFIG = {
@@ -156,9 +157,15 @@ def _lead_vars(contact_copy, multi_step=True):
     if not multi_step:
         return [{"name": "subject", "value": contact_copy[0]["subject"]},
                 {"name": "body", "value": contact_copy[0]["body"]}]
-    out = []
+    # THREADED SHAPE: only the opener owns a subject. A follow-up continues
+    # the original thread, so subject_2 and subject_3 are written EMPTY -
+    # which is what `_expected_lead_variables` requires and what
+    # `_stale_clearances` writes. A fixture that supplies them non-empty is
+    # modelling the pre-2026-09-16 shape the comparator now refuses.
+    out = [{"name": "subject_1", "value": contact_copy[0]["subject"]}]
     for i, entry in enumerate(contact_copy, start=1):
-        out.append({"name": f"subject_{i}", "value": entry["subject"]})
+        if i > 1:
+            out.append({"name": f"subject_{i}", "value": ""})
         out.append({"name": f"body_{i}", "value": entry["body"]})
     return out
 
@@ -213,15 +220,17 @@ class _Base(unittest.TestCase):
              "wait_in_days": 3, "variant": False,
              "thread_reply": False},
             {"id": 4002, "active": True, "order": 2,
-             "email_subject": "Re: {SUBJECT_2}",
+             "email_subject": "Re: {SUBJECT_1}",
              "email_body": "<p>{BODY_2}</p>",
              "wait_in_days": 4, "variant": False,
              "thread_reply": True},
             {"id": 4003, "active": True, "order": 3,
-             "email_subject": "{SUBJECT_3}",
+             "email_subject": "Re: {SUBJECT_1}",
              "email_body": "<p>{BODY_3}</p>",
-             "wait_in_days": 0, "variant": False,
-             "thread_reply": False},
+             # Threaded, and wait 1 not 0: the provider rejects
+             # wait_in_days 0, measured on campaign 485 2026-09-16.
+             "wait_in_days": 1, "variant": False,
+             "thread_reply": True},
         ]
 
         # Leads with custom variables matching the approved copy.
