@@ -98,7 +98,7 @@ destroyed.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (filled after commit)
+**COMMIT SHA:** b55fd5e
 
 **TESTS:**
 - `tests.test_invariants`: 80 tests, all pass
