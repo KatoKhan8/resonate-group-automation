@@ -115,6 +115,12 @@ ALLOWED = {
     # TASK-166: xAI responses API call (intelligence read, same pattern as
     # src/providers/xai.py). Not prospect-facing. Declared 2026-09-16.
     ("scripts/task166_grok_measurement.py", "POST"),
+    # TASK-182: the one-domain comparison that proves the adapter returns what
+    # TASK-166's direct call returned, after xAI withdrew `live_search` from
+    # chat completions (HTTP 410) and web search moved to the Responses API.
+    # An intelligence read the vendor spells as POST. Not prospect-facing.
+    # Declared 2026-09-16.
+    ("scripts/task182_compare.py", "POST"),
 }
 
 # Calls that name a verb. `request("POST", ...)` is this repo's own transport;

@@ -8,6 +8,8 @@ is unbound (campaignIds is empty). The moment a list is attached to a
 campaign, adding to it is adding to a campaign, which is the prospect-facing
 path. Every refusal path has a test.
 """
+import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -80,7 +82,34 @@ def fake_members_reader(members, total=None):
 
 # ------------------------------------------ validate_lead_row
 
-class TestValidateLeadRow(unittest.TestCase):
+
+class _IsolatedStore(unittest.TestCase):
+    """Isolate the store for every test in this module.
+
+    `stage_lead` now routes its write through `providerwrites.perform`, which
+    reads and writes campaign state for the action ledger and the
+    staged-already check. Before that change these tests never touched the
+    store, so they never needed isolation; afterwards they tripped the guard
+    that refuses a test writing real client state. tests/base.py makes the
+    same point: isolation a subclass has to remember is isolation a subclass
+    can forget.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from src import store
+        self._store_tmp = tempfile.mkdtemp(prefix="rga-liststaging-")
+        self._store_prev = getattr(store, "DIRECTORY", None)
+        store.use_directory(os.path.join(self._store_tmp, "work"))
+
+    def tearDown(self):
+        from src import store
+        if self._store_prev is not None:
+            store.use_directory(self._store_prev)
+        super().tearDown()
+
+
+class TestValidateLeadRow(_IsolatedStore):
     def test_a_complete_row_passes(self):
         self.assertTrue(validate_lead_row(LEAD_OK))
 
@@ -123,7 +152,7 @@ class TestValidateLeadRow(unittest.TestCase):
 
 # ------------------------------------------ list_is_unbound
 
-class TestListIsUnbound(unittest.TestCase):
+class TestListIsUnbound(_IsolatedStore):
     def test_empty_campaign_ids_is_unbound(self):
         self.assertTrue(list_is_unbound(LIST_UNBOUND))
 
@@ -139,7 +168,7 @@ class TestListIsUnbound(unittest.TestCase):
 
 # ------------------------------------------ assert_list_safe
 
-class TestAssertListSafe(unittest.TestCase):
+class TestAssertListSafe(_IsolatedStore):
     def test_an_unbound_list_passes(self):
         row = assert_list_safe(940797, list_reader=fake_list_reader(LIST_UNBOUND))
         self.assertEqual(row["id"], 940797)
@@ -189,7 +218,7 @@ class TestAssertListSafe(unittest.TestCase):
 
 # ------------------------------------------ readback_list_add
 
-class TestReadbackListAdd(unittest.TestCase):
+class TestReadbackListAdd(_IsolatedStore):
     def test_a_present_lead_and_unbound_list_is_accepted(self):
         url = "https://linkedin.com/in/test-profile"
         members = [{"profile_url": url}]
@@ -234,7 +263,7 @@ class TestReadbackListAdd(unittest.TestCase):
 
 # ------------------------------------------ classify_readback
 
-class TestClassifyReadback(unittest.TestCase):
+class TestClassifyReadback(_IsolatedStore):
     def test_all_found_and_unbound_is_accepted(self):
         self.assertEqual(classify_readback({
             "found": {"u"}, "missing": set(), "still_unbound": True,
@@ -260,7 +289,7 @@ class TestClassifyReadback(unittest.TestCase):
 
 # ------------------------------------------ stage_lead (full path)
 
-class TestStageLead(unittest.TestCase):
+class TestStageLead(_IsolatedStore):
     def test_the_happy_path(self):
         url = LEAD_OK["linkedin_url"]
         transport = fake_transport()
@@ -363,7 +392,14 @@ class TestStageLead(unittest.TestCase):
         may have triggered a binding — the activation defect."""
         url = LEAD_OK["linkedin_url"]
         transport = fake_transport()
-        reads = [dict(LIST_UNBOUND), dict(LIST_BOUND)]
+        # THREE reads now, not two. `stage_lead` checks the list, then
+        # `perform` re-checks it as its CONDITIONAL condition immediately
+        # before the transport, then the readback checks it again afterwards.
+        # The extra pre-write read arrived on 2026-09-16 when the write was
+        # routed through `perform`; it makes the gate stricter, and a fake
+        # keyed on call order has to say WHEN the binding appears. The
+        # scenario is unchanged: unbound before the write, bound after.
+        reads = [dict(LIST_UNBOUND), dict(LIST_UNBOUND), dict(LIST_BOUND)]
         def flip_reader(list_id):
             return reads.pop(0) if reads else dict(LIST_BOUND)
         with self.assertRaises(ListStagingUnverified) as ctx:
@@ -396,7 +432,7 @@ class TestStageLead(unittest.TestCase):
 
 # ------------------------------------------ integration: gate ordering
 
-class TestGateOrdering(unittest.TestCase):
+class TestGateOrdering(_IsolatedStore):
     """The gates run in order: validate, then assert_safe, then transport.
 
     A failure at gate N must not reach gate N+1.

@@ -77,6 +77,9 @@ def list_is_unbound(list_row):
     return False
 
 
+_ACTIVE_LIST_READER = None
+
+
 def assert_list_safe(list_id, list_reader=None):
     """Read the list from the provider and refuse unless it is unbound.
 
@@ -89,7 +92,18 @@ def assert_list_safe(list_id, list_reader=None):
     is the same shape as `_campaign_is_a_declared_staging_campaign` — a
     provider read at the moment of the write.
     """
-    read = list_reader or heyreach.list_by_id
+    # `_ACTIVE_LIST_READER` exists because `perform` evaluates this module's
+    # condition through `CONDITIONAL`, and its call signature is fixed at
+    # (provider_campaign_id, campaign_id) - there is nowhere to pass a reader.
+    # Without this, routing `stage_lead` through `perform` made the condition
+    # read the LIVE provider even when the caller had injected a fake, so
+    # every test hit a missing HEYREACH_KEY and the double read cost a real
+    # API call per write in production too.
+    #
+    # `stage_lead` sets it for the duration of its own call and clears it in a
+    # finally. Outside that window it is None and the live reader is used,
+    # which is the correct default for any other caller.
+    read = list_reader or _ACTIVE_LIST_READER or heyreach.list_by_id
     if list_id in (None, "", 0):
         raise ListStagingRefused(
             "no list_id supplied; a list add without a destination verifies "
@@ -204,12 +218,69 @@ def stage_lead(list_id, row, transport, list_reader=None,
         }],
     }
 
+    # THE WRITE GOES THROUGH THE DOOR, NOT ROUND IT.
+    #
+    # This function used to call `transport(payload)` directly. Its own checks
+    # - `validate_lead_row`, `assert_list_safe`, and the readback below - were
+    # real, and they were not everything. Going direct skipped
+    # `providerwrites.require_supported` (so the permission the operator
+    # granted on 2026-09-16 would have governed a path nobody called), the
+    # action ledger, the spend ledger, the killswitch, and the idempotency
+    # check that stops the same material being staged twice.
+    #
+    # The operator's authorization was explicit that audit, ledger, killswitch
+    # and the fail-closed gates are preserved. A path around `perform` does
+    # not preserve them, so the path was moved. Found 2026-09-16 by a test
+    # that had been written to assert the bypass - TASK-186's
+    # `test_perform_refuses_the_same_write`, which said in its own docstring
+    # that "the wrapper that unifies them does not exist yet".
+    #
+    # THE LOCAL CHECKS ABOVE STAY. `perform` runs the condition too, so
+    # `assert_list_safe` is asked twice. Two gates asking the same question is
+    # not a defect; it is the cheaper one failing first, before any network
+    # read, and the authoritative one failing at the moment of the write.
+    from . import providerwrites
+
+    # `perform` owns the call now, so the provider's own response is captured
+    # here rather than returned by an assignment. It is still reported in the
+    # result dict, because `addedLeadsCount` is the provider's claim about its
+    # own write and is worth recording next to the readback that checks it.
+    captured = {}
+
+    def _transport(p):
+        captured["response"] = transport(p)
+        return captured["response"]
+
+    def _readback():
+        rb = readback_list_add(list_id, [url], list_reader=list_reader,
+                               members_reader=members_reader)
+        return {"class": classify_readback(rb), "detail": rb}
+
+    global _ACTIVE_LIST_READER
+    _previous_reader = _ACTIVE_LIST_READER
+    _ACTIVE_LIST_READER = list_reader
     try:
-        response = transport(payload)
+        providerwrites.perform(
+            LINKEDIN_ADD_LEAD_TO_LIST,
+            provider_campaign_id=list_id,
+            payload=payload,
+            transport=_transport,
+            readback=_readback,
+            expected={"class": "ACCEPTED"},
+            step="list-staging",
+        )
+    except providerwrites.WriteRefused as e:
+        # A refusal means nothing happened at the provider, which is exactly
+        # what `ListStagingRefused` means to this module's callers.
+        raise ListStagingRefused(str(e)) from None
     except Exception as e:
+        # Anything else - an unverified write, a drifted read-back, a
+        # transport that raised - is the state where the provider MAY have
+        # acted. It is never retryable without reading provider truth first.
         raise ListStagingUnverified(
-            f"list add raised {type(e).__name__}: the provider may have "
-            f"acted. Read provider truth before retrying") from None
+            f"{type(e).__name__} staging into list {list_id}: {e}") from None
+    finally:
+        _ACTIVE_LIST_READER = _previous_reader
 
     rb = readback_list_add(list_id, [url], list_reader=list_reader,
                            members_reader=members_reader)
@@ -225,7 +296,7 @@ def stage_lead(list_id, row, transport, list_reader=None,
         "class": verdict,
         "list_id": list_id,
         "profile_url": url,
-        "response": response,
+        "response": captured.get("response"),
         "readback": rb,
     }
 

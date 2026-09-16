@@ -423,7 +423,28 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
              # Enabled 2026-09-15. NOT prospect-facing: it starts a campaign
              # the provider says holds zero leads, so it sends nothing, and
              # its condition refuses it for a campaign holding anyone at all.
-             LINKEDIN_START_EMPTY_FOR_STAGING)
+             LINKEDIN_START_EMPTY_FOR_STAGING,
+             # Enabled 2026-09-16 by written operator authorization - see
+             # OPERATOR-AUTHORIZATION-2026-09-16.md, which records the grant
+             # so it survives a context reset and need not be asked again.
+             #
+             # NOT prospect-facing, and the reason is a property of the LIST
+             # rather than of us: a list attached to no campaign reaches
+             # nobody, whatever is added to it. `assert_list_safe` reads the
+             # list FROM THE PROVIDER at the moment of the write and refuses
+             # unless `campaignIds` is empty. Campaign 599020 already has list
+             # 933603 attached, so "a list we created" was never the safety
+             # property - "attached to nothing, checked now" is.
+             #
+             # THIS DOES NOT UNSEAL THE CAMPAIGN ROUTE.
+             # `CAMPAIGN_LEVEL_STAGING_IS_PROVEN` stays False and
+             # LINKEDIN_ADD_LEAD stays refused on the first line of its own
+             # condition. Adding a lead to a HeyReach CAMPAIGN activates that
+             # campaign - PAUSED and FINISHED both - and that is still the
+             # prospect-facing moment. The operator's grant was specific:
+             # "Do NOT interpret this as permission to bypass gates or
+             # activate arbitrary campaigns."
+             LINKEDIN_ADD_LEAD_TO_LIST)
 
 # ------------------------------------------- conditional permission
 #
@@ -694,6 +715,58 @@ def _campaign_is_ours_and_holds_nobody(provider_campaign_id,
 CONDITIONAL[LINKEDIN_ADD_LEAD] = _campaign_is_a_declared_staging_campaign
 CONDITIONAL[LINKEDIN_START_EMPTY_FOR_STAGING] = (
     _campaign_is_ours_and_holds_nobody)
+
+
+def _list_is_unbound_right_now(provider_list_id, campaign_id=None):
+    """True only for a list the provider says is attached to NO campaign.
+
+    Enabled 2026-09-16 under written operator authorization; see
+    OPERATOR-AUTHORIZATION-2026-09-16.md.
+
+    THE FIRST ARGUMENT IS A LIST ID, NOT A CAMPAIGN ID. Every other condition
+    in this map is handed a campaign, because until now every conditional verb
+    wrote to one. `perform` passes whatever the caller put in
+    `provider_campaign_id`, so this verb's callers put the list there - and
+    `liststaging.stage_lead` is the only intended caller.
+
+    WHY THE SAFETY PROPERTY IS A FACT ABOUT THE LIST. A list attached to no
+    campaign reaches nobody, whatever is added to it. That is not a claim about
+    our intentions; it is the provider's own behaviour. `assert_list_safe`
+    reads the list at the moment of the write and raises unless `campaignIds`
+    is empty.
+
+    "A LIST WE CREATED" WAS NEVER THE PROPERTY. Campaign 599020 already has
+    list 933603 attached, and that list is ours. Ownership is checked too, but
+    unboundness is what makes the write non-prospect-facing.
+
+    WHAT THIS CANNOT PROMISE. A list unbound at the moment of the write can be
+    attached a second later by anyone with provider access. This is a
+    point-in-time check, not a lock, and `liststaging.readback_list_add`
+    classifies DRIFTED if the list is no longer unbound afterwards. That is
+    detection, not prevention, and it is the honest limit of this permission.
+    """
+    from . import liststaging
+
+    # TRANSLATED AT THE BOUNDARY, and not merely for tidiness.
+    #
+    # `perform` documents one refusal type: a write that did not happen raises
+    # `WriteRefused`. `assert_list_safe` raises `ListStagingRefused`, which is
+    # not a subclass of it, so a caller correctly catching `WriteRefused`
+    # around `perform` would not catch this one - the refusal would escape as
+    # an unexpected exception type and read as a crash rather than as the gate
+    # working. Measured 2026-09-16 while enabling the verb.
+    #
+    # The message is preserved verbatim, because it already names the list,
+    # the campaigns it is attached to, and that the transport was not reached.
+    try:
+        liststaging.assert_list_safe(provider_list_id)
+    except liststaging.ListStagingRefused as e:
+        raise WriteRefused(
+            f"{LINKEDIN_ADD_LEAD_TO_LIST}: {e}") from None
+    return True
+
+
+CONDITIONAL[LINKEDIN_ADD_LEAD_TO_LIST] = _list_is_unbound_right_now
 
 # `perform` runs the condition at ONE call site, inside the prospect-facing
 # branch. That is correct only while every conditional operation is

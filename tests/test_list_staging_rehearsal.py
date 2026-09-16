@@ -29,6 +29,8 @@ WHAT THIS PROVES:
    success. This is the difference between the path being safe and losing
    leads invisibly.
 """
+import os
+import tempfile
 import unittest
 
 from src import providerwrites
@@ -103,7 +105,34 @@ def fake_members_reader(members, total=None):
 # 1. THE ENTRY POINT
 # =====================================================================
 
-class TestEntryPoint(unittest.TestCase):
+
+class _IsolatedStore(unittest.TestCase):
+    """Isolate the store for every test in this module.
+
+    `stage_lead` now routes its write through `providerwrites.perform`, which
+    reads and writes campaign state for the action ledger and the
+    staged-already check. Before that change these tests never touched the
+    store, so they never needed isolation; afterwards they tripped the guard
+    that refuses a test writing real client state. tests/base.py makes the
+    same point: isolation a subclass has to remember is isolation a subclass
+    can forget.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from src import store
+        self._store_tmp = tempfile.mkdtemp(prefix="rga-liststaging-")
+        self._store_prev = getattr(store, "DIRECTORY", None)
+        store.use_directory(os.path.join(self._store_tmp, "work"))
+
+    def tearDown(self):
+        from src import store
+        if self._store_prev is not None:
+            store.use_directory(self._store_prev)
+        super().tearDown()
+
+
+class TestEntryPoint(_IsolatedStore):
     """Which function should Claude call to stage a lead into a list?
 
     `liststaging.stage_lead` exists and takes a transport callable. It
@@ -141,78 +170,112 @@ class TestEntryPoint(unittest.TestCase):
                 [{"profile_url": url}], total=1))
         self.assertEqual(result["class"], "ACCEPTED")
 
-    def test_perform_refuses_the_same_write(self):
-        """The same write through `perform` refuses because the verb is not
-        in SUPPORTED. This proves `stage_lead` and `perform` are different
-        paths, and the wrapper that unifies them does not exist yet."""
-        with self.assertRaises(providerwrites.WriteUnsupported):
-            providerwrites.perform(
-                LINKEDIN_ADD_LEAD_TO_LIST,
-                transport=lambda p: None,
-                readback=lambda: None)
+    def test_stage_lead_now_goes_through_perform(self):
+        """The wrapper this test used to say "does not exist yet" now does.
+
+        TASK-186 asserted that `stage_lead` and `perform` were different
+        paths, which was true and was a defect: going direct skipped the
+        permission, the action ledger, the spend ledger, the killswitch and
+        the idempotency check. The operator's 2026-09-16 authorization
+        required audit, ledger and killswitch to be preserved, so the path
+        was moved through the door on the same day.
+
+        Asserted on the import graph rather than on source text, per
+        CLAUDE.md."""
+        import src.liststaging as liststaging
+        seen = []
+        real = providerwrites.perform
+
+        def spy(operation, **kw):
+            seen.append(operation)
+            raise providerwrites.WriteRefused("spy: stopped before transport")
+
+        providerwrites.perform = spy
+        try:
+            with self.assertRaises(liststaging.ListStagingRefused):
+                liststaging.stage_lead(
+                    940797,
+                    {"linkedin_url": "https://www.linkedin.com/in/x",
+                     "first_name": "A", "last_name": "B"},
+                    transport=lambda p: None,
+                    list_reader=lambda _id: {"id": 940797, "campaignIds": []})
+        finally:
+            providerwrites.perform = real
+        self.assertEqual(seen, [LINKEDIN_ADD_LEAD_TO_LIST],
+                         "stage_lead must route its write through perform")
 
 
 # =====================================================================
 # 2. THE REFUSAL WHILE THE VERB IS OFF
 # =====================================================================
 
-class TestRefusalWhileVerbOff(unittest.TestCase):
-    """The most important test in the task: it proves the OFF switch works.
+class TestRefusalOnABoundList(_IsolatedStore):
+    """This class proved the OFF switch worked. The verb is ON now.
 
-    With `heyreach.add_lead_to_list` absent from SUPPORTED, calling the path
-    through `perform` must fail closed, loudly, naming the missing permission.
+    TASK-186 wrote it as "the most important test in the task", and it was:
+    with `heyreach.add_lead_to_list` absent from SUPPORTED, the path had to
+    fail closed and name the missing permission. The operator enabled the verb
+    on 2026-09-16 in writing, so that assertion would now pin the opposite of
+    the truth.
+
+    The protection did not go away, it moved. What makes this write
+    non-prospect-facing is that the LIST is attached to no campaign, checked
+    against the provider at the moment of the write. So the refusal that
+    matters now is a BOUND list, and it must still happen before the transport
+    is touched.
     """
 
-    def test_perform_raises_write_unsupported(self):
-        with self.assertRaises(providerwrites.WriteUnsupported) as ctx:
-            providerwrites.perform(
-                LINKEDIN_ADD_LEAD_TO_LIST,
-                transport=lambda p: None,
-                readback=lambda: None)
-        self.assertIn("not supported", str(ctx.exception))
+    def _perform_against(self, list_row):
+        calls = []
+        from src import liststaging
+        real = liststaging.assert_list_safe
 
-    def test_the_refusal_names_the_operation(self):
-        with self.assertRaises(providerwrites.WriteUnsupported) as ctx:
+        def patched(list_id, list_reader=None):
+            return real(list_id, list_reader=lambda _id: list_row)
+
+        liststaging.assert_list_safe = patched
+        try:
             providerwrites.perform(
                 LINKEDIN_ADD_LEAD_TO_LIST,
-                transport=lambda p: None,
-                readback=lambda: None)
+                provider_campaign_id=940797,
+                campaign=None,
+                payload={"listId": 940797, "leads": []},
+                transport=lambda p: calls.append(p),
+                readback=lambda: {"totalCount": 0})
+        finally:
+            liststaging.assert_list_safe = real
+        return calls
+
+    def test_a_bound_list_is_refused(self):
+        with self.assertRaises(providerwrites.WriteRefused) as ctx:
+            self._perform_against({"id": 940797, "campaignIds": [599020]})
         self.assertIn("heyreach.add_lead_to_list", str(ctx.exception))
 
-    def test_the_refusal_names_the_channel(self):
-        with self.assertRaises(providerwrites.WriteUnsupported) as ctx:
-            providerwrites.perform(
-                LINKEDIN_ADD_LEAD_TO_LIST,
-                transport=lambda p: None,
-                readback=lambda: None)
-        self.assertIn("linkedin", str(ctx.exception))
+    def test_the_refusal_names_the_campaign_it_is_attached_to(self):
+        with self.assertRaises(providerwrites.WriteRefused) as ctx:
+            self._perform_against({"id": 940797, "campaignIds": [599020]})
+        self.assertIn("599020", str(ctx.exception))
 
     def test_the_transport_is_never_reached(self):
-        """A refused verb must not touch the transport."""
         calls = []
-        with self.assertRaises(providerwrites.WriteUnsupported):
-            providerwrites.perform(
-                LINKEDIN_ADD_LEAD_TO_LIST,
-                transport=lambda p: calls.append(p),
-                readback=lambda: None)
+        try:
+            calls = self._perform_against(
+                {"id": 940797, "campaignIds": [599020]})
+        except providerwrites.WriteRefused:
+            pass
         self.assertEqual(calls, [])
 
-    def test_the_verb_is_defined_but_not_enabled(self):
-        """The constant exists, is in OPERATIONS, but is NOT in SUPPORTED."""
-        self.assertIn(LINKEDIN_ADD_LEAD_TO_LIST, providerwrites.OPERATIONS)
-        self.assertNotIn(LINKEDIN_ADD_LEAD_TO_LIST, providerwrites.SUPPORTED)
+    def test_the_verb_is_enabled_and_conditional(self):
+        """Both, together. SUPPORTED alone would licence adding a lead to any
+        list, including a bound one."""
+        self.assertIn(LINKEDIN_ADD_LEAD_TO_LIST, providerwrites.SUPPORTED)
+        self.assertIn(LINKEDIN_ADD_LEAD_TO_LIST, providerwrites.CONDITIONAL)
 
-    def test_the_verb_is_not_in_conditional(self):
-        """The predicate exists but is not wired into CONDITIONAL."""
-        self.assertNotIn(LINKEDIN_ADD_LEAD_TO_LIST,
-                         providerwrites.CONDITIONAL)
+    def test_the_campaign_route_is_still_sealed(self):
+        self.assertFalse(providerwrites.CAMPAIGN_LEVEL_STAGING_IS_PROVEN)
 
 
-# =====================================================================
-# 3. IDEMPOTENCY
-# =====================================================================
-
-class TestIdempotency(unittest.TestCase):
+class TestIdempotency(_IsolatedStore):
     """Is the write idempotent?
 
     `AddLeadsToListV2` returns `{addedLeadsCount, totalLeads, duplicateLeads}`.
@@ -272,7 +335,7 @@ class TestIdempotency(unittest.TestCase):
 # 4. THE READBACK
 # =====================================================================
 
-class TestReadback(unittest.TestCase):
+class TestReadback(_IsolatedStore):
     """`addedLeadsCount: 1` is the provider's claim about its own write.
     What proves the lead is present AND the list is still unbound?
 
@@ -339,7 +402,7 @@ class TestReadback(unittest.TestCase):
 # 5. THE LIST → CAMPAIGN GAP
 # =====================================================================
 
-class TestListToCampaignGap(unittest.TestCase):
+class TestListToCampaignGap(_IsolatedStore):
     """What happens between LIST and CAMPAIGN?
 
     The staging path adds a lead to a LIST. The list is unbound — attached
@@ -384,7 +447,7 @@ class TestListToCampaignGap(unittest.TestCase):
         """If the list was unbound before the write and bound after, the
         readback classifies it as DRIFTED. This is the activation defect."""
         url = LEAD_OK["linkedin_url"]
-        reads = [dict(LIST_UNBOUND), dict(LIST_BOUND)]
+        reads = [dict(LIST_UNBOUND), dict(LIST_UNBOUND), dict(LIST_BOUND)]
         def flip_reader(list_id):
             return reads.pop(0) if reads else dict(LIST_BOUND)
         transport = fake_transport()
@@ -401,7 +464,7 @@ class TestListToCampaignGap(unittest.TestCase):
 # 6. THE 0/0/0 TRAP
 # =====================================================================
 
-class TestSilentDropTrap(unittest.TestCase):
+class TestSilentDropTrap(_IsolatedStore):
     """THE TRAP: a rehearsal that mocks the provider into agreeing is
     worthless. Make the fake return the 0/0/0 silent-drop response and
     assert the path treats it as a failure, not a success.
@@ -469,7 +532,7 @@ class TestSilentDropTrap(unittest.TestCase):
 # 7. THE FULL SEQUENCE: QUALIFIED → LIST → READBACK → FINAL ELIGIBILITY
 # =====================================================================
 
-class TestFullSequence(unittest.TestCase):
+class TestFullSequence(_IsolatedStore):
     """The sequence to rehearse: QUALIFIED → LIST → READBACK → FINAL
     ELIGIBILITY → CAMPAIGN → SEND.
 

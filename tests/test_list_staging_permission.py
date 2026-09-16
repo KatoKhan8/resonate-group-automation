@@ -14,6 +14,8 @@ The verb is DEFINED but NOT ENABLED. These tests prove:
 Every test uses a fake transport and fake provider reads. No test reaches a
 real API, spends credits, or touches a production path.
 """
+import os
+import tempfile
 import unittest
 
 from src import providerwrites
@@ -98,7 +100,34 @@ def fake_members_reader(members, total=None):
 
 # ----------------------------------- 1. the constant exists and is declared
 
-class TestVerbIsDeclared(unittest.TestCase):
+
+class _IsolatedStore(unittest.TestCase):
+    """Isolate the store for every test in this module.
+
+    `stage_lead` now routes its write through `providerwrites.perform`, which
+    reads and writes campaign state for the action ledger and the
+    staged-already check. Before that change these tests never touched the
+    store, so they never needed isolation; afterwards they tripped the guard
+    that refuses a test writing real client state. tests/base.py makes the
+    same point: isolation a subclass has to remember is isolation a subclass
+    can forget.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from src import store
+        self._store_tmp = tempfile.mkdtemp(prefix="rga-liststaging-")
+        self._store_prev = getattr(store, "DIRECTORY", None)
+        store.use_directory(os.path.join(self._store_tmp, "work"))
+
+    def tearDown(self):
+        from src import store
+        if self._store_prev is not None:
+            store.use_directory(self._store_prev)
+        super().tearDown()
+
+
+class TestVerbIsDeclared(_IsolatedStore):
     """The verb has a constant name, a string, and an OPERATIONS entry."""
 
     def test_the_constant_has_the_right_string(self):
@@ -111,15 +140,29 @@ class TestVerbIsDeclared(unittest.TestCase):
     def test_the_verb_is_in_operations(self):
         self.assertIn(LINKEDIN_ADD_LEAD_TO_LIST, providerwrites.OPERATIONS)
 
-    def test_the_verb_is_not_in_supported(self):
-        """The trap: defining the verb must not enable it."""
-        self.assertNotIn(LINKEDIN_ADD_LEAD_TO_LIST, providerwrites.SUPPORTED)
+    def test_the_verb_is_in_supported(self):
+        """ENABLED 2026-09-16 by written operator authorization.
 
-    def test_the_verb_is_not_in_conditional(self):
-        """The condition predicate exists but is not wired into CONDITIONAL.
-        Enabling is an operator decision and this task does not have it."""
-        self.assertNotIn(LINKEDIN_ADD_LEAD_TO_LIST,
-                         providerwrites.CONDITIONAL)
+        TASK-172's trap was that defining the verb must not enable it, and
+        this test asserted the absence for exactly that reason. The operator
+        then took the decision in writing - see
+        OPERATOR-AUTHORIZATION-2026-09-16.md - so asserting absence now would
+        pin the opposite of the truth. The trap it guarded has moved to
+        TestTheCampaignRouteIsStillSealed: enabling the LIST verb must not
+        unseal the CAMPAIGN verb."""
+        self.assertIn(LINKEDIN_ADD_LEAD_TO_LIST, providerwrites.SUPPORTED)
+
+    def test_the_verb_is_in_conditional(self):
+        """Enabled 2026-09-16 under written operator authorization, and
+        CONDITIONALLY - see OPERATOR-AUTHORIZATION-2026-09-16.md.
+
+        Membership of SUPPORTED alone would be a licence to add a lead to ANY
+        list, including one attached to a campaign, which is the
+        prospect-facing write this permission was carefully not asking for.
+        So the two must move together, and this asserts both."""
+        self.assertIn(LINKEDIN_ADD_LEAD_TO_LIST, providerwrites.SUPPORTED)
+        self.assertIn(LINKEDIN_ADD_LEAD_TO_LIST,
+                      providerwrites.CONDITIONAL)
 
     def test_the_verb_is_not_prospect_facing(self):
         _channel, facing, _why = providerwrites.OPERATIONS[
@@ -137,48 +180,80 @@ class TestVerbIsDeclared(unittest.TestCase):
 
 # ----------------------------------- 2. perform refuses with WriteUnsupported
 
-class TestPerformRefuses(unittest.TestCase):
-    """A verb that exists and is unsupported must FAIL CLOSED, loudly, with
-    a message naming the missing permission."""
+class TestPerformRefusesABoundList(_IsolatedStore):
+    """The verb is enabled now, so the interesting refusal moved.
 
-    def test_perform_raises_write_unsupported(self):
-        with self.assertRaises(providerwrites.WriteUnsupported) as ctx:
-            providerwrites.perform(
-                LINKEDIN_ADD_LEAD_TO_LIST,
-                transport=lambda p: None,
-                readback=lambda: None)
-        self.assertIn("not supported", str(ctx.exception))
+    These tests asserted WriteUnsupported while the verb was off. The operator
+    enabled it on 2026-09-16, so asserting it is unsupported would now pin the
+    opposite of the truth. What must still hold - and what actually protects
+    anybody - is that the CONDITION refuses a list attached to a campaign, and
+    refuses before the transport is touched.
+    """
 
-    def test_the_refusal_names_the_operation(self):
-        with self.assertRaises(providerwrites.WriteUnsupported) as ctx:
-            providerwrites.perform(
-                LINKEDIN_ADD_LEAD_TO_LIST,
-                transport=lambda p: None,
-                readback=lambda: None)
-        self.assertIn("heyreach.add_lead_to_list", str(ctx.exception))
-
-    def test_the_refusal_names_the_channel(self):
-        with self.assertRaises(providerwrites.WriteUnsupported) as ctx:
-            providerwrites.perform(
-                LINKEDIN_ADD_LEAD_TO_LIST,
-                transport=lambda p: None,
-                readback=lambda: None)
-        self.assertIn("linkedin", str(ctx.exception))
-
-    def test_the_transport_is_never_reached(self):
-        """A refused verb must not touch the transport."""
+    def _perform_against(self, list_row):
         calls = []
-        with self.assertRaises(providerwrites.WriteUnsupported):
+
+        def reader(list_id):
+            return list_row
+
+        import src.liststaging as liststaging
+        real = liststaging.assert_list_safe
+
+        def patched(list_id, list_reader=None):
+            return real(list_id, list_reader=reader)
+
+        liststaging.assert_list_safe = patched
+        try:
             providerwrites.perform(
                 LINKEDIN_ADD_LEAD_TO_LIST,
+                provider_campaign_id=940797,
+                campaign=None,
+                payload={"listId": 940797, "leads": []},
                 transport=lambda p: calls.append(p),
-                readback=lambda: None)
-        self.assertEqual(calls, [])
+                readback=lambda: {"totalCount": 0})
+        finally:
+            liststaging.assert_list_safe = real
+        return calls
+
+    def test_a_bound_list_is_refused(self):
+        """campaignIds non-empty means adding to it adds to a campaign."""
+        with self.assertRaises(providerwrites.WriteRefused):
+            self._perform_against({"id": 940797, "campaignIds": [599020]})
+
+    def test_the_transport_is_never_reached_for_a_bound_list(self):
+        calls = []
+        try:
+            calls = self._perform_against(
+                {"id": 940797, "campaignIds": [599020]})
+        except providerwrites.WriteRefused:
+            pass
+        self.assertEqual(calls, [],
+                         "a refused write must not touch the transport")
 
 
-# ----------------------------------- 3. refusal: list attached to a campaign
+class TestTheCampaignRouteIsStillSealed(_IsolatedStore):
+    """Enabling the LIST verb must not unseal the CAMPAIGN verb.
 
-class TestRefusalListAttachedToCampaign(unittest.TestCase):
+    This is the test that matters most about the 2026-09-16 authorization. The
+    operator's grant was explicit: "Do NOT interpret this as permission to
+    bypass gates or activate arbitrary campaigns." Adding a lead to a HeyReach
+    campaign activates it, in PAUSED and FINISHED both, and that remains the
+    prospect-facing moment.
+    """
+
+    def test_campaign_level_staging_is_still_not_proven(self):
+        self.assertFalse(providerwrites.CAMPAIGN_LEVEL_STAGING_IS_PROVEN)
+
+    def test_add_lead_to_a_campaign_is_still_refused(self):
+        """Refused on the first line of its own condition, whatever is
+        passed to it."""
+        with self.assertRaises(providerwrites.WriteRefused) as ctx:
+            providerwrites.require_conditional_permission(
+                providerwrites.LINKEDIN_ADD_LEAD, 599020, "some-campaign")
+        self.assertIn("RESEALED", str(ctx.exception))
+
+
+class TestRefusalListAttachedToCampaign(_IsolatedStore):
     """A list attached to a campaign is refused. Adding to it is adding to
     the campaign, which is the prospect-facing path."""
 
@@ -199,7 +274,7 @@ class TestRefusalListAttachedToCampaign(unittest.TestCase):
 
 # ----------------------------------- 4. refusal: list in another tenant
 
-class TestRefusalListInAnotherTenant(unittest.TestCase):
+class TestRefusalListInAnotherTenant(_IsolatedStore):
     """A list whose campaignIds name campaigns in another tenant is refused.
     The predicate refuses any list with non-empty campaignIds, whatever
     tenant owns those campaigns. The HeyReach API scopes list reads to the
@@ -223,7 +298,7 @@ class TestRefusalListInAnotherTenant(unittest.TestCase):
 
 # ----------------------------------- 5. refusal: list not ours
 
-class TestRefusalListNotOurs(unittest.TestCase):
+class TestRefusalListNotOurs(_IsolatedStore):
     """A list the client made themselves and attached to their own campaign
     is refused. The predicate checks campaignIds, not creator: a list we
     did not create but that IS unbound would pass the predicate - and that
@@ -246,7 +321,7 @@ class TestRefusalListNotOurs(unittest.TestCase):
 
 # ----------------------------------- 6. refusal: missing firstName
 
-class TestRefusalMissingFirstName(unittest.TestCase):
+class TestRefusalMissingFirstName(_IsolatedStore):
     def test_validate_refuses_missing_first_name(self):
         row = dict(LEAD_OK, first_name="")
         with self.assertRaises(ListStagingRefused) as ctx:
@@ -264,7 +339,7 @@ class TestRefusalMissingFirstName(unittest.TestCase):
 
 # ----------------------------------- 7. refusal: missing lastName
 
-class TestRefusalMissingLastName(unittest.TestCase):
+class TestRefusalMissingLastName(_IsolatedStore):
     def test_validate_refuses_missing_last_name(self):
         row = dict(LEAD_OK, last_name="")
         with self.assertRaises(ListStagingRefused) as ctx:
@@ -282,7 +357,7 @@ class TestRefusalMissingLastName(unittest.TestCase):
 
 # ----------------------------------- 8. the 0/0/0 silent-drop response
 
-class TestSilentDropResponse(unittest.TestCase):
+class TestSilentDropResponse(_IsolatedStore):
     """The provider returns addedLeadsCount: 0 with no error for a lead it
     silently drops. A 200 is not a success. The readback finds the lead
     absent and the verdict is UNKNOWN, which raises ListStagingUnverified.
@@ -318,7 +393,7 @@ class TestSilentDropResponse(unittest.TestCase):
 
 # ----------------------------------- 9. condition not consulted
 
-class TestConditionNotConsulted(unittest.TestCase):
+class TestConditionNotConsulted(_IsolatedStore):
     """When validation fails, the safety predicate is not consulted. The
     operator sees the data problem, not the safety problem. This is the
     gate ordering property: validate, then assert_safe, then transport."""
@@ -349,7 +424,7 @@ class TestConditionNotConsulted(unittest.TestCase):
 
 # ----------------------------------- 10. provider read unavailable
 
-class TestProviderReadUnavailable(unittest.TestCase):
+class TestProviderReadUnavailable(_IsolatedStore):
     """When the provider read fails, the predicate refuses fail-closed.
     A list whose state is unknown is not proven safe."""
 
