@@ -93,3 +93,86 @@ Whether a runner was ever invoked over them, the selection predicate that
 skipped them if one did, the two populations separated with counts, the cost of
 verifying 159 with and without the Deliverable leg, and the field that
 distinguishes refused from never-offered.
+
+---
+
+## RESULT BLOCK
+
+**STATUS:** DONE  
+**COMMIT SHA:** a311a5d  
+**TESTS:** Read-only analysis, no tests run  
+**FILES CHANGED:** docs/NEVER-VERIFIED-2026-09-16.md (new), scripts/task203_*.py (6 new)  
+**FINDINGS:**
+
+### Was a runner ever invoked?
+
+Yes, but not on all 159 contacts. The snapshot (2026-09-15T17:52:12+00:00, 550 records) shows:
+
+- **81 contacts** have verification evidence (verification ran on them)
+- **159 contacts** have no verification evidence (verification never ran on them, or ran but skipped them)
+
+Of the 159:
+- **16 contacts** sit on records that never reached the verification stage (no `email_verification` rows in the waterfall)
+- **138 contacts** sit on records that did run verification (3 `email_verification` rows: contactout, deliverable, reoon), but these specific contacts were skipped
+- **5 contacts** have no verification block at all
+
+### The selection predicate that skipped them
+
+**Population 2 (138 contacts):** The `verification_candidates()` function (src/enrich.py line 174) caps verification based on `qualification.persona_plan.max_contacts_to_enrich`:
+- Tier A: 3 contacts
+- Tier B: 2 contacts
+- Tier C: 1 contact
+
+If a record has 5 contacts but is tier C, only 1 gets verified and 4 are skipped. The skipped contacts still get a verification block created by the final loop in `enrich_record` (lines 1232-1237), but with empty evidence.
+
+**Population 1 (16 contacts):** Two causes:
+1. **MX screening** blocked the email channel before verification ran (Proofpoint/Mimecast gateways)
+2. **Enrichment runs that were capped or refused** before reaching the verification stage
+
+**No verification block (5 contacts):** Contacts added after enrich ran, or enrich never completed.
+
+### The two populations, separated
+
+| Population | Count | Cause | Field to distinguish |
+|---|---|---|---|
+| Record never reached verification | 16 | MX block or capped run | `record.waterfall` has no `email_verification` rows |
+| Record ran verification but skipped this contact | 138 | Tier-based cap | `record.waterfall` has `email_verification` rows, but `contact.verification.evidence` is empty |
+| No verification block | 5 | Added after enrich or enrich incomplete | `contact.verification` is absent |
+
+### Cost of verifying 159 contacts
+
+Per-contact cost under default policy (`required_confirmations: 2`):
+- ContactOut: 1 credit (primary, always called)
+- Deliverable: 1 credit (secondary, always called for 2 confirmations)
+- Reoon: 1 credit (conditional, only if catch-all or disagreement)
+
+**Expected cost per contact:** 2 credits  
+**Maximum cost per contact:** 3 credits
+
+**Total for 159 contacts:**
+
+| Scenario | Cost |
+|---|---|
+| **With Deliverable leg** (current policy) | 318–477 credits (expected 318, max 477) |
+| **Without Deliverable leg** (if `required_confirmations: 1` or Deliverable refused) | 159–318 credits (expected 159, max 318) |
+
+**Note:** `DELIVERABLE_RESULT_SHAPE` is unset by operator decision as of 2026-09-16, so Deliverable is currently refused locally. The operational cost is 159 credits (ContactOut only) plus Reoon conditional on catch-alls.
+
+### The field that distinguishes refused from never-offered
+
+**`record.waterfall`** — look for `stage == "email_verification"`:
+- **Absent:** The contact was never offered to the gate (Population 1)
+- **Present:** The gate ran on the record, but this contact was skipped (Population 2)
+
+Then check **`contact.verification.evidence`**:
+- **Empty:** This contact was skipped (by cap or MX block)
+- **Non-empty:** This contact was verified
+
+A contact with `verification.cost = 0`, `verification.evidence = []`, and `verification.stopped = None` was never offered to the gate. The `stopped` field being `None` (not `"verification cost cap"` or `"batch verification budget exhausted"`) confirms the waterfall did not stop — it simply was never invoked on this contact.
+
+### What a runner would select
+
+If a verification run were invoked on these 159 contacts, the tier-based caps would still apply via `verification_candidates()`. Not all 159 would be verified in a single pass. Expected: 50-80 contacts (depending on tier distribution). To verify all 159, the caps would need to be raised or the records re-enriched with higher caps.
+
+**RISKS:** None — read-only analysis, no state changed  
+**RECOMMENDED CLAUDE ACTION:** Review findings in docs/NEVER-VERIFIED-2026-09-16.md. Decide whether to run verification on the 159 contacts (159-318 credits) and whether to raise the tier-based caps.
