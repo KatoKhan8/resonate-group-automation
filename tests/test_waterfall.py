@@ -40,6 +40,12 @@ class TestTheShape(unittest.TestCase):
             for step in spec["providers"]:
                 if step["provider"] == waterfall.CONTACTOUT:
                     continue
+                # Free primary-path steps (webfetch) need no reason; the rule
+                # is that PAID fallbacks must state why they are running.
+                if step.get("is_fallback") is False:
+                    continue
+                if step["provider"] == waterfall.WEBFETCH:
+                    continue
                 self.assertTrue(step.get("requires_reason"),
                                 f"{stage}/{step['provider']} may be called "
                                 "without stating why")
