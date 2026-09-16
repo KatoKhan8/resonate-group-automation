@@ -47,6 +47,7 @@ script can branch on that without parsing output.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -227,7 +228,146 @@ def _last_touch_ts(ref, filepath):
         return 0
 
 
+def _branch_cache_path():
+    return os.path.join(MAIN_REPO, "work", ".claim-branch-cache.json")
+
+
+def _refs_fingerprint():
+    """One git call: every ref and the commit it points at.
+
+    If this string is unchanged, no branch has moved, so the classification
+    below cannot have changed either. That makes it a sound cache key rather
+    than a time-based guess.
+    """
+    out = _git(["for-each-ref", "--format=%(refname:short) %(objectname)",
+                "refs/heads/", "refs/remotes/"], timeout=60)
+    return hashlib.sha256((out or "").encode("utf-8")).hexdigest()
+
+
 def _classify_branch_tasks():
+    """Cached wrapper. See _classify_branch_tasks_uncached for the logic.
+
+    WHY A CACHE IS NOT A SHORTCUT HERE. The uncached classification runs one
+    `ls-tree` per ref plus one `log -1` per task per ref, and this repository
+    has 270 refs, 187 of them unmerged. Measured 2026-09-16: 100 SECONDS per
+    call on Windows. `pool.sh` calls `--status` once per worker in `busy()`
+    and again in `next_ready()`, so a single eight-worker sweep paid that cost
+    about sixteen times and never finished.
+
+    The key is the exact ref->commit mapping, so a stale answer is impossible:
+    any branch moving anywhere changes the fingerprint and invalidates the
+    entry. That is a different and stronger guarantee than a TTL, which would
+    have to choose between being slow and being wrong.
+    """
+    fp = _refs_fingerprint()
+    path = _branch_cache_path()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            cached = json.load(fh)
+        if cached.get("fingerprint") == fp:
+            return set(cached["active"]), cached["stale"]
+    except Exception:
+        pass
+    active, stale = _classify_branch_tasks_uncached()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"fingerprint": fp, "active": sorted(active),
+                       "stale": stale}, fh)
+        os.replace(tmp, path)
+    except Exception:
+        pass       # a cache that cannot be written must not break a dispatch
+    return active, stale
+
+
+def _stage_and_task(path):
+    """('REVIEW', 'TASK-158') from a docs/qwen-tasks path, or (None, None).
+
+    The stage is the directory, so the path alone answers what a tree listing
+    was being spawned per-ref to answer."""
+    p = path.replace("\\", "/").strip()
+    if not p.endswith(".md"):
+        return None, None
+    parts = p.split("/")
+    base = parts[-1]
+    if not base.startswith("TASK-") or len(parts) < 2:
+        return None, None
+    return parts[-2], "-".join(base.split("-")[:2])
+
+
+def _master_touch_times():
+    """{path: last commit timestamp on master} for every task file path.
+
+    One `git log --name-only`. Walking newest-first means the FIRST time a
+    path appears is its latest touch, so `setdefault` is the whole algorithm.
+    """
+    out = _git(["log", "--format=@%ct", "--name-only", "master",
+                "--", "docs/qwen-tasks/"], timeout=120)
+    times, ts = {}, 0
+    for line in (out or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("@"):
+            try:
+                ts = int(line[1:])
+            except ValueError:
+                ts = 0
+        elif ts:
+            times.setdefault(line, ts)
+    return times
+
+
+def _branch_touch_times():
+    """{task_id: {ref: (stage, timestamp)}} for commits NOT in master.
+
+    One `git log --all --not master --source`, which names the ref each commit
+    was reached from. `--not master` is what makes this cheap AND correct: a
+    commit already in master tells us nothing a branch did that master has not
+    got, and those are the overwhelming majority.
+
+    Newest-first again, so the first sighting of a (ref, task) pair is that
+    branch's most recent word on it - which is exactly the stage the branch
+    currently believes, without listing its tree.
+    """
+    # `%S` is the source-ref placeholder. `--source` alone only decorates
+    # git's DEFAULT format, so with a custom --format the ref silently
+    # vanished and every commit was skipped - the whole scan returned empty
+    # and every historical regression test went red at once.
+    out = _git(["log", "--all", "--not", "master", "--source",
+                "--format=@%ct %S", "--name-only", "--",
+                "docs/qwen-tasks/"], timeout=180)
+    result = {}
+    ts, ref = 0, ""
+    for line in (out or "").splitlines():
+        line = line.rstrip()
+        if not line.strip():
+            continue
+        if line.startswith("@"):
+            # "@1726...\trefs/heads/qwen-worker-2-r30" - --source appends the
+            # ref to the format line, separated by whitespace.
+            head = line[1:].split(None, 1)
+            try:
+                ts = int(head[0])
+            except (ValueError, IndexError):
+                ts = 0
+            ref = head[1].strip() if len(head) > 1 else ""
+            for prefix in ("refs/remotes/", "refs/heads/"):
+                if ref.startswith(prefix):
+                    ref = ref[len(prefix):]
+                    break
+            continue
+        if not ts or not ref or ref in ("master", "origin/master"):
+            continue
+        stage, task_id = _stage_and_task(line.strip())
+        if not task_id:
+            continue
+        result.setdefault(task_id, {}).setdefault(ref, (stage, ts))
+    return result
+
+
+def _classify_branch_tasks_uncached():
     """Separate the two questions the old code conflated.
 
     Question 1 - IS A WORKER RUNNING ON THIS TASK?
@@ -279,16 +419,28 @@ def _classify_branch_tasks():
     active = set()
     stale = {}
 
-    for branch in _all_branches():
-        branch_files = _task_files_on(branch)
-        for task_id, (master_stage, master_path) in master_files.items():
-            if task_id not in branch_files:
-                continue
-            branch_stage, branch_path = branch_files[task_id]
+    # TWO GIT CALLS, NOT TENS OF THOUSANDS.
+    #
+    # The straightforward shape of this loop - for every branch, for every
+    # task, ask git when each side last touched the file - ran one `ls-tree`
+    # per ref and two `log` calls per (branch, task) pair. With 270 refs and
+    # ~190 tasks that is tens of thousands of subprocesses: measured
+    # 2026-09-16 at over 100 seconds for ONE call, against a `pool.sh` sweep
+    # that calls `--status` about sixteen times. Sweeps stopped finishing.
+    #
+    # `_master_touch_times` and `_branch_touch_times` get the same facts in
+    # one `git log` each. The stage is read off the PATH rather than from a
+    # tree listing, because `docs/qwen-tasks/<STAGE>/TASK-nnn-*.md` already
+    # carries it - so no `ls-tree` per ref is needed at all.
+    master_ts_by_path = _master_touch_times()
+    branch_latest = _branch_touch_times()
+
+    for task_id, (master_stage, master_path) in master_files.items():
+        master_ts = master_ts_by_path.get(master_path, 0)
+        for branch, (branch_stage, branch_ts) in sorted(
+                branch_latest.get(task_id, {}).items()):
             if branch_stage == master_stage:
                 continue
-            master_ts = _last_touch_ts("master", master_path)
-            branch_ts = _last_touch_ts(branch, branch_path)
             if branch_ts > master_ts:
                 active.add(task_id)
             elif master_ts > 0:

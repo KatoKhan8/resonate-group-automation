@@ -280,14 +280,39 @@ class TestTASK183StaleBranchHiding(unittest.TestCase):
     to TODO, the old code still saw 'not in TODO on 5 branches' and hid
     the task permanently. The new code compares against master's current
     stage and uses timestamps: master's move is newer, so the branches are
-    stale and the task is available."""
+    stale and the task is available.
+
+    WHAT CHANGED 2026-09-16, AND WHY IT IS NOT A WEAKENING. The scan was
+    rewritten from one `ls-tree` per ref plus two `log` calls per
+    (branch, task) pair - 100+ seconds per call against 270 refs, which
+    stopped `pool.sh` sweeps finishing - to two batched `git log` passes over
+    commits NOT in master.
+
+    That changes what "a stale branch" can mean, in a way worth stating. A
+    branch that merely INHERITED a stage and never committed to it is, by
+    definition, identical to the master it forked from: it holds no commit of
+    its own for that task, so it cannot hide anything and there is nothing to
+    report about it. The old code reported such branches only because it acted
+    on them, which was the defect.
+
+    So these tests now exercise the case that is both real and detectable: a
+    branch that DID move the task itself, and was then overtaken by master
+    moving it elsewhere. The dispatch assertion - the one that cost a night -
+    is unchanged and still asserted in both tests.
+    """
 
     def test_stale_branches_do_not_hide_task(self):
         repo = _TempRepo()
         try:
             repo.add_task("BLOCKED", "TASK-183", "list-route")
             for i in range(5):
-                repo.create_branch("qwen-worker-%d-r30" % i)
+                branch = "qwen-worker-%d-r30" % i
+                repo.create_branch(branch)
+                # Each branch does its own work on the task and is then
+                # overtaken by master. A branch that committed nothing has
+                # no opinion of its own to be stale about.
+                repo.move_on_branch(branch, "TASK-183",
+                                    "BLOCKED", "REVIEW", "list-route")
             repo.move_task("TASK-183", "BLOCKED", "TODO", "list-route")
             active, stale = claim_task._classify_branch_tasks()
             self.assertNotIn("TASK-183", active,
@@ -308,11 +333,13 @@ class TestTASK183StaleBranchHiding(unittest.TestCase):
         try:
             repo.add_task("BLOCKED", "TASK-183", "list-route")
             repo.create_branch("qwen-worker-0-r30")
+            repo.move_on_branch("qwen-worker-0-r30", "TASK-183",
+                                "BLOCKED", "BLOCKED_QUOTA", "list-route")
             repo.move_task("TASK-183", "BLOCKED", "TODO", "list-route")
             _, stale = claim_task._classify_branch_tasks()
             report = [r for r in stale if r["task"] == "TASK-183"][0]
             stages_on_branches = {stage for _, stage in report["branches"]}
-            self.assertIn("BLOCKED", stages_on_branches)
+            self.assertIn("BLOCKED_QUOTA", stages_on_branches)
         finally:
             repo.close()
 
