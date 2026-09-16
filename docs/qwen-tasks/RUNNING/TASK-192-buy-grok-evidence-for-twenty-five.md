@@ -125,60 +125,70 @@ cost per verdict, and the projection to 308 that replaces TASK-166's estimate.
 
 **STATUS: BLOCKED - no XAI_API_KEY in this worktree**
 
-**COMMIT SHA:** 72795bf
+**COMMIT SHA:** cf2f722
 
-**TESTS:** Script dry-run passes; live run refused correctly on missing key.
+**TESTS:**
+- Dry-run passes: 25 records selected (17 zero-evidence + 8 thin-evidence)
+- Live run exits 2 with `no XAI_API_KEY in config/.env`
+- All 48 xAI adapter tests pass (`tests.test_xai_adapter`)
 
 **FILES CHANGED:**
-- `scripts/task183_buy_evidence.py` (new) - complete measurement script
+- `scripts/task183_buy_evidence.py` - updated to use `src.providers.xai.respond()`
+  adapter (TASK-182) instead of calling the endpoint directly
 - Task file moved TODO/ -> RUNNING/
 
 **FINDINGS:**
 
-1. **XAI_API_KEY is absent from `config/.env` in this worktree.** The key is
+1. **XAI_API_KEY is absent from `config/.env` in this worktree.** Confirmed
+   via `src.providers.key("XAI_API_KEY")` raising `MissingKey`. The key is
    not listed among the provider keys QWEN.md confirms present (BISON,
-   HEYREACH, CONTACTOUT, APIFY, REOON, DELIVERABLE, BLITZ). The only API keys
-   present are LLM_API_KEY (OpenRouter), APIFY_TOKEN, and DELIVERABLE_KEY.
-   The entire task depends on calling xAI's Responses API to buy evidence.
-   Without the key, no evidence can be acquired and no verdict movement can
-   be measured.
+   HEYREACH, CONTACTOUT, APIFY, REOON, DELIVERABLE, BLITZ, and the workspace
+   pin). The entire task depends on calling xAI's Responses API to buy
+   evidence. Without the key, no evidence can be acquired and no verdict
+   movement can be measured.
 
-2. **The queue snapshot has different state than TASK-171/180 reported.**
-   Snapshot stamp: `2026-09-15T17:52:12+00:00 from master cf23154 550 records`.
+2. **Script now uses the adapter (TASK-182 compliance).** The previous
+   version called `https://api.x.ai/v1/responses` directly with its own HTTP
+   code. This version calls `src.providers.xai.respond()` which owns auth,
+   retry, endpoint selection, response trimming and cost tracking via
+   `xai.ticks_to_usd()`. The direct HTTP code and `_parse_responses()` were
+   removed. The task says "use it, do not call the endpoint directly" - the
+   script now complies.
+
+3. **Snapshot state differs from task description.** Snapshot stamp:
+   `2026-09-15T17:52:12+00:00 from master cf23154 550 records`.
    Status distribution: 250 unqualified, 121 rejected, 113 qualified, 66 review.
-   Only **17 records** are in `review` with zero evidence (not 308). An
-   additional 49 are in `review` with some evidence (1-5 rows). The 308-no-
-   evidence figure from TASK-171/180 was measured against a different state.
+   Review breakdown: 17 zero-evidence, 12 with 1 evidence row, 37 with 2+.
+   The "308 records with no evidence" figure from TASK-171/180 was measured
+   against a different state. The projection base should be 66 review records
+   (or 29 that are zero/thin evidence), not 308.
 
-3. **Selection strategy implemented and verified via dry-run:**
+4. **Selection strategy verified via dry-run:**
    - All 17 records in `review` with zero evidence
-   - 8 records in `review` with exactly 1 evidence row
+   - 8 records in `review` with exactly 1 evidence row (from 12 available)
    - Ordered by TASK-169 enrichment ordering: headcount_signal DESC,
      employees DESC, research_outcome=HTTP_SUCCESS first
    - Total: 25 records
-   - Top record: e-deocom-com (38 LinkedIn profiles, 45 employees)
    - Score range: 0.0 to 24.0
 
-4. **The script is complete and ready to run.** It:
-   - Calls Grok via the Responses API with web_search (same pattern as
-     TASK-166's measurement, which is the adapter TASK-182 describes)
+5. **The script is complete and ready to run.** It:
+   - Calls Grok through `xai_adapter.respond()` with web_search tool
    - Writes facts into `company_facts` and `research` with full provenance
      (source_url, retrieved_at, evidence_id, provider="grok")
    - Re-qualifies through the real `qualify.company()` entry point
    - Runs the claims gate on newly qualified records
-   - Tracks cost and projects to 308
+   - Tracks cost via `xai_adapter.ticks_to_usd()` and projects to 308
    - Saves incrementally so a timeout loses nothing
    - Hashes all record IDs, domains, and company names before logging
    - Budget: $5 soft stop, $8 hard stop
 
 **RISKS:**
 - The measurement cannot be completed from this worktree without XAI_API_KEY.
-- The snapshot state differs from what the task description assumed (17 vs 308
-  records with no evidence). The projection base should be recalculated from
-  the actual current state.
+- The snapshot state differs from what the task description assumed. The
+  projection base should be recalculated from the actual current state.
 
 **RECOMMENDED CLAUDE ACTION:**
 1. Add XAI_API_KEY to this worktree's `config/.env`, OR
-2. Run `py -3 scripts/task183_buy_evidence.py` from a worktree that has the
-   key (Claude's worktree has it per TASK-166 having run successfully), OR
-3. Provide the key and I will run the measurement immediately.
+2. Run `py -3 scripts/task183_buy_evidence.py` from Claude's worktree (which
+   has the key per TASK-166), OR
+3. Provide the key and the measurement will run immediately.

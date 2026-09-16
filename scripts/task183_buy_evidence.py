@@ -22,7 +22,8 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.providers import load_env, key, request, ok, ProviderError
+from src.providers import load_env, key, MissingKey, ProviderError
+from src.providers import xai as xai_adapter
 from src import evidence as ev, store, icp, segments, qualify
 
 load_env()
@@ -33,7 +34,6 @@ WORKING = os.path.join(ROOT, "work", "task183_working.jsonl")
 RESULTS = os.path.join(ROOT, "scripts", "task183_results.json")
 REPORT = os.path.join(ROOT, "docs", "BOUGHT-EVIDENCE-2026-09-16.md")
 
-RESPONSES_URL = "https://api.x.ai/v1/responses"
 BUDGET_USD = 5.00
 HARD_STOP_USD = 8.00
 
@@ -160,78 +160,35 @@ def select_records(n=25):
     return selected[:n]
 
 
-def call_grok_responses(domain, company_name=None, max_retries=2):
-    """Call Grok via the Responses API with web_search enabled.
+def call_grok_responses(domain, company_name=None):
+    """Call Grok via the adapter (TASK-182: Responses API with web_search).
 
-    Uses the same pattern as TASK-166's measurement and TASK-182's adapter:
-    the Responses API at https://api.x.ai/v1/responses with web_search tool.
+    Uses src.providers.xai.respond() - the adapter owns auth, retry,
+    endpoint selection and response trimming.  This script never calls
+    the endpoint directly.
     """
     company_hint = f" (company name: {company_name})" if company_name else ""
     prompt = RESEARCH_PROMPT.format(domain=domain, company_hint=company_hint)
 
-    api_key = key("XAI_API_KEY")
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    body = {
-        "model": "grok-4.6",
-        "input": [{"role": "user", "content": prompt}],
-        "tools": [{"type": "web_search"}],
-        "max_output_tokens": 4096,
-        "temperature": 0.3,
-    }
-
-    for attempt in range(max_retries + 1):
-        try:
-            status, data = request("POST", RESPONSES_URL, headers, body, 90)
-            if ok(status):
-                return _parse_responses(data)
-            if 400 <= status < 500 and status != 429:
-                return {"error": f"HTTP {status}: {str(data)[:200]}",
-                        "content": None, "usage": {}, "search_urls": []}
-        except ProviderError as e:
-            if attempt >= max_retries:
-                return {"error": str(e), "content": None, "usage": {},
-                        "search_urls": []}
-        if attempt < max_retries:
-            time.sleep(1 * (2 ** attempt))
-
-    return {"error": "max retries exceeded", "content": None, "usage": {},
-            "search_urls": []}
-
-
-def _parse_responses(data):
-    """Extract content, usage, and search URLs from Responses API."""
-    output = (data or {}).get("output") or []
-    content_parts = []
-    search_urls = []
-
-    for item in output:
-        item_type = item.get("type")
-        if item_type == "message":
-            for c in item.get("content") or []:
-                if c.get("type") == "output_text":
-                    content_parts.append(c.get("text", ""))
-        elif item_type == "web_search_call":
-            action = item.get("action") or {}
-            for src in action.get("sources") or []:
-                if src.get("type") == "url":
-                    search_urls.append(src.get("url", ""))
-
-    usage = (data or {}).get("usage") or {}
-    return {
-        "content": "\n".join(content_parts),
-        "usage": {
-            "prompt_tokens": usage.get("input_tokens"),
-            "completion_tokens": usage.get("output_tokens"),
-            "total_tokens": usage.get("total_tokens"),
-            "cost_in_usd_ticks": usage.get("cost_in_usd_ticks"),
-            "num_sources_used": usage.get("num_sources_used"),
-        },
-        "model": (data or {}).get("model"),
-        "search_urls": search_urls,
-    }
+    try:
+        result = xai_adapter.respond(
+            input_messages=[{"role": "user", "content": prompt}],
+            model="grok-4.6",
+            max_tokens=4096,
+            temperature=0.3,
+            tools=[{"type": "web_search"}],
+        )
+        return {
+            "content": result.get("content") or "",
+            "usage": result.get("usage") or {},
+            "search_urls": result.get("search_urls") or [],
+            "model": result.get("model"),
+        }
+    except MissingKey as e:
+        raise
+    except ProviderError as e:
+        return {"error": str(e), "content": "", "usage": {},
+                "search_urls": []}
 
 
 def parse_grok_json(content):
@@ -461,7 +418,7 @@ def main(argv=None):
     # --- Check API key ---
     try:
         key("XAI_API_KEY")
-    except Exception as e:
+    except MissingKey as e:
         print(f"BLOCKED: {e}")
         print("XAI_API_KEY is not configured in this worktree.")
         print("The script is ready to run once the key is available.")
@@ -490,8 +447,12 @@ def main(argv=None):
 
         print(f"[{i}/{n}] {h_id} ({h_domain})... ", end="", flush=True)
 
-        # Call Grok
-        grok_result = call_grok_responses(domain, company)
+        # Call Grok through the adapter
+        try:
+            grok_result = call_grok_responses(domain, company)
+        except MissingKey:
+            print(f"\nBLOCKED: XAI_API_KEY missing mid-run")
+            break
 
         if grok_result.get("error"):
             print(f"ERROR: {grok_result['error'][:80]}")
@@ -513,10 +474,10 @@ def main(argv=None):
             })
             continue
 
-        # Cost tracking
+        # Cost tracking - use the adapter's converter (10B ticks = $1)
         usage = grok_result.get("usage", {})
         cost_ticks = usage.get("cost_in_usd_ticks", 0) or 0
-        cost_usd = cost_ticks / 1e10 if cost_ticks else 0
+        cost_usd = xai_adapter.ticks_to_usd(cost_ticks) or 0
         total_cost_ticks += cost_ticks
         total_cost_usd += cost_usd
 
