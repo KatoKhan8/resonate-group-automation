@@ -79,7 +79,7 @@ the fallback count per contact, and the exact JSON payload.
 ## RESULT
 
 - **STATUS:** DONE
-- **COMMIT SHA:** c0a2139
+- **COMMIT SHA:** d212974
 - **TESTS:** Script ran successfully; all 17 contacts render, all 51 step-renderings pass lint, all 51 pass claims gate.
 - **FILES CHANGED:**
   - `scripts/task167_resolve_and_render.py` (new)
