@@ -93,7 +93,7 @@ rejected if office data could produce a FAIL.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** 313f871
+**COMMIT SHA:** cdfa5f0
 
 **TESTS:** No test suite run - this is a measurement task, not a code change.
 Three analysis scripts were executed against the snapshot and produced
