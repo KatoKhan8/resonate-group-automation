@@ -93,7 +93,7 @@ should happen per group; and the corrected review count.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** 7264c3ae
+**COMMIT SHA:** 23200fbb
 
 **TESTS:** No test suite run - this is a measurement task, not a code change.
 One analysis script executed against the live queue (550 records in Claude's
