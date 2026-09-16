@@ -202,9 +202,26 @@ def queue_manifest():
 def main():
     os.makedirs(STATE, exist_ok=True)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    # BRANCH-BLINDNESS WARNING.
+    # This script derives task state from master's directories alone.
+    # Tasks finished on worker branches but not yet integrated appear in
+    # their master stage (usually TODO), not in the stage the branch has
+    # moved them to. The LEDGER therefore under-reports DONE/REVIEW and
+    # over-reports TODO whenever unintegrated work exists.
+    # Run scripts/task173_scan.py to see the full picture across branches.
+    branch_blindness_note = (
+        "Task stages in this ledger reflect master only. Tasks finished on "
+        "worker branches but not yet integrated into master appear in their "
+        "master stage (often TODO), not the stage the branch has moved them "
+        "to. Run scripts/task173_scan.py --unintegrated for the cross-branch "
+        "view."
+    )
+
     ledger = {
         "generated_at": now,
         "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
+        "branch_blindness": branch_blindness_note,
         "master_head": git("rev-parse", "--short", "master"),
         "origin_master_head": git("rev-parse", "--short", "origin/master"),
         "master_pushed": git("rev-parse", "master") == git("rev-parse", "origin/master"),
