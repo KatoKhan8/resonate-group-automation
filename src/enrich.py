@@ -259,6 +259,11 @@ def plan(rec, config=None):
         # conditional on a call that can no longer run.
         from . import fieldplan
         person_ok, _state = person_level_allowed(rec)
+        # TASK-205: the evidence gate. A forecast that promises person-level
+        # calls the evidence gate will refuse is the same defect: the forecast
+        # is the number a cap is sized against, so it must match execution.
+        from . import research as _research
+        evidence_ok = _research.why(rec) is None
         staffed = (rec.get("company_facts") or {}).get("headcount_signal")
         # The same two questions the execution path asks, in the same order.
         # `bought` reads the ledger; `owed` reads the fields. A forecast that
@@ -272,18 +277,22 @@ def plan(rec, config=None):
                 ops.append(op("company-information-from-domain",
                               "people-count found nobody here: rebrand check, no "
                               "search credit spent on people"))
-        elif person_ok:
+        elif person_ok and evidence_ok:
             ops.append(op("decision-makers",
                           "the record has no contact with an address"))
             if not bought:
                 ops.append(op("company-information-from-domain",
                               "only if decision-makers finds nobody: check for a "
                               "rebrand", conditional=True))
+        elif person_ok and not evidence_ok:
+            ops.append(op("company-information-from-domain",
+                          "evidence required for person-level call: no research "
+                          "rows for claim tracing", conditional=True))
         elif not bought:
             ops.append(op("company-information-from-domain",
                           "no ICP verdict, so no person-level call: company facts "
                           "are what produce the verdict"))
-        if person_ok:
+        if person_ok and evidence_ok:
             ops.append(op("aiark-people-search",
                           "only if ContactOut finds nobody usable: different index",
                           conditional=True, provider="aiark"))
@@ -801,6 +810,13 @@ def outcome(rec, refused=False, state=None, failed=False):
             # Waiting on a verdict or on a human. Not a finding, and not
             # terminal: the record goes back where the runner looks.
             return rec.get("state") or "queued", ICP_DEFERRED
+        # TASK-205: the record has an ICP verdict but no contacts. The evidence
+        # gate refused person-level spend because research.why() says evidence
+        # is needed. Hold rather than drop: a later evidence pass (Grok at
+        # $0.20/domain) will populate company_facts and unblock it.
+        from . import research as _research
+        if _research.why(rec) is not None:
+            return "held", "enrich:evidence_required"
     if failed and not contacts:
         # A provider that did not answer also manufactures absence. Placed
         # AFTER the rejection branch on purpose: an ICP rejection is a
@@ -855,6 +871,19 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
                 events.record(rec, events.PROVIDER_CALL_SKIPPED,
                               provider=provider, operation=call,
                               reason=f"no icp verdict: {state}")
+                return False
+            # TASK-205: evidence gate. A record may not reach a paid
+            # person-level call unless it has what check_evidence will later
+            # need. research.why() is the canonical computation - it returns
+            # None when evidence is sufficient, or a reason when it is not.
+            from . import research as _research
+            evidence_need = _research.why(rec)
+            if evidence_need is not None:
+                log.append(f"{rec['id']}: evidence required ({evidence_need}), "
+                           f"skipped {call}")
+                events.record(rec, events.PROVIDER_CALL_SKIPPED,
+                              provider=provider, operation=call,
+                              reason=f"evidence required: {evidence_need}")
                 return False
         events.record(rec, events.PROVIDER_CALL_PLANNED, provider=provider,
                       operation=call, reason=reason_code or why[:80],

@@ -36,6 +36,10 @@ GENERATION_LINT_FAILURE = "generation:lint_failure"
 # Un-drop holds: reinstated after drop, pending re-enrichment.
 UNDROP_PENDING_REENRICHMENT = "undrop:pending_reenrichment"
 
+# Evidence holds: person-level enrichment refused because the record lacks
+# evidence that check_evidence will later need. TASK-205.
+ENRICH_EVIDENCE_REQUIRED = "enrich:evidence_required"
+
 
 def classify(reason_code):
     """Map a reason code to its taxonomy class.
@@ -58,6 +62,8 @@ def classify(reason_code):
     if reason_code == GENERATION_LINT_FAILURE:
         return HUMAN_REVIEW
     if reason_code == UNDROP_PENDING_REENRICHMENT:
+        return ACTIONABLE
+    if reason_code == ENRICH_EVIDENCE_REQUIRED:
         return ACTIONABLE
     return HUMAN_REVIEW
 
