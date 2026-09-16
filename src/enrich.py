@@ -813,7 +813,10 @@ def outcome(rec, refused=False, state=None, failed=False):
     unresolved = [c for c in contacts
                   if c.get("verdict") in (None, "unknown", "accept_all")]
     if unresolved:
-        return "held", None
+        verdicts = {c.get("verdict") for c in unresolved}
+        if verdicts <= {"accept_all"}:
+            return "held", "enrich:accept_all_uncleared"
+        return "held", "enrich:unresolved_verdict"
     return "dropped", "no address cleared verification"
 
 
@@ -1250,6 +1253,9 @@ def enrich_record(rec, budget, live=False, log=None, config=None,
     if state == "dropped":
         rec["drop_reason"] = reason
         events.record(rec, events.RECORD_DROPPED, reason=reason)
+    if state == "held" and reason:
+        from . import holdreasons
+        holdreasons.set_hold_reason(rec, reason)
     events.record(rec, events.ENRICHMENT_COMPLETED, outcome=state)
     store.log(rec, state, reason or f"enriched: {len(done)} provider call(s)")
     return done
