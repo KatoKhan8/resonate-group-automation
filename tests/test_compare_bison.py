@@ -285,10 +285,11 @@ class CompareBisonPass(_Base):
 
         approved = configdiff.approved_bison(campaign, recs, CONFIG)
         # Subjects should be the placeholders from the config.
+        # Threaded shape: all steps reference {SUBJECT_1} (TASK-219).
         self.assertEqual(approved["subjects"],
-                         ("{SUBJECT_1}", "{SUBJECT_2}", "{SUBJECT_3}"))
+                         ("{SUBJECT_1}", "{SUBJECT_1}", "{SUBJECT_1}"))
         # Delays should be the declared wait_in_days, not cadence days.
-        self.assertEqual(approved["delays"], (3, 4, 0))
+        self.assertEqual(approved["delays"], (3, 4, 1))
         # Actions should use provider naming.
         self.assertEqual(approved["actions"], ("step1", "step2", "step3"))
 

@@ -231,6 +231,7 @@ class Factory(CampaignTest):
             "subjects": list(approved["subjects"]),
             "bodies": list(approved["bodies"]),
             "delays": list(approved["delays"]),
+            "thread_replies": list(approved.get("thread_replies", ())),
             "max_emails_per_day": approved["max_emails_per_day"],
             "max_new_leads_per_day": approved["max_new_leads_per_day"],
             "per_domain_cap": 3,
@@ -241,10 +242,11 @@ class Factory(CampaignTest):
     def compare_email(self, campaign, recs, **mutation):
         held = self.held_by_bison(campaign, recs, **mutation)
         steps = [{"order": i + 1, "active": True, "email_subject": subject,
-                  "email_body": body, "wait_in_days": delay}
-                 for i, (subject, body, delay)
+                  "email_body": body, "wait_in_days": delay,
+                  "thread_reply": tr}
+                 for i, (subject, body, delay, tr)
                  in enumerate(zip(held["subjects"], held["bodies"],
-                                  held["delays"]))]
+                                  held["delays"], held["thread_replies"]))]
         row = {"id": held["campaign_id"], "name": held["name"],
                "status": held["status"],
                "max_emails_per_day": held["max_emails_per_day"],

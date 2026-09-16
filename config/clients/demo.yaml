@@ -120,3 +120,37 @@ email_security:
 providers:
   emailbison:
     workspace: 99
+
+# The demo client's email sequence, matching the cadence's email steps.
+# Threaded shape (TASK-219): all steps reference {SUBJECT_1}, follow-ups
+# are thread replies.
+email_sequence:
+  title: Demo cadence sequence
+  steps:
+    day1:
+      order: 1
+      subject: "{SUBJECT_1}"
+      body: "<p>{BODY_1}</p>"
+      wait_in_days: 4
+    day5:
+      order: 2
+      subject: "{SUBJECT_1}"
+      body: "<p>{BODY_2}</p>"
+      wait_in_days: 5
+    day10:
+      order: 3
+      subject: "{SUBJECT_1}"
+      body: "<p>{BODY_3}</p>"
+      wait_in_days: 5
+    day15:
+      order: 4
+      subject: "{SUBJECT_1}"
+      body: "<p>{BODY_4}</p>"
+      wait_in_days: 6
+    day21:
+      order: 5
+      subject: "{SUBJECT_1}"
+      body: "<p>{BODY_5}</p>"
+      wait_in_days: 1
+  thread_reply_pattern: [false, true, true, true, true]
+
