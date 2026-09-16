@@ -127,18 +127,24 @@ Claude's, run from Claude's worktree. If a task appears to ask you for it,
 do the code and the tests, and say in your RESULT BLOCK that the generation
 is owed.
 
-**To READ real record data, use the snapshot:**
+**To READ real record data, use the manifest or live state:**
 
-    work/queue.snapshot.jsonl    a read-only copy of production
-    work/queue.snapshot.STAMP    when it was taken, and from which commit
+    docs/state/QUEUE-MANIFEST.json    sanitised, in git, no PII, regenerated
+    work/queue.jsonl                  live state, in Claude's worktree only
 
-It is deliberately NOT called `queue.jsonl`, so nothing can mistake it for
-live state and no `store` write can land on it. **Quote the stamp in your
-result block** whenever a number comes from it - a measurement against a
-snapshot is a measurement at a moment, and the moment is part of the answer.
+The snapshot (`work/queue.snapshot.jsonl`) is RETIRED as of 2026-09-16.
+It was a manual copy that went stale and caused at least two wrong
+measurements (TASK-194 measured 143, the real figure was 159; the snapshot
+reported `icp_status: NONE` for all 550 while live state had 65 verified).
+See `docs/SNAPSHOT-RETIRED-2026-09-16.md` for the full argument.
 
-Never write to either file. `store.py` owns the real one and you are not
-running it against production.
+If a worktree has no `work/queue.jsonl` (most worker worktrees), read
+`docs/state/QUEUE-MANIFEST.json` for counts and stage distribution. For
+record-level analysis, ask Claude to run the measurement from Claude's
+worktree, or state in the result block that live-state access is owed.
+
+Never write to `work/queue.jsonl` or `work/campaigns.jsonl`. `store.py`
+owns them and you are not running against production.
 
 ### The queue has six states
 
