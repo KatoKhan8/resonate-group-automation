@@ -1,0 +1,165 @@
+{
+  "timestamp": "2026-09-16T06:43:56.425938+00:00",
+  "records_processed": 4,
+  "records_failed": 0,
+  "total_cost_ticks": 8181880000,
+  "total_cost_usd": 0.818188,
+  "movement": {
+    "qualified": 0,
+    "rejected": 2,
+    "still_review": 1,
+    "unknown": 1,
+    "confidence_off_low": 0
+  },
+  "still_unknown_criteria": [
+    {
+      "record_id_hash": "10fd554d2f68",
+      "missing": [
+        "no evidence of how client work is delivered",
+        "no evidence for delivery complexity",
+        "no evidence for resource planning need"
+      ]
+    }
+  ],
+  "cost_per_verdict": 0.409094,
+  "review_total": 66,
+  "projection_to_review_total": 25.363828,
+  "results": [
+    {
+      "record_id_hash": "c74e7e1541ab",
+      "domain_hash": "e691c6dd0272",
+      "company_hash": "e691c6dd02726a76",
+      "old_status": "review",
+      "old_score": 14.0,
+      "old_confidence": "low",
+      "new_status": "unknown",
+      "new_score": 14.0,
+      "new_confidence": "low",
+      "new_missing": [
+        "vertical could not be classified from the available evidence",
+        "no evidence of how client work is delivered",
+        "no evidence for delivery complexity",
+        "no evidence for resource planning need",
+        "no evidence for profitability need"
+      ],
+      "facts_added": 4,
+      "research_added": 11,
+      "cost_usd": 0.237486,
+      "cost_ticks": 2374860000,
+      "search_urls_count": 66,
+      "claims_gate": null,
+      "usage": {
+        "prompt_tokens": 156033,
+        "completion_tokens": 3522,
+        "total_tokens": 159555,
+        "cached_tokens": 103808,
+        "reasoning_tokens": 3200,
+        "cost_in_usd_ticks": 2374860000,
+        "num_sources_used": 0,
+        "num_server_side_tools_used": 12
+      }
+    },
+    {
+      "record_id_hash": "10fd554d2f68",
+      "domain_hash": "4de4cc78853f",
+      "company_hash": "4de4cc78853f40da",
+      "old_status": "review",
+      "old_score": 9.0,
+      "old_confidence": "low",
+      "new_status": "review",
+      "new_score": 33.0,
+      "new_confidence": "low",
+      "new_missing": [
+        "no evidence of how client work is delivered",
+        "no evidence for delivery complexity",
+        "no evidence for resource planning need",
+        "no evidence for profitability need",
+        "no evidence for utilization need"
+      ],
+      "facts_added": 5,
+      "research_added": 17,
+      "cost_usd": 0.147336,
+      "cost_ticks": 1473360000,
+      "search_urls_count": 45,
+      "claims_gate": null,
+      "usage": {
+        "prompt_tokens": 78897,
+        "completion_tokens": 2437,
+        "total_tokens": 81334,
+        "cached_tokens": 46720,
+        "reasoning_tokens": 2160,
+        "cost_in_usd_ticks": 1473360000,
+        "num_sources_used": 0,
+        "num_server_side_tools_used": 9
+      }
+    },
+    {
+      "record_id_hash": "41485ed4ecaa",
+      "domain_hash": "65fa840cdfce",
+      "company_hash": "65fa840cdfce1e52",
+      "old_status": "review",
+      "old_score": 0.0,
+      "old_confidence": "low",
+      "new_status": "rejected",
+      "new_score": 0.0,
+      "new_confidence": "low",
+      "new_missing": [
+        "vertical could not be classified from the available evidence",
+        "no evidence of how client work is delivered",
+        "no evidence for delivery complexity",
+        "no evidence for resource planning need",
+        "no evidence for profitability need"
+      ],
+      "facts_added": 4,
+      "research_added": 12,
+      "cost_usd": 0.226886,
+      "cost_ticks": 2268860000,
+      "search_urls_count": 85,
+      "claims_gate": null,
+      "usage": {
+        "prompt_tokens": 150011,
+        "completion_tokens": 2548,
+        "total_tokens": 152559,
+        "cached_tokens": 95616,
+        "reasoning_tokens": 2333,
+        "cost_in_usd_ticks": 2268860000,
+        "num_sources_used": 0,
+        "num_server_side_tools_used": 11
+      }
+    },
+    {
+      "record_id_hash": "ef2e9dd01ba4",
+      "domain_hash": "75982c7fb98d",
+      "company_hash": "75982c7fb98db061",
+      "old_status": "review",
+      "old_score": 0.0,
+      "old_confidence": "low",
+      "new_status": "rejected",
+      "new_score": 0.0,
+      "new_confidence": "low",
+      "new_missing": [
+        "vertical could not be classified from the available evidence",
+        "no evidence of how client work is delivered",
+        "no evidence for delivery complexity",
+        "no evidence for resource planning need",
+        "no evidence for profitability need"
+      ],
+      "facts_added": 5,
+      "research_added": 34,
+      "cost_usd": 0.20648,
+      "cost_ticks": 2064800000,
+      "search_urls_count": 65,
+      "claims_gate": null,
+      "usage": {
+        "prompt_tokens": 130106,
+        "completion_tokens": 3158,
+        "total_tokens": 133264,
+        "cached_tokens": 85120,
+        "reasoning_tokens": 2702,
+        "cost_in_usd_ticks": 2064800000,
+        "num_sources_used": 0,
+        "num_server_side_tools_used": 11
+      }
+    }
+  ]
+}
