@@ -285,6 +285,26 @@ def _sequence_steps(configured, cadence_steps):
             else False
         step["thread_reply"] = bool(tr)
         steps.append(step)
+    # THREAD-REPLY INVARIANT: only the opener owns a subject. When the
+    # sequence has at least one threaded follow-up, every follow-up must
+    # either be threaded or reference the opener's subject. A mixed shape
+    # - some follow-ups threaded, others opening new threads with their own
+    # subjects - violates the invariant and is refused.
+    if len(steps) > 1:
+        has_any_threading = any(s.get("thread_reply") for s in steps[1:])
+        if has_any_threading:
+            opener_subject = steps[0].get("email_subject", "")
+            for step in steps[1:]:
+                if (not step.get("thread_reply")
+                        and step.get("email_subject") != opener_subject):
+                    raise FactoryRefused(
+                        f"step {step.get('order')} is not a thread reply but "
+                        f"carries a distinct subject "
+                        f"({step.get('email_subject')!r} vs opener "
+                        f"{opener_subject!r}). Only the opener owns a "
+                        f"subject; follow-ups must be thread replies "
+                        f"referencing the opener's subject. Set thread_reply "
+                        f"to true or change the subject to match the opener")
     return steps
 
 
@@ -1071,7 +1091,7 @@ def _remember_leads(pairs):
                     contact["bison_lead_id"] = lead_id
 
 
-def _variables_for(lead, campaign):
+def _variables_for(lead, campaign, sequence=None):
     """Everything this lead carries at the provider.
 
     Two kinds, and both are load-bearing.
@@ -1102,6 +1122,14 @@ def _variables_for(lead, campaign):
     numbered pairs and neither unnumbered name. Writing both would leave
     every lead holding a variable its own template never reads, and a reader
     comparing two leads could not tell which shape the campaign was built in.
+
+    THREADED SEQUENCES: SUBJECT_1 ONLY. When the sequence has threaded
+    follow-ups (any step declares ``thread_reply: true``), only ``subject_1``
+    carries the opener's subject. Follow-up subject variables are written as
+    empty strings: the template references ``{SUBJECT_1}`` for every step,
+    and the provider prepends ``Re:`` itself. A non-empty ``subject_2`` on a
+    threaded lead is a stale value from a previous non-threaded era, and
+    ``_stale_clearances`` wipes it during reconciliation.
     """
     values = {"record_id": lead["record_id"],
               "contact_key": lead["contact_key"],
@@ -1111,8 +1139,16 @@ def _variables_for(lead, campaign):
         values["subject"] = lead.get("subject") or ""
         values["body"] = lead.get("body") or ""
     else:
+        threaded_keys = set()
+        for node in (sequence or ()):
+            if node.get("thread_reply") and node.get("step_key"):
+                threaded_keys.add(node["step_key"])
         for position, node in enumerate(copy, start=1):
-            values[f"subject_{position}"] = node.get("subject") or ""
+            step_key = node.get("step_key")
+            if position > 1 and step_key in threaded_keys:
+                values[f"subject_{position}"] = ""
+            else:
+                values[f"subject_{position}"] = node.get("subject") or ""
             values[f"body_{position}"] = node.get("body") or ""
     return bison._variables(values)
 
@@ -1120,19 +1156,36 @@ def _variables_for(lead, campaign):
 def _stale_clearances(sequence):
     """Empty-valued entries for numbered copy slots the sequence does not use.
 
-    A lead that previously carried a longer sequence holds ``subject_N`` and
-    ``body_N`` variables beyond the current length. ``_variables_for`` names
-    only the positions the sequence reads, so the reconciliation in
-    ``_ensure_leads`` never compares - and never clears - the higher ones.
-    Measured on campaign 485 on 2026-09-16: ten leads held ``subject_4``,
-    ``subject_5``, ``body_4`` and ``body_5`` from a five-step era while the
-    campaign had shrunk to three steps, and nothing in the stale comparison
-    named them.
+    TWO KINDS OF STALE, ONE MECHANISM.
 
-    Returns explicit empties for every numbered position above the sequence
-    length up to ``MAX_SEQUENCE_STEPS``. ``_ensure_leads`` merges them into
-    the wanted set; the provider PATCH stores the empty value and the
-    template never reads a variable its sequence does not declare.
+    1. Out-of-range positions: a lead that previously carried a longer
+       sequence holds ``subject_N`` and ``body_N`` variables beyond the
+       current length. ``_variables_for`` names only the positions the
+       sequence reads, so the reconciliation in ``_ensure_leads`` never
+       compares - and never clears - the higher ones. Measured on campaign
+       485 on 2026-09-16: ten leads held ``subject_4``, ``subject_5``,
+       ``body_4`` and ``body_5`` from a five-step era while the campaign had
+       shrunk to three steps.
+
+    2. In-range follow-up subjects on a threaded sequence: when the threaded
+       shape is in effect (any step declares ``thread_reply: true``), only
+       ``subject_1`` carries prospect-facing content. Follow-up subjects at
+       positions 2..N are not referenced by the template (all steps reference
+       ``{SUBJECT_1}``), but a lead from a previous non-threaded era may still
+       hold a non-empty ``subject_2`` or ``subject_3``. Without clearing them,
+       a config change from non-threaded to threaded would leave stale
+       subjects on the lead that the template no longer reads - but that a
+       future template change could resurrect.
+
+    Returns explicit empties for:
+    - Every ``subject_{2..N}`` when the sequence is threaded (in-range
+      follow-up subjects the threaded shape does not use).
+    - Every ``subject_{N+1..MAX}`` and ``body_{N+1..MAX}`` (out-of-range
+      positions beyond the sequence length).
+
+    ``_ensure_leads`` merges them into the wanted set; the provider PATCH
+    stores the empty value and the template never reads a variable its
+    sequence does not declare.
 
     Single-step campaigns use unnumbered ``subject`` and ``body`` and have
     no numbered positions to clear, so the answer is empty.
@@ -1141,9 +1194,14 @@ def _stale_clearances(sequence):
     if n_steps < 2:
         return []
     entries = []
-    for pos in range(n_steps + 1, MAX_SEQUENCE_STEPS + 1):
-        entries.append({"name": f"subject_{pos}", "value": ""})
-        entries.append({"name": f"body_{pos}", "value": ""})
+    has_threading = any(s.get("thread_reply") for s in sequence)
+    for pos in range(2, MAX_SEQUENCE_STEPS + 1):
+        if pos <= n_steps:
+            if has_threading:
+                entries.append({"name": f"subject_{pos}", "value": ""})
+        else:
+            entries.append({"name": f"subject_{pos}", "value": ""})
+            entries.append({"name": f"body_{pos}", "value": ""})
     return entries
 
 
@@ -1310,7 +1368,8 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
             # step era survive silently on a three-step campaign, and the
             # stale comparison never names them because they are not in the
             # wanted set.
-            wanted_vars = _variables_for(lead, campaign)
+            wanted_vars = _variables_for(lead, campaign,
+                                         sequence=plan.get("sequence") or [])
             clearances = _stale_clearances(plan.get("sequence") or [])
             all_wanted = wanted_vars + clearances
             held = bison.variables_of(bison.lead(existing))
@@ -1334,7 +1393,9 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
                 # reply. Without them a reply arrives attached to an address
                 # and to nothing else, and reply-stop cannot find the person
                 # it is supposed to stop.
-                "custom_variables": _variables_for(lead, campaign)})
+                "custom_variables": _variables_for(
+                    lead, campaign,
+                    sequence=plan.get("sequence") or [])})
             created += 1
         except ProviderError as e:
             # ALREADY THERE, AND WE NEVER WROTE IT DOWN.

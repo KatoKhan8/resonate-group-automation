@@ -44,12 +44,13 @@ THREE_STEP_CONFIG = {
         "steps": {
             "em1": {"order": 1, "subject": "{SUBJECT_1}",
                     "body": "<p>{BODY_1}</p>", "wait_in_days": 3},
-            "em2": {"order": 2, "subject": "{SUBJECT_2}",
+            "em2": {"order": 2, "subject": "{SUBJECT_1}",
                     "body": "<p>{BODY_2}</p>", "wait_in_days": 4},
-            "em3": {"order": 3, "subject": "{SUBJECT_3}",
-                    "body": "<p>{BODY_3}</p>", "wait_in_days": 0},
+            "em3": {"order": 3, "subject": "{SUBJECT_1}",
+                    "body": "<p>{BODY_3}</p>", "wait_in_days": 1},
         },
-        "thread_reply_pattern": [False, True, False],
+        # Threaded shape: only the opener owns a subject (TASK-219).
+        "thread_reply_pattern": [False, True, True],
     },
     "sending_window": {"days": ["monday", "tuesday", "wednesday", "thursday",
                                 "friday"],
@@ -223,11 +224,18 @@ class StaleVariablesClearedOnReconciliation(QueueTest):
         self._stage()
 
         held = self.fb.variables_of(self.fb.lead(lid))
+        # Threaded shape (TASK-219): subject_1 is the opener and is preserved.
+        # subject_2 and subject_3 are cleared because they are in-range
+        # follow-up subjects the threaded shape does not use.
+        self.assertEqual(
+            held.get("subject_1"), "subject for em1",
+            "subject_1 was corrupted by the stale clearing")
+        for pos in (2, 3):
+            self.assertEqual(
+                held.get(f"subject_{pos}"), "",
+                f"subject_{pos} should be cleared (threaded follow-up)")
         for pos in range(1, 4):
             key = f"em{pos}"
-            self.assertEqual(
-                held.get(f"subject_{pos}"), f"subject for {key}",
-                f"subject_{pos} was corrupted by the stale clearing")
             self.assertEqual(
                 held.get(f"body_{pos}"), f"<p>body for {key}</p>",
                 f"body_{pos} was corrupted by the stale clearing")
@@ -259,12 +267,17 @@ class StaleVariablesClearedOnReconciliation(QueueTest):
         self.assertIn("body_4", combined)
 
     def test_already_empty_variables_do_not_trigger_extra_writes(self):
-        """A lead whose out-of-range variables are already "" is not updated.
+        """A lead whose out-of-range and threaded-follow-up variables are
+        already "" is not updated.
 
         The reconciliation compares held values against wanted ones. A
         variable that is already "" matches the clearance entry and does
         not appear in the stale list. Only variables that are non-empty
         or absent (None != "") trigger a write.
+
+        With the threaded shape (TASK-219), subject_2 and subject_3 are
+        also expected to be empty, so they must be pre-set to "" for this
+        test to verify that no unnecessary write is triggered.
         """
         self.fb.ensure_custom_variables()
         lid = self.fb.create_lead({
@@ -277,9 +290,10 @@ class StaleVariablesClearedOnReconciliation(QueueTest):
                 {"name": "client", "value": "productive"},
                 {"name": "subject_1", "value": "subject for em1"},
                 {"name": "body_1", "value": "<p>body for em1</p>"},
-                {"name": "subject_2", "value": "subject for em2"},
+                # Threaded shape: subject_2 and subject_3 are already empty.
+                {"name": "subject_2", "value": ""},
                 {"name": "body_2", "value": "<p>body for em2</p>"},
-                {"name": "subject_3", "value": "subject for em3"},
+                {"name": "subject_3", "value": ""},
                 {"name": "body_3", "value": "<p>body for em3</p>"},
                 # Out-of-range variables are already empty strings.
                 {"name": "subject_4", "value": ""},

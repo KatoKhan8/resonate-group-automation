@@ -90,6 +90,10 @@ REQUIRED_BISON = (
     # called it a match.
     "lead_set",
     "lead_count", "actions", "subjects", "bodies", "delays",
+    # THREAD-REPLY INVARIANT: the comparator proves which steps are thread
+    # replies. A follow-up that lost its thread_reply flag would open a new
+    # thread with its own subject - the defect this invariant forbids.
+    "thread_replies",
     "max_emails_per_day", "max_new_leads_per_day",
 )
 
@@ -556,14 +560,28 @@ def _expected_lead_variables(contact_copy, sequence, first_name=""):
 
     For a multi-step sequence: `subject_1`, `body_1`, `subject_2`, etc.
     For a single-step sequence: `subject` and `body`.
+
+    THREADED SEQUENCES: only ``subject_1`` carries the opener's subject.
+    Follow-up subject variables are empty because the template references
+    ``{SUBJECT_1}`` for every step and the provider prepends ``Re:`` itself.
+    The filter at the end drops empty values, so a threaded lead's expected
+    variables carry ``subject_1`` plus one body per step and nothing else.
     """
     values = {}
     if len(contact_copy) <= 1:
         values["subject"] = (contact_copy[0].get("subject") or "") if contact_copy else ""
         values["body"] = (contact_copy[0].get("body") or "") if contact_copy else ""
     else:
+        threaded_keys = set()
+        for node in (sequence or ()):
+            if node.get("thread_reply") and node.get("step_key"):
+                threaded_keys.add(node["step_key"])
         for position, node in enumerate(contact_copy, start=1):
-            values[f"subject_{position}"] = node.get("subject") or ""
+            step_key = node.get("step_key")
+            if position > 1 and step_key in threaded_keys:
+                values[f"subject_{position}"] = ""
+            else:
+                values[f"subject_{position}"] = node.get("subject") or ""
             values[f"body_{position}"] = node.get("body") or ""
     return {k: v for k, v in values.items() if v}
 
@@ -619,6 +637,7 @@ def approved_bison(campaign, recs=None, config=None):
         (config or {}).get("email_sequence"), cadence_steps)
 
     seq_subjects, seq_bodies, seq_delays, seq_actions = [], [], [], []
+    seq_thread_replies = []
     for node in sequence:
         tr = bool(node.get("thread_reply"))
         subj, body, _ = bisonfactory._comparable_step(
@@ -627,6 +646,7 @@ def approved_bison(campaign, recs=None, config=None):
         seq_bodies.append(_norm_text(body))
         seq_delays.append(int(node.get("wait_in_days") or 0))
         seq_actions.append(f"step{int(node.get('order') or 0)}")
+        seq_thread_replies.append(tr)
 
     # THE LEAD SET AND PER-LEAD COPY.
     leads = set()
@@ -690,6 +710,7 @@ def approved_bison(campaign, recs=None, config=None):
         "subjects": tuple(seq_subjects),
         "bodies": tuple(seq_bodies),
         "delays": tuple(seq_delays),
+        "thread_replies": tuple(seq_thread_replies),
         "max_emails_per_day": volume,
         "max_new_leads_per_day": volume,
         "_lead_copy": lead_copy,
@@ -815,13 +836,14 @@ def provider_bison(campaign_id, expect_workspace=None, max_pages=200):
     # steps so the two sides compare the same quantity.
     from . import bisonfactory as _bf
 
-    prov_subjects, prov_bodies = [], []
+    prov_subjects, prov_bodies, prov_thread_replies = [], [], []
     for s in live:
         tr = bool(s.get("thread_reply"))
         subj, body, _ = _bf._comparable_step(
             s.get("email_subject"), s.get("email_body"), tr)
         prov_subjects.append(_norm_text(subj))
         prov_bodies.append(_norm_text(body))
+        prov_thread_replies.append(tr)
 
     return {
         "campaign_id": str(row.get("id")),
@@ -837,6 +859,7 @@ def provider_bison(campaign_id, expect_workspace=None, max_pages=200):
         "subjects": tuple(prov_subjects),
         "bodies": tuple(prov_bodies),
         "delays": tuple(int(s.get("wait_in_days") or 0) for s in live),
+        "thread_replies": tuple(prov_thread_replies),
         "max_emails_per_day": row.get("max_emails_per_day"),
         "max_new_leads_per_day": row.get("max_new_leads_per_day"),
         "_per_domain_cap": row.get("daily_max_sends_per_receiving_domain"),
