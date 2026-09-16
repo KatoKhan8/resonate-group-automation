@@ -493,11 +493,22 @@ providers:
 #
 # CONTROL is persona_pain -> comparable_proof -> breakup. Three steps, waits
 # 3 and 4 with the last step carrying 0 because nothing follows it, and
-# threading F/T/F - the second step is the in-thread follow-up. EmailBison
-# prepends "Re:" to a thread reply itself, so no subject here says it.
+# THREAD-REPLY INVARIANT, 2026-09-16: only the opener owns a subject.
+#
+# The operator verified the desired behaviour in the EmailBison UI: follow-ups
+# must stay in the original thread, and only the opener owns a subject. Every
+# step's `email_subject` references `{SUBJECT_1}`. The opener sends it as the
+# subject. The follow-ups are thread replies, so the provider continues the
+# original thread and prepends `Re:` itself. There is exactly ONE subject
+# variable per lead - `subject_1` - and no `subject_2` or `subject_3` exists
+# to be generated, approved, or accidentally sent.
+#
+# Do not write `Re:` into a subject yourself. The provider prepends it, and
+# `EMAILBISON-COPY-REQUIREMENTS.md` says not to. A hand-built `Re:` chain is
+# simulated threading, which is the thing being forbidden.
 email_sequence:
   title: Resonate CONTROL
-  thread_reply_pattern: [false, true, false]
+  thread_reply_pattern: [false, true, true]
   steps:
     em1:
       order: 1
@@ -506,12 +517,12 @@ email_sequence:
       wait_in_days: 3
     em2:
       order: 2
-      subject: "{SUBJECT_2}"
+      subject: "{SUBJECT_1}"
       body: "<p>{BODY_2}</p>"
       wait_in_days: 4
     em3:
       order: 3
-      subject: "{SUBJECT_3}"
+      subject: "{SUBJECT_1}"
       body: "<p>{BODY_3}</p>"
       # 1, not 0. `wait_in_days` is the gap until the NEXT step, so on the
       # final step it is inert - nothing follows it. But 0 was rejected by the
