@@ -37,33 +37,9 @@ REPORT = os.path.join(ROOT, "docs", "BOUGHT-EVIDENCE-2026-09-16.md")
 BUDGET_USD = 5.00
 HARD_STOP_USD = 8.00
 
-RESEARCH_PROMPT = """Research the company at domain "{domain}"{company_hint}.
-
-Return a JSON object with these fields (omit any you cannot verify):
-{{
-  "name": "company name",
-  "industry": "what industry they are in",
-  "description": "one sentence what the company does",
-  "specialties": ["list", "of", "specialties", "or", "services"],
-  "notable": ["notable clients, projects, or achievements"],
-  "recent_developments": ["recent news, launches, hiring, funding, partnerships"],
-  "employees_estimate": "employee count or range if found",
-  "founded": "year founded if found",
-  "offices": ["locations"],
-  "revenue": "revenue estimate if found",
-  "services": ["services offered"],
-  "location": "headquarters location"
-}}
-
-For each fact you assert, include the source URL in a separate field:
-{{
-  "sources": {{
-    "field_name": "https://source-url.com"
-  }}
-}}
-
-Only include facts you can attribute to a verifiable source URL. Do not infer
-or guess. Return ONLY the JSON object, no other text."""
+RESEARCH_PROMPT = """Research {domain}{company_hint}. Return JSON:
+{{"name":"","industry":"","description":"","specialties":[],"employees_estimate":"","founded":"","offices":[],"location":"","sources":{{"field":"url"}}}}
+Only include facts with verifiable source URLs. Return ONLY JSON."""
 
 # Fields that map onto company_facts keys the ICP model reads
 FACT_FIELDS = (
@@ -117,6 +93,22 @@ def _task169_sort_key(rec):
             0 if ro == "HTTP_SUCCESS" else 1)
 
 
+def _count_review_records():
+    """Count total records in `review` status from the snapshot."""
+    count = 0
+    with open(SNAPSHOT, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            qual = rec.get("qualification") or {}
+            verdict = qual.get("verdict") or {}
+            if verdict.get("icp_status") == "review":
+                count += 1
+    return count
+
+
 def select_records(n=25):
     """Pick records from the snapshot: review with no/ minimal evidence.
 
@@ -160,35 +152,48 @@ def select_records(n=25):
     return selected[:n]
 
 
-def call_grok_responses(domain, company_name=None):
+def call_grok_responses(domain, company_name=None, max_retries=2):
     """Call Grok via the adapter (TASK-182: Responses API with web_search).
 
     Uses src.providers.xai.respond() - the adapter owns auth, retry,
     endpoint selection and response trimming.  This script never calls
     the endpoint directly.
+
+    Script-level retry wraps the adapter's internal retry: the adapter
+    retries once on 5xx/network errors within its 60s timeout.  This
+    outer retry handles cases where the adapter's timeout fires and
+    raises ProviderError with a timeout message.
     """
-    company_hint = f" (company name: {company_name})" if company_name else ""
+    company_hint = f" ({company_name})" if company_name else ""
     prompt = RESEARCH_PROMPT.format(domain=domain, company_hint=company_hint)
 
-    try:
-        result = xai_adapter.respond(
-            input_messages=[{"role": "user", "content": prompt}],
-            model="grok-4.6",
-            max_tokens=4096,
-            temperature=0.3,
-            tools=[{"type": "web_search"}],
-        )
-        return {
-            "content": result.get("content") or "",
-            "usage": result.get("usage") or {},
-            "search_urls": result.get("search_urls") or [],
-            "model": result.get("model"),
-        }
-    except MissingKey as e:
-        raise
-    except ProviderError as e:
-        return {"error": str(e), "content": "", "usage": {},
-                "search_urls": []}
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            result = xai_adapter.respond(
+                input_messages=[{"role": "user", "content": prompt}],
+                model="grok-4.6",
+                max_tokens=2048,
+                temperature=0.3,
+                tools=[{"type": "web_search"}],
+            )
+            return {
+                "content": result.get("content") or "",
+                "usage": result.get("usage") or {},
+                "search_urls": result.get("search_urls") or [],
+                "model": result.get("model"),
+            }
+        except MissingKey:
+            raise
+        except ProviderError as e:
+            last_error = str(e)
+            if "timeout" in last_error.lower() and attempt < max_retries:
+                time.sleep(1)
+                continue
+            return {"error": last_error, "content": "", "usage": {},
+                    "search_urls": []}
+    return {"error": last_error or "unknown", "content": "", "usage": {},
+            "search_urls": []}
 
 
 def parse_grok_json(content):
@@ -227,18 +232,48 @@ def parse_grok_json(content):
         return {"_raw": text[:500], "_parse_error": True}
 
 
+def _normalize_grok_data(grok_data):
+    """Normalize Grok's response to flat format.
+
+    Grok may return either:
+      Flat:   {"name": "Linear", "sources": {"name": "https://..."}}
+      Nested: {"name": {"value": "Linear", "sources": ["https://..."]}}
+
+    Returns (flat_dict, sources_dict) where sources_dict maps field -> URL.
+    """
+    sources = grok_data.get("sources") or {}
+    flat = {}
+    flat_sources = dict(sources)
+
+    for field in FACT_FIELDS:
+        raw = grok_data.get(field)
+        if raw is None:
+            continue
+        if isinstance(raw, dict) and "value" in raw:
+            flat[field] = raw["value"]
+            nested_sources = raw.get("sources") or []
+            if isinstance(nested_sources, list) and nested_sources:
+                flat_sources[field] = nested_sources[0]
+            elif isinstance(nested_sources, str):
+                flat_sources[field] = nested_sources
+        else:
+            flat[field] = raw
+
+    return flat, flat_sources
+
+
 def grok_to_company_facts(rec, grok_data):
     """Merge Grok's sourced facts into company_facts.
 
     Only fields with a source URL are written. A fact without provenance
     cannot pass the claims gate, so it is worth nothing.
     """
-    sources = grok_data.get("sources") or {}
+    flat, sources = _normalize_grok_data(grok_data)
     facts = rec.get("company_facts") or {}
     new_facts = {}
 
     for field in FACT_FIELDS:
-        value = grok_data.get(field)
+        value = flat.get(field)
         if not value:
             continue
         source_url = sources.get(field)
@@ -279,13 +314,13 @@ def grok_to_research_entries(rec, grok_data, retrieved_at):
     Each entry carries provenance (source_url, retrieved_at, evidence_id)
     so it passes the same gates as free-path evidence.
     """
-    sources = grok_data.get("sources") or {}
+    flat, sources = _normalize_grok_data(grok_data)
     entries = []
     domain = rec.get("domain", "")
     record_id = rec.get("id", "")
 
     for field in FACT_FIELDS:
-        value = grok_data.get(field)
+        value = flat.get(field)
         if not value:
             continue
         source_url = sources.get(field)
@@ -379,12 +414,25 @@ def run_claims_gate(rec):
     }
 
 
+def _load_previous_results():
+    """Load previous results for resume capability."""
+    if not os.path.exists(RESULTS):
+        return None
+    try:
+        with open(RESULTS, encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="task183_buy_evidence")
     p.add_argument("--dry-run", action="store_true",
                    help="select records and show plan, no API calls")
     p.add_argument("--limit", type=int, default=25,
                    help="number of records (hard stop at 25)")
+    p.add_argument("--resume", action="store_true",
+                   help="skip records already in results file")
     a = p.parse_args(argv)
 
     n = min(a.limit, 25)
@@ -424,14 +472,36 @@ def main(argv=None):
         print("The script is ready to run once the key is available.")
         return 2
 
-    # --- Process each record ---
+    # --- Resume from previous run ---
     results = []
     total_cost_ticks = 0
     total_cost_usd = 0.0
     movement = {"qualified": 0, "rejected": 0, "still_review": 0,
                 "unknown": 0, "confidence_off_low": 0}
     still_unknown_criteria = []
+    skip_ids = set()
 
+    if a.resume:
+        prev = _load_previous_results()
+        if prev:
+            results = prev.get("results", [])
+            total_cost_usd = prev.get("total_cost_usd", 0.0)
+            total_cost_ticks = prev.get("total_cost_ticks", 0)
+            prev_movement = prev.get("movement", {})
+            for k in movement:
+                movement[k] = prev_movement.get(k, 0)
+            still_unknown_criteria = prev.get("still_unknown_criteria", [])
+            for r in results:
+                h = r.get("record_id_hash")
+                if h:
+                    skip_ids.add(h)
+            print(f"Resuming: {len(results)} previous results loaded, "
+                  f"${total_cost_usd:.4f} spent so far")
+            print(f"Skipping {len(skip_ids)} already-processed records")
+            print()
+
+    # --- Process each record ---
+    processed_count = len(results)
     for i, rec in enumerate(selected, 1):
         rid = rec.get("id", "?")
         domain = rec.get("domain", "?")
@@ -439,13 +509,17 @@ def main(argv=None):
         h_id = hash_id(rid)
         h_domain = hash_domain(domain)
 
+        if h_id in skip_ids:
+            continue
+
         # Pre-evidence verdict
         old_verdict = (rec.get("qualification") or {}).get("verdict") or {}
         old_status = old_verdict.get("icp_status", "unknown")
         old_score = old_verdict.get("icp_score", 0)
         old_confidence = old_verdict.get("icp_confidence", "low")
 
-        print(f"[{i}/{n}] {h_id} ({h_domain})... ", end="", flush=True)
+        processed_count += 1
+        print(f"[{processed_count}/{n}] {h_id} ({h_domain})... ", end="", flush=True)
 
         # Call Grok through the adapter
         try:
@@ -588,18 +662,18 @@ def main(argv=None):
             print(f"  {entry['record_id_hash']}: {entry['missing']}")
         print()
 
-    verdicts = len(successful)
-    if verdicts > 0:
-        cost_per_verdict = total_cost_usd / (
-            movement["qualified"] + movement["rejected"]) if (
-                movement["qualified"] + movement["rejected"]) > 0 else float('inf')
+    review_total = _count_review_records()
+    verdicts_changed = movement["qualified"] + movement["rejected"]
+    if verdicts_changed > 0:
+        cost_per_verdict = total_cost_usd / verdicts_changed
         print(f"Cost per verdict change: ${cost_per_verdict:.4f}")
-        remaining = 308 - len(successful)
-        if cost_per_verdict != float('inf'):
-            projection = cost_per_verdict * remaining
-            print(f"Projection to 308 records: ${projection:.2f}")
-        else:
-            print("Projection to 308 records: cannot compute (no verdict changes)")
+        remaining = review_total - len(successful)
+        projection = cost_per_verdict * remaining
+        print(f"Projection to {review_total} review records: ${projection:.2f}")
+    else:
+        cost_per_verdict = None
+        print("Cost per verdict change: cannot compute (no verdict changes)")
+        print(f"Projection: cannot compute (no verdict changes in {len(successful)} records)")
     print()
 
     qualified_results = [r for r in successful if r["new_status"] == "qualified"]
@@ -623,7 +697,8 @@ def _save_results(results, movement, total_cost_ticks, total_cost_usd,
     failed = [r for r in results if "error" in r or "parse_error" in r]
     verdicts = movement["qualified"] + movement["rejected"]
     cost_per_verdict = (total_cost_usd / verdicts) if verdicts > 0 else None
-    remaining = 308 - len(successful)
+    review_total = _count_review_records()
+    remaining = review_total - len(successful)
     projection = (cost_per_verdict * remaining) if cost_per_verdict else None
 
     with open(RESULTS, "w", encoding="utf-8") as f:
@@ -636,7 +711,8 @@ def _save_results(results, movement, total_cost_ticks, total_cost_usd,
             "movement": movement,
             "still_unknown_criteria": still_unknown_criteria,
             "cost_per_verdict": cost_per_verdict,
-            "projection_to_308": projection,
+            "review_total": review_total,
+            "projection_to_review_total": projection,
             "results": results,
         }, f, indent=2, ensure_ascii=False)
 
