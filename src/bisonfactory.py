@@ -911,6 +911,34 @@ def _ensure_senders(provider_id, campaign, report):
     report["did"].append(f"bound {len(state['senders'])} sender inbox(es)")
 
 
+def _comparable_step(subject, body, thread_reply):
+    """One sequence step, in a shape the provider and we can be compared in.
+
+    THE PROVIDER REWRITES THE SUBJECT ON A THREAD REPLY, and it is documented
+    behaviour rather than drift. TASK-159 measured it across 153 same-thread
+    follow-ups in the estate: EmailBison prepends "Re: " itself, and
+    `EMAILBISON-COPY-REQUIREMENTS.md` says not to write it ourselves.
+
+    So a verbatim comparison of what we asked for against what is held is
+    guaranteed to disagree on every `thread_reply` step, forever. Measured
+    2026-09-16 on campaign 484: five steps written once, the only difference
+    being "Re: " on steps 2 and 4, and the read-back called it DRIFTED and
+    raised `WriteUnverified`. Nothing had drifted. The campaign was correct.
+
+    A false DRIFTED is expensive in a specific way: `set_sequence` APPENDS,
+    so the operator is told not to retry, and the campaign is abandoned as
+    unverifiable when it was right all along.
+
+    Normalising ONLY this one leading token, ONLY on a step that declares
+    itself a thread reply. Body and `thread_reply` are still compared exactly,
+    and a subject that differs by anything else still fails.
+    """
+    text = str(subject or "")
+    if thread_reply and text[:4].lower() == "re: ":
+        text = text[4:]
+    return (text, body, thread_reply)
+
+
 def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
     """Write the sequence into an EMPTY campaign, or refuse.
 
@@ -945,10 +973,10 @@ def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
         return
     held = bison.sequence_steps(provider_id)
     if held:
-        wanted = [(s["email_subject"], s["email_body"], s.get("thread_reply"))
-                  for s in steps]
-        got = [(s.get("email_subject"), s.get("email_body"),
-                s.get("thread_reply")) for s in held]
+        wanted = [_comparable_step(s["email_subject"], s["email_body"],
+                                   s.get("thread_reply")) for s in steps]
+        got = [_comparable_step(s.get("email_subject"), s.get("email_body"),
+                                s.get("thread_reply")) for s in held]
         if got == wanted:
             report["did"].append(
                 f"sequence already staged ({len(held)} step(s)); unchanged")
@@ -982,11 +1010,12 @@ def _ensure_sequence(provider_id, campaign, plan, report, by="system"):
         transport=lambda p: bison.set_sequence(provider_id, p["title"],
                                                p["sequence_steps"]),
         readback=lambda: {"steps": [
-            (s.get("email_subject"), s.get("email_body"),
-             s.get("thread_reply"))
+            _comparable_step(s.get("email_subject"), s.get("email_body"),
+                             s.get("thread_reply"))
             for s in bison.sequence_steps(provider_id)]},
-        expected={"steps": [(s["email_subject"], s["email_body"],
-                            s.get("thread_reply"))
+        expected={"steps": [_comparable_step(s["email_subject"],
+                                             s["email_body"],
+                                             s.get("thread_reply"))
                             for s in steps]}, by=by)
     report["did"].append(f"staged a {len(steps)}-step sequence")
 
