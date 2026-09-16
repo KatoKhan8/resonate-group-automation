@@ -96,3 +96,81 @@ The free-leg run with per-leg yield, the criteria and verdict movement, the
 unresolved records grouped by reason with the next step's cost per group, the
 spend proven zero from the ledger, and the company-level crawl count against
 the multi-contact record count.
+
+## RESULT
+
+**STATUS:** DONE (analysis only - the run is owed from Claude's worktree)
+
+**COMMIT SHA:** ef22359
+
+**TESTS:** 53 tests in test_waterfall_order, test_crawl_cache,
+test_contactout_fallback_semantics - all green.
+
+**FILES CHANGED:**
+- `docs/NEW-ORDER-RUN-2026-09-16.md` (new) - full analysis report
+- `scripts/task211_analyze_free_legs.py` (new) - read-only analysis script
+- Task file moved TODO/ -> RUNNING/
+
+**FINDINGS:**
+
+1. **BOUNDARY: the run did not execute.** QWEN.md forbids writing to
+   `work/queue.jsonl` from this worktree. The queue here (300 records) is a
+   stale copy; production has 550. Running here would write to an isolated
+   copy that never reaches production. The actual run is owed from Claude's
+   worktree.
+
+2. **Per-leg yield (from existing data):**
+   - ContactOut cache: 90 of 99 queued records already have a ContactOut
+     waterfall row. Re-running would skip the call (cache hit). 57 have
+     some data already.
+   - Webfetch crawl: ZERO records have a webfetch waterfall row. The new
+     free crawl has never been exercised. 53 queued records would benefit
+     (23 without any research + 30 with incomplete fields).
+
+3. **Unresolved records grouped by reason:**
+   - 32 too_small: FAIL-CLOSED, no provider can fix
+   - 10 geo_excluded: FAIL-CLOSED, client constraint
+   - 33 missing_all_three (industry/offices/employees): webfetch crawl (FREE)
+     then ContactOut company-info (1 credit)
+   - 4 missing_offices_only: same path
+   - 2 missing_industry_only: same path
+   - 18 has_facts_needs_qualify: needs qualify re-run, no provider call
+
+4. **Spend proven zero:** No `work/spend-ledger.jsonl` exists in this
+   worktree. The `actual_cost` of 185 on waterfall rows is historical from
+   blitz/blitz-company in previous production runs. `spendledger.record()`
+   calls `refuse_production_write()` which would refuse any attempt from
+   here. Zero paid calls originated from this worktree.
+
+5. **Crawl cache:** Implemented in `src/research.py` (lines 38-53), cleared
+   at start of `enrich.run()` (line 1348), used by `_from_the_site_itself()`
+   (line 270). NOT exercised in any production run (zero webfetch rows).
+   14 multi-contact records exist (13 with 2 contacts, 1 with 3). Expected
+   behavior: 14 crawls max, not 29.
+
+6. **Flag semantics (--limit, --lane, --cap):** TASK-181 fixed both.
+   `--limit N` now bounds records processed (not scanned). `--lane` scopes
+   every stage. `--cap 0` refuses all paid calls - the correct bound for
+   a free-leg run.
+
+7. **Concurrent writer check:** No lock files in work/. This worktree is
+   isolated from Claude's. The approval scripts and canary path are live
+   against the same files but in a different worktree.
+
+**RISKS:**
+- The webfetch crawl has never been exercised in production. The first run
+  is the moment to discover teething issues.
+- This worktree's queue (300 records) is stale vs production (550). Any
+  measurement here is a lower bound.
+- The 18 "has_facts_needs_qualify" records need a qualify re-run, not a
+  provider call. They are stuck because the qualify stage hasn't been
+  re-invoked since their facts were populated.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Run the free-leg pipeline from Claude's worktree:
+   `py -3 -m src.generate --cap 0 --stages company_information`
+2. Re-run the analysis script against the production queue to measure
+   actual yield.
+3. The 18 "has_facts_needs_qualify" records need a qualify-only pass.
+4. The 42 fail-closed records (32 too small + 10 geo) are done unless
+   the underlying data is wrong.
