@@ -68,6 +68,39 @@ def needs(rec, stage):
     return True
 
 
+def record_has_work(rec, stages):
+    """Does this record need work in any of the given per-record stages?
+
+    `--limit` bounds the records PROCESSED, not the records scanned. An
+    operator who passes `--limit 20` expects at most 20 records to have work
+    done on them. The old behaviour sliced the first 20 from the queue and
+    let each stage skip the ones already done, so a limit of 20 processed
+    nine - which is the scan window, not the work done.
+
+    This checks every per-record stage the run will actually execute, using
+    the same predicates the stages themselves use to decide whether to skip.
+    A record that needs work in at least one of them counts against the limit.
+    """
+    if rec.get("state") in TERMINAL:
+        return False
+    for stage in stages:
+        if stage not in PER_RECORD:
+            continue
+        if needs(rec, stage):
+            return True
+    # Two stages have second predicates: the stage is marked done, but the
+    # inputs changed underneath it or new contacts arrived without keys.
+    # The stages themselves check these; the limit must agree.
+    if "qualify" in stages and is_done(rec, "qualify"):
+        from . import qualify as _qualify
+        if _qualify.needs_work(rec):
+            return True
+    if "personas" in stages and is_done(rec, "personas"):
+        if unkeyed(rec):
+            return True
+    return False
+
+
 # ------------------------------------------------------------ the stages
 
 # How many records may be enriched before what they cost is written down.
@@ -317,8 +350,23 @@ def run(source=None, client=None, lane=None, model=None, day=21, spend=False,
 
     recs = store.load()
     targets = [r for r in recs if ids is None or r["id"] in ids]
+    # `--lane` scopes every stage, not just ingest. The lane was only passed
+    # to `ingest.run()`, so the processing stages (enrich, qualify, personas,
+    # generate) worked on every record in the queue regardless of lane. An
+    # operator who passed `--lane domains` expected only domains-lane records
+    # to be processed; instead, records in `drafted` and `verified` from
+    # other lanes were moved forward. The transitions were harmless that
+    # time; the flag was not doing what it said.
+    if lane:
+        targets = [r for r in targets if r.get("lane") == lane]
+    # `--limit` bounds the records that have work done on them, not the
+    # records scanned. The old behaviour sliced the first N from the queue
+    # and let each stage skip the ones already done, so a limit of 20
+    # processed nine. An operator bounding a risky run to 20 records has
+    # not bounded it to 20 records when 11 of the 20 were already done.
     if limit:
-        targets = targets[:limit]
+        active = [r for r in targets if record_has_work(r, stages)]
+        targets = active[:limit]
 
     # WRITE DOWN WHAT WAS BOUGHT, BEFORE THE STAGE ENDS. `targets` holds
     # references into `recs`, so saving mid-stage persists exactly the work
@@ -411,10 +459,19 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="python -m src.run")
     p.add_argument("--source", help="a batch file or folder to ingest first")
     p.add_argument("--client")
-    p.add_argument("--lane", choices=list(store.LANES))
+    p.add_argument("--lane", choices=list(store.LANES),
+                   help="scope every stage (not just ingest) to records in "
+                        "this lane; records in other lanes are not processed")
     p.add_argument("--day", type=int, default=21)
-    p.add_argument("--cap", type=int, help="credit ceiling for this run")
-    p.add_argument("--limit", type=int)
+    p.add_argument("--cap", type=int,
+                   help="credit ceiling for this run; required with --spend. "
+                        "The enrichment budget refuses any call that would "
+                        "exceed it. --cap 0 plans without spending")
+    p.add_argument("--limit", type=int,
+                   help="maximum number of records that have work done on "
+                        "them. Records already finished for every active "
+                        "stage are not counted; the limit bounds processing, "
+                        "not scanning")
     p.add_argument("--id", action="append", dest="ids")
     p.add_argument("--stage", action="append", dest="stages", choices=list(STAGES))
     p.add_argument("--spend", action="store_true",
