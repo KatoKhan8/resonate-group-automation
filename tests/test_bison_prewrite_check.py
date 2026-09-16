@@ -100,9 +100,15 @@ class TestCheckIdentity(_Base):
 
     def test_pass_when_ids_and_names_match(self):
         from scripts.bison_prewrite_check import check_identity
+        from src import bisonfactory
 
         pid = self._add_provider_campaign("MY CAMPAIGN", "paused")
-        campaign = {"bison_campaign_id": pid, "name": "MY CAMPAIGN"}
+        campaign = {"bison_campaign_id": pid, "name": "MY CAMPAIGN",
+                    "client": "testclient", "campaign_id": "test-1"}
+        # The expected name is the DERIVED form, with [client/id] suffix
+        expected_name = bisonfactory.provider_campaign_name(campaign)
+        # Re-create the provider campaign with the derived name
+        self.fb.campaigns[pid]["name"] = expected_name
         workspace = {"id": 10, "name": "PRODUCTIVE"}
         r = check_identity(campaign, self.fb.campaigns[pid], workspace)
         self.assertTrue(r["pass"], r["detail"])
@@ -110,8 +116,9 @@ class TestCheckIdentity(_Base):
     def test_fail_when_id_mismatches(self):
         from scripts.bison_prewrite_check import check_identity
 
-        campaign = {"bison_campaign_id": 999, "name": "X"}
-        provider = {"id": 500, "name": "X"}
+        campaign = {"bison_campaign_id": 999, "name": "X",
+                    "client": "c", "campaign_id": "x"}
+        provider = {"id": 500, "name": "X [c/x]"}
         workspace = {"id": 10}
         r = check_identity(campaign, provider, workspace)
         self.assertFalse(r["pass"])
@@ -120,8 +127,9 @@ class TestCheckIdentity(_Base):
     def test_fail_when_name_mismatches(self):
         from scripts.bison_prewrite_check import check_identity
 
-        campaign = {"bison_campaign_id": 500, "name": "ALPHA"}
-        provider = {"id": 500, "name": "BETA"}
+        campaign = {"bison_campaign_id": 500, "name": "ALPHA",
+                    "client": "c", "campaign_id": "x"}
+        provider = {"id": 500, "name": "BETA [c/x]"}
         workspace = {"id": 10}
         r = check_identity(campaign, provider, workspace)
         self.assertFalse(r["pass"])
@@ -363,7 +371,11 @@ class TestCheckPriorContact(_Base):
 class TestFullFlowSubprocess(_Base):
 
     def test_exit_zero_when_all_pass(self):
-        pid = self._add_provider_campaign("MY CAMPAIGN", "paused")
+        from src import bisonfactory
+        campaign_row = {"name": "MY CAMPAIGN", "client": "testclient",
+                        "campaign_id": "test-1"}
+        derived_name = bisonfactory.provider_campaign_name(campaign_row)
+        pid = self._add_provider_campaign(derived_name, "paused")
         # Attach senders so check 5 passes
         self.fb.senders[pid] = [1]
         # Draft is the expected local status at staging time
@@ -395,6 +407,8 @@ class TestFullFlowSubprocess(_Base):
             reset_transport()
 
     def test_exit_one_when_identity_fails(self):
+        from src import bisonfactory
+        # Provider has the WRONG name (not the derived form)
         pid = self._add_provider_campaign("WRONG NAME", "paused")
         self._setup_campaign(bison_id=pid, name="RIGHT NAME")
         self._setup_queue([])

@@ -64,9 +64,14 @@ def check_identity(campaign, provider_campaign, workspace):
     not an identity check. Fetching by id is the only proof, and if the
     provider cannot be read, the identity is unproven.
     """
+    from src import bisonfactory
+
     provider_id = provider_campaign.get("id")
     expected_id = campaign.get("bison_campaign_id")
-    expected_name = campaign.get("name", "")
+    # The provider name carries the [client/campaign_id] suffix that
+    # bisonfactory.provider_campaign_name derives. Compare against the
+    # derived name, not the raw canonical name.
+    expected_name = bisonfactory.provider_campaign_name(campaign)
     provider_name = provider_campaign.get("name", "")
 
     issues = []
@@ -75,7 +80,7 @@ def check_identity(campaign, provider_campaign, workspace):
             f"id mismatch: canonical={expected_id}, provider={provider_id}")
     if provider_name != expected_name:
         issues.append(
-            f"name mismatch: canonical={expected_name!r}, "
+            f"name mismatch: expected={expected_name!r}, "
             f"provider={provider_name!r}")
 
     return _result(
