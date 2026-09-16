@@ -88,3 +88,34 @@ The three-way report command, the unintegrated set as it stands this morning
 with branch and result status per task, the registry made honest about what it
 can and cannot see, and the safe-to-prune branch list with the ancestry proof
 per branch.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** 811b98b
+- **TESTS:** Both modified scripts (task_registry.py, durable_state.py) run
+  successfully and produce JSON with the new branch_blindness field. The scan
+  script runs against all 106 remote refs and completes in under 10 minutes.
+  No existing tests were broken (no tests exist for these scripts).
+- **FILES CHANGED:**
+  - scripts/task173_scan.py — new: three-way report, unintegrated scan, prune report
+  - scripts/task_registry.py — added branch_blindness field and warning
+  - scripts/durable_state.py — added branch_blindness field and warning
+  - docs/UNINTEGRATED-WORK-2026-09-16.md — new: the deliverable document
+  - docs/state/TASK-REGISTRY.json — regenerated with branch_blindness
+  - docs/state/LEDGER.json — regenerated with branch_blindness
+- **FINDINGS:**
+  - Five unintegrated tasks found: TASK-067, TASK-169, TASK-170, TASK-172, TASK-174
+  - All five have STATUS: DONE in their result blocks on their branches
+  - 14 branches are safe to prune (all commits reachable from master)
+  - 93 branches carry unmerged work and must not be deleted
+  - The registry's ready_count is inflated whenever unintegrated work exists
+  - The pool's claim_task.py correctly excludes these tasks via _claimed_on_a_branch
+- **RISKS:**
+  - The scan takes ~10 minutes for 106 branches (one ls-tree per branch)
+  - The branch_blindness field is a warning, not a fix — the registry still
+    reports wrong ready counts until Claude integrates the work
+- **RECOMMENDED CLAUDE ACTION:**
+  1. Integrate the five unintegrated tasks from their branches into master
+  2. Prune the 14 safe branches listed in the document
+  3. Read the 93 unsafe branches' unmerged task lists before deleting any

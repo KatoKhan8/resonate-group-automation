@@ -140,10 +140,26 @@ def main():
         by_status[t["status"]] = by_status.get(t["status"], 0) + 1
 
     ready = [t for t in tasks if t["status"] == "QUEUED"]
+
+    # BRANCH-BLINDNESS WARNING.
+    # This registry reads master's directories alone. A task finished on a
+    # worker branch (moved to REVIEW or DONE there) but still in TODO on
+    # master will appear as QUEUED here. That is WRONG - the work is done,
+    # it just has not been integrated yet. The true ready count is lower
+    # than this file reports whenever unintegrated work exists.
+    # Run scripts/task173_scan.py to see the unintegrated set.
+    unintegrated_note = (
+        "This registry reads master only. Tasks finished on worker branches "
+        "but not yet integrated into master appear as QUEUED here but are "
+        "actually done. Run scripts/task173_scan.py --unintegrated to see "
+        "the set that this registry cannot see."
+    )
+
     doc = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "generated_from": ("docs/qwen-tasks/**, git, and work/claims/. Derived, "
                            "never hand-edited."),
+        "branch_blindness": unintegrated_note,
         "master_head": git("rev-parse", "--short", "master"),
         "counts": by_status,
         "ready_count": len(ready),
@@ -161,6 +177,8 @@ def main():
     for t in sorted(ready, key=lambda x: (x["priority"], x["task"]))[:24]:
         print("  %-4s %s" % (t["priority"], t["task"]))
     print("backlog healthy (>=16 ready for 8 workers): %s" % doc["backlog_healthy"])
+    print("WARNING: ready_count is master-only. Run task173_scan.py --unintegrated")
+    print("  to see tasks finished on branches but invisible to this registry.")
     print("written: docs/state/TASK-REGISTRY.json")
     # Non-zero is a BACKLOG alarm: workers will go idle.
     return 0 if doc["backlog_healthy"] else 1

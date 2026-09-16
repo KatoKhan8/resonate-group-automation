@@ -1,64 +1,73 @@
 {
-  "generated_at": "2026-09-15T15:33:02+00:00",
+  "generated_at": "2026-09-16T05:00:52+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
-  "master_head": "871c206",
-  "origin_master_head": "871c206",
+  "branch_blindness": "Task stages in this ledger reflect master only. Tasks finished on worker branches but not yet integrated into master appear in their master stage (often TODO), not the stage the branch has moved them to. Run scripts/task173_scan.py --unintegrated for the cross-branch view.",
+  "master_head": "73b8988",
+  "origin_master_head": "73b8988",
   "master_pushed": true,
   "tasks": [
     {
-      "task": "TASK-123",
-      "file": "docs/qwen-tasks/TODO/TASK-123-which-of-the-eleven-red-tests-are-actually-fixed.md",
+      "task": "TASK-164",
+      "file": "docs/qwen-tasks/TODO/TASK-164-the-list-route-the-write-contract-forgot.md",
       "stage": "TODO",
-      "last_commit": "24aa883",
-      "last_commit_at": "2026-09-15T11:54:07+02:00",
+      "last_commit": "2e3a3b9",
+      "last_commit_at": "2026-09-16T06:37:31+02:00",
       "reported": false
     },
     {
-      "task": "TASK-138",
-      "file": "docs/qwen-tasks/TODO/TASK-138-research-has-no-ttl-so-it-never-refreshes.md",
+      "task": "TASK-166",
+      "file": "docs/qwen-tasks/TODO/TASK-166-groks-first-real-workload.md",
       "stage": "TODO",
-      "last_commit": "871c206",
-      "last_commit_at": "2026-09-15T17:32:29+02:00",
+      "last_commit": "2e3a3b9",
+      "last_commit_at": "2026-09-16T06:37:31+02:00",
       "reported": false
     },
     {
-      "task": "TASK-139",
-      "file": "docs/qwen-tasks/TODO/TASK-139-what-the-estate-already-knows-about-these-people.md",
+      "task": "TASK-169",
+      "file": "docs/qwen-tasks/TODO/TASK-169-the-cheapest-order-to-campaign-ready.md",
       "stage": "TODO",
-      "last_commit": "871c206",
-      "last_commit_at": "2026-09-15T17:32:29+02:00",
+      "last_commit": "be974f2",
+      "last_commit_at": "2026-09-16T06:44:27+02:00",
       "reported": false
     },
     {
-      "task": "TASK-140",
-      "file": "docs/qwen-tasks/TODO/TASK-140-cohorts-that-are-actually-coherent.md",
+      "task": "TASK-170",
+      "file": "docs/qwen-tasks/TODO/TASK-170-what-must-be-true-before-the-bison-write.md",
       "stage": "TODO",
-      "last_commit": "871c206",
-      "last_commit_at": "2026-09-15T17:32:29+02:00",
+      "last_commit": "be974f2",
+      "last_commit_at": "2026-09-16T06:44:27+02:00",
       "reported": false
     },
     {
-      "task": "TASK-141",
-      "file": "docs/qwen-tasks/TODO/TASK-141-what-bison-can-actually-prove-about-a-reply.md",
+      "task": "TASK-171",
+      "file": "docs/qwen-tasks/TODO/TASK-171-move-the-316-through-the-free-path.md",
       "stage": "TODO",
-      "last_commit": "871c206",
-      "last_commit_at": "2026-09-15T17:32:29+02:00",
+      "last_commit": "4782ae5",
+      "last_commit_at": "2026-09-16T06:51:12+02:00",
       "reported": false
     },
     {
-      "task": "TASK-142",
-      "file": "docs/qwen-tasks/TODO/TASK-142-can-client-two-be-onboarded-without-rewriting-the-core.md",
+      "task": "TASK-172",
+      "file": "docs/qwen-tasks/TODO/TASK-172-the-verb-list-staging-does-not-have.md",
       "stage": "TODO",
-      "last_commit": "871c206",
-      "last_commit_at": "2026-09-15T17:32:29+02:00",
+      "last_commit": "4782ae5",
+      "last_commit_at": "2026-09-16T06:51:12+02:00",
       "reported": false
     },
     {
-      "task": "TASK-143",
-      "file": "docs/qwen-tasks/TODO/TASK-143-the-junk-in-research-and-whether-filtering-it-changes-anything.md",
+      "task": "TASK-174",
+      "file": "docs/qwen-tasks/TODO/TASK-174-the-23-leads-already-in-a-bison-campaign.md",
       "stage": "TODO",
-      "last_commit": "871c206",
-      "last_commit_at": "2026-09-15T17:32:29+02:00",
+      "last_commit": "4782ae5",
+      "last_commit_at": "2026-09-16T06:51:12+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-173",
+      "file": "docs/qwen-tasks/RUNNING/TASK-173-finished-work-that-nobody-could-see.md",
+      "stage": "RUNNING",
+      "last_commit": "",
+      "last_commit_at": "",
       "reported": false
     },
     {
@@ -69,6 +78,62 @@
       "last_commit_at": "2026-09-15T08:28:05+02:00",
       "reported": true,
       "declared_status": "COMPLETE"
+    },
+    {
+      "task": "TASK-155",
+      "file": "docs/qwen-tasks/REVIEW/TASK-155-the-cohorts-waiting-behind-the-canary.md",
+      "stage": "REVIEW",
+      "last_commit": "773a27e",
+      "last_commit_at": "2026-09-15T21:38:13+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "cc2b82c"
+    },
+    {
+      "task": "TASK-158",
+      "file": "docs/qwen-tasks/REVIEW/TASK-158-the-list-add-schema-heyreach-will-not-tell-us.md",
+      "stage": "REVIEW",
+      "last_commit": "704b310",
+      "last_commit_at": "2026-09-15T22:26:37+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "00fde19"
+    },
+    {
+      "task": "TASK-162",
+      "file": "docs/qwen-tasks/REVIEW/TASK-162-send-company-evidence-once.md",
+      "stage": "REVIEW",
+      "last_commit": "986a513",
+      "last_commit_at": "2026-09-15T23:29:51+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "a00e877"
+    },
+    {
+      "task": "TASK-165",
+      "file": "docs/qwen-tasks/REVIEW/TASK-165-list-staging-is-the-primitive-we-were-told-did-not-exist.md",
+      "stage": "REVIEW",
+      "last_commit": "6614e1d",
+      "last_commit_at": "2026-09-16T06:42:38+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-168",
+      "file": "docs/qwen-tasks/REVIEW/TASK-168-give-every-hold-a-reason-in-the-record.md",
+      "stage": "REVIEW",
+      "last_commit": "a0fe02a",
+      "last_commit_at": "2026-09-16T06:44:40+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-123",
+      "file": "docs/qwen-tasks/BLOCKED/TASK-123-which-of-the-eleven-red-tests-are-actually-fixed.md",
+      "stage": "BLOCKED",
+      "last_commit": "2e3a3b9",
+      "last_commit_at": "2026-09-16T06:37:31+02:00",
+      "reported": false
     },
     {
       "task": "TASK-001",
@@ -1338,16 +1403,244 @@
       "last_commit_at": "2026-09-15T17:32:29+02:00",
       "reported": true,
       "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-138",
+      "file": "docs/qwen-tasks/DONE/TASK-138-research-has-no-ttl-so-it-never-refreshes.md",
+      "stage": "DONE",
+      "last_commit": "90a2f7d",
+      "last_commit_at": "2026-09-15T18:00:33+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "3228e71"
+    },
+    {
+      "task": "TASK-139",
+      "file": "docs/qwen-tasks/DONE/TASK-139-what-the-estate-already-knows-about-these-people.md",
+      "stage": "DONE",
+      "last_commit": "90a2f7d",
+      "last_commit_at": "2026-09-15T18:00:33+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "eafd777"
+    },
+    {
+      "task": "TASK-140",
+      "file": "docs/qwen-tasks/DONE/TASK-140-cohorts-that-are-actually-coherent.md",
+      "stage": "DONE",
+      "last_commit": "90a2f7d",
+      "last_commit_at": "2026-09-15T18:00:33+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-141",
+      "file": "docs/qwen-tasks/DONE/TASK-141-what-bison-can-actually-prove-about-a-reply.md",
+      "stage": "DONE",
+      "last_commit": "90a2f7d",
+      "last_commit_at": "2026-09-15T18:00:33+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-142",
+      "file": "docs/qwen-tasks/DONE/TASK-142-can-client-two-be-onboarded-without-rewriting-the-core.md",
+      "stage": "DONE",
+      "last_commit": "90a2f7d",
+      "last_commit_at": "2026-09-15T18:00:33+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "c8cf008"
+    },
+    {
+      "task": "TASK-143",
+      "file": "docs/qwen-tasks/DONE/TASK-143-the-junk-in-research-and-whether-filtering-it-changes-anything.md",
+      "stage": "DONE",
+      "last_commit": "90a2f7d",
+      "last_commit_at": "2026-09-15T18:00:33+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-144",
+      "file": "docs/qwen-tasks/DONE/TASK-144-33-healthy-seats-and-one-campaign-using-one.md",
+      "stage": "DONE",
+      "last_commit": "90a2f7d",
+      "last_commit_at": "2026-09-15T18:00:33+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-145",
+      "file": "docs/qwen-tasks/DONE/TASK-145-the-email-channel-has-sent-one-message-ever.md",
+      "stage": "DONE",
+      "last_commit": "90a2f7d",
+      "last_commit_at": "2026-09-15T18:00:33+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-146",
+      "file": "docs/qwen-tasks/DONE/TASK-146-a-refresh-that-changes-nothing-the-model-sees.md",
+      "stage": "DONE",
+      "last_commit": "7f55c50",
+      "last_commit_at": "2026-09-15T18:47:13+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-147",
+      "file": "docs/qwen-tasks/DONE/TASK-147-the-bison-cohort-that-is-ready-to-build.md",
+      "stage": "DONE",
+      "last_commit": "550e637",
+      "last_commit_at": "2026-09-15T20:24:49+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "ccf5a20"
+    },
+    {
+      "task": "TASK-148",
+      "file": "docs/qwen-tasks/DONE/TASK-148-the-bison-sequence-that-is-one-conversation.md",
+      "stage": "DONE",
+      "last_commit": "550e637",
+      "last_commit_at": "2026-09-15T20:24:49+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "6a8a9d1"
+    },
+    {
+      "task": "TASK-149",
+      "file": "docs/qwen-tasks/DONE/TASK-149-every-openrouter-call-and-what-it-costs.md",
+      "stage": "DONE",
+      "last_commit": "30339b4",
+      "last_commit_at": "2026-09-15T23:11:22+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "5b5b88a"
+    },
+    {
+      "task": "TASK-150",
+      "file": "docs/qwen-tasks/DONE/TASK-150-one-company-researched-once.md",
+      "stage": "DONE",
+      "last_commit": "30339b4",
+      "last_commit_at": "2026-09-15T23:11:22+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "69729df"
+    },
+    {
+      "task": "TASK-151",
+      "file": "docs/qwen-tasks/DONE/TASK-151-what-did-productive-cost-us-in-ai-today.md",
+      "stage": "DONE",
+      "last_commit": "30339b4",
+      "last_commit_at": "2026-09-15T23:11:22+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-152",
+      "file": "docs/qwen-tasks/DONE/TASK-152-the-intake-backlog-is-20944-domains.md",
+      "stage": "DONE",
+      "last_commit": "30339b4",
+      "last_commit_at": "2026-09-15T23:11:22+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-153",
+      "file": "docs/qwen-tasks/DONE/TASK-153-who-we-have-already-spoken-to.md",
+      "stage": "DONE",
+      "last_commit": "30339b4",
+      "last_commit_at": "2026-09-15T23:11:22+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "78e9807"
+    },
+    {
+      "task": "TASK-154",
+      "file": "docs/qwen-tasks/DONE/TASK-154-which-accounts-actually-need-a-crawl.md",
+      "stage": "DONE",
+      "last_commit": "30339b4",
+      "last_commit_at": "2026-09-15T23:11:22+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-156",
+      "file": "docs/qwen-tasks/DONE/TASK-156-eleven-red-tests-and-whether-they-are-still-red.md",
+      "stage": "DONE",
+      "last_commit": "30339b4",
+      "last_commit_at": "2026-09-15T23:11:22+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-157",
+      "file": "docs/qwen-tasks/DONE/TASK-157-grok-as-a-third-lane.md",
+      "stage": "DONE",
+      "last_commit": "cc952ff",
+      "last_commit_at": "2026-09-15T22:17:33+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-159",
+      "file": "docs/qwen-tasks/DONE/TASK-159-assemble-the-email-control-sequence.md",
+      "stage": "DONE",
+      "last_commit": "5b61960",
+      "last_commit_at": "2026-09-15T22:20:45+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "242885f"
+    },
+    {
+      "task": "TASK-160",
+      "file": "docs/qwen-tasks/DONE/TASK-160-why-250-records-never-reached-icp.md",
+      "stage": "DONE",
+      "last_commit": "c391877",
+      "last_commit_at": "2026-09-15T23:22:59+02:00",
+      "reported": true,
+      "declared_status": "DONE"
+    },
+    {
+      "task": "TASK-161",
+      "file": "docs/qwen-tasks/DONE/TASK-161-every-hold-must-say-why.md",
+      "stage": "DONE",
+      "last_commit": "851bab5",
+      "last_commit_at": "2026-09-15T23:24:31+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "4df5d18"
+    },
+    {
+      "task": "TASK-163",
+      "file": "docs/qwen-tasks/DONE/TASK-163-the-free-path-from-queued-to-a-verdict.md",
+      "stage": "DONE",
+      "last_commit": "ed590b0",
+      "last_commit_at": "2026-09-16T06:43:23+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "92763c6"
+    },
+    {
+      "task": "TASK-167",
+      "file": "docs/qwen-tasks/DONE/TASK-167-the-bison-payload-resolved-against-the-real-queue.md",
+      "stage": "DONE",
+      "last_commit": "44dd846",
+      "last_commit_at": "2026-09-16T06:44:23+02:00",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "d212974"
     }
   ],
   "branches": [
     {
       "branch": "master",
-      "head": "871c206",
+      "head": "73b8988",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "871c206",
-      "last_commit_at": "2026-09-15T17:32:29+02:00"
+      "remote_head": "73b8988",
+      "last_commit_at": "2026-09-16T06:59:27+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -1382,12 +1675,68 @@
       "last_commit_at": "2026-09-15T15:16:19+02:00"
     },
     {
+      "branch": "qwen-worker-2-r18",
+      "head": "3fe3493",
+      "commits_ahead_of_master": 7,
+      "pushed": true,
+      "remote_head": "3fe3493",
+      "last_commit_at": "2026-09-15T17:59:42+02:00"
+    },
+    {
       "branch": "qwen-worker-2-r2",
       "head": "0a31b3a",
       "commits_ahead_of_master": 4,
       "pushed": true,
       "remote_head": "0a31b3a",
       "last_commit_at": "2026-09-14T23:08:33+02:00"
+    },
+    {
+      "branch": "qwen-worker-2-r20",
+      "head": "a785306",
+      "commits_ahead_of_master": 3,
+      "pushed": true,
+      "remote_head": "a785306",
+      "last_commit_at": "2026-09-15T19:56:50+02:00"
+    },
+    {
+      "branch": "qwen-worker-2-r21",
+      "head": "6b3ec47",
+      "commits_ahead_of_master": 2,
+      "pushed": true,
+      "remote_head": "6b3ec47",
+      "last_commit_at": "2026-09-15T21:36:03+02:00"
+    },
+    {
+      "branch": "qwen-worker-2-r22",
+      "head": "cc952ff",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "cc952ff",
+      "last_commit_at": "2026-09-15T22:17:33+02:00"
+    },
+    {
+      "branch": "qwen-worker-2-r23",
+      "head": "851bab5",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "851bab5",
+      "last_commit_at": "2026-09-15T23:24:31+02:00"
+    },
+    {
+      "branch": "qwen-worker-2-r24",
+      "head": "2e3a3b9",
+      "commits_ahead_of_master": 0,
+      "pushed": false,
+      "remote_head": null,
+      "last_commit_at": "2026-09-16T06:37:31+02:00"
+    },
+    {
+      "branch": "qwen-worker-2-r25",
+      "head": "063090d",
+      "commits_ahead_of_master": 1,
+      "pushed": false,
+      "remote_head": null,
+      "last_commit_at": "2026-09-16T06:55:34+02:00"
     },
     {
       "branch": "qwen-worker-2-r3",
@@ -1470,12 +1819,60 @@
       "last_commit_at": "2026-09-15T15:03:09+02:00"
     },
     {
+      "branch": "qwen-worker-3-r18",
+      "head": "3bc5784",
+      "commits_ahead_of_master": 7,
+      "pushed": true,
+      "remote_head": "3bc5784",
+      "last_commit_at": "2026-09-15T17:49:21+02:00"
+    },
+    {
       "branch": "qwen-worker-3-r2",
       "head": "b18ff0a",
       "commits_ahead_of_master": 5,
       "pushed": true,
       "remote_head": "b18ff0a",
       "last_commit_at": "2026-09-14T23:23:52+02:00"
+    },
+    {
+      "branch": "qwen-worker-3-r21",
+      "head": "8285251",
+      "commits_ahead_of_master": 2,
+      "pushed": true,
+      "remote_head": "8285251",
+      "last_commit_at": "2026-09-15T21:35:43+02:00"
+    },
+    {
+      "branch": "qwen-worker-3-r22",
+      "head": "5b61960",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "5b61960",
+      "last_commit_at": "2026-09-15T22:20:45+02:00"
+    },
+    {
+      "branch": "qwen-worker-3-r23",
+      "head": "986a513",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "986a513",
+      "last_commit_at": "2026-09-15T23:29:51+02:00"
+    },
+    {
+      "branch": "qwen-worker-3-r24",
+      "head": "8125742",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "8125742",
+      "last_commit_at": "2026-09-16T06:54:33+02:00"
+    },
+    {
+      "branch": "qwen-worker-3-r26",
+      "head": "73b8988",
+      "commits_ahead_of_master": 0,
+      "pushed": false,
+      "remote_head": null,
+      "last_commit_at": "2026-09-16T06:59:27+02:00"
     },
     {
       "branch": "qwen-worker-3-r3",
@@ -1534,6 +1931,30 @@
       "last_commit_at": "2026-09-15T15:02:56+02:00"
     },
     {
+      "branch": "qwen-worker-4-r18",
+      "head": "cd626f2",
+      "commits_ahead_of_master": 5,
+      "pushed": true,
+      "remote_head": "cd626f2",
+      "last_commit_at": "2026-09-15T17:50:31+02:00"
+    },
+    {
+      "branch": "qwen-worker-4-r21",
+      "head": "5383f32",
+      "commits_ahead_of_master": 5,
+      "pushed": true,
+      "remote_head": "5383f32",
+      "last_commit_at": "2026-09-15T21:45:47+02:00"
+    },
+    {
+      "branch": "qwen-worker-4-r24",
+      "head": "f99255d",
+      "commits_ahead_of_master": 1,
+      "pushed": false,
+      "remote_head": null,
+      "last_commit_at": "2026-09-16T06:40:22+02:00"
+    },
+    {
       "branch": "qwen-worker-4-r6",
       "head": "24f15a6",
       "commits_ahead_of_master": 9,
@@ -1574,12 +1995,52 @@
       "last_commit_at": "2026-09-14T20:40:16+02:00"
     },
     {
+      "branch": "qwen-worker-5-r18",
+      "head": "6631f68",
+      "commits_ahead_of_master": 6,
+      "pushed": true,
+      "remote_head": "6631f68",
+      "last_commit_at": "2026-09-15T17:49:04+02:00"
+    },
+    {
       "branch": "qwen-worker-5-r2",
       "head": "2d634bd",
       "commits_ahead_of_master": 4,
       "pushed": true,
       "remote_head": "2d634bd",
       "last_commit_at": "2026-09-14T23:08:55+02:00"
+    },
+    {
+      "branch": "qwen-worker-5-r21",
+      "head": "0cfdc47",
+      "commits_ahead_of_master": 3,
+      "pushed": true,
+      "remote_head": "0cfdc47",
+      "last_commit_at": "2026-09-15T21:35:06+02:00"
+    },
+    {
+      "branch": "qwen-worker-5-r24",
+      "head": "44dd846",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "44dd846",
+      "last_commit_at": "2026-09-16T06:44:23+02:00"
+    },
+    {
+      "branch": "qwen-worker-5-r25",
+      "head": "fc8d052",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "fc8d052",
+      "last_commit_at": "2026-09-16T06:56:40+02:00"
+    },
+    {
+      "branch": "qwen-worker-5-r26",
+      "head": "4207699",
+      "commits_ahead_of_master": 1,
+      "pushed": true,
+      "remote_head": "4207699",
+      "last_commit_at": "2026-09-16T07:00:42+02:00"
     },
     {
       "branch": "qwen-worker-5-r3",
@@ -1630,12 +2091,44 @@
       "last_commit_at": "2026-09-14T21:58:46+02:00"
     },
     {
+      "branch": "qwen-worker-6-r18",
+      "head": "e04b84f",
+      "commits_ahead_of_master": 8,
+      "pushed": true,
+      "remote_head": "e04b84f",
+      "last_commit_at": "2026-09-15T17:51:36+02:00"
+    },
+    {
       "branch": "qwen-worker-6-r2",
       "head": "06498c9",
       "commits_ahead_of_master": 10,
       "pushed": true,
       "remote_head": "06498c9",
       "last_commit_at": "2026-09-14T23:51:11+02:00"
+    },
+    {
+      "branch": "qwen-worker-6-r21",
+      "head": "2ccfceb",
+      "commits_ahead_of_master": 2,
+      "pushed": true,
+      "remote_head": "2ccfceb",
+      "last_commit_at": "2026-09-15T21:35:53+02:00"
+    },
+    {
+      "branch": "qwen-worker-6-r24",
+      "head": "a0fe02a",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "a0fe02a",
+      "last_commit_at": "2026-09-16T06:44:40+02:00"
+    },
+    {
+      "branch": "qwen-worker-6-r25",
+      "head": "4782ae5",
+      "commits_ahead_of_master": 0,
+      "pushed": false,
+      "remote_head": null,
+      "last_commit_at": "2026-09-16T06:51:12+02:00"
     },
     {
       "branch": "qwen-worker-6-r4",
@@ -1678,12 +2171,28 @@
       "last_commit_at": "2026-09-14T21:56:29+02:00"
     },
     {
+      "branch": "qwen-worker-7-r18",
+      "head": "773a27e",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "773a27e",
+      "last_commit_at": "2026-09-15T21:38:13+02:00"
+    },
+    {
       "branch": "qwen-worker-7-r2",
       "head": "28a15fe",
       "commits_ahead_of_master": 12,
       "pushed": true,
       "remote_head": "28a15fe",
       "last_commit_at": "2026-09-14T23:29:24+02:00"
+    },
+    {
+      "branch": "qwen-worker-7-r25",
+      "head": "bc00644",
+      "commits_ahead_of_master": 2,
+      "pushed": true,
+      "remote_head": "bc00644",
+      "last_commit_at": "2026-09-16T06:58:45+02:00"
     },
     {
       "branch": "qwen-worker-7-r3",
@@ -1750,12 +2259,36 @@
       "last_commit_at": "2026-09-14T22:35:20+02:00"
     },
     {
+      "branch": "qwen-worker-8-r18",
+      "head": "9a25ceb",
+      "commits_ahead_of_master": 4,
+      "pushed": true,
+      "remote_head": "9a25ceb",
+      "last_commit_at": "2026-09-15T17:51:54+02:00"
+    },
+    {
       "branch": "qwen-worker-8-r2",
       "head": "46c3347",
       "commits_ahead_of_master": 7,
       "pushed": true,
       "remote_head": "46c3347",
       "last_commit_at": "2026-09-14T23:10:40+02:00"
+    },
+    {
+      "branch": "qwen-worker-8-r21",
+      "head": "3e9a57f",
+      "commits_ahead_of_master": 2,
+      "pushed": true,
+      "remote_head": "3e9a57f",
+      "last_commit_at": "2026-09-15T21:46:45+02:00"
+    },
+    {
+      "branch": "qwen-worker-8-r25",
+      "head": "1536bb5",
+      "commits_ahead_of_master": 3,
+      "pushed": true,
+      "remote_head": "1536bb5",
+      "last_commit_at": "2026-09-16T07:00:11+02:00"
     },
     {
       "branch": "qwen-worker-8-r3",
@@ -1878,12 +2411,76 @@
       "last_commit_at": "2026-09-15T16:15:08+02:00"
     },
     {
+      "branch": "qwen-worker-r18",
+      "head": "834698b",
+      "commits_ahead_of_master": 6,
+      "pushed": true,
+      "remote_head": "834698b",
+      "last_commit_at": "2026-09-15T17:51:29+02:00"
+    },
+    {
+      "branch": "qwen-worker-r19",
+      "head": "7f55c50",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "7f55c50",
+      "last_commit_at": "2026-09-15T18:47:13+02:00"
+    },
+    {
       "branch": "qwen-worker-r2",
       "head": "1b1fb01",
       "commits_ahead_of_master": 4,
       "pushed": true,
       "remote_head": "1b1fb01",
       "last_commit_at": "2026-09-14T23:12:28+02:00"
+    },
+    {
+      "branch": "qwen-worker-r20",
+      "head": "760cb15",
+      "commits_ahead_of_master": 5,
+      "pushed": true,
+      "remote_head": "760cb15",
+      "last_commit_at": "2026-09-15T19:58:32+02:00"
+    },
+    {
+      "branch": "qwen-worker-r21",
+      "head": "fe8a102",
+      "commits_ahead_of_master": 2,
+      "pushed": true,
+      "remote_head": "fe8a102",
+      "last_commit_at": "2026-09-15T21:33:06+02:00"
+    },
+    {
+      "branch": "qwen-worker-r22",
+      "head": "704b310",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "704b310",
+      "last_commit_at": "2026-09-15T22:26:37+02:00"
+    },
+    {
+      "branch": "qwen-worker-r23",
+      "head": "c391877",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "c391877",
+      "last_commit_at": "2026-09-15T23:22:59+02:00"
+    },
+    {
+      "branch": "qwen-worker-r24",
+      "head": "11e036d",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "11e036d",
+      "last_commit_at": "2026-09-16T06:49:26+02:00"
+    },
+    {
+      "branch": "qwen-worker-r25",
+      "head": "58d76ec",
+      "commits_ahead_of_master": 2,
+      "pushed": true,
+      "remote_head": "58d76ec",
+      "last_commit_at": "2026-09-16T06:59:29+02:00"
     },
     {
       "branch": "qwen-worker-r3",
@@ -1961,71 +2558,73 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "871c206",
+      "head": "73b8988",
       "branch": "master",
+      "uncommitted_files": 0,
+      "clean": true
+    },
+    {
+      "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-2",
+      "head": "063090d",
+      "branch": "qwen-worker-2-r25",
       "uncommitted_files": 1,
       "clean": false
     },
     {
-      "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-2",
-      "head": "ac878aa",
-      "branch": "qwen-worker-2-r15",
+      "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-3",
+      "head": "73b8988",
+      "branch": "qwen-worker-3-r26",
       "uncommitted_files": 0,
       "clean": true
     },
     {
-      "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-3",
-      "head": "d8fbf2a",
-      "branch": "qwen-worker-3-r15",
+      "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-4",
+      "head": "f99255d",
+      "branch": "qwen-worker-4-r24",
       "uncommitted_files": 2,
       "clean": false
     },
     {
-      "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-4",
-      "head": "a8631bb",
-      "branch": "qwen-worker-4-r15",
-      "uncommitted_files": 0,
-      "clean": true
-    },
-    {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-5",
-      "head": "372531b",
-      "branch": "qwen-worker-5-r8",
+      "head": "4207699",
+      "branch": "qwen-worker-5-r26",
       "uncommitted_files": 0,
       "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-6",
-      "head": "3518973",
-      "branch": "qwen-worker-6-r8",
-      "uncommitted_files": 0,
-      "clean": true
+      "head": "4782ae5",
+      "branch": "qwen-worker-6-r25",
+      "uncommitted_files": 6,
+      "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-7",
-      "head": "d04119e",
-      "branch": "qwen-worker-7-r9",
-      "uncommitted_files": 0,
-      "clean": true
+      "head": "bc00644",
+      "branch": "qwen-worker-7-r25",
+      "uncommitted_files": 1,
+      "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-8",
-      "head": "4677c44",
-      "branch": "qwen-worker-8-r9",
-      "uncommitted_files": 0,
-      "clean": true
+      "head": "1536bb5",
+      "branch": "qwen-worker-8-r25",
+      "uncommitted_files": 2,
+      "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-worker",
-      "head": "3dff6f2",
-      "branch": "qwen-worker-r17",
-      "uncommitted_files": 1,
-      "clean": false
+      "head": "58d76ec",
+      "branch": "qwen-worker-r25",
+      "uncommitted_files": 0,
+      "clean": true
     }
   ],
   "stage_counts": {
     "TODO": 7,
-    "REVIEW": 1,
-    "DONE": 133
+    "RUNNING": 1,
+    "REVIEW": 6,
+    "BLOCKED": 1,
+    "DONE": 157
   }
 }
