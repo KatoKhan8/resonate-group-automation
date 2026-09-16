@@ -1,0 +1,901 @@
+{
+  "task": "TASK-185",
+  "measurement": "company-info (ContactOut) on 25+25 review records",
+  "snapshot_stamp": "2026-09-15T17:52:12+00:00 from master cf23154 550 records",
+  "round1_no_evidence": {
+    "description": "25 records with NO company_facts at all",
+    "credits_charged": 0,
+    "contactout_returned_data": 0,
+    "movement": {
+      "review_to_qualified": 0,
+      "review_to_rejected": 0,
+      "stayed_review": 25
+    },
+    "per_criterion_resolution": {
+      "geography": 0,
+      "company_type": 0,
+      "services_business": 0,
+      "employees": 0,
+      "tracks_time": 0
+    }
+  },
+  "round2_with_existing_evidence": {
+    "credits_spent": 25,
+    "errors": 0,
+    "movement": {
+      "review_to_qualified": 0,
+      "review_to_rejected": 0,
+      "stayed_review": 23
+    },
+    "per_criterion_resolution": {
+      "geography": 0,
+      "company_type": 0,
+      "services_business": 0,
+      "employees": 0,
+      "tracks_time": 0
+    },
+    "cost_per_verdict_credits": null
+  },
+  "verdict_of_requires_all_five": false,
+  "verdict_of_rules": {
+    "any_FAIL": "icp_fail",
+    "all_PASSING": "icp_pass",
+    "defining_PASSING": "icp_pass_with_uncertainty",
+    "otherwise": "icp_review"
+  },
+  "results": [
+    {
+      "id_hash": "sha256:9a45b8e78006a952",
+      "domain_hash": "sha256:17691c530e2c86e6",
+      "domain": "62miles.be",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "geography",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "geography",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:689533062bda7992",
+      "domain_hash": "sha256:45d73f763df5db3c",
+      "domain": "adeqmedia.com",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:af5de30039dea17f",
+      "domain_hash": "sha256:22a059c424c15fff",
+      "domain": "adquantum.com",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "geography",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "geography",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [
+        "founded",
+        "name",
+        "domain",
+        "specialties",
+        "stack",
+        "employees_upgraded"
+      ],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:41485ed4ecaa1bab",
+      "domain_hash": "sha256:65fa840cdfce1e52",
+      "domain": "angletech.ai",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:12079230fa7aa1fb",
+      "domain_hash": "sha256:663d0a4adb0908ef",
+      "domain": "ascendpoint.agency",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "employees",
+        "geography",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "employees",
+        "geography",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:b3adb5244b6caefb",
+      "domain_hash": "sha256:292ac5d543becb66",
+      "domain": "aso.marketing",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "pass_with_tolerance",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "pass_with_tolerance",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [
+        "founded",
+        "name",
+        "domain",
+        "employees_upgraded"
+      ],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:6bbbdc75d6f8119d",
+      "domain_hash": "sha256:92bd9d9baaea7108",
+      "domain": "brandus.lt",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:ca53aa2145043ff1",
+      "domain_hash": "sha256:63676d2457c718e8",
+      "domain": "brightconcepts.net",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "company_type",
+        "employees",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "pass",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "company_type",
+        "employees",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "pass",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:aa8b4c8c31061dc7",
+      "domain_hash": "sha256:f3d06ed4fa4a7e0d",
+      "domain": "consolidated.net",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "company_type",
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "company_type",
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:7ecf4704052ab0c9",
+      "domain_hash": "sha256:51e71cb55d5a0c97",
+      "domain": "directarrowgroup.com",
+      "before_verdict": "icp_fail",
+      "before_unknown": [
+        "company_type",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "pass",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "fail",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_fail",
+      "after_unknown": [
+        "company_type",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "pass",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "fail",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:c74e7e1541ab0574",
+      "domain_hash": "sha256:e691c6dd02726a76",
+      "domain": "e-deocom.com",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "company_type",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "company_type",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:922788d307b9f11c",
+      "domain_hash": "sha256:142df8ebcd26bd5e",
+      "domain": "eski.media",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:0b1a89d195b94b45",
+      "domain_hash": "sha256:f1fa328730cf59be",
+      "domain": "freezbi.si",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "employees",
+        "geography",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "employees",
+        "geography",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:d0c17ec0fed6c5b3",
+      "domain_hash": "sha256:b969daa09c9a9e09",
+      "domain": "intouchemr.com",
+      "before_verdict": "icp_fail",
+      "before_unknown": [
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "fail",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_fail",
+      "after_unknown": [
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "fail",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:420af99a95bc56a1",
+      "domain_hash": "sha256:9825399373eb96bb",
+      "domain": "isyncmedia.com",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "employees",
+        "geography",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "employees",
+        "geography",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:638cc7d808942617",
+      "domain_hash": "sha256:699476820f160a08",
+      "domain": "keypers.io",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:dbbf92a08ac98725",
+      "domain_hash": "sha256:1ae11e6972479270",
+      "domain": "lagranson.com",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:761dd7c45657dc31",
+      "domain_hash": "sha256:232e277858c3b6e0",
+      "domain": "luxuryintegrated.com",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "employees",
+        "geography",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "employees",
+        "geography",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:d408d64e3a2b57d9",
+      "domain_hash": "sha256:eef3ce3979ad5849",
+      "domain": "metatag.ru",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "employees",
+        "geography",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "employees",
+        "geography",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:2269a0e15550982a",
+      "domain_hash": "sha256:4a4506b21e0833f1",
+      "domain": "muros.co",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "company_type",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "pass",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "company_type",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "pass",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:2486c7398da4b32d",
+      "domain_hash": "sha256:90fc83afef724dc3",
+      "domain": "ontario.ca",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "company_type",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "pass",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "company_type",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "pass",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:0e2a46a550696fc2",
+      "domain_hash": "sha256:3a87b7621074b78d",
+      "domain": "puffandfluffspa.com",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "company_type",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "pass",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "pass_with_tolerance",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "company_type",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "pass",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "pass_with_tolerance",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:3d45e3c4f7bbcc5e",
+      "domain_hash": "sha256:9e96d6b682d467c6",
+      "domain": "redgraphic.com",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "employees",
+        "geography",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "employees",
+        "geography",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "pass",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:ef364f6796bab094",
+      "domain_hash": "sha256:95bc1cd571d57395",
+      "domain": "sanders-plumbing.com",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "company_type",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "pass",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "company_type",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "pass",
+        "company_type": "unknown",
+        "services_business": "unknown",
+        "employees": "pass",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    },
+    {
+      "id_hash": "sha256:a736ac82b334c763",
+      "domain_hash": "sha256:464b3d46b798828a",
+      "domain": "tangibleadvertising.com",
+      "before_verdict": "icp_review",
+      "before_unknown": [
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "before_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "after_verdict": "icp_review",
+      "after_unknown": [
+        "employees",
+        "geography",
+        "services_business",
+        "tracks_time"
+      ],
+      "after_criteria": {
+        "geography": "unknown",
+        "company_type": "pass",
+        "services_business": "unknown",
+        "employees": "unknown",
+        "tracks_time": "unknown"
+      },
+      "fields_merged": [],
+      "moved": false
+    }
+  ]
+}
