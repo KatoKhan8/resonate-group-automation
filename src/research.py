@@ -278,6 +278,12 @@ def _from_the_site_itself(rec, config):
             events.record(rec, events.EVIDENCE_ADDED, provider="webfetch",
                           operation=entry.get("field"),
                           reason=entry.get("source_url"))
+        # TASK-214: the ledger must see the free leg. A crawl that writes
+        # evidence but no waterfall row is invisible to every cost measurement.
+        from . import waterfall
+        waterfall.record_step(rec, waterfall.COMPANY_INFO, waterfall.WEBFETCH,
+                              "webfetch-crawl", result="cached",
+                              expected_cost=0, enforce=False)
         store.log(rec, "research",
                   f"site read: {len(usable)} page(s) from company-level cache")
         return usable
@@ -338,6 +344,12 @@ def _from_the_site_itself(rec, config):
         events.record(rec, events.EVIDENCE_ADDED, provider="webfetch",
                       operation=entry.get("field"),
                       reason=entry.get("source_url"))
+    # TASK-214: the ledger must see the free leg. A crawl that writes
+    # evidence but no waterfall row is invisible to every cost measurement.
+    from . import waterfall
+    waterfall.record_step(rec, waterfall.COMPANY_INFO, waterfall.WEBFETCH,
+                          "webfetch-crawl", result=str(outcome),
+                          expected_cost=0, enforce=False)
     store.log(rec, "research",
               f"site read: {len(usable)} page(s) retained for free")
     return usable
@@ -400,8 +412,6 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None,
     if proposal.get("planned"):
         events.record(rec, events.SCRAPE_PLANNED, provider="apify",
                       operation=proposal["actor"], reason=reason)
-    if not live:
-        return []
 
     # THE FREE LEG OF THE WATERFALL, WHICH NOTHING WAS CALLING.
     #
@@ -423,12 +433,19 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None,
     # had a team or about page crawled. Crawl coverage is the constraint, and
     # this is the free half of it.
     #
-    # Placed BEFORE the Apify budget and before `spend`, because a socket
-    # costs nothing and must not consume a run this client is rationing. A
-    # site this reads successfully never reaches the paid leg at all.
+    # TASK-214: the free leg was placed BELOW `if not live: return []`, and
+    # the caller passes `live=live and apify.settings(config)["enabled"]`.
+    # Apify is disabled by default, so `live` was always False here, and the
+    # free crawl never ran. The fix: the free leg runs whenever there is a
+    # stated `reason`, before the `live` gate. A socket costs nothing and the
+    # leg has its own bounds (pages, bytes, redirects). The `live` gate now
+    # only stops the PAID leg, which is what it was meant to protect.
     free = _from_the_site_itself(rec, config)
     if free is not None:
         return free
+
+    if not live:
+        return []
 
     # THE PAID LEG STARTS HERE, and it needs the plan the free leg did not.
     # Everything below was previously unreachable without `planned` because

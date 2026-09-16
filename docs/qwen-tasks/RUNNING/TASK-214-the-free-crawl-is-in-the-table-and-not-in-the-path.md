@@ -107,3 +107,49 @@ Which of (a), (b) or (c) it is with the code path proven; the affected cost
 conclusions named if (c); the full chain from crawl to consumer; the
 smallest fix with a ten-record run reporting per record; and how many of
 TASK-211's 53 reach a verdict for zero credits.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** (pending)
+
+**TESTS:** 8 new tests in tests/test_webfetch_leg.py, all green. 64 existing research tests green. 84 waterfall and enrich tests green.
+
+**FILES CHANGED:**
+- `src/research.py` (moved free leg before `if not live` gate, added waterfall recording in `_from_the_site_itself`)
+- `tests/test_webfetch_leg.py` (new, 8 tests)
+- `docs/FREE-CRAWL-NEVER-RAN-2026-09-16.md` (new, analysis)
+- `docs/TASK-214-FINAL-REPORT.md` (new, full report)
+- `scripts/task214_free_crawl_proof.py` (new, 10-record proof)
+- `scripts/task214_analyze_53.py` (new, TASK-211 analysis)
+- `scripts/task214_verify_sample.py` (new, sample verification)
+- `scripts/task214_find_success.py` (new, find successful crawls)
+
+**FINDINGS:**
+
+1. **Root cause is option (a):** `webfetch.research` is never called. The branch that skips it is `if not live: return []` in `research.run()` line ~400. The caller passes `live=live and apify.settings(config)["enabled"]`, which is False when Apify is disabled (the default). The free leg sat below that gate and never ran.
+
+2. **Secondary issue is option (c):** `_from_the_site_itself()` wrote evidence to `rec["research"]` but never called `waterfall.record_step()`. So the ledger had zero webfetch rows, making every cost measurement wrong about the free leg.
+
+3. **The fix:** Two changes in `src/research.py`:
+   - Moved the free leg BEFORE `if not live: return []` (lines 404-438). The free leg now runs whenever there's a stated `reason`, regardless of Apify being enabled.
+   - Added `waterfall.record_step()` calls in `_from_the_site_itself()` (lines 283-286 and 349-352). When the free crawl succeeds, a waterfall row is written.
+
+4. **Ten-record proof run:** 10 records processed, 2 had a stated need, 2 crawls attempted, 1 succeeded (adeqmedia-com: 1 page, 1 research row, 1 waterfall row), 1 returned nothing (australo-org). 1 waterfall row written for the successful crawl. The free crawl is now in the execution path.
+
+5. **TASK-211's 53 records:** 64 records would benefit (queue may have changed), 12 crawls succeeded (fetched 23 pages, wrote 23 research rows), **0 records reached a verdict for zero credits** because of the free crawl alone. The free crawl adds prose evidence (company_website, about pages) to `rec["research"]`, but the ICP verdict primarily depends on structured `company_facts` (industry, offices, employees) populated by ContactOut. Records missing structured data need ContactOut company-info (1 credit) to reach a verdict.
+
+6. **Chain from crawl to consumer:** Complete and correct. `webfetch.research()` returns pages with the right shape. `_from_the_site_itself()` transforms them into evidence rows. Consumers (`segments.text_of`, `research.for_prompt`, `evidence.select`, `icpstructural`) already read `local_http` rows.
+
+7. **Cost conclusions affected:** Every document that read the waterfall ledger to measure free vs paid evidence costs was wrong. The ledger said "webfetch: 0 rows" because the free crawl was never attempted (option a) and would have written no row even if attempted (option c).
+
+**RISKS:**
+- The free crawl makes real HTTP requests to real prospect websites. All bounds (pages, bytes, redirects, timeout) are respected and were not raised.
+- The free crawl doesn't solve the ICP verdict problem for records missing structured data. ContactOut company-info (1 credit each) is still needed for the 33 records missing industry/offices/employees.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Review the fix in `src/research.py`
+2. Run the free-leg pipeline from Claude's worktree: `py -3 -m src.generate --cap 0`
+3. The 33 records missing industry/offices/employees need ContactOut company-info (1 credit each) to reach a verdict
+4. The free crawl will improve copy quality for all records, even if it doesn't change ICP verdicts
