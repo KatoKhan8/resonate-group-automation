@@ -96,3 +96,69 @@ whether any closes the prose-evidence gap and whether any closes the
 job-change gap, decided against what those gates accept; the wire-or-delete
 recommendation for `people_search` with its argument; and per recommended
 endpoint the stage, position and licensing reason.
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: f183ca3f
+TESTS: No src/ changes. Analysis derived from API documentation cross-referenced
+       against adapter, waterfall, enrich pipeline, and evidence gate code.
+FILES CHANGED:
+  docs/CONTACTOUT-UNUSED-2026-09-16.md          (new - the deliverable)
+
+FINDINGS:
+
+1. THE TEN ENDPOINTS (all assumed available to our plan/key, none live-proven):
+   - LinkedIn Profile Enrich (GET /v1/linkedin/enrich) — full profile + contact, 1 search/email/phone credit
+   - People Enrich (POST /v1/people/enrich) — enriched profile, 1 search + email/phone credits
+   - Contact Info Single (GET /v1/people/linkedin) — emails + phone, 1 email/phone credit
+   - Company Search (POST /v1/company/search) — firmographics, 1 search per result
+   - Email-to-LinkedIn (GET /v1/people/person) — LinkedIn URL from email, 1 email credit
+   - Personal Email Checker — boolean, cost unconfirmed
+   - Work Email Checker — boolean, cost unconfirmed
+   - Phone Checker — boolean, cost unconfirmed
+   - Batch Email Verify — per-email verifier credits
+   - Bulk Contact Info v1/v2 — per-profile email/phone credits
+
+2. PROSE-EVIDENCE GAP: None of the ten close it. Key finding: the existing
+   `company-information-from-domain` response already includes a `description`
+   field that the adapter's `company_info()` trim drops. Adding it to the trim
+   is a one-line change at zero additional credits and partially addresses the
+   gap. The rest is genuinely unbridgeable by ContactOut (layers 3-4 own it).
+
+3. JOB-CHANGE GAP: None close it. `linkedin/enrich` and `people/enrich` return
+   work history with dates, but detecting a change requires snapshot diffing
+   the pipeline does not support. ContactOut has no "changed since" query.
+
+4. people_search: DELETE. Orphan method — implemented, tested, called by
+   nothing in production. Same data as `decision-makers` at the same cost.
+   The pipeline does not need its filtering capability.
+
+5. RECOMMENDED ADDITIONS:
+   - `linkedin/enrich` in `email_discovery` stage, after Blitz email fallback,
+     as a second ContactOut path addressed by LinkedIn URL. Needs live-proof
+     on 5-10 records first (~5-10 email credits).
+   - Add `description` to `company_info()` trim (one-line adapter change,
+     zero credits, partially closes prose-evidence gap).
+
+6. NOT RECOMMENDED: The remaining eight endpoints. Company Search returns the
+   same data as the existing endpoint. Contact Info Single is a subset of
+   LinkedIn Enrich. Email-to-LinkedIn solves a problem the pipeline does not
+   have (email→URL, when the flow is URL→email). Checkers return booleans
+   where the pipeline needs actual addresses. Batch/bulk endpoints solve a
+   different usage pattern than the pipeline's one-domain-at-a-time flow.
+
+RISKS:
+- All ten endpoints are "assumed available" based on API docs not gating by
+  plan tier. None are live-proven. A single call per endpoint would confirm.
+- The `description` field finding is the highest-value item: zero credits,
+  one line, and it puts company prose into the fact pool check_evidence reads.
+- `linkedin/enrich` recommendation is conditional on live-proof that it
+  returns contact info where `decision-makers` did not.
+
+RECOMMENDED CLAUDE ACTION:
+1. Read docs/CONTACTOUT-UNUSED-2026-09-16.md
+2. Add `description` to `company_info()` trim (one line, zero credits)
+3. Decide on `people_search` deletion
+4. If `linkedin/enrich` is wanted, live-proof on 5-10 records first
+5. Wire `linkedin/enrich` via TASK-207/208 (they own waterfall.py)
