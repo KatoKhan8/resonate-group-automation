@@ -1,0 +1,411 @@
+{
+  "workspace_hash": "4a44dc153642",
+  "cohort_size": 17,
+  "unique_domains": 17,
+  "three_numbers": {
+    "zero_prior": 16,
+    "some_prior": 1,
+    "undetermined": 0
+  },
+  "persona_none_count": 6,
+  "persona_none_contacts": [
+    {
+      "idx": 6,
+      "rec_id_hash": "4b37ea891b56",
+      "domain_hash": "3afb5e0010d9"
+    },
+    {
+      "idx": 10,
+      "rec_id_hash": "8953a27075c2",
+      "domain_hash": "c3f09366d72f"
+    },
+    {
+      "idx": 12,
+      "rec_id_hash": "aa86bcae3d3f",
+      "domain_hash": "f2f4b0d278ed"
+    },
+    {
+      "idx": 14,
+      "rec_id_hash": "024ba413ded7",
+      "domain_hash": "a3a16ee58d26"
+    },
+    {
+      "idx": 15,
+      "rec_id_hash": "9888d6a9d54d",
+      "domain_hash": "41da47c0397b"
+    },
+    {
+      "idx": 17,
+      "rec_id_hash": "83cc7c8ac60b",
+      "domain_hash": "947f2f9d81ff"
+    }
+  ],
+  "survivors": [
+    {
+      "idx": 1,
+      "rec_id_hash": "b580268f93f2",
+      "contact_hash": "b6882cfd6d48",
+      "domain_hash": "da9fa0575ce8",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)"
+    },
+    {
+      "idx": 2,
+      "rec_id_hash": "90dc872ce83e",
+      "contact_hash": "32ab93ceddc6",
+      "domain_hash": "4efeb3fe2afd",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)"
+    },
+    {
+      "idx": 3,
+      "rec_id_hash": "ff930f49050f",
+      "contact_hash": "dd4e53f0860a",
+      "domain_hash": "c768a0660316",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)"
+    },
+    {
+      "idx": 4,
+      "rec_id_hash": "d881cb9457f6",
+      "contact_hash": "8cdfd2d06cae",
+      "domain_hash": "68af8ce671c1",
+      "persona": "economic_buyer",
+      "angle": "operations",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)"
+    },
+    {
+      "idx": 5,
+      "rec_id_hash": "9d2802e5f931",
+      "contact_hash": "33afc169e069",
+      "domain_hash": "63084828d69e",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate"
+    },
+    {
+      "idx": 6,
+      "rec_id_hash": "4b37ea891b56",
+      "contact_hash": "04b2cd185949",
+      "domain_hash": "3afb5e0010d9",
+      "persona": null,
+      "angle": null,
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate"
+    },
+    {
+      "idx": 7,
+      "rec_id_hash": "d00a60562edd",
+      "contact_hash": "164c11029ec9",
+      "domain_hash": "500976b76607",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)"
+    },
+    {
+      "idx": 8,
+      "rec_id_hash": "73636ff041b0",
+      "contact_hash": "aaaba6610b02",
+      "domain_hash": "ceb55a89127b",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)"
+    },
+    {
+      "idx": 9,
+      "rec_id_hash": "646934233472",
+      "contact_hash": "2aa47f23fd95",
+      "domain_hash": "1203bef7ae16",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)"
+    },
+    {
+      "idx": 11,
+      "rec_id_hash": "a02d0a715cb8",
+      "contact_hash": "c243e114f58c",
+      "domain_hash": "395be3330be3",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)"
+    },
+    {
+      "idx": 12,
+      "rec_id_hash": "aa86bcae3d3f",
+      "contact_hash": "4c0edf0fb2c4",
+      "domain_hash": "f2f4b0d278ed",
+      "persona": null,
+      "angle": null,
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate"
+    },
+    {
+      "idx": 13,
+      "rec_id_hash": "b15936a38d71",
+      "contact_hash": "177f9fa54bfb",
+      "domain_hash": "c3c9e6e49e77",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)"
+    },
+    {
+      "idx": 14,
+      "rec_id_hash": "024ba413ded7",
+      "contact_hash": "d4cebca2a680",
+      "domain_hash": "a3a16ee58d26",
+      "persona": null,
+      "angle": null,
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate"
+    },
+    {
+      "idx": 15,
+      "rec_id_hash": "9888d6a9d54d",
+      "contact_hash": "0955c3c3cc63",
+      "domain_hash": "41da47c0397b",
+      "persona": null,
+      "angle": null,
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate"
+    },
+    {
+      "idx": 16,
+      "rec_id_hash": "73dff24eb5e8",
+      "contact_hash": "3f3976404204",
+      "domain_hash": "ddef577b8d3c",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate"
+    },
+    {
+      "idx": 17,
+      "rec_id_hash": "83cc7c8ac60b",
+      "contact_hash": "27c77cac3505",
+      "domain_hash": "947f2f9d81ff",
+      "persona": null,
+      "angle": null,
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate"
+    }
+  ],
+  "all_results": [
+    {
+      "idx": 1,
+      "rec_id_hash": "b580268f93f2",
+      "contact_hash": "b6882cfd6d48",
+      "domain_hash": "da9fa0575ce8",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 2,
+      "rec_id_hash": "90dc872ce83e",
+      "contact_hash": "32ab93ceddc6",
+      "domain_hash": "4efeb3fe2afd",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 3,
+      "rec_id_hash": "ff930f49050f",
+      "contact_hash": "dd4e53f0860a",
+      "domain_hash": "c768a0660316",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 4,
+      "rec_id_hash": "d881cb9457f6",
+      "contact_hash": "8cdfd2d06cae",
+      "domain_hash": "68af8ce671c1",
+      "persona": "economic_buyer",
+      "angle": "operations",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 5,
+      "rec_id_hash": "9d2802e5f931",
+      "contact_hash": "33afc169e069",
+      "domain_hash": "63084828d69e",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 6,
+      "rec_id_hash": "4b37ea891b56",
+      "contact_hash": "04b2cd185949",
+      "domain_hash": "3afb5e0010d9",
+      "persona": null,
+      "angle": null,
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 7,
+      "rec_id_hash": "d00a60562edd",
+      "contact_hash": "164c11029ec9",
+      "domain_hash": "500976b76607",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 8,
+      "rec_id_hash": "73636ff041b0",
+      "contact_hash": "aaaba6610b02",
+      "domain_hash": "ceb55a89127b",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 9,
+      "rec_id_hash": "646934233472",
+      "contact_hash": "2aa47f23fd95",
+      "domain_hash": "1203bef7ae16",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 10,
+      "rec_id_hash": "8953a27075c2",
+      "contact_hash": "d2844b2886b3",
+      "domain_hash": "c3f09366d72f",
+      "persona": null,
+      "angle": null,
+      "status": "FAIL",
+      "reason": "21 prior email(s), 3 campaign(s)",
+      "prior_emails": 21,
+      "in_sequence": false
+    },
+    {
+      "idx": 11,
+      "rec_id_hash": "a02d0a715cb8",
+      "contact_hash": "c243e114f58c",
+      "domain_hash": "395be3330be3",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 12,
+      "rec_id_hash": "aa86bcae3d3f",
+      "contact_hash": "4c0edf0fb2c4",
+      "domain_hash": "f2f4b0d278ed",
+      "persona": null,
+      "angle": null,
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 13,
+      "rec_id_hash": "b15936a38d71",
+      "contact_hash": "177f9fa54bfb",
+      "domain_hash": "c3c9e6e49e77",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "0 prior email(s), 1 campaign(s)",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 14,
+      "rec_id_hash": "024ba413ded7",
+      "contact_hash": "d4cebca2a680",
+      "domain_hash": "a3a16ee58d26",
+      "persona": null,
+      "angle": null,
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 15,
+      "rec_id_hash": "9888d6a9d54d",
+      "contact_hash": "0955c3c3cc63",
+      "domain_hash": "41da47c0397b",
+      "persona": null,
+      "angle": null,
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 16,
+      "rec_id_hash": "73dff24eb5e8",
+      "contact_hash": "3f3976404204",
+      "domain_hash": "ddef577b8d3c",
+      "persona": "economic_buyer",
+      "angle": "founder",
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate",
+      "prior_emails": 0,
+      "in_sequence": false
+    },
+    {
+      "idx": 17,
+      "rec_id_hash": "83cc7c8ac60b",
+      "contact_hash": "27c77cac3505",
+      "domain_hash": "947f2f9d81ff",
+      "persona": null,
+      "angle": null,
+      "status": "PASS",
+      "reason": "no lead at this address in provider's estate",
+      "prior_emails": 0,
+      "in_sequence": false
+    }
+  ]
+}
