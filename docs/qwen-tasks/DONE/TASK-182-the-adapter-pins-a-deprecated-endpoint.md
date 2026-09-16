@@ -79,3 +79,60 @@ a key in an echoed request header, so check the recording before you commit it.
 The adapter on the Responses API with the capture fields mapped, a cassette
 recorded from a real call and scrubbed, the drift test, and the one-domain
 comparison showing adapter output matches TASK-166's direct call.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 355549b
+
+**TESTS:** 48 pass (was 42, +4 drift tests +2 search_urls tests). Invariants
+(80) pass. Fixture hygiene failures are pre-existing from other task scripts,
+not from this change.
+
+**FILES CHANGED:**
+- `src/providers/xai.py` — adapter migrated to Responses API
+- `tests/test_xai_adapter.py` — tests updated + drift detection added
+- `tests/fixtures/cassettes/xai.json` — re-recorded from real /v1/responses call
+- `docs/GROK-LANE-2026-09-15.md` — corrected to document live endpoint
+- `scripts/task182_compare.py` — comparison script (adapter vs direct)
+- `scripts/task182_comparison.json` — comparison result (domain hashed)
+
+**FINDINGS:**
+
+1. The Chat Completions endpoint returns HTTP 410 Gone. The adapter now calls
+   `/v1/responses` with `{"type": "web_search"}` as a tool entry.
+
+2. Request shape changes: `messages` → `input`, `max_completion_tokens` →
+   `max_output_tokens`.
+
+3. Response shape changes: `choices[].message.content` → `output[].content[].text`
+   (for type="message" items), `choices[].finish_reason` → top-level `status`.
+
+4. Usage field mapping: `input_tokens` → `prompt_tokens`, `output_tokens` →
+   `completion_tokens`, `input_tokens_details.cached_tokens` → `cached_tokens`,
+   `output_tokens_details.reasoning_tokens` → `reasoning_tokens`.
+   `server_side_tool_usage` (per-tool breakdown) replaced by
+   `num_server_side_tools_used` (count).
+
+5. New: `search_urls` extracted from `web_search_call` output items, giving
+   callers the URLs the search actually visited.
+
+6. Drift tests pin the endpoint path (`/v1/responses`), the tool-type string
+   (`web_search`), and the request field names (`input`, `max_output_tokens`)
+   so a future provider-side change surfaces as a red test.
+
+7. Comparison on domain 85a508664271 (hashed): both direct and adapter calls
+   returned model=grok-4.6, status=completed, with all usage fields present
+   and correctly mapped. Usage field parity: PASS.
+
+**RISKS:**
+- The adapter is NOT wired into production paths (generate, qualify, research).
+  TASK-183 does that behind a flag.
+- `xai.chat()` no longer exists. Any caller must migrate to `xai.respond()`.
+  The only reference was in a DONE task file (historical).
+
+**RECOMMENDED CLAUDE ACTION:**
+Review the adapter changes and drift tests. TASK-183 can now wire the adapter
+into production paths behind a flag, knowing the endpoint is live and the
+usage fields are correctly mapped.
