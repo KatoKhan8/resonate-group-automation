@@ -89,3 +89,58 @@ The adapter with its allowlist and bounds, tests against a fake transport, the
 usage/cost capture proven by a test, the documented request shape with the doc
 URL beside each claim, and a statement of what it would take to route one real
 stage through it.
+
+## RESULT
+
+**STATUS:** DONE
+**COMMIT:** b66974f
+**TESTS:** 42/42 pass in tests/test_xai_adapter.py.  138/138 pass across
+test_invariants, test_audit, test_xai_adapter.  94/94 pass across
+test_providers + test_xai_adapter.  Pre-existing failures in
+test_fixture_hygiene (scripts/task147_*) and
+test_nothing_writes_to_a_provider (scripts/provider_truth.py,
+scripts/sender_capacity.py) are unrelated to this change.
+
+**FILES CHANGED:**
+- `src/providers/xai.py` (new) — adapter: allowlist, bounds, trimmed returns,
+  usage/cost capture, retry with bounded backoff
+- `tests/test_xai_adapter.py` (new) — 42 tests against fake transport
+- `tests/fixtures/cassettes/xai.json` (new) — cassette fixtures
+- `docs/GROK-LANE-2026-09-15.md` (new) — documentation with doc URLs
+- `tests/test_invariants.py` — added "xai" to POST allowlist
+- `tests/test_audit.py` — added "xai.py" to POST allowlist
+- `tests/test_nothing_writes_to_a_provider.py` — added xai.py POST to ALLOWED
+
+**FINDINGS:**
+1. The xAI chat completions API is OpenAI-compatible at POST /v1/chat/completions.
+   Auth is Bearer token.  Usage includes cost_in_usd_ticks (10B ticks = $1).
+2. web_search and x_search are server-side tools passed in the `tools` array.
+   They are opt-in per call; omitting the `tools` key prevents any tool use.
+3. xAI returns `server_side_tool_usage` with counts per tool, and
+   `prompt_tokens_details.cached_tokens` for cache hits.
+4. The adapter's `MissingKey` is a subclass of `ProviderError`; the retry loop
+   must re-raise it immediately rather than consuming attempts on a credential
+   that will not materialise.
+5. Three existing test allowlists (test_invariants, test_audit,
+   test_nothing_writes_to_a_provider) enforce a closed set of POST-issuing
+   modules.  Adding xai.py required registering it in each.  These are
+   mechanical registrations, not design changes.
+
+**CALLER CHAIN:** `grep -rn "xai" src/` returns only xai.py itself.  This is
+by design: the task says "Do not wire Grok into generate, qualify, research or
+any production path.  Build the adapter and its tests; Claude integrates."
+The adapter is consumed by tests/test_xai_adapter.py (42 tests).
+
+**RISKS:**
+- The xAI API docs for chat completions returned 404 at two URL patterns
+  before the correct one was found.  The request shape is documented at
+  https://docs.x.ai/developers/rest-api-reference/inference/chat-completions
+  and was verified against the live docs.
+- Model pricing doubles for prompts ≥ 200k tokens.  The adapter does not
+  enforce this; the caller should be aware when setting max_tokens.
+
+**RECOMMENDED CLAUDE ACTION:**
+Review the adapter and tests.  When ready to integrate, pick a stage
+(evidence challenger is the best candidate — read-only, bounded, clear
+success criterion) and add a call to `xai.chat()` in the owning module.
+The integration recipe is in docs/GROK-LANE-2026-09-15.md.

@@ -189,7 +189,7 @@ class TestNothingCanSend(unittest.TestCase):
         build something that is left `paused`, or stop something.
         """
         allowed = ("aiark", "apify", "blitz", "bison", "contactout",
-                   "heyreach", "slack")
+                   "heyreach", "slack", "xai")
         issued = []
         for path in source_files():
             for i, line in enumerate(read(path).splitlines(), 1):
