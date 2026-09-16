@@ -89,3 +89,63 @@ checkpoint as the most damaging action available.
 The 22 with a reason each, the 24 split by failure kind, the 35 counted by the
 gate that refused them today, the recoverable/not split with the action per
 recoverable record, and the best-case campaign-ready number against the 32.
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: f317f84
+TESTS: Read-only analysis, no code changes to src/. Script at scripts/task194_analysis.py
+       re-runs all gates from the snapshot and can be re-executed to verify.
+FILES CHANGED:
+  docs/PAID-AND-NOT-READY-2026-09-16.md  (new - the deliverable)
+  scripts/task194_analysis.py            (new - the analysis script)
+
+FINDINGS:
+
+Snapshot: 2026-09-15T17:52:12+00:00 from master cf23154, 550 records.
+
+The task's numbers (91/67/32) were from an earlier measurement. The snapshot
+says 88 with contacts, 66 with verified contacts, 25 campaign-ready. The shape
+is the same: roughly a quarter of qualified records convert.
+
+**Gap 1 (25 records, no contacts):** All 25 had person discovery run. The
+runner was invoked on every one (TASK-160's "no runner" answer does not apply
+here). The providers found nobody, or the persona filter excluded everybody
+found. 10 records: persona filter excluded all contacts found. 15 records:
+provider returned zero usable profiles. Recoverable: 0 of 25.
+
+**Gap 2 (207 contacts, not verified):** 170 had email but could not verify, 37
+had no email at all. The single biggest bucket is 143 contacts held by
+insufficient confirmations - ContactOut says valid but Deliverable returns
+unparseable errors. 15 are MX-blocked (permanent). 11 are catch-all uncleared.
+Recoverable: ~155 of 207, IF Deliverable is fixed or policy relaxed.
+
+**Gap 3 (41 records, not campaign-ready):** 15 have no cadence (generation
+never ran). 23 have cadence but zero approvals. 3 have partial approvals with
+lint/claim failures. Every refusal is recoverable: 289 steps held by
+draft_not_approved, 3 by unsupported_claim, 3 by awaiting_dependency, 2 by
+lint_failed, 2 by approval_stale. Zero permanent blocks.
+
+**Best case:** 25 campaign-ready today. If all 41 Gap-3 records are resolved
+(generation + approval), the ceiling is 66 - the full verified pool. If
+Deliverable is also fixed, ~38 more records enter the verified pool, pushing
+the potential to ~104.
+
+**Priority order:**
+1. Fix Deliverable's response parser (143 contacts, ~38 records)
+2. Run generation on the 15 verified-but-no-cadence records (free)
+3. Human read and approve the 23 generated-but-unapproved records
+4. Regenerate and approve the 3 partial records
+
+RISKS:
+- The Deliverable parser fix changes verification policy; relaxing to 1
+  confirmation is a client-config decision, not an engineering one.
+- Bulk approval is named in LEADS-ARE-BLOCKED as the most damaging action.
+  The 23 unapproved records need a human read, not a bulk approve.
+- The 15 no-cadence records may lack research evidence needed for generation.
+
+RECOMMENDED CLAUDE ACTION:
+1. Review docs/PAID-AND-NOT-READY-2026-09-16.md
+2. Decide whether to fix Deliverable's parser or relax confirmation policy
+3. Run generation on the 15 verified-but-no-cadence records
+4. Schedule human reads of the 23 unapproved cadences (NOT bulk approve)
