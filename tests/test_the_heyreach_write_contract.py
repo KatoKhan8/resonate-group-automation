@@ -240,6 +240,12 @@ class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
             # what moves a never-run campaign, and it is used only
             # against one the provider says holds zero leads.
             "/campaign/StartCampaign",
+            # Added 2026-09-16, TASK-164. The list-add route TASK-158 probed:
+            # a write to a LIST object (not a campaign), so the staging
+            # argument is different from AddLeadsToCampaignV2. It is on
+            # WRITE_ROUTES and is NOT in providerwrites.SUPPORTED - the same
+            # distinction the docstring above describes.
+            "/list/AddLeadsToListV2",
         })
 
     def test_the_add_leads_route_is_enabled_only_against_a_draft(self):
