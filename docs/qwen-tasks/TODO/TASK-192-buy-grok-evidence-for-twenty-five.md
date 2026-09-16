@@ -1,7 +1,7 @@
 PRIORITY: P0
-DEPENDS: TASK-182
+DEPENDS:
 
-# TASK-183 - buy evidence for twenty-five records and see if the wall moves
+# TASK-192 - buy evidence for twenty-five records and see if the wall moves
 
 ## WHERE THIS SITS
 
@@ -20,6 +20,29 @@ and structurally cannot reach a news article, a registry or a directory.
 
 So there is a plausible answer - buy the evidence - and one number nobody has:
 how many records actually change verdict when you do.
+
+## WHY THIS IS TASK-192 AND NOT TASK-183
+
+TASK-183 blocked itself rather than run without TASK-182's adapter, which was
+the right call. The adapter has since landed. But the old task file is now
+invisible to the dispatcher: `_claimed_on_a_branch` reads "not in TODO on some
+branch" as "somebody is working it", and five live worktree branches were
+forked from a master where that file sat in BLOCKED. They inherited the move
+without doing any work, so the task could never be handed out again under its
+old id. Re-issued here. The detector defect is TASK-195.
+
+## WHAT TASK-185 FOUND, WHICH CHANGES WHAT THIS TASK IS WORTH
+
+TASK-185 ran the other half of this comparison and came back empty. ContactOut
+company-info over 50 records moved **zero** verdicts and resolved **zero**
+criteria: geography did not resolve because the offices it returned sit in
+countries outside the client's include list, and company_type was already PASS
+wherever any industry was known.
+
+So this is no longer one arm of a comparison - it is the remaining candidate.
+If Grok also moves zero verdicts, then the review records are not short of
+purchasable evidence and the answer is somewhere else entirely, which is a
+finding worth $5 to establish.
 
 ## THE QUESTION
 
