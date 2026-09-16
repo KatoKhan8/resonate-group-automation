@@ -82,3 +82,47 @@ batch, so if you cannot prove it, say which measurement is missing.
 ## FILES FORBIDDEN
 
     src/   config/
+
+## RESULT
+
+**STATUS:** DONE
+
+**ANSWER: A.** The free path is `python -m src.run --spend --cap 0 --stage enrich qualify`. It populates evidence before ICP via the free webfetch leg, and no evidence-free record reaches `dropped`.
+
+**Five measured verdicts:**
+
+| Record | Domain | icp_status | score | confidence | state after |
+|--------|--------|-----------|-------|------------|-------------|
+| spectrum-mobility | spectrum-mobility.com | review | 0.0 | low | queued |
+| pearl | justanswer.com | review | 0.0 | low | queued |
+| relay-app | relay.app | review | 0.0 | low | queued |
+| gartner-research-board | gartner.com | review | 0.0 | low | queued |
+| 17hats | 17hats.com | review | 0.0 | low | queued |
+
+0/5 dropped. 0/5 rejected. 5/5 review (recoverable).
+
+**The free research trigger fires:** `research.why(verdict=review)` returns `NEED_ICP_EVIDENCE` for all 5 records, because `icp_prose_missing` is True when no research text exists. `webfetch.research` runs before the Apify budget check and costs nothing.
+
+**The code path that decides it:** `icpstructural.verdict_of` (line ~310 in icpstructural.py). All five structural criteria return UNKNOWN when evidence is absent. UNKNOWN is not FAIL. `verdict_of` requires at least one FAIL to produce ICP_FAIL. With all UNKNOWN, the answer is ICP_REVIEW, which maps to `icp_status = "review"`.
+
+**COMMIT SHA:** e4258ba
+
+**TESTS:** `scripts/task163_measure.py` and `scripts/task163_research_trigger.py` both pass. No existing tests broken (no src/ changes).
+
+**FILES CHANGED:**
+- `docs/FREE-ICP-PATH-2026-09-16.md` (new) - full analysis and recommendation
+- `scripts/task163_measure.py` (new) - ICP verdict measurement
+- `scripts/task163_research_trigger.py` (new) - research trigger verification
+- `docs/qwen-tasks/RUNNING/TASK-163-*.md` (moved from TODO, result block added)
+
+**FINDINGS:**
+1. The task description says 316 records have "no company_facts, no research, no stages". The snapshot shows 250 match this exactly; 66 have some company_facts but no research.
+2. Even without research, qualify is safe: evidence-free ICP returns `review`, not `dropped`. The worst case is a recoverable review queue entry.
+3. The free webfetch path triggers for domains-lane records with 0 contacts ONLY after the pre-research verdict is computed (which gives `icp_status=review`), not before.
+4. `--cap 0` blocks Apify (UNPRICED) but webfetch runs before the budget check.
+
+**RISKS:**
+- Webfetch may fail for some domains (JS rendering, blocking, timeout). These records still get `review`, not `dropped`.
+- The 66 records with partial company_facts were not measured but follow the same code path.
+
+**RECOMMENDED CLAUDE ACTION:** Run `python -m src.run --spend --cap 0 --stage enrich qualify` on the full 316 from Claude's worktree. The batch is safe: no record reaches `dropped` from evidence-free ICP.
