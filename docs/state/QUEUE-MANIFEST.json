@@ -1,7 +1,24 @@
 {
-  "generated_at": "2026-09-16T05:00:52+00:00",
+  "generated_at": "2026-09-16T05:38:06+00:00",
   "queue_path": "work/queue.jsonl",
   "gitignored": true,
-  "present": false,
-  "note": "Queue absent on this machine. Rebuild from the source CSV and the provider; this manifest states only its shape."
+  "present": true,
+  "source_worktree": "Claude (resonate-group-automation)",
+  "records": 550,
+  "unparseable": 0,
+  "contacts": 277,
+  "dropped": 126,
+  "clients": {
+    "productive": 550
+  },
+  "stages": {
+    "verified": 65,
+    "held": 32,
+    "dropped": 126,
+    "queued": 315,
+    "drafted": 12
+  },
+  "estate_fingerprint": "d33cbd6d4ed10f26",
+  "mtime": "2026-09-16T05:23:26.009664+00:00",
+  "note": "Generated from live queue by TASK-191. Queue lives in Claude worktree; this manifest is PII-safe."
 }

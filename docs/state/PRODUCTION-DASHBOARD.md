@@ -1,7 +1,8 @@
 # Production Dashboard
 
-Generated: 2026-09-15T08:18:07+00:00
-Snapshot: 2026-09-14T21:52:15Z  from master 0ac5e60  300 records
+Generated: 2026-09-16T05:38:06+00:00
+Source: work/queue.jsonl (Claude worktree)  550 records  mtime 2026-09-16T05:23:26Z
+Previous snapshot: 2026-09-14T21:52:15Z from master 0ac5e60 300 records (STALE - superseded by 550-record ingest)
 
 > A zero and a missing writer are indistinguishable from the
 > outside. Fields marked **ABSENT** have no data source, not
@@ -9,34 +10,24 @@ Snapshot: 2026-09-14T21:52:15Z  from master 0ac5e60  300 records
 
 ## LEADS
 
-- **Total records**: 300
-- **Total contacts**: 92
-- **Sendable contacts**: 56
-- **Verified contacts**: 56
+- **Total records**: 550
+- **Total contacts**: 277
+- **Sendable contacts**: 68
+- **Verified contacts**: 68
 - **Records with cadence**: 68
 - **Live records**: 0
 
 **By record state**:
-  - drafted: 41
-  - held: 34
-  - dropped: 106
-  - approved: 6
-  - queued: 99
-  - verified: 14
-**By persona**:
-  - economic_buyer: 72
-  - champion: 20
-**By angle**:
-  - founder: 47
-  - operations: 23
-  - delivery: 7
-  - economic_buyer: 1
-  - unknown: 11
-  - finance: 2
-  - growth: 1
+  - queued: 315
+  - dropped: 126
+  - verified: 65
+  - held: 32
+  - drafted: 12
+**By persona**: ABSENT - persona_plan is empty for all 550 records in current state
+**By angle**: ABSENT - messaging.angle is 'unknown' for all 550 records in current state
 
-- **Cohorts defined**: 14
-- **Cohorts above 50 leads**: 2
+- **Cohorts defined**: 1 (batch: productive-pilot-2026-09-07 for 50 string-batch records; 500 records have dict-batch)
+- **Cohorts above 50 leads**: ABSENT - batch field is a dict for 500 of 550 records; cohort derivation needs re-run
 - **Campaigns with leads**: ABSENT - no campaign has started; both HeyReach and EmailBison Resonate campaigns have 0 leads attached
 
 ## HEYREACH

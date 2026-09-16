@@ -86,3 +86,65 @@ The authoritative file with its count and stamp, the three populations
 reconciled, the funnel recomputed with the predicate for every stage, the
 snapshot regenerated or a recommendation to retire it, the durable state files
 updated and stamped, and the list of documents now carrying superseded numbers.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** fff8f0c
+
+**TESTS:**
+- `tests.test_invariants`: 80 tests, all pass
+- `tests.test_fixture_hygiene`: 13 tests, 4 pre-existing failures (non-reserved domains in test fixtures, unrelated to this task)
+- No conflict markers in src/, tests/, scripts/
+- `scripts/task191_funnel.py` runs cleanly and produces valid JSON
+
+**FILES CHANGED:**
+- `scripts/task191_funnel.py` (new) - computes funnel with explicit predicates from live queue
+- `docs/FUNNEL-2026-09-16.md` (new) - the full deliverable: three populations reconciled, funnel table, before/after comparison, snapshot recommendation, stale documents list
+- `docs/state/PRODUCTION-DASHBOARD.md` (updated) - LEADS section updated from 300 to 550 records, new state distribution
+- `docs/state/QUEUE-MANIFEST.json` (updated) - regenerated from live queue, now shows 550 records (was "absent")
+- `docs/state/COHORTS.json` (updated) - STALE marker added to metadata
+
+**FINDINGS:**
+
+1. **The authoritative file is `work/queue.jsonl` in Claude's worktree.** 550 records, mtime 2026-09-16T05:23:26Z. No run in flight (spend-ledger also modified at 05:22:52Z, no Python process running).
+
+2. **The three populations reconciled:**
+   - **550** = total records in live queue AND current snapshot. The full estate.
+   - **316** = subset of 550 that were in `queued` state in the snapshot. NOT a separate population; the target of the free-path run.
+   - **300** = total records in the OLD snapshot (2026-09-14T21:52:15Z). The estate grew from 300 to 550 between Sept 14 evening and Sept 15 afternoon.
+
+3. **The trap:** "PRELIMINARY_ICP 300" and "300 records exist" were the same number for different reasons in the old snapshot. In the old snapshot, 300 records had company_facts AND 300 records existed total. Reading the first as progress was a mistake.
+
+4. **The funnel (from live state, 550 records):**
+   - RECEIVED: 550 (100%)
+   - NORMALIZED: 550 (100%) - all have company_facts (free-path added minimal facts to 250)
+   - FREE_RESEARCH: 392 (71.3%)
+   - PRELIMINARY_ICP: 537 (97.6%)
+   - QUALIFIED: 113 (20.5%)
+   - ICP_REVIEW: 216 (39.3%)
+   - ICP_REJECTED: 221 (40.2%)
+   - PERSON_DISCOVERY: 91 (16.5%)
+   - ENRICHMENT: 550 (100%)
+   - VERIFICATION: 87 (15.8%)
+   - VERIFIED_SENDABLE: 67 (12.2%)
+   - CAMPAIGN_READY: 68 (12.4%)
+   - GENERATED: 190 (34.5%)
+   - APPROVAL: 35 (6.4%)
+   - LIVE_ELIGIBLE: 38 (6.9%)
+   - DROPPED: 126, HELD: 32
+
+5. **Snapshot recommendation:** Regenerate or retire. The snapshot (550 records, stamped 2026-09-15T17:52:12Z) is stale - it shows 250 records without company_facts that now all have them, and ICP review at 66 instead of 216. A stale artefact that multiple tasks have measured from is worse than a missing one.
+
+6. **26 documents carry "300 records" from the old snapshot. 5 documents carry "316 records/queued" from the pre-free-path state.** Full list in `docs/FUNNEL-2026-09-16.md`. Three documents referencing "316" are EmailBison reply counts (not stale).
+
+**RISKS:**
+- The free-path run mutated live state. The funnel numbers are post-mutation. Any document written before the run (most of the 26 listed) measured a different state.
+- The persona and angle distributions in the old dashboard could not be reproduced from the current data (persona_plan is empty, messaging.angle is "unknown" for all 550 records). Marked as ABSENT in the updated dashboard.
+- The queue.jsonl is only in Claude's worktree. Worker worktrees cannot access it directly.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Regenerate the snapshot: `cp work/queue.jsonl work/queue.snapshot.jsonl` and update the STAMP file.
+2. Review the 26 documents carrying stale "300 records" numbers. Each is a historical record and should not be edited, but a reader needs to know they are stale.
+3. The 113 QUALIFIED records are the actionable estate. 216 in REVIEW need evidence before they can advance. 221 REJECTED is the structural ICP fail count.
