@@ -114,7 +114,7 @@ criterion stated in advance.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (pending)
+**COMMIT SHA:** f5f8ef5
 
 **TESTS:**
 - `scripts/task145_cohort_analysis.py` runs clean against the snapshot, four-way partition sums to 300.
