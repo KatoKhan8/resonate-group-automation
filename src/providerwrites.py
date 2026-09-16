@@ -492,7 +492,25 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
              # stops being unbound. That ends the staging safety property the
              # list has carried, and `liststaging.assert_list_safe` will
              # correctly refuse every later add to it. One-way.
-             LINKEDIN_CREATE_CAMPAIGN)
+             LINKEDIN_CREATE_CAMPAIGN,
+             # Enabled 2026-09-16 by written operator authorization:
+             # "APPROVE HEYREACH ACTIVATION: campaign 604869, maximum send
+             # exposure 1 person / up to 4 messages."
+             #
+             # PROSPECT-FACING. This is the verb that makes a LinkedIn
+             # campaign send, and it is the second such verb this system has
+             # ever had. CONDITIONAL on _is_the_authorized_linkedin_canary,
+             # which refuses every campaign but 604869 - the account holds 83
+             # campaigns, 12 of them the client's own and IN_PROGRESS, so
+             # membership of this tuple alone would have been a licence over
+             # all of them.
+             #
+             # The second half of the containment is in the transport:
+             # heyreach.start_campaign takes expect_leads and refuses when the
+             # provider disagrees with the number the caller believes. The
+             # authorization names ONE person; a campaign that turns out to
+             # hold more is stopped there rather than discovered afterwards.
+             LINKEDIN_ACTIVATE)
 
 # ------------------------------------------- conditional permission
 #
