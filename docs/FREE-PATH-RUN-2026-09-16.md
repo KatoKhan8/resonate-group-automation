@@ -250,11 +250,11 @@ This is not a bug in the traditional sense; it's a missing feature. The lane fil
 
 ### Rejected Records (2)
 
-1. **directarrowgroup-com** (directarrowgroup.com)
+1. **record A** (domain hashed, ICP rejected)
    - tier=NOT_ICP, score=0.0, confidence=low
    - webfetch=no
 
-2. **intouchemr-com** (intouchemr.com)
+2. **record B** (domain hashed, ICP rejected)
    - tier=NOT_ICP, score=0.0, confidence=low
    - webfetch=yes
 
