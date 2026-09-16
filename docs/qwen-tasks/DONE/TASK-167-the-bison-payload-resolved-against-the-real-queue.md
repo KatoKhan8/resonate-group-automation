@@ -75,3 +75,29 @@ a canary. Do not pad it by loosening a gate to admit more contacts.
 The snapshot stamp, the per-contact per-step variable resolution table, the
 contacts that cannot render and why, the claims/lint verdict on rendered text,
 the fallback count per contact, and the exact JSON payload.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** c0a2139
+- **TESTS:** Script ran successfully; all 17 contacts render, all 51 step-renderings pass lint, all 51 pass claims gate.
+- **FILES CHANGED:**
+  - `scripts/task167_resolve_and_render.py` (new)
+  - `docs/BISON-CONTROL-PAYLOAD-2026-09-16.md` (new, PII hashed)
+- **FINDINGS:**
+  - **Snapshot:** `2026-09-15T17:52:12+00:00 from master cf23154 550 records`
+  - **All 17 contacts render.** No contact is blocked by unresolvable `company`.
+  - **Variable resolution:** All 17 have `first_name` from `contact.name`. 10 have `company` from `company_facts.name`, 7 from `rec.company`. All `angle_phrase`, `angle_word`, `sector` resolve (some via fallback to first angle in champion persona). All 17 `line` variables use the generic intro fallback (signal is 100% null).
+  - **Fallback count:** 23 total across 17 contacts. 10 contacts have 1 fallback (line only). 7 contacts have 2 fallbacks (angle_phrase + line). No contact has more than 2. No contact has all 6 variables fallen back.
+  - **Contacts with 2 fallbacks** (persona=None, angle=None): #6, #10, #12, #14, #15, #17. These get `angle_phrase` = "margin per project" (first angle in champion persona = finance) and `angle_word` = "project margin at month end" (from `angle_labels.finance`).
+  - **Lint:** ALL PASS. Word counts 77-110 (within 40-180). Subject lengths 16-54 (under 60). No substituted punctuation, no placeholders, no hard wraps, no banned phrases.
+  - **Claims:** ALL PASS. No prior contact claims, no flat second-person operational assertions. The templates use generalisations ("the pattern I see in teams the size of...") and conditionals ("if X is not something you are looking at") which are not assertions about the prospect.
+  - **Signature:** Templates carry none. Noted in deliverable.
+  - **Threading:** F,T,F pattern confirmed. Step 2 subject = step 1 subject (provider auto-prepends "Re:"). Step 3 opens new thread with "closing the loop".
+- **RISKS:**
+  - 7 contacts have `persona=None` and receive the champion persona's first angle (finance). This is the configured fallback behaviour, not a defect, but it means these 7 get finance-oriented copy regardless of their actual role.
+  - All 17 contacts have `line` as a fallback (generic intro). This is expected since signal is 100% null. The fallback is honest and asserts nothing.
+- **RECOMMENDED CLAUDE ACTION:**
+  - Review `docs/BISON-CONTROL-PAYLOAD-2026-09-16.md` for the exact staging payload.
+  - The payload is ready to write to EmailBison. No provider writes were made by this task.
+  - Consider whether the 7 contacts with `persona=None` should receive different angle copy before staging.
