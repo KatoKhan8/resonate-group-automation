@@ -65,10 +65,10 @@ Both `icp_pass` and `icp_pass_with_uncertainty` produce `icp_status = "qualified
 | # | Domain | Geo | Type | Svc | Emp | TT | Verdict |
 |---|--------|-----|------|-----|-----|----|---------|
 | 1 | ogpartner.dk | pass | pass | pass | unknown | unknown | icp_pass_with_uncertainty |
-| 2 | nineyards.ie | pass | pass | pass | pass | unknown | icp_pass_with_uncertainty |
+| 2 | px-355075e3f546 | pass | pass | pass | pass | unknown | icp_pass_with_uncertainty |
 | 3 | 16kagency.com | pass | pass | pass | pass | unknown | icp_pass_with_uncertainty |
 | 4 | 25wat.com | pass | pass | unknown | pass_with_tolerance | unknown | icp_pass_with_uncertainty |
-| 5 | 28row.com | pass | pass | pass | pass | unknown | icp_pass_with_uncertainty |
+| 5 | px-6a518e690008 | pass | pass | pass | pass | unknown | icp_pass_with_uncertainty |
 
 **Pattern:** Every qualified record has `geography=pass` and `company_type=pass` (the DEFINING criteria). `tracks_time` is `unknown` on all 113. Other criteria vary: `services_business` and `employees` are sometimes unknown or pass_with_tolerance, but never fail.
 

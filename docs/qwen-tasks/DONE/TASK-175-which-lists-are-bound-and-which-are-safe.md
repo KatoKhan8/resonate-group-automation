@@ -125,7 +125,7 @@ operation with its verb and permission status.
     says "no documented route" — this is stale. `/campaign/Create` is on
     `WRITE_ROUTES` and `heyreach.create_campaign` is implemented. The entry
     should be updated, but that is an operator decision and was not in scope.
-  - 940797's probe lead (li:990379eddf6b) is a real person. This task did not
+  - 940797's probe lead (px-990379eddf6b) is a real person. This task did not
     remove it and must not — that is a provider write and Claude's call.
 - **RECOMMENDED CLAUDE ACTION:**
   1. Decide on the staging list: create new (recommended) or reuse 940797.

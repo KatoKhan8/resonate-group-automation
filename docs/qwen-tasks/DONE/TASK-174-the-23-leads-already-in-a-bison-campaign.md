@@ -104,7 +104,7 @@ neither, with the evidence that supports it.
     - By email: 4 in both, 19 only in 481, 13 only in TASK-167
     - By domain: 9 in both, 14 only in 481, 8 only in TASK-167
     - By name: 9 in both
-    - The 4 email matches are: ogpartner-dk/jacob-faertz, anewagencyworld-com/rik-de-veirman, acqcom-com/brian-price, adcuratio-com/ranjan-damodar
+    - The 4 email matches are: ogpartner-dk/jacob-faertz, px-9e53b9602a01-com/rik-de-veirman, acqcom-com/brian-price, px-55b32db0034e-com/ranjan-damodar
   - **Gate verdicts:** 0 PASS, 23 REFUSED. Every lead has 6-40 confirmed historical touches. 14/23 have ICP flags. All have 62-116 log entries.
   - **481's 5 steps vs CONTROL:**
     - 481 has 5 steps using `{SUBJECT_N}`/`{BODY_N}` merge variables (provider-side). CONTROL has 3 steps with pre-resolved variables.

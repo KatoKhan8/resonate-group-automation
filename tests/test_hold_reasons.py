@@ -175,7 +175,7 @@ class EnrichHoldCallSiteTest(unittest.TestCase):
 
     def test_unresolved_verdict_returns_reason(self):
         from src.enrich import outcome
-        rec = {"contacts": [{"verdict": None, "email": "a@b.com"}]}
+        rec = {"contacts": [{"verdict": None, "email": "a@b.test"}]}
         state, reason = outcome(rec)
         self.assertEqual("held", state)
         self.assertIsNotNone(reason)
@@ -183,7 +183,7 @@ class EnrichHoldCallSiteTest(unittest.TestCase):
 
     def test_accept_all_returns_accept_all_code(self):
         from src.enrich import outcome
-        rec = {"contacts": [{"verdict": "accept_all", "email": "a@b.com"}]}
+        rec = {"contacts": [{"verdict": "accept_all", "email": "a@b.test"}]}
         state, reason = outcome(rec)
         self.assertEqual("held", state)
         self.assertEqual(holdreasons.ENRICH_ACCEPT_ALL_UNCLEARED, reason)
@@ -191,8 +191,8 @@ class EnrichHoldCallSiteTest(unittest.TestCase):
     def test_mixed_unresolved_returns_unresolved_code(self):
         from src.enrich import outcome
         rec = {"contacts": [
-            {"verdict": None, "email": "a@b.com"},
-            {"verdict": "accept_all", "email": "c@d.com"},
+            {"verdict": None, "email": "a@b.test"},
+            {"verdict": "accept_all", "email": "c@d.test"},
         ]}
         state, reason = outcome(rec)
         self.assertEqual("held", state)
@@ -201,7 +201,7 @@ class EnrichHoldCallSiteTest(unittest.TestCase):
     def test_verified_does_not_hold(self):
         from src.enrich import outcome
         rec = {"contacts": [{"verdict": "valid", "sendable": True,
-                              "email": "a@b.com"}]}
+                              "email": "a@b.test"}]}
         state, reason = outcome(rec)
         self.assertEqual("verified", state)
 

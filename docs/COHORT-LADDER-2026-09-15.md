@@ -36,9 +36,9 @@ The email domain STOP gate was documented in the task specification: 16 of 38 do
 
 | # | Record ID | Contact Key | Persona | Angle |
 |---|-----------|-------------|---------|-------|
-| 1 | px-39ab95927b75-com | contact:d814b9bcb642 | economic_buyer | operations |
-| 2 | 2ton-com | contact:ecfd847755c1 | economic_buyer | operations |
-| 3 | px-adddbcb604af-com | contact:b8cf25c80e28 | economic_buyer | operations |
+| 1 | px-39ab95927b75-com | px-d814b9bcb642 | economic_buyer | operations |
+| 2 | 2ton-com | px-ecfd847755c1 | economic_buyer | operations |
+| 3 | px-adddbcb604af-com | px-b8cf25c80e28 | economic_buyer | operations |
 
 **Rationale:** Three economic_buyer contacts with operations angle. The smallest possible cohort to validate the gate chain end-to-end.
 

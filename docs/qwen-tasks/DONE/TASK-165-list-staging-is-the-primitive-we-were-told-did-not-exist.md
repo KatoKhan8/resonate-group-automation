@@ -16,7 +16,7 @@ Two provider facts, both measured, and they point opposite ways:
 
     LIST       TASK-158: `/list/AddLeadsToListV2` accepts
                `{profileUrl, firstName, lastName}` and really adds. One lead
-               (li:990379eddf6b) is in list 940797 right now, readback confirms
+               (px-990379eddf6b) is in list 940797 right now, readback confirms
                `totalCount: 1`. That list is attached to no campaign.
 
 So a staging primitive does exist, at the list level, and it was not invented -

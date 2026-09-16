@@ -227,7 +227,7 @@ class TestCheckPopulation(_Base):
     def test_pass_for_campaign_with_leads(self):
         from scripts.bison_prewrite_check import check_population
         pid = self._add_provider_campaign("C", "paused")
-        lid = self.fb.add_lead("a@test.com")
+        lid = self.fb.add_lead("a@example.com")
         self.fb.members[pid].append(lid)
         r = check_population(pid, bison)
         self.assertTrue(r["pass"])

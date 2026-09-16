@@ -106,10 +106,10 @@ code read off the process.
 
 **FILES CHANGED:**
 - `tests/test_fixture_hygiene.py` — added 2 new tests for name-shaped slugs and LinkedIn vanity names
-- `docs/HEYREACH-LIST-SCHEMA-2026-09-15.md` — hashed li:b2472f5b2458 LinkedIn URL and names
-- `scripts/task158_probe2.py` — hashed li:b2472f5b2458 and li:90de99c11b66 LinkedIn URLs and names
-- `scripts/task158_probe3.py` — hashed li:b2472f5b2458 LinkedIn URL
-- `scripts/task158_verify_schema.py` — hashed li:b2472f5b2458 LinkedIn URL and name
+- `docs/HEYREACH-LIST-SCHEMA-2026-09-15.md` — hashed px-b2472f5b2458 LinkedIn URL and names
+- `scripts/task158_probe2.py` — hashed px-b2472f5b2458 and px-90de99c11b66 LinkedIn URLs and names
+- `scripts/task158_probe3.py` — hashed px-b2472f5b2458 LinkedIn URL
+- `scripts/task158_verify_schema.py` — hashed px-b2472f5b2458 LinkedIn URL and name
 - `docs/PII-SWEEP-2026-09-16.md` — new sweep report with counts and locations
 - `scripts/task178_pii_sweep.py` — new comprehensive PII scanning script
 
@@ -124,7 +124,7 @@ code read off the process.
 2. **Which of the four leaks it catches today:**
    - TASK-174 `contact_key` slug: **NO** (name not in FORBIDDEN_NAMES, slug shape not detected)
    - TASK-174 raw JSON: **YES** (if tracked; domains in FORBIDDEN_DOMAINS)
-   - TASK-176 names in scripts: **YES** (domains 20northmarketing.com, 321webmarketing.com in FORBIDDEN_DOMAINS)
+   - TASK-176 names in scripts: **YES** (domains px-771db3f7cb5a, px-998d46ac6da9 in FORBIDDEN_DOMAINS)
    - TASK-171 unhashed domains: **YES** (if domains in FORBIDDEN_DOMAINS)
    - BISON-COHORT-LIVE names: **PARTIAL** (domains caught, names not in FORBIDDEN_NAMES)
 
@@ -149,9 +149,9 @@ code read off the process.
    - Both tests focus on docs/ and scripts/ where real leaks occur, excluding tests/ where synthetic fixtures are allowed
 
 6. **Fixes applied:**
-   - Hashed li:b2472f5b2458 LinkedIn URL and names in `docs/HEYREACH-LIST-SCHEMA-2026-09-15.md`
-   - Hashed li:b2472f5b2458 and li:90de99c11b66 LinkedIn URLs and names in `scripts/task158_probe2.py`, `scripts/task158_probe3.py`, `scripts/task158_verify_schema.py`
-   - Task result blocks in `docs/qwen-tasks/REVIEW/` left for Claude to handle (1 remaining occurrence of li:b2472f5b2458)
+   - Hashed px-b2472f5b2458 LinkedIn URL and names in `docs/HEYREACH-LIST-SCHEMA-2026-09-15.md`
+   - Hashed px-b2472f5b2458 and px-90de99c11b66 LinkedIn URLs and names in `scripts/task158_probe2.py`, `scripts/task158_probe3.py`, `scripts/task158_verify_schema.py`
+   - Task result blocks in `docs/qwen-tasks/REVIEW/` left for Claude to handle (1 remaining occurrence of px-b2472f5b2458)
 
 7. **Git history:**
    - `scripts/task174_raw_data.json` is NOT in the current repository (not tracked)
@@ -164,6 +164,6 @@ code read off the process.
 
 **RECOMMENDED CLAUDE ACTION:**
 1. Review and merge the strengthened guard
-2. Fix the remaining li:b2472f5b2458 occurrence in `docs/qwen-tasks/REVIEW/TASK-158-*.md` (task result block)
+2. Fix the remaining px-b2472f5b2458 occurrence in `docs/qwen-tasks/REVIEW/TASK-158-*.md` (task result block)
 3. Consider fixing test fixtures that use non-reserved domains (test.com, acme-test.com, b.com, d.com) to use reserved domains (.test, .example, example.com)
 4. Review the 292 LinkedIn URLs in test fixtures/cassettes to determine if they should be replaced with obviously-fake names or hashed
