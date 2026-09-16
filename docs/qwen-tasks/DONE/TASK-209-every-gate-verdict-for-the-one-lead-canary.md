@@ -113,3 +113,42 @@ The named candidate with the reason it was chosen over the other five; every
 gate with PASS/FAIL, the value read, and provider-or-local; the blocking set
 classified into permission, data, human act or defect; whether `held` blocks a
 LinkedIn add; and the exact operator command sequence with its readbacks.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** d3e5dfe
+
+**TESTS:** No test suite run — this task is read-only analysis. The analysis script (`scripts/task209_canary_gate_analysis.py`) was executed against the snapshot and produced the expected output: 6 contacts with full li1-li5 operator approval, matching the commit message from `aec99f1`.
+
+**FILES CHANGED:**
+- `docs/CANARY-GATE-REPORT-2026-09-16.md` (new) — the deliverable
+- `scripts/task209_canary_gate_analysis.py` (new) — analysis script, read-only
+
+**FINDINGS:**
+
+1. **Canary candidate:** Record `699952d14554`, contact `f4698472e36a`. Chosen because its record state is `verified` (cleanest), removing the hold ambiguity that affects the other five contacts. Has LinkedIn, full li1-li5 operator approval, persona/angle assigned, no prior history.
+
+2. **Gate verdicts:** 13 of 20 evaluated gates PASS. 7 FAIL:
+   - 3 killswitch layers (global, workspace, campaign) — all OFF
+   - 2 permission seals (`CAMPAIGN_LEVEL_STAGING_IS_PROVEN=False`, list bound to campaign)
+   - 2 data gaps (collision account-level and contact-level require live provider reads unavailable from this worktree)
+
+3. **Blocking set classification:** 2 permission, 1 human act, 3 data gap, 1 data/architecture, **0 defect**. No gate failed because of a code defect.
+
+4. **`held` is NOT a blocker for LinkedIn.** `approve.py` line 28 is explicit: `held` is an email judgment. The LinkedIn staging path (`heyreachfactory.ensure_leads`) does not read record state. The five contacts on `held` records would not be refused by staging on account of their state.
+
+5. **The `hold_reason: None` anomaly** on five `held` records is orthogonal to the LinkedIn add. Whether the backfill missed them or the reason was cleared, it does not affect the staging path.
+
+6. **Every time-dependent gate is marked ⏱** in the report. This document is a readiness snapshot, not a licence. The pre-write check must run at the write.
+
+**RISKS:**
+- The snapshot is 18+ hours old. Live state in Claude's worktree may differ. The `drafted` record the task mentions was not found in the snapshot.
+- Collision and prior-contact gates could not be evaluated from this worktree. They require live provider reads.
+- The report evaluates gates against the CONTROL fallbacks, which are the approved text. If the cadence step text has changed since the snapshot, the approval fingerprint may no longer match.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Read the report at `docs/CANARY-GATE-REPORT-2026-09-16.md`.
+- The blocking set is the answer the operator needs: 2 permission decisions, 1 human act, 3 live provider reads at write time.
+- No code changes are recommended. No gate was weakened, no seal was reopened.
