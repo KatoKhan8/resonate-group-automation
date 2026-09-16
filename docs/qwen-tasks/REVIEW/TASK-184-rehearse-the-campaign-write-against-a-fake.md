@@ -87,6 +87,53 @@ against a fake, and the real write is Claude's, after reading what you found.
     docs/BISON-WRITE-REHEARSAL-2026-09-16.md   (new)
     scripts/task184_*.py
 
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 879364d
+
+**TESTS:**
+- `tests/test_bison_campaign_write.py`: 15 tests, all pass
+- `tests/test_bison_prewrite_check.py`: 35 tests (32 original + 3 new), all pass
+- `tests/test_staging_a_campaign_twice_builds_one`: 17 tests, all pass (regression check)
+- `tests/test_a_five_step_campaign_sends_five_different_emails`: 11 tests, all pass (regression check)
+- `tests/test_crash_restart_idempotency`: 7 tests, all pass (regression check)
+
+**FILES CHANGED:**
+- `tests/test_bison_campaign_write.py` (new) — 15 rehearsal tests
+- `tests/test_bison_prewrite_check.py` (modified) — 3 new tests for pre-creation case
+- `scripts/bison_prewrite_check.py` (modified) — fail-closed for not-yet-created campaigns
+- `docs/BISON-WRITE-REHEARSAL-2026-09-16.md` (new) — full documentation
+
+**FINDINGS:**
+
+1. **The entry point is `bisonfactory.stage(campaign_id, live=True)`.** It carries the gates, action ledger and spend ledger through `providerwrites.perform`. NOT a hand-rolled HTTP call.
+
+2. **The derived campaign name is `{human} [{client}/{campaign_id}]`.** For the CONTROL cohort: `RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - CONTROL [productive/control-rehearsal]`. The identity check uses `bisonfactory.provider_campaign_name()` so it tracks the derivation automatically.
+
+3. **The CONTROL sequence is three steps with threading F/T/F:** persona_pain (F), comparable_proof (T), breakup (F). Waits: 3, 4, 0 (last unchecked).
+
+4. **`bison.set_sequence` APPENDS. PROVEN.** A second write produces 6 steps, not 3. The provider renumbers orders across writes. There is no replace verb and no per-step delete route.
+
+5. **The brake is `_ensure_sequence`:** it reads `bison.sequence_steps()` BEFORE writing. Identical steps → skip. Different steps → FactoryRefused. This prevents the append trap in production.
+
+6. **Recovery procedure for half-failed write:**
+   - Read `bison.sequence_steps(provider_id)` FIRST
+   - Empty → safe to write
+   - 3 correct steps → already done, do NOT write again
+   - 6 steps → append trap fired, delete campaign and rebuild
+   - Other → investigate
+
+7. **Pre-write check now fails closed for not-yet-created campaigns.** No `bison_campaign_id` → exit code 1, clear reason, local checks still run.
+
+**RISKS:**
+- The append behaviour is structural at the provider. Any code path that calls `bison.set_sequence` without reading first will double the sequence. The `_ensure_sequence` brake is the only protection.
+- A crash between `create_campaign` and `_bind` leaves an orphan campaign. Recovery is by name lookup (`find_campaigns_by_name`), which is wired and tested.
+
+**RECOMMENDED CLAUDE ACTION:**
+Review the rehearsal documentation at `docs/BISON-WRITE-REHEARSAL-2026-09-16.md`. The entry point, derived name, sequence shape, recovery procedure and append trap are all documented with test evidence. The pre-write check now handles the pre-creation case. Ready for the real write when Claude decides.
+
 ## FILES FORBIDDEN
 
     src/providerwrites.py   work/   config/
