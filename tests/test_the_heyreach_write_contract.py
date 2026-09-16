@@ -240,6 +240,7 @@ class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
             # what moves a never-run campaign, and it is used only
             # against one the provider says holds zero leads.
             "/campaign/StartCampaign",
+            "/list/AddLeadsToListV2",
         })
 
     def test_the_add_leads_route_is_enabled_only_against_a_draft(self):

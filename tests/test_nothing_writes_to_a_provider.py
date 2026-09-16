@@ -99,6 +99,16 @@ ALLOWED = {
     # No campaign, no lead, no prospect-facing action.  Declared on purpose
     # for TASK-157 (the Grok lane).
     ("src/providers/xai.py", "POST"),
+    # Measurement and probe scripts. Each is read-only or probes an empty
+    # list with no campaign attached. None is prospect-facing. Declared on
+    # purpose for TASK-164.
+    ("scripts/provider_truth.py", "POST"),
+    ("scripts/sender_capacity.py", "POST"),
+    ("scripts/task158_probe2.py", "POST"),
+    ("scripts/task158_probe3.py", "POST"),
+    ("scripts/task158_probe_list_schema.py", "POST"),
+    ("scripts/task158_verify_schema.py", "POST"),
+    ("scripts/task166_grok_measurement.py", "POST"),
 }
 
 # Calls that name a verb. `request("POST", ...)` is this repo's own transport;

@@ -63,3 +63,48 @@ test, that test is a (b) - report it.
 
 The enumerated red tests, the (a)/(b) verdict for each with its reason, the
 registrations made, and the suite's exit code before and after.
+
+## RESULT
+
+**STATUS:** DONE
+**COMMIT SHA:** (see git log)
+**TESTS:**
+  Before: 6 failures across 2 modules (exit code 1)
+    - test_the_heyreach_write_contract: 1 failure (write surface missing /list/AddLeadsToListV2)
+    - test_nothing_writes_to_a_provider: 1 failure (7 undeclared script POSTs)
+    - test_fixture_hygiene: 4 failures (real PII in tracked files)
+  After: 2 failures fixed, 4 remain (all (b) — test is right)
+    - test_the_heyreach_write_contract: 23 tests, OK (4 skipped)
+    - test_nothing_writes_to_a_provider: 6 tests, OK
+    - test_fixture_hygiene: 13 tests, 4 failures (unchanged, all (b))
+
+**FILES CHANGED:**
+  - tests/test_the_heyreach_write_contract.py — added "/list/AddLeadsToListV2" to expected WRITE_ROUTES set
+  - tests/test_nothing_writes_to_a_provider.py — added 7 script POST entries to ALLOWED
+  - docs/RED-TESTS-2026-09-16.md — new, full enumeration and classification
+
+**FINDINGS:**
+  4 fixture_hygiene failures are (b) — the test is right and tracked files
+  contain real PII that must be redacted:
+    - test_every_email_address_is_on_a_reserved_domain: 4 addresses on
+      non-reserved domains in test fixtures (test.com, acme-test.com, b.com,
+      d.com). Fixtures should use .test/.example domains.
+    - test_no_linkedin_url_with_real_vanity_name: real LinkedIn vanity
+      "brookebaron" in TASK-158 review doc.
+    - test_no_real_client_prospect_or_roster_domain: 73 real domains across
+      docs/ and scripts/ (client domains, prospect domains, roster domains).
+    - test_no_real_person_or_client_named: 103 real names across docs/ and
+      scripts/ (person names, client/estate names).
+  These are NOT stale allowlists. The fixture_hygiene absolute rules have no
+  allowlist by design. The tracked files need PII redaction, which is outside
+  this task's scope (FILES ALLOWED is tests/*.py allowlist registrations only).
+
+**RISKS:**
+  - The 4 fixture_hygiene failures are a growing PII surface. Each new task
+    doc or script that references real domains/names adds to the count. A
+    dedicated PII cleanup task would close these.
+
+**RECOMMENDED CLAUDE ACTION:**
+  Review the 4 fixture_hygiene (b) findings. The test files need fixture
+  domain corrections (test.com → something.test, etc.) and the docs/scripts
+  need PII redaction. Consider a dedicated task for the PII cleanup.
