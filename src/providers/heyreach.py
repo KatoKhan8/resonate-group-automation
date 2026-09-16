@@ -1555,10 +1555,23 @@ _STATUSES_THAT_CANNOT_SEND = (DRAFT,)
 def campaign_cannot_send(campaign_id):
     """Whether this campaign demonstrably cannot send right now.
 
-    Read from the PROVIDER, not from local state. A campaign that reports
-    DRAFT or FINISHED cannot send. A campaign that reports IN_PROGRESS or
-    PAUSED can - PAUSED because it can be resumed at any moment, and leads
-    added to it sit waiting for the resume button.
+    Read from the PROVIDER, not from local state. Only DRAFT cannot send.
+    IN_PROGRESS, PAUSED and FINISHED all CAN - PAUSED because it can be
+    resumed at any moment and leads added to it sit waiting for the resume
+    button, and FINISHED because the vendor documents that adding a lead to a
+    finished campaign ACTIVATES it. That is the measured fact behind
+    `CAMPAIGN_LEVEL_STAGING_IS_PROVEN = False`.
+
+    THE DOCSTRING USED TO SAY "DRAFT OR FINISHED CANNOT SEND", and that was
+    wrong in the dangerous direction. `_STATUSES_THAT_CANNOT_SEND` has only
+    ever held DRAFT, so the code was right and its own description was not -
+    but there was no branch for FINISHED at all, so a finished campaign fell
+    through to the "unrecognised status" raise, whose message listed FINISHED
+    among the statuses it claimed not to recognise. Found 2026-09-16 when
+    campaign 599020 turned out to have become FINISHED overnight.
+
+    The raise was fail-closed, so nothing unsafe happened. It was still a
+    contradiction that read as a provider oddity rather than as our bug.
 
     Fails closed: if the status cannot be read, the answer is REFUSE, not
     proceed. A timeout is not a DRAFT.
@@ -1579,7 +1592,7 @@ def campaign_cannot_send(campaign_id):
             f"no status field. Cannot prove it is safe to write to. Refusing")
     if status in _STATUSES_THAT_CANNOT_SEND:
         return True
-    if status in (IN_PROGRESS, PAUSED):
+    if status in (IN_PROGRESS, PAUSED, FINISHED):
         return False
     raise ProviderError(
         f"heyreach campaign_cannot_send: campaign {campaign_id} has status "
