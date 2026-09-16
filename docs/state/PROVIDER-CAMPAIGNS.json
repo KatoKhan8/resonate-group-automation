@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-16T13:20:59+00:00",
+  "generated_at": "2026-09-16T13:35:46+00:00",
   "source": "HeyReach public API, read-only. Credential env var: HEYREACH_KEY.",
   "heyreach": {
     "campaigns_total_in_account": 84,
@@ -10,7 +10,7 @@
         "heyreach_campaign_id": 604869,
         "name": "RESONATE - PRODUCTIVE LINKEDIN CANARY - CONTROL",
         "status": "DRAFT",
-        "classification": "CREATED_BUT_INCOMPLETE",
+        "classification": "DRAFT",
         "created": "2026-09-16T13:20:25.548645Z",
         "started_at": null,
         "lead_list_id": 940797,
@@ -32,10 +32,43 @@
         ],
         "organization_unit_id": 118832,
         "sequence": {
-          "readable": false,
-          "error": "heyreach /campaign/GetCampaignSequence: unexpected response shape"
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 24,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 7,
+            "VIEW_PROFILE": 4,
+            "END": 10,
+            "FOLLOW": 1,
+            "CONNECTION_REQUEST": 1
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 8,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-16T13:20:59+00:00"
+        "last_provider_readback": "2026-09-16T13:35:46+00:00"
       },
       {
         "internal_campaign_id": "productive-linkedin-production-v1",
@@ -100,7 +133,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-16T13:20:59+00:00"
+        "last_provider_readback": "2026-09-16T13:35:46+00:00"
       }
     ],
     "status_totals": {

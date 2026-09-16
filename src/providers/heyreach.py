@@ -820,6 +820,47 @@ def _check_words(where, kind, payload):
             f"default")
 
 
+def sequence_for_write(sequence):
+    """A graph READ from the provider, made writable again.
+
+    THE READ AND THE WRITE SHAPES DIFFER, and `set_sequence`'s docstring says
+    so: "the provider normalises: a UI-built graph carries `conditionalNode:
+    END` on message nodes and a written one does not". So a graph read back
+    from `GetCampaignSequence` cannot be handed to `set_sequence` unchanged -
+    `validate_sequence_for_write` refuses it, correctly, because a MESSAGE is
+    not a branching node and must not carry a `conditionalNode`.
+
+    Measured 2026-09-16 while reproducing campaign 599020's sequence onto the
+    new canary 604869: the read graph refused with
+    "root/next:CHECK_IS_CONNECTION/next:VIEW_PROFILE/next:FOLLOW/
+    true:CONNECTION_REQUEST: MESSAGE is not a branching node".
+
+    This strips exactly that - a `conditionalNode` whose own `nodeType` is END,
+    from a node that is not allowed to branch. It does NOT touch a branching
+    node's branches, and it does not remove a non-END child from anything: a
+    real successor is the sequence, and dropping one would silently shorten
+    what a prospect receives.
+
+    Returns a new graph; the input is not mutated.
+    """
+    def clean(node):
+        if not isinstance(node, dict):
+            return node
+        out = {k: v for k, v in node.items()}
+        kind = str(out.get("nodeType") or "")
+        child = out.get("conditionalNode")
+        if (kind not in BRANCHING_NODES
+                and isinstance(child, dict)
+                and str(child.get("nodeType") or "") == "END"):
+            out.pop("conditionalNode", None)
+        for key in ("conditionalNode", "unconditionalNode"):
+            if key in out:
+                out[key] = clean(out[key])
+        return out
+
+    return clean(sequence)
+
+
 def validate_sequence_for_write(sequence):
     """Refuse a graph the provider would reject, or that we should not send.
 
