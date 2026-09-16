@@ -92,3 +92,65 @@ better than a repository where the verb is on because a test wanted it.
 The entry point Claude should call, the proof that the path refuses while the
 verb is off, the idempotency answer with a recovery procedure, the readback
 function that checks presence AND unboundness, and the 0/0/0 test.
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: f98d341
+TESTS: 27 new in tests/test_list_staging_rehearsal.py, all passing.
+       113 total across the four related test modules, all passing.
+       No conflict markers in src/, tests/, scripts/.
+FILES CHANGED:
+  - tests/test_list_staging_rehearsal.py (new, 27 tests)
+  - docs/HEYREACH-STAGING-REHEARSAL-2026-09-16.md (new)
+FINDINGS:
+
+1. THE ENTRY POINT: `liststaging.stage_lead` is the function. It bypasses
+   `providerwrites.perform` — takes a transport directly, carries no action
+   ledger, no spend ledger, no authorization. When the verb is enabled, a
+   wrapper must go through `perform(LINKEDIN_ADD_LEAD_TO_LIST, transport=...,
+   readback=...)`. The wrapper belongs in `liststaging.py` or a new
+   `listfactory.py`. This is the same pattern as `bisonfactory.stage`.
+
+2. THE REFUSAL: `heyreach.add_lead_to_list` is NOT in SUPPORTED. Calling
+   through `perform` raises `WriteUnsupported`, naming the operation and the
+   channel. The transport is never reached. The OFF switch works.
+
+3. IDEMPOTENCY: `AddLeadsToListV2` IS idempotent for duplicates. A lead
+   already in the list returns `{addedLeadsCount: 0, duplicateLeads: 1,
+   totalLeads: 1}`. The readback finds the lead present. This is ACCEPTED.
+   This is the OPPOSITE of EmailBison's `set_sequence`, which APPENDS.
+   Recovery: read `heyreach.list_leads(list_id)` first, classify with
+   `readback_list_add` + `classify_readback`, then decide.
+
+4. THE READBACK: `readback_list_add` checks presence AND unboundness. Two
+   reads, two questions. It fails if EITHER half is false. DRIFTED wins over
+   UNKNOWN (the activation defect is the more serious finding).
+
+5. THE LIST→CAMPAIGN GAP: `stage_lead` takes a `list_id`, not a
+   `campaign_id`. The payload has no campaign field. The readback checks
+   `campaignIds` and classifies DRIFTED if non-empty. The attachment
+   operation is not in SUPPORTED and not wired anywhere. Nothing in the
+   staging path can attach a list to a campaign by accident.
+
+6. THE 0/0/0 TRAP: the silent-drop response `{addedLeadsCount: 0,
+   totalLeads: 0, duplicateLeads: 0}` is treated as FAILURE. The readback
+   finds the lead absent, the verdict is UNKNOWN, and `stage_lead` raises
+   `ListStagingUnverified`. Two layers of defence: pre-transport validation
+   (refuses bad data before the transport is touched) and post-transport
+   readback (finds the lead absent even if the transport returned 200).
+
+RISKS:
+- The wrapper through `perform` does not exist yet. When the verb is enabled,
+  it must be built. `stage_lead` alone does not carry the action ledger or
+  the staging-repeat guard.
+- The predicate `assert_list_safe` is a point-in-time check, not a lock. A
+  list unbound at the moment of the write can be attached to a campaign a
+  second later. The readback catches this (DRIFTED), but the window exists.
+
+RECOMMENDED CLAUDE ACTION:
+- Review the rehearsal tests and documentation.
+- When ready to enable the verb, build the wrapper through `perform` that
+  carries the action ledger, the spend ledger, and the staging-repeat guard.
+- The wrapper is the missing piece between `stage_lead` (the primitive) and
+  `perform` (the gate).
