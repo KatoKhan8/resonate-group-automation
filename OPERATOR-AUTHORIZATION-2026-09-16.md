@@ -135,3 +135,39 @@ A write with no readback is a write nobody can classify. This is already the
 contract in `providerwrites.perform`, which takes a `readback` and treats a
 missing one as a refusal; this authorization restates it as an operating
 obligation rather than a code detail.
+
+
+---
+
+## 6. HeyReach - `heyreach.create_campaign` is ENABLED for list 940797
+
+> "APPROVED - enable heyreach.create_campaign for list 940797"
+
+**Scope:** creating a campaign bound to list **940797**, enforced by
+`_list_is_ours_and_unbound_and_holds_approved`, which takes a LIST id because
+the campaign does not exist yet at the moment of the write. It reads the list
+live and refuses unless it is ours, in our tenant, unbound, and holding only
+approved leads.
+
+**Not prospect-facing, on the provider's own terms.** `create_campaign`
+creates in DRAFT, and its docstring records that "A DRAFT SENDS NOTHING.
+Activation is `/campaign/StartCampaign`". Maximum send exposure of this grant
+is ZERO.
+
+**What it costs, and it is one-way.** TASK-216 established that the bind is
+`linkedInUserListId` supplied at creation - there is no separate attach route.
+So the moment creation succeeds, list 940797 stops being unbound. That ends the
+staging safety property the list has carried all day, and
+`liststaging.assert_list_safe` will correctly refuse every later add to it. A
+future cohort needs a different unbound list.
+
+**Explicitly NOT granted:** `heyreach.activate` / `/campaign/StartCampaign`.
+It is implemented (TASK-218) with `expect_leads` containment and provider-answer
+classification, it is registered in `WRITE_ROUTES`, and it stays out of
+`SUPPORTED`. A test asserts that. `CAMPAIGN_LEVEL_STAGING_IS_PROVEN` remains
+False and `LINKEDIN_ADD_LEAD` remains sealed - we never add to campaign 599020.
+
+**Still owed before activation can be asked for:** `heyreach.activate` has no
+`CONDITIONAL` entry, so enabling it as-is would be a channel-wide licence
+rather than one scoped to the canary campaign. That entry must be written,
+scoped to the campaign id this grant produces, before activation is requested.

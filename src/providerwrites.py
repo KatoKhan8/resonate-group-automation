@@ -471,7 +471,28 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
              # Membership of this tuple would otherwise be a channel-wide
              # licence, and the operator did not grant one.
              EMAIL_ASSIGN_SENDER,
-             EMAIL_ACTIVATE)
+             EMAIL_ACTIVATE,
+             # Enabled 2026-09-16 by written operator authorization:
+             # "APPROVED - enable heyreach.create_campaign for list 940797".
+             #
+             # NOT prospect-facing, and the reason is the provider's own:
+             # `heyreach.create_campaign` creates in DRAFT and its docstring
+             # records that "A DRAFT SENDS NOTHING. Activation is
+             # /campaign/StartCampaign", which stays OUT of this tuple.
+             #
+             # CONDITIONAL on `_list_is_ours_and_unbound_and_holds_approved`,
+             # which takes a LIST id rather than a campaign id - the campaign
+             # does not exist yet at the moment of the write, so the condition
+             # checks the list that will be bound to it: ours, in our tenant,
+             # unbound, and holding only approved leads, all read live.
+             #
+             # WHAT ENABLING THIS COSTS, stated because it is not obvious: the
+             # bind is `linkedInUserListId` at creation (TASK-216 - there is no
+             # separate attach route), so the moment it succeeds list 940797
+             # stops being unbound. That ends the staging safety property the
+             # list has carried, and `liststaging.assert_list_safe` will
+             # correctly refuse every later add to it. One-way.
+             LINKEDIN_CREATE_CAMPAIGN)
 
 # ------------------------------------------- conditional permission
 #

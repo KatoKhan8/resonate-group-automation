@@ -124,11 +124,22 @@ class ActivateIsSealed(unittest.TestCase):
 
 
 class CreateCampaignCondition(unittest.TestCase):
-    """LINKEDIN_CREATE_CAMPAIGN has a condition and is NOT in SUPPORTED."""
+    """LINKEDIN_CREATE_CAMPAIGN is ENABLED and scoped by its condition.
 
-    def test_create_campaign_not_in_supported(self):
-        self.assertNotIn(providerwrites.LINKEDIN_CREATE_CAMPAIGN,
-                         providerwrites.SUPPORTED)
+    These asserted it was absent from SUPPORTED, which was right while the
+    operator had not decided. They approved it on 2026-09-16 for list 940797,
+    so absence would now pin the opposite of the truth. The guarantee moves to
+    the condition: enabled, conditional, and refusing a list that is not ours,
+    not unbound, or not holding approved leads.
+    """
+
+    def test_create_campaign_is_enabled_and_conditional(self):
+        """Both together. SUPPORTED alone would licence creating a campaign
+        bound to ANY list, including one already attached to a campaign."""
+        self.assertIn(providerwrites.LINKEDIN_CREATE_CAMPAIGN,
+                      providerwrites.SUPPORTED)
+        self.assertIn(providerwrites.LINKEDIN_CREATE_CAMPAIGN,
+                      providerwrites.CONDITIONAL)
 
     def test_create_campaign_has_condition(self):
         self.assertIn(providerwrites.LINKEDIN_CREATE_CAMPAIGN,
@@ -143,14 +154,22 @@ class CreateCampaignCondition(unittest.TestCase):
             providerwrites.LINKEDIN_CREATE_CAMPAIGN]
         self.assertFalse(facing)
 
-    def test_perform_refuses_create_campaign(self):
-        """Not in SUPPORTED, so perform refuses before the condition runs."""
-        with self.assertRaises(providerwrites.WriteUnsupported):
+    def test_perform_refuses_create_campaign_without_a_list(self):
+        """Enabled now, so the refusal comes from the CONDITION instead of
+        from membership - and a write naming no list proves nothing."""
+        with self.assertRaises(providerwrites.WriteRefused):
             providerwrites.perform(
                 providerwrites.LINKEDIN_CREATE_CAMPAIGN,
+                provider_campaign_id=None,
                 transport=lambda p: {},
                 readback=lambda: {},
             )
+
+    def test_activation_is_still_not_supported(self):
+        """The half that was NOT granted. Creating a DRAFT is enabled;
+        starting it is not, and StartCampaign is the verb that sends."""
+        self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
+                         providerwrites.SUPPORTED)
 
     def test_condition_refuses_none_list_id(self):
         """No list id means nothing can be proven."""
