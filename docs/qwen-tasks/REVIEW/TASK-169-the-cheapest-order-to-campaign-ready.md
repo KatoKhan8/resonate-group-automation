@@ -84,3 +84,73 @@ rejection predictors and the credits ordering saves, the stage-by-stage
 attribution of the two thirds that never became campaign-ready, the ordering
 predicate, and the projected credits per campaign-ready account before and
 after.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 6b1f2b4
+
+**TESTS:**
+- `scripts/task169_enrichment_order.py` runs clean against the snapshot, exits 0.
+
+**FILES CHANGED:**
+- `docs/ENRICHMENT-ORDER-2026-09-16.md` (new) — the deliverable document
+- `scripts/task169_enrichment_order.py` (new) — the analysis script
+- Task file moved from TODO/ to RUNNING/ to REVIEW/
+
+**FINDINGS:**
+
+1. **Snapshot STAMP:** 2026-09-15T17:52:12+00:00 from master cf23154 550 records
+
+2. **Stage-by-stage attrition (300 records entered pipeline):**
+   - ICP rejected: 121 (40.3%) — FREE, no credits spent
+   - ICP qualified: 113
+   - Enriched (contacts found): 91
+   - Verified (sendable): 67
+   - Campaign-ready: 47 (15.7% survival)
+   - Approved: 31
+
+3. **Drop-off attribution of the 44 enriched that did NOT become campaign-ready:**
+   - No usable contact after enrichment: 24 (54.5% of lost)
+   - Campaign-ready gate rejection: 20 (45.5% of lost)
+   - Verification failure: 0 (all verified records had sendable emails)
+
+4. **Free-field rejection predictors:**
+   - Employee count < 20: 62.3% rejection rate vs 22.4% for 20+
+   - Headcount signal 0: 90.0% rejection vs 24.3% for signal 10+
+   - Headcount signal 1-9: 71.9% rejection vs 24.3% for 10+
+   - ICP rejection is FREE (happens before paid calls)
+
+5. **Pre-enrichment predictors of survival to campaign-ready:**
+   - headcount_signal >= 10: 29.2% survival (33/113)
+   - headcount_signal 5-9: 16.3% (7/43)
+   - headcount_signal 1-4: 7.3% (7/96)
+   - headcount_signal 0: 0.0% (0/48)
+   - employees >= 20: 29.7%+ survival vs 7.1% for < 10
+   - research_outcome = HTTP_SUCCESS: 38.5% (10/26) vs 13.5% (37/274)
+
+6. **The ordering predicate:**
+   - Sort by headcount_signal DESC, then employees DESC
+   - This is a SORT KEY, not a filter. Gates remain at full strength.
+
+7. **Projected credits per campaign-ready account:**
+   - Arrival order (current): 20.0 credits/ready
+   - Ordered by headcount_signal DESC: 12.1 credits/ready
+   - **Improvement: 39.7% fewer credits per campaign-ready**
+   - Under 471-credit budget: ~39 campaign-ready vs ~24 (65% more)
+
+8. **Confidence: LOW.** Sample is 91 enriched records. The monotonic ordering
+   is structural; specific rates are list-specific.
+
+**RISKS:**
+- 91 enriched records is a small sample. A predictor fitted to 91 will overfit.
+- The 300 came from one purchased list skewed to micro-agencies. Different lists may have different distributions.
+- The industry predictor is list-specific (advertising agencies) and not robust.
+- The research_outcome predictor has only 26 records with the field.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Review the deliverable at `docs/ENRICHMENT-ORDER-2026-09-16.md`
+2. Apply the ordering rule (headcount_signal DESC, employees DESC) to the enrichment queue selector
+3. Once TASK-163 qualifies the 250 pending records, apply the same ordering to them before enrichment
+4. Re-measure after the next batch to validate the projection
