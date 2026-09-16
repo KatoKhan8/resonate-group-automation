@@ -364,13 +364,42 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None,
     """
     config = config or {}
     proposal = plan(rec, config, verdict=verdict, today=today)
-    if not proposal.get("planned"):
+
+    # THE FREE LEG WAS GATED BEHIND THE PAID PLAN, SO IT NEVER RAN.
+    #
+    # This function used to return here when `planned` was false, and the
+    # free webfetch leg sits BELOW that return. But `plan()` sets
+    # `planned: False` for two completely different situations:
+    #
+    #   no `reason`            research is not needed at all
+    #   apify not enabled      research IS needed and the PAID crawl is off
+    #
+    # The second one is the normal case - `apify.settings({})["enabled"]` is
+    # False unless a client asks, and `test_apify_is_disabled_unless_a_client_
+    # asks` pins that. So for any client without Apify, a record that needed
+    # research returned an empty list before reaching the free crawl, and the
+    # comment below ("THE FREE LEG OF THE WATERFALL, WHICH NOTHING WAS
+    # CALLING") stayed true after the leg was wired in, because it was wired
+    # in underneath the gate.
+    #
+    # Measured 2026-09-16 across all 550 records: 1056 contactout waterfall
+    # rows, 298 apify, 221 blitz, and ZERO webfetch. 394 records have
+    # research and every one of them BOUGHT it. A free-legs run over 330
+    # records changed no state at all, because with Apify refused by
+    # `--cap 0` nothing substituted for it.
+    #
+    # So the need signal is `reason`, and the free leg is gated on that.
+    # `planned` continues to gate the PAID leg, further down, exactly as
+    # before.
+    reason = proposal.get("reason")
+    if not reason:
         events.record(rec, events.PROVIDER_CALL_SKIPPED, provider="apify",
                       operation="research", reason=proposal.get("why_not"))
         return []
 
-    events.record(rec, events.SCRAPE_PLANNED, provider="apify",
-                  operation=proposal["actor"], reason=proposal["reason"])
+    if proposal.get("planned"):
+        events.record(rec, events.SCRAPE_PLANNED, provider="apify",
+                      operation=proposal["actor"], reason=reason)
     if not live:
         return []
 
@@ -400,6 +429,15 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None,
     free = _from_the_site_itself(rec, config)
     if free is not None:
         return free
+
+    # THE PAID LEG STARTS HERE, and it needs the plan the free leg did not.
+    # Everything below was previously unreachable without `planned` because
+    # the function returned at the top; now the free crawl runs first and this
+    # is where the Apify gate actually belongs.
+    if not proposal.get("planned"):
+        events.record(rec, events.PROVIDER_CALL_SKIPPED, provider="apify",
+                      operation="research", reason=proposal.get("why_not"))
+        return []
 
     if scrape_budget is not None and not scrape_budget.allow(rec["id"]):
         events.record(rec, events.PROVIDER_CALL_SKIPPED, provider="apify",
