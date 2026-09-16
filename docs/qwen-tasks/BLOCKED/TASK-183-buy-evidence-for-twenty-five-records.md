@@ -102,7 +102,7 @@ cost per verdict, and the projection to 308 that replaces TASK-166's estimate.
 
 **STATUS: BLOCKED - no XAI_API_KEY in this worktree**
 
-**COMMIT SHA:** (pending)
+**COMMIT SHA:** 16b187f
 
 **TESTS:** Script dry-run passes; live run refused correctly on missing key.
 
