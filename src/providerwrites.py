@@ -99,6 +99,13 @@ LINKEDIN_ACTIVATE = "heyreach.activate"
 # into. Deliberately NOT `LINKEDIN_ACTIVATE`: that one starts a campaign
 # holding people, and it stays sealed.
 LINKEDIN_START_EMPTY_FOR_STAGING = "heyreach.start_empty_for_staging"
+# Adding a lead to a LIST, not a campaign. TASK-158 proved the route works,
+# TASK-165 designed the path, and neither could name the permission because
+# it did not exist. Defined here with the other constants; the predicate
+# lives in `liststaging` because the write layer this module owns does not
+# yet carry this verb. NOT in SUPPORTED, NOT in CONDITIONAL - enabling is
+# an operator decision and this task does not have it.
+LINKEDIN_ADD_LEAD_TO_LIST = "heyreach.add_lead_to_list"
 
 EMAIL_ADD_LEAD = "bison.add_lead"
 EMAIL_CREATE_CAMPAIGN = "bison.create_campaign"
@@ -154,6 +161,33 @@ OPERATIONS = {
         "Reversible: /campaign/Pause is live-validated and SUPPORTED, so a "
         "campaign started here can be stopped by this system - which is the "
         "condition the seals set before any start verb could be added"),
+    LINKEDIN_ADD_LEAD_TO_LIST: ("linkedin", False,
+        "DEFINED BUT NOT ENABLED. TASK-172. Adding a lead to a LIST rather "
+        "than a campaign - the route TASK-158 proved works and TASK-165 "
+        "designed, for which no permission existed until this constant. "
+        "Not prospect-facing: a list attached to no campaign reaches "
+        "nobody, and the condition refuses the write the moment the list "
+        "is attached to one. The predicate is `liststaging.assert_list_safe`: "
+        "it reads the list from the provider at the moment of the write and "
+        "refuses unless `campaignIds` is empty. NOT in SUPPORTED, NOT in "
+        "CONDITIONAL - enabling is an operator decision and this task does "
+        "not have it. "
+        "Schema enforcement: `profileUrl`, `firstName` (required), "
+        "`lastName` (required) are validated by `liststaging.validate_lead_row` "
+        "before the transport is touched. The provider returns "
+        "`addedLeadsCount: 0` with no error for a lead missing either name "
+        "- a 200 that is not a success - so validation is local and "
+        "pre-transport. "
+        "What the condition cannot promise: a list unbound at the moment of "
+        "the write can be attached to a campaign a second later by anyone "
+        "with provider access. The predicate is a point-in-time check, not "
+        "a lock. Detection after the fact: `liststaging.readback_list_add` "
+        "re-reads the list after every write and classifies DRIFTED if "
+        "`campaignIds` is no longer empty. "
+        "The silent-drop response (`addedLeadsCount: 0, totalLeads: 0, "
+        "duplicateLeads: 0`) is treated as failure by the readback: the "
+        "lead is not found in the list, so the verdict is UNKNOWN and "
+        "`stage_lead` raises `ListStagingUnverified`"),
     LINKEDIN_CREATE_LIST: ("linkedin", False,
         "no documented route; the list was created by hand in the vendor UI"),
     LINKEDIN_CREATE_CAMPAIGN: ("linkedin", False,

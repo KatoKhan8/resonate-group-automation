@@ -26,15 +26,11 @@ campaign, and the campaign-level gate (`LINKEDIN_ADD_LEAD` with its
 conditional permission) is the only path through.
 """
 from .providers import heyreach
+from .providerwrites import LINKEDIN_ADD_LEAD_TO_LIST
 
 
 class ListStagingRefused(RuntimeError):
     """A list staging write was refused before the transport was touched."""
-
-
-# The operation name for when this is promoted to SUPPORTED. Not in
-# providerwrites.OPERATIONS yet — that is an operator decision.
-LINKEDIN_ADD_LEAD_TO_LIST = "heyreach.add_lead_to_list"
 
 
 # -------------------------------------------------------------- validation
