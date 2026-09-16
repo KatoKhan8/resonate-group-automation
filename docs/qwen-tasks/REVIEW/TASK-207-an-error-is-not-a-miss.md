@@ -107,3 +107,67 @@ transient class proving refusal and one proving a confirmed miss permits; the
 call sites that catch a ContactOut failure with a verdict on each; the bounded
 retry with its bound justified; and the counters, aggregated from the ledger
 if that is the right source.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 7d0828d
+
+**TESTS:** 32 new tests in `tests/test_contactout_fallback_semantics.py`, all
+passing. Existing waterfall tests (test_waterfall, test_contactout_wire) all
+pass. One pre-existing failure in test_contactout_first
+(TestDeliverableContractIsConfirmed) is unrelated to this change.
+
+**FILES CHANGED:**
+- `src/waterfall.py` - five outcome classes, REASON_CLASS mapping, classify(),
+  is_transient(), TRANSIENT_REASONS, counters(), may_fall_back() transient check
+- `src/providers/contactout.py` - classify_failure(), bounded retry in call(),
+  MAX_RETRIES=2, _RETRY_BACKOFF=(0.5, 1.0)
+- `tests/test_contactout_fallback_semantics.py` - 32 tests (new)
+- `docs/ERROR-IS-NOT-A-MISS-2026-09-16.md` - findings document (new)
+
+**FINDINGS:**
+
+1. **No existing reason is ambiguous.** All 12 existing fallback reasons
+   classify cleanly as either CONFIRMED_MISS (10) or CAPABILITY_UNAVAILABLE
+   (2). None can be produced by a transient failure.
+
+2. **The live defect is in the NEXT RUN, not the current one.** When
+   ContactOut fails (timeout, error, rate limit), the ledger row is already
+   written by `spend()` before the call. On the next run, `fieldplan.tried()`
+   sees the row and says "ContactOut was asked", the field is still missing,
+   and the fallback is licensed with reason `CONTACTOUT_MISSING_COMPANY_DATA`.
+   A timeout is spelled as a miss. The fix: bounded retry handles the common
+   transient case, and the three new transient reason strings fail closed at
+   the waterfall even if somehow offered.
+
+3. **Five call sites catch ContactOut ProviderError** (enrich.py lines 929,
+   964, 995, 1019, 1084). None record a classified reason - they log text and
+   append to a failures list. The defect is that the absence of a classified
+   failure reason means the next run cannot distinguish "ContactOut answered
+   and the data was not there" from "ContactOut failed to answer".
+
+4. **Retry is bounded and invisible to the spend audit.** MAX_RETRIES=2
+   (3 total attempts), backoff 0.5s/1.0s. ContactOut bills only successful
+   calls, so retries cost nothing. The ledger records one row per call, not
+   per attempt.
+
+5. **Telemetry counters aggregate from the ledger.** `waterfall.counters()`
+   reads the waterfall rows. CONTACTOUT_CACHE_HITS is the exception (a cache
+   hit produces no ledger row) and is passed in by the caller.
+
+**RISKS:**
+- The retry adds latency to ContactOut calls that fail transiently (up to
+  1.5 seconds per call). Under sustained rate limiting, this could slow the
+  batch. The bound is visible in telemetry (CONTACTOUT_ERRORS counter).
+- The `contactout_incomplete` reason is classified as CONFIRMED_MISS. If a
+  future code path produces it from a transient failure, the classification
+  would be wrong. The current code paths all produce it from actual missing
+  data, not from exceptions.
+
+**RECOMMENDED CLAUDE ACTION:** Review the five outcome classes and the
+REASON_CLASS mapping. Verify the transient refusal in may_fall_back. Consider
+whether enrich.py should record a transient reason on the ledger when a
+ContactOut call fails, so the next run can distinguish "ContactOut failed"
+from "ContactOut answered and the data was not there".
