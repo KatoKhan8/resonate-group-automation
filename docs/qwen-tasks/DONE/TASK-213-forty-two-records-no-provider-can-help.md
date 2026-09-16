@@ -88,3 +88,75 @@ The 42 located with state, icp_status and the criterion behind each; whether
 the verdict is recorded or merely derivable; the TASK-193 check on
 `geo_excluded` with a verdict on whether those 10 are fail-closed at all; what
 should happen per group; and the corrected review count.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 7264c3ae
+
+**TESTS:** No test suite run - this is a measurement task, not a code change.
+One analysis script executed against the live queue (550 records in Claude's
+worktree).
+
+**FILES CHANGED:**
+- `docs/FAIL-CLOSED-GROUPS-2026-09-16.md` (new) - the deliverable report
+- `scripts/task213_locate_fail_closed.py` (new) - analysis script
+- Task file moved TODO/ -> RUNNING/
+
+**FINDINGS:**
+
+1. **The 42 records TASK-211 named do not exist as a misfiled population.**
+   TASK-211 grouped by `icp_flags` text matching (32 "too_small" + 10
+   "geo_excluded"). The flags are informational; the criterion verdict is the
+   verdict. When measured against the actual criterion status:
+
+   - **106 records** have employees criterion FAIL (not 32). All 106 are
+     already `icp_status=rejected`, 90 already `dropped`. Zero are in review.
+   - **2 records** have geography FAIL on the exclude list (not 10). Both
+     already `dropped` and `rejected`.
+   - **296 records** have geography UNKNOWN because the country is not on the
+     include list. These are NOT fail-closed - this is the TASK-193 design.
+
+2. **The verdict is recorded, not derivable.** For all 106 employees-FAIL
+   records, the chain is complete:
+   `qualification.verdict.structural.criteria.employees.status = "fail"` →
+   `structural.verdict = "icp_fail"` → `verdict.icp_status = "rejected"`.
+   The pipeline knows what the analysis knows.
+
+3. **TASK-193 check confirmed: the "geo_excluded" 10 are NOT fail-closed.**
+   `_geography()` at `src/icpstructural.py:375-398` returns UNKNOWN (not FAIL)
+   when a country resolves but is not on the include list. The 296 records
+   with geography UNKNOWN are correctly held. Only 2 records have geography
+   FAIL (explicit exclude list) and both are already terminal.
+
+4. **The 78 records with `icp_flags` saying "under client minimum" but
+   criterion NOT FAIL are the system working correctly.** The flag notes raw
+   data; the criterion evaluates all evidence (bands, tolerance, headcount
+   from multiple providers). A band of 11-50 straddling the floor is UNKNOWN,
+   not FAIL. A headcount of 15 within the 30% tolerance is PASS_WITH_TOLERANCE.
+
+5. **Corrected review count: 215.** This is the correct number, not inflated
+   by 42 misfiled records. Breakdown:
+   - 208 of 215 have geography UNKNOWN (country not on either list)
+   - 7 of 215 have other unknown criteria (company_type, services_business,
+     tracks_time, employees)
+   - Zero review records have any FAIL criterion
+
+6. **All 215 review records are in state `queued`.** There is no separate
+   "review" state. The `icp_status=review` is the ICP verdict, not the record
+   state.
+
+**RISKS:**
+- The 208 records with unknown geography are the dominant review population.
+  Resolving them requires more evidence (free crawl, then ContactOut), not a
+  status change.
+- The 16 queued records with `icp_status=rejected` will not advance (the
+  pipeline gates on qualified). They are in state `queued` but functionally
+  terminal.
+
+**RECOMMENDED CLAUDE ACTION:**
+- No record movement needed. The system is working correctly.
+- The throughput question is "how do we resolve the 208 unknown-geography
+  records" - answer: more evidence, not status changes.
+- The deliverable report is in `docs/FAIL-CLOSED-GROUPS-2026-09-16.md`.
