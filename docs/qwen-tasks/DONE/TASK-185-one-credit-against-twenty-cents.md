@@ -101,3 +101,78 @@ data.
 The same 25 records named, the four movement counts, per-criterion UNKNOWN
 resolution for all five, cost per verdict, whether `verdict_of` needs all five
 to pass, and the side-by-side against TASK-183's Grok numbers.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 7bf038c
+
+**TESTS:** No test suite run - this is a measurement task, not a code change.
+The measurement script (`scripts/task185_company_info_measurement.py`) was
+executed twice against the snapshot and produced consistent results.
+
+**FILES CHANGED:**
+- `docs/CREDIT-VS-GROK-2026-09-16.md` (new) - the deliverable report
+- `scripts/task185_company_info_measurement.py` (new) - the measurement script
+- `scripts/task185_results.json` (new) - detailed per-record results
+
+**FINDINGS:**
+
+1. **Two rounds of 25 records each from icp_review.** Round 1: records with
+   no company_facts at all. Round 2: records with existing company_facts.
+
+2. **Round 1:** ContactOut returned null for all 25 domains. Zero credits
+   charged (null responses are free). Zero verdicts moved. Zero criteria
+   resolved.
+
+3. **Round 2:** ContactOut returned data for all 25 (100% hit rate) but only
+   2 records received genuinely new fields. Zero verdicts moved. Zero
+   criteria resolved.
+
+4. **Per-criterion resolution (all 50 records):**
+   - geography: 0 resolved. Offices returned are in countries not on the
+     client's include list (UA, CY, RU, etc.)
+   - company_type: 0 resolved. Already PASS for records with any industry.
+   - services_business: 0 resolved. Depends on text classification, not
+     structured facts.
+   - employees: 0 resolved (2 got new data but didn't cross thresholds).
+   - tracks_time: 0 resolved. Requires billing phrases; only 6 of 550
+     records carry them.
+
+5. **Cost per verdict:** N/A - no records reached a verdict. 25 credits
+   spent in Round 2, 0 charged in Round 1. The repository does not record
+   a dollar cost per ContactOut credit.
+
+6. **verdict_of does NOT require all five to PASS.** The rules:
+   - Any FAIL -> icp_fail
+   - All PASSING -> icp_pass
+   - DEFINING (geography + company_type) both PASSING -> icp_pass_with_uncertainty
+   - Otherwise -> icp_review
+
+7. **The structural finding:** company-info is a database lookup that cannot
+   reach the records that need it most. The 25 domains with no evidence are
+   exactly the domains ContactOut doesn't know. Grok (web search) can find
+   data about any domain with a web presence, which is what the unknown
+   domains need. The comparison favours Grok on reach, not on price.
+
+8. **Live writer check:** No live writer detected. The snapshot
+   (`work/queue.snapshot.jsonl`) is read-only and was not modified. No
+   `work/queue.jsonl` exists in this worktree.
+
+**RISKS:**
+- The 25 credits spent in Round 2 may not have been charged (ContactOut
+  usage counter showed no change). If they were charged, the cost is 25
+  credits for zero verdicts.
+- TASK-183 (Grok on 25 records) has not run yet, so the side-by-side
+  comparison is against TASK-166's 10-domain measurement, not the same 25.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Run TASK-183 (Grok on the same 25 records from Round 1) to complete the
+  comparison on identical domains.
+- Consider whether the criterion set's unsatisfiability on `tracks_time`
+  (544 of 550 UNKNOWN) is an architecture question to address.
+- The company-info purchase is not worth making for these records. The
+  structural mismatch (database lookup vs unknown domains) means it would
+  spend 308 credits on the full batch and resolve approximately zero
+  criteria.
