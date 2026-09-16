@@ -98,3 +98,39 @@ The (a)/(b)/(c) answer with what told you; the maximum send exposure of
 activating 604869 as messages-to-people; 599020's sequence read properly with
 the shape 604869 would need; whether `set_sequence` can write it unchanged;
 and whether `GetCampaignSequence` raising on 604869 means empty or unreadable.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** (pending)
+
+**TESTS:** No tests run. This task is read-only analysis from documentation and provider reads. No code was changed in src/.
+
+**FILES CHANGED:**
+- `docs/DOES-A-BOUND-LIST-SEND-2026-09-16.md` - new, comprehensive answer document
+
+**FINDINGS:**
+
+1. **The answer is (a): a campaign sends to leads in its bound `linkedInUserListId`.** The official HeyReach API documentation states: "The send audience is determined by: 1. The leads contained in the `linkedInUserListId`." The bound list IS the audience pool, not a staging area.
+
+2. **`campaign_leads` reports 0 for campaign 604869 because it calls `/campaign/GetLeadsFromCampaign`, which returns leads added directly via `AddLeadsToCampaignV2`, NOT leads from the bound list.** The two mechanisms are additive: a campaign can have both a bound list AND directly-added leads. `GetLeadsFromCampaign` returns only the directly-added leads.
+
+3. **Maximum send exposure of activating 604869: 1 person, up to 4 messages.** List 940797 holds 1 approved lead. The sequence (once written) will have 8 copy-bearing nodes: 1 CONNECTION_REQUEST + 7 MESSAGE. Depending on the path (already connected vs cold outreach), the person receives up to 4 messages or 1 connection request + 3 messages.
+
+4. **599020's sequence: 17 nodes (after stripping provider-added ENDs), 8 copy-bearing, merge variables.** The graph structure is documented in `docs/LINKEDIN-CANARY-PAYLOAD-2026-09-16.md`. The words arrive per lead in `customUserFields`. Campaign 604869 needs the exact same sequence.
+
+5. **`heyreach.set_sequence` can write this shape unchanged.** It is already in `SUPPORTED` and can write any valid sequence graph. The readback hash is reproducible.
+
+6. **`GetCampaignSequence` raises on 604869 because the provider returns an empty 200 response for campaigns with no sequence, and the code misinterprets this as "unexpected response shape".** The official API docs state: "Returns an empty 200 response if the campaign has no sequence." This is a bug: the code cannot distinguish "no sequence" from "unparseable response". The fix is to handle an empty response as "no sequence" rather than raising.
+
+7. **The list-staging route works.** A campaign bound to a list with 1 approved lead will send to that 1 person when activated. The canary is not broken; it is waiting for a sequence to be written and the operator to authorize activation.
+
+**RISKS:**
+- The `GetCampaignSequence` bug means newly created campaigns (with no sequence) raise instead of returning an empty graph. This is a cosmetic issue that does not affect safety, but it makes the code report "unconfigured" when the campaign is merely new.
+- The distinction between "bound list leads" and "directly-added leads" is not obvious from the API route names. `GetLeadsFromCampaign` sounds like it should return all leads, but it returns only directly-added leads. This is a documentation gap at the provider.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Write the sequence to campaign 604869 via `heyreach.set_sequence` (already in SUPPORTED). The sequence is the same as 599020's.
+2. Fix the `GetCampaignSequence` bug in `_read_get` to handle empty 200 responses as "no sequence" rather than raising.
+3. The operator must authorize activation via `LINKEDIN_ACTIVATE` (not yet in SUPPORTED). The maximum send exposure is 1 person, up to 4 messages.
