@@ -19,11 +19,20 @@ Costs, from section 5.1:
   python -m src.providers.contactout --check
 """
 import argparse
+import time
 
-from . import (COST, ProviderError, failed, first, key, mapping, ok,
-               query, request, result)
+from . import (COST, MissingKey, ProviderError, failed, first, key, mapping,
+               ok, query, request, result)
 
 BASE = "https://api.contactout.com/v1"
+
+# Bounded retry: 3 attempts total (original + 2 retries). ContactOut's rate
+# limit window is per-minute and 5xx errors are typically transient. The
+# backoff is 0.5s, 1.0s - enough for the provider to recover without blocking
+# the batch. A 401 (bad key) is never retried: a credential that is absent
+# will not materialise on the second attempt.
+MAX_RETRIES = 2
+_RETRY_BACKOFF = (0.5, 1.0)
 
 # Always sent on people-search so the response comes back trimmed at the source.
 # Only values ContactOut actually accepts: li_vanity, full_name, title, headline,
@@ -69,20 +78,77 @@ ROUTES = {
 }
 
 
-def call(name, params=None):
-    """One ContactOut operation. The route decides where the parameters go."""
+def classify_failure(status, error_text=""):
+    """Map a ContactOut failure to one of the five outcome classes.
+
+    The classification decides whether a fallback is licensed. An error, a
+    timeout and a rate limit are transient - they must NOT license paying a
+    second provider for data ContactOut has and was simply not asked properly.
+    """
+    text = str(error_text).lower()
+    if status == 429 or "rate" in text and "limit" in text:
+        return "contactout_rate_limited"
+    if status is None and ("timeout" in text or "timed out" in text):
+        return "contactout_timeout"
+    if status is None and ("timeout" not in text):
+        return "contactout_error"
+    if status is not None and 500 <= status < 600:
+        return "contactout_error"
+    return "contactout_error"
+
+
+def _do_request(method, url, hdrs, params):
+    """One HTTP attempt. Returns (status, data)."""
+    if method == "POST":
+        return request("POST", url, hdrs, params)
+    return request("GET", query(url, params), hdrs)
+
+
+def call(name, params=None, _sleep=time.sleep):
+    """One ContactOut operation with bounded retry on transient failures.
+
+    The route decides where the parameters go. 429, 5xx and network errors
+    are retried up to MAX_RETRIES times with exponential backoff. 4xx client
+    errors and MissingKey are never retried.
+
+    A retry is invisible to the spend audit: ContactOut bills only successful
+    calls, so a retry that fails costs nothing, and a retry that succeeds
+    costs the same as a first attempt that succeeds.
+    """
     if name not in ROUTES:
         raise ProviderError(f"contactout: no route for {name}")
     method, path = ROUTES[name]
     params = {k: v for k, v in (params or {}).items()
               if v not in (None, "", [], {})}
-    if method == "POST":
-        status, data = request("POST", f"{BASE}{path}", headers(), params)
-    else:
-        status, data = request("GET", query(f"{BASE}{path}", params), headers())
-    if not ok(status):
-        raise ProviderError(f"contactout {name}: {status}")
-    return unwrap(data)
+    url = f"{BASE}{path}"
+
+    hdrs = headers()
+    max_attempts = MAX_RETRIES + 1
+    last_status, last_error = None, None
+
+    for attempt in range(max_attempts):
+        try:
+            last_status, data = _do_request(method, url, hdrs, params)
+            if ok(last_status):
+                return unwrap(data)
+            # 4xx (except 429) is a client error; retrying won't help.
+            if 400 <= last_status < 500 and last_status != 429:
+                raise ProviderError(f"contactout {name}: {last_status}")
+            # 429 and 5xx are transient; fall through to retry.
+            last_error = f"contactout {name}: {last_status}"
+        except MissingKey:
+            raise
+        except ProviderError:
+            # A 4xx ProviderError must not be retried - re-raise immediately.
+            if last_status is not None and 400 <= last_status < 500:
+                raise
+            if attempt >= max_attempts - 1:
+                raise
+            last_error = f"contactout {name}: transient failure"
+        if attempt < max_attempts - 1:
+            _sleep(_RETRY_BACKOFF[attempt])
+
+    raise ProviderError(last_error or f"contactout {name}: exhausted retries")
 
 
 def listed(value):

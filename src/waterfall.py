@@ -31,6 +31,61 @@ import json
 
 from . import enrich, store
 
+# ----------------------------------------- the five ContactOut outcome classes
+#
+# PROVIDER-ROUTING-POLICY.md requires these to be distinguishable. Only the
+# first two may license a paid fallback; the other three are transient failures
+# that must retry or hold, never switch providers silently.
+#
+# An error is not a miss. A timeout is not a miss. A rate limit is not a miss.
+# Only a confirmed miss or a structural capability gap licenses paying a second
+# provider for data ContactOut has and was simply not asked properly.
+
+CONTACTOUT_CONFIRMED_MISS = "contactout_confirmed_miss"
+CONTACTOUT_CAPABILITY_UNAVAILABLE = "contactout_capability_unavailable"
+CONTACTOUT_ERROR = "contactout_error"
+CONTACTOUT_TIMEOUT = "contactout_timeout"
+CONTACTOUT_RATE_LIMITED = "contactout_rate_limited"
+
+# The three transient classes. A reason in this set is NEVER in any
+# accepted_reasons list, so may_fall_back refuses it by construction.
+TRANSIENT_REASONS = frozenset({
+    CONTACTOUT_ERROR,
+    CONTACTOUT_TIMEOUT,
+    CONTACTOUT_RATE_LIMITED,
+})
+
+# Every accepted fallback reason maps to exactly one outcome class. Two state
+# machines for one fact is how they drift, so this is the ONLY mapping.
+REASON_CLASS = {
+    enrich.CONTACTOUT_NO_PEOPLE:              CONTACTOUT_CONFIRMED_MISS,
+    enrich.CONTACTOUT_NO_TARGET_PERSONA:      CONTACTOUT_CONFIRMED_MISS,
+    enrich.CONTACTOUT_RESULT_COLLISION:       CONTACTOUT_CONFIRMED_MISS,
+    enrich.CONTACTOUT_REBRAND_DETECTED:       CONTACTOUT_CONFIRMED_MISS,
+    enrich.DOMAIN_UNSTAFFED:                  CONTACTOUT_CONFIRMED_MISS,
+    enrich.CONTACTOUT_INCOMPLETE:             CONTACTOUT_CONFIRMED_MISS,
+    enrich.CONTACTOUT_NO_COMPANY_LINKEDIN:    CONTACTOUT_CONFIRMED_MISS,
+    enrich.CONTACTOUT_MISSING_COMPANY_DATA:   CONTACTOUT_CONFIRMED_MISS,
+    enrich.PUBLIC_EVIDENCE_REQUIRED:          CONTACTOUT_CAPABILITY_UNAVAILABLE,
+    enrich.CONTACTOUT_NO_EMAIL_DOMAIN:        CONTACTOUT_CAPABILITY_UNAVAILABLE,
+    "verification_inconclusive":              CONTACTOUT_CONFIRMED_MISS,
+    "verification_contradiction":             CONTACTOUT_CONFIRMED_MISS,
+    CONTACTOUT_ERROR:                         CONTACTOUT_ERROR,
+    CONTACTOUT_TIMEOUT:                       CONTACTOUT_TIMEOUT,
+    CONTACTOUT_RATE_LIMITED:                  CONTACTOUT_RATE_LIMITED,
+}
+
+
+def classify(reason):
+    """Map a fallback reason to its outcome class, or None if unknown."""
+    return REASON_CLASS.get(reason)
+
+
+def is_transient(reason):
+    """True when the reason is a transient failure that must NOT license fallback."""
+    return reason in TRANSIENT_REASONS
+
+
 # ---------------------------------------------------------------- the stages
 #
 # Ordered. Position 0 is ContactOut wherever ContactOut can answer at all, and
@@ -281,7 +336,9 @@ def may_fall_back(stage, provider, reason, call=None):
     """Is this step permitted, given the reason offered for it?
 
     Primary-path steps need no reason. Fallback steps need one the stage
-    names, and "we called it anyway" is not one.
+    names, and "we called it anyway" is not one. A transient failure - an
+    error, a timeout, a rate limit - is never a reason to pay a second
+    provider; retry or hold instead.
     """
     if stage not in STAGES:
         raise KeyError(stage)
@@ -290,9 +347,12 @@ def may_fall_back(stage, provider, reason, call=None):
         return False, f"{provider} is not part of the {stage} waterfall"
     if not is_fallback(stage, provider, call):
         return True, "primary path for this stage; no fallback reason needed"
-    allowed = accepted_reasons(stage, provider, call)
     if not reason:
         return False, "a paid fallback needs a reason; this one offered none"
+    if is_transient(reason):
+        return False, (f"{reason!r} is a transient failure, not a miss; "
+                       f"a fallback would pay twice for data ContactOut has")
+    allowed = accepted_reasons(stage, provider, call)
     if reason not in allowed:
         return False, (f"{reason!r} is not a reason to fall back to {provider} "
                        f"for {stage}; accepted: {', '.join(allowed)}")
@@ -459,6 +519,81 @@ def _text_audit(result, rec):
     if not result["unjustified"]:
         lines.append("  every step carries a reason the waterfall accepts")
     return "\n".join(lines)
+
+
+# --------------------------------------------------------- telemetry counters
+#
+# Aggregated from the waterfall ledger, which is the single source of truth.
+# A second counter store would drift from it; these read the rows.
+#
+# PROVIDER-ROUTING-POLICY.md names seven counters. CONTACTOUT_CACHE_HITS
+# cannot be derived from the ledger (a cache hit does not produce a row), so
+# it is tracked separately at the call site in src/providers/contactout.py
+# and merged in here by the caller.
+
+def counters(records, cache_hits=0):
+    """Aggregate the policy's seven counters from a collection of records.
+
+    Each escalation carries its WHY: the reason code from the ledger row that
+    licensed leaving ContactOut. A fallback without a reason is counted under
+    CONTACTOUT_ERRORS because an unjustified fallback is the failure this
+    module exists to make visible.
+
+    CONTACTOUT_CONFIRMED_MISSES counts the fallback steps whose reason
+    classifies as a confirmed miss - that is the event that licensed paying
+    the next provider. CONTACTOUT_ERRORS counts fallback steps whose reason
+    is transient (error, timeout, rate limit) - these should never appear
+    because may_fall_back refuses them, but the counter makes a violation
+    visible rather than silent.
+    """
+    contactout_calls = 0
+    contactout_confirmed_misses = 0
+    contactout_errors = 0
+    crawler_calls = 0
+    grok_escalations = 0
+    other_provider_escalations = 0
+    escalation_reasons = []
+
+    for rec in records:
+        for row in ledger(rec):
+            provider = row.get("provider")
+            call = row.get("call")
+            reason = row.get("reason")
+
+            if provider == CONTACTOUT:
+                contactout_calls += 1
+                continue
+
+            cls = classify(reason) if reason else None
+
+            if cls == CONTACTOUT_CONFIRMED_MISS:
+                contactout_confirmed_misses += 1
+            elif cls in (CONTACTOUT_ERROR, CONTACTOUT_TIMEOUT,
+                         CONTACTOUT_RATE_LIMITED):
+                contactout_errors += 1
+
+            if provider in ("apify",) and call and "research" in call:
+                crawler_calls += 1
+
+            if call and "xai" in call:
+                grok_escalations += 1
+                escalation_reasons.append({"provider": provider,
+                                           "call": call, "reason": reason})
+            elif is_fallback(row.get("stage"), provider, call):
+                other_provider_escalations += 1
+                escalation_reasons.append({"provider": provider,
+                                           "call": call, "reason": reason})
+
+    return {
+        "CONTACTOUT_CALLS": contactout_calls,
+        "CONTACTOUT_CACHE_HITS": cache_hits,
+        "CONTACTOUT_CONFIRMED_MISSES": contactout_confirmed_misses,
+        "CONTACTOUT_ERRORS": contactout_errors,
+        "CRAWLER_CALLS": crawler_calls,
+        "GROK_ESCALATIONS": grok_escalations,
+        "OTHER_PROVIDER_ESCALATIONS": other_provider_escalations,
+        "escalation_reasons": escalation_reasons,
+    }
 
 
 if __name__ == "__main__":
