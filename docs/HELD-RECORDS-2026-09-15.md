@@ -31,9 +31,9 @@ Enrichment completed but contacts were not cleared. `enrich.outcome()` returned 
 
 | # | Record | Contact verdicts | Sub-reason | Reconstructable |
 |---|--------|-----------------|------------|-----------------|
-| 1 | `20northmarketing-com` | `[None]` | Contact verdict never resolved; 0 provider calls | Yes — log: "enriched: 0 provider call(s)" |
-| 2 | `321webmarketing-com` | `[accept_all, accept_all]` | accept_all_uncleared — reoon says catch-all not safe | Yes — verify log: "accept_all_uncleared" |
-| 3 | `arcoagency-se` | `[None]` | Contact verdict never resolved; 2 provider calls | Yes — log: "enriched: 2 provider call(s)" |
+| 1 | `px-39ab95927b75-com` | `[None]` | Contact verdict never resolved; 0 provider calls | Yes — log: "enriched: 0 provider call(s)" |
+| 2 | `px-adddbcb604af-com` | `[accept_all, accept_all]` | accept_all_uncleared — reoon says catch-all not safe | Yes — verify log: "accept_all_uncleared" |
+| 3 | `px-02d29687fd24-se` | `[None]` | Contact verdict never resolved; 2 provider calls | Yes — log: "enriched: 2 provider call(s)" |
 | 4 | `adinmo-com` | `[accept_all]` | accept_all, no clearing provider | Yes — log: "enriched: 2 provider call(s)" |
 | 5 | `tractorbeam-com` | `[accept_all, accept_all]` | accept_all, no clearing provider | Yes — log: "enriched: 2 provider call(s)" |
 | 6 | `mcompany-com` | `[None, accept_all, None, None, None, None]` | catch-all cleared by reoon, only 1 of 2 confirmations | Yes — verify log: "catch-all cleared by reoon, but only 1 of 2" |
@@ -63,7 +63,7 @@ Enrichment completed but contacts were not cleared. `enrich.outcome()` returned 
 | 10 | `aheadgroup-se` | evidence must be a non-empty list | Evidence empty list |
 | 11 | `eliassen-com` | evidence must be a non-empty list | Evidence empty list |
 | 12 | `surface51-com` | answer was not JSON | JSON parse failure |
-| 13 | `nineyards-ie` | no draft passed lint (empty completion) | Lint failure / empty completion |
+| 13 | `px-e1ae770a9b46-ie` | no draft passed lint (empty completion) | Lint failure / empty completion |
 | 14 | `grayloon-com` | no draft passed lint | Lint failure |
 
 ### Category C — Un-drop pending re-enrichment (9 records)
@@ -91,7 +91,7 @@ These records were dropped (asserting no contact at domain), then reinstated whe
 | **RETRYABLE** | 12 | `log[-1].step` ∈ {persona_angle, draft}, `"held:"` in note | Model failed 3 attempts; a retry with a different model or more evidence may succeed. 7 evidence-traceability, 4 evidence-empty-list, 1 JSON parse. |
 | **WAITING** | 9 | Contact verdicts contain `accept_all` or `None` | Verification cannot clear with current providers. Needs a clearing provider, manual verification, or a policy decision on accept_all domains. |
 | **ACTIONABLE** | 9 | `log` contains `step: "un-dropped"` | Re-enrichment will resolve these. Contacts exist (or were found) but enrichment has not re-run since the un-drop. |
-| **HUMAN_REVIEW** | 3 | Verifiers disagree, or lint failures with no clear path | `pomplunspanier-com` (verifier disagreement), `nineyards-ie` and `grayloon-com` (drafts that will not pass lint — may need manual copy). |
+| **HUMAN_REVIEW** | 3 | Verifiers disagree, or lint failures with no clear path | `pomplunspanier-com` (verifier disagreement), `px-e1ae770a9b46-ie` and `grayloon-com` (drafts that will not pass lint — may need manual copy). |
 | **PERMANENT** | 3 | No contacts, no path to find more | `revupdental-com`, `creativefruit-co`, `atypiccraft-com` — enrichment found no contacts and the record has been held since. Should be dropped with reason. |
 
 **Reconstructable: 36 of 36.** Every held record has enough data in its log entries and contact verdicts to determine why it is held. The information exists; it is just not in a machine-readable field.

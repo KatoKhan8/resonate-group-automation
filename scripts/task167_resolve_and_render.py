@@ -27,7 +27,7 @@ COLD_ALLOW = {
     "skyad.com", "thecommunity.ca", "viralityllc.com", "wearejsa.com",
 }
 NEVER_EMAILED_ALLOW = {
-    "ogpartner.dk", "anewagencyworld.com", "acqcom.com", "adcuratio.com",
+    "ogpartner.dk", "px-2a51e132bab4", "acqcom.com", "px-a8ca1565fdd1",
     "portsidemarketing.com", "agency59.ca", "savagebrands.com",
     "mischacommunications.com", "mypersonalestatesale.com",
 }

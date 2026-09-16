@@ -36,9 +36,9 @@ The email domain STOP gate was documented in the task specification: 16 of 38 do
 
 | # | Record ID | Contact Key | Persona | Angle |
 |---|-----------|-------------|---------|-------|
-| 1 | 20northmarketing-com | contact:d814b9bcb642 | economic_buyer | operations |
+| 1 | px-39ab95927b75-com | contact:d814b9bcb642 | economic_buyer | operations |
 | 2 | 2ton-com | contact:ecfd847755c1 | economic_buyer | operations |
-| 3 | 321webmarketing-com | contact:b8cf25c80e28 | economic_buyer | operations |
+| 3 | px-adddbcb604af-com | contact:b8cf25c80e28 | economic_buyer | operations |
 
 **Rationale:** Three economic_buyer contacts with operations angle. The smallest possible cohort to validate the gate chain end-to-end.
 
@@ -46,8 +46,8 @@ The email domain STOP gate was documented in the task specification: 16 of 38 do
 
 | # | Record ID | Contact Key | Persona | Angle |
 |---|-----------|-------------|---------|-------|
-| 1 | aubryandco-com | jamal-fraiser | economic_buyer | founder |
-| 2 | arcoagency-se | emanuel-froberg | economic_buyer | founder |
+| 1 | px-699ce41cf86d-com | jamal-fraiser | economic_buyer | founder |
+| 2 | px-02d29687fd24-se | emanuel-froberg | economic_buyer | founder |
 | 3 | azonetwork-com | ian-b | economic_buyer | founder |
 | 4 | adinmo-com | kristan-rivers | economic_buyer | founder |
 | 5 | blackdoggraphix-com | charlie-marano | economic_buyer | founder |
@@ -109,10 +109,10 @@ The remaining 25 economic_buyer contacts, followed by 20 champion contacts, foll
 
 | # | Record ID | Contact Key | Persona | Angle |
 |---|-----------|-------------|---------|-------|
-| 6 | nineyards-ie | brooke-baron | champion | operations |
-| 7 | nineyards-ie | joseph-o-neill | champion | delivery |
+| 6 | px-e1ae770a9b46-ie | px-69f3c1ecc73f-baron | champion | operations |
+| 7 | px-e1ae770a9b46-ie | joseph-o-neill | champion | delivery |
 | 8 | 2ton-com | stephanie-roy | champion | — |
-| 9 | 321webmarketing-com | briley-brind-amour | champion | delivery |
+| 9 | px-adddbcb604af-com | briley-brind-amour | champion | delivery |
 | 10 | alex-gross-com | stan-boltianski | champion | operations |
 | 11 | azonetwork-com | kris-walker | champion | operations |
 | 12 | tractorbeam-com | michelle-parsons | champion | operations |

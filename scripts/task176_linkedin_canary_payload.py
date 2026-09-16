@@ -23,7 +23,7 @@ CONFIG_PATH = os.path.join("config", "clients", "productive.yaml")
 OUTPUT_DOC = os.path.join("docs", "LINKEDIN-CANARY-PAYLOAD-2026-09-16.md")
 
 # The three rung-3 contacts by domain
-TARGET_DOMAINS = {"20northmarketing.com", "2ton.com", "321webmarketing.com"}
+TARGET_DOMAINS = {"px-771db3f7cb5a", "2ton.com", "px-998d46ac6da9"}
 
 # COPY_MAPPING from heyreachfactory: cadence step -> graph role(s)
 COPY_MAPPING = {

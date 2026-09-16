@@ -31,7 +31,7 @@ COLD_ALLOW_DOMAINS = {
 }
 # Never-emailed bison (9 ALLOW domains):
 NEVER_EMAILED_ALLOW_DOMAINS = {
-    "ogpartner.dk", "anewagencyworld.com", "acqcom.com", "adcuratio.com",
+    "ogpartner.dk", "px-2a51e132bab4", "acqcom.com", "px-a8ca1565fdd1",
     "portsidemarketing.com", "agency59.ca", "savagebrands.com",
     "mischacommunications.com", "mypersonalestatesale.com",
 }
