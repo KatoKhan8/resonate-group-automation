@@ -189,10 +189,28 @@ a prospect hears from.
   absent from our roster. Fail-closed, but the decision is unrecorded.
 - **The roster over-reports capacity by 26%** - `daily_limit` stores
   `connectioRequestMax`, so it reports 1,280/day against a configured 1,014.
-- **Campaign 481 is a live hazard**: paused, 5 steps, all `thread_reply: false`
-  with five independent subjects, 9 of 23 leads resumable - and those 9 are 9
-  of the 10 contacts now live on 487. One resume sends 45
-  invariant-violating emails to exactly these people.
+- **Campaign 481 is a hazard, and the overlap is exact.** Re-read from the
+  provider 2026-09-17:
+
+      481   paused, 23 leads, 0 sent, cap 20/day
+            5 steps, EVERY ONE thread_reply=false, subjects {SUBJECT_1}
+            through {SUBJECT_5} - five independent prospect-facing subjects,
+            which is precisely the shape the threading invariant forbids
+            membership: 14 stopped, 9 sending_paused (resumable)
+
+      overlap by lead id with campaign 487: NINE of nine.
+
+  Every resumable lead in 481 is one of the ten people now live on 487. A
+  single resume in the vendor UI sends 45 invariant-violating emails to exactly
+  the people we are already, correctly, emailing.
+
+  **Our own code cannot do it.** `EMAIL_ACTIVATE`'s condition refuses 481 under
+  every canonical row tried, including none. The remaining path is a human
+  clicking resume, which is why this is written down rather than fixed: 481 is
+  not ours to mutate tonight, and a protective write on somebody else's paused
+  campaign is still a write on a campaign outside the authorization.
+  RECOMMENDED OPERATOR ACTION: archive or stop-future-emails on 481's nine
+  resumable leads before anyone touches that campaign.
 - `waterfall.counters()` has no production caller; `CONTACTOUT_CACHE_HITS` has
   no producer.
 

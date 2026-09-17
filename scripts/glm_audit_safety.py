@@ -123,7 +123,13 @@ def main(argv=None):
             continue
         print(f"  {result['model']} {result['seconds']}s "
               f"{result['usage']}")
-        print(result["content"][:1200])
+        # THE CONSOLE IS cp1250 ON THIS MACHINE and the model answers in
+        # UTF-8. A single "->" arrow crashed the whole run AFTER a successful
+        # 31.9s call, losing an answer that had already been paid for. The
+        # report is written from `findings` regardless; this print is a
+        # convenience and must never be what fails.
+        safe = result["content"].encode("ascii", "replace").decode("ascii")
+        print(safe[:1200])
         findings.append((name, result, result["content"]))
 
     stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
