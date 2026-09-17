@@ -179,3 +179,49 @@ us, where on EmailBison it is observed after the provider picks. That
 asymmetry is what `docs/SENDER-ATTRIBUTION-DESIGN-2026-09-17.md` predicted
 from the code, now with sources - and it means the two channels need
 different allocator contracts, not one.
+
+---
+
+## THE `PROGRESS` EVENT FIRED, 2026-09-17T18:59:54Z — and it complicates the picture
+
+    PROGRESS 605732 4258f756357d lastAction=2026-09-17T18:59:54Z
+             (no send; campaignStatus=InSequence)
+
+**One of three leads moved. The other two did not.**
+
+    4258f756357d   09:05:39Z  ->  18:59:54Z
+    4684b25b0372   09:04:00Z      unmoved
+    c01f0c88111c   09:06:42Z      unmoved
+
+Connection and message are still `None` on all three, so nothing was sent and
+nothing was requested. This would have been completely invisible without the
+`PROGRESS` event added this morning: the three lifecycle fields the other
+tools read are unchanged, and `heyreach_first_send_watch` correctly still
+reports zero.
+
+**It also disagrees with the documented default window.** HeyReach documents
+that a campaign created without a schedule runs Mon-Fri **09:00-17:00 UTC**,
+and `create_linkedin_cohort_b_campaign.py` passes none. 18:59:54Z is two hours
+after that closes.
+
+Four readings, and this does not choose between them:
+
+- the campaign does not actually carry the documented default (an org-unit or
+  seat-level schedule could override it, and **no route reads a schedule
+  back**, so this cannot be checked);
+- some node types are not window-bound, and the graph's non-contacting nodes
+  - `CHECK_IS_CONNECTION`, `VIEW_PROFILE`, `FOLLOW` - run outside it;
+- `lastActionTime` updates on something that is not a graph node at all;
+- actions are spread across leads rather than applied to the cohort together,
+  which would explain one moving and two not.
+
+**The earlier observation is now half-resolved and half-worse.** At 18:00Z
+this document offered two explanations for nine hours of stillness - that
+`lastActionTime` does not record every node, or that nothing had happened.
+Something clearly does move it, and it moved for exactly one lead at a time
+the window should have been shut. Neither original explanation survives
+unchanged.
+
+**The falsifier is untouched and is still the thing to watch**: a connection
+request on 2026-09-18, and if 2026-09-19 opens with all three at `None` and no
+further movement, the graph explanation is wrong.
