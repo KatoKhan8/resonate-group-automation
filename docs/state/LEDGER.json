@@ -1,19 +1,11 @@
 {
-  "generated_at": "2026-09-17T11:37:23+00:00",
+  "generated_at": "2026-09-17T12:50:41+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
   "branch_blindness": "Task stages in this ledger reflect master only. Tasks finished on worker branches but not yet integrated into master appear in their master stage (often TODO), not the stage the branch has moved them to. Run scripts/task173_scan.py --unintegrated for the cross-branch view.",
-  "master_head": "8309f234",
-  "origin_master_head": "8309f234",
+  "master_head": "d67aa4b3",
+  "origin_master_head": "d67aa4b3",
   "master_pushed": true,
   "tasks": [
-    {
-      "task": "TASK-202",
-      "file": "docs/qwen-tasks/TODO/TASK-202-run-the-whole-suite-and-say-what-is-red.md",
-      "stage": "TODO",
-      "last_commit": "714cf827",
-      "last_commit_at": "2026-09-17T13:23:04+02:00",
-      "reported": false
-    },
     {
       "task": "TASK-212",
       "file": "docs/qwen-tasks/TODO/TASK-212-ten-endpoints-we-do-not-call.md",
@@ -1955,8 +1947,8 @@
       "task": "TASK-194",
       "file": "docs/qwen-tasks/DONE/TASK-194-a-hundred-and-thirteen-qualified-and-thirty-two-ready.md",
       "stage": "DONE",
-      "last_commit": "",
-      "last_commit_at": "",
+      "last_commit": "46c60f83",
+      "last_commit_at": "2026-09-17T13:38:05+02:00",
       "reported": true,
       "declared_status": "DONE",
       "commit_sha": "dfb5c65"
@@ -1975,8 +1967,8 @@
       "task": "TASK-196",
       "file": "docs/qwen-tasks/DONE/TASK-196-one-broken-parser-is-holding-143-contacts.md",
       "stage": "DONE",
-      "last_commit": "",
-      "last_commit_at": "",
+      "last_commit": "46c60f83",
+      "last_commit_at": "2026-09-17T13:38:05+02:00",
       "reported": true,
       "declared_status": "DONE",
       "commit_sha": "1083787"
@@ -2022,11 +2014,21 @@
       "commit_sha": "ee37f9a"
     },
     {
-      "task": "TASK-203",
-      "file": "docs/qwen-tasks/DONE/TASK-203-a-hundred-and-fifty-nine-never-entered-the-waterfall.md",
+      "task": "TASK-202",
+      "file": "docs/qwen-tasks/DONE/TASK-202-run-the-whole-suite-and-say-what-is-red.md",
       "stage": "DONE",
       "last_commit": "",
       "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "e04430b9"
+    },
+    {
+      "task": "TASK-203",
+      "file": "docs/qwen-tasks/DONE/TASK-203-a-hundred-and-fifty-nine-never-entered-the-waterfall.md",
+      "stage": "DONE",
+      "last_commit": "46c60f83",
+      "last_commit_at": "2026-09-17T13:38:05+02:00",
       "reported": true,
       "declared_status": "DONE",
       "commit_sha": "a311a5d"
@@ -2035,8 +2037,8 @@
       "task": "TASK-204",
       "file": "docs/qwen-tasks/DONE/TASK-204-retire-the-file-that-produced-a-wrong-number.md",
       "stage": "DONE",
-      "last_commit": "",
-      "last_commit_at": "",
+      "last_commit": "46c60f83",
+      "last_commit_at": "2026-09-17T13:38:05+02:00",
       "reported": true,
       "declared_status": "DONE",
       "commit_sha": "b55fd5e"
@@ -2113,11 +2115,11 @@
   "branches": [
     {
       "branch": "master",
-      "head": "8309f234",
+      "head": "d67aa4b3",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "8309f234",
-      "last_commit_at": "2026-09-17T13:36:14+02:00"
+      "remote_head": "d67aa4b3",
+      "last_commit_at": "2026-09-17T13:42:18+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -3449,11 +3451,11 @@
     },
     {
       "branch": "task202-suite-2026-09-17",
-      "head": "c5d5723c",
-      "commits_ahead_of_master": 1,
-      "pushed": false,
-      "remote_head": null,
-      "last_commit_at": "2026-09-17T13:25:45+02:00"
+      "head": "939f0c1a",
+      "commits_ahead_of_master": 4,
+      "pushed": true,
+      "remote_head": "939f0c1a",
+      "last_commit_at": "2026-09-17T14:43:28+02:00"
     },
     {
       "branch": "write-gate-add-lead-UNVERIFIED",
@@ -3467,9 +3469,9 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "8309f23",
+      "head": "d67aa4b",
       "branch": "master",
-      "uncommitted_files": 4,
+      "uncommitted_files": 7,
       "clean": false
     },
     {
@@ -3523,17 +3525,17 @@
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-worker",
-      "head": "c5d5723",
+      "head": "939f0c1",
       "branch": "task202-suite-2026-09-17",
-      "uncommitted_files": 2,
+      "uncommitted_files": 5,
       "clean": false
     }
   ],
   "stage_counts": {
-    "TODO": 7,
+    "TODO": 6,
     "RUNNING": 1,
     "REVIEW": 11,
     "BLOCKED": 1,
-    "DONE": 200
+    "DONE": 201
   }
 }

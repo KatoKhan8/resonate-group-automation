@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """A verifier that declines to call is not billed for calling.
 
-TASK-196 update (2026-09-16): Deliverable's contract is now confirmed (the
-response shape was read live 2026-09-07 and documented in CONFIRMED_RESPONSE_SHAPE).
-`deliverable.verify` no longer raises `ContractNotVerified` locally. The principle
-that local refusals are free still holds - it is tested via the _local_refusals()
-mechanism - but Deliverable no longer triggers it.
+Deliverable IS the declared local refusal, and the header that used to say
+otherwise was stale. TASK-196 confirmed the contract on the grounds that the
+response shape had been read live on 2026-09-07 and documented in
+`CONFIRMED_RESPONSE_SHAPE`; that was reverted on 2026-09-16 as a gate opening
+itself, and this paragraph was not updated with it. `deliverable.verify` DOES
+still raise `ContractNotVerified` locally until the operator sets
+`DELIVERABLE_RESULT_SHAPE`, which is what makes it the live example of the
+principle rather than a retired one.
 
 The original defect: `call()` flattened every `providers.ProviderError` into
 `status: error`, and `verify()` charged the spend ledger unconditionally
@@ -17,6 +20,7 @@ A timeout or a 500 stays charged. The provider may have done the work before
 failing to tell us, and guessing in the cheap direction is how a ledger starts
 under-reporting a real bill.
 """
+import os
 import unittest
 from unittest import mock
 
@@ -27,10 +31,18 @@ from src.providers import deliverable
 
 class ALocalRefusalIsFree(unittest.TestCase):
 
-    def test_deliverable_contract_is_now_confirmed(self):
-        """TASK-196: the response shape was read and documented. The parser
-        runs. A call attempt reaches the network layer."""
-        self.assertTrue(deliverable.contract_verified())
+    def test_the_deliverable_contract_waits_on_the_operator(self):
+        """This asserted `contract_verified()` with nothing set, on TASK-196's
+        reasoning that documenting the shape confirmed the contract. That
+        reasoning was reverted on 2026-09-16 and the test was not, so it has
+        asserted a falsehood since. Both sides of the gate are pinned here
+        instead, so it stays green whichever way the operator decides."""
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(deliverable.SHAPE_VAR, None)
+            self.assertFalse(deliverable.contract_verified())
+        with mock.patch.dict(os.environ,
+                             {deliverable.SHAPE_VAR: "confirmed"}):
+            self.assertTrue(deliverable.contract_verified())
 
     def test_a_local_refusal_from_a_configured_provider_is_free(self):
         """The mechanism still works. A provider that refuses locally (e.g.

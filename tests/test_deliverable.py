@@ -8,7 +8,9 @@ submit-then-collect flow, and the normaliser that makes the eventual answer a
 configuration detail rather than a rewrite.
 """
 import json
+import os
 import unittest
+from unittest import mock
 
 from src import verification
 from src.providers import deliverable
@@ -93,20 +95,50 @@ class TestWhatIsDocumentedIsUsed(ProviderTest):
 
 
 class TestTheAnswerIsNotGuessed(ProviderTest):
-    def test_the_response_shape_is_confirmed_in_code(self):
-        """TASK-196: the shape was read live 2026-09-07 and documented in
-        CONFIRMED_RESPONSE_SHAPE. The gate is now open."""
-        self.assertTrue(deliverable.contract_verified())
-        self.assertEqual(deliverable.contract_gaps(), [])
+    def test_the_shape_is_documented_but_the_gate_is_still_the_operators(self):
+        """Two questions, and only one of them is settled in this file.
 
-    def test_verify_runs_now_that_the_shape_is_confirmed(self):
+        This asserted `contract_verified()` is True and `contract_gaps()` is
+        empty, on TASK-196's reasoning that the shape had been read live on
+        2026-09-07 and written into `CONFIRMED_RESPONSE_SHAPE`. The reading is
+        real. The conclusion was reverted on 2026-09-16, because "a developer
+        wrote down what the shape is" and "the operator accepts the cost of
+        calling this provider" are different questions and only the second
+        belongs in a gate. The test outlived the revert and has asserted a
+        falsehood since.
+
+        What is true: the vocabulary IS documented, every word IS mapped, and
+        the only thing still missing is the operator's variable.
+        """
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(deliverable.SHAPE_VAR, None)
+            self.assertFalse(deliverable.contract_verified())
+            self.assertTrue(deliverable.contract_gaps())
+        with mock.patch.dict(os.environ,
+                             {deliverable.SHAPE_VAR: "confirmed"}):
+            self.assertTrue(deliverable.contract_verified())
+            self.assertEqual(deliverable.contract_gaps(), [])
+
+    def test_verify_runs_once_the_operator_confirms_the_shape(self):
         """The parser is allowed to run. A real response is classified."""
         wire = Wire((200, {"data": {"task_id": "t-1", "processing_status": "completed",
                                     "email_status": "deliverable",
                                     "email": "someone@example.test"}}))
         self.providers.set_transport(wire)
-        entry = deliverable.verify("someone@example.test", sleep=lambda s: None)
+        with mock.patch.dict(os.environ,
+                             {deliverable.SHAPE_VAR: "confirmed"}):
+            entry = deliverable.verify("someone@example.test",
+                                       sleep=lambda s: None)
         self.assertEqual(entry["status"], "valid")
+
+    def test_verify_refuses_locally_while_the_gate_is_closed(self):
+        """And it spends nothing doing it - the refusal precedes the call."""
+        self.providers.set_transport(Wire((200, {})))
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(deliverable.SHAPE_VAR, None)
+            with self.assertRaises(deliverable.ContractNotVerified):
+                deliverable.verify("someone@example.test",
+                                   sleep=lambda s: None)
 
     def test_a_broken_request_contract_refuses_even_harder(self):
         deliverable.configure(auth="telepathy")

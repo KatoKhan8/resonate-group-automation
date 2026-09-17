@@ -8,6 +8,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from src import clients, enrich, research, store, verification
 from src.providers import apify, deliverable
@@ -256,25 +257,54 @@ class TestTheSection9SafeguardsSurvive(WaterfallTest):
             self.assertNotIn(noise, blob, noise)
 
 
-class TestDeliverableContractIsConfirmed(WaterfallTest):
-    """TASK-196: the response shape was read live 2026-09-07 and documented in
-    CONFIRMED_RESPONSE_SHAPE. The contract is now confirmed and the parser runs.
-    """
-    def test_the_contract_is_confirmed_in_code(self):
-        self.assertTrue(deliverable.contract_verified())
+class TestTheDeliverableLegIsTheOperatorsToOpen(WaterfallTest):
+    """What the waterfall does about a secondary vendor whose gate is shut.
 
-    def test_the_waterfall_can_now_call_deliverable(self):
-        """With the contract confirmed, the waterfall calls Deliverable."""
+    This class asserted `contract_verified()` is True with nothing set, on
+    TASK-196's reasoning that documenting the response shape confirmed the
+    contract. That was reverted on 2026-09-16 - "a developer wrote down what
+    the shape is" and "the operator accepts the cost of calling this provider"
+    are different questions - and these tests were not reverted with it.
+
+    The consequence is live and is not academic: with
+    `required_confirmations: 2`, a closed secondary means ContactOut can
+    supply at most ONE of the two confirmations a non-catch-all address needs.
+    159 contacts in the estate have no verification evidence at all, and
+    spending on them today would move every one of them to HELD rather than
+    to sendable. See `docs/THE-159-ARE-WORTH-58-CREDITS-2026-09-17.md`.
+    """
+    def test_the_contract_waits_on_one_environment_variable(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(deliverable.SHAPE_VAR, None)
+            self.assertFalse(deliverable.contract_verified())
+        with mock.patch.dict(os.environ,
+                             {deliverable.SHAPE_VAR: "confirmed"}):
+            self.assertTrue(deliverable.contract_verified())
+
+    def test_the_waterfall_calls_deliverable_once_the_gate_is_open(self):
         c = {"key": "x", "email": "luka.peric@lumen.test"}
-        # The waterfall will attempt to call Deliverable. Without a live
-        # transport, it will error, but the point is it TRIES rather than
-        # refusing locally.
-        verification.verify(c, live=True)
+        # It TRIES rather than refusing locally. Without a live transport the
+        # call errors, and an error is a question that did not get answered -
+        # which is exactly not a ContractNotVerified refusal.
+        with mock.patch.dict(os.environ,
+                             {deliverable.SHAPE_VAR: "confirmed"}):
+            verification.verify(c, live=True)
         entry = next(e for e in c["verification"]["evidence"]
                      if e["provider"] == "deliverable")
-        # The call errors because there's no live transport, but it's not a
-        # ContractNotVerified refusal - it's a transport error.
         self.assertIn(entry["status"], ("error", "valid", "invalid", "unknown"))
+
+    def test_a_closed_gate_refuses_the_leg_without_spending(self):
+        """The refusal precedes the network call, so it is free - and it is
+        recorded, because an address nobody asked about and an address a
+        vendor could not answer for are different states."""
+        c = {"key": "x", "email": "luka.peric@lumen.test"}
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(deliverable.SHAPE_VAR, None)
+            verification.verify(c, live=True)
+        entry = next((e for e in c["verification"]["evidence"]
+                      if e["provider"] == "deliverable"), None)
+        if entry is not None:
+            self.assertIs(entry.get("charged"), False)
 
     def test_a_confirmed_contract_lets_it_build_a_request(self):
         plan = deliverable.build_request("someone@example.test")

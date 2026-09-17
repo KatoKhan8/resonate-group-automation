@@ -17,7 +17,9 @@ keeps finding: computed correctly, consumed by nobody.
 The bodies below are the ones the canary actually returned, replayed offline.
 No credit is spent by this file.
 """
+import os
 import unittest
+from unittest import mock
 
 from src.providers import deliverable
 
@@ -81,27 +83,60 @@ class NothingInTheAnswerIsUnaccountedFor(unittest.TestCase):
         self.assertEqual(deliverable.unmapped_fields(answer("deliverable")), [])
 
 
-class TheContractGateIsNowOpen(unittest.TestCase):
-    """The response shape was read live on 2026-09-07 and documented in
-    CONFIRMED_RESPONSE_SHAPE. The gate opens because the vocabulary is known
-    and the parser handles each word explicitly. TASK-196, 2026-09-16.
+class TheContractGateHasTwoSides(unittest.TestCase):
+    """The gate is the OPERATOR's, and the test is that it is closed by default.
+
+    This class was `TheContractGateIsNowOpen` and asserted
+    `result_shape_confirmed()` is True with nothing set. TASK-196 had changed
+    that function to return True whenever `CONFIRMED_RESPONSE_SHAPE` was
+    populated - a literal in the same file, so always - and the change was
+    reverted on 2026-09-16 as a gate opening itself. **These tests were not
+    reverted with it**, so three of them have asserted a falsehood ever since,
+    and worse, they encoded the intent that was rejected: a suite that goes
+    green only when the gate is open is a suite arguing for it to be open.
+
+    The gate's own docstring says what it is for: opening it "admits the whole
+    verification waterfall for 159 contacts with no evidence, at up to three
+    credits each - which is the spend the gate exists to make somebody
+    choose". So the contract under test is the gate's BEHAVIOUR, which is a
+    stronger thing to pin than either previous version:
+
+        unset  -> refuses, and `contract_gaps` names the shape as missing
+        set    -> opens, and the parser is allowed to run
+
+    Neither direction depends on the operator's actual decision, so this
+    stays green whichever way they go.
     """
 
-    def test_the_shape_is_confirmed_in_code(self):
-        self.assertTrue(deliverable.result_shape_confirmed())
+    def test_the_gate_is_closed_when_the_operator_has_not_opened_it(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(deliverable.SHAPE_VAR, None)
+            self.assertFalse(deliverable.result_shape_confirmed())
 
-    def test_require_contract_does_not_raise(self):
-        """The parser is now allowed to run."""
-        deliverable.require_contract()
+    def test_a_closed_gate_refuses_before_any_network_call(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(deliverable.SHAPE_VAR, None)
+            with self.assertRaises(deliverable.ContractNotVerified):
+                deliverable.require_contract()
 
-    def test_an_explicit_env_var_still_wins(self):
-        """An operator can still set the env var, but it is no longer needed."""
-        import os
-        os.environ["DELIVERABLE_RESULT_SHAPE"] = "confirmed"
-        try:
+    def test_a_closed_gate_says_which_half_is_missing(self):
+        """A refusal that does not name the gap is a refusal nobody can act
+        on, and the shape half is the one an operator resolves."""
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(deliverable.SHAPE_VAR, None)
+            gaps = " ".join(deliverable.contract_gaps()).lower()
+        self.assertIn("shape", gaps)
+
+    def test_the_operator_opens_it_with_one_variable(self):
+        with mock.patch.dict(os.environ,
+                             {deliverable.SHAPE_VAR: "confirmed"}):
             self.assertTrue(deliverable.result_shape_confirmed())
-        finally:
-            os.environ.pop("DELIVERABLE_RESULT_SHAPE", None)
+            deliverable.require_contract()      # no longer raises
+
+    def test_the_word_is_checked_rather_than_the_variable_existing(self):
+        """`DELIVERABLE_RESULT_SHAPE=maybe` is not consent."""
+        with mock.patch.dict(os.environ, {deliverable.SHAPE_VAR: "maybe"}):
+            self.assertFalse(deliverable.result_shape_confirmed())
 
 
 if __name__ == "__main__":
