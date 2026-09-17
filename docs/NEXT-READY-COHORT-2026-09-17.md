@@ -382,12 +382,29 @@ remaining seven.
 
 ### Two cautions on the batch
 
-**`pilot_caps.new_accounts_per_day: 5` is declared and enforced by nobody.**
-`pilotcaps` defines it; no caller anywhere in `src/` passes it to
-`pilotcaps.require`, and `executionguard` asks only for `linkedin_per_day`,
-`email_per_day` and `per_sender_per_day`. The two batches above open **10** new
-accounts on one day. The guard will not refuse that. If the pilot plan is meant
-to hold, split the two batches across two days.
+**`pilot_caps.new_accounts_per_day: 5` WAS declared and enforced by nobody.
+CLOSED 2026-09-17 - and the batch above is the thing it now refuses.**
+
+When this was written `pilotcaps` defined the ceiling, no caller in `src/`
+passed it to `require`, and `executionguard` asked only for
+`linkedin_per_day`, `email_per_day` and `per_sender_per_day`. `check` listed
+the rest as `unchecked` and nothing read that list, so `require` answered True
+having examined one ceiling of seven.
+
+Gate 5 now derives today's opened accounts from the durable ledger and refuses
+the sixth, and `reserve` re-checks it inside the file lock. `require` will no
+longer answer over a silence: it takes an exact `not_checking` acknowledgement,
+so the next ceiling added to `CEILING` breaks every call site at the moment the
+"who enforces this" decision is actually being made - which is the moment that
+went unmade here.
+
+**SO THE BATCH BELOW NO LONGER RUNS IN ONE DAY, AND THAT IS THE POINT.** The
+two batches open 10 new accounts; staging will now refuse at the SIXTH with
+`NotAuthorized("pilot_cap")`. Split them across two days, or raise the ceiling
+deliberately. The count is per workspace and per calendar day, and it is NOT
+channel-scoped - a LinkedIn invite and a cold email land on the same company on
+the same morning, so they share the ceiling. A second contact at an account
+already opened today does not consume it again.
 
 **The five campaign-level gates still apply.** A new campaign row for either
 batch needs its own `campaign_approval` (senders, limits, provider binding,

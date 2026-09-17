@@ -7,8 +7,13 @@ WHY THIS HAS TO EXIST BEFORE ANY SEND ROUTE DOES.
 ceiling. It counts nothing durable. So two sequential callers each declaring
 `{"linkedin_per_day": 1}` both pass, and together they send two; and a caller
 who passes `{}` gets `ok: True` with every key listed as "unchecked". The module
-is honest about that - `check` returns an `unchecked` list - but `require`
-returns True anyway. A cap that counts what you tell it is not a cap.
+is honest about that - `check` returns an `unchecked` list - and nothing read
+it. A cap that counts what you tell it is not a cap.
+
+(`pilotcaps.require` no longer returns True over a silence: it makes the caller
+name the ceilings it is not checking. That closes the second half of the hole -
+a cap nobody checks can no longer look like a cap that passed - and it is still
+not a durable count, which is what this file is for.)
 
 And `push.push_id(rec, contact, day, channel)` already gives a stable identity
 for one prospect-facing action, but nothing has ever persisted one. So after a
@@ -186,6 +191,50 @@ def contacts_reached(channel=None, workspace=None, rows=None, states=None):
     return out
 
 
+def accounts_opened_on(day, workspace=None, rows=None, states=None):
+    """Which ACCOUNTS this ledger says were opened on one calendar day.
+
+    An account is opened the first time this system takes a prospect-facing
+    action against anybody at it. `rec_id` is the account: a record in this
+    system is one company - it carries the domain, the firmographics and the
+    list of contacts - so every action against every person there shares it,
+    which is why the answer is a SET and not a count of rows. Five contacts at
+    one company is one account opened, and a ceiling that counted rows would
+    be a second, worse copy of `count_on`.
+
+    NO `channel` PARAMETER, deliberately, and it is the difference between
+    this and every other count here. `email_per_day` and `linkedin_per_day`
+    are about a channel's own capacity. Opening an account is about the
+    company's inbox and the operator's attention - a LinkedIn invitation and
+    a cold email land on the same person on the same morning - so a per-
+    channel answer would let one account be opened twice a day and counted as
+    two different things, or worse, be read as not-yet-opened by the other
+    channel and pay for the ceiling twice.
+
+    Same `states` default and same latest-row collapse as `count_on`, so the
+    two agree about what "today" and "happened" mean. They are read side by
+    side in one gate, and two definitions of a calendar day in one gate is a
+    defect waiting for a timezone.
+    """
+    states = (SENT, ATTEMPTED, UNRESOLVED) if states is None else states
+    rows = load() if rows is None else rows
+    latest = {}
+    for row in rows:
+        latest[row.get("key")] = row
+    out = set()
+    for row in latest.values():
+        if row.get("state") not in states:
+            continue
+        if _day(row.get("at")) != _day(day):
+            continue
+        if workspace is not None and str(row.get("workspace")) != str(workspace):
+            continue
+        if row.get("rec_id") in (None, ""):
+            continue
+        out.add(str(row.get("rec_id")))
+    return out
+
+
 class CapReached(ActionRefused):
     """The durable count for this day is already at the ceiling."""
 
@@ -193,7 +242,7 @@ class CapReached(ActionRefused):
 def reserve(key, *, channel, workspace, campaign_id, sender_id, rec_id,
             contact_key, step_key, operation, fingerprint, by="system",
             provider_workspace=None, cap_per_day=None, cap_per_sender=None,
-            timeout=None):
+            cap_new_accounts=None, timeout=None):
     """Claim the right to attempt one prospect-facing action. Written first.
 
     Refuses when a reservation for this key is already open, unresolved or
@@ -209,8 +258,14 @@ def reserve(key, *, channel, workspace, campaign_id, sender_id, rec_id,
     count and the append have to be the same critical section, so the caller
     passes the ceilings in rather than checking them first.
 
-    Both caps are scoped to `workspace`. One client's actions must never
+    All three caps are scoped to `workspace`. One client's actions must never
     consume another's ceiling.
+
+    `cap_new_accounts` is the odd one and reads differently: it is a ceiling on
+    DISTINCT ACCOUNTS opened today, not on actions, so an action against an
+    account this ledger already opened today is free. Otherwise one company
+    with five contacts would spend a ceiling meant for five companies, and the
+    cap would punish working an account properly.
     """
     missing = [name for name, value in (
         ("key", key), ("channel", channel), ("workspace", workspace),
@@ -251,6 +306,21 @@ def reserve(key, *, channel, workspace, campaign_id, sender_id, rec_id,
                 raise CapReached(
                     f"sender {sender_id}: {used} action(s) already recorded "
                     f"today, and the per-sender ceiling is {cap_per_sender}")
+        if cap_new_accounts is not None:
+            # Inside the lock for the same reason as the two above, and with
+            # one difference that matters: this one has to ask whether THIS
+            # account is already among today's, because an account already
+            # open costs nothing and must not be refused at the ceiling.
+            opened = accounts_opened_on(row["at"], workspace=workspace,
+                                        rows=rows)
+            if (str(rec_id) not in opened
+                    and len(opened) + 1 > int(cap_new_accounts)):
+                raise CapReached(
+                    f"account {rec_id}: {len(opened)} account(s) already "
+                    f"opened today for workspace {workspace}, and the ceiling "
+                    f"is {cap_new_accounts} new account(s) a day. Opening "
+                    f"every account at once means every reply arrives at "
+                    f"once, and a pilot exists to be watched")
         if is_unreservable(key, rows):
             existing = rows_for(key, rows)[-1]
             if existing["state"] in TERMINAL:

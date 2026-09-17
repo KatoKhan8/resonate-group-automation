@@ -87,6 +87,29 @@ PAUSE_OPERATION = {"linkedin": "heyreach.pause", "email": "bison.pause"}
 # One - the canary. See HUMAN-ACTIONS-REQUIRED 5f.
 UNSTOPPABLE_CHANNEL_CAP = 1
 
+# THE PILOT CEILINGS THIS GATE DOES NOT ANSWER FOR, AND WHO DOES.
+#
+# Written down because the alternative was writing nothing down, and writing
+# nothing down is how `new_accounts_per_day` spent its whole life declared,
+# documented, displayed by `python -m src.pilotcaps`, and enforced by nobody:
+# every caller named the one or two keys it cared about, `pilotcaps.check`
+# listed the rest as "unchecked", and no code read that list.
+#
+# `pilotcaps.require` now refuses to pass over a silence, so this mapping is
+# not a comment - it is the argument, and a ceiling added to `pilotcaps.CEILING`
+# without an entry here makes this gate refuse until somebody decides who
+# enforces it. That refusal is the point. It is the question nobody was asked.
+CAPS_ENFORCED_ELSEWHERE = {
+    "companies":
+        "a cohort size, fixed when the cohort is built; one action cannot "
+        "change how many companies are in the pilot",
+    "contacts":
+        "the same - a cohort size rather than a per-action quantity",
+    "touches_per_account_per_week":
+        "gate 4, via `fatigue.account.max_touches_per_week`, which "
+        "`pilotcaps.CONSTRAINS` names as its enforcement point",
+}
+
 # The eligibility reasons that mean somebody must not be contacted. Named from
 # `eligibility`'s own constants so the two cannot drift apart.
 SUPPRESSION_REASONS = (
@@ -654,16 +677,52 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     ledger = actionledger.load()
     already = actionledger.count_on(today, channel=channel, workspace=tenant,
                                     rows=ledger)
-    plan_key = "linkedin_per_day" if channel == "linkedin" else "email_per_day"
-    try:
-        pilotcaps.require({plan_key: already + 1}, config)
-    except Exception as e:
-        raise NotAuthorized("pilot_cap", str(e), gates) from None
     per_sender = actionledger.count_on(today, channel=channel,
                                        sender_id=sender_id, workspace=tenant,
                                        rows=ledger)
+    plan_key = "linkedin_per_day" if channel == "linkedin" else "email_per_day"
+    other_key = ("email_per_day" if channel == "linkedin"
+                 else "linkedin_per_day")
+    plan = {plan_key: already + 1, "per_sender_per_day": per_sender + 1}
+    not_checking = dict(CAPS_ENFORCED_ELSEWHERE)
+    not_checking[other_key] = (
+        f"this action is {channel}; the other channel's daily ceiling is "
+        f"checked on the other channel's actions")
+
+    # HOW MANY COMPANIES HEARD FROM US FOR THE FIRST TIME TODAY.
+    #
+    # `new_accounts_per_day` was the one ceiling in `pilotcaps.CEILING` with
+    # no enforcer at all - no caller passed it and, unlike
+    # `touches_per_account_per_week`, no `CONSTRAINS` entry handed it to
+    # `fatigue` either. It is here now for the reason the ceiling gives:
+    # opening every account at once means every reply arrives at once, and a
+    # pilot exists to be watched. The next batch is 17 contacts across about
+    # 17 accounts, which is that failure exactly.
+    #
+    # COUNTED FROM THE LEDGER, NOT FROM A PLAN DICT, for the reason the two
+    # caps above are: a plan is what one caller intends and the ledger is what
+    # happened. `rec_id` on the ledger row is the account - a record here is
+    # one company - so the set of accounts opened today is derivable from the
+    # durable rows and nobody has to be trusted to declare it.
+    #
+    # AN ACCOUNT ALREADY OPEN TODAY IS FREE. It is a ceiling on companies
+    # newly disturbed, not on actions: a five-contact account that spent the
+    # whole ceiling would turn a limit meant to stagger the pilot into a limit
+    # on working an account properly, and `fatigue` and
+    # `touches_per_account_per_week` are what bound the second case.
+    #
+    # NOT PER CHANNEL. See `accounts_opened_on` - the company has one inbox
+    # and the operator has one morning.
+    opened = actionledger.accounts_opened_on(today, workspace=tenant,
+                                             rows=ledger)
+    if str(rec.get("id") or "") in opened:
+        not_checking["new_accounts_per_day"] = (
+            f"account {rec.get('id')!r} was already opened today, so this "
+            f"action opens nothing; the ceiling counts companies, not touches")
+    else:
+        plan["new_accounts_per_day"] = len(opened) + 1
     try:
-        pilotcaps.require({"per_sender_per_day": per_sender + 1}, config)
+        pilotcaps.require(plan, config, not_checking=not_checking)
     except Exception as e:
         raise NotAuthorized("pilot_cap", str(e), gates) from None
     gates.append("pilot_cap")
@@ -830,7 +889,12 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
                 step_key=step_key, operation=operation,
                 fingerprint=fingerprint, by=by,
                 cap_per_day=limits[plan_key]["limit"],
-                cap_per_sender=limits["per_sender_per_day"]["limit"])
+                cap_per_sender=limits["per_sender_per_day"]["limit"],
+                # Unconditionally, even when gate 5 decided this account was
+                # already open: the exemption is re-derived inside the lock,
+                # because between gate 5 and here another worker may have
+                # opened the last account of the day.
+                cap_new_accounts=limits["new_accounts_per_day"]["limit"])
         except actionledger.ActionRefused as e:
             raise NotAuthorized("ledger", str(e), gates) from None
         gates.append("reserved")

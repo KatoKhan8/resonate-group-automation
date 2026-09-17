@@ -99,8 +99,19 @@ class TheEnforcingFormsRefuse(unittest.TestCase):
         self.assertIn(str(pilotcaps.CEILING["email_per_day"]), said)
 
     def test_a_plan_inside_the_ceiling_passes(self):
-        """Or the gate is a ban rather than a limit."""
-        self.assertTrue(pilotcaps.require({"email_per_day": 1}))
+        """Or the gate is a ban rather than a limit.
+
+        The acknowledgement is new and this line is what it costs: a caller
+        that checks one ceiling has to say it is not checking the others.
+        That is the whole mechanism - `require({"email_per_day": 1})` used to
+        answer True for SEVEN ceilings having examined one, which is how
+        `new_accounts_per_day` was declared and enforced by nobody for as long
+        as it existed. Passing through here rather than being hidden behind a
+        helper on purpose: the cost should be visible at the call site.
+        """
+        self.assertTrue(pilotcaps.require(
+            {"email_per_day": 1},
+            not_checking=set(pilotcaps.KEYS) - {"email_per_day"}))
 
     def test_an_unreadable_config_does_not_raise_the_ceiling(self):
         """`{}` means pilot mode on. A config that fails to load must not

@@ -121,6 +121,23 @@ class PilotCapExceeded(RuntimeError):
     """
 
 
+class UnacknowledgedCap(RuntimeError):
+    """`require` was asked about some ceilings and said nothing about the rest.
+
+    NOT A BREACH. Nobody asked for too much; somebody asked a question this
+    module could only half answer and took `True` for the whole answer.
+
+    THE DEFECT THIS EXISTS TO MAKE IMPOSSIBLE, measured on 2026-09-17.
+    `new_accounts_per_day` had been in `CEILING` since the file was written,
+    with a label, a reason, and a number - and no caller anywhere in `src/`
+    ever put it in a plan. `check` reported it in `unchecked`, honestly, and
+    nothing read that list; `require` returned `True` regardless. So the
+    ceiling existed, was documented, was displayed by `main()`, and refused
+    nothing. A cap that is not checked must not be able to look like a cap
+    that passed, and silence was the whole mechanism by which it did.
+    """
+
+
 def enabled(config=None):
     """Is pilot mode on? Off is not the default - on is.
 
@@ -221,14 +238,69 @@ def check(plan, config=None):
     }
 
 
-def require(plan, config=None):
-    """Raise unless the plan fits. The gate a runner would call."""
+def require(plan, config=None, *, not_checking=None):
+    """Raise unless the plan fits AND the caller has named what it skipped.
+
+    `not_checking` is the caller saying, in the code, which ceilings this call
+    is not answering for - as an iterable of keys, or better as a dict of
+    `{key: who does answer for it}` so the next reader is not left guessing.
+    It must name EXACTLY the keys absent from `plan`: too few and a ceiling is
+    passing on silence, too many and the call is claiming to skip something it
+    just checked.
+
+    WHY AN EXPLICIT LIST RATHER THAN A FLAG. `require(plan, ack=True)` would
+    close today's hole and reopen it tomorrow: the next ceiling added to
+    `CEILING` would be swept into the same blanket acknowledgement and nobody
+    would ever be asked about it. An exact list is the only form that breaks
+    at every call site the moment a ceiling is ADDED, which is the moment the
+    decision "who enforces this" is actually being made - and it is the moment
+    `new_accounts_per_day` went by unmade.
+
+    WHY BREACHES ARE RAISED FIRST. A breach is a fact about the outside world
+    and an unacknowledged cap is a fact about this call site. If both are true
+    the breach is the one an operator needs, with its own message and its own
+    type, so the coverage complaint waits its turn.
+
+    Callers that are gates should let this propagate rather than catch it. It
+    fails CLOSED by construction: in `executionguard` gate 5 every exception
+    out of this function becomes `NotAuthorized("pilot_cap")`, so getting the
+    acknowledgement wrong refuses the action instead of permitting it.
+    """
     found = check(plan, config)
     if not found["ok"]:
         first = found["breaches"][0]
         raise PilotCapExceeded(
             f"{first['label']}: asked for {first['asked']}, the pilot "
             f"allows {first['limit']} ({first['why']})")
+
+    if not_checking is None:
+        acknowledged = set()
+    elif isinstance(not_checking, str):
+        acknowledged = {not_checking}
+    else:
+        # A dict gives its keys, which is what makes `{key: reason}` the
+        # readable form without needing a second parameter for the reasons.
+        acknowledged = set(not_checking)
+
+    unknown = sorted(acknowledged - set(KEYS))
+    if unknown:
+        raise UnacknowledgedCap(
+            f"{', '.join(unknown)}: not a pilot ceiling. An acknowledgement "
+            f"naming a key that does not exist is how one stops matching the "
+            f"ceilings it was written against")
+    contradicted = sorted(acknowledged & set(found["checked"]))
+    if contradicted:
+        raise UnacknowledgedCap(
+            f"{', '.join(contradicted)}: this call says it is not checking "
+            f"them and the plan checks them. One of the two is wrong, and a "
+            f"reader cannot tell which")
+    silent = sorted(set(found["unchecked"]) - acknowledged)
+    if silent:
+        raise UnacknowledgedCap(
+            "this plan is silent about " + ", ".join(silent) + " and so is "
+            "the caller. Name them in `not_checking` with what does enforce "
+            "them, or check them: " + "; ".join(
+                f"{k} ({LABELS[k]}) - {WHY[k]}" for k in silent))
     return True
 
 
