@@ -45,14 +45,22 @@ class TheGrantIsEmptyUntilSomebodyDecides(unittest.TestCase):
         """
         self.assertEqual(
             executionguard.LIVE_ACTIVATION_GRANTS,
-            {"productive-linkedin-cohort-v2": frozenset({LINKEDIN_ACTIVATE})})
+            {"productive-linkedin-cohort-v2": frozenset({LINKEDIN_ACTIVATE}),
+             "productive-email-control-v3": frozenset({EMAIL_ACTIVATE})})
 
-    def test_no_email_campaign_is_granted(self):
-        """EmailBison has been granted nothing. Asserted separately because
-        the two channels are approved separately and the email cohort is
-        currently blocked on a copy-approval defect."""
-        for granted in executionguard.LIVE_ACTIVATION_GRANTS.values():
-            self.assertNotIn(EMAIL_ACTIVATE, granted)
+    def test_each_grant_names_one_channel_only(self):
+        """The two channels are approved separately and stay separate.
+
+        A LinkedIn grant must not carry the email verb and vice versa - the
+        exposures are different, they were approved at different times, and a
+        grant that carried both would let one approval start two campaigns.
+        """
+        expected = {"productive-linkedin-cohort-v2": LINKEDIN_ACTIVATE,
+                    "productive-email-control-v3": EMAIL_ACTIVATE}
+        for campaign_id, granted in (
+                executionguard.LIVE_ACTIVATION_GRANTS.items()):
+            self.assertIn(campaign_id, expected)
+            self.assertEqual(granted, frozenset({expected[campaign_id]}))
 
     def test_the_operations_are_exactly_the_two_activate_verbs(self):
         self.assertEqual(

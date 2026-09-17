@@ -1319,7 +1319,39 @@ def _require_approved_words(operation, authorization, step, payload):
             f"{operation}: this step fingerprints to {actual!r} and the "
             f"authorization approved {authorization.fingerprint!r}. The copy "
             f"changed after it was approved")
-    body = json.dumps(payload, default=str, ensure_ascii=False)
+    # COMPARE AGAINST THE PAYLOAD'S VALUES, NOT ITS JSON SERIALISATION.
+    #
+    # This searched `json.dumps(payload)` for the approved string. JSON escapes
+    # what it must - newlines become \n, quotes and non-ASCII get escaped - so
+    # a literal substring match fails on any copy containing them, no matter
+    # how right the copy is. Measured on campaign 487: the provider held the
+    # approved body EXACTLY, `held.strip() == approved.strip()` was True, and
+    # this refused the activation anyway.
+    #
+    # A false refusal here is not a safe failure. It is indistinguishable from
+    # the real defect this guard exists for - approved words and sent words
+    # differing - so it teaches whoever hits it that the guard cries wolf, on
+    # the one check standing between an approval and a prospect.
+    #
+    # The guarantee is unchanged: the approved text must appear in something
+    # actually being transported. Only the haystack is now the payload's own
+    # string values, walked whole, rather than a re-encoded rendering of them.
+    values = []
+
+    def _collect(node):
+        if isinstance(node, str):
+            values.append(node)
+        elif isinstance(node, dict):
+            for item in node.values():
+                _collect(item)
+        elif isinstance(node, (list, tuple, set, frozenset)):
+            for item in node:
+                _collect(item)
+        elif node is not None:
+            values.append(str(node))
+
+    _collect(payload)
+    body = "\n".join(values)
     for field in ("subject", "body", "note"):
         text = str(step.get(field) or "").strip()
         if text and text not in body:

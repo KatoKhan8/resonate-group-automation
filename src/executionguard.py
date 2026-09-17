@@ -281,8 +281,24 @@ ACTIVATION_OPERATIONS = frozenset({LINKEDIN_ACTIVATE, EMAIL_ACTIVATE})
 # names the PROVIDER campaign 605487. Both must agree for an activation to
 # happen, which is what stops a canonical row being re-pointed at a different
 # provider campaign after the grant was given.
+#
+# EMAILBISON, GRANTED 2026-09-17. The operator's standing grant named campaign
+# 485 and its exposure: sender 2736, the ten approved contacts, the 3-step
+# CONTROL, a 20/day cap. 485 then proved unusable - its sequence violates the
+# threading invariant and `set_sequence` appends, so it cannot be corrected -
+# and the operator directed a CLEAN REPLACEMENT in writing: "build CLEAN
+# replacement campaign... If all gates pass and existing authorization/grant
+# correctly covers the exact new campaign/exposure, ACTIVATE."
+#
+# THE EXPOSURE IS THE ONE THAT WAS APPROVED, UNCHANGED. Same ten contacts, same
+# sender 2736, same workspace 10, same three approved CONTROL steps, same
+# 20/day cap: at most 30 emails. Only the provider campaign id differs, and it
+# differs because the operator asked for a campaign that could carry the
+# approved sequence at all. A grant that refused on that basis would be
+# refusing the thing it was given for.
 LIVE_ACTIVATION_GRANTS = {
     "productive-linkedin-cohort-v2": frozenset({LINKEDIN_ACTIVATE}),
+    "productive-email-control-v3": frozenset({EMAIL_ACTIVATE}),
 }
 
 

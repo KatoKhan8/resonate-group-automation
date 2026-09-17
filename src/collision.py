@@ -490,10 +490,32 @@ def _ledger_is_silent(binding):
     except Exception as e:                       # noqa: BLE001 - fail closed
         return False, (f"the action ledger could not be read "
                        f"({type(e).__name__}), so it cannot certify silence")
-    hits = [r for r in rows
-            if isinstance(r, dict)
-            and str(r.get("campaign_id") or "") == canonical
-            and _norm(r.get("state")) in LEDGER_MAY_HAVE_REACHED]
+    # THE LATEST STATE PER KEY, NOT EVERY ROW EVER WRITTEN.
+    #
+    # `actionledger.settle` APPENDS - it never edits history, deliberately - so
+    # a key that was reserved and then settled leaves BOTH rows in the file.
+    # Scanning every row therefore counted the superseded `attempted` row
+    # forever, and a key settled `abandoned` against provider proof that
+    # nothing was sent still read as an unrefuted action. Measured on campaign
+    # 487: ten keys, all ten `abandoned`, all ten counted as reached.
+    #
+    # That is the wrong direction for this particular check. Everywhere else
+    # failing closed is right; here it meant a campaign could never be proven
+    # silent once a single attempt had been settled, so its own staged leads
+    # stayed indistinguishable from real prior contact and the campaign could
+    # never be activated. `state_of` is what the ledger itself uses to answer
+    # "what is true of this key now", and it is what belongs here.
+    latest = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("campaign_id") or "") != canonical:
+            continue
+        key = row.get("key")
+        if key:
+            latest[key] = row
+    hits = [k for k, r in latest.items()
+            if _norm(r.get("state")) in LEDGER_MAY_HAVE_REACHED]
     if hits:
         return False, (f"this system's action ledger holds {len(hits)} "
                        f"unrefuted prospect-facing action(s) for {canonical}")
@@ -1038,13 +1060,40 @@ def check_address(address, rows=None, expect_workspace=REQUIRED):
         if _norm(row.get("email")) != address:
             continue
         found = touches_of(row)
+        # OUR OWN SILENT STAGING IS NOT PRIOR CONTACT, HERE EITHER.
+        #
+        # `check_account` learned this and `check_address` did not, so staging
+        # a cohort into a campaign of ours made every one of those people read
+        # TOUCHED - "loaded as a lead, nothing sent yet" - and the gate refused
+        # the activation of the very campaign that had just loaded them.
+        # Measured on campaign 487: ten contacts staged, ten refusals, zero
+        # emails sent by anybody.
+        #
+        # The same four arms decide it, reused rather than restated: the
+        # campaign must be claimed by us on BOTH sides, every prospect-facing
+        # counter present and zero, the status not sending, and both the
+        # provider queue and our own ledger silent. A campaign of somebody
+        # else's, or one of ours that has sent anything, is untouched by this.
+        #
+        # `emails_sent` is not recomputed because it does not need to be: a row
+        # can only be dropped when it sent nothing. So a person with real
+        # history keeps it and still reads TOUCHED below.
+        found, excluded = without_our_staging(found)
+        if excluded:
+            found = dict(found, our_staging_excluded=excluded)
         if found["in_sequence"]:
             return IN_SEQUENCE, found
         if found["emails_sent"] > 0:
             return TOUCHED, found
-        # Loaded as a lead but never sent to. Not a touch, and not nothing:
-        # somebody has this person queued.
-        return TOUCHED, dict(found, note="loaded as a lead, nothing sent yet")
+        if found.get("campaigns"):
+            # Loaded as a lead but never sent to, by somebody whose campaign
+            # this is not proven to be ours-and-silent. Not a touch, and not
+            # nothing: somebody has this person queued.
+            return TOUCHED, dict(found,
+                                 note="loaded as a lead, nothing sent yet")
+        return CLEAR, dict(found, note=(
+            "no prior contact; the only lead rows at this address belong to "
+            "campaigns of ours that have provably sent nothing"))
     return CLEAR, {"email": address, "domain": domain,
                    "leads_at_domain": len(rows),
                    "note": "no lead at this address in the provider's estate"}
