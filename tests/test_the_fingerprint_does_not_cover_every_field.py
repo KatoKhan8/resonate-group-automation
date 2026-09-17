@@ -145,8 +145,8 @@ class TheFingerprintDoesNotCoverWhoApproved(unittest.TestCase):
             self.assertFalse(approval.is_accountable_approver(who), repr(who))
 
     def test_an_address_is_accountable(self):
-        for who in ("zvonimir@resonategroup.co",
-                    "zvonimir@resonategroup.co (operator authorisation "
+        for who in ("someone@example.com",
+                    "someone@example.com (operator authorisation "
                     "2026-09-16)",
                     "  Someone@Example.COM  "):
             self.assertTrue(approval.is_accountable_approver(who), repr(who))

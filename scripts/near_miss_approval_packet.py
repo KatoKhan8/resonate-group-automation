@@ -138,8 +138,18 @@ def main(argv=None):
             fh.write(f"- title: {contact.get('title') or 'UNKNOWN'}\n")
             fh.write(f"- held by: {row.get('why')}\n\n")
             try:
-                steps, missing = cohort.render(rec, contact, channel, None,
-                                               config)
+                # THE CAMPAIGN IS REQUIRED, AND PASSING None SILENTLY EMPTIED
+                # THE PACKET. `render` resolves each step's SPEC through
+                # `executionguard._spec_for(..., campaign=...)`, so without one
+                # every key raises and lands in `missing` - the packet reported
+                # "no step carries an approval at all" and "missing steps:
+                # li1..li5" for contacts the screen had just passed through its
+                # copy gate. The screen itself uses the channel's SHAPE
+                # campaign; this uses the same one, so the two ask the same
+                # question of the same contact.
+                steps, missing = cohort.render(
+                    rec, contact, channel,
+                    campaigns_by_id[cohort.SHAPE_CAMPAIGN[channel]], config)
             except Exception as exc:
                 fh.write(f"  COPY WOULD NOT RENDER: {type(exc).__name__}\n\n")
                 continue

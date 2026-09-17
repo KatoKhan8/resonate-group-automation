@@ -208,12 +208,135 @@ class TheStoppabilityCeilingFollowsThePause(unittest.TestCase):
     It now reads `providerwrites.is_supported("heyreach.pause")`, the same
     predicate the gate itself reads, so the two cannot drift apart and a
     withdrawn pause tightens both without anybody remembering to.
+
+    DOES THE PREMISE STILL HOLD AFTER THE 2026-09-16 GRANTS? Asked because
+    those grants moved `is_supported` for eight verbs, this ceiling reads
+    `is_supported`, and a ceiling that moves as a side effect of something
+    else is exactly what this class was written to prevent. Worked through
+    rather than assumed, and the answer is yes - with one thing that had to
+    be checked and is now asserted below rather than believed.
+
+    `executionguard.UNSTOPPABLE_CHANNEL_CAP` limits how many distinct people
+    a channel may reach WHILE NOTHING CAN STOP IT. Its premise is a statement
+    about the STOP verb and about nothing else:
+
+      1. The gate fires only when `is_supported(PAUSE_OPERATION[channel])` is
+         False. Neither ACTIVATE verb, and none of the five campaign-building
+         verbs, is a pause operation, so not one of the grants is an input to
+         it. The ceiling did not move; nothing that reads it changed.
+
+      2. What the grants DID change is that the question is now real. Until
+         2026-09-16 no wired verb could start a campaign holding people, so
+         "exposure this system cannot recall" was hypothetical. It is not any
+         more, and this is precisely the situation the cap was written for.
+         The premise survives because the stop was established FIRST and on
+         evidence: `heyreach.pause` on 2026-09-12 against 594061 (200, read
+         back PAUSED, connectionsSent 0), `bison.pause` and
+         `bison.stop_lead` on 2026-09-13, each measured with a readback.
+
+      3. The half that had to be CHECKED rather than assumed: a stop that is
+         narrower than the start would satisfy `is_supported` and leave real
+         exposure unrecallable. It is not. Both pause verbs are in SUPPORTED
+         and carry NO `CONDITIONAL`, so a stop may be aimed at any campaign
+         on the channel, while each ACTIVATE verb is scoped by name to ONE.
+         The stop is strictly broader than the start, and on email
+         `bison.stop_lead` is finer still - it halts one person while the
+         rest of the campaign continues. That asymmetry is the premise, and
+         `test_the_stop_is_broader_than_the_start` now asserts it, because
+         nothing else in this repository did.
+
+    So the number stays 1 and it stays where it is: it is not a cohort size
+    somebody chose, it is the exposure that is survivable in the world where
+    the pause predicate answers False. In the world where it answers True the
+    cap is dormant, and the cap becoming dormant for the wrong reason - a
+    pause narrowed to a condition, or withdrawn - is what the tests below
+    are for.
     """
 
     def test_the_pause_is_what_lifts_it(self):
         self.assertIn("heyreach.pause", providerwrites.SUPPORTED)
 
+    def test_the_stop_is_broader_than_the_start(self):
+        """THE CEILING'S PREMISE, ASSERTED RATHER THAN ASSUMED.
+
+        `UNSTOPPABLE_CHANNEL_CAP` lifts on "a stop exists", and `is_supported`
+        is the whole of what it asks. That was a complete question while
+        nothing could start a campaign holding people. Now that both ACTIVATE
+        verbs are granted it is not, because `is_supported` cannot tell a stop
+        that covers the channel from a stop that covers one campaign - and a
+        stop narrower than the start would lift the ceiling while leaving
+        people this system could not recall.
+
+        For each channel: the pause verb is supported and UNCONDITIONAL, so
+        every campaign on it can be stopped; the activate verb is supported
+        and conditional on exactly one campaign, so one campaign on it can be
+        started. There is therefore no campaign this build can start and
+        cannot stop, which is the sentence the ceiling stands on.
+
+        A pause acquiring a condition would fail here and should: it would
+        not be caught by `is_supported`, and it is the one change that could
+        make the cap dormant while the exposure it bounds was real.
+        """
+        from src import executionguard
+
+        for channel, activate in (("linkedin", "heyreach.activate"),
+                                  ("email", "bison.activate")):
+            pause = executionguard.PAUSE_OPERATION[channel]
+            self.assertTrue(providerwrites.is_supported(pause), pause)
+            self.assertFalse(
+                providerwrites.is_conditional(pause),
+                f"{pause} carries a condition, so the stop on {channel} no "
+                f"longer covers every campaign {activate} could start and "
+                f"the stoppability ceiling is lifting on a false premise")
+            # And the start is the narrow one, not the broad one.
+            self.assertTrue(providerwrites.is_supported(activate), activate)
+            self.assertTrue(
+                providerwrites.is_conditional(activate),
+                f"{activate} can start any campaign on {channel} while the "
+                f"ceiling assumes the stop is the broader of the two")
+
+        # Email's stop is finer than campaign granularity, which is the
+        # granularity the safety argument actually wants: one person is
+        # halted while the rest of the campaign continues.
+        self.assertTrue(providerwrites.is_supported(
+            providerwrites.EMAIL_STOP_LEAD))
+        self.assertFalse(providerwrites.is_conditional(
+            providerwrites.EMAIL_STOP_LEAD))
+
+    def test_the_ceiling_does_not_read_the_activation_grants(self):
+        """The grants are not an input to it, and the number did not move.
+
+        Eight verbs entered `SUPPORTED` on 2026-09-16 and this ceiling reads
+        `SUPPORTED`. It reads ONE ENTRY of it - the channel's pause - so the
+        grants are irrelevant to it by construction, and the cap is still the
+        one-person canary it always was. Asserted because "the ceiling moved
+        when the grants landed" is the plausible-sounding conclusion, and it
+        is wrong: the ceiling moved on 2026-09-12, when the pause did.
+        """
+        from src import executionguard
+
+        self.assertEqual(executionguard.UNSTOPPABLE_CHANNEL_CAP, 1)
+        self.assertEqual(set(executionguard.PAUSE_OPERATION.values()),
+                         {"heyreach.pause", "bison.pause"})
+        # Withdraw every 2026-09-16 grant and the ceiling is unchanged,
+        # because none of them is a pause.
+        granted = ("heyreach.activate", "bison.activate",
+                   "heyreach.create_campaign", "heyreach.create_list",
+                   "heyreach.set_sequence", "bison.create_campaign",
+                   "bison.set_sequence", "bison.assign_sender")
+        without = tuple(op for op in providerwrites.SUPPORTED
+                        if op not in granted)
+        with mock.patch.object(providerwrites, "SUPPORTED", without):
+            approved = configdiff.approved_heyreach(*_campaign_with(leads=2))
+        self.assertEqual(approved["lead_count"], 2)
+
     def test_without_a_pause_the_ceiling_is_one(self):
+        """Withdraw the pause and the ceiling tightens, with no edit here.
+
+        This is the direction that proves the two are one truth rather than
+        two copies of it, and it is why the number was never written down in
+        `configdiff`.
+        """
         source = _campaign_with(leads=2)
         without = tuple(op for op in providerwrites.SUPPORTED
                         if op != "heyreach.pause")
@@ -254,6 +377,21 @@ def _approved_cadence(contact_key):
     rather than mocked, because `_approved_for_campaign` asks
     `heyreachfactory.custom_fields_for` - the function production uses - and a
     mock would test the mock.
+
+    THE STAMP NAMES AN ADDRESS, AND IT USED TO SAY `"test"`. That is not a
+    cosmetic change and it is why every test in this file that reached
+    `approved_heyreach` had started erroring. `heyreachfactory._step_copy`
+    asks `approval.is_accountable_approver(stamp["by"])` and returns None for
+    a bare token - a rule added because 84 approvals in this estate are
+    stamped `by: "claude"`, 83 of them on `generated: true` steps whose
+    fingerprint never moves, so a self-recorded stamp on generated words
+    would be permanent. A bare token is exactly what that rule refuses, and
+    this fixture was writing one.
+
+    So the fixture was asserting a state production may not reach. Making the
+    approver an address is not a loosening: it is the fixture finally
+    describing an approval a human could be held to, which is the only kind
+    that puts a contact in an approved lead set.
     """
     from src import approval as _approval
     from src import heyreachfactory as _hf
@@ -262,7 +400,8 @@ def _approved_cadence(contact_key):
     for i, step_key in enumerate(_hf.COPY_MAPPING):
         step = {"channel": "linkedin", "note": f"approved sentence {i}"}
         steps[step_key] = dict(
-            step, approval={"by": "test", "at": "2026-09-15T00:00:00+00:00",
+            step, approval={"by": "operator@example.com",
+                            "at": "2026-09-15T00:00:00+00:00",
                             "fingerprint": _approval.fingerprint(step)})
     return {contact_key: steps}
 

@@ -40,8 +40,8 @@ def is_accountable_approver(by):
         return False
     if who in OPERATOR_ARMS:
         return True
-    # `zvonimir@x.co (operator authorisation 2026-09-16)` - the address is the
-    # accountable part and the parenthetical is provenance.
+    # `someone@example.com (operator authorisation 2026-09-16)` - the address
+    # is the accountable part and the parenthetical is provenance.
     #
     # BOTH SIDES OF THE @ HAVE TO BE THERE. An earlier version asked only for
     # an `@` and a dot after it, which accepted `@example.com` - a domain with
