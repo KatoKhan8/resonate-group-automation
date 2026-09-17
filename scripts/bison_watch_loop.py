@@ -15,7 +15,31 @@ mean "unchanged" rather than "died an hour ago":
     UNSUB       an unsubscribe was recorded
     STATUS      the campaign left `active` (paused, stopped, archived)
     COHORT      the lead count moved - the audience changed under us
+    QUEUED      the scheduled-email queue gained or lost rows WITHOUT a send
+    TOUCHED     the provider moved the campaign's own `updated_at`
     READ-ERROR  the provider could not be read, after it repeats
+
+WHY `QUEUED` AND `TOUCHED` EXIST, added 2026-09-17, and they are the whole
+falsifier for why this campaign has sent nothing.
+
+`scheduled_emails` is a LOOKAHEAD queue, not a receipt. Campaign 451's row
+appeared carrying `scheduled_date: 2026-09-13T13:19Z` - nineteen minutes after
+its window opened - then moved overnight to 16:24Z on the 14th and fired there
+twenty seconds late. So a row appears BEFORE anything is sent, and 487 has
+none: the provider has not queued this campaign at all, which is a different
+and much more specific fact than "it has not sent".
+
+`updated_at` is the same question asked of the campaign row. Sibling campaigns
+352 and 328 - ACTIVE, sharing 487's mailbox - move theirs every few minutes
+while the provider works them. 487's has not moved since OUR last write at
+2026-09-17T10:45:10Z, through 36 minutes of an open window.
+
+Together they make the standing hypothesis testable tomorrow rather than
+next week: if the provider assigns a day's leads at or near the window
+opening, then at 07:00-07:30Z on 2026-09-18 - 09:00 Europe/Zagreb - 487
+should emit TOUCHED and then QUEUED. **If the window opens and both stay
+silent, the hypothesis is dead and must be discarded rather than extended a
+day.**
 
 TWO WITNESSES FOR A SEND, not one. `emails_sent` is the campaign counter;
 `scheduled_emails` returns one ROW PER MESSAGE and a sent one says so. Campaign
@@ -57,6 +81,9 @@ def snapshot():
         "leads": int(row.get("total_leads") or 0),
         "queue_rows": len(queue),
         "sent_rows": sent_rows,
+        # Carried verbatim and compared for movement, never parsed: a format
+        # this system has not seen still reports a touch rather than raising.
+        "updated_at": row.get("updated_at"),
     }
 
 
@@ -108,6 +135,18 @@ def main(argv=None):
         if current["unsubscribed"] > previous["unsubscribed"]:
             emit(f"UNSUB 487 unsubscribed {previous['unsubscribed']} -> "
                  f"{current['unsubscribed']}")
+        # AFTER the send lines, and only when they did not fire. A queue that
+        # grew because something was sent is already reported above; this is
+        # the other case - the provider planning work it has not done yet,
+        # which is the first observable sign it has looked at this campaign.
+        if (current["queue_rows"] != previous["queue_rows"]
+                and current["sent_rows"] == previous["sent_rows"]):
+            emit(f"QUEUED 487 scheduled rows {previous['queue_rows']} -> "
+                 f"{current['queue_rows']} (none sent)")
+        if current["updated_at"] != previous["updated_at"]:
+            emit(f"TOUCHED 487 updated_at {previous['updated_at']} -> "
+                 f"{current['updated_at']} (sent={current['emails_sent']}, "
+                 f"queue={current['queue_rows']})")
 
         previous = current
         time.sleep(args.interval)
