@@ -32,7 +32,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import campaigns, orchestrator                       # noqa: E402
+import hashlib                                                # noqa: E402
+
+from src import campaigns, liststaging, orchestrator, store   # noqa: E402
 from src.providers import heyreach                            # noqa: E402
 
 CANONICAL = "productive-linkedin-cohort-v1"
@@ -41,8 +43,15 @@ LIST_ID = 943957
 SEAT_ID = 174892
 ORG_UNIT = 118832
 NAME = "RESONATE - PRODUCTIVE LINKEDIN COHORT V1 - CONTROL"
-RECORD_IDS = ["20northmarketing-com", "aubryandco-com", "tractorbeam-com"]
 EXPECT_LEADS = 4
+
+# THE COHORT IS NAMED BY PROFILE HASH, NOT BY DOMAIN. Writing the three real
+# client domains here put them in tracked source and `tests/test_fixture_
+# hygiene.py` caught it. Hashes identify the same people without publishing
+# who they are, and they are the same identifiers the staging and activation
+# scripts already use, so the three scripts agree by construction.
+COHORT_PROFILE_HASHES = {"6acd6d9f031b", "4684b25b0372",
+                         "c01f0c88111c", "4258f756357d"}
 
 # Copied from productive-linkedin-canary-v1. These describe the graph that is
 # reproduced from 599020 - not a shape chosen here.
@@ -50,6 +59,30 @@ PROVIDER_DELAYS = [["DAY", 1]]
 PROVIDER_NOTE = "{connection_note}"
 PROVIDER_ACTIONS = ["CHECK_IS_CONNECTION", "MESSAGE", "VIEW_PROFILE", "END",
                     "FOLLOW", "CONNECTION_REQUEST"]
+
+
+def h12(value):
+    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
+
+
+def cohort_record_ids(recs=None):
+    """The records holding the cohort, resolved from state by profile hash.
+
+    Refuses rather than guessing: if the four hashes do not resolve to
+    records, the row would name the wrong people and there is nothing safe to
+    write.
+    """
+    recs = store.load() if recs is None else recs
+    found, seen = [], set()
+    for rec in recs:
+        for contact in rec.get("contacts") or []:
+            url = liststaging.canonical_profile_url(contact.get("linkedin"))
+            if url and h12(url.lower()) in COHORT_PROFILE_HASHES:
+                seen.add(h12(url.lower()))
+                if rec["id"] not in found:
+                    found.append(rec["id"])
+    missing = COHORT_PROFILE_HASHES - seen
+    return sorted(found), sorted(missing)
 
 
 def preflight():
@@ -73,6 +106,11 @@ def preflight():
     if total != EXPECT_LEADS:
         problems.append(f"list {LIST_ID} holds {total} lead(s), expected "
                         f"{EXPECT_LEADS}")
+    record_ids, missing = cohort_record_ids()
+    facts["record_ids"] = record_ids
+    if missing:
+        problems.append(f"cohort profile hash(es) resolve to no record: "
+                        f"{missing}")
     if campaigns.get(CANONICAL):
         problems.append(f"canonical row {CANONICAL} already exists")
     return facts, problems
@@ -87,7 +125,7 @@ def main(argv=None):
     facts, problems = preflight()
     print("=== PROVIDER TRUTH ===")
     for key in ("provider_campaign", "status", "bound_list", "seats",
-                "audience"):
+                "audience", "record_ids"):
         print(f"  {key:18s}: {facts.get(key)}")
     if problems:
         print("\nREFUSED. No row was written:")
@@ -96,7 +134,6 @@ def main(argv=None):
         return 2
     print("  preflight         : PASS")
     print(f"  canonical id      : {CANONICAL}")
-    print(f"  record_ids        : {RECORD_IDS}")
     print("  send exposure     : ZERO (this writes canonical state only)")
 
     if not args.live:
@@ -105,7 +142,8 @@ def main(argv=None):
 
     with campaigns.transaction() as rows:
         campaign = orchestrator.create(
-            CANONICAL, "productive", NAME, record_ids=RECORD_IDS,
+            CANONICAL, "productive", NAME,
+            record_ids=cohort_record_ids()[0],
             created_by="operator", rows=rows)
         campaign["daily_volume"] = {"email": 0, "linkedin": 20}
         campaign["senders"] = {"email": [],

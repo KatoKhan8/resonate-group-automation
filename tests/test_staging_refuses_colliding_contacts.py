@@ -54,14 +54,21 @@ CONFIG = {
 
 
 def _record(rid, email, first, domain="example.com"):
+    from src import approval as _approval
+
     key = f"{rid}-c1"
+    # THE STAMP COVERS THE WORDS. It carried no fingerprint at all, which was
+    # enough while staging checked only that an approval existed. It is not
+    # any more - `bisonfactory._certified_copy` hashes the words it is about
+    # to stage and compares - and an approval that records nothing about the
+    # words it was given for is refused rather than trusted.
+    step = {"channel": "email", "subject": f"Hello {first}",
+            "body": "<p>A real approved body.</p>"}
+    step["approval"] = {"by": "operator", "at": "2026-09-13T00:00:00Z",
+                        "fingerprint": _approval.fingerprint(step)}
     return {"id": rid, "client": "productive", "domain": domain,
             "company": "Example", "state": "ready",
-            "cadence": {key: {"day1": {
-                "channel": "email", "subject": f"Hello {first}",
-                "body": "<p>A real approved body.</p>",
-                "approval": {"by": "operator",
-                             "at": "2026-09-13T00:00:00Z"}}}},
+            "cadence": {key: {"day1": step}},
             "contacts": [{"key": key, "email": email,
                           "first_name": first, "last_name": "Tester",
                           "sendable": True, "verified": True}]}

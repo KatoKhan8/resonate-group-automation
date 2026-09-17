@@ -67,14 +67,20 @@ class CrashAtSeam(QueueTest):
 
     @staticmethod
     def _record(rid, email, first):
+        from src import approval as _approval
+
         key = f"{rid}-c1"
+        # THE STAMP COVERS THE WORDS. A placeholder fingerprint was enough
+        # while staging checked only that an approval existed;
+        # `bisonfactory._certified_copy` now hashes the words it is about to
+        # stage and compares, so a stamp that covers nothing is refused.
+        step = {"channel": "email", "subject": f"Hello {first}",
+                "body": "<p>A real approved body.</p>"}
+        step["approval"] = {"by": "operator", "at": "2026-09-13T00:00:00Z",
+                            "fingerprint": _approval.fingerprint(step)}
         return {"id": rid, "client": "productive", "domain": "example.com",
                 "company": "Example", "state": "ready",
-                "cadence": {key: {"day1": {
-                    "channel": "email", "subject": f"Hello {first}",
-                    "body": "<p>A real approved body.</p>",
-                    "approval": {"by": "operator",
-                                 "at": "2026-09-13T00:00:00Z"}}}},
+                "cadence": {key: {"day1": step}},
                 "contacts": [{"key": key, "email": email,
                               "first_name": first, "last_name": "Tester",
                               "sendable": True, "verified": True}]}

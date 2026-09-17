@@ -61,11 +61,18 @@ THREE_STEP_CONFIG = {
 
 
 def _approved(step_key, n):
-    return {"channel": "email",
+    # THE STAMP COVERS THE WORDS. A placeholder fingerprint was enough
+    # while staging checked only that an approval existed;
+    # `bisonfactory._certified_copy` now hashes the words it is about to
+    # stage and compares, so a stamp that covers nothing is refused.
+    from src import approval as _approval
+
+    step = {"channel": "email",
             "subject": f"subject for {step_key}",
-            "body": f"<p>body for {step_key}</p>",
-            "approval": {"by": "operator", "at": "2026-09-16T00:00:00Z",
-                         "fingerprint": f"fp-{n}"}}
+            "body": f"<p>body for {step_key}</p>"}
+    step["approval"] = {"by": "operator", "at": "2026-09-16T00:00:00Z",
+                        "fingerprint": _approval.fingerprint(step)}
+    return step
 
 
 def _record(rid, email, first):

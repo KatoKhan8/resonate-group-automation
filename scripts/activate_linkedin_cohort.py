@@ -166,15 +166,25 @@ def main(argv=None):
     # 1. THE CAMPAIGN APPROVAL, through the sanctioned path.
     print("\n=== 1. RECORD THE CAMPAIGN APPROVAL ===")
     who = approver()
-    with campaigns.transaction() as rows:
-        target = campaigns.get(CANONICAL, rows)
-        fingerprint = campaigns.fingerprint(target, recs, config)
-        result = orchestrator.decide(
-            target, who, "approve", fingerprint=fingerprint,
-            interaction_id="operator-authz-2026-09-16-heyreach-cohort",
-            config=config, recs=recs, role="admin")
-    campaign = campaigns.require(CANONICAL)
-    print(f"  decide            : {result.get('status', 'approved')}")
+    fingerprint = campaigns.fingerprint(campaign, recs, config)
+    # IDEMPOTENT, BECAUSE THE APPROVAL IS ALREADY RECORDED. A previous run
+    # recorded it and was then refused at the write door, which is the
+    # fail-closed behaviour working. Re-running `decide` on an approved
+    # campaign is a status transition it has no reason to allow, and the thing
+    # that matters is not that we approved it again but that the approval is
+    # CURRENT - the fingerprint still covering this sender, this binding,
+    # these limits and this lead set.
+    if campaigns.is_approved(campaign, recs, config):
+        print(f"  decide            : already approved, unchanged")
+    else:
+        with campaigns.transaction() as rows:
+            target = campaigns.get(CANONICAL, rows)
+            result = orchestrator.decide(
+                target, who, "approve", fingerprint=fingerprint,
+                interaction_id="operator-authz-2026-09-16-heyreach-cohort",
+                config=config, recs=recs, role="admin")
+        campaign = campaigns.require(CANONICAL)
+        print(f"  decide            : {result.get('status', 'approved')}")
     print(f"  fingerprint       : {fingerprint}")
     if not campaigns.is_approved(campaign, recs, config):
         print("  REFUSED: the campaign approval is not current after writing "
@@ -184,12 +194,21 @@ def main(argv=None):
 
     # 2. THE READBACK AND ONE AUTHORIZATION PER CONTACT.
     print("\n=== 2. MINT THE AUTHORIZATIONS ===")
-    readback = configdiff.compare_heyreach(campaign, recs=recs, config=config,
-                                           staging=True)
-    print(f"  readback verdict  : {(readback.diff or {}).get('verdict')}")
+    # A READ-BACK IS SINGLE USE, AND THAT IS THE POINT. `authorize` refuses a
+    # readback that has already authorised an action - "re-read the provider
+    # rather than reusing one" - so one comparison cannot be spread across four
+    # people. Measured, not assumed: reusing one authorised the first contact
+    # and refused the other three by name. Each contact gets its own fresh
+    # comparison against the provider.
     auths = {}
     for phash in sorted(COHORT_PROFILE_HASHES):
         rec, contact = found[phash]
+        readback = configdiff.compare_heyreach(campaign, recs=recs,
+                                               config=config, staging=True)
+        verdict = (readback.diff or {}).get("verdict")
+        if verdict != configdiff.PASS:
+            print(f"  {phash}      : REFUSED readback verdict {verdict}")
+            continue
         try:
             auths[phash] = executionguard.authorize(
                 operation=providerwrites.LINKEDIN_ACTIVATE, channel="linkedin",

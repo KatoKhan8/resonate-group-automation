@@ -55,13 +55,30 @@ CONFIG = {
     "providers": {"emailbison": {"workspace": 10}},
 }
 
-APPROVAL = {"by": "operator", "at": "2026-09-13T00:00:00+00:00",
-            "fingerprint": "fixture"}
+APPROVAL = {"by": "operator", "at": "2026-09-13T00:00:00+00:00"}
+
+
+def approval_of(step):
+    """A stamp that actually covers this step's words.
+
+    It used to be the literal string `"fixture"`, which was fine while the
+    staging path checked only that an approval EXISTED. It does not any more:
+    `bisonfactory._certified_copy` hashes the words it is about to stage and
+    compares, so a placeholder fingerprint now models an approval for a
+    message nobody wrote - and is refused, correctly. A fixture that could
+    not survive its own product's gate is not modelling an approved record.
+    """
+    from src import approval as _approval
+
+    return dict(APPROVAL, fingerprint=_approval.fingerprint(step))
 
 
 def record(rid, email, first="Ada", last="Byron", subject="a subject",
            body="a body"):
     key = f"{first}-{last}".lower()
+    step = {"channel": "email", "generated": True,
+            "subject": subject, "body": body}
+    step["approval"] = approval_of(step)
     return {"id": rid, "company": f"Co {rid}", "domain": "example.test",
             "state": "approved",
             "contacts": [{"key": key, "name": f"{first} {last}",
@@ -70,9 +87,7 @@ def record(rid, email, first="Ada", last="Byron", subject="a subject",
                           "persona": "champion", "angle": "operations",
                           "verdict": "valid", "sendable": True,
                           "primary": True}],
-            "cadence": {key: {"day1": {"channel": "email", "generated": True,
-                                       "subject": subject, "body": body,
-                                       "approval": dict(APPROVAL)}}}}
+            "cadence": {key: {"day1": step}}}
 
 
 class FactoryTest(ProviderTest):
@@ -209,7 +224,14 @@ class TheNameIsIdentityAndTheFingerprintIsMaterial(FactoryTest):
         self.estate()
         first = self.stage()["provider"]["campaign_id"]
         recs = store.load()
-        recs[0]["cadence"]["ada-byron"]["day1"]["subject"] = "rewritten"
+        step = recs[0]["cadence"]["ada-byron"]["day1"]
+        step["subject"] = "rewritten"
+        # RE-APPROVED, because a regenerated draft is. Rewriting the subject
+        # moves `approval.fingerprint`, so leaving the old stamp on it would
+        # make this a test about staging unapproved copy - which now refuses,
+        # as it must. What is being asserted here is that moving the MATERIAL
+        # does not move the campaign, and material moves either way.
+        step["approval"] = approval_of(step)
         store.save(recs)
         self.assertEqual(self.stage()["provider"]["campaign_id"], first)
         self.assertEqual(len(self.creates()), 1)
@@ -711,6 +733,16 @@ class TheFactoryStillCannotSend(FactoryTest):
         the direction that matters, and the opposite of widening a seal to
         make a change pass. The enforcement that makes the drift impossible
         from now on is `bison._allow`, exercised below.
+
+        `/campaigns/{campaign_id}/remove-sender-emails` was ADDED on
+        2026-09-17 and is the same kind of row. It is a STOPPING verb: it
+        takes a sender OFF a campaign, so the surface it widens is the
+        surface for sending LESS. `providerwrites.py` had recorded "no
+        documented route" for it, which was stale - the route is documented
+        and now exercised. A campaign this build can attach a sender to and
+        cannot detach one from is the shape section 8 of the handoff warns
+        about, and this row is what made the arity rule enforceable rather
+        than merely correct.
         """
         self.assertEqual(set(bison.WRITE_ROUTES), {
             "/campaigns",
@@ -722,6 +754,7 @@ class TheFactoryStillCannotSend(FactoryTest):
             "/campaigns/{campaign_id}/leads/stop-future-emails",
             "/campaigns/{campaign_id}/schedule",
             "/campaigns/{campaign_id}/attach-sender-emails",
+            "/campaigns/{campaign_id}/remove-sender-emails",
             "/leads",
             "/leads/{lead_id}",
             "/custom-variables",

@@ -334,11 +334,11 @@ Four things were checked, all read-only, workspace 10 (PRODUCTIVE) with the
 credential binding asserted by `bison.require_workspace` (`bison.py:235-261`).
 
 **(a) No write route can pin a lead's inbox.** `WRITE_ROUTES`
-(`src/providers/bison.py:405-436`) contains exactly one sender verb:
+(`src/providers/bison.py:415-440`) contains exactly one sender verb:
 `/campaigns/{campaign_id}/attach-sender-emails` — **campaign-level**
-(`attach_senders` **:1111-1135**). The lead verbs are `/leads` (`build_leads`
-**:262-306**) and `/leads/{lead_id}` (`update_lead` **:1163**); neither payload
-has a sender field, and `LEAD_VARIABLES` **:322-328** carries `sender_id`,
+(`attach_senders` **:1130-1154**). The lead verbs are `/leads` (`build_leads`
+**:262-306**) and `/leads/{lead_id}` (`update_lead` **:1226**); neither payload
+has a sender field, and `LEAD_VARIABLES` **:324-330** carries `sender_id`,
 `sender_account_id` and `provider_account_id` only as *custom variables* — the
 code's own comment says so (**:288-301**): "Whether EmailBison round-trips
 these particular fields has NOT been validated... **Nothing depends on it.**"
@@ -356,7 +356,7 @@ lead_campaign_data: [{campaign_id: 485, status: "stopped", ...},
 No inbox, anywhere on the row.
 
 **(c) The ONE route that names an inbox per lead is the scheduled-email
-queue.** `/campaigns/{id}/scheduled-emails` (`scheduled_emails` **:1441-1466**)
+queue.** `/campaigns/{id}/scheduled-emails` (`scheduled_emails` **:1504-1529**)
 returns rows carrying `sender_email: {id, name, email, daily_limit, status,
 ...}`. Confirmed live on campaign 352 (active), page 1:
 
@@ -516,8 +516,8 @@ stickiness clause is predicate clause **(7)** in 4.3:
 > same `sender_id`.
 
 Read from two independent places and both must agree: the durable action ledger
-rows for this contact, and `touch.confirmed_touches` (`src/touch.py`, the
-function `reference_for` **:315** already consults). A prior touch by human A
+rows for this contact, and `touch.confirmed_touches` (`src/touch.py:267`, which the function at
+**:315** already consults). A prior touch by human A
 plus a proposed action by human B raises `NotAuthorized("attribution", ...)`
 with both names in the message. It cannot be bypassed by re-running allocation,
 because **allocation never runs inside the guard** — the guard only reads what
@@ -692,7 +692,7 @@ the canonical row's sender set.
 
 **Phase A, pre-activation (prevention, campaign-level):**
 
-1. `bison.campaign_senders(id)` (**:1138-1153**, paged) equals the canonical
+1. `bison.campaign_senders(id)` (**:1201-1216**, paged) equals the canonical
    row's `senders.email` set exactly.
 2. Every inbox in that set resolves via `senderownership.resolve_owner` to an
    **attested, active** human in this tenant.
@@ -709,10 +709,10 @@ Within one scheduling window of `resume_campaign`, read
 `sender_email.id ∈ {this campaign's attested inboxes}` and
 `resolve_owner(sender_email.id) == the one attested human`.
 
-On disagreement: `bison.pause_campaign` (**:1569**, in `WRITE_ROUTES` **:420**)
-and `stop_lead` (**:906**, `/leads/stop-future-emails` **:423**) for the
+On disagreement: `bison.pause_campaign` (**:1632**, in `WRITE_ROUTES` **:420**)
+and `stop_lead` (**:925**, `/leads/stop-future-emails` **:426**) for the
 affected leads. Both are stop verbs — "can only ever mean somebody receives
-less" (**:417-418**).
+less" (**:413-414**).
 
 Phase B is **not** the equal of the LinkedIn proof and must never be recorded
 as one. It is stated as what it is: a detector with a blast radius of one
@@ -898,8 +898,8 @@ this design's gift.
 ## 4.7 Where EmailBison genuinely cannot support this, and the honest fallback
 
 **Cannot be done.** Per-lead sender binding on EmailBison. There is no write
-route (`WRITE_ROUTES`, `bison.py:405-436` — the only sender verb is
-campaign-level `attach-sender-emails`), no field on the lead payload
+route (`WRITE_ROUTES`, `bison.py:415-440` — the only sender verb is
+campaign-level `attach-sender-emails`, **:428**), no field on the lead payload
 (`build_leads` **:262-306**) and none on the lead row (verified on live lead
 203809). The inbox is the provider's choice.
 
@@ -979,7 +979,7 @@ the whole difference between the two channels and must not be allowed to blur.
   permissions problem, and the answer to it is time.
 - **`senderinventory` keeps setting `sender_id=None`.** Ownership never becomes
   derivable from provider truth.
-- **The stoppability cap stays** (`executionguard.py:745-760`). Multi-sender
+- **The stoppability cap stays** (`executionguard.py:746-760`). Multi-sender
   attribution changes who sends; it does not give this system a LinkedIn pause
   verb, and `UNSTOPPABLE_CHANNEL_CAP = 1` is a statement about that.
 

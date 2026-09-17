@@ -156,11 +156,23 @@ class TheGateIsActuallyWiredIntoStaging(FactoryTest):
         five steps, one a single step - and hard-coding either is how this
         test breaks for a reason that has nothing to do with claims.
         """
+        from tests.test_two_campaigns_do_not_collide_at_the_provider import (
+            approval_of)
+
         rec = record(rid, f"{rid}@example.test")
         key = next(iter(rec["cadence"]))
         step = next(iter(rec["cadence"][key]))
         rec["cadence"][key][step]["subject"] = (
             "Final note on our previous discussions")
+        # RE-APPROVED OVER THE EDIT, deliberately. This step has to reach the
+        # claims gate, and it only reaches it as copy a human blessed: since
+        # `_certified_copy` compares the stamp to the words, an edit that left
+        # the old stamp behind would be refused one gate earlier as
+        # uncertified copy and this test would stop being about claims at all.
+        # The case being modelled is the dangerous one - words somebody really
+        # did approve, which are not true of this person.
+        rec["cadence"][key][step]["approval"] = approval_of(
+            rec["cadence"][key][step])
         return rec
 
     def test_staging_refuses_a_contact_who_was_never_contacted(self):
