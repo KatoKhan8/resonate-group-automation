@@ -99,3 +99,34 @@ connection-request ceiling is still roughly 3. That finding stands untouched.
 It says only this: three leads, one seat, a 30-hour ramp, fifteen hours
 elapsed. There is nothing to fix here yet, and the next honest checkpoint is
 tomorrow.
+
+---
+
+## OBSERVATION, 2026-09-17T18:00Z — the intermediate steps did not show up
+
+Nine hours after entry, all three leads still read
+`lastActionTime: 2026-09-17T09:04-09:06Z`. It has not moved.
+
+The graph puts `VIEW_PROFILE` at +3h and `FOLLOW` at +3h after that, so on the
+reading above something should have happened around 12:04Z and again around
+15:04Z. Neither moved the timestamp. Two explanations and this does not choose
+between them:
+
+- **`lastActionTime` does not record every node.** A profile view or a follow
+  may simply not be an "action" by this field's definition, in which case the
+  graph is running and invisible - which is the whole reason `PROGRESS` was
+  added, and an admission that `PROGRESS` may be a weaker signal than it
+  looked.
+- **Nothing has happened since 09:06Z.** The campaign's sending window is a
+  creation-time decision with no read route (`heyreach.set_schedule` documents
+  why), so a window that closed at midday is consistent with the evidence and
+  cannot be checked.
+
+**The prediction stands and its falsifier is unchanged**: a connection request
+on 2026-09-18, and if 2026-09-19 opens with all three still at
+`leadConnectionStatus: None` and `lastActionTime` unmoved since the 17th, this
+explanation is wrong.
+
+What this does change is the confidence in the 30-hour arithmetic. It was
+derived from declared node delays, and no observed event has confirmed a
+single one of them yet.
