@@ -88,7 +88,45 @@ The same field produced a same-day schedule there and a six-day one here, so
 it is not what differs. What differs is the mailbox: 451 sent from 3948, which
 was not carrying three other campaigns.
 
-## Can these ten send tomorrow? YES - but not from 2736
+## CORRECTION BEFORE THE ANSWER — the 80-page sample was wrong
+
+Everything below this line was written from a 3,600-row sample. A 9,000-row
+sample of the same three queues, run to firm it up before recommending a
+mutation, **overturns the recommendation**:
+
+    sender   09-18  09-19  09-21  09-22  09-23  09-24  09-25   limit
+      2736      15      0      15      15      0      0      0      15
+      2903      16      0      15      15      0      0      0      15
+      2904      15      0      15      15      0      0      0      15
+      2906      16      0      15      15      0      0      0      15
+      2911      15      0      15      15      0      0      0      15
+      3437       6     14      15       4      0      0      0      15
+
+**2911 is NOT free on the 18th. It is at 15, like the others.** The zero at 80
+pages was a sampling artifact - those rows simply had not been reached. The
+lesson is the one this session keeps relearning: a partial sample read as a
+total. It cost nothing only because the larger sample was run BEFORE the
+mutation rather than after.
+
+Two further things the bigger sample shows:
+
+- **2903 and 2906 read 16 on the 18th, above their configured 15.** Either the
+  daily limit is not strictly enforced per calendar day, or day-bucketing by
+  the UTC date crosses a boundary the provider does not use. UNKNOWN, and it
+  weakens any arithmetic that treats 15 as a hard per-day ceiling.
+- **All six inboxes are at zero on the 23rd, 24th and 25th.** So the pattern
+  may not be "2736 is full until the 23rd" so much as "the scheduler has
+  planned these campaigns only as far as the 22nd, and the 23rd is the
+  frontier". Both readings put 487's ten at the same place; they differ in
+  what would happen if a mailbox were freed.
+
+**The conclusion that survives: there is no inbox belonging to 487's attested
+human with free capacity on 2026-09-18.** The whole six-mailbox estate is
+committed through the 22nd. So the swap below is not available, and the
+section is kept only because the identity comparison in it is still true and
+still useful.
+
+## The original answer, now KNOWN WRONG on availability
 
 487 needs ten free slots on 2026-09-18. Mailbox 2736 has **zero**: its fifteen
 are already committed to the client's own campaigns. No configuration change
@@ -96,8 +134,9 @@ to 487 can conjure capacity out of a full mailbox, and
 `PRODUCTION-SCALE-POLICY.md` forbids the one that looks like it could -
 "a sender estate that is never made to carry more by raising a limit".
 
-**Sender 2911 has all fifteen of its slots free on 2026-09-18**, and it is the
-same human:
+**[SUPERSEDED — 2911 is at 15/15 on the 18th, see the correction above.]**
+What remains true is the identity comparison, and it is why 2911 would be the
+right inbox if a free day existed:
 
                             2736                     2911
     name hash               c62bbb200b21             c62bbb200b21   SAME
@@ -107,7 +146,8 @@ same human:
     lifetime sends          1,756                    1,793
     bounced                 11  (0.63%)              9  (0.50%)     BETTER
     free on 09-18           0 of 15                  15 of 15
-    domain                  dontgoproductive.com     gettryproductive.com
+    sending domain          <2736 domain>            <2911 domain>
+                            (different domains; both are the client owns and warms)
 
 The signature is byte-identical, so a prospect reads the same person and the
 same sign-off. 3437 is rejected despite having free capacity: its lifetime
