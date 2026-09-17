@@ -178,9 +178,17 @@ def queue_manifest():
                 continue
             digest.update(short_hash(r.get("domain") or r.get("id") or "").encode())
             clients[r.get("client")] = clients.get(r.get("client"), 0) + 1
-            st = r.get("status") or r.get("stage") or "unset"
+            # `state` AND `drop_reason` ARE THE FIELD NAMES, measured against
+            # the live queue on 2026-09-17. This read `status`/`stage`/`dropped`
+            # - three names no record has ever carried - so it wrote
+            # `stages: {"unset": 550}` and `dropped: 0` over a manifest that
+            # had said verified 65 / held 32 / dropped 126 / queued 315 /
+            # drafted 12. `dropped: 0` is the exact failure this repository
+            # keeps: a count nobody could compute, published as a count of
+            # none. 126 records really are dropped.
+            st = r.get("state") or "unset"
             stages[st] = stages.get(st, 0) + 1
-            if r.get("dropped"):
+            if r.get("drop_reason"):
                 dropped += 1
             c = r.get("contacts")
             contacts += len(c) if isinstance(c, (dict, list)) else 0
@@ -196,6 +204,18 @@ def queue_manifest():
         "estate_fingerprint": digest.hexdigest()[:16],
         "mtime": datetime.fromtimestamp(os.path.getmtime(qp), timezone.utc).isoformat(),
     })
+    # THE SILENT VERSION OF THIS BUG IS THE REASON FOR THE LOUD ONE. Reading a
+    # field no record carries does not fail - it produces a confident,
+    # well-formed manifest in which every record is "unset" and nothing is
+    # dropped, and the next session believes it. If the schema moves again,
+    # say so IN the file rather than publishing a shape derived from nothing.
+    parsed = records - bad
+    if parsed and stages.get("unset", 0) == parsed:
+        man["stages_unreadable"] = (
+            "every record fell through to `unset`: the field this manifest "
+            "reads is not the field records carry. The stage counts and the "
+            "dropped count below are NOT derived from state and mean UNKNOWN, "
+            "not zero.")
     return man
 
 

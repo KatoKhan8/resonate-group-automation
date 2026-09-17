@@ -1,9 +1,8 @@
 {
-  "generated_at": "2026-09-16T05:38:06+00:00",
+  "generated_at": "2026-09-17T11:17:08+00:00",
   "queue_path": "work/queue.jsonl",
   "gitignored": true,
   "present": true,
-  "source_worktree": "Claude (resonate-group-automation)",
   "records": 550,
   "unparseable": 0,
   "contacts": 277,
@@ -16,9 +15,9 @@
     "held": 32,
     "dropped": 126,
     "queued": 315,
-    "drafted": 12
+    "approved": 4,
+    "drafted": 8
   },
   "estate_fingerprint": "d33cbd6d4ed10f26",
-  "mtime": "2026-09-16T05:23:26.009664+00:00",
-  "note": "Generated from live queue by TASK-191. Queue lives in Claude worktree; this manifest is PII-safe."
+  "mtime": "2026-09-17T06:23:44.727644+00:00"
 }
