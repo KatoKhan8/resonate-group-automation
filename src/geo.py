@@ -300,6 +300,30 @@ def _blank(reason):
             "why": reason}
 
 
+def _iso_code(value):
+    """If value is a two-letter ISO country code, return it uppercased."""
+    raw = str(value or "").strip()
+    if len(raw) == 2 and raw.isalpha():
+        return raw.upper()
+    return None
+
+
+def _try_city_from_segments(text):
+    """Try each comma-separated segment of text as a city name.
+
+    Whole-token matching via _contains_phrase on each segment, so "Newcastle"
+    never matches "New York". Returns the first city key found, or None.
+    """
+    for segment in text.split(","):
+        cleaned = _clean(segment)
+        if not cleaned:
+            continue
+        for name in CITIES:
+            if _contains_phrase(cleaned, name):
+                return name
+    return None
+
+
 def resolve(country=None, city=None, state=None, config=None, places=None):
     """Country, region and timezone from whatever location evidence exists.
 
@@ -311,14 +335,29 @@ def resolve(country=None, city=None, state=None, config=None, places=None):
     city_text = _clean(city)
     state_text = _clean(state)
 
+    # A two-letter ISO code as the country argument maps through ISO_TO_COUNTRY.
+    # The confidence is MEDIUM rather than HIGH: an ISO code places the country
+    # but is weaker evidence than a city or a country name.
+    iso_source = False
+    iso_hint = _iso_code(country)
+    if iso_hint and iso_hint in ISO_TO_COUNTRY and country_text not in COUNTRIES:
+        country_text = ISO_TO_COUNTRY[iso_hint]
+        iso_source = True
+
     # Free text - "Stockholm, Sweden" - as a last resort, matched on whole
-    # tokens so "Newcastle" never matches "New York".
-    if places and not (country_text or city_text):
+    # tokens so "Newcastle" never matches "New York". Each comma-separated
+    # segment is also tried as a city, because office strings put the city
+    # at varying positions. A city is searched for even when the country is
+    # already known: an ISO code places the country but the city is the
+    # stronger evidence and may upgrade the confidence.
+    if places and not city_text:
         text = _clean(places)
         for name in CITIES:
             if _contains_phrase(text, name):
                 city_text = name
                 break
+        if not city_text:
+            city_text = _try_city_from_segments(places)
         if not country_text:
             for name in COUNTRIES:
                 if _contains_phrase(text, name):
@@ -365,16 +404,19 @@ def resolve(country=None, city=None, state=None, config=None, places=None):
                 "timezone": None, "timezone_source": None,
                 "timezone_confidence": UNKNOWN,
                 "why": (f"{country_text.title()} spans several time zones and "
-                        "nothing here narrows it; scheduling is held rather "
-                        "than guessed"),
+                        "a state or city is needed to narrow it; "
+                        "scheduling is held rather than guessed"),
             }
+        # An ISO code places the country but is weaker than a name or city.
+        confidence = (HIGH if source == FROM_COUNTRY_SINGLE else MEDIUM)
+        if iso_source and confidence == HIGH:
+            confidence = MEDIUM
         return {
             "country": country_text, "country_code": iso,
             "region": region, "region_confidence": HIGH,
             "city": None, "timezone": zone,
             "timezone_source": source,
-            "timezone_confidence": (HIGH if source == FROM_COUNTRY_SINGLE
-                                    else MEDIUM),
+            "timezone_confidence": confidence,
             "why": (f"{country_text.title()} uses one zone"
                     if source == FROM_COUNTRY_SINGLE else
                     f"{country_text.title()} has a dominant zone"),
@@ -487,11 +529,35 @@ def from_domain_tld(domain):
     }
 
 
+def _trailing_iso(office):
+    """The two-letter ISO code at the end of an office string, or None."""
+    parts = str(office or "").split(",")
+    if not parts:
+        return None
+    tail = parts[-1].strip()
+    code = _iso_code(tail)
+    if code and code in ISO_TO_COUNTRY:
+        return code
+    return None
+
+
 def from_record(rec, config=None):
     """The location a record actually carries, in the order it is trusted."""
     facts = (rec or {}).get("company_facts") or {}
-    places = " ".join(str(o) for o in (facts.get("offices") or []))
-    return resolve(country=facts.get("country"), city=facts.get("city"),
+    offices = facts.get("offices") or []
+    places = " ".join(str(o) for o in offices)
+
+    # An explicit country on the record takes precedence. Otherwise, the
+    # trailing ISO code of the first office with one is the country evidence.
+    country = facts.get("country")
+    if not country or _clean(country) not in COUNTRIES:
+        for office in offices:
+            code = _trailing_iso(office)
+            if code:
+                country = code
+                break
+
+    return resolve(country=country, city=facts.get("city"),
                    state=facts.get("state") or facts.get("region"),
                    config=config,
                    places=" ".join(filter(None, [places, facts.get("hq"),
