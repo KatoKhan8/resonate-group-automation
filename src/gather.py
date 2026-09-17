@@ -32,6 +32,31 @@ The calls are I/O-bound HTTP against provider modules written as blocking
 functions. asyncio would mean rewriting every provider module. Threads are
 the right abstraction for wrapping existing blocking I/O.
 
+## A TIMED-OUT CALL STILL REACHED THE PROVIDER, AND STILL COST A CREDIT
+
+`timeout` abandons the WAIT. It does not cancel the request: `shutdown(wait=
+False)` leaves that thread running until its underlying I/O finishes. So a
+call that times out here has been dispatched to the provider, may well
+succeed there, and will be billed there.
+
+**That is a hole in the spend audit if the APPLY step only charges for `ok`.**
+A pass with fifty timeouts would under-count the ledger by fifty credits, and
+`costs.reconcile()` would report a clean audit against a number that is wrong.
+
+So the wiring change must do one of two things, and it is a decision rather
+than a detail:
+
+    charge for `timed_out` too   the credit was spent whether or not the
+                                 answer arrived. Conservative and correct for
+                                 the ledger; it charges for answers nobody got.
+    enforce the timeout at the
+    HTTP layer instead           where it actually aborts the request. This is
+                                 the better answer, and the provider modules
+                                 already carry `TIMEOUT = 25`.
+
+**Prefer the second.** `timeout` here is a backstop against a hung thread, not
+a budget mechanism, and using it as one is how the ledger drifts.
+
 ## Rate limits: K is a ceiling, not a target
 
 The enrichment providers that dominate the call count have UNKNOWN rate
@@ -48,6 +73,23 @@ from typing import Any, Callable, List, Optional, Sequence, TypeVar
 
 T = TypeVar("T")
 R = TypeVar("R")
+
+
+class GatherIncomplete(RuntimeError):
+    """The pool stopped accepting work. Carries the partial results.
+
+    Raised rather than returned so a caller cannot mistake a truncated run
+    for a complete one, and carrying `outcomes` so the work already done -
+    which has already cost credits at a paid provider - is not thrown away.
+    """
+
+    def __init__(self, cause, outcomes):
+        super().__init__(
+            f"the pool stopped accepting work after "
+            f"{sum(1 for o in outcomes if not o.is_not_attempted)} of "
+            f"{len(outcomes)} items ({type(cause).__name__}: {cause})")
+        self.cause = cause
+        self.outcomes = outcomes
 
 
 class _CallableTimeoutError(BaseException):
@@ -138,7 +180,14 @@ def gather(
               retry - a retry hidden inside the pool would double-spend at a
               paid provider.
         k: Maximum concurrent calls. Defaults to 4.
-        timeout: Per-item timeout in seconds. None means no timeout.
+        timeout: Per-item timeout in seconds, measured from when this
+                 function STARTS WAITING on that item, not from when the item
+                 was dispatched. Items are collected in input order, so an
+                 item late in the list has been running while its
+                 predecessors were collected and is therefore allowed more
+                 total wall time than `timeout`. It is a backstop against a
+                 hung thread, not a deadline. See the module docstring on why
+                 it must not be used as a budget mechanism.
         min_interval: Minimum seconds between dispatches. None means no
                       throttling. K is still the concurrency ceiling.
 
@@ -160,15 +209,29 @@ def gather(
 
     try:
         last_submit = time.monotonic()
+        submit_failure = None
         for i, item in enumerate(items):
             if min_interval is not None and i > 0:
                 elapsed = time.monotonic() - last_submit
                 if elapsed < min_interval:
                     time.sleep(min_interval - elapsed)
             last_submit = time.monotonic()
-            futures[i] = executor.submit(_wrapped, item)
+            try:
+                futures[i] = executor.submit(_wrapped, item)
+            except BaseException as exc:          # noqa: BLE001 - classified
+                # THE POOL REFUSED TO TAKE MORE WORK - interpreter shutdown,
+                # a thread that cannot be created, memory. Raising here would
+                # discard every result already in flight: at item 3,000 of
+                # 5,000 the caller would lose 2,999 completed calls that had
+                # already cost credits. The remaining items stay
+                # `not_attempted`, which is what that outcome is FOR, and the
+                # ones that were submitted are still collected below.
+                submit_failure = exc
+                break
 
         for i, fut in enumerate(futures):
+            if fut is None:
+                continue                          # never submitted
             try:
                 result = fut.result(timeout=timeout)
                 outcomes[i] = Outcome.ok(result)
@@ -180,5 +243,13 @@ def gather(
                 outcomes[i] = Outcome.failed(exc)
     finally:
         executor.shutdown(wait=False)
+
+    if submit_failure is not None:
+        # Reported, never swallowed. The caller gets its partial results AND
+        # is told the pool stopped taking work, because "some items are
+        # not_attempted" and "the pool died" are different situations and only
+        # one of them is worth retrying.
+        outcomes = list(outcomes)
+        raise GatherIncomplete(submit_failure, outcomes)
 
     return outcomes

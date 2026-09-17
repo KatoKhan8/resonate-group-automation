@@ -18,7 +18,9 @@ No network, no real PII, no provider module imported.
 import threading
 import time
 import unittest
+from unittest import mock
 
+from src import gather as gather_mod
 from src.gather import Outcome, gather
 
 
@@ -552,3 +554,87 @@ class ExceptionTypes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class APoolThatStopsTakingWork(unittest.TestCase):
+    """A submit failure must not discard the calls that already succeeded.
+
+    Found on review: `executor.submit` raising partway through would
+    propagate straight out of `gather`, and at item 3,000 of 5,000 the caller
+    would lose 2,999 completed calls that had ALREADY COST CREDITS at a paid
+    provider. The results are now carried on the exception.
+
+    This is also the only path that produces `not_attempted`. Before it
+    existed that outcome could never occur - it was constructed in tests and
+    nowhere else, which is a kind the code could not reach.
+    """
+
+    def test_a_submit_failure_carries_the_partial_results(self):
+        calls = []
+
+        def call(item):
+            calls.append(item)
+            return item * 10
+
+        real_submit = gather_mod.ThreadPoolExecutor.submit
+        state = {"n": 0}
+
+        def flaky_submit(self, fn, *a, **kw):
+            state["n"] += 1
+            if state["n"] > 3:
+                raise RuntimeError("cannot schedule new futures")
+            return real_submit(self, fn, *a, **kw)
+
+        with mock.patch.object(gather_mod.ThreadPoolExecutor, "submit",
+                               flaky_submit):
+            with self.assertRaises(gather_mod.GatherIncomplete) as caught:
+                gather_mod.gather(list(range(10)), call, k=2)
+
+        outcomes = caught.exception.outcomes
+        self.assertEqual(len(outcomes), 10,
+                         "one outcome per input, even when truncated")
+        done = [o for o in outcomes if o.is_ok]
+        self.assertEqual(len(done), 3, "the three that were submitted ran")
+        self.assertEqual([o.value for o in outcomes[:3]], [0, 10, 20],
+                         "and their results are intact and in order")
+        self.assertTrue(all(o.is_not_attempted for o in outcomes[3:]),
+                        "the rest are not_attempted, not silently ok")
+        self.assertIsInstance(caught.exception.cause, RuntimeError)
+
+    def test_the_failure_is_raised_not_swallowed(self):
+        """A truncated run must not be mistakable for a complete one."""
+        def call(item):
+            return item
+
+        real_submit = gather_mod.ThreadPoolExecutor.submit
+        state = {"n": 0}
+
+        def flaky_submit(self, fn, *a, **kw):
+            state["n"] += 1
+            if state["n"] > 1:
+                raise RuntimeError("pool is done")
+            return real_submit(self, fn, *a, **kw)
+
+        with mock.patch.object(gather_mod.ThreadPoolExecutor, "submit",
+                               flaky_submit):
+            with self.assertRaises(gather_mod.GatherIncomplete):
+                gather_mod.gather([1, 2, 3], call, k=1)
+
+    def test_not_attempted_is_now_reachable(self):
+        """It was a kind the code could not produce. Now it can."""
+        real_submit = gather_mod.ThreadPoolExecutor.submit
+
+        def one_then_stop(self, fn, *a, **kw):
+            if getattr(one_then_stop, "used", False):
+                raise RuntimeError("stop")
+            one_then_stop.used = True
+            return real_submit(self, fn, *a, **kw)
+
+        with mock.patch.object(gather_mod.ThreadPoolExecutor, "submit",
+                               one_then_stop):
+            try:
+                gather_mod.gather([1, 2], lambda x: x, k=1)
+                self.fail("should have raised")
+            except gather_mod.GatherIncomplete as exc:
+                kinds = [o.kind for o in exc.outcomes]
+        self.assertIn("not_attempted", kinds)
