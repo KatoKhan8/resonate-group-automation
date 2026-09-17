@@ -808,8 +808,24 @@ class TheSealStillHolds(unittest.TestCase):
         add_lead is REFUSED for IN_PROGRESS, PAUSED, FINISHED, an
         unrecognised status, an unreadable campaign and a campaign nobody
         named;
-        LINKEDIN_ACTIVATE is STILL refused, unconditionally, and enabling
-        add-lead is not an argument for enabling it.
+        LINKEDIN_ACTIVATE is REFUSED for every campaign but the one the
+        operator named, and enabling add-lead is not an argument for
+        widening that.
+
+    NARROWED AGAIN 2026-09-16, and the third bullet is the one that moved. It
+    read "LINKEDIN_ACTIVATE is STILL refused, unconditionally", which was true
+    until an operator granted each ACTIVATE verb SCOPED BY NAME to a single
+    campaign - `_AUTHORIZED_LINKEDIN_CANARY` on LinkedIn and
+    `_AUTHORIZED_EMAIL_CAMPAIGN` on email. The blanket seal is gone, so the
+    property worth keeping is the NARROWNESS of what replaced it.
+
+    Deleting the assertions would have dropped the guarantee silently.
+    Membership of `SUPPORTED` alone is a CHANNEL-WIDE LICENCE: on LinkedIn it
+    would admit any of the 83 campaigns in that account, 12 of them the
+    client's own and IN_PROGRESS; on email it would admit 481, which holds 23
+    people already written to under a sequence nobody approved here. So what
+    is asserted is the scope - enabled, conditional, and refusing every
+    campaign but the named one.
 
     The refusals live in `TheConditionIsTheRealPermission` below, which
     drives them through `perform` and asserts the transport was never
@@ -827,17 +843,29 @@ class TheSealStillHolds(unittest.TestCase):
             "unconditional prospect-facing write")
 
     def test_the_write_layer_still_refuses_prospect_facing_ops(self):
-        """EXACTLY ONE prospect-facing operation is enabled, and it is
-        conditional. Every other one still refuses by name.
+        """EVERY enabled prospect-facing operation is conditional, and which
+        ones they are is pinned by name. Every other one still refuses.
 
         The original form of this test asserted the list was empty. The
         narrowed form asserts what may be in it - so a second prospect-facing
         route cannot arrive quietly, and one arriving WITHOUT a condition
         fails here even if somebody remembered to update the tuple below.
+
+        RE-POINTED 2026-09-16: the list grew from one to three when the
+        operator granted both ACTIVATE verbs, each scoped to one campaign. The
+        property is unchanged and it was never the COUNT - it is that nothing
+        reaches a person on tuple membership alone. `bison.add_lead` is still
+        sealed outright and is asserted here, so this list is demonstrably not
+        just "everything prospect-facing".
         """
         enabled = [op for op in providerwrites.PROSPECT_FACING
                    if providerwrites.is_supported(op)]
-        self.assertEqual(enabled, [providerwrites.LINKEDIN_ADD_LEAD])
+        self.assertEqual(enabled, [providerwrites.LINKEDIN_ADD_LEAD,
+                                   providerwrites.LINKEDIN_ACTIVATE,
+                                   providerwrites.EMAIL_ACTIVATE])
+        self.assertFalse(
+            providerwrites.is_supported(providerwrites.EMAIL_ADD_LEAD),
+            "bison.add_lead reaches a person and nobody granted it")
         unconditional = [op for op in enabled
                          if not providerwrites.is_conditional(op)]
         self.assertEqual(
@@ -856,6 +884,14 @@ class TheSealStillHolds(unittest.TestCase):
         route established, campaign unstartable. `LINKEDIN_ADD_LEAD` joined
         on 2026-09-15 and is the first entry here that can reach a person,
         which is why it is the first entry that also needed `CONDITIONAL`.
+
+        SIX MORE JOINED ON 2026-09-16 by written operator authorization - see
+        `OPERATOR-AUTHORIZATION-2026-09-16.md`. Five are campaign-BUILDING
+        and reach nobody; two are the ACTIVATE verbs and reach everybody in
+        the campaign they name, which is why each of those carries a
+        `CONDITIONAL` naming ONE campaign. That scope is asserted in
+        `test_the_activate_operations_admit_exactly_one_campaign_each`, and
+        an entry added here without one fails there rather than here.
         """
         self.assertEqual(
             providerwrites.SUPPORTED,
@@ -870,25 +906,85 @@ class TheSealStillHolds(unittest.TestCase):
              # so it sends nothing. The provider refuses leads on a
              # DRAFT campaign and refuses to pause an inactive one, so
              # start-then-pause is the only route to a stageable
-             # campaign. heyreach.activate stays sealed.
-             providerwrites.LINKEDIN_START_EMPTY_FOR_STAGING))
+             # campaign.
+             providerwrites.LINKEDIN_START_EMPTY_FOR_STAGING,
+             # Added 2026-09-16. NOT prospect-facing, and the reason is a
+             # property of the LIST rather than of us: a list attached to no
+             # campaign reaches nobody, and `assert_list_safe` reads the list
+             # FROM THE PROVIDER at the moment of the write.
+             providerwrites.LINKEDIN_ADD_LEAD_TO_LIST,
+             # Added 2026-09-16, SCOPED TO ONE CAMPAIGN. EMAIL_ACTIVATE is
+             # the first verb in this system that makes a campaign send, and
+             # EMAIL_ASSIGN_SENDER shares its condition because attaching a
+             # sender is what makes sending possible at all. Both refuse
+             # every canonical row but the one the grant names.
+             providerwrites.EMAIL_ASSIGN_SENDER,
+             providerwrites.EMAIL_ACTIVATE,
+             # Added 2026-09-16. NOT prospect-facing: the provider creates in
+             # DRAFT and a DRAFT sends nothing. Conditional on the LIST that
+             # will be bound to it - ours, unbound, holding only approved
+             # leads, all read live.
+             providerwrites.LINKEDIN_CREATE_CAMPAIGN,
+             # Added 2026-09-16, SCOPED TO ONE CAMPAIGN. PROSPECT-FACING:
+             # this is the verb that makes a LinkedIn campaign send.
+             # Membership here alone would be a licence over all 83 campaigns
+             # in the account, so the permission is the condition.
+             providerwrites.LINKEDIN_ACTIVATE,
+             # Added 2026-09-16. NOT prospect-facing and NOT conditional: it
+             # makes an EMPTY list attached to no campaign, so there is no
+             # destination to read and a condition that checks nothing is
+             # worse than none. What bounds it is what comes after - the two
+             # verbs that put a lead in it and bind it are both conditional.
+             providerwrites.LINKEDIN_CREATE_LIST))
 
-    def test_the_activate_operations_are_still_unconditionally_sealed(self):
-        """The one this module now exists to keep sealed.
+    def test_the_activate_operations_admit_exactly_one_campaign_each(self):
+        """The one this module now exists to keep NARROW.
 
-        This test used to assert add-lead was unsupported. Add-lead was the
-        staging half of the pair; ACTIVATE is the half that turns a campaign
+        This test used to assert add-lead was unsupported, and then that both
+        ACTIVATE verbs were absent from SUPPORTED and carried no condition
+        that could admit them. ACTIVATE is the half that turns a campaign
         holding staged leads into messages sent to real people, and it is a
-        separate decision with its own evidence. It is not merely absent from
-        SUPPORTED - it has NO condition that could admit it, so there is no
-        campaign state and no argument that turns it on from here.
+        separate decision with its own evidence - which an operator made on
+        2026-09-16, granting each verb SCOPED BY NAME to a single campaign.
+
+        So the blanket seal is gone and the property that replaced it is
+        stronger than absence in one respect and weaker in none that matters:
+        the verb is enabled, it carries a condition, and the condition admits
+        exactly ONE campaign per channel and refuses every other id. Adding a
+        campaign to that scope is a new operator decision, not a refactor.
+
+        604869 and 605487 are asserted REFUSED rather than dropped, because
+        they are DEAD ENDS and not merely un-granted: 604869's bound list
+        holds one contact whose account `collision.account_policy` HOLDS, and
+        605487's list was staged from the account gate alone, with gate 4
+        refusing one of its four at activation. Neither may ever start.
         """
+        require = providerwrites.require_conditional_permission
         for operation in (providerwrites.LINKEDIN_ACTIVATE,
                           providerwrites.EMAIL_ACTIVATE):
-            self.assertNotIn(operation, providerwrites.SUPPORTED)
-            self.assertFalse(providerwrites.is_conditional(operation))
-            with self.assertRaises(providerwrites.WriteUnsupported):
-                providerwrites.require_supported(operation)
+            self.assertIn(operation, providerwrites.SUPPORTED)
+            self.assertIn(
+                operation, providerwrites.CONDITIONAL,
+                f"{operation} is supported and unconditional, which is a "
+                f"licence over every campaign on the channel")
+
+        # LinkedIn: one provider campaign, and every other id refused -
+        # including 599020 and 594061, the campaigns this module is built on.
+        self.assertTrue(require(providerwrites.LINKEDIN_ACTIVATE,
+                                providerwrites._AUTHORIZED_LINKEDIN_CANARY,
+                                None))
+        for other in (CAMPAIGN_A, CAMPAIGN_B, "604869", "605487", "", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.LINKEDIN_ACTIVATE, other, None)
+
+        # Email: the canonical row is checked FIRST, because the provider slot
+        # is unpinned and the row is what supplies the expected provider id. A
+        # write naming any other row is refused before a provider id is even
+        # resolved, so 481 and 485 cannot be reached through this canonical
+        # campaign whatever they name.
+        for other in ("481", "485", "487", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.EMAIL_ACTIVATE, other, CANON)
 
     def test_the_route_is_on_write_routes(self):
         """The mechanism exists; the permission does not."""
@@ -1187,20 +1283,55 @@ class TheConditionIsTheRealPermission(QueueTest):
 
     def test_add_lead_never_becomes_activate(self):
         """A token permitting ADD_LEAD must never permit ACTIVATE, and the
-        two are separate capabilities rather than degrees of one."""
-        self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
-                         providerwrites.SUPPORTED)
-        self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
-                         providerwrites.CONDITIONAL)
+        two are separate capabilities rather than degrees of one.
+
+        THE PROTECTION IS UNCHANGED. WHAT CARRIES IT IS NOW THE WHOLE TEST.
+
+        It used to lean partly on ACTIVATE being absent from SUPPORTED, which
+        made the escalation impossible by making the destination verb
+        impossible. The operator granted ACTIVATE on 2026-09-16 scoped to one
+        campaign, so that prop is gone and the check underneath it is the one
+        that was always the real one: `perform` compares
+        `authorization.operation` against the operation being performed and
+        refuses a mismatch. Every gate in `authorize` is evaluated for a NAMED
+        operation, so a token is proof of that action and of no other, even on
+        the same channel.
+
+        DRIVEN AGAINST THE AUTHORIZED CANARY DELIBERATELY. Refusing an
+        escalation aimed at a campaign that would be refused anyway proves
+        nothing about the escalation. `_AUTHORIZED_LINKEDIN_CANARY` is the one
+        campaign an activation MAY name, so it is the one place an add-lead
+        token could land if the check were removed - and the transport must
+        still never be reached. CAMPAIGN_A is driven too, so the refusal is
+        shown not to depend on which campaign is named.
+        """
+        self.assertIn(providerwrites.LINKEDIN_ADD_LEAD,
+                      providerwrites.SUPPORTED)
         auth = _auth()
+        self.assertEqual(auth.operation, providerwrites.LINKEDIN_ADD_LEAD,
+                         "this test is about a token minted for add_lead")
+        transport = FakeTransport()
         with _enabled():
-            with self.assertRaises(providerwrites.WriteRefused):
-                providerwrites.perform(
-                    providerwrites.LINKEDIN_ACTIVATE,
-                    provider_campaign_id=CAMPAIGN_A, campaign=CANON,
-                    authorization=auth, step=STEP, payload=APPROVED,
-                    transport=FakeTransport(), readback=FakeMembership(),
-                    expected={"found": set()})
+            for campaign_id in (providerwrites._AUTHORIZED_LINKEDIN_CANARY,
+                                CAMPAIGN_A):
+                with self.subTest(campaign=campaign_id):
+                    with self.assertRaises(
+                            providerwrites.WriteRefused) as caught:
+                        providerwrites.perform(
+                            providerwrites.LINKEDIN_ACTIVATE,
+                            provider_campaign_id=campaign_id, campaign=CANON,
+                            authorization=auth, step=STEP, payload=APPROVED,
+                            transport=transport, readback=FakeMembership(),
+                            expected={"found": set()})
+                    # The refusal is the one that matters: the token names
+                    # add_lead and this is activate. Not "unsupported", not
+                    # "wrong campaign" - the capability mismatch itself.
+                    self.assertIn(providerwrites.LINKEDIN_ADD_LEAD,
+                                  str(caught.exception))
+                    self.assertIn(providerwrites.LINKEDIN_ACTIVATE,
+                                  str(caught.exception))
+        self.assertEqual(transport.calls, [],
+                         "an add_lead token reached the activate transport")
 
 
 # ------------------------------------------------- guard removal tests

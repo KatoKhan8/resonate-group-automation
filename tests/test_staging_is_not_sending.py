@@ -73,17 +73,49 @@ class TheSendBlockIsUntouched(unittest.TestCase):
         self.assertFalse(verdict["sending"])
         self.assertEqual(verdict["blocked_by"], killswitch.GLOBAL)
 
-    def test_activation_is_still_sealed_and_still_unconditional(self):
+    def test_activation_admits_exactly_one_campaign_per_channel(self):
         """Staging a lead must not move it one step closer to being messaged.
 
-        The verb that does that is ACTIVATE, and it is not merely absent from
-        SUPPORTED - it carries no condition, so there is no campaign state and
-        no argument that admits it.
+        RE-POINTED 2026-09-16. This read "activation is still sealed and still
+        unconditional" - not merely absent from SUPPORTED but carrying no
+        condition, so no campaign state and no argument admitted it. An
+        operator has since granted each ACTIVATE verb, scoped BY NAME to one
+        campaign, so the blanket seal is gone.
+
+        The property this module protects is untouched by that, and it is not
+        "activation is impossible" - it is that STAGING does not move anybody
+        closer to being messaged. Staging writes into a campaign this scope
+        does not name, and a campaign that is not named cannot be activated
+        however well it is staged. So the assertion becomes the scope: one
+        campaign per channel, every other id refused, and the campaigns this
+        module stages into among the refused.
         """
+        require = providerwrites.require_conditional_permission
         for operation in (providerwrites.LINKEDIN_ACTIVATE,
                           providerwrites.EMAIL_ACTIVATE):
-            self.assertNotIn(operation, providerwrites.SUPPORTED)
-            self.assertNotIn(operation, providerwrites.CONDITIONAL)
+            self.assertIn(operation, providerwrites.SUPPORTED)
+            self.assertIn(
+                operation, providerwrites.CONDITIONAL,
+                f"{operation} is supported and unconditional, which is a "
+                f"licence over every campaign on the channel")
+
+        # LinkedIn: one campaign, named. 604869 and 605487 are asserted
+        # refused rather than dropped - they are dead ends, not merely
+        # un-granted, and a staging run must not be able to resurrect one.
+        self.assertTrue(require(providerwrites.LINKEDIN_ACTIVATE,
+                                providerwrites._AUTHORIZED_LINKEDIN_CANARY,
+                                None))
+        for other in ("599020", "604869", "605487", "", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.LINKEDIN_ACTIVATE, other, None)
+
+        # Email: the canonical row must be the one the grant names, so every
+        # other row is refused before a provider id is even resolved. 481 and
+        # 485 hold people already written to and must not start.
+        for other in ("481", "485", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.EMAIL_ACTIVATE, other,
+                        "productive-email-control-v2")
 
 
 # The BEHAVIOURAL half - that a staging write clears the workspace layer and

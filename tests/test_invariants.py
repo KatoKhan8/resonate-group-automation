@@ -188,7 +188,13 @@ class TestNothingCanSend(unittest.TestCase):
         sequence, create and attach leads, and stop one person - all of which
         build something that is left `paused`, or stop something.
         """
-        allowed = ("aiark", "apify", "blitz", "bison", "contactout",
+        # `glm` joins `xai` here for the same reason: an OpenAI-shaped
+        # /chat/completions is a QUESTION spelled as a POST. It creates
+        # nothing at the provider, reaches no prospect, and the adapter has no
+        # production caller - PROVIDER-ROUTING-POLICY makes a new model
+        # provider layer 5/6, needing an explicit position and a spend()
+        # ledger entry first.
+        allowed = ("aiark", "apify", "blitz", "bison", "contactout", "glm",
                    "heyreach", "slack", "xai")
         issued = []
         for path in source_files():
@@ -247,9 +253,24 @@ class TestNothingCanSend(unittest.TestCase):
         with self.assertRaises(providerwrites.WriteRefused):
             providerwrites.require_conditional_permission(
                 providerwrites.EMAIL_ACTIVATE, "485", "some-other-row")
+        # RE-SCOPED TO v3, AND 485 IS NOW ONE OF THE REFUSED IDS. It must not
+        # be activated - its sequence violates the threading invariant and
+        # `set_sequence` appends, so it cannot be corrected in place. The
+        # permitted pair is resolved from canonical state: the named row, and
+        # the provider campaign that row is actually bound to.
+        for provider_id in ("481", "485", "9999"):
+            with self.assertRaises(providerwrites.WriteRefused):
+                providerwrites.require_conditional_permission(
+                    providerwrites.EMAIL_ACTIVATE, provider_id,
+                    "productive-email-control-v2")
+        from src import campaigns as _campaigns
+        row = _campaigns.get("productive-email-control-v3") or {}
+        bound = row.get("bison_campaign_id")
+        self.assertTrue(bound, "v3 carries no bison_campaign_id, so nothing "
+                               "can be checked against it")
         self.assertTrue(providerwrites.require_conditional_permission(
-            providerwrites.EMAIL_ACTIVATE, "485",
-            "productive-email-control-v2"))
+            providerwrites.EMAIL_ACTIVATE, str(bound),
+            "productive-email-control-v3"))
 
     def test_heyreachs_post_is_gated_on_an_allowlist(self):
         from src.providers import heyreach

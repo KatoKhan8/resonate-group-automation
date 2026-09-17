@@ -213,8 +213,29 @@ class TestNoDirectProviderMutation(CampaignTest):
                     if "resume" in r or "activate" in r]
         self.assertEqual(starting, ["/campaigns/{campaign_id}/resume"])
         from src import providerwrites
-        self.assertFalse(
+        # RE-POINTED 2026-09-16. This asserted `bison.activate` was not
+        # supported at all, which was the outermost reason nothing gated
+        # could reach that one route. An operator granted it, SCOPED BY NAME
+        # to one canonical campaign, so the statement moves from "the verb is
+        # off" to "the verb names one campaign and this module builds none of
+        # them". Deleting it would have dropped the only thing standing
+        # between a declared route and every campaign in the workspace.
+        self.assertTrue(
             providerwrites.is_supported(providerwrites.EMAIL_ACTIVATE))
+        self.assertTrue(
+            providerwrites.is_conditional(providerwrites.EMAIL_ACTIVATE),
+            "bison.activate is supported and unconditional, which is a "
+            "licence to start any campaign in the workspace")
+        # 481 and 485 are asserted REFUSED rather than dropped. 481 holds 23
+        # people with 6 to 40 historical touches each under a sequence nobody
+        # approved here; 485's sequence violates the threading invariant and
+        # `set_sequence` appends, so it cannot be corrected in place. Both
+        # must not start, whatever canonical row is offered alongside them.
+        for provider_id in ("481", "485", "487", None):
+            with self.subTest(campaign=provider_id):
+                with self.assertRaises(providerwrites.WriteRefused):
+                    providerwrites.require_conditional_permission(
+                        providerwrites.EMAIL_ACTIVATE, provider_id, "camp-1")
 
     def test_a_campaign_created_on_a_provider_cannot_send(self):
         """Creating one is allowed now. Starting one is still not.
@@ -223,11 +244,33 @@ class TestNoDirectProviderMutation(CampaignTest):
         `paused`, and the provider refuses to resume a campaign without a
         sequence, a schedule, senders and leads - in its own words. The thing
         that keeps it harmless is that no supported operation can start it.
+
+        RE-POINTED 2026-09-16. Both ACTIVATE verbs were granted, each scoped
+        BY NAME to one campaign. "No supported operation can start it" is
+        therefore no longer true of the channel - but it is still true of THIS
+        campaign, and that was always the claim the test title makes. A
+        campaign this code creates is not the campaign either grant names, so
+        nothing here can start it even with both verbs enabled.
+
+        Asserted by driving the real conditions against this module's own
+        campaign rather than by re-stating the tuple, because the tuple no
+        longer answers the question.
         """
         from src import providerwrites
-        self.assertFalse(providerwrites.is_supported(providerwrites.EMAIL_ACTIVATE))
-        self.assertFalse(
-            providerwrites.is_supported(providerwrites.LINKEDIN_ACTIVATE))
+        require = providerwrites.require_conditional_permission
+        campaign, _recs, _ = self.approved_campaign()
+        mine = campaign["campaign_id"]
+        for operation in (providerwrites.EMAIL_ACTIVATE,
+                          providerwrites.LINKEDIN_ACTIVATE):
+            with self.subTest(operation=operation):
+                self.assertTrue(
+                    providerwrites.is_conditional(operation),
+                    f"{operation} is enabled with nothing deciding which "
+                    f"campaign it starts")
+                with self.assertRaises(providerwrites.WriteRefused):
+                    require(operation, campaign.get("bison_campaign_id"), mine)
+                with self.assertRaises(providerwrites.WriteRefused):
+                    require(operation, mine, mine)
         for operation, (_channel, facing, _why) in                 providerwrites.OPERATIONS.items():
             # NARROWED, TASK-137. This asserted that NOTHING
             # prospect-facing was supported - true of a system that

@@ -49,6 +49,16 @@ WRITE_VERBS = ("POST", "PUT", "PATCH", "DELETE")
 # (relative path, verb) pairs that are deliberate. Adding a row here is the
 # decision; the test is only the thing that makes it a decision.
 ALLOWED = {
+    # GLM's POST IS A READ THIS VENDOR SPELLS AS A WRITE, which is the exact
+    # case this allowlist exists for. `/chat/completions` is how every OpenAI-
+    # shaped endpoint is asked a question; it creates nothing at the provider
+    # and reaches no prospect. The adapter is not wired to any production path
+    # - `grep -rn "glm" src/` finds only itself - and under
+    # PROVIDER-ROUTING-POLICY a new model provider is layer 5/6, needing an
+    # explicit position and a `spend()` ledger entry before a production caller
+    # may exist. Declared here now so the guard keeps its meaning rather than
+    # being switched off by a reader who assumes it cries wolf.
+    ("src/providers/glm.py", "POST"),
     ("src/providers/apify.py", "POST"),
     ("src/providers/slack.py", "POST"),
     ("src/providers/contactout.py", "POST"),

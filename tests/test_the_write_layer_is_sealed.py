@@ -84,26 +84,54 @@ class TheLayerIsSealed(unittest.TestCase):
         So the assertion is now the thing itself. A failure here means
         something that can reach a real person has been enabled, which is a
         different and much larger decision than the one that enabled pausing.
+
+        RE-POINTED 2026-09-16. Both ACTIVATE verbs were granted by written
+        operator authorization, each SCOPED BY NAME to a single campaign, so
+        the list is three rather than one. The property is unchanged and it
+        was never the length of the list: NOTHING reaches a prospect on tuple
+        membership alone. The list is still pinned by name, so a fourth cannot
+        arrive quietly, and each entry must carry a condition that decides,
+        per write, whether this particular write reaches anyone.
         """
         enabled = [op for op in providerwrites.PROSPECT_FACING
                    if providerwrites.is_supported(op)]
         self.assertEqual(
-            enabled, [providerwrites.LINKEDIN_ADD_LEAD],
+            enabled, [providerwrites.LINKEDIN_ADD_LEAD,
+                      providerwrites.LINKEDIN_ACTIVATE,
+                      providerwrites.EMAIL_ACTIVATE],
             "a PROSPECT-FACING provider write has been enabled")
-        # AND IT IS NOT ENABLED OUTRIGHT. That distinction is the whole of
-        # what changed on 2026-09-15: `add_lead` may run only against a
-        # campaign a provider read proves cannot send, so the lead it stages
-        # reaches nobody until activation - which is still sealed, carries no
-        # condition, and is a separate decision with its own evidence.
+        # AND NONE OF THEM IS ENABLED OUTRIGHT. That distinction is the whole
+        # of what changed on 2026-09-15 and again on 2026-09-16: `add_lead`
+        # may run only against a campaign a provider read proves cannot send,
+        # and each ACTIVATE verb may run only against the one campaign its
+        # grant names - because no campaign state makes an activation reach
+        # nobody, so it is scoped by identity instead.
         for operation in enabled:
             self.assertTrue(
                 providerwrites.is_conditional(operation),
                 f"{operation} reaches a prospect and nothing decides, per "
                 f"write, whether this particular one does")
-        self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
+        # `bison.add_lead` was never granted and is what keeps the list above
+        # a real statement rather than an enumeration of everything.
+        self.assertNotIn(providerwrites.EMAIL_ADD_LEAD,
                          providerwrites.SUPPORTED)
-        self.assertNotIn(providerwrites.EMAIL_ACTIVATE,
-                         providerwrites.SUPPORTED)
+        # One campaign per channel, and every other id refused. 604869 and
+        # 605487 are DEAD ENDS the grant moved away from - a held account on
+        # one, a contact gate 4 refused on the other - so they are asserted
+        # refused rather than dropped for being un-granted.
+        require = providerwrites.require_conditional_permission
+        self.assertTrue(require(providerwrites.LINKEDIN_ACTIVATE,
+                                providerwrites._AUTHORIZED_LINKEDIN_CANARY,
+                                None))
+        for other in ("599020", "604869", "605487", "", None):
+            with self.subTest(campaign=other):
+                with self.assertRaises(providerwrites.WriteRefused):
+                    require(providerwrites.LINKEDIN_ACTIVATE, other, None)
+        for other in ("481", "485", None):
+            with self.subTest(campaign=other):
+                with self.assertRaises(providerwrites.WriteRefused):
+                    require(providerwrites.EMAIL_ACTIVATE, other,
+                            "productive-email-control-v2")
 
     def test_nothing_is_supported_until_it_has_actually_worked_once(self):
         """Implemented is not the same as established, and the gap matters.
@@ -147,8 +175,39 @@ class TheLayerIsSealed(unittest.TestCase):
              # sends nothing, and its condition refuses any campaign holding
              # anyone. The provider leaves no other route - DRAFT refuses
              # leads and cannot be paused - so start-then-pause is the only
-             # way to a stageable campaign. heyreach.activate stays sealed.
-             pw.LINKEDIN_START_EMPTY_FOR_STAGING),
+             # way to a stageable campaign.
+             pw.LINKEDIN_START_EMPTY_FOR_STAGING,
+             # 2026-09-16, by written operator authorization. Six verbs, and
+             # the docstring's condition - "one successful call, read back
+             # from provider truth" - is NOT what admitted them; an operator
+             # decision is, which is the honest position and is recorded in
+             # `OPERATOR-AUTHORIZATION-2026-09-16.md`. The loop below is what
+             # guards this file, and it now has more to guard.
+             #
+             # Adds a lead to a LIST rather than a campaign. A list attached
+             # to no campaign reaches nobody, and the condition reads the list
+             # FROM THE PROVIDER at the moment of the write to prove it.
+             pw.LINKEDIN_ADD_LEAD_TO_LIST,
+             # SCOPED TO ONE CANONICAL CAMPAIGN, both of them. Attaching a
+             # sender is what makes sending possible and activation is what
+             # makes it happen, so they share a condition that refuses every
+             # row but the one the grant names - and, because the provider
+             # slot is unpinned, refuses a named row that is not bound.
+             pw.EMAIL_ASSIGN_SENDER,
+             pw.EMAIL_ACTIVATE,
+             # NOT prospect-facing: the provider creates in DRAFT and a DRAFT
+             # sends nothing. Conditional on the LIST bound at creation -
+             # ours, unbound, holding only approved leads, all read live.
+             pw.LINKEDIN_CREATE_CAMPAIGN,
+             # SCOPED TO ONE CAMPAIGN, and PROSPECT-FACING. Membership here
+             # alone would be a licence over the 83 campaigns in that
+             # account, 12 of them the client's own and IN_PROGRESS.
+             pw.LINKEDIN_ACTIVATE,
+             # NOT prospect-facing and NOT conditional: an EMPTY list bound
+             # to no campaign has no destination to read, and a condition
+             # that checks nothing reads as a gate without being one. What
+             # bounds it is downstream, where both verbs are conditional.
+             pw.LINKEDIN_CREATE_LIST),
             "the set of enabled provider writes changed")
         # The condition restated as a property, so it survives the list
         # growing. It used to read "nothing that reaches a prospect is

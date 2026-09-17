@@ -281,8 +281,16 @@ class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
         route to a campaign that can be staged into.
 
         The verb that DOES start outreach is `heyreach.activate` - the same
-        route, told apart by a lead count the provider supplies - and it is
-        absent from SUPPORTED, carries no condition, and cannot be reached.
+        route, told apart by a lead count the provider supplies.
+
+        RE-POINTED 2026-09-16. That verb used to be absent from SUPPORTED and
+        from CONDITIONAL, so it could not be reached at all. An operator
+        granted it, SCOPED BY NAME to one campaign, so absence would now pin
+        the opposite of the truth. The property is unchanged and it is the
+        one this test is named for: starting a campaign that holds people is
+        not something this build may do AT LARGE. It may do it to exactly one
+        campaign, and every other id in an account of 83 - 12 of them the
+        client's own and IN_PROGRESS - is refused.
         """
         from src import providerwrites
 
@@ -290,10 +298,23 @@ class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
             self.assertNotIn("SendMessage", route)
         self.assertIn("/campaign/Resume", heyreach.WRITE_ROUTES)
         self.assertIn("/campaign/StartCampaign", heyreach.WRITE_ROUTES)
-        self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
-                         providerwrites.SUPPORTED)
-        self.assertNotIn(providerwrites.LINKEDIN_ACTIVATE,
-                         providerwrites.CONDITIONAL)
+        self.assertIn(providerwrites.LINKEDIN_ACTIVATE,
+                      providerwrites.SUPPORTED)
+        self.assertIn(
+            providerwrites.LINKEDIN_ACTIVATE, providerwrites.CONDITIONAL,
+            "heyreach.activate is supported and unconditional, which starts "
+            "any campaign in the account rather than one")
+        require = providerwrites.require_conditional_permission
+        self.assertTrue(require(providerwrites.LINKEDIN_ACTIVATE,
+                                providerwrites._AUTHORIZED_LINKEDIN_CANARY,
+                                None))
+        # 604869 and 605487 are asserted REFUSED rather than dropped: both
+        # are dead ends the grant moved away from, not campaigns that merely
+        # have not been asked for yet.
+        for other in ("599020", "604869", "605487", "", None):
+            with self.subTest(campaign=other):
+                with self.assertRaises(providerwrites.WriteRefused):
+                    require(providerwrites.LINKEDIN_ACTIVATE, other, None)
         self.assertIn(providerwrites.LINKEDIN_START_EMPTY_FOR_STAGING,
                       providerwrites.CONDITIONAL)
 
@@ -334,29 +355,81 @@ class TheWriteSurfaceIsSmallAndEveryRouteIsDeliberate(unittest.TestCase):
         # campaign and admits only one proven unable to send. It is asserted
         # below rather than merely removed, because "it is no longer on a
         # list" is not a statement about what it may do.
-        for operation in ("heyreach.create_campaign", "heyreach.create_list",
-                          "heyreach.assign_sender",
-                          "heyreach.set_limits", "heyreach.activate"):
+        # `heyreach.create_campaign`, `heyreach.create_list` and
+        # `heyreach.activate` left it on 2026-09-16 by written operator
+        # authorization - see `OPERATOR-AUTHORIZATION-2026-09-16.md`. Same
+        # treatment: each is asserted positively below, with the property it
+        # now carries, rather than deleted.
+        #
+        # WHAT IS STILL SEALED IS WHAT THIS TEST IS NOW REALLY ABOUT. Nobody
+        # granted a seat this build can attach or a cap it can raise, and
+        # those are how a campaign validated at one exposure quietly becomes
+        # a campaign running at another.
+        for operation in ("heyreach.assign_sender", "heyreach.set_limits"):
             with self.subTest(operation=operation):
                 self.assertFalse(providerwrites.is_supported(operation))
+        # The build verbs that were granted reach NOBODY, and that is the
+        # licence for enabling them - asserted, not assumed.
+        for operation in ("heyreach.create_campaign", "heyreach.create_list"):
+            with self.subTest(operation=operation):
+                _channel, facing, _why = providerwrites.OPERATIONS[operation]
+                self.assertFalse(facing)
+                self.assertTrue(providerwrites.is_supported(operation))
+        # `heyreach.create_campaign` binds a list at creation, so its
+        # condition is the only thing standing between "create a DRAFT" and
+        # "create a DRAFT bound to somebody else's list".
+        self.assertTrue(
+            providerwrites.is_conditional("heyreach.create_campaign"))
+        # The one granted verb here that DOES reach a person is scoped by
+        # name to a single campaign, which is asserted in full in
+        # `test_the_verb_that_starts_a_campaign_is_still_sealed` below.
+        self.assertTrue(providerwrites.is_supported("heyreach.activate"))
+        self.assertTrue(providerwrites.is_conditional("heyreach.activate"))
         self.assertTrue(providerwrites.is_supported("heyreach.add_lead"))
         self.assertTrue(providerwrites.is_conditional("heyreach.add_lead"))
 
     def test_the_verb_that_starts_a_campaign_is_still_sealed(self):
-        """NARROWED, TASK-137. Both verbs that reach a person were sealed;
-        `add_lead` is now conditionally open and `activate` is not.
+        """RE-POINTED 2026-09-16. THE SEAL MOVED FROM THE TUPLE TO THE NAME.
 
-        They were always different in kind and the old test treated them as
-        one. Adding a lead to a DRAFT campaign reaches nobody - the campaign
-        cannot send, which is exactly what the condition proves before the
-        write. Activating is the moment those staged leads become messages,
-        and no campaign state makes it safe, so it carries no condition that
-        could ever admit it.
+        NARROWED at TASK-137 to "`add_lead` is conditionally open and
+        `activate` is not", on the reasoning that no campaign state makes an
+        activation safe so it could carry no condition at all. An operator
+        granted it anyway, and correctly: the condition that admits it is not
+        about STATE, it is about IDENTITY. One campaign, named in the source,
+        chosen because its bound list holds the three contacts BOTH collision
+        gates clear.
+
+        The two verbs are still different in kind, which is the point the old
+        test made and this one keeps. `add_lead` is scoped by what the
+        provider says the destination can do at the moment of the write.
+        `activate` is scoped by which campaign it is, because there is no
+        reading of a campaign that makes starting it harmless.
+
+        604869 and 605487 are asserted REFUSED rather than dropped. The grant
+        moved through both and away from them for measured reasons - a held
+        account on one, a contact gate 4 refused on the other - so they are
+        campaigns that MUST NOT START, not campaigns nobody has asked about.
         """
+        require = providerwrites.require_conditional_permission
         channel, facing, _why = providerwrites.OPERATIONS["heyreach.activate"]
         self.assertTrue(facing, "this test is about a prospect-facing verb")
-        self.assertFalse(providerwrites.is_supported("heyreach.activate"))
-        self.assertFalse(providerwrites.is_conditional("heyreach.activate"))
+        self.assertTrue(providerwrites.is_supported("heyreach.activate"))
+        self.assertTrue(
+            providerwrites.is_conditional("heyreach.activate"),
+            "heyreach.activate is supported and unconditional, which is a "
+            "licence to start any of the 83 campaigns in this account")
+
+        # Exactly one campaign is admitted.
+        self.assertTrue(require("heyreach.activate",
+                                providerwrites._AUTHORIZED_LINKEDIN_CANARY,
+                                None))
+        # And every other id is refused - the client's own campaigns, the two
+        # dead ends, a near-miss id, and the empty cases that must fail closed.
+        for other in ("599020", "604869", "605487", "605731", "6057320",
+                      "", None):
+            with self.subTest(campaign=other):
+                with self.assertRaises(providerwrites.WriteRefused):
+                    require("heyreach.activate", other, None)
 
         channel, facing, _why = providerwrites.OPERATIONS["heyreach.add_lead"]
         self.assertTrue(facing)

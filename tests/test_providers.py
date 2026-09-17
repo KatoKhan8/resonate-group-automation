@@ -376,13 +376,30 @@ class TestNoSendPathExists(unittest.TestCase):
         """The route is reachable by hand. It is not reachable by the system.
 
         `providerwrites` is the door every automated write goes through, and
-        the operation that would start a campaign is not in its supported set
-        - so no cadence, no runner and no orchestrator can resume anything.
-        Exercising it takes somebody writing the call deliberately.
+        the operation that would start a campaign is scoped inside it - so no
+        cadence, no runner and no orchestrator can resume ANYTHING BUT the one
+        campaign an operator named. Exercising it anywhere else takes somebody
+        writing the call deliberately.
+
+        RE-POINTED 2026-09-16. That operation used to be absent from the
+        supported set outright. An operator granted it, SCOPED BY NAME to a
+        single canonical row, so absence would now pin the opposite of the
+        truth. The property is unchanged - a gated caller cannot pick the
+        campaign - and it moves from the tuple to the condition: 481 and 485
+        are refused, and so is every other row, which is what "nothing gated
+        can drive the send route" has always meant in practice.
         """
         from src import providerwrites
-        self.assertFalse(
-            providerwrites.is_supported(providerwrites.EMAIL_ACTIVATE))
+        self.assertTrue(
+            providerwrites.is_conditional(providerwrites.EMAIL_ACTIVATE),
+            "bison.activate is enabled with nothing deciding which campaign "
+            "it starts, which is a licence over the whole workspace")
+        for other in ("481", "485", None):
+            with self.subTest(campaign=other):
+                with self.assertRaises(providerwrites.WriteRefused):
+                    providerwrites.require_conditional_permission(
+                        providerwrites.EMAIL_ACTIVATE, other,
+                        "productive-email-control-v2")
         self.assertNotIn("/campaign/AddLeadsToCampaignV2", heyreach.READ_ROUTES)
 
     def test_the_send_route_refuses_a_reach_it_was_not_told_to_expect(self):

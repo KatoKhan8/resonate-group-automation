@@ -176,8 +176,26 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
                          f"a route that reaches a prospect is writable: {reaching}")
         self.assertIn("/campaign/Resume", heyreach.WRITE_ROUTES)
         self.assertIn("/campaign/StartCampaign", heyreach.WRITE_ROUTES)
-        self.assertNotIn("heyreach.activate", providerwrites.SUPPORTED)
-        self.assertNotIn("heyreach.activate", providerwrites.CONDITIONAL)
+        # RE-POINTED 2026-09-16. This asserted `heyreach.activate` was in
+        # neither SUPPORTED nor CONDITIONAL. The operator granted it, scoped
+        # BY NAME to one campaign, so absence would now pin the opposite of
+        # the truth. The property is unchanged - the stop exists and starting
+        # a campaign that HOLDS PEOPLE is not a thing this build can do at
+        # large - and it moves from the tuple to the condition: enabled,
+        # conditional, and refusing every id but the named one.
+        self.assertIn("heyreach.activate", providerwrites.SUPPORTED)
+        self.assertIn("heyreach.activate", providerwrites.CONDITIONAL)
+        self.assertTrue(providerwrites.require_conditional_permission(
+            "heyreach.activate",
+            providerwrites._AUTHORIZED_LINKEDIN_CANARY, None))
+        # 604869 and 605487 are DEAD ENDS rather than merely un-granted -
+        # one holds a contact `collision.account_policy` holds, the other a
+        # contact gate 4 refused - so they are asserted refused, not dropped.
+        for other in ("599020", "604869", "605487", "", None):
+            with self.subTest(campaign=other):
+                with self.assertRaises(providerwrites.WriteRefused):
+                    providerwrites.require_conditional_permission(
+                        "heyreach.activate", other, None)
         self.assertIn("heyreach.start_empty_for_staging",
                       providerwrites.CONDITIONAL)
         self.assertIn("/campaign/Pause", heyreach.WRITE_ROUTES)
@@ -190,10 +208,21 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
         # outreach exists - is untouched and is asserted above.
         self.assertIn(pw.LINKEDIN_ADD_LEAD, pw.SUPPORTED)
         self.assertTrue(pw.is_conditional(pw.LINKEDIN_ADD_LEAD))
-        self.assertNotIn(pw.LINKEDIN_ACTIVATE, pw.SUPPORTED)
+        # RE-POINTED 2026-09-16 with the grant above: membership is not the
+        # permission for LINKEDIN_ACTIVATE either, and the condition is.
+        self.assertTrue(pw.is_conditional(pw.LINKEDIN_ACTIVATE))
 
 
     def test_the_write_layer_is_still_sealed(self):
+        """DELIBERATELY STILL AN EXACT-TUPLE COMPARISON, and that is the seal
+        this test carries: enabling a route is an act rather than a drift.
+
+        RE-POINTED 2026-09-16. Six verbs joined on written operator
+        authorization - see `OPERATOR-AUTHORIZATION-2026-09-16.md`. The
+        expected value is updated by hand and the check is NOT loosened into a
+        subset: its entire worth is that an addition has to be made here, by
+        somebody who read why each of these is here.
+        """
         from src import providerwrites as pw
         self.assertEqual(
             providerwrites.SUPPORTED,
@@ -211,8 +240,36 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
              # sends nothing, and its condition refuses any campaign holding
              # anyone. The provider leaves no other route - DRAFT refuses
              # leads and cannot be paused - so start-then-pause is the only
-             # way to a stageable campaign. heyreach.activate stays sealed.
-             pw.LINKEDIN_START_EMPTY_FOR_STAGING))
+             # way to a stageable campaign.
+             pw.LINKEDIN_START_EMPTY_FOR_STAGING,
+             # Added 2026-09-16. NOT prospect-facing: a list attached to no
+             # campaign reaches nobody, and the condition reads the list FROM
+             # THE PROVIDER at the moment of the write to prove it is unbound.
+             pw.LINKEDIN_ADD_LEAD_TO_LIST,
+             # Added 2026-09-16, SCOPED TO ONE CAMPAIGN. Attaching a sender is
+             # what makes sending possible at all, and activation is what
+             # makes it happen, so both carry the same condition and both
+             # refuse every canonical row but the one the grant names.
+             pw.EMAIL_ASSIGN_SENDER,
+             pw.EMAIL_ACTIVATE,
+             # Added 2026-09-16. NOT prospect-facing: the provider creates in
+             # DRAFT and a DRAFT sends nothing. Conditional on the LIST that
+             # will be bound at creation - ours, unbound, holding only
+             # approved leads, all read live.
+             pw.LINKEDIN_CREATE_CAMPAIGN,
+             # Added 2026-09-16, SCOPED TO ONE CAMPAIGN. PROSPECT-FACING -
+             # this is the verb that starts a LinkedIn campaign. Membership
+             # of this tuple alone would be a licence over all 83 campaigns
+             # in the account, 12 of them the client's own and IN_PROGRESS,
+             # so the permission is the condition and it is asserted above.
+             pw.LINKEDIN_ACTIVATE,
+             # Added 2026-09-16. NOT prospect-facing and NOT conditional: it
+             # makes an EMPTY list bound to no campaign, so there is no
+             # destination to read and a condition checking nothing would
+             # read as a gate. What bounds it is downstream - the verb that
+             # puts a lead in a list and the verb that binds one to a
+             # campaign are both conditional.
+             pw.LINKEDIN_CREATE_LIST))
         # `heyreach.pause` left this list on 2026-09-12: a live pause of
         # campaign 594061 returned 200 and read back PAUSED, so it is
         # live-validated and declared. It was never a campaign-BUILDING verb
@@ -220,39 +277,80 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
         # `heyreach.set_sequence` left this list on 2026-09-14 for the same
         # kind of reason as the pause: its own stated condition was met, and
         # it is not prospect-facing - a sequence written onto a campaign
-        # holding nobody reaches nobody. The verbs that CAN reach a person,
-        # `add_lead` and `activate`, are still sealed and are asserted
-        # separately below so the distinction is explicit rather than
-        # implied by membership of a list.
-        for operation in ("heyreach.create_campaign", "heyreach.create_list",
-                          "heyreach.assign_sender",
-                          "heyreach.set_limits",
-                          "heyreach.activate"):
+        # holding nobody reaches nobody.
+        # `heyreach.create_campaign`, `heyreach.create_list` and
+        # `heyreach.activate` left it on 2026-09-16 by written operator
+        # authorization. The first two build and reach nobody; the third
+        # reaches everybody in the campaign it names, which is why it is the
+        # one that carries a condition naming ONE campaign - asserted above.
+        # NOBODY GRANTED THE TWO BELOW, and they are what keeps this a list
+        # rather than a formality: a seat this build can attach and a cap it
+        # can raise are how a validated campaign quietly becomes a bigger one.
+        for operation in ("heyreach.assign_sender", "heyreach.set_limits"):
             with self.subTest(operation=operation):
                 self.assertFalse(providerwrites.is_supported(operation))
-
-    def test_the_verbs_that_reach_a_person_are_sealed_but_one(self):
-        """NARROWED, TASK-137. Three of the four are still sealed outright.
-
-        `heyreach.add_lead` is the exception and it is not an exception to
-        the property - it is an exception to expressing the property as
-        membership of a tuple. It may run only against a campaign the
-        provider says, at the moment of the write, cannot send, so the lead
-        it stages reaches nobody until a separate and still-sealed decision
-        activates the campaign.
-        """
-        for operation in ("heyreach.activate",
-                          "bison.add_lead", "bison.activate"):
+        # The three that were granted are asserted POSITIVELY rather than
+        # removed, because "it is no longer on a list" says nothing about what
+        # it may do. Each build verb reaches nobody, and the one that reaches
+        # somebody is scoped by name.
+        for operation in ("heyreach.create_campaign", "heyreach.create_list"):
             with self.subTest(operation=operation):
                 _channel, facing, _why = providerwrites.OPERATIONS[operation]
-                self.assertTrue(facing, "this test is about prospect-facing verbs")
-                self.assertFalse(providerwrites.is_supported(operation))
-                self.assertFalse(providerwrites.is_conditional(operation))
+                self.assertFalse(
+                    facing, "a build verb that reaches a person is not a "
+                            "build verb")
+                self.assertTrue(providerwrites.is_supported(operation))
+        self.assertTrue(providerwrites.is_supported("heyreach.activate"))
+        self.assertTrue(providerwrites.is_conditional("heyreach.activate"))
 
-        _channel, facing, _why = providerwrites.OPERATIONS["heyreach.add_lead"]
-        self.assertTrue(facing)
-        self.assertTrue(providerwrites.is_supported("heyreach.add_lead"))
-        self.assertTrue(providerwrites.is_conditional("heyreach.add_lead"))
+    def test_the_verbs_that_reach_a_person_are_sealed_but_one(self):
+        """RE-POINTED 2026-09-16. NOT ONE OF THE FOUR IS UNCONDITIONAL.
+
+        NARROWED at TASK-137 to "three of the four are still sealed
+        outright", which held until an operator granted both ACTIVATE verbs
+        on 2026-09-16, each SCOPED BY NAME to a single campaign. The seal on
+        two of the four is therefore gone as a tuple fact.
+
+        The property was never the count and it is unchanged: NO verb that
+        reaches a person is enabled on tuple membership alone. `add_lead`
+        is scoped by the destination's STATE - it may run only against a
+        campaign the provider says, at the moment of the write, cannot send.
+        The two ACTIVATE verbs are scoped by NAME, because no campaign state
+        makes an activation reach nobody. `bison.add_lead` is the one still
+        sealed outright, and it is what keeps this a real distinction.
+        """
+        # Still sealed outright, and still carrying no condition that could
+        # admit it. Nobody granted this one.
+        _channel, facing, _why = providerwrites.OPERATIONS["bison.add_lead"]
+        self.assertTrue(facing, "this test is about prospect-facing verbs")
+        self.assertFalse(providerwrites.is_supported("bison.add_lead"))
+        self.assertFalse(providerwrites.is_conditional("bison.add_lead"))
+
+        # Granted, and every one of them scoped. An entry that is supported
+        # and unconditional here is a channel-wide licence to reach people.
+        for operation in ("heyreach.add_lead", "heyreach.activate",
+                          "bison.activate"):
+            with self.subTest(operation=operation):
+                _channel, facing, _why = providerwrites.OPERATIONS[operation]
+                self.assertTrue(facing,
+                                "this test is about prospect-facing verbs")
+                self.assertTrue(providerwrites.is_supported(operation))
+                self.assertTrue(
+                    providerwrites.is_conditional(operation),
+                    f"{operation} reaches a person and is enabled with no "
+                    f"condition deciding, per write, who it reaches")
+
+        # And the scope on the LinkedIn activation is ONE campaign: the
+        # named canary, with 604869 and 605487 refused as the dead ends they
+        # are rather than dropped for being un-granted.
+        require = providerwrites.require_conditional_permission
+        self.assertTrue(require("heyreach.activate",
+                                providerwrites._AUTHORIZED_LINKEDIN_CANARY,
+                                None))
+        for other in ("599020", "604869", "605487", "", None):
+            with self.subTest(campaign=other):
+                with self.assertRaises(providerwrites.WriteRefused):
+                    require("heyreach.activate", other, None)
 
     def test_the_discovered_read_routes_are_wired_now(self):
         """They were recorded as unwired; the campaign factory needed them.

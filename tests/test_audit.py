@@ -353,8 +353,9 @@ class TestNoSendPathAnywhere(unittest.TestCase):
         # what is trusted. bison and heyreach are still allowed none.
         # slack.py posts a message, behind SLACK_LIVE and a token; heyreach
         # posts to read routes only, checked against an allowlist above.
+        # glm.py posts a question, not a send - see the note beside `xai.py`.
         allowed = ("aiark.py", "apify.py", "blitz.py", "contactout.py",
-                   "heyreach.py", "slack.py", "bison.py", "xai.py")
+                   "heyreach.py", "slack.py", "bison.py", "xai.py", "glm.py")
         issued = []
         for root, _, files in os.walk("src"):
             for name in files:
