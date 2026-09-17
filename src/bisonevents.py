@@ -8,66 +8,117 @@ and normal.  This module makes two deliveries of one event produce one
 SCOPE: a pure function and a dedupe predicate.  No server, no endpoint,
 no provider call.  Wiring to a real HTTP route is Claude's, after review.
 
-Payload shape (documented at docs.emailbison.com and the OpenAPI spec)::
+MEASURED AGAINST REAL PROVIDER EVENTS ON 2026-09-17.  1,200 rows were walked
+from `/api/events` by cursor.  **Every assumed field path below was wrong, and
+`normalise` rejected 100% of real events** - all of them on the first check,
+`data.occurred_at is missing`.  The table now records what was OBSERVED.
 
-    {"event": {"type": "EMAIL_SENT", "name": "Email Sent",
-               "instance_url": "https://dedi.emailbison.com",
-               "workspace_id": 10, "workspace_name": "Productive",
-               "id": "evt-abc-123"},
-     "data": {"lead_id": 4001, "campaign_id": 487,
-              "email": "champ@example.test",
-              "occurred_at": "2026-09-17T10:00:00Z"}}
+THE REAL ENVELOPE, from `/api/events`::
 
-ASSUMED payload fields - every one must be checked against a real webhook
-before this module is wired to a live endpoint:
+    {"id": 12345, "uuid": "....", "created_at": "...", "updated_at": "...",
+     "webhook_deliveries": [],
+     "payload": {
+        "event": {"type": "EMAIL_SENT", "name": "Email Sent",
+                  "instance_url": "...", "workspace_id": 10,
+                  "workspace_name": "PRODUCTIVE"},
+        "data": {"campaign":        {"id": ..., "name": ...},
+                 "campaign_event":  {"id": ..., "type": ...,
+                                     "created_at": ..., "created_at_local": ...,
+                                     "local_timezone": ...},
+                 "lead":            {"id": ..., "email": ..., "first_name": ...,
+                                     "company": ..., "status": ..., ...},
+                 "scheduled_email": {"id": ..., "lead_id": ..., "sent_at": ...,
+                                     "raw_message_id": ..., "status": ...,
+                                     "sequence_step_id": ..., ...},
+                 "sender_email":    {"id": ..., "email": ..., "daily_limit": ...},
+                 "reply":           {...}   # ONLY on LEAD_REPLIED / EMAIL_BOUNCED
+        }}}
 
-=========================  ======  ==========================================
-Field                      Status  Notes
-=========================  ======  ==========================================
-event.type                 ASSUMED  UPPER_SNAKE values: EMAIL_SENT,
-                                   EMAIL_OPENED, CONTACT_REPLIED,
-                                   EMAIL_BOUNCED, CONTACT_UNSUBSCRIBED,
-                                   CONTACT_INTERESTED, TAG_ATTACHED,
-                                   TAG_REMOVED, UNTRACKED_REPLY_RECEIVED.
-                                   The docs use English names ("Email Sent");
-                                   the example payload uses UPPER_SNAKE.
-                                   Both are handled by normalising to upper
-                                   and stripping spaces, but the real values
-                                   must be confirmed.
-event.id                   ASSUMED  Present in every payload.  The OpenAPI
-                                   spec shows `id` on webhook event objects
-                                   but the research doc does not reproduce a
-                                   full payload.  If absent, event_key falls
-                                   back to a derived composite.
-event.workspace_id         ASSUMED  Integer.  The poller already reads this
-                                   from reply payloads; webhooks are expected
-                                   to carry it at the same path.
-data.lead_id               ASSUMED  Integer.  Every event-specific data shape
-                                   is expected to carry this.
-data.campaign_id           ASSUMED  Integer.  Same assumption as lead_id.
-data.email                 ASSUMED  String.  The contact's email address.
-data.occurred_at           ASSUMED  ISO-8601 string with timezone.  The poller
-                                   already reads `occurred_at` / `createdAt`
-                                   from reply payloads.
-data.message_id            ASSUMED  Present on EMAIL_SENT, EMAIL_OPENED,
-                                   CONTACT_REPLIED, EMAIL_BOUNCED.  Absent on
-                                   TAG_ATTACHED, CONTACT_INTERESTED.  NOT used
-                                   by `event_key` - this line said it was, and
-                                   the code has never read it there.  Corrected
-                                   on review rather than left as a
-                                   doc-versus-code disagreement about the one
-                                   function whose whole job is being stable.
-=========================  ======  ==========================================
+**WHETHER A WEBHOOK POSTS THE ENVELOPE OR THE `payload` OBJECT IS
+HYPOTHESIS.**  `webhook_deliveries` sits BESIDE `payload` rather than inside
+it, which reads as "this payload is what gets delivered" - but no real webhook
+delivery has been captured, and that inference is not a contract.  So
+`normalise` accepts EITHER: given an envelope it unwraps `payload` and keeps
+the envelope's `uuid`/`id` as the provider event id; given a bare payload it
+proceeds without one.
+
+=========================  ========  ========================================
+Field                      Status    Notes
+=========================  ========  ========================================
+event.type                 OBSERVED  UPPER_SNAKE confirmed.  Values actually
+                                     seen in 1,200 rows: EMAIL_SENT (1121),
+                                     LEAD_FIRST_CONTACTED (48),
+                                     EMAIL_BOUNCED (15),
+                                     EMAIL_SEND_FAILED (15),
+                                     LEAD_REPLIED (1).
+                                     **THE REPLY TYPE IS `LEAD_REPLIED`, NOT
+                                     `CONTACT_REPLIED`.**  The assumed name
+                                     mapped to "unknown", so a real reply
+                                     would not have suppressed anything.
+                                     EMAIL_OPENED, CONTACT_UNSUBSCRIBED,
+                                     CONTACT_INTERESTED, TAG_ATTACHED,
+                                     TAG_REMOVED and
+                                     UNTRACKED_REPLY_RECEIVED were NOT seen;
+                                     they remain UNCONFIRMED rather than
+                                     disproven - this estate has sent little
+                                     and opens are not tracked on it.
+event.id                   REFUTED   ABSENT in 1,200 of 1,200.  The provider's
+                                     event identity is on the ENVELOPE:
+                                     `uuid` (36 chars) and `id` (int).
+                                     `event_key` would have fallen back to its
+                                     composite every single time.
+event.workspace_id         OBSERVED  Integer, present in all 1,200.  This
+                                     estate reads 10.
+data.lead_id               REFUTED   Real path is `data.lead.id`.
+                                     (`data.scheduled_email.lead_id` also
+                                     exists and agrees.)
+data.campaign_id           REFUTED   Real path is `data.campaign.id`.
+data.email                 REFUTED   Real path is `data.lead.email`.
+data.occurred_at           REFUTED   No such field.  Three real timestamps,
+                                     all present in all 1,200:
+                                     `data.campaign_event.created_at` - when
+                                     the event itself happened, and the one
+                                     used here;
+                                     `data.scheduled_email.sent_at`;
+                                     and the envelope's own `created_at`.
+data.message_id            REFUTED   Real path is
+                                     `data.scheduled_email.raw_message_id`.
+                                     NOT used by `event_key`.
+data.reply                 OBSERVED  Present ONLY on LEAD_REPLIED and
+                                     EMAIL_BOUNCED, absent on the other three.
+                                     So the reply body has a home, and a
+                                     normaliser must not require it.
+=========================  ========  ========================================
+
+STILL UNKNOWN, and not answerable from `/api/events`: whether a real webhook
+delivery carries the envelope or the payload, and whether a RETRY of one
+delivery repeats the envelope `uuid`.  The second decides whether the dedupe
+key survives a retry, which is the whole point of the module.
 """
 import os
 
 TYPE_TO_KIND = {
+    # OBSERVED in 1,200 real events, 2026-09-17.
     "EMAIL_SENT": "sent",
-    "EMAIL_OPENED": "opened",
-    "CONTACT_REPLIED": "replied",
+    "LEAD_REPLIED": "replied",            # NOT "CONTACT_REPLIED". See below.
     "EMAIL_BOUNCED": "bounced",
+    "EMAIL_SEND_FAILED": "send_failed",
+    "LEAD_FIRST_CONTACTED": "first_contacted",
+    # NOT OBSERVED on this estate and kept rather than removed: the docs name
+    # them and absence here is explained - nothing has been opened because
+    # open tracking is off, and nobody has unsubscribed from ten queued
+    # emails. Removing them would turn a real future event into "unknown".
+    "EMAIL_OPENED": "opened",
     "CONTACT_UNSUBSCRIBED": "unsubscribed",
     "CONTACT_INTERESTED": "interested",
+    # THE ASSUMED REPLY NAME, KEPT AS AN ALIAS AND NOT AS THE TRUTH.
+    # `CONTACT_REPLIED` was this module's assumed reply type and it never
+    # existed: the provider sends `LEAD_REPLIED`. The assumption mapped a real
+    # reply to "unknown", which is a reply that suppresses nothing. It stays
+    # mapped because a provider that adds the name later must not produce that
+    # same silence - but `LEAD_REPLIED` above is the observed one.
+    "CONTACT_REPLIED": "replied",
+    "UNTRACKED_REPLY_RECEIVED": "replied",
 }
 
 ALLOWED_KINDS = frozenset(TYPE_TO_KIND.values()) | {"unknown"}
@@ -142,12 +193,35 @@ def _workspace_id(raw):
     return int(text)
 
 
+def _unwrap(payload):
+    """`(payload, envelope)` - accepts an /api/events row or a bare payload.
+
+    A row from `/api/events` carries the event under `payload`, with the
+    provider's own identity (`uuid`, `id`) and `created_at` on the OUTSIDE.
+    Whether a webhook POSTs that envelope or just the inner object is not
+    documented and no real delivery has been captured, so both are accepted
+    rather than one being guessed.
+
+    The envelope is not discarded: it is where the provider event id actually
+    lives, `event.id` having been measured absent in 1,200 of 1,200 rows.
+    """
+    if isinstance(payload.get("payload"), dict) and "event" not in payload:
+        return payload["payload"], payload
+    return payload, None
+
+
 def normalise(payload):
     """One decoded webhook payload -> a trimmed event dict.
+
+    Accepts an `/api/events` envelope or a bare payload object.
 
     Raises TenancyRefused if the workspace_id is not ours.
     Raises MalformedPayload if data or a required field is missing.
     """
+    if not isinstance(payload, dict):
+        raise MalformedPayload(
+            f"payload is {type(payload).__name__}, not an object")
+    payload, envelope = _unwrap(payload)
     event_block = payload.get("event")
     if not isinstance(event_block, dict):
         raise MalformedPayload("payload has no 'event' block")
@@ -177,30 +251,60 @@ def normalise(payload):
 
     kind = _normalise_type(raw_type)
 
-    occurred_at = data.get("occurred_at")
+    # EVERY PATH BELOW IS THE MEASURED ONE. The four this module originally
+    # read - data.occurred_at, data.lead_id, data.campaign_id, data.email -
+    # do not exist in a real event, and the first of them rejected 100% of
+    # them before any of the others was reached.
+    lead = data.get("lead") if isinstance(data.get("lead"), dict) else {}
+    campaign = (data.get("campaign")
+                if isinstance(data.get("campaign"), dict) else {})
+    scheduled = (data.get("scheduled_email")
+                 if isinstance(data.get("scheduled_email"), dict) else {})
+    campaign_event = (data.get("campaign_event")
+                      if isinstance(data.get("campaign_event"), dict) else {})
+
+    # WHEN THE EVENT HAPPENED, most specific first. `campaign_event.created_at`
+    # is the event's own time; `scheduled_email.sent_at` is the send's; the
+    # envelope's `created_at` is when the provider recorded it. They are not
+    # the same question, so the source is reported rather than flattened.
+    occurred_at, occurred_from = None, None
+    for value, source in ((campaign_event.get("created_at"), "campaign_event"),
+                          (scheduled.get("sent_at"), "scheduled_email"),
+                          ((envelope or {}).get("created_at"), "envelope")):
+        if value:
+            occurred_at, occurred_from = value, source
+            break
     if not occurred_at:
-        raise MalformedPayload("data.occurred_at is missing")
+        raise MalformedPayload(
+            "no timestamp: campaign_event.created_at, scheduled_email.sent_at "
+            "and the envelope's created_at are all absent")
 
-    lead_id = data.get("lead_id")
+    lead_id = lead.get("id", scheduled.get("lead_id"))
     if lead_id is None:
-        raise MalformedPayload("data.lead_id is missing")
+        raise MalformedPayload("data.lead.id is missing")
 
-    campaign_id = data.get("campaign_id")
+    campaign_id = campaign.get("id")
     if campaign_id is None:
-        raise MalformedPayload("data.campaign_id is missing")
+        raise MalformedPayload("data.campaign.id is missing")
 
-    email = data.get("email")
+    email = lead.get("email")
     if not email:
-        raise MalformedPayload("data.email is missing")
+        raise MalformedPayload("data.lead.email is missing")
 
     return {
         "provider_event_type": raw_type,
-        "provider_event_id": event_block.get("id"),
+        # The provider's identity lives on the envelope. `uuid` is preferred
+        # over `id` because it is the value most likely to be stable across a
+        # redelivery - which is UNKNOWN and is the open question for dedupe.
+        "provider_event_id": (envelope or {}).get("uuid")
+                             or (envelope or {}).get("id"),
         "workspace_id": payload_ws,
         "campaign_id": campaign_id,
         "lead_id": lead_id,
         "email": email,
         "occurred_at": occurred_at,
+        "occurred_at_source": occurred_from,
+        "message_id": scheduled.get("raw_message_id"),
         "kind": kind,
         "raw_keys": sorted(data.keys()),
     }

@@ -26,9 +26,42 @@ sys.path.insert(0, ROOT)
 from src import bisonevents
 
 
+def _data(lead_id=4001, campaign_id=487, email="champ@example.test",
+          occurred_at="2026-09-17T10:00:00Z"):
+    """The REAL `data` shape, measured from 1,200 provider events.
+
+    This file previously built `{"lead_id": ..., "campaign_id": ...,
+    "email": ..., "occurred_at": ...}` - four flat keys, none of which exist
+    in an EmailBison event. The tests passed against a payload the provider
+    has never sent, and `normalise` rejected 100% of real events. The
+    fixtures are corrected here rather than the assertions weakened.
+    """
+    return {
+        "campaign": {"id": campaign_id, "name": "A Campaign"},
+        "campaign_event": {"id": 9001, "type": "sent",
+                           "created_at": occurred_at,
+                           "created_at_local": occurred_at,
+                           "local_timezone": "Europe/Zagreb"},
+        "lead": {"id": lead_id, "email": email, "first_name": "Champ",
+                 "company": "Example Co", "status": "in_sequence"},
+        "scheduled_email": {"id": 7001, "lead_id": lead_id,
+                            "sent_at": occurred_at,
+                            "raw_message_id": "<msg-1@example.test>",
+                            "status": "sent", "sequence_step_id": 4742},
+        "sender_email": {"id": 2736, "email": "sender@example.test",
+                         "daily_limit": 15},
+    }
+
+
 def _payload(event_type="EMAIL_SENT", workspace_id=10, data=None,
              event_id=None):
-    """One synthetic payload.  Every field the normaliser reads is named."""
+    """One synthetic payload in the shape the provider really sends.
+
+    `event_id` now lands on an ENVELOPE around the payload rather than inside
+    `event`, because `event.id` was measured ABSENT in 1,200 of 1,200 real
+    events and the provider's identity lives on the `/api/events` row as
+    `uuid`.
+    """
     base = {
         "event": {
             "type": event_type,
@@ -37,15 +70,12 @@ def _payload(event_type="EMAIL_SENT", workspace_id=10, data=None,
             "workspace_id": workspace_id,
             "workspace_name": "Productive",
         },
-        "data": data if data is not None else {
-            "lead_id": 4001,
-            "campaign_id": 487,
-            "email": "champ@example.test",
-            "occurred_at": "2026-09-17T10:00:00Z",
-        },
+        "data": data if data is not None else _data(),
     }
     if event_id is not None:
-        base["event"]["id"] = event_id
+        return {"id": 1, "uuid": event_id, "created_at": "2026-09-17T10:00:00Z",
+                "updated_at": "2026-09-17T10:00:00Z",
+                "webhook_deliveries": [], "payload": base}
     return base
 
 
@@ -67,13 +97,13 @@ class IdempotencyKey(unittest.TestCase):
 
     def test_two_different_events_never_share_a_key(self):
         sent = _payload(event_type="EMAIL_SENT", event_id="evt-1",
-                        data={"lead_id": 4001, "campaign_id": 487,
-                              "email": "champ@example.test",
-                              "occurred_at": "2026-09-17T10:00:00Z"})
+                        data=_data(lead_id=4001, campaign_id=487,
+                       email="champ@example.test",
+                       occurred_at="2026-09-17T10:00:00Z"))
         replied = _payload(event_type="CONTACT_REPLIED", event_id="evt-2",
-                           data={"lead_id": 4001, "campaign_id": 487,
-                                 "email": "champ@example.test",
-                                 "occurred_at": "2026-09-17T11:00:00Z"})
+                           data=_data(lead_id=4001, campaign_id=487,
+                       email="champ@example.test",
+                       occurred_at="2026-09-17T11:00:00Z"))
         e1 = bisonevents.normalise(sent)
         e2 = bisonevents.normalise(replied)
         self.assertNotEqual(bisonevents.event_key(e1),
@@ -82,13 +112,13 @@ class IdempotencyKey(unittest.TestCase):
     def test_same_lead_same_type_different_time_are_different_events(self):
         """A second send to the same lead is a different event, not a dup."""
         first = _payload(event_type="EMAIL_SENT", event_id="evt-10",
-                         data={"lead_id": 4001, "campaign_id": 487,
-                               "email": "champ@example.test",
-                               "occurred_at": "2026-09-17T10:00:00Z"})
+                         data=_data(lead_id=4001, campaign_id=487,
+                       email="champ@example.test",
+                       occurred_at="2026-09-17T10:00:00Z"))
         second = _payload(event_type="EMAIL_SENT", event_id="evt-11",
-                          data={"lead_id": 4001, "campaign_id": 487,
-                                "email": "champ@example.test",
-                                "occurred_at": "2026-09-17T14:00:00Z"})
+                          data=_data(lead_id=4001, campaign_id=487,
+                       email="champ@example.test",
+                       occurred_at="2026-09-17T14:00:00Z"))
         e1 = bisonevents.normalise(first)
         e2 = bisonevents.normalise(second)
         self.assertNotEqual(bisonevents.event_key(e1),
@@ -208,14 +238,14 @@ class OutOfOrder(unittest.TestCase):
         """The reply happened first; the send was just delivered late."""
         reply_payload = _payload(
             event_type="CONTACT_REPLIED", event_id="evt-r1",
-            data={"lead_id": 4001, "campaign_id": 487,
-                  "email": "champ@example.test",
-                  "occurred_at": "2026-09-17T10:30:00Z"})
+            data=_data(lead_id=4001, campaign_id=487,
+                       email="champ@example.test",
+                       occurred_at="2026-09-17T10:30:00Z"))
         late_sent_payload = _payload(
             event_type="EMAIL_SENT", event_id="evt-s1",
-            data={"lead_id": 4001, "campaign_id": 487,
-                  "email": "champ@example.test",
-                  "occurred_at": "2026-09-17T10:00:00Z"})
+            data=_data(lead_id=4001, campaign_id=487,
+                       email="champ@example.test",
+                       occurred_at="2026-09-17T10:00:00Z"))
         reply = bisonevents.normalise(reply_payload)
         sent = bisonevents.normalise(late_sent_payload)
         self.assertLess(sent["occurred_at"], reply["occurred_at"])
@@ -292,11 +322,9 @@ class GLMsThreeDefeats(unittest.TestCase):
             os.environ["BISON_WORKSPACE_ID"] = self._prev
 
     def payload(self, workspace_id):
-        return {"event": {"type": "EMAIL_SENT", "id": "evt-1",
+        return {"event": {"type": "EMAIL_SENT",
                           "workspace_id": workspace_id},
-                "data": {"lead_id": 1, "campaign_id": 487,
-                         "email": "someone@example.test",
-                         "occurred_at": "2026-09-17T10:00:00Z"}}
+                "data": _data(lead_id=1, email="someone@example.test")}
 
     def test_a_non_numeric_workspace_is_refused_not_a_valueerror(self):
         """`int("bison")` raised a bare ValueError. A handler catches the two
@@ -350,3 +378,65 @@ class GLMsThreeDefeats(unittest.TestCase):
         first = bisonevents.event_key(dict(base, lead_id=1))
         second = bisonevents.event_key(dict(base, lead_id=2))
         self.assertNotEqual(first, second)
+
+
+class TheRealEventTypes(unittest.TestCase):
+    """Pins the type names MEASURED on the provider, 2026-09-17.
+
+    The module's assumed reply type was `CONTACT_REPLIED`. The provider sends
+    `LEAD_REPLIED`. An unmapped type normalises to "unknown", so before this
+    was measured a real reply produced an event that suppressed nothing -
+    against the one invariant the system calls absolute.
+    """
+
+    def setUp(self):
+        os.environ["BISON_WORKSPACE_ID"] = "10"
+
+    def tearDown(self):
+        os.environ.pop("BISON_WORKSPACE_ID", None)
+
+    def test_lead_replied_is_a_reply(self):
+        event = bisonevents.normalise(_payload(event_type="LEAD_REPLIED"))
+        self.assertEqual(event["kind"], "replied")
+
+    def test_every_observed_type_maps_to_a_known_kind(self):
+        """All five seen in 1,200 real events. None may read "unknown"."""
+        for event_type, expected in (("EMAIL_SENT", "sent"),
+                                     ("LEAD_REPLIED", "replied"),
+                                     ("EMAIL_BOUNCED", "bounced"),
+                                     ("EMAIL_SEND_FAILED", "send_failed"),
+                                     ("LEAD_FIRST_CONTACTED",
+                                      "first_contacted")):
+            with self.subTest(event_type=event_type):
+                event = bisonevents.normalise(_payload(event_type=event_type))
+                self.assertEqual(event["kind"], expected)
+                self.assertNotEqual(event["kind"], "unknown")
+
+    def test_an_envelope_and_a_bare_payload_both_normalise(self):
+        """Which one a webhook POSTs is not documented, so both are accepted."""
+        bare = _payload()
+        enveloped = {"id": 5, "uuid": "u-5", "created_at": "2026-09-17T10:00:00Z",
+                     "webhook_deliveries": [], "payload": bare}
+        a = bisonevents.normalise(bare)
+        b = bisonevents.normalise(enveloped)
+        self.assertEqual(a["kind"], b["kind"])
+        self.assertEqual(a["lead_id"], b["lead_id"])
+        self.assertIsNone(a["provider_event_id"])
+        self.assertEqual(b["provider_event_id"], "u-5",
+                         "the envelope's uuid is the provider's event id; "
+                         "event.id was absent in 1,200 of 1,200 real events")
+
+    def test_the_timestamp_source_is_reported_not_flattened(self):
+        event = bisonevents.normalise(_payload())
+        self.assertEqual(event["occurred_at_source"], "campaign_event")
+
+    def test_a_reply_without_a_scheduled_email_still_normalises(self):
+        """`reply` rides on LEAD_REPLIED and EMAIL_BOUNCED only.
+
+        A normaliser that required it would reject the other three types.
+        """
+        data = _data()
+        data["reply"] = {"id": 77, "body_snippet": "not interested"}
+        event = bisonevents.normalise(
+            _payload(event_type="LEAD_REPLIED", data=data))
+        self.assertEqual(event["kind"], "replied")
