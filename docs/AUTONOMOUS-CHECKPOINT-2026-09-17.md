@@ -287,6 +287,36 @@ a prospect hears from.
 
 ---
 
+## 5b. THE TWO THINGS WORTH DOING FIRST, IN ORDER
+
+**1. GIVE 487 A SENDER OF ITS OWN.** Nothing else changes email throughput.
+Three uncommitted mailboxes exist - 3941, 3930, 3919, all Connected, 15/day,
+warmup on - against 222 of 225 already committed. `bison.assign_sender` is
+authorized only for the campaign `_AUTHORIZED_EMAIL_CAMPAIGN` names, so this is
+one scoped write, not a rebuild. It is deliberately NOT done here: changing who
+a prospect hears from is a decision about identity.
+
+**2. APPROVE THE 17, OR DECIDE NOT TO.** The packet is at
+`work/approval/NEAR-MISS-PACKET-2026-09-17.md` - gitignored, because it carries
+the real copy and hashing it would make it unreadable, which is the whole
+point of a packet.
+
+    17 contacts   12 LinkedIn, 5 email
+    75 steps      every one `lint: clean`, every one `claims: []`
+    held by       nothing except a missing approval
+
+These pass every gate. Approving them converts the entire convertible
+population; nothing else converts anybody, because the nine copy-blocked
+contacts are all on STOP or HOLD accounts and the three failed collision probes
+are too.
+
+NOTE THE ORDER. Approving all 17 without (1) produces 17 READY contacts
+queued behind a sender that is already giving this campaign nothing, and would
+also breach `pilot_caps.new_accounts_per_day: 5` - a ceiling that was declared,
+documented and enforced by nobody until today.
+
+---
+
 ## 6. IF YOU ARE A FRESH SESSION
 
 1. `py -3 scripts/production_status.py` - the numbers, recomputed.
