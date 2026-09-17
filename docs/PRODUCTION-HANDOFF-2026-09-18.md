@@ -270,9 +270,35 @@ retry, the whole point of the module. **Polling remains the fallback.**
     = 82% of single-pass stage time. Total stage time 15.96s.
 
 H3, H4, H6, H9, H10 CONFIRMED. H7 and H8 honestly NOT-MEASURED (fake
-providers have no latency). **8,760 provider calls are planned at 5,000
-records, all sequential - ~44 minutes of serial waiting with real providers.
-That is the next real bottleneck.**
+providers have no latency).
+
+### H8 is now MODELLED - and provider wait is ~99% of a real pass
+
+`docs/PERF-LATENCY-MODEL-2026-09-18.md`. 5,000 records, 8,760 provider calls:
+
+    BAND    SERIAL WAIT    CPU     WAIT%    K=4      K=8      K=16
+    low          840.2s   15.2s    98.2%   210.1s   105.0s    52.5s
+    mid        1,966.8s   15.1s    99.2%   491.7s   245.8s   122.9s
+    high       4,988.6s   14.6s    99.7% 1,247.2s   623.6s   311.8s
+
+**Every latency value is ASSUMED - no measured p50/p95 exists anywhere in
+this repo - but the conclusion does not depend on which band is right.** Wait
+is 98.2% at the optimistic end and 99.7% at the pessimistic one. Our own CPU
+is noise in all three.
+
+**So the performance ranking is: provider wait (33 min) first, persistence
+(~159 GB of writes) second, our CPU (15s) nowhere.**
+
+What CANNOT be parallelised, and this is the part to read before building
+anything: the shared `Budget` cap (two concurrent charges read the same
+`spent` and both pass, so a 260-credit cap silently spends 262), the
+waterfall ledger whose append ORDER is what `costs.reconcile()` reads, the
+`new_accounts_per_day` reservation lock, and checkpoint ordering.
+
+Rate limits are classified, not assumed: the enrichment providers that
+dominate the call count have **UNKNOWN** limits, and EmailBison's 3,000 rpm
+is **MARKETING** - a features page, not the API reference. K=4 is the
+conservative start; K=8 only after a full pass with zero 429s.
 
 ### Persistence (`docs/PERF-PERSISTENCE-2026-09-17.md`)
 
@@ -429,10 +455,11 @@ operator.
 2. **The HeyReach falsifier is due.** Check 605732 on the 19th.
 3. **The two operator decisions** (section 3) and the archive decision
    (section 4). Nothing about the email cohort moves without the first.
-4. **Provider concurrency.** 8,760 sequential calls ~ 44 minutes at 5,000
-   records is now the largest measured cost, bigger than persistence.
-   Bounded concurrency where rate limits permit; `POST /api/leads/multiple`
-   is documented at 500 per request and cursor pagination is proven.
+4. **Provider concurrency - now the number one performance item.** Modelled
+   at 99% of a real pass and robust across all three latency bands. K=4 takes
+   a 5,000-record pass from ~33 minutes of waiting to ~8. Build it against
+   the constraints in section 7, not around them, and measure REAL latency
+   first - the model is assumed values and says so.
 5. **The store index.** The journal moved the bottleneck to the read; an
    offset index per record id is what narrows it.
 6. **Do not wire the webhook** until a real delivery and a real RETRY have
