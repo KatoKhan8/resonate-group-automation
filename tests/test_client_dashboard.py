@@ -78,7 +78,7 @@ class WhatTheClientActuallyGets(WebTest):
         session = self.signin(email)
         status, body, _ = session.get("/")
         self.assertEqual(status, 200)
-        return body.split('<div class="wrap">', 1)[1]
+        return body.split('<main class="wrap" id="main-content" tabindex="-1">', 1)[1]
 
     def test_the_funnel_is_there_in_client_words(self):
         body = self.body("client@productive.test")

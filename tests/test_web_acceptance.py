@@ -147,19 +147,15 @@ class Acceptance(WebTest):
         self.forged(session, f"/contacts/{theirs['id']}/{key}")
 
     def test_09_a_forged_batch_id_cannot_cross_a_workspace(self):
-        """A batch is not a row, so it cannot 404 the way a record does.
-
-        What it must do instead is answer with *nothing* - a batch that
-        belongs to somebody else has no records here, and the page has to
-        report that rather than counting theirs.
-        """
+        """Foreign and absent batches share a 404 without leaking records."""
         session = self.signin(OPERATOR)
+        self.assertEqual(session.get("/batches/missing-acceptance-batch")[0], 404)
         theirs = {r.get("batch") for r in store.load()
                   if r.get("client") == "contactout"} - {None}
         self.assertTrue(theirs)
         for batch in theirs:
             status, body, _ = session.get(f"/batches/{batch}")
-            self.assertEqual(status, 200, batch)
+            self.assertEqual(status, 404, batch)
             for rec in store.load():
                 if rec.get("client") != "productive":
                     self.assertNotIn(rec["id"], body)

@@ -76,6 +76,10 @@ The repository wins where the Figma annotations are older than the code:
   checkpoints or foreign workspace names are included in the dashboard adapter.
 - No automatic cadence sender has been added. `push.run(live=True)` remains
   refused. There is no live Send or Launch action.
+  The branch was rebased onto upstream `702a04e` after upstream introduced
+  guarded provider activation and campaign watchers through separate paths.
+  Those paths are preserved. The web sending indicator describes this console,
+  not whether an independently managed provider campaign is active.
 - Paid browser jobs remain refused. Upload remains preview, then explicit
   commit, followed by the existing permitted processing stages.
 - Held contacts, MX/security outcomes, verification consensus, suppression,

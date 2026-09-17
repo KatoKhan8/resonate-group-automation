@@ -401,7 +401,7 @@ def shell(body, session, ctx, path="/", title="Control Center"):
     env = "DEMO" if demo else str(ctx.get("mode") or "LOCAL").upper()
     safety = (
         f'<div class="safety"><span class="dot off"></span>'
-        f"<span>Live sending <b>disabled</b></span></div>"
+        f"<span>Live sending <b>disabled</b><span class=\"sr-only\"> in this web application</span></span></div>"
         f'<div class="safety environment"><span class="dot {"demo" if demo else "off"}">'
         f"</span><span>{esc(env)}</span></div>")
 
@@ -855,7 +855,9 @@ def control_center(data):
         f'<span class="small muted">{esc(entry["resource_id"] or "")}</span>'
         f'<time>{esc(entry["at"])} · {esc(entry["actor"] or "system")}</time></li>'
         for entry in data["audit"])
-    return ('<div class="grid2">' + panel("Safety & runtime", kv(runtime))
+    return ('<div class="grid2">' + panel("Safety & runtime", kv(runtime)
+            + '<p class="note">This web application cannot send or launch campaigns. '
+              'Provider campaigns managed outside this console may run independently.</p>')
             + panel("Recent workspace activity", '<ul class="audit-preview">'
                     + activity + '</ul>' if activity else empty(
                         "No audit events yet", "Workspace changes appear here when recorded."))
@@ -985,7 +987,7 @@ def dashboard(data, simple=False, slack=None):
 {client_verification}
 <p class="note">No address is used on the strength of a single provider. Where
 two disagreed, the contact is held for a person to look at rather than sent to
-on a guess. Nothing has been sent from this system.</p>
+on a guess. Sending is unavailable from this web application.</p>
 """
 
     return f"""
@@ -994,13 +996,13 @@ on a guess. Nothing has been sent from this system.</p>
 <div class="crumb">Client <b>{esc(data['client'])}</b> &middot;
 {esc(data['records'])} companies across {esc(len(data['batches']))} batch(es)</div>
 {quick_actions(set(data.get('permissions') or ()))}
-{head}
-<h2>Operator pipeline</h2>
-{operator_pipeline(set(data.get('permissions') or ()))}
 <div class="dashboard-layout">
 {needs}
 {panel("Qualification distribution", distribution_chart(q["by_status"], "Company qualification"))}
 </div>
+{head}
+<h2>Operator pipeline</h2>
+{operator_pipeline(set(data.get('permissions') or ()))}
 {control_center(data.get('control_center'))}
 {slack_panel}
 <div class="grid2">

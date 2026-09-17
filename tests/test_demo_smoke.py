@@ -118,10 +118,10 @@ class TheNavigationIsHonest(WebTest):
     """A link offered is a link that works for the role it is offered to."""
 
     def links_on(self, body):
-        return sorted(set(re.findall(r'<nav class="nav">(.*?)</nav>', body,
+        return sorted(set(re.findall(r'<nav class="nav"[^>]*>(.*?)</nav>', body,
                                      re.S)[0:1] and
                           re.findall(r'href="(/[a-z0-9/._-]*)"',
-                                     re.findall(r'<nav class="nav">(.*?)</nav>',
+                                     re.findall(r'<nav class="nav"[^>]*>(.*?)</nav>',
                                                 body, re.S)[0])))
 
     def test_no_role_is_offered_a_link_it_would_be_refused_from(self):

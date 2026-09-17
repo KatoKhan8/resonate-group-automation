@@ -171,7 +171,7 @@ class TheClientFacingCut(WebTest):
     def test_a_viewer_is_offered_only_the_screens_they_may_open(self):
         session = self.signin(VIEWER)
         _, body, _ = session.get("/")
-        offered = set(re.findall(r'<nav class="nav">(.*?)</nav>', body,
+        offered = set(re.findall(r'<nav class="nav"[^>]*>(.*?)</nav>', body,
                                  re.S)[0].split('href="'))
         links = {chunk.split('"')[0] for chunk in offered if chunk.startswith("/")}
         for path in sorted(links):

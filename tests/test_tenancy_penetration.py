@@ -510,6 +510,21 @@ class UntrustedTextIsInert(WebTest):
         self.assertNotIn("href=\"javascript:", rendered)
 
     def test_a_hostile_search_term_comes_back_escaped(self):
+        from html.parser import HTMLParser
+
+        class SearchMarkup(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.handlers = []
+                self.query = None
+
+            def handle_starttag(self, tag, attrs):
+                self.handlers.extend((name, value) for name, value in attrs
+                                     if name.lower().startswith("on"))
+                values = dict(attrs)
+                if tag == "input" and values.get("id") == "contact-search":
+                    self.query = values.get("value")
+
         session = self.signin(OPERATOR)
         for payload in self.PAYLOADS:
             import urllib.parse
@@ -519,7 +534,13 @@ class UntrustedTextIsInert(WebTest):
             if status != 200:
                 continue
             self.assertNotIn("<script>alert(1)</script>", body)
-            self.assertNotIn("onerror=alert(1)", body)
+            # Search now preserves the query in a quoted input value. Text
+            # saying "onerror" inside that value is inert; an actual event
+            # handler attribute must never be emitted by the HTML parser.
+            markup = SearchMarkup()
+            markup.feed(body)
+            self.assertEqual(markup.handlers, [])
+            self.assertEqual(markup.query, payload)
 
 
 class CsvStaysData(WebTest):
