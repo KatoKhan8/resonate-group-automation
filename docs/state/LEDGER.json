@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-09-17T18:19:39+00:00",
+  "generated_at": "2026-09-17T18:38:21+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
   "branch_blindness": "Task stages in this ledger reflect master only. Tasks finished on worker branches but not yet integrated into master appear in their master stage (often TODO), not the stage the branch has moved them to. Run scripts/task173_scan.py --unintegrated for the cross-branch view.",
-  "master_head": "0e01aa83",
-  "origin_master_head": "0e01aa83",
+  "master_head": "47fa0ae3",
+  "origin_master_head": "47fa0ae3",
   "master_pushed": true,
   "tasks": [
     {
@@ -2114,12 +2114,28 @@
   ],
   "branches": [
     {
+      "branch": "bison-webhook-ingest-2026-09-17",
+      "head": "27bcdb67",
+      "commits_ahead_of_master": 0,
+      "pushed": false,
+      "remote_head": null,
+      "last_commit_at": "2026-09-17T20:28:59+02:00"
+    },
+    {
+      "branch": "geo-iso-resolution-2026-09-17",
+      "head": "953c933a",
+      "commits_ahead_of_master": 4,
+      "pushed": true,
+      "remote_head": "953c933a",
+      "last_commit_at": "2026-09-17T20:26:27+02:00"
+    },
+    {
       "branch": "master",
-      "head": "0e01aa83",
+      "head": "47fa0ae3",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "0e01aa83",
-      "last_commit_at": "2026-09-17T20:17:55+02:00"
+      "remote_head": "47fa0ae3",
+      "last_commit_at": "2026-09-17T20:36:37+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -3450,6 +3466,14 @@
       "last_commit_at": "2026-09-15T10:56:10+02:00"
     },
     {
+      "branch": "staged-paused-activation-order-2026-09-17",
+      "head": "21e00adb",
+      "commits_ahead_of_master": 1,
+      "pushed": true,
+      "remote_head": "21e00adb",
+      "last_commit_at": "2026-09-17T20:35:29+02:00"
+    },
+    {
       "branch": "task202-suite-2026-09-17",
       "head": "939f0c1a",
       "commits_ahead_of_master": 4,
@@ -3469,31 +3493,31 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "0e01aa8",
+      "head": "47fa0ae",
       "branch": "master",
-      "uncommitted_files": 4,
+      "uncommitted_files": 3,
       "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-2",
-      "head": "e3d60bd",
-      "branch": "qwen-worker-2-r50",
+      "head": "953c933",
+      "branch": "geo-iso-resolution-2026-09-17",
       "uncommitted_files": 0,
       "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-3",
-      "head": "3766e2c",
-      "branch": "qwen-worker-3-r47",
+      "head": "21e00ad",
+      "branch": "staged-paused-activation-order-2026-09-17",
       "uncommitted_files": 0,
       "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-4",
-      "head": "71f42b1",
-      "branch": "qwen-worker-4-r45",
-      "uncommitted_files": 0,
-      "clean": true
+      "head": "27bcdb6",
+      "branch": "bison-webhook-ingest-2026-09-17",
+      "uncommitted_files": 2,
+      "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-5",
