@@ -1,10 +1,14 @@
 # Resonate Group Automation
-docs/CONTEXT-RESET-2026-09-15-E.md is the current state: read it first.
-It supersedes checkpoint D. Two things it says that nothing else does: the
-HeyReach sequence holds MERGE VARIABLES and the words arrive per lead, so no
-sequence write is needed; and ONE task - TASK-137, narrowing four seals for a
-fail-closed LINKEDIN_ADD_LEAD - stands between a ready 122-lead cohort and the
-first live campaign.
+docs/PRODUCTION-HANDOFF-2026-09-18.md is the current state: read it first.
+It is written for a session with no conversation context and it supersedes
+every earlier handoff and context reset. Two campaigns are LIVE and NEITHER
+HAS SENT. Recompute provider truth before acting on any number in it.
+
+docs/CONTEXT-RESET-2026-09-15-E.md is kept for the two things it says that
+nothing else does: the HeyReach sequence holds MERGE VARIABLES and the words
+arrive per lead, so no sequence write is needed; and TASK-137's four seals for
+a fail-closed LINKEDIN_ADD_LEAD. Its production numbers are three days stale -
+read the handoff for those.
 PROVIDER-ROUTING-POLICY.md is the standing provider order, set by the
 operator on 2026-09-16 and a PRODUCT priority rather than a cost
 optimisation: ContactOut first whenever capable, then its cache, then the
