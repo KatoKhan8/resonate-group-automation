@@ -264,6 +264,16 @@ class TestNothingCanSend(unittest.TestCase):
                     providerwrites.EMAIL_ACTIVATE, provider_id,
                     "productive-email-control-v2")
         from src import campaigns as _campaigns
+        # AND THE EXACT COMBINATION A STALE COMMENT INVITES: the RIGHT
+        # canonical row offered with 485's provider id. 485 is a DRAFT holding
+        # the same ten people as live 487 (10 of 10 hashed addresses in
+        # common, measured 2026-09-17), so this pairing is the one that would
+        # duplicate-send the entire live cohort from the same mailbox. The
+        # row is correct here and the refusal has to come from the binding.
+        with self.assertRaises(providerwrites.WriteRefused):
+            providerwrites.require_conditional_permission(
+                providerwrites.EMAIL_ACTIVATE, "485",
+                "productive-email-control-v3")
         row = _campaigns.get("productive-email-control-v3") or {}
         bound = row.get("bison_campaign_id")
         self.assertTrue(bound, "v3 carries no bison_campaign_id, so nothing "

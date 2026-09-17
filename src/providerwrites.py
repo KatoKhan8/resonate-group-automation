@@ -974,10 +974,19 @@ _AUTHORIZED_EMAIL_CAMPAIGN = (None, "productive-email-control-v3")
 
 
 def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
-    """True only for EmailBison campaign 485, the one the operator named.
+    """True only for the provider campaign `productive-email-control-v3` names.
+
+    **That is campaign 487 today, NOT 485.** The grant was written against 485
+    and re-scoped to the v3 rebuild the same day; this function resolves the
+    provider id from the canonical row rather than a literal, so it followed
+    the re-scope automatically. 485 still exists as a DRAFT and still holds
+    the SAME TEN PEOPLE as live 487 - measured 2026-09-17, 10 of 10 hashed
+    addresses in common - so a reader who believes this function points at 485
+    is one edit away from a duplicate send to every lead in the live campaign.
+    It does not point there and must not be made to.
 
     Enabled 2026-09-16 under written operator authorization, which was
-    explicit about its own scope: campaign 485, sender 2736, the existing 10
+    explicit about its own scope: one campaign, sender 2736, the existing 10
     approved contacts, the existing approved 3-step CONTROL, a 20/day cap, and
     "NOT authorization to ... activate other campaigns, change copy, add
     unapproved contacts, or increase caps".
