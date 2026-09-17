@@ -99,6 +99,24 @@ ALLOWED = {
     # the only verb here that reaches a person and it is a PATCH, declared
     # above and guarded in `resume_campaign`.
     ("src/providers/bison.py", "PUT"),
+    # DELETE, added 2026-09-17, and it is the most STOPPING verb on this
+    # provider: `DELETE /campaigns/{id}/remove-sender-emails` takes a mailbox
+    # OFF a campaign. Everything it can change is in the direction of sending
+    # LESS - a campaign with no sender attached sends nothing at all - and it
+    # reaches no prospect by any path.
+    #
+    # It exists because `providerwrites.py` had recorded "no documented route"
+    # for detaching a sender, which was stale: the route is documented, and
+    # while it was believed absent this build could ATTACH a second inbox to a
+    # campaign and could not take it off again. The sender arity rule -
+    # "a guarded action is attributed to exactly one" - was therefore
+    # enforceable only by never making the mistake, which is not enforcement.
+    # See section 8 of `docs/PRODUCTION-HANDOFF-2026-09-17.md`.
+    #
+    # Undeclared until now because this list is keyed on the METHOD and DELETE
+    # had never appeared in a provider module before. That is the guard
+    # working: a new HTTP verb showed up and nothing had chosen it.
+    ("src/providers/bison.py", "DELETE"),
     # A completion is a POST that changes nothing at the other end: it creates
     # no campaign, touches no lead, and is not prospect-facing, so it does not
     # belong under `providerwrites`. It is declared here rather than waved
