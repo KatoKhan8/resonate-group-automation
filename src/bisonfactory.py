@@ -715,6 +715,24 @@ def _certified_copy(step, key, extra=None):
     if approval.fingerprint(material) != recorded:
         return None
     if extra:
+        # `extra` IS METADATA AND MAY NEVER BE COPY.
+        #
+        # The merge happens AFTER the fingerprint proof, so a caller passing
+        # `subject` or `body` here would overwrite certified words with
+        # uncertified ones and every layer downstream would still report
+        # success. Today the single caller passes variant_id/style/version, so
+        # the hatch is unused - but "unused" is a fact about this week's
+        # callers, and the next caller is exactly how a hatch like this gets
+        # walked through. Found by an independent model reading the function
+        # cold, which is the whole reason for asking one.
+        forbidden = sorted(set(extra) & {"subject", "body", "note", "message"})
+        if forbidden:
+            raise FactoryRefused(
+                f"_certified_copy was handed prospect-facing field(s) "
+                f"{forbidden} as metadata for step {key!r}. `extra` is merged "
+                f"after the approval is verified, so copy arriving that way "
+                f"would reach a prospect uncertified. Put the words in the "
+                f"step before it is fingerprinted")
         entry.update(extra)
     return entry
 

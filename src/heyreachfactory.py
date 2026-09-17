@@ -165,21 +165,51 @@ def _step_copy(step, *, channel=None):
     effective_channel = channel or step.get("channel")
     if effective_channel != "linkedin":
         return None
+    # THE FINGERPRINT COVERS channel/subject/body/note AND NOTHING ELSE.
+    #
+    # `approval.fingerprint` hashes exactly those four. `message` and
+    # `linkedin_action` are not among them - so a step approved and then edited
+    # in `message` recomputes to the SAME stamp and certifies, and the words
+    # returned below are words no operator ever saw. Found by an independent
+    # model attacking this function, with the mechanism spelled out: approve an
+    # InMail carrying "approved body", replace `message` afterwards, and the
+    # check passes because the field was never hashed.
+    #
+    # The clean fix is to hash `message` and `linkedin_action` too - and that
+    # invalidates every stored approval on both lanes, which is an operator
+    # decision, not something to do at 3am to a live channel. So this fails
+    # closed instead: a step whose copy would come from an UNCOVERED field
+    # returns None rather than returning text the stamp does not certify. None
+    # reaches `assemble_linkedin_copy`'s `missing` list, which refuses the
+    # whole push - loudly, and without reaching anybody.
+    #
+    # `note` is safe because it IS hashed. `message` is not, at all.
     action = step.get("linkedin_action")
+    uncovered = (step.get("message") or "").strip()
     if action == "connect":
         note = (step.get("note") or "").strip()
         return note or None
     if action == "inmail":
         subject = (step.get("subject") or "").strip()
-        message = (step.get("message") or step.get("note") or "").strip()
-        if subject and message:
-            return {"subject": subject, "message": message}
+        note = (step.get("note") or "").strip()
+        if uncovered and uncovered != note:
+            # The InMail body would come from `message`, which no fingerprint
+            # covers. Refuse rather than ship it.
+            return None
+        if subject and note:
+            return {"subject": subject, "message": note}
         return None
     # message or open_profile_message: the copy field is `note`, not
     # `message`. push.heyreach_rows reads step.get("note", "") and no code
-    # writes a `message` field for LinkedIn. The `message` fallback is
-    # defensive for future use.
-    text = (step.get("note") or step.get("message") or "").strip()
+    # writes a `message` field for LinkedIn.
+    #
+    # THE `message` FALLBACK IS GONE, and "defensive for future use" is what
+    # made it dangerous. It let a step with an empty `note` return `message`
+    # instead - and `message` is outside the fingerprint, so that text would
+    # reach a prospect under a stamp that never covered it. A fallback nobody
+    # needs today, sitting on the path a prospect's words travel, is not a
+    # defence; it is the second half of the InMail hole.
+    text = (step.get("note") or "").strip()
     return text or None
 
 
