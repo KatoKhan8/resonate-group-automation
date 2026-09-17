@@ -342,3 +342,60 @@ tests/test_stage_profile.py::TestLatencyModel
 ```
 
 All 17 tests in `tests/test_stage_profile.py` pass.
+
+---
+
+## MEASURED 2026-09-18: the biggest assumption, replaced. No credits spent.
+
+This document's "what it cannot answer" section put real provider latency
+first. For the call that dominates the volume, it did not have to stay
+unanswered: `people-count` is 4,822 of the 8,760 modelled calls at 5,000
+records and `enrich.COSTS["people-count"]` is **0**. So the largest single
+assumption here was measurable for free.
+
+`scripts/measure_provider_latency.py`, 16 serial samples against neutral
+public domains, nothing stored:
+
+    ROUTE                              n    min      p50      p95      max
+    contactout people-count (FREE)    16  0.402s   0.425s   0.998s   1.177s
+    emailbison GET /campaigns         16  0.134s   0.149s   0.166s   0.183s
+
+### The MID band was optimistic by 113% for the dominant call
+
+    assumed   low 0.10   MID 0.20   high 0.50
+    measured  p50 0.425  -> between MID and HIGH
+
+And the consequence is larger than it sounds, because this call is 55% of
+the volume:
+
+    people-count alone, at the measured p50:   4,822 x 0.425s = 2,049s
+    the ENTIRE MID-band estimate for all
+    8,760 calls was:                                            1,967s
+
+**One call type, measured, already exceeds the whole MID-band estimate by 83
+seconds - and the other 3,938 calls are on top of that.** So a real
+5,000-record pass sits at or beyond the MID band rather than comfortably
+inside it, and the HIGH band is not a pessimistic outlier.
+
+**This strengthens the conclusion rather than changing it.** Provider wait was
+98-99% of a pass under every assumed band; measuring the dominant call moved
+the estimate up, not down. Concurrency remains the first performance item.
+
+### What is still ASSUMED
+
+Everything except the two rows above. `decision-makers`, the verification
+providers, Blitz, AI Ark, Apify and xAI are all still estimates, and they are
+the ones that cost credits to measure - which is why they have not been.
+Their bands stand.
+
+### What this number is NOT
+
+**It is the K=1 number and nothing else.** A provider answering in 425ms
+serially may answer in 900ms at K=8, or return 429. Nothing here predicts
+behaviour under concurrency, and the K=4/8/16 columns above remain an IDEAL
+model. The first thing a concurrency implementation should do is re-run this
+script under load and find out.
+
+Sample-size honesty: p50 from 16 samples is reasonable; the p95 above is the
+second-worst of sixteen and should be read as that rather than as a
+distribution tail.
