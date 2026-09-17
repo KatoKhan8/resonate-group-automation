@@ -104,8 +104,38 @@ def email():
     out["status"] = str(row.get("status") or "").lower()
     out["live"] = out["status"] == "active"
     out["cohort"] = row.get("total_leads")
-    out["cap_per_day"] = row.get("max_emails_per_day")
+    out["campaign_cap_per_day"] = row.get("max_emails_per_day")
     out["senders"] = _try(bison.campaign_senders, EMAIL_CAMPAIGN)
+
+    # THE BINDING CAP IS THE SMALLER OF THE TWO, AND IT IS NOT THE CAMPAIGN'S.
+    #
+    # The campaign is set to 20/day and sender 2736 is set to 15/day, so the
+    # real ceiling is 15 - reporting the campaign figure alone over-states
+    # throughput by a third. This is the same class of mistake the HeyReach
+    # roster makes in the other direction, where `daily_limit` stores
+    # `connectioRequestMax` and the roster reports 1,280/day against a
+    # configured 1,014.
+    senders = _try(bison.sender_emails)
+    limits = {}
+    if not isinstance(senders, str):
+        rows, _meta = senders
+        for entry in rows or []:
+            if int(entry.get("id") or 0) in (out["senders"] or []):
+                limits[entry["id"]] = {
+                    "daily_limit": entry.get("daily_limit"),
+                    "status": entry.get("status"),
+                    "warmup_enabled": entry.get("warmup_enabled"),
+                }
+    out["sender_limits"] = limits or UNKNOWN
+    caps = [v["daily_limit"] for v in limits.values()
+            if isinstance(v.get("daily_limit"), int)]
+    campaign_cap = out["campaign_cap_per_day"]
+    if caps and isinstance(campaign_cap, int):
+        out["binding_cap_per_day"] = min(min(caps), campaign_cap)
+    elif caps:
+        out["binding_cap_per_day"] = min(caps)
+    else:
+        out["binding_cap_per_day"] = UNKNOWN
 
     counter = row.get("emails_sent")
     queue = _try(bison.scheduled_emails, EMAIL_CAMPAIGN)
@@ -198,6 +228,9 @@ def main(argv=None):
     print(f"  EMAILBISON_SENT      = {em.get('sent')}  "
           f"(counter={em.get('sent_counter')} "
           f"queue_sent={em.get('queue_sent')}/{em.get('queue_rows')})")
+    print(f"  EMAILBISON_CAP/DAY   = {em.get('binding_cap_per_day')}  "
+          f"(campaign {em.get('campaign_cap_per_day')}, "
+          f"senders {em.get('sender_limits')})")
     print(f"  EMAILBISON_REPLIES   = {em.get('replies')}")
     print(f"  EMAILBISON_BOUNCED   = {em.get('bounced')}")
     print(f"  EMAILBISON_FIRST_SEND= {em.get('first_send')}")
