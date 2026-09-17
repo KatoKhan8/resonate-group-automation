@@ -139,7 +139,28 @@ def _step_copy(step, *, channel=None):
     """
     if not isinstance(step, dict):
         return None
-    if not step.get("approval"):
+    # AN APPROVAL IS NOT A FINGERPRINT, AND THIS ASKED ONLY WHETHER ONE EXISTS.
+    #
+    # The same defect the email lane carried, found while fixing that one. A
+    # step approved and then edited kept its stamp, and this returned the
+    # EDITED note - so the words a prospect reads could be words no operator
+    # approved, under a stamp taken over different text. On the email side that
+    # was measured, not theorised: thirty steps on campaign 485 staged
+    # generated copy under a CONTROL approval and nothing reported it missing.
+    #
+    # The LinkedIn lane is LIVE, which is why this is fixed here rather than
+    # written down. It fails closed exactly as `bisonfactory._certified_copy`
+    # does: no approval, an approval recording no fingerprint, or a fingerprint
+    # that does not cover this step's own words all return None, and a None
+    # reaches `assemble_linkedin_copy`'s `missing` list rather than a prospect.
+    #
+    # The variant path lifts the variant's own already-verified approval onto
+    # the step before calling here, so it re-verifies rather than breaking.
+    from . import approval as _approval
+
+    stamp = step.get("approval") or {}
+    recorded = stamp.get("fingerprint")
+    if not recorded or _approval.fingerprint(step) != recorded:
         return None
     effective_channel = channel or step.get("channel")
     if effective_channel != "linkedin":

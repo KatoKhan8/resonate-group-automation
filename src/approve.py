@@ -103,9 +103,27 @@ def approve_step(rec, contact_key, step_key, by="unknown", config=None,
     stamp = {"by": by, "at": store.now(), "fingerprint": fingerprint(step)}
     slot = rec.setdefault("cadence", {}).setdefault(contact_key, {}).setdefault(step_key, {})
     # A template step is expanded at read time, so record what was approved.
+    #
+    # WHAT WAS APPROVED, NOT WHAT WAS ALREADY THERE. This was `and field not
+    # in slot`, which meant the slot kept whatever words it already held while
+    # the stamp above was taken over `step` - the freshly expanded one. The
+    # two then disagreed, and nothing downstream noticed: `_resolve_step_copy`
+    # staged the slot's words under the stamp's authority. Measured
+    # 2026-09-16, campaign `productive-email-control-v2`: thirty approvals
+    # fingerprinting the CONTROL text sat on thirty slots still holding the
+    # model-generated text they replaced, and all ten leads planned with
+    # nothing reported missing.
+    #
+    # A field the expanded step does not carry is REMOVED rather than left,
+    # for the same reason. `fingerprint` covers channel, subject, body and
+    # note, so a stale `note` under an email approval - or a subject left
+    # behind by a threaded follow-up that no longer has one - is a word the
+    # stamp does not cover sitting in the slot the sender reads.
     for field in ("channel", "subject", "body", "note", "template"):
-        if step.get(field) is not None and field not in slot:
+        if step.get(field) is not None:
             slot[field] = step[field]
+        else:
+            slot.pop(field, None)
     slot["approval"] = stamp
     store.log(rec, "approved", f"{contact_key}:{step_key} by {by}",
               fingerprint=stamp["fingerprint"])

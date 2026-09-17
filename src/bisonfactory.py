@@ -668,6 +668,57 @@ def _approved_copy(source, contact_key, sequence, record_id, *,
     return copy, missing
 
 
+def _certified_copy(step, key, extra=None):
+    """The staged words for one step, or None unless an approval certifies
+    THESE EXACT WORDS.
+
+    THE ONLY PLACE EMAIL COPY BECOMES STAGEABLE. Every branch below - variant,
+    no-variant, single-step opener - returns through here, because "a human
+    approved this step" and "a human approved the words this step is about to
+    ship" are two different questions and only the second one is safe to ask
+    at staging time.
+
+    The entry is built FIRST and the fingerprint is then computed over the
+    entry's own `subject` and `body`, so the material that is hashed is the
+    same string the provider receives in `{SUBJECT_N}` / `{BODY_N}`. A check
+    that hashed the step instead could agree while the words in the payload
+    came from somewhere else, which is exactly the defect this closes:
+    `approve.approve_step` stamped a fingerprint taken over the
+    campaign-expanded step onto a slot that still held older generated copy,
+    and the no-variant branch staged the slot's words after checking only that
+    an approval EXISTED. Measured 2026-09-16 on campaign 485: ten leads, zero
+    reported missing, thirty steps of words no operator had approved.
+
+    `channel` and `note` come from the step because `approval.fingerprint`
+    covers them too, and an approval taken over a step carrying a note does
+    not certify the same step with the note removed.
+
+    FAILS CLOSED, always by returning None, which `_approved_copy` reports as
+    missing copy and `_ensure_leads` refuses the whole stage on:
+      - no approval on the step at all
+      - an approval with no fingerprint recorded on it
+      - a fingerprint that does not cover the words being staged
+    """
+    from . import approval
+
+    stamp = (step or {}).get("approval") or {}
+    recorded = stamp.get("fingerprint")
+    if not recorded:
+        # No approval, or an approval that records nothing about the words it
+        # was given for. Neither certifies anything.
+        return None
+    entry = {"step_key": key, "subject": (step or {}).get("subject"),
+             "body": (step or {}).get("body")}
+    material = dict(step or {})
+    material["subject"] = entry["subject"]
+    material["body"] = entry["body"]
+    if approval.fingerprint(material) != recorded:
+        return None
+    if extra:
+        entry.update(extra)
+    return entry
+
+
 def _resolve_step_copy(stored_step, spec, key, contact_key, campaign, config):
     """The approved words for one step, resolving variants when present.
 
@@ -679,6 +730,12 @@ def _resolve_step_copy(stored_step, spec, key, contact_key, campaign, config):
     covers the variant's words because `variants.apply_to_step` puts them
     into the step before `approval.fingerprint` hashes it. A variant whose
     words do not match any stored approval is not copy anybody has blessed.
+
+    NEITHER BRANCH RETURNS WORDS AN APPROVAL DOES NOT COVER. The variant
+    branch always compared; the no-variant branch asked only whether an
+    approval existed, so a stored slot whose copy had moved on from the
+    fingerprint stamped on it staged clean. Both go through
+    `_certified_copy` now, which is the one place that comparison happens.
     """
     from . import cadence as _cadence
     from . import variants
@@ -692,22 +749,15 @@ def _resolve_step_copy(stored_step, spec, key, contact_key, campaign, config):
         # The variant's words, applied to the stored step so the approval
         # fingerprint covers them.
         stepped = variants.apply_to_step(dict(stored_step or {}), entry)
-        if not stepped.get("approval"):
-            return None
-        from . import approval
-        if approval.fingerprint(stepped) != stepped["approval"].get(
-                "fingerprint"):
-            return None
-        return {"step_key": key, "subject": stepped.get("subject"),
-                "body": stepped.get("body"),
-                "variant_id": entry.get("variant_id"),
-                "variant_style": entry.get("style"),
-                "variant_version": entry.get("version")}
-    # No variant: the stored step's own words, as before.
-    if (stored_step.get("channel") == "email"
-            and stored_step.get("approval")):
-        return {"step_key": key, "subject": stored_step.get("subject"),
-                "body": stored_step.get("body")}
+        return _certified_copy(
+            stepped, key,
+            extra={"variant_id": entry.get("variant_id"),
+                   "variant_style": entry.get("style"),
+                   "variant_version": entry.get("version")})
+    # No variant: the stored step's own words - and only if the approval on
+    # the step is an approval OF those words.
+    if stored_step.get("channel") == "email":
+        return _certified_copy(stored_step, key)
     return None
 
 
@@ -717,13 +767,17 @@ def _earliest_approved_email(steps):
     Used only for the single-step sequence shape, where the one step that
     goes out is the opener and a later step's words in its place would be a
     message arriving out of order.
+
+    Which is why an approval that does not certify the opener's stored words
+    returns None rather than walking on to the next step: falling through
+    would answer "this contact has no approved opener" with a day-eight
+    message, and a refusal is the only honest answer to it.
     """
     for step_key in sorted(steps or {}):
         step = (steps or {})[step_key] or {}
         if step.get("channel") != "email" or not step.get("approval"):
             continue
-        return {"step_key": step_key, "subject": step.get("subject"),
-                "body": step.get("body")}
+        return _certified_copy(step, step_key)
     return None
 
 
