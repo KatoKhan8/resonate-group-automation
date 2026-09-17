@@ -130,3 +130,52 @@ explanation is wrong.
 What this does change is the confidence in the 30-hour arithmetic. It was
 derived from declared node delays, and no observed event has confirmed a
 single one of them yet.
+
+---
+
+## THE WINDOW IS DOCUMENTED AFTER ALL — 2026-09-17, from the vendor
+
+The section above says the 09:04Z start is "an OBSERVATION, not a
+configuration anybody can quote". It is quotable:
+
+> Set on create: optional `schedule` (`CampaignScheduleApiDto`). **If omitted,
+> default is Mon-Fri 09:00-17:00 UTC.**
+> — https://www.heyreach.io/blog/campaign-api
+
+`create_linkedin_cohort_b_campaign.py` passes no `schedule`. So campaign
+605732 runs **09:00-17:00 UTC**, which is 11:00-19:00 in Zagreb and
+**05:00-13:00 US Eastern**. The three leads' first action at 09:04:00Z is the
+window opening, to the minute. DOCUMENTED, and it agrees with the observation.
+
+Two consequences:
+
+- **The vendor default is not a bad window for this cohort**, which is luck
+  rather than design - it was never chosen. The next LinkedIn campaign should
+  still pass one explicitly, and now there is a documented default to pass
+  something better than.
+- **Reading it back is still impossible.** `POST /campaign/UpdateSchedule`
+  writes; no documented route reads. `GetAll`'s sample items carry `id`,
+  `name`, `creationTime`, list fields, `campaignAccountIds`, `status`,
+  `progressStats` and exclusion flags - no `schedule`. Whether `GetById`
+  returns one is NOT DOCUMENTED. `heyreach.set_schedule`'s refusal to write a
+  window nothing can verify stands exactly as written.
+
+## And the per-lead sender IS controllable here, unlike on email
+
+> `POST /campaign/AddLeadsToCampaignV2` body: `campaignId`,
+> `accountLeadPairs[]` with `linkedInAccountId` + `lead`. Each pair "binds a
+> lead to the LinkedIn sender account that will reach out"; max 100 pairs.
+> — https://www.scalekit.com/connectors/heyreach
+
+Third-party integration documentation (Scalekit, Cotera, the n8n HeyReach
+node), **not** the vendor's own campaign API page, which does not document the
+endpoint at all. So this is DOCUMENTED-BY-INTEGRATOR rather than
+DOCUMENTED-BY-VENDOR, and `linkedInAccountId` is nullable with the
+omitted-case behaviour NOT DOCUMENTED.
+
+`heyreach.build_lead_pairs` already builds exactly this shape and already
+reads `provider_account_id` per row. So on LinkedIn the sender is CHOSEN by
+us, where on EmailBison it is observed after the provider picks. That
+asymmetry is what `docs/SENDER-ATTRIBUTION-DESIGN-2026-09-17.md` predicted
+from the code, now with sources - and it means the two channels need
+different allocator contracts, not one.
