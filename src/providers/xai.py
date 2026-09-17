@@ -53,7 +53,27 @@ MAX_TOKENS_CAP = 8192
 MAX_TOOL_CALLS = 10
 MAX_SEARCH_TOOLS = 3
 MAX_TEMPERATURE = 2.0
-XAI_TIMEOUT = 60
+# PER ATTEMPT, SECONDS, AND A CEILING RATHER THAN A DEFAULT - `respond`
+# clamps a caller's request down to this, so nothing here can hang however the
+# call site is written.
+#
+# RAISED FROM 60 ON 2026-09-17, and the evidence is that the old value made
+# this module unusable for the work it exists to do. `web_search` is the
+# capability this lane is FOR, and TASK-166 measured what one such call costs:
+# 1,500-4,000 reasoning tokens and 41-65 search URLs per question. None of that
+# finishes in a minute.
+#
+# The tell was already in the repository and was read as a quirk rather than a
+# symptom: `docs/GROK-VS-FREE-RESEARCH-2026-09-16.md` records that the
+# measurement "calls the Responses API directly" and that this adapter "was not
+# used". A ceiling every real caller has to bypass is not a bound, it is a
+# module nobody can use - and a bypassed adapter takes its trimming, its usage
+# capture and its redaction out of the path with it.
+#
+# Confirmed again the same day: `scripts/grok_provider_research.py` asked one
+# documentation question through this adapter with `timeout=180`, the clamp cut
+# it to 60, and the call died on `TimeoutError: The read operation timed out`.
+XAI_TIMEOUT = 300
 MAX_RETRIES = 2
 
 # https://docs.x.ai/developers/cost-tracking
