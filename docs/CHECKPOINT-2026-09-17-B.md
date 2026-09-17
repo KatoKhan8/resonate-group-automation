@@ -234,3 +234,116 @@ seat missing from the operator's allowlist. See
     2026-09-23  487's ten scheduled sends. DO NOT pause, re-approve, change
                 the sender on, or re-activate 487 before then. The 23rd is
                 itself a measurement of whether a scheduled date here holds.
+
+---
+
+## ADDENDUM 3, 2026-09-17T19:00Z — THE WORKER LANES, AND WHAT THEY CHANGED
+
+Four lanes ran in parallel. Every result is committed; nothing below is
+availability.
+
+### GLM — three targets that had never produced a report
+
+`glm_review.py` listed `storage`, `collision` and `ledger` since it was
+written and had never run any of them. The cause was `glm.GLM_TIMEOUT = 60`,
+clamped over every caller, against a model whose ordinary calls take 20-95s.
+Raised to 180 on that measurement (`docs/GLM-REVIEW-*-2026-09-17.md`).
+
+    LEDGER     two record-fidelity defects, both confirmed, both FIXED
+               (6a1858f3, 8 tests, 2 red on deliberate break). A FAILED
+               settlement inherited the prior UNRESOLVED row's
+               `provider_response`, so a deferral's 421 was recorded as
+               though the failure produced it - on every key transiting
+               UNRESOLVED -> FAILED, and thirteen keys sit at `unresolved`
+               now. And a same-state replay returned success while silently
+               discarding a corrected message id.
+    STORAGE    arithmetic ACCEPTED - full-file rewrite per 5-record
+               checkpoint, O(N^2), 63.6 TB per pass at 100k records, and
+               every size-derived benchmark here understated 7.57x.
+               Recommendation REJECTED: raising the interval trades against
+               the lesson that put checkpoint-per-record there. The shape is
+               the defect; incremental persistence is the fix.
+    COLLISION  FALSE POSITIVE, verified not argued. The claimed defeat needs
+               an `in_sequence` row to be excludable and `_excludable`
+               refuses anything outside {'sending_paused','stopped'}.
+    WEBHOOK    dispatched against `bisonevents` BEFORE it has a caller.
+
+### GROK — six questions, and the documentation answered three of them
+
+`docs/PROVIDER-TRUTH-FROM-DOCUMENTATION-2026-09-17.md` and
+`GROK-PROVIDER-RESEARCH{,-B}-2026-09-17.md`. Same defect as GLM first:
+`XAI_TIMEOUT = 60` clamped a `timeout=180` and killed the call - which is why
+`GROK-VS-FREE-RESEARCH-2026-09-16.md` records that the adapter "was not used".
+Raised to 300.
+
+    DOCUMENTED  per-lead sender stickiness on EmailBison - "the same Sender
+                Email will send the remaining steps for that lead" - which
+                AGREES with our own measurement of 243 leads and 0 rotations
+                taken before the page was found.
+    DOCUMENTED  the FIRST send's picker is NOT documented. No selection field
+                in the OpenAPI spec. So the human is observable, never chosen.
+    DOCUMENTED  recipient-local sending does NOT exist. No flag, no setting,
+                no lead timezone field. A marketing page claims it; the
+                researcher flagged the claim rather than passing it on.
+    DOCUMENTED  the scheduler runs "at the end of each sending day", which is
+                why 487 queued at 15:02:48Z and why MY window-opening
+                hypothesis was wrong by sixteen hours.
+    DOCUMENTED  webhooks for every event the reply watcher polls, 5 retries
+                over 24h, `/api/events` replaying 10 days.
+    DOCUMENTED  HeyReach defaults an omitted schedule to Mon-Fri 09:00-17:00
+                UTC - so 605732's 09:04:00Z first action is the window
+                opening, to the minute.
+    BY-INTEGRATOR  `accountLeadPairs` binds a lead to a `linkedInAccountId`,
+                max 100 pairs - documented by Scalekit, Cotera and the n8n
+                node, NOT by HeyReach. So LinkedIn's per-lead sender is
+                CHOSEN and email's is OBSERVED. **Two channels, two allocator
+                contracts.**
+    NEW SOURCE  a full OpenAPI spec at dedi.emailbison.com/api/
+                reference.openapi, plus llms.txt. Nothing here had read either.
+
+### QWEN — three tasks, each in its own worktree, all integrated
+
+    geo-iso-resolution            timezone resolution 21 -> 33 of 67, US
+                                  refusal intact, MEDIUM tier verified
+                                  CONSUMED by `schedulable()` rather than
+                                  merely computed. Two defects corrected in
+                                  the worker's own measurement script.
+    staged-paused-activation      8 tests pinning that whichever of two
+                                  staged campaigns activates SECOND is
+                                  refused. Zero lines changed under src/.
+    bison-webhook-ingest          a pure normaliser + idempotency key. No
+                                  server, no network import. Tenancy fails
+                                  closed on an UNSET pin. Two corrections on
+                                  review, including the residual risk that
+                                  its fallback key rests on `occurred_at`
+                                  meaning occurrence and not delivery.
+
+### The GTM comparison
+
+`docs/GTM-REPO-REVIEW-2026-09-17.md`, under one rule: a README is a claim, not
+an implementation. It earned the rule - OpenGTM's "~90 sourcing sources" are
+92 DuckDuckGo query templates, and its cross-row cache and confidence
+early-exit are not called on the workbook hot path.
+
+Four ADAPT: evidence TTL by FIELD; a cost/yield ledger as evidence for
+changing the routing policy rather than as an automatic reorder; a spend
+ceiling in MONEY not calls; connector cursors. DEFER the MCP/CLI surface.
+REJECT the workbook DAG. **Nothing we already do better gets traded** -
+reservation-before-call and account collision gating were NOT FOUND in any of
+the five.
+
+### THE SENDER-CAPACITY CHAIN, now fully mapped — three links, not one
+
+`scripts/sender_pool_census.py` and `scripts/propose_sender_attestation.py`:
+
+    1  TWELVE humans own the 225 inboxes and canonical state has never heard
+       of ONE of them. Each must be CREATED before an inbox can be attested.
+       A near-duplicate pair one edit apart holds 66 inboxes and 5.
+    2  Zero attestations, so `eligible_senders` returns [] and
+       SAFE_FOR_PRODUCTIVE = 0.
+    3  `executionguard._sender_for` refuses any row naming more than one
+       sender, so even with 1 and 2 solved a campaign holds one.
+
+All three are operator-facing or gate-facing. Documented stickiness is what
+makes the eventual pool safe: several inboxes of ONE attested human cannot
+produce a prospect who hears from two people.

@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-09-17T18:38:21+00:00",
+  "generated_at": "2026-09-17T18:46:37+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
   "branch_blindness": "Task stages in this ledger reflect master only. Tasks finished on worker branches but not yet integrated into master appear in their master stage (often TODO), not the stage the branch has moved them to. Run scripts/task173_scan.py --unintegrated for the cross-branch view.",
-  "master_head": "47fa0ae3",
-  "origin_master_head": "47fa0ae3",
+  "master_head": "89db7ba8",
+  "origin_master_head": "89db7ba8",
   "master_pushed": true,
   "tasks": [
     {
@@ -2115,11 +2115,11 @@
   "branches": [
     {
       "branch": "bison-webhook-ingest-2026-09-17",
-      "head": "27bcdb67",
-      "commits_ahead_of_master": 0,
-      "pushed": false,
-      "remote_head": null,
-      "last_commit_at": "2026-09-17T20:28:59+02:00"
+      "head": "2b8ab1aa",
+      "commits_ahead_of_master": 1,
+      "pushed": true,
+      "remote_head": "2b8ab1aa",
+      "last_commit_at": "2026-09-17T20:43:41+02:00"
     },
     {
       "branch": "geo-iso-resolution-2026-09-17",
@@ -2131,11 +2131,11 @@
     },
     {
       "branch": "master",
-      "head": "47fa0ae3",
+      "head": "89db7ba8",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "47fa0ae3",
-      "last_commit_at": "2026-09-17T20:36:37+02:00"
+      "remote_head": "89db7ba8",
+      "last_commit_at": "2026-09-17T20:45:48+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -3493,9 +3493,9 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "47fa0ae",
+      "head": "89db7ba",
       "branch": "master",
-      "uncommitted_files": 3,
+      "uncommitted_files": 1,
       "clean": false
     },
     {
@@ -3514,10 +3514,10 @@
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-4",
-      "head": "27bcdb6",
+      "head": "2b8ab1a",
       "branch": "bison-webhook-ingest-2026-09-17",
-      "uncommitted_files": 2,
-      "clean": false
+      "uncommitted_files": 0,
+      "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-5",
