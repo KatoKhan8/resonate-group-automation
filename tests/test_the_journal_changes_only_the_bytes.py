@@ -232,3 +232,71 @@ class TheBarrierCoversTheSidecar(unittest.TestCase):
             store._write_delta([], [rec("a")])
         self.assertEqual(sorted(os.listdir(store.PRODUCTION_WORK)), before,
                          "the refusal must land before the filesystem moves")
+
+
+class CompactionThroughSave(unittest.TestCase):
+    """`save` -> `_write_delta` -> `compact` had no test until it was run.
+
+    The unit tests exercise `queuejournal.compact` directly. The path that
+    actually reaches it in production is `store.save` noticing
+    `should_compact` and calling it under the lock it already holds - and a
+    400-record run at realistic record sizes never triggered it, because the
+    2.0 ratio against a 12.5 MB base needs a 25 MB journal. So the branch
+    existed, was correct, and had never executed.
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="jcompact-")
+        self.was = os.environ.get("QUEUE")
+        self.was_flag = os.environ.get("QUEUE_JOURNAL")
+        store.use_directory(self.dir)
+        os.environ["QUEUE_JOURNAL"] = "1"
+
+    def tearDown(self):
+        for name, value in (("QUEUE", self.was), ("QUEUE_JOURNAL", self.was_flag)):
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_compaction_fires_and_loses_nothing(self):
+        from src import queuejournal
+        n = 20
+        store.save([rec(f"r{i:03d}") for i in range(n)])
+
+        journal = queuejournal.path_for(store.queue_path())
+        compactions, previous = 0, 0
+        for step in range(120):
+            rows = store.load()
+            row = rows[step % n]
+            row["state"] = "verified"
+            row["_blob"] = "y" * 40000     # fat deltas reach the 1 MB floor
+            row["touched"] = step
+            store.save(rows)
+            size = os.path.getsize(journal) if os.path.exists(journal) else 0
+            if size < previous:
+                compactions += 1
+                # THE INVARIANT IS HERE, not at the end of the loop: a fold
+                # leaves the journal empty, because a journal sitting beside
+                # a base that already contains its deltas is the thing that
+                # would replay them twice. Afterwards deltas accumulate
+                # again, which is why asserting an empty journal at the END
+                # asserts the wrong property.
+                self.assertEqual(size, 0,
+                                 "compaction must empty the journal it folded")
+            previous = size
+
+        self.assertGreater(compactions, 0,
+                           "the compaction branch in _write_delta never ran")
+        final = store.load()
+        self.assertEqual(len(final), n, "compaction must not change the count")
+        ids = [r["id"] for r in final]
+        self.assertEqual(ids, sorted(ids), "compaction must not reorder")
+        self.assertEqual(len(set(ids)), n, "compaction must not duplicate")
+        self.assertTrue(all("touched" in r for r in final),
+                        "every record's last edit must survive the fold")
+        self.assertTrue(all(len(r.get("_blob", "")) == 40000 for r in final),
+                        "a folded record must keep its whole body")
+        # And the base alone - with whatever journal remains replayed over it
+        # - is still the whole estate. Checked above by `final`.
