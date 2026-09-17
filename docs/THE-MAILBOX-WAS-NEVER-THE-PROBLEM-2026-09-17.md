@@ -1,5 +1,11 @@
 # The mailbox was never the problem. It had thirteen of fifteen left.
 
+> **THIS TITLE IS WRONG AND THE CORRECTION IS AT THE BOTTOM.** Measured over
+> two hours, sender 2736 had used 2 of 15. Measured over the whole day it had
+> used at least 11. The conclusion below was drawn from a partial window and
+> is reversed by the same sampler six hours later. Read the CORRECTION section
+> before quoting anything above it.
+
 2026-09-17, measured over 1h52m of an open sending window by
 `scripts/bison_mailbox_utilisation.py`, which differences the provider's
 lifetime `emails_sent_count` into a send rate.
@@ -79,3 +85,62 @@ would still be the campaign the provider is not looking at.
 
 The estate is running at roughly 5% of its nominal 3,375/day. Capacity is not
 what is wrong here.
+
+---
+
+## CORRECTION, 2026-09-17T17:42Z — THE TITLE IS WRONG
+
+**Everything above was measured over 1h52m and the conclusion did not survive
+the rest of the day.** It is left standing rather than deleted, because the
+mistake is the useful part: a two-hour window was treated as a day.
+
+Same sampler, same mailbox, window extended to 6h44m:
+
+    window                2026-09-17T10:58Z -> 17:42Z
+    estate                531 emails from 73 of 225 mailboxes
+    sender 2736           +11   lifetime 1742 -> 1753
+
+**Sender 2736 sent ELEVEN today, not two, against a daily_limit of 15.** And
+that is a floor, not a total: sampling began at 10:58Z and whatever it sent
+between the window opening at 07:00Z and then is not counted. So 2736 is at
+eleven-of-fifteen or worse, and campaign 487 received none of them.
+
+The mailbox IS close to its cap. The contention IS the constraint. The
+paragraph above that says "the cap was not binding and the sharing was not the
+cause" was true of the first two hours and false of the day.
+
+**And it makes the 09-23 schedule make sense.** 487 needs ten slots on one day
+from a mailbox that burns eleven or more of fifteen on campaigns 327, 328 and
+352. The first day with ten free is not tomorrow. That is now the leading
+explanation for the six-day gap rather than a candidate, though still not
+proven: no route on this provider lists a mailbox's forward book.
+
+### What this changes
+
+`production_status.py` was edited at 13:00Z to stop "inferring a share from
+contention", on the strength of the two-hour number. The edit is still right
+in FORM - it points at the sampler instead of asserting a share - but its
+worked example is wrong and is corrected in the same commit as this.
+
+**The lesson is the one CLAUDE.md already states and this broke anyway:**
+an intermittent or partial measurement is diagnosed, never generalised. A send
+rate sampled across two hours of a nine-hour window is a sample, and the
+sampler was built precisely because a lifetime counter says nothing about
+today until it is differenced - then its first answer was read as if the
+differencing were finished.
+
+### A separate finding from the same sample
+
+**Fifteen of the 225 mailboxes read `status: Not connected`.** Every one has
+real history - 328 to 371 lifetime sends - and every one sent ZERO today. They
+are not capacity and they have not been capacity for some time; nothing in
+this system had noticed, because the roster reports a `daily_limit` of 15 for
+all 225 regardless of whether the mailbox can send at all.
+
+    nominal    225 x 15  = 3,375/day
+    connected  210 x 15  = 3,150/day
+    observed   531 in 6h44m, ~17% of the connected nominal
+
+That gap is an operator item: fifteen inboxes in the client's estate are
+disconnected and their reconnection is worth more than any sender the three
+uncommitted mailboxes could offer.

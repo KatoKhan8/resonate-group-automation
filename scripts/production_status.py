@@ -168,17 +168,24 @@ def email():
     # campaign will get. The count of other active claimants is what makes the
     # number readable.
     #
-    # AND CONTENTION IS NOT STARVATION, which is where the first version of
-    # this comment went too far: it concluded 487's share "today is zero"
-    # because the mailbox was shared. Measured on 2026-09-17 by
-    # `scripts/bison_mailbox_utilisation.py`, which differences the provider's
-    # lifetime counter into a send rate: over 1h52m of an open window the
-    # estate sent 94 emails from 46 of 225 mailboxes, sender 2736 sent TWO of
-    # its fifteen, and 487 received none of them while its campaign row went
-    # untouched. Thirteen were left. The cap was not binding and the sharing
-    # was not the cause - see
-    # `docs/THE-MAILBOX-WAS-NEVER-THE-PROBLEM-2026-09-17.md`. This reports the
-    # contention, which is a fact, and no longer infers a share from it.
+    # A SHARE IS MEASURED, NOT INFERRED, AND THAT CUTS BOTH WAYS. The first
+    # version of this comment inferred that 487's share "today is zero" from
+    # the mailbox being shared. The second inferred the opposite from two
+    # hours of sampling - 2736 had used 2 of its 15 and 487 still got nothing,
+    # so "the cap was not binding". Both were inferences dressed as
+    # measurements, and the second was wrong within six hours: by 17:42Z on
+    # 2026-09-17 sender 2736 read at least 11 of 15 used, and 487 had still
+    # received none of them.
+    #
+    # `scripts/bison_mailbox_utilisation.py` differences the provider's
+    # lifetime counter into a send rate, which is the only way to answer this
+    # at all - but a two-hour sample of a nine-hour window is a sample. See
+    # the CORRECTION section of
+    # `docs/THE-MAILBOX-WAS-NEVER-THE-PROBLEM-2026-09-17.md`, whose title this
+    # file is no longer allowed to believe.
+    #
+    # So this reports the contention, which is a fact, and points at the
+    # measurement rather than concluding from either direction.
     sharers = {}
     for sender_id in (out["senders"] or []):
         others = []
@@ -301,13 +308,15 @@ def main(argv=None):
                 print(f"    sender {sender_id} also serves {len(others)} "
                       f"other ACTIVE campaign(s): {others} - the daily cap is "
                       f"per MAILBOX, so this campaign competes for it")
-                print(f"      CONTENTION IS NOT STARVATION. Measured "
-                      f"2026-09-17: sender 2736 sent 2 of its 15 in a "
-                      f"two-hour open window and campaign 487 got none of "
-                      f"them, so the cap was not binding and the sharing was "
-                      f"not the cause. Read the actual movement with "
-                      f"`py -3 scripts/bison_mailbox_utilisation.py "
-                      f"--report` before concluding a mailbox is full.")
+                print(f"      A SHARE IS MEASURED, NOT INFERRED - IN EITHER "
+                      f"DIRECTION. On 2026-09-17 sender 2736 read 2 of 15 "
+                      f"used after two hours and at least 11 of 15 by the "
+                      f"end of the day, and campaign 487 received none of "
+                      f"them. Two hours is not a day and a cap is not a "
+                      f"count. Read the movement with `py -3 "
+                      f"scripts/bison_mailbox_utilisation.py --report` "
+                      f"across a FULL window before concluding anything "
+                      f"about this mailbox's room.")
     print(f"  EMAILBISON_REPLIES   = {em.get('replies')}")
     print(f"  EMAILBISON_BOUNCED   = {em.get('bounced')}")
     print(f"  EMAILBISON_FIRST_SEND= {em.get('first_send')}")

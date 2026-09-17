@@ -183,6 +183,27 @@ def main(argv=None):
     committed = [r for r in rows if r["active_campaigns"]]
     print(f"=== ESTATE === {len(rows)} inboxes, "
           f"{data['active_campaigns']} ACTIVE campaigns")
+
+    # A DISCONNECTED MAILBOX REPORTS A DAILY LIMIT AND CANNOT SEND. The roster
+    # gives every inbox `daily_limit: 15` whatever its status, so a nominal
+    # capacity computed from the row count counts inboxes that have not sent in
+    # some time and will not send today. Measured 2026-09-17: fifteen of 225
+    # read `Not connected`, each with 328-371 lifetime sends, and every one of
+    # them moved ZERO over a 6h44m window while 73 others were sending.
+    # Reconnecting those fifteen is worth more than any uncommitted mailbox in
+    # this estate.
+    dead = [r for r in rows if str(r["status"]) != "Connected"]
+    live = [r for r in rows if str(r["status"]) == "Connected"]
+    nominal = sum(int(r["daily_limit"] or 0) for r in rows)
+    real = sum(int(r["daily_limit"] or 0) for r in live)
+    print(f"  CONNECTED       {len(live)} inboxes, {real}/day")
+    print(f"  NOT CONNECTED   {len(dead)} inboxes, {nominal - real}/day that "
+          f"the roster counts and nothing can send")
+    if dead:
+        by_status = collections.Counter(str(r["status"]) for r in dead)
+        print(f"    statuses: {dict(by_status)}")
+        print(f"    lifetime sends: "
+              f"{sorted(r['lifetime_sends'] or 0 for r in dead)}")
     if data["unreadable_campaigns"]:
         print(f"  UNREADABLE campaigns: {len(data['unreadable_campaigns'])} - "
               f"their senders are NOT counted as free")
