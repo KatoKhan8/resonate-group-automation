@@ -74,6 +74,10 @@ STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    # this pair was found.
                    "TAG_OUTBOX", "AGENCY_DNC", "SIGNALS", "GTM",
                    "DISCOVERY", "CLIENT_REVIEW",
+                   # The persisted crawl cache. Not row state, but written
+                   # beside the queue and able to be left pointing at the
+                   # real directory by a stale override.
+                   "CRAWL_CACHE",
                    # The prospect-facing action ledger. Of everything in this
                    # tuple it is the one a test must never write into the real
                    # `work/`: a stray reservation there would count against a
