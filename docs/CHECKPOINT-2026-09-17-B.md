@@ -186,3 +186,51 @@ Not a pause, a re-approval, a sender change or a re-activation. The queue is
 the first real artefact this campaign has produced. See
 `docs/487-IS-QUEUED-AND-THE-HYPOTHESIS-IS-WRONG-2026-09-17.md`, and watch
 `SCHEDULE-MOVED` - canary 451's row moved once overnight before firing.
+
+---
+
+## ADDENDUM 2, 2026-09-17T18:10Z — CAPACITY, AND THREE MORE OPERATOR ITEMS
+
+`docs/REAL-AVAILABLE-CAPACITY-2026-09-17.md` is the P3 answer, measured over
+6h44m of a live sending day and grouped by attested HUMAN, which is the only
+unit capacity can be planned in here:
+
+    estate       3,150/day connected, 540 used, 2,610 headroom, 137 IDLE
+                 mailboxes, and NOT ONE inbox reached its limit
+    487's human  6 inboxes, 90/day, 51 used, ZERO idle - its sender 2736 is
+                 the second busiest inbox that person owns
+    three humans 17 connected inboxes each: 51 mailboxes, 765 emails a day,
+                 entirely untouched
+
+That is why 487 is scheduled for 2026-09-23 and it is the price of having no
+per-lead attribution: the capacity exists and belongs to people this system
+cannot name.
+
+**The roster was eight days stale and has been rebuilt** (email only). Fifteen
+inboxes had gone `Connected -> Not connected` while canonical state called
+them `active: true, health: "ok"`. Harmless only because nothing has an owner;
+it would have bitten on the first day attestation worked. Ready capacity after
+the rebuild is **2,790/day**, not 3,150 and not 3,375. LinkedIn is four days
+stale with 14 drifted accounts and one seat storing `daily_limit: 40` against
+a provider-reported ZERO - **not rebuilt**, because `build_linkedin` drops any
+seat missing from the operator's allowlist. See
+`docs/THE-ROSTER-IS-A-SNAPSHOT-NOBODY-REFRESHES-2026-09-17.md`.
+
+### Operator items now standing, in order of what they unlock
+
+    1  APPROVE some of the 17 near-miss contacts. Still the only thing that
+       converts anybody this week.
+    2  OPEN the Deliverable leg or name another secondary verification vendor.
+    3  RECONNECT 15 email inboxes reading `Not connected` - each has 328-371
+       lifetime sends, so each used to work.
+    4  Look at 24 inboxes DEGRADED on a lifetime bounce rate at or above 2%.
+    5  Supply the LinkedIn seat allowlist so that roster can be refreshed too.
+
+### Two dated experiments that must not be reset
+
+    2026-09-18  605732's first connection request. Falsifier: if the 19th
+                opens with all three leads still `None` and `lastActionTime`
+                unmoved since the 17th, the graph explanation is wrong.
+    2026-09-23  487's ten scheduled sends. DO NOT pause, re-approve, change
+                the sender on, or re-activate 487 before then. The 23rd is
+                itself a measurement of whether a scheduled date here holds.
