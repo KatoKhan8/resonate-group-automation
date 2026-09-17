@@ -176,8 +176,9 @@ greeting line exists.
 
 **5. Is the sender identified in a signature?**
 
-**FAIL.** 0 of 70 bodies contain a sender name (Bojan Rendulic,
-Bernarda Vrbat), email domain (dont<client-e1c53a>.com), or closing
+**FAIL.** 0 of 70 bodies contain a sender name (either of the two humans
+whose inboxes 481 was attached to), email domain (dont<client-e1c53a>.com),
+or closing
 formula ("Regards", "Best,", "Sincerely", "Thanks,"). Bodies end with
 a question or a generic closing ("Thank you for your time.", "I
 appreciate your time and consideration. Thank you.") but never

@@ -47,7 +47,7 @@ THE THREE CONSEQUENTIAL WRITES, IN ORDER, EACH READ BACK:
                       anyway.
 
 WHICH INBOX, AND WHY THIS ONE. All three are identical in state. 3941 is
-Bernarda Vrbat, and that human already sends for Productive in this workspace
+human-9e58861fb87e, and that human already sends for Productive in this workspace
 under 3948 - the inbox behind campaign 451's single delivered email. A reply
 landing with a name the estate already knows is coherent; introducing a new
 human to save a coin toss is not.

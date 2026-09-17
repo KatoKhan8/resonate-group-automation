@@ -378,7 +378,7 @@ KEYS: campaign, campaign_id, clicks, email_body, email_subject, id,
       interested, lead, opens, raw_message_id, replies, scheduled_date,
       scheduled_date_local, sender_email, sent_at, sequence_step_id,
       status, thread_reply, unique_opens, unique_replies
-sender_email -> {"id": 3437, "name": "Bojan Rendulic",
+sender_email -> {"id": 3437, "name": "human-c62bbb200b21",
                  "email": "<sender-2736-address>", ...}
 status       -> "scheduled"          (i.e. named BEFORE it is sent)
 ```
@@ -408,15 +408,15 @@ this provider that can say which inbox any of its ten leads will send from.**
 `/sender-emails` (`sender_emails` **:121-194**, complete-inventory enforced,
 225/225 returned with `meta.total: 225`) carries a **display name** per inbox.
 Across the estate there are **12 distinct display names over 225 inboxes**
-(`Kresimir Simicic` 66, `Bernarda Vrbat` 58, `Riley Parker` 17, `Morgan Ellis`
-17, `Casey Wright` 17, `Ivan Mamic` 13, `Fran Vizintin` 12, `Tomislav Car` 11, …).
+(`human-7cc85aecf642` 66, `human-9e58861fb87e` 58, `human-013d683eec7a` 17, `human-083df9628156`
+17, `human-7798a10e783c` 17, `human-a8d24efdbbaa` 13, `human-2b4e867056bc` 12, `human-35ecf4f32d2f` 11, …).
 
 The two inboxes bound to campaign 487:
 
 | inbox | display name | address | health (roster) |
 |---|---|---|---|
-| **2736** | **Bojan Rendulic** | <sender-2736-address> | `ok` |
-| **3941** | **Bernarda Vrbat** | <sender-3941-address> | `warming` |
+| **2736** | **human-c62bbb200b21** | <sender-2736-address> | `ok` |
+| **3941** | **human-9e58861fb87e** | <sender-3941-address> | `warming` |
 
 **These are two different people.** Campaign 487 as configured would send its
 ten prospects from two different humans, chosen by the provider, with no record
@@ -885,11 +885,11 @@ lead's `lead_campaign_data` reads `sending_paused`). Adopting would mean
 inventing.
 
 Under Phase A (4.4) the campaign fails on clause 3: `{resolve_owner(2736),
-resolve_owner(3941)}` is `{Bojan Rendulic, Bernarda Vrbat}` — two humans. The
+resolve_owner(3941)}` is `{human-c62bbb200b21, human-9e58861fb87e}` — two humans. The
 operator's decision on 487 therefore has exactly two safe shapes:
 
 - **(a)** Bind only inboxes belonging to one attested human, attest them, then
-  activate. Bernarda Vrbat holds 58 inboxes in this estate, which is ample
+  activate. human-9e58861fb87e holds 58 inboxes in this estate, which is ample
   capacity under one name; 2736 (Bojan) and 3941 (Bernarda) cannot both stay.
   Note 3941 is `health: warming` and is refused by `executionguard.py:642`
   regardless — that check stays.
@@ -940,7 +940,7 @@ looser only on the thing that does not:
 
 Campaign 487 is the case in point: under the old rule it is refused for naming
 two ids; under this fallback it is refused for naming **two people**, which is
-the actual harm, and it would be *permitted* to name six of Bernarda Vrbat's
+the actual harm, and it would be *permitted* to name six of human-9e58861fb87e's
 inboxes — more capacity, under a stronger guarantee.
 
 What must be written down beside it, in `PRODUCT-GAPS.md`, without softening:

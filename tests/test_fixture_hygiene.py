@@ -85,6 +85,21 @@ FORBIDDEN_NAMES = (
     "adcreations", "321webmarketing", "20northmarketing", "1secondleads",
     "28row", "adblend", "anewagencyworld", "aubryandco", "arcoagency",
     "thirtythree-usa", "goproductive", "gonetnada", "trynetnada",
+    # THE CLIENT'S OWN SENDING ROSTER, added 2026-09-17, and it is the gap
+    # this list had rather than an extension of its scope. Every name above
+    # is a PROSPECT or one of ours; none is a person who SENDS. So on
+    # 2026-09-17 three tracked files - a design document, a task result and
+    # `attach_sender_to_487.py` - named the ten humans who own the 225 inboxes,
+    # and all thirteen assertions here passed. A guard that knows the people
+    # we write TO and not the people we write AS is half a guard.
+    #
+    # Surnames only, matched as substrings, which is the same trade the block
+    # above already makes: this file has to name what it forbids in order to
+    # forbid it, and these names are already in the repository's history.
+    # `scripts/email_sender_estate.py` prints the roster live for anyone
+    # holding the credential, which is where it belongs.
+    "vrbat", "simicic", "simcic", "rendulic", "mamic", "mamić",
+    "vizintin", "vižintin", "zrncevic", "zrnčević", "tomislav car",
 )
 
 # Figures read from a real provider account. A count is not anonymous when it
