@@ -180,6 +180,13 @@ def main(argv=None):
                         help="report movement on the existing file and exit")
     parser.add_argument("--watch-id", action="append", default=[],
                         help="sender id to report explicitly, repeatable")
+    # FOR A BACKGROUND MONITOR, where every printed line is a notification. A
+    # successful sample is not news - it is the file growing, which `--report`
+    # reads whenever somebody asks. A FAILED sample IS news, and stays loud:
+    # a sampler that has silently stopped reading the provider and a mailbox
+    # estate that has stopped sending look identical in the output file.
+    parser.add_argument("--quiet", action="store_true",
+                        help="print only failures and the closing report")
     args = parser.parse_args(argv)
 
     watch = args.watch_id or ["2736", "3941", "3930", "3919"]
@@ -192,8 +199,9 @@ def main(argv=None):
         record = sample()
         append(record)
         if record.get("ok"):
-            print(f"[{record['at']}] SAMPLE ok  read={record['read']} "
-                  f"total={record['total']}", flush=True)
+            if not args.quiet:
+                print(f"[{record['at']}] SAMPLE ok  read={record['read']} "
+                      f"total={record['total']}", flush=True)
         else:
             print(f"[{record['at']}] SAMPLE ERROR {record['error']}",
                   flush=True)

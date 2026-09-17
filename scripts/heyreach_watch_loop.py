@@ -12,6 +12,8 @@ WHAT IT EMITS, and the list is deliberately wider than the good news:
     SEND        a lead's leadMessageStatus reached MessageSent/MessageReply
     CONNECT     a lead's leadConnectionStatus reached ConnectionSent/Accepted
     REPLY       a lead replied
+    PROGRESS    the provider acted on a lead - `lastActionTime` moved - WITHOUT
+                any of the three lifecycle fields changing
     LEAD-ERROR  a lead carries an error_code, or its status went to Failed
     STATUS      the campaign left IN_PROGRESS (paused, finished, failed)
     COHORT      the enrolled lead count moved - the audience changed under us
@@ -20,6 +22,16 @@ WHAT IT EMITS, and the list is deliberately wider than the good news:
 Silence means "nothing changed", and that is only trustworthy because a
 failure has its own line. A watcher that emits only on success is
 indistinguishable from a watcher whose campaign died an hour ago.
+
+WHY `PROGRESS` EXISTS, added 2026-09-17. The three lifecycle fields describe
+connection and message and nothing else, so a campaign working through
+`CHECK_IS_CONNECTION`, `VIEW_PROFILE` and `FOLLOW` - thirty hours of this
+sequence's graph, before the connection request - produced no line at all.
+A campaign being worked and a campaign that died read IDENTICALLY for the
+whole ramp. `lastActionTime` is the only per-lead signal this provider offers
+that the campaign is alive, and until now nothing read it. It is not a send
+and it is never reported as one. See
+`docs/THE-LINKEDIN-STALL-IS-THE-GRAPH-2026-09-17.md`.
 """
 import argparse
 import hashlib
@@ -57,6 +69,11 @@ def snapshot():
             "connection": str(raw.get("leadConnectionStatus") or "None"),
             "campaign": str(raw.get("leadCampaignStatus") or ""),
             "error": lead.get("error_code"),
+            # `lead_state` already resolves this to lastActionTime, falling
+            # back to failedTime. Carried verbatim: it is compared for
+            # movement and never parsed, so a format this system has not seen
+            # still reports progress rather than raising.
+            "at": lead.get("at"),
         }
     return {"status": str(row.get("status") or "").upper(),
             "total": total, "leads": leads}
@@ -116,6 +133,15 @@ def main(argv=None):
                 emit(f"LEAD-ERROR 605732 {phash} error={now['error']}")
             if now["campaign"] == "Failed" and was.get("campaign") != "Failed":
                 emit(f"LEAD-ERROR 605732 {phash} campaignStatus=Failed")
+            # LAST, and only when nothing above fired: the lifecycle lines
+            # already say more than this one can. On its own it says the
+            # provider did something to this lead that connection and message
+            # status cannot express - a profile view, a follow, a check.
+            if (now.get("at") != was.get("at")
+                    and now["message"] == was.get("message")
+                    and now["connection"] == was.get("connection")):
+                emit(f"PROGRESS 605732 {phash} lastAction={now.get('at')} "
+                     f"(no send; campaignStatus={now['campaign']})")
 
         previous = current
         time.sleep(args.interval)

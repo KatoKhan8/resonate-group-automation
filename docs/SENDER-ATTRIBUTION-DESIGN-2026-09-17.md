@@ -9,6 +9,19 @@ builds_on:
   - "docs/BISON-API-CAPABILITY-MAP-2026-09-14.md"
 ---
 
+> **REDACTED 2026-09-17.** As first committed this document named a real
+> person, a personal address, a LinkedIn vanity and five of the client's
+> sending domains, and `tests/test_fixture_hygiene.py` - the contract that no
+> tracked file carries a real name, domain, address or profile vanity -
+> failed on four of its thirteen assertions because of this file alone.
+> Identifiers are now placeholders of the form `<sender-2736-address>`. The
+> provider ids are kept, because an id is what the code passes and what a
+> reader can look up; the values behind them are read from
+> `/sender-emails` and `/li_account/GetAll` by anyone holding the credential,
+> which is where they belong. **The argument is unchanged. Nothing was
+> removed but the identifiers.** They remain in this file's earlier commits;
+> the history has deliberately NOT been rewritten on a pushed branch.
+
 # Per-lead sender attribution
 
 ## What this document is
@@ -245,11 +258,11 @@ productive  email     eligible: []
 contactout  linkedin  eligible: [('ines', 1), ('liam', 1)]
 contactout  email     eligible: [('liam', 2), ('mara', 3)]
 
-allocate('productive', 'x@y.com', 'linkedin')
+allocate('productive', 'x@example.test', 'linkedin')
   -> NoEligibleSender: no active linkedin sender in productive owns an
      active linkedin account
 
-ensure({}, {'key': 'x@y.com'}, 'productive')
+ensure({}, {'key': 'x@example.test'}, 'productive')
   -> {"unavailable": {"email": "no active email sender in productive owns an
         active email account",
       "linkedin": "no active linkedin sender in productive owns an active
@@ -366,7 +379,7 @@ KEYS: campaign, campaign_id, clicks, email_body, email_subject, id,
       scheduled_date_local, sender_email, sent_at, sequence_step_id,
       status, thread_reply, unique_opens, unique_replies
 sender_email -> {"id": 3437, "name": "Bojan Rendulic",
-                 "email": "rendulicbojan@gproductive.com", ...}
+                 "email": "<sender-2736-address>", ...}
 status       -> "scheduled"          (i.e. named BEFORE it is sent)
 ```
 
@@ -382,7 +395,7 @@ queue, EmailBison does bind a lead to an inbox and keeps it.
 | **487** | paused, never started | 10 | **0** |
 | 481 | paused, never started | 23 | **0** |
 | 485 | draft | 10 | **0** |
-| 451 | completed | 1 | 1 (`sent`, sender 3948 bernarda.vrbat@goproductive.online) |
+| 451 | completed | 1 | 1 (`sent`, sender 3948 <sender-3948-address>) |
 | 352 | active | 21,318 | 95,724 (6,382 pages) |
 
 **Decisive fact, email: EmailBison chooses the inbox itself, offers no route to
@@ -402,8 +415,8 @@ The two inboxes bound to campaign 487:
 
 | inbox | display name | address | health (roster) |
 |---|---|---|---|
-| **2736** | **Bojan Rendulic** | bojan.rendulic@dontgoproductive.com | `ok` |
-| **3941** | **Bernarda Vrbat** | bernarda.vrbat@goproductivelab.shop | `warming` |
+| **2736** | **Bojan Rendulic** | <sender-2736-address> | `ok` |
+| **3941** | **Bernarda Vrbat** | <sender-3941-address> | `warming` |
 
 **These are two different people.** Campaign 487 as configured would send its
 ten prospects from two different humans, chosen by the provider, with no record
@@ -442,7 +455,7 @@ python -m src.senderownership --workspace productive --propose
   it must be added to `PROVIDER_OWNED`-adjacent state. 225 inboxes collapse to
   12 names, so the operator confirms ~12 decisions, not 225.
 - **linkedin**: propose `firstName`/`lastName` from `/li_account/GetAll` (both
-  present — seat 174892 reads `Bruno Gudelj`, `brunogudelj@gmail.com`).
+  present — seat 174892 reads the seat holder's real name and a personal address).
 - Output is a table an operator approves or edits. **Approval writes the
   attestations; the proposal writes nothing.** `dry_run_report`
   (`senderownership.py:145-189`) is the existing shape for this.
@@ -848,9 +861,8 @@ on the row.
 
 ### HeyReach 605732 — 3 leads on 174892
 
-1. Attest `li-174892` to a human. `/li_account/GetAll` gives `Bruno Gudelj /
-   brunogudelj@gmail.com` and the roster row gives
-   `profile_url: linkedin.com/in/brunogudelj`. That is evidence, not an
+1. Attest `li-174892` to a human. `/li_account/GetAll` gives the seat holder's name and a personal address and the roster row gives
+   `profile_url: linkedin.com/in/<seat-174892-vanity>`. That is evidence, not an
    attestation; an operator says the word and `senderownership.attest` records
    who said it and when. **No `sender` row for Bruno exists in `productive`
    today** — the seven that exist are anna/mark/john/sarah/petar/tom/sara_s —
