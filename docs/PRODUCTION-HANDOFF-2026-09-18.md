@@ -228,6 +228,42 @@ Three routes were checked and all buy nothing. Do not redo them.
 
 ---
 
+## 5b. THE REPLY WATCHER WAS BYPASSING THE TENANCY PIN
+
+Found by checking whether the monitor armed overnight was actually protecting
+anything. `work/replywatch.json` read **"last succeeded 2026-09-17T08:21Z"
+after three hours of polling at five-minute intervals** - about 36 cycles that
+left no trace.
+
+The polling was real. `poller.run` returned full reports in 1.9s and 4.6s,
+not skipped. The fault was that `scripts/reply_watch_loop.py` called
+`poller.run` DIRECTLY instead of `replywatch.poll_once`, and the wrapper is
+where four things live:
+
+    THE TENANCY PIN   poll_once passes expect=expected_workspace(provider),
+                      and poller.run skips the workspace check entirely when
+                      `expect` is None (poller.py:441). A credential pointed
+                      at another estate would have had that estate's replies
+                      ingested and applied to OUR records.
+    the per-provider lock
+    the status file    the only way anybody knows reply protection is alive
+    _alert             says ONCE that reply protection has stopped
+
+**Fixed and verified**: status now moves every cycle, both providers healthy,
+and heyreach inspected 38 events and matched none - correct, they belong to
+the client's own campaigns and identity separation kept them out.
+
+**AND THERE WERE ELEVEN MONITOR PROCESSES RUNNING**, not four: three reply
+watchers, three bison, three heyreach and two mailbox samplers, accumulated
+across sessions. With the unlocked code above, three reply watchers could poll
+one provider concurrently and race on its checkpoint. All eleven were stopped
+and exactly one of each re-armed. **Stopping them also killed eight
+harness-level Monitor tasks earlier sessions had registered around the same
+scripts** - they were duplicates of these same loops, but a session expecting
+those notifications should know they are gone.
+
+---
+
 ## 6. REPLY SAFETY — a real defect found and fixed
 
 **`bisonevents.normalise` rejected 100% of real provider events.** Measured by
@@ -347,6 +383,20 @@ check and BOTH loss guards would have compared against stale state; the first
 save with no base file left state in a sidecar while `queue.jsonl` stayed
 absent; and `digest()` hashed only the base, so `expect_digest` would have
 compared identical values across somebody else's write.
+
+### Bounded concurrency — the primitive, unwired
+
+`src/gather.py`. decide-serially / fetch-concurrently / apply-serially IN
+INPUT ORDER, which is what keeps the waterfall ledger byte-identical to a
+serial run. No caller; `enrich.run` is untouched.
+
+**Read the module docstring before wiring it.** A timed-out call STILL
+REACHED THE PROVIDER AND STILL COST A CREDIT - `timeout` abandons the wait,
+it does not cancel the request. If APPLY charges only for `ok`, a pass with
+fifty timeouts under-counts the ledger by fifty credits and
+`costs.reconcile()` reports clean against a wrong number. Enforce the timeout
+at the HTTP layer instead, where it aborts the request; the provider modules
+already carry `TIMEOUT = 25`.
 
 ### Crawl cache — cross-cohort reuse, landed
 
