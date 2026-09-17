@@ -1,6 +1,6 @@
 # Grok provider research
 
-2026-09-17T18:22:11.161301+00:00. One call per question, web_search enabled.
+2026-09-17T20:43:35.106111+00:00. One call per question, web_search enabled.
 
 **CLASSIFY BEFORE BELIEVING.** Every claim below is the model's, and a confident answer is not a documented one. A point is
 DOCUMENTED only where a source URL states it, OBSERVED only where this estate's own provider responses show it, and
@@ -8,243 +8,228 @@ HYPOTHESIS or UNKNOWN otherwise. Nothing here is provider truth until a readback
 
 ---
 
-## sender_selection
+## bulk
 
-`grok-4.6`, Nones, 88 search URLs, usage {'prompt_tokens': 693729, 'completion_tokens': 6348, 'total_tokens': 700077, 'cached_tokens': 549376, 'reasoning_tokens': 3519, 'cost_in_usd_ticks': 13979640000, 'num_sources_used': 0, 'num_server_side_tools_used': 39}.
+`grok-4.6`, Nones, 68 search URLs, usage {'prompt_tokens': 416634, 'completion_tokens': 5996, 'total_tokens': 422630, 'cached_tokens': 321408, 'reasoning_tokens': 2521, 'cost_in_usd_ticks': 9242640000, 'num_sources_used': 0, 'num_server_side_tools_used': 30}.
 
-I'll look up EmailBison's official API docs and campaign/sender-account pages so every answer is sourced, not inferred.
-The campaign overview already states same-sender stickiness after the first send. Next I’ll pull the OpenAPI spec and campaign/scheduled-email pages for how the first sender is chosen and what the API returns.
-I’ll inspect campaign-create, scheduled-email, and sender-email OpenAPI fields next, plus the HTML docs for those same endpoints.
-OpenAPI JSON wasn’t at the docs URL; I’ll pull the live spec and search it for sender-selection, scheduled-email, and campaign-update fields.
-The spec is too large to read whole; I’ll regex-search it for scheduled-email objects, `sender_email_id`, and campaign-update parameters.
-Scheduled-email objects already include a nested `sender_email`. I’ll now check campaign-update, lead-attach, and related endpoints for any pin/rotation parameter.
-I still need campaign GET, lead scheduled-email, and webhook payload fields so the “which sender” answer is complete.
-One last lookup: the sequence-step send-test path, so I can name the only documented `sender_email_id` request field exactly.
-Sources: [docs.emailbison.com/campaigns/overview](https://docs.emailbison.com/campaigns/overview), [OpenAPI spec](https://dedi.emailbison.com/api/reference.openapi).
+I'll look up EmailBison's official API docs first, then pull the bulk endpoints, per-request limits, and rate-limit behavior only from those pages.
+Official docs and OpenAPI are at docs.emailbison.com. Next I’ll pull the index, pagination, lead/campaign/sender pages, and the OpenAPI spec for bulk endpoints and limits.
+I’ll open the pagination, lead-create, campaign-attach, sender, tags, and OpenAPI pages next and search them for bulk fields and numeric limits.
+Pagination and bulk CSV/create are documented. I’ll search the OpenAPI spec next for maxItems, rate limits, and other bulk array endpoints.
+The live OpenAPI is at dedi.emailbison.com. I’ll search that spec for bulk, attach, rate-limit, and max-item fields.
+OpenAPI lists several bulk lead/sender endpoints. I’ll pull their request bodies and any documented item/rate limits next.
+Sources: [docs.emailbison.com](https://docs.emailbison.com/llms.txt), [OpenAPI](https://dedi.emailbison.com/api/reference.openapi), [emailbison.com/developers](https://emailbison.com/developers).
 
-### 1. How is the sender chosen?
-**First send across multiple attached inboxes: NOT DOCUMENTED.** Docs never say round-robin, random, weighted, ESP-matched, or any other picker. OpenAPI has no rotation/sticky/selection field.[[1]](https://dedi.emailbison.com/api/reference.openapi)
+## 1. Endpoints that accept bulk input
 
-What *is* documented after the first send: **per-lead sticky.** “Once a lead has been sent an email in a campaign, the same Sender Email will send the remaining steps for that lead, as well as emails sent to the lead from a followup campaign.”[[2]](https://docs.emailbison.com/campaigns/overview)
+**Create many leads**
+- `POST /api/leads/multiple` — body field `leads` (array of lead objects). Required per item: `first_name`, `email`. Optional: `last_name`, `title`, `company`, `notes`, `custom_variables`. Returns `201`. Description: “Create multiple lead records in a single request (limit 500 per request)”. Personal domains are skipped unless enabled. [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="83"}`
+- `POST /api/leads/bulk/csv` — `multipart/form-data`. Required: `name` (lead list name), `csv` (file), `columnsToMap`. Optional: `existing_lead_behavior` (`put` | `patch` | `skip`, default `put`). [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="88"}` Same path in the docs guide. [Adding Leads](https://docs.emailbison.com/leads/creating-a-lead.md) `{render_inline_citation citation_id="57"}`
+- Single create is `POST /api/leads` (one lead, not bulk). [Adding Leads](https://docs.emailbison.com/leads/creating-a-lead.md) `{render_inline_citation citation_id="57"}`
 
-Related, not sender-selection:
-- Multiple inboxes are just attached as a pool via `POST /api/campaigns/{campaign_id}/attach-sender-emails` body `sender_email_ids` (array). No selection mode. https://docs.emailbison.com/campaigns/adding-and-removing-sender-emails
-- “Random pattern” in Smart Scheduling is **send time inside the campaign `schedule`**, not which inbox. https://docs.emailbison.com/campaigns/overview
-- ESP matching is explicitly **unopinionated**; Bison tags the **lead’s** ESP and leaves matching vs mismatching to you. It does not say it auto-picks a sender by ESP. https://docs.emailbison.com/campaigns/overview
+**Attach many leads to a campaign**
+- `POST /api/campaigns/{campaign_id}/leads/attach-leads` — required `lead_ids` (array of integers). Optional `allow_parallel_sending` (boolean: force-add leads already “In Sequence” in other campaigns). Active-campaign adds are cached and synced every 5 minutes. [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="86"}` [Adding Leads to a Campaign](https://docs.emailbison.com/campaigns/adding-leads-to-a-campaign.md) `{render_inline_citation citation_id="58"}`
+- `POST /api/campaigns/{campaign_id}/leads/attach-lead-list` — required `lead_list_id` (integer). Attaches an existing list, not a raw ID array. [Adding Leads to a Campaign](https://docs.emailbison.com/campaigns/adding-leads-to-a-campaign.md) `{render_inline_citation citation_id="58"}`
 
-### 2. Multi-step sequence: same inbox or mixed?
-**Same inbox for remaining steps** after that lead has already been sent one campaign email. Same inbox also used for later **followup-campaign** emails to that lead. https://docs.emailbison.com/campaigns/overview
+**Update many leads**
+- `POST /api/leads/create-or-update/multiple` — body `leads` (array). Optional `existing_lead_behavior`: `put` (replace all fields including custom variables; omitted fields cleared) or `patch` (only update passed fields; default `put`). Description: “limit 500 per request”. [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="83"}`
+- `PATCH /api/leads/bulk-update-status` — required `lead_ids` (array of integers) and `status` (`verified` | `unverified` | `unknown` | `unsubscribed` | `risky` | `inactive`). [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="83"}`
+- CSV re-upload: docs say leads can be updated by uploading the same CSV with new values if the email does not change (`POST /api/leads/bulk/csv` + `existing_lead_behavior`). [Leads overview](https://docs.emailbison.com/leads/overview.md) `{render_inline_citation citation_id="61"}`
+- Single-lead update is `PUT /api/leads/{lead_id}` / `POST /api/leads/create-or-update/{lead_id}` — not bulk. [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="80"}`
 
-Whether two different inboxes could ever send step 1 vs step 2 *before* any email has gone out: **NOT DOCUMENTED** (docs only bind after the first send).
+**Add many senders**
+- `POST /api/sender-emails/bulk` — “Bulk add sender emails”. `multipart/form-data`, required field `csv` (binary). [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="84"}`
+- Docs page also names `POST /api/sender-emails/imap-smtp` with `csv` and `multipart/form-data`, but the curl example hits `/api/sender-emails/bulk`. OpenAPI defines `POST /api/sender-emails/imap-smtp` as **Create IMAP/SMTP Email Account** (single). [Adding Sender Emails](https://docs.emailbison.com/email-accounts/adding-accounts.md) `{render_inline_citation citation_id="59"}` [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="90"}`
+- Attach existing senders to a campaign: `POST /api/campaigns/{campaign_id}/attach-sender-emails` — required `sender_email_ids` (array). [Adding and Removing Sender Emails](https://docs.emailbison.com/campaigns/adding-and-removing-sender-emails.md) `{render_inline_citation citation_id="63"}` [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="87"}`
 
-### 3. Setting / field / API param to pin sender per lead or thread?
-**No documented campaign/lead/thread pin.**
+Related array endpoints (not in your four cases): `POST /api/tags/attach-to-leads` (`tag_ids`, `lead_ids`); `PATCH /api/sender-emails/signatures/bulk` and `PATCH /api/sender-emails/daily-limits/bulk` (`sender_email_ids`). [Attaching Tags](https://docs.emailbison.com/tags/attaching-tags.md) `{render_inline_citation citation_id="60"}` [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="81"}`
 
-Checked request bodies:
-- `POST /api/campaigns` — `name` (required), optional `type` (`outbound` | `reply_followup`). No sender field. https://dedi.emailbison.com/api/reference.openapi
-- `PATCH /api/campaigns/{id}/update` — `name`, `max_emails_per_day`, `max_new_leads_per_day`, `daily_max_sends_per_receiving_domain`, `plain_text`, `open_tracking`, `reputation_building`, `can_unsubscribe`, `include_auto_replies_in_stats`, `sequence_prioritization` (`followups` | `new_leads`). No sender field. https://dedi.emailbison.com/api/reference.openapi
-- `POST /api/campaigns/{campaign_id}/attach-sender-emails` — only `sender_email_ids`. https://docs.emailbison.com/campaigns/adding-and-removing-sender-emails
-- `POST /api/campaigns/{campaign_id}/leads/attach-leads` — `lead_ids`, optional `allow_parallel_sending`. No `sender_email_id`. https://docs.emailbison.com/campaigns/adding-leads-to-a-campaign
-- No `PATCH` on scheduled emails in the spec. https://dedi.emailbison.com/api/reference.openapi
+## 2. Documented per-request limits
 
-The **only** request field that chooses a sender is a **test send**, not campaign traffic:
+| Limit | Documented value | Where |
+|---|---|---|
+| JSON bulk create `POST /api/leads/multiple` | **500 leads per request** | [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="83"}` |
+| JSON bulk upsert `POST /api/leads/create-or-update/multiple` | **500 leads per request** | [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="83"}` |
+| CSV upload `POST /api/leads/bulk/csv` | **50,000 leads per CSV** | [Adding Leads](https://docs.emailbison.com/leads/creating-a-lead.md) `{render_inline_citation citation_id="57"}` |
+| Campaign / CSV capacity | **CSVs and campaigns limited to 50,000 leads at once** | [Leads overview](https://docs.emailbison.com/leads/overview.md) `{render_inline_citation citation_id="61"}` |
+| List page size | **15 entries per page** (`meta.per_page`: 15). Query `page`. Cursor: `pagination_type=cursor` + `cursor`. Docs do **not** document a `per_page` request parameter you can raise. | [Pagination](https://docs.emailbison.com/get-started/pagination.md) `{render_inline_citation citation_id="56"}` |
+| `lead_ids` on attach-leads / bulk-update-status | **NOT DOCUMENTED** (array, no maxItems) | [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="86"}` |
+| `sender_email_ids` on attach-sender-emails | **NOT DOCUMENTED** (array, no maxItems) | [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="87"}` |
+| Rows in sender CSV `POST /api/sender-emails/bulk` | **NOT DOCUMENTED** | [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="84"}` |
 
-`POST /api/campaigns/sequence-steps/{sequence_step_id}/test-email`  
-required: `sender_email_id` (“The ID of the sender email to send from.”), `to_email`; optional `use_dedicated_ips`. https://dedi.emailbison.com/api/reference.openapi
+## 3. Rate limits and 429 behaviour
 
-`sender_email_id` on `GET /api/campaigns/{campaign_id}/replies` and `GET /api/leads/{lead_id}/replies` is a **filter**, not a pin. https://docs.emailbison.com/master-inbox/fetching-replies.md
+**Numeric rate in API docs / OpenAPI:** NOT DOCUMENTED. No rate-limit, 429, or retry-after schema in [OpenAPI](https://dedi.emailbison.com/api/reference.openapi) `{render_inline_citation citation_id="82"}` or in [docs.emailbison.com pagination/auth](https://docs.emailbison.com/get-started/pagination.md).
 
-### 4. What the API returns for which sender sent / will send
-Scheduled-email objects include a nested **`sender_email`** object (`id`, `name`, `email`, plus account fields). Present on both unsent (`status: scheduled` / `sending_paused`, `sent_at: null`) and sent records. https://dedi.emailbison.com/api/reference.openapi
+**Vendor marketing / developers pages (not the API reference):**
+- “Standard limits apply per key. Handle 429 and retry after the window indicated by headers.” `{render_inline_citation citation_id="65"}`
+- On 429 Too Many Requests, documented JSON: `{"error": "rate_limited", "retry_after": 8}` — [Developers](https://emailbison.com/developers) `{render_inline_citation citation_id="65"}`
+- “Up to 3000 requests per minute via API uploads” — [Unlimited Lead Storage](https://emailbison.com/features/unlimited-leads-storage) `{render_inline_citation citation_id="71"}`
 
-| Endpoint | Sender identity in response |
-|---|---|
-| `GET /api/scheduled-emails` | nested `sender_email` |
-| `GET /api/scheduled-emails/{id}` | nested `sender_email` |
-| `GET /api/campaigns/{campaign_id}/scheduled-emails` | nested `sender_email` |
-| `GET /api/leads/{lead_id}/scheduled-emails` | top-level `sender_email_id` **and** nested `sender_email` |
-
-Lead scheduled-email example also has `campaign_id`, `lead_id`, `sequence_step_id`, `thread_reply`, `status`, `scheduled_date`, `sent_at`. https://dedi.emailbison.com/api/reference.openapi
-
-Campaign pool listing (not per-email): `GET /api/campaigns/{campaign_id}/sender-emails` returns attached accounts (`id`, `name`, `email`, …). https://dedi.emailbison.com/api/reference.openapi
-
-Reply objects expose `sender_email_id` (inbox that owns the message), not a “will send” assignment. https://dedi.emailbison.com/api/reference.openapi
+Whether `retry_after` is seconds, whether 8 is an example vs a fixed window, and whether 3000 rpm is global vs uploads-only: **NOT DOCUMENTED**.
 
 Sources the model searched:
 
-- https://docs.emailbison.com/campaigns/adding-and-removing-sender-emails
+- https://docs.emailbison.com/get-started/authentication
+- https://docs.emailbison.com/get-started/quickstart/making-http-requests
+- https://docs.emailbison.com/llms.txt
+- https://emailbison.com/developers
 - https://docs.emailbison.com/email-accounts/adding-accounts
-- https://docs.emailbison.com/llms.txt
-- https://docs.emailbison.com/get-started/introduction
-- https://docs.emailbison.com/get-started/authentication
-- https://emailbison.com/developers
-- https://docs.emailbison.com/campaigns/overview.md
-- https://docs.emailbison.com/leads/overview
-- https://github.com/bcharleson/emailbison-cli
-- https://docs.sim.ai/integrations/emailbison
-- https://emailbison.com/
-- https://docs.emailbison.com/email-accounts/adding-accounts.md
-- https://dedi.emailbison.com/api/reference.openapi
-- https://docs.sim.ai/triggers/emailbison
-- https://github.com/emailbison-public/n8n-nodes-emailbison-official
-- https://docs.emailbison.com/campaigns/adding-and-removing-sender-emails
-- https://dedi.emailbison.com/api/reference.openapi
-- https://emailbison.com/blogs/cold-email-warmup
-- https://emailbison.com/features/master-inbox
-- https://docs.emailbison.com/tags/creating-tags
-- https://emailbison.com/developers
-- https://emailbison.com/features/email-sequencing
-- https://emailbison.com/blogs/emailbison-vs-gmass
-- https://docs.emailbison.com/llms.txt
-- https://dedi.emailbison.com/api/reference.openapi
-
-## timezone
-
-`grok-4.6`, Nones, 105 search URLs, usage {'prompt_tokens': 490801, 'completion_tokens': 4652, 'total_tokens': 495453, 'cached_tokens': 391936, 'reasoning_tokens': 2741, 'cost_in_usd_ticks': 9982200000, 'num_sources_used': 0, 'num_server_side_tools_used': 31}.
-
-**1. Sending window timezone: campaign timezone**
-
-The sending window is the campaign’s `schedule` (`monday`–`sunday`, `start_time`, `end_time`, `timezone`). Docs say emails go out on a random pattern throughout that window.[[1]](https://docs.emailbison.com/campaigns/overview.md)
-
-`timezone` is documented only as **“The timezone of the schedule.”** Create/update: `POST`/`PUT` `/api/campaigns/{campaign_id}/schedule`. Allowed IANA ids come from `GET` `/api/campaigns/schedule/available-timezones` (“use an ID from this list whenever you're working on Campaign Schedules”).[[2]](https://dedi.emailbison.com/api/reference.openapi)
-
-Scheduled-email filter `scheduled_date_local.value`: **“The timezone is the campaign's timezone.”** Format `YYYY-MM-DD`. That is the only documented interpretation of “local” send time.[[2]](https://dedi.emailbison.com/api/reference.openapi)
-
-Workspace timezone and recipient timezone for the window: **NOT DOCUMENTED**.
-
-**2. Recipient-local sending (“timezone-aware” / “prospect local time”)**
-
-**NOT DOCUMENTED** in the API or product docs as a send mode. There is no schedule flag, campaign setting, or lead field for it. The documented send clock is the campaign `schedule.timezone` (above).
-
-Webhook/examples expose `scheduled_date_est`, `scheduled_date_local`, and `local_timezone` on scheduled emails; the API still defines `scheduled_date_local` against **the campaign’s timezone**.[[2]](https://dedi.emailbison.com/api/reference.openapi)
-
-A marketing FAQ claims “timezone-based scheduling, automatically sending emails based on each prospect's local time.” That is not described in the API/docs (no mechanism). Do not build on it.[[3]](https://emailbison.com/blogs/emailbison-vs-woodpecker)
-
-Liquid copy (“Good morning/afternoon/evening based on timezones”) is content variation, not send-time.[[4]](https://emailbison.com/features/email-sequencing)
-
-**3. Per-lead timezone**
-
-**NOT DOCUMENTED.** No lead timezone field; none is inferred.
-
-Create/update lead fields: `first_name`, `last_name`, `email`, `title`, `company`, `notes`, `custom_variables`. Required: `first_name`, `email`. Same in the docs page. Responses add `id`, `uuid`, `status`, `lead_campaign_data`, `overall_stats`, timestamps — still no timezone.[[2]](https://dedi.emailbison.com/api/reference.openapi)
-
-`custom_variables` are arbitrary name/value pairs. They are **not** documented as driving send timezone.[[5]](https://docs.emailbison.com/leads/custom-variables)
-
-**4. Changing schedule/timezone after the campaign is running**
-
-You can update a campaign schedule (including `timezone`, days, `start_time`, `end_time`) with `PUT` `/api/campaigns/{campaign_id}/schedule`. Description: “update the schedule of the campaign.” No documented restriction by campaign status (`Active` / `Paused` / etc.). `GET` `/api/campaigns/{campaign_id}/schedule` reads it. Templates: `GET` `/api/campaigns/schedule/templates`, `POST` `/api/campaigns/{campaign_id}/create-schedule-from-template` (`schedule_id`).[[2]](https://dedi.emailbison.com/api/reference.openapi)
-
-**What happens to already-scheduled emails: NOT DOCUMENTED.** The PUT does not say it reschedules, keeps, or drops existing `scheduled` rows.
-
-Related scheduler behavior only: it schedules on campaign resume and at the end of each sending day; pause then resume can force a scheduler run before end of day. That is not documented as applying to a live schedule/timezone edit.[[1]](https://docs.emailbison.com/campaigns/overview.md)
-
-Sources: [campaigns overview](https://docs.emailbison.com/campaigns/overview.md), [creating campaigns](https://docs.emailbison.com/campaigns/creating-campaigns.md), [creating a lead](https://docs.emailbison.com/leads/creating-a-lead.md), [OpenAPI](https://dedi.emailbison.com/api/reference.openapi).
-
-Sources the model searched:
-
-- https://docs.emailbison.com/campaigns/overview.md
-- https://docs.emailbison.com/campaigns/adding-leads-to-a-campaign
-- https://docs.emailbison.com/get-started/authentication
-- https://docs.emailbison.com/llms.txt
-- https://emailbison.com/developers
-- https://dedi.emailbison.com/api/reference.openapi
-- https://github.com/bcharleson/emailbison-cli
-- https://docs.sim.ai/integrations/emailbison
-- https://docs.sim.ai/triggers/emailbison
-- https://dedi.emailbison.com/api/reference.openapi
-- https://emailbison.com/
 - https://docs.withampersand.com/provider-guides/emailBison
-- https://docs.emailbison.com/email-accounts/adding-accounts
+- https://docs.emailbison.com/campaigns/adding-and-removing-sender-emails
+- https://docs.emailbison.com/leads/overview
 - https://context7.com/websites/dedi_emailbison_api_reference
-- https://docs.sim.ai/tools/emailbison
-- https://docs.emailbison.com/campaigns/overview.md
-- https://docs.sim.ai/triggers/emailbison
-- https://github.com/bcharleson/emailbison-cli
-- https://academy.optimove.com/hc/en-us/articles/8782199157789-Sending-by-Customer-Local-Time-Zone-in-Email
-- https://www.scaledmail.com/alternatives/emailbison
-- https://prospeo.io/s/cold-email-time-zone
 - https://emailbison.com/
+- https://outboundsync.com/docs/integrations/engagement/emailbison/authentication/connect-your-emailbison-api-key/
+- https://docs.emailbison.com/email-accounts/bulk-uploader-tool/overview
+- https://github.com/bcharleson/emailbison-cli
+- https://docs.sim.ai/triggers/emailbison
+- https://www.linkedin.com/company/emailbison
+- https://docs.emailbison.com/leads/overview
+- https://emailbison.com/features/unlimited-leads-storage
+- https://emailbison.com/developers
+- https://docs.emailbison.com/email-accounts/adding-accounts
 - https://docs.emailbison.com/llms.txt
-- https://dedi.emailbison.com/api/reference.openapi
+- https://docs.sim.ai/integrations/emailbison
+- https://github.com/emailbison-public/n8n-nodes-emailbison-official
+- https://scrapercity.com/integrations/emailbison
+- https://emailbison.com/
 - https://emailbison.com/features/email-warmup
 
-## webhooks
+## scheduling
 
-`grok-4.6`, Nones, 75 search URLs, usage {'prompt_tokens': 224402, 'completion_tokens': 3555, 'total_tokens': 227957, 'cached_tokens': 169856, 'reasoning_tokens': 2357, 'cost_in_usd_ticks': 5157000000, 'num_sources_used': 0, 'num_server_side_tools_used': 17}.
+`grok-4.6`, Nones, 55 search URLs, usage {'prompt_tokens': 494749, 'completion_tokens': 4602, 'total_tokens': 499351, 'cached_tokens': 405632, 'reasoning_tokens': 3318, 'cost_in_usd_ticks': 9623240000, 'num_sources_used': 0, 'num_server_side_tools_used': 29}.
 
-**Yes, EmailBison supports webhooks.** Official docs list many events; relevant ones matching your list:
+I'll look up EmailBison's official API docs first, then drill into scheduling, sender capacity, daily limits, and warmup.
+Official docs and OpenAPI are live. Next I’ll pull the campaigns, sender, warmup, and scheduled-email pages plus the spec.
+I’ll search the OpenAPI spec for scheduler, sender capacity, daily limits, and warmup fields.
+I have the scheduler and endpoint names. Next I’ll pull sender-email, campaign-update, and warmup field definitions from the spec.
+Sources used: [docs.emailbison.com](https://docs.emailbison.com/), OpenAPI at [dedi.emailbison.com/api/reference.openapi](https://dedi.emailbison.com/api/reference.openapi), product page [emailbison.com/features/email-warmup](https://emailbison.com/features/email-warmup).
 
-- **Email sent**: "Email Sent" (campaign emails only); also "Manual Email Sent".[[1]](https://docs.emailbison.com/webhooks/when-are-webhooks-triggered)
-- **Opened**: "Email Opened" (requires campaign `track opens` enabled).[[1]](https://docs.emailbison.com/webhooks/when-are-webhooks-triggered)
-- **Replied**: "Contact Replied" (campaign leads; skips auto-replies if campaign setting `Include auto replies in stats` is off); also "Untracked Reply Received".[[1]](https://docs.emailbison.com/webhooks/when-are-webhooks-triggered)
-- **Bounced**: "Email Bounced" (campaign emails).[[1]](https://docs.emailbison.com/webhooks/when-are-webhooks-triggered)
-- **Unsubscribed**: "Contact Unsubscribed".[[1]](https://docs.emailbison.com/webhooks/when-are-webhooks-triggered)
-- **Lead status change**: NOT DOCUMENTED (no general event). Closest documented: "Contact Interested" (reply marked interested via inbox/API/AI) and "Tag Attached"/"Tag Removed".[[1]](https://docs.emailbison.com/webhooks/when-are-webhooks-triggered)
+---
 
-Full event list and trigger conditions: https://docs.emailbison.com/webhooks/when-are-webhooks-triggered
+### 1. When campaign leads are scheduled
 
-View events + sample payloads in-app: Settings → Webhooks → New Webhook URL.[[2]](https://docs.emailbison.com/webhooks/overview)
+Documented scheduler cycle:
 
-**Configuration**: Primarily in-app (Settings → Webhooks → New Webhook URL: name, URL, select events). Also via API: POST `/api/webhooks` (listed among selected endpoints). Test events: in-app "Send test webhook" or POST `/api/webhook-events/test-event`.[[3]](https://emailbison.com/developers)
-
-Failed deliveries retry up to 5 times over 24 hours. Attempts time out after 15 seconds; can resend via UI (Settings → Events) or API. Past events (last 10 days) via Settings → Events or `/api/events`.[[4]](https://docs.emailbison.com/webhooks/events-deliveries-and-attempts)
-
-**Payload shape** (documented sample for TAG_ATTACHED; other events similar with event-specific `data`):
-
-```json
-{
-  "event": {
-    "type": "TAG_ATTACHED",
-    "name": "Tag Attached",
-    "instance_url": "https://dedi.emailbison.com",
-    "workspace_id": 2,
-    "workspace_name": "Red Team"
-  },
-  "data": {
-    "tag_id": 1,
-    "tag_name": "Interested",
-    "taggable_id": 20,
-    "taggable_type": "Campaign"
-  }
-}
-```
-
-Samples also previewed in-app per event.[[3]](https://emailbison.com/developers)
-
-**Signature verification**: NOT DOCUMENTED.
-
-**Push/streaming alternative to polling replies**: Webhooks (Contact Replied / Untracked Reply Received events) are the documented push mechanism. Polling: GET `/api/replies`. No WebSockets, SSE, or other streaming documented.[[1]](https://docs.emailbison.com/webhooks/when-are-webhooks-triggered)
-
-Docs index: https://docs.emailbison.com/llms.txt  
-Webhook overview: https://docs.emailbison.com/webhooks/overview  
-Events/deliveries: https://docs.emailbison.com/webhooks/events-deliveries-and-attempts  
-Developers page: https://emailbison.com/developers
+- The campaign scheduler “will run and schedule emails to be sent out every time the campaign is **resumed**, as well as **at the end of every sending day** for the campaign.”
+- To run it **before** end of day: “pause and resume the campaign.”
+- URL: https://docs.emailbison.com/campaigns/overview 
 
 Sources the model searched:
 
-- https://docs.emailbison.com/webhooks/overview
-- https://docs.emailbison.com/llms.txt
-- https://docs.emailbison.com/get-started/quickstart/making-http-requests
 - https://docs.emailbison.com/get-started/authentication
+- https://docs.emailbison.com/get-started/quickstart/making-http-requests
+- https://docs.emailbison.com/llms.txt
 - https://emailbison.com/developers
-- https://outboundsync.com/docs/integrations/engagement/emailbison/webhooks/emailbison-webhook-guide/
-- https://docs.sim.ai/triggers/emailbison
-- https://emailbison.com/
+- https://docs.emailbison.com/email-accounts/adding-accounts
 - https://docs.withampersand.com/provider-guides/emailBison
-- https://docs.emailbison.com/email-accounts/adding-accounts
-- https://github.com/bcharleson/emailbison-cli
-- https://docs.sim.ai/integrations/emailbison
+- https://docs.emailbison.com/campaigns/adding-and-removing-sender-emails
 - https://context7.com/websites/dedi_emailbison_api_reference
+- https://docs.emailbison.com/leads/overview
+- https://emailbison.com/
 - https://outboundsync.com/docs/integrations/engagement/emailbison/authentication/connect-your-emailbison-api-key/
-- https://outboundsync.com/blog/emailbison-tag-attached-events-now-supported/
-- https://docs.emailbison.com/get-started/authentication
-- https://docs.emailbison.com/get-started/introduction
-- https://docs.emailbison.com/get-started/quickstart/making-http-requests
+- https://docs.emailbison.com/email-accounts/bulk-uploader-tool/overview
+- https://github.com/bcharleson/emailbison-cli
+- https://docs.sim.ai/triggers/emailbison
+- https://www.linkedin.com/company/emailbison
+- https://docs.emailbison.com/campaigns/adding-leads-to-a-campaign
+- https://docs.emailbison.com/leads/overview
+- https://docs.emailbison.com/campaigns/overview.md
+- https://docs.sim.ai/integrations/emailbison
+- https://emailbison.com/features/unlimited-leads-storage
 - https://docs.emailbison.com/llms.txt
-- https://docs.emailbison.com/workspaces/overview
+- https://docs.emailbison.com/low-code-tools/clay/enrichments/import-leads-to-campaign
+- https://dedi.emailbison.com/api/reference.openapi
+- https://github.com/bcharleson/emailbison-cli
 - https://emailbison.com/developers
-- https://docs.emailbison.com/workspaces/creating-users
-- https://docs.emailbison.com/webhooks/overview
-- https://docs.emailbison.com/email-accounts/adding-accounts
-- https://docs.emailbison.com/low-code-tools/clay/workspace-setup
+
+## heyreach_sender
+
+`grok-4.6`, Nones, 183 search URLs, usage {'prompt_tokens': 999235, 'completion_tokens': 8016, 'total_tokens': 1007251, 'cached_tokens': 813568, 'reasoning_tokens': 5200, 'cost_in_usd_ticks': 18624280000, 'num_sources_used': 0, 'num_server_side_tools_used': 42}.
+
+I'll look up HeyReach's official API docs first, then check the specific endpoints and fields you asked about.
+Official Postman docs and the campaign-API blog look like the primary sources. I’ll open those next and pull the exact fields.
+The Postman page truncated before the endpoints I need. I’ll search that collection and the campaign-API / webhook docs for the exact fields.
+Postman still isn’t giving the full endpoint text. I’ll pull the rest of the campaign-API blog and HeyReach’s help/webhook pages next.
+I’ll pull the official Postman collection, help-center API articles, and any OpenAPI/webhook docs so we only cite documented behavior.
+I’ll open the n8n node, CLI source, and Make.com webhook links next — those often copy the official request/response shapes.
+Make.com points at HeyReach’s Notion webhook docs and a Postman fragment. Opening those now.
+**Official API docs:** [Postman collection](https://documenter.getpostman.com/view/23808049/2sA2xb5F75) · [Campaign API](https://www.heyreach.io/blog/campaign-api). The Postman HTML extract only includes `GetAll` in full; `AddLeadsToCampaignV2` / `GetById` request-response text was not in that extract.
+
+### 1. Sender choice with multiple LinkedIn accounts
+
+**How the sender is chosen per lead (rotation, round-robin, load, etc.): NOT DOCUMENTED.**  
+Campaign create takes a sender list `linkedInAccountIds` (1–100). That is assignment of accounts *to the campaign*, not per-lead selection.[[1]](https://www.heyreach.io/blog/campaign-api)
+
+**Is `accountLeadPairs` on `AddLeadsToCampaignV2` the documented way to pin a sender?**  
+Vendor Postman/Campaign API pages retrieved here **do not** state that. Closest published API-client descriptions:
+
+- **Endpoint:** `POST /campaign/AddLeadsToCampaignV2` (base `https://api.heyreach.io/api/public/`). Body: `campaignId`, `accountLeadPairs`, optional `resumePausedCampaign` / `resumeFinishedCampaign`. Up to 100 pairs.[[2]](https://raw.githubusercontent.com/bcharleson/heyreach-cli/main/src/commands/campaigns/add-leads.ts)
+- Each pair: `linkedInAccountId` + `lead` (`profileUrl` required). Scalekit: each pair **binds** the lead to that sender (`linkedInAccountId`). Cotera: `linkedInAccountId` is **nullable** “LinkedIn account ID of the sender.”[[3]](https://www.scalekit.com/connectors/heyreach)
+
+**What happens if `linkedInAccountId` is omitted/null on a multi-sender campaign: NOT DOCUMENTED.** Do not treat omit-as-auto-assign as specified.
+
+---
+
+### 2. Reading sending schedule after creation
+
+**Readable schedule after create: NOT DOCUMENTED.** No `GetSchedule` (or equivalent) in the Campaign API reference.
+
+Documented related endpoints:
+
+| Endpoint | Behaviour |
+|---|---|
+| `POST /api/public/campaign/GetAll` | Documented item fields: `id`, `name`, `creationTime`, `linkedInUserListName`, `linkedInUserListId`, `campaignAccountIds`, `status`, `progressStats`, exclusion flags, `excludeListId`. **No schedule fields.**[[4]](https://documenter.getpostman.com/view/23808049/2sA2xb5F75) |
+| `GET /campaign/GetById?campaignId=` | Exists as a get-by-id call. **Response schema including schedule: NOT DOCUMENTED** in retrieved vendor text.[[5]](https://raw.githubusercontent.com/bcharleson/heyreach-cli/main/src/commands/campaigns/get.ts) |
+| `GET /api/public/campaign/GetCampaignSequence?campaignId=` | Returns sequence tree only, not schedule.[[1]](https://www.heyreach.io/blog/campaign-api) |
+| `POST /api/public/campaign/UpdateSchedule` | **Write only.** Replaces `CampaignScheduleApiDto` (`dailyStartTime`, `dailyEndTime`, `timeZoneId`, `enabledMonday`…`enabledSunday`, `startDate`, `endDate`). `200` empty body. DRAFT/SCHEDULED/PAUSED only.[[1]](https://www.heyreach.io/blog/campaign-api) |
+
+Schedule is set on `Create` (`schedule` optional; default Mon–Fri 09:00–17:00 UTC if omitted) and replaced via `UpdateSchedule`. A documented **read** of that object after creation is **NOT DOCUMENTED**.[[1]](https://www.heyreach.io/blog/campaign-api)
+
+---
+
+### 3. Webhooks: connection accepted / message reply / lead status change
+
+**Yes for connection accepted and message reply. Generic “lead status change”: NOT DOCUMENTED** (tag update is documented instead).
+
+Official Postman has **PublicWebhooks**. Create used by API clients: `POST /webhooks/CreateWebhook` with `webhookName`, `webhookUrl`, `eventType`, optional `campaignIds`.[[6]](https://raw.githubusercontent.com/bcharleson/heyreach-cli/main/src/commands/webhooks/create.ts)
+
+| Event you asked | Documented `eventType` | Notes |
+|---|---|---|
+| Connection accepted | `CONNECTION_REQUEST_ACCEPTED` | In create-webhook enums; Zapier trigger “Connection Request Accepted”.[[7]](https://docs.composio.dev/toolkits/heyreach.md) |
+| Message reply | `MESSAGE_REPLY_RECEIVED` (first reply) and `EVERY_MESSAGE_REPLY_RECEIVED` / UI “every message/inmail reply received” | Vendor n8n guide: first-reply only fires once; every-reply fires on later replies. Payload includes latest message, conversation ID, campaign, sender, lead — **not** full thread.[[8]](https://www.heyreach.io/blog/handle-heyreach-replies-with-n8n) |
+| Lead status change | **NOT DOCUMENTED** under that name | Documented nearby event: `LEAD_TAG_UPDATED`. Campaign-lead `status` transitions are not listed as a webhook type.[[9]](https://ncnodes.com/package/n8n-nodes-heyreach/heyReach/Webhook:Create) |
+
+Other documented types: `CONNECTION_REQUEST_SENT`, `MESSAGE_SENT`, `INMAIL_SENT`, `INMAIL_REPLY_RECEIVED`, `FOLLOW_SENT`, `LIKED_POST`, `VIEWED_PROFILE`, `CAMPAIGN_COMPLETED`. `campaignIds` empty = all campaigns; n8n notes campaign filter is **not** available for Lead Tag Updated and Every Message/InMail Reply Received.[[7]](https://docs.composio.dev/toolkits/heyreach.md)
+
+Vendor webhook payload reference (Notion) is linked from Make but did not render without JS: https://heyreach.notion.site/heyreach-webhooks-documentation-400c53b3aa8743d085937419bccfe276
+
+Sources the model searched:
+
+- https://cotera.co/docs/reference/tools/individual-tools/hey-reach
+- https://raw.githubusercontent.com/bcharleson/cold-outbound-dream-team/main/src/tools/heyreach/tools.py
+- https://pkg.go.dev/github.com/amp-labs/connectors/providers/heyreach
+- https://github.com/bcharleson/heyreach-mcp/blob/main/API_ENDPOINT_STATUS.md
+- https://ncnodes.com/package/n8n-nodes-heyreach/heyReach/Campaign:Add%20Leads
+- https://github.com/bcharleson/heyreach-cli/blob/main/AGENTS.md
+- https://docs.alysio.ai/integration-guides/heyreach
+- https://apps.make.com/heyreach
+- https://docs.getcargo.ai/integration/heyreach
+- https://www.pkgstats.com/pkg:heyreach-cli
+- https://github.com/bcharleson/heyreach-cli/blob/main/HEYREACH_API_AUDIT.md
+- https://docs.composio.dev/toolkits/heyreach.md
+- https://www.scalekit.com/connectors/heyreach
+- https://www.heyreach.io/blog/campaign-api
+- https://github.com/anthroos/heyreach-claude-skill/blob/main/SKILL.md
+- https://outboundsync.com/docs/integrations/engagement/heyreach/webhooks/heyreach-webhook-guide/
+- https://github.com/bcharleson/heyreach-cli
+- https://cotera.co/docs/reference/tools/individual-tools/hey-reach
+- https://docs.getcargo.ai/integration/hey-reach
+- https://docs.composio.dev/toolkits/heyreach.md
+- https://ncnodes.com/package/n8n-nodes-heyreach/heyReach/Webhook:Create
+- https://documenter.getpostman.com/view/23808049/2sA2xb5F75
+- https://github.com/bcharleson/heyreach-cli/blob/main/AGENTS.md
+- https://www.heyreach.io/blog/zapier-integration
+- https://ncnodes.com/package/n8n-nodes-heyreach/heyReach/Webhook:Update
 
