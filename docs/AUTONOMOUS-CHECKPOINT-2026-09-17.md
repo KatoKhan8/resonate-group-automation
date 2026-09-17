@@ -71,12 +71,41 @@ mailbox's 15/day after three campaigns with six figures of momentum have taken
 their share, which today is zero. This is a capacity fact and not a defect, and
 no amount of additional READY inventory changes it.
 
-**THE ACTIONABLE VERSION: 487 SHOULD HAVE A SENDER OF ITS OWN.** Three
-uncommitted mailboxes exist, 45/day between them. Attaching one is a provider
-write against a LIVE campaign, so it is NOT done here - `bison.assign_sender`
-is authorized only for the campaign named in `_AUTHORIZED_EMAIL_CAMPAIGN`, and
-changing who a prospect hears from is a decision about identity, not a
-throughput tweak.
+**DONE 2026-09-17 10:07Z: SENDER 3941 ATTACHED TO 487.** The operator was shown
+the health caveat and chose to proceed.
+
+    487 senders now   [2736, 3941]
+    3941              Bernarda Vrbat, goproductivelab.shop, Connected,
+                      15/day, uncommitted to any other active campaign
+    caveat            `health: warming` - warmup on AND zero lifetime sends.
+                      `executionguard` gate 4 requires health in (None, "ok"),
+                      so this seat cannot be AUTHORIZED. 487 keeps running
+                      because it is already active and needs no
+                      re-authorization; a NEW campaign naming 3941 would be
+                      refused.
+    watch             zero sending history on that domain. The watcher emits
+                      on BOUNCE.
+
+The row and the approval were updated in the same pass, because neither could
+be skipped: approved `{2736}` against provider `{2736, 3941}` is a `sender_ids`
+mismatch, and changing the row moves `campaigns.fingerprint`, which stales the
+approval that authorized activation.
+
+**AND IT STILL HAS NOT SENT, WITH ONE NEW PIECE OF EVIDENCE.** Three hours into
+the window, both senders bound, 3941's full 15/day unspoken for:
+
+    487 updated_at         2026-09-17T08:07:46Z   <- the ACTIVATION, unchanged
+    total_leads_contacted  0
+    completion_percentage  0
+
+The campaign record has not been touched by EmailBison's scheduler since the
+moment it was activated. That is the strongest evidence yet for the standing
+hypothesis: the provider assigns "new leads for the day" on a cycle at or near
+the window opening, 487 was activated at 10:07 Zagreb - AFTER the 09:00 start -
+and so missed today's assignment. If that is right, the first send is tomorrow
+at 09:00 Europe/Zagreb and nothing is wrong. If the record is still untouched
+tomorrow afternoon, it is not right and the hypothesis should be discarded
+rather than defended.
 
 HeyReach exposes no schedule read route at all, so its dispatch time cannot be
 asserted either way - but its constraint is already established and identical
