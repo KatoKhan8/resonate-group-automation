@@ -276,19 +276,38 @@ That is the next real bottleneck.**
 
 ### Persistence (`docs/PERF-PERSISTENCE-2026-09-17.md`)
 
-    RECORDS  CHECKPOINTS  WRITE_TIME  MB_WRITTEN  AMPLIFICATION
-       5000         1000    211.72 s      4369.1      4918.9x
+**EVERY BYTE FIGURE PUBLISHED EARLIER TONIGHT WAS 37x TOO SMALL.** GLM's
+storage review checked the arithmetic against the real estate; verified:
+
+    work/queue.jsonl   17,486,311 bytes / 550 records = 31,793 B per record
+    the synthetic record the benchmark used            =    859 B per record
+
+A real record carries what enrichment PUTS in it - provider answers, crawl
+evidence, timelines, verification history. The benchmark was measuring a
+record shape that does not exist. It now pads to the measured size.
+
+Re-measured at 500 records, REAL size:
+
+    whole-file   1,517 MB written   499.8x   13.3 s
+    journal          3.0 MB written    1.0x   22.4 s
+
+At 5,000 records the whole-file path is **~159 GB per pass** - MODELLED from
+the measured quadratic and deliberately not measured, because writing 159 GB
+to the operator's SSD to confirm what two measured points already give is a
+hardware cost for no new information.
 
 Write amplification equals cohort size. Bytes scale as the exact square.
 
 ### The journal — wired, default OFF
 
-`QUEUE_JOURNAL=1`. Same harness, 5,000 records:
+`QUEUE_JOURNAL=1`. At the REAL record size, 500 records:
 
-    whole-file   4,369 MB   4918.9x   211.7 s
-    journal          1.0 MB     1.1x   262.3 s
+    whole-file   1,517 MB   499.8x   13.3 s
+    journal          3.0 MB    1.0x   22.4 s
 
-**Writes fall 4,369x. Wall time gets 24% WORSE.** The quadratic write is gone
+**506x fewer bytes. 69% SLOWER** - and the penalty is worse with real records
+than toy ones, because the O(N) read-and-replay it leaves behind is itself
+proportional to record size. The quadratic write is gone
 and the bottleneck moved to the O(N) READ per checkpoint, which now also
 replays a growing journal. Fixing that needs an INDEX (offsets per record id
 so the guards read only the rows a delta touches). Not started.
