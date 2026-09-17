@@ -1418,8 +1418,15 @@ def run(live=False, cap=None, limit=None, ids=None, states=("queued", "enriched"
         # to remove rather than relocate.
         if len(mx_cache) != mx_cache_at_start:
             mx.save_cache(mx_cache)
+        # The crawl cache is saved here for the same reason and on the same
+        # schedule. It is a second cache with the same hazard, so it gets the
+        # same answer rather than a new one.
+        crawl_cached = research.flush_crawl_cache()
+    else:
+        crawl_cached = None
     return {"live": live, "records": report, "spent": budget.spent,
             "cap": cap, "refused": budget.refused, "notes": notes,
+            "crawl_cache": {"domains_held": crawl_cached},
             "mx_cache": {"at_start": mx_cache_at_start,
                          "at_end": len(mx_cache),
                          "resolved_this_run": len(mx_cache) - mx_cache_at_start}}

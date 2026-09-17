@@ -63,6 +63,7 @@ def measure_same_domains():
     tmpdir = tempfile.mkdtemp(prefix="rga-measure-same-")
     try:
         store.use_directory(tmpdir)
+        research.flush_crawl_cache()
         research.crawl_cache_clear()
         research._reset_persisted_cache()
 
@@ -70,6 +71,7 @@ def measure_same_domains():
 
         crawls_1, hits_1 = run_pass(domains, _fake_research)
         # Simulate new pass
+        research.flush_crawl_cache()
         research.crawl_cache_clear()
         research._reset_persisted_cache()
         crawls_2, hits_2 = run_pass(domains, _fake_research)
@@ -87,6 +89,7 @@ def measure_same_domains():
         print()
         return hit_rate
     finally:
+        research.flush_crawl_cache()
         research.crawl_cache_clear()
         research._reset_persisted_cache()
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -97,6 +100,7 @@ def measure_disjoint_domains():
     tmpdir = tempfile.mkdtemp(prefix="rga-measure-disjoint-")
     try:
         store.use_directory(tmpdir)
+        research.flush_crawl_cache()
         research.crawl_cache_clear()
         research._reset_persisted_cache()
 
@@ -105,6 +109,7 @@ def measure_disjoint_domains():
 
         crawls_1, hits_1 = run_pass(domains_1, _fake_research)
         # Simulate new pass
+        research.flush_crawl_cache()
         research.crawl_cache_clear()
         research._reset_persisted_cache()
         crawls_2, hits_2 = run_pass(domains_2, _fake_research)
@@ -121,6 +126,7 @@ def measure_disjoint_domains():
         print()
         return hit_rate
     finally:
+        research.flush_crawl_cache()
         research.crawl_cache_clear()
         research._reset_persisted_cache()
         shutil.rmtree(tmpdir, ignore_errors=True)

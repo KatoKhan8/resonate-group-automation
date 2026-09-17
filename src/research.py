@@ -45,6 +45,7 @@ NEED_REFRESH = "public_evidence_stale_refresh_required"
 # passes legitimate.
 _crawl_cache = {}
 _persisted_cache = None  # loaded lazily, None means "not yet loaded"
+_dirty = False           # has anything been added since the last flush?
 
 
 def crawl_cache_path():
@@ -133,13 +134,22 @@ def crawl_cache_set(domain, evidence):
 
     Writes to both the in-memory pass-scoped layer and the persisted layer.
     """
+    global _dirty
     _crawl_cache[domain] = evidence
-    persisted = _persisted_cache if _persisted_cache is not None else load_crawl_cache()
+    persisted = (_persisted_cache if _persisted_cache is not None
+                 else load_crawl_cache())
     persisted[domain] = evidence
-    try:
-        save_crawl_cache(persisted)
-    except Exception as e:
-        log.warning("crawl cache: failed to persist (%s), continuing", e)
+    _dirty = True
+    # DELIBERATELY NOT SAVED HERE. An earlier version called
+    # `save_crawl_cache` on every set, which rewrites the WHOLE cache file
+    # once per domain - so a pass over N domains performs N full-file writes
+    # of a file that grows to N entries. That is the same O(N^2) shape as the
+    # queue's whole-file checkpoint, reintroduced in a new file, and at 5,000
+    # domains it is the dominant cost of the run rather than a saving.
+    #
+    # `mx` already solves this and is the pattern the brief named: `enrich.run`
+    # loads the cache once at the start and saves it once at the end. This
+    # follows it. `flush_crawl_cache` is the save.
 
 
 def crawl_cache_clear():
@@ -151,10 +161,37 @@ def crawl_cache_clear():
     _crawl_cache.clear()
 
 
+def flush_crawl_cache():
+    """Persist the cache if anything was added. Once per pass, not per domain.
+
+    Returns the number of domains held, or None if there was nothing to do.
+
+    A FAILURE HERE IS A WARNING AND NOT A CRASH, with one exception that is
+    deliberately allowed through: `ProductionStateUnderTest`. Swallowing that
+    one would turn the barrier that stops a test writing into the real `work/`
+    directory into a log line nobody reads, which is the opposite of what a
+    barrier is for. Everything else - a full disk, a permission error - costs
+    a re-crawl next pass and must not lose the run.
+    """
+    global _dirty
+    if not _dirty or _persisted_cache is None:
+        return None
+    try:
+        save_crawl_cache(_persisted_cache)
+    except store.ProductionStateUnderTest:
+        raise
+    except Exception as exc:                        # noqa: BLE001 - classified
+        log.warning("crawl cache: failed to persist (%s), continuing", exc)
+        return None
+    _dirty = False
+    return len(_persisted_cache)
+
+
 def _reset_persisted_cache():
     """Reset the persisted cache global. Tests only."""
-    global _persisted_cache
+    global _persisted_cache, _dirty
     _persisted_cache = None
+    _dirty = False
 
 # -------------------------------------------------------------- evidence TTL
 

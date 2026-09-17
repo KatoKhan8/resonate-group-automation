@@ -57,6 +57,11 @@ class TestCrawlCachePersistence(unittest.TestCase):
 
     def setUp(self):
         self._tmpdir = tempfile.mkdtemp(prefix="rga-crawl-cache-")
+        # `use_directory` has no "put it back", so the restore is the test's
+        # job. Without it every module that runs after this one reads a
+        # deleted temp directory - which is how three unrelated tests failed
+        # in a combined run while each passed alone.
+        self._was_queue = os.environ.get("QUEUE")
         store.use_directory(self._tmpdir)
         research.crawl_cache_clear()
         research._reset_persisted_cache()
@@ -64,6 +69,10 @@ class TestCrawlCachePersistence(unittest.TestCase):
     def tearDown(self):
         research.crawl_cache_clear()
         research._reset_persisted_cache()
+        if self._was_queue is None:
+            os.environ.pop("QUEUE", None)
+        else:
+            os.environ["QUEUE"] = self._was_queue
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
@@ -74,7 +83,13 @@ class TestCrawlCachePersistence(unittest.TestCase):
         research._from_the_site_itself(rec1, {})
         self.assertEqual(mock_research.call_count, 1)
 
-        # Simulate a new pass: clear in-memory, but persisted survives
+        # Simulate the END of a pass, then a new one. The flush is what a
+        # real pass does: `enrich.run` saves the cache once, after the walk,
+        # exactly as it saves the MX cache. Persisting on every set would
+        # rewrite the whole file once per domain - the O(N^2) shape the queue
+        # checkpoint already had, relocated into a second file.
+        research.flush_crawl_cache()
+        research.flush_crawl_cache()
         research.crawl_cache_clear()
         research._reset_persisted_cache()
 
@@ -92,6 +107,7 @@ class TestCrawlCachePersistence(unittest.TestCase):
         self.assertEqual(mock_research.call_count, 1)
 
         # Simulate a new pass with a date beyond the short-lived TTL (3 days)
+        research.flush_crawl_cache()
         research.crawl_cache_clear()
         research._reset_persisted_cache()
 
@@ -135,7 +151,10 @@ class TestCrawlCachePersistence(unittest.TestCase):
         rec1 = _make_record("acme-1", "acme.com")
         research._from_the_site_itself(rec1, {})
 
-        # Check the persisted copy has record_id=None
+        # Check the persisted copy has record_id=None. Flush first: the
+        # cache reaches disk once per pass, not once per domain.
+        research.flush_crawl_cache()
+        research._reset_persisted_cache()
         persisted = research.load_crawl_cache()
         stored_entries = persisted.get("acme.com", [])
         self.assertTrue(len(stored_entries) > 0)
@@ -144,6 +163,7 @@ class TestCrawlCachePersistence(unittest.TestCase):
                               "stored copy must have record_id=None")
 
         # Simulate new pass
+        research.flush_crawl_cache()
         research.crawl_cache_clear()
         research._reset_persisted_cache()
 
@@ -186,7 +206,8 @@ class TestCrawlCachePersistence(unittest.TestCase):
         rec1 = _make_record("acme-1", "acme.com")
         research._from_the_site_itself(rec1, {})
 
-        # Clear in-memory only
+        # End the pass (the flush is the save), then clear in-memory only.
+        research.flush_crawl_cache()
         research.crawl_cache_clear()
 
         # Persisted layer should still be there
@@ -208,6 +229,7 @@ class TestCrawlCachePersistence(unittest.TestCase):
         self.assertEqual(mock_research.call_count, 1)
 
         # Simulate a new pass 10 days later - 'about' field has 30-day TTL
+        research.flush_crawl_cache()
         research.crawl_cache_clear()
         research._reset_persisted_cache()
 
