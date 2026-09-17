@@ -104,6 +104,44 @@ def _normalise_type(raw_type):
     return TYPE_TO_KIND.get(key, "unknown")
 
 
+def _workspace_id(raw):
+    """A workspace id, strictly, or a CLASSIFIED refusal.
+
+    `int(raw)` was called directly and GLM's review of this file - run before
+    it had a caller - found two holes in that one expression.
+
+    **`int("bison")` raises a bare `ValueError`.** The caller of a webhook
+    handler catches the two exceptions this module documents; an undocumented
+    third becomes a 500, and a provider that retries 5xx five times over 24
+    hours turns one malformed payload into fifteen requests. Worse, the crash
+    happened BEFORE the tenancy comparison, so a cross-tenant probe got a 500
+    where a legitimate-but-foreign payload got a clean refusal - two
+    distinguishable answers, which is a probe signal.
+
+    **`int(True) == 1`, and `bool` is a subclass of `int`.** So a JSON `true`
+    or a `1.0` both coerce to 1 and would PASS tenancy on a workspace pinned
+    to 1. This estate is pinned to 10, so it was not exploitable here - which
+    is exactly the kind of "safe by accident" that stops being true when
+    somebody adds a second tenant.
+
+    Accepted: an `int` that is not a `bool`, or a string of digits. Everything
+    else is MalformedPayload, which the handler already has to handle.
+    """
+    if isinstance(raw, bool):
+        raise MalformedPayload(
+            f"event.workspace_id is the boolean {raw!r}; bool is a subclass "
+            f"of int and would coerce to {int(raw)}")
+    if isinstance(raw, int):
+        return raw
+    text = str(raw).strip()
+    if not text.isdigit():
+        raise MalformedPayload(
+            f"event.workspace_id {raw!r} is not an id. Refused as malformed "
+            f"rather than raised as a ValueError: an undocumented exception "
+            f"here becomes a 5xx, and this provider retries those")
+    return int(text)
+
+
 def normalise(payload):
     """One decoded webhook payload -> a trimmed event dict.
 
@@ -131,7 +169,7 @@ def normalise(payload):
         raise TenancyRefused(
             "BISON_WORKSPACE_ID is not set; refusing every payload rather "
             "than accepting one for an unverified workspace")
-    payload_ws = int(raw_ws)
+    payload_ws = _workspace_id(raw_ws)
     if payload_ws != pin:
         raise TenancyRefused(
             f"workspace_id {payload_ws} does not match pin {pin}; "
@@ -199,6 +237,27 @@ def event_key(event):
     eid = event.get("provider_event_id")
     if eid:
         return f"bison:{eid}"
+    # LOUD, CLASSIFIED, AND NEVER SUBSTITUTED. These five were indexed
+    # directly, so an id-less event missing any of them raised a bare
+    # `KeyError` - and GLM's review named both the failure and the wrong fix.
+    #
+    # The wrong fix is `.get(k, "")`. That turns a loud failure into a silent
+    # mass collision: a provider sending `"lead_id": null` renders as the
+    # literal `None`, and a batch sharing one `occurred_at` collapses N
+    # distinct leads onto one key. First write wins and N-1 events are
+    # silently deduped. **If the kind is `unsubscribed`, those people keep
+    # getting mail.**
+    #
+    # So it fails loudly - but as MalformedPayload, which a handler already
+    # has to catch and can route to a dead letter without taking the rest of
+    # a batch down with it.
+    missing = [f for f in ("kind", "workspace_id", "campaign_id", "lead_id",
+                           "occurred_at")
+               if event.get(f) in (None, "")]
+    if missing:
+        raise MalformedPayload(
+            f"cannot derive an event key without {', '.join(missing)}, and "
+            f"substituting a blank would collapse distinct leads onto one key")
     parts = (event["kind"], event["workspace_id"], event["campaign_id"],
              event["lead_id"], event["occurred_at"])
     return "bison:" + ":".join(str(p) for p in parts)

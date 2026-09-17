@@ -270,3 +270,83 @@ class NormalisedShape(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GLMsThreeDefeats(unittest.TestCase):
+    """Found by GLM's adversarial review, run BEFORE this module had a caller.
+
+    That timing is the point. All three are in the two expressions that decide
+    whether an unauthenticated inbound payload reaches our state, and all
+    three would have been found by a production 5xx instead.
+    """
+
+    def setUp(self):
+        self._prev = os.environ.get("BISON_WORKSPACE_ID")
+        os.environ["BISON_WORKSPACE_ID"] = "10"
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        if self._prev is None:
+            os.environ.pop("BISON_WORKSPACE_ID", None)
+        else:
+            os.environ["BISON_WORKSPACE_ID"] = self._prev
+
+    def payload(self, workspace_id):
+        return {"event": {"type": "EMAIL_SENT", "id": "evt-1",
+                          "workspace_id": workspace_id},
+                "data": {"lead_id": 1, "campaign_id": 487,
+                         "email": "someone@example.test",
+                         "occurred_at": "2026-09-17T10:00:00Z"}}
+
+    def test_a_non_numeric_workspace_is_refused_not_a_valueerror(self):
+        """`int("bison")` raised a bare ValueError. A handler catches the two
+        exceptions this module documents; an undocumented third becomes a 5xx,
+        and this provider retries those five times over 24 hours."""
+        with self.assertRaises(bisonevents.MalformedPayload):
+            bisonevents.normalise(self.payload("bison"))
+
+    def test_the_refusal_precedes_nothing_that_leaks_which_tenant_we_are(self):
+        """A malformed id and a foreign-but-valid id must both be refusals,
+        not a 500 and a refusal - two distinguishable answers are a probe
+        signal."""
+        with self.assertRaises(bisonevents.MalformedPayload):
+            bisonevents.normalise(self.payload("bison"))
+        with self.assertRaises(bisonevents.TenancyRefused):
+            bisonevents.normalise(self.payload(11))
+
+    def test_a_boolean_workspace_id_is_refused(self):
+        """`bool` is a subclass of `int` and `int(True) == 1`, so a JSON
+        `true` would PASS tenancy on a workspace pinned to 1. This estate is
+        pinned to 10, which made it safe by accident."""
+        with self.assertRaises(bisonevents.MalformedPayload):
+            bisonevents.normalise(self.payload(True))
+
+    def test_a_float_workspace_id_is_refused(self):
+        with self.assertRaises(bisonevents.MalformedPayload):
+            bisonevents.normalise(self.payload(1.0))
+
+    def test_a_digit_string_workspace_id_is_still_accepted(self):
+        """The refusals must not cost the ordinary case."""
+        self.assertEqual(bisonevents.normalise(self.payload("10"))["kind"],
+                         "sent")
+
+    def test_an_event_key_without_occurred_at_refuses_classified(self):
+        """It raised a bare KeyError. Classified now, so a handler can dead
+        letter one event without taking the rest of a batch with it."""
+        with self.assertRaises(bisonevents.MalformedPayload):
+            bisonevents.event_key({"kind": "sent", "workspace_id": 10,
+                                   "campaign_id": 487, "lead_id": 1})
+
+    def test_a_null_lead_id_never_collapses_two_leads_onto_one_key(self):
+        """THE WRONG FIX, asserted so nobody applies it. `.get(k, "")` would
+        turn the loud failure above into a silent mass collision: a batch
+        sharing one `occurred_at` with `lead_id: null` collapses N leads onto
+        one key, first write wins, N-1 silently deduped. If the kind is
+        `unsubscribed`, those people keep getting mail."""
+        base = {"kind": "unsubscribed", "workspace_id": 10,
+                "campaign_id": 487, "occurred_at": "2026-09-17T10:00:00Z"}
+        with self.assertRaises(bisonevents.MalformedPayload):
+            bisonevents.event_key(dict(base, lead_id=None))
+        first = bisonevents.event_key(dict(base, lead_id=1))
+        second = bisonevents.event_key(dict(base, lead_id=2))
+        self.assertNotEqual(first, second)
