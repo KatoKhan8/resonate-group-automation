@@ -374,7 +374,31 @@ def settle(key, state, *, why="", provider_response=None, readback=None,
         if not found:
             raise ActionRefused(f"{key} was never reserved; nothing to settle")
         if found[-1].get("state") == state:
-            return dict(found[-1])
+            # A SAME-STATE REPLAY THAT CARRIES NEW EVIDENCE IS NOT A NO-OP.
+            #
+            # This returned the stored row unconditionally, so a second
+            # `settle(k, SENT, readback=...)` - a corrected provider message
+            # id, a delivery readback that arrived after the first settlement -
+            # got a SUCCESS RETURN while nothing was recorded. Silent loss on
+            # the one file that says what reached a real person.
+            #
+            # An identical replay still appends nothing: at-least-once retries
+            # are the normal caller and turning those into appends or raises
+            # would be the more dangerous direction. Only a replay that
+            # DISAGREES with the stored row is recorded, as a further append,
+            # because this file never edits history.
+            fresh = {k: v for k, v in (("why", why),
+                                       ("provider_response", provider_response),
+                                       ("readback", readback))
+                     if v is not None and v != "" and v != found[-1].get(k)}
+            if not fresh:
+                return dict(found[-1])
+            row = dict(found[-1])
+            row.update(fresh)
+            row.update({"at": store.now(), "settled_from": state,
+                        "correction": True})
+            rows.append(row)
+            return dict(row)
         # TERMINAL MEANS TERMINAL HERE TOO, AND ONLY `reserve` WAS ENFORCING IT.
         #
         # `UNRESERVABLE` exists so a key that reached `SENT` can never be
@@ -402,6 +426,21 @@ def settle(key, state, *, why="", provider_response=None, readback=None,
                 f"the key reservable again")
         prior = found[-1]
         row = dict(prior)
+        # THE PREVIOUS EVENT'S EVIDENCE DOES NOT BELONG TO THIS ONE.
+        #
+        # `dict(prior)` carries the whole row forward and these two fields
+        # were only overwritten when a caller passed them, so
+        # `settle(k, UNRESOLVED, provider_response={"code": "421"})` followed
+        # by `settle(k, FAILED)` produced a FAILED row carrying the deferral's
+        # 421 as though the failure had produced it. Every later count of
+        # failures by provider code then reads a deferral as a hard bounce,
+        # permanently, in the file that is supposed to be the audit trail.
+        #
+        # Dropped rather than carried: a settlement with no provider response
+        # HAS no provider response, and an absent field says that where an
+        # inherited one lies about it.
+        row.pop("provider_response", None)
+        row.pop("readback", None)
         row.update({"state": state, "at": store.now(), "why": why,
                     "settled_from": prior.get("state")})
         if provider_response is not None:
