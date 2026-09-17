@@ -41,7 +41,13 @@ def _stamped(step):
     asking their real question - which FIELD the extractor reads - rather than
     accidentally asking whether an approval matches.
     """
-    step["approval"] = {"by": "fixture", "at": "2026-09-17T00:00:00",
+    # `by` IS PART OF WHAT CERTIFIES NOW, and "fixture" is not an identity
+    # anybody can be held to. `_step_copy` refuses a stamp whose approver is a
+    # bare token, because on a `generated: true` step the fingerprint never
+    # moves and a self-recorded approval would stay current forever - 84 such
+    # stamps exist in the real estate, written `by: "claude"`. A fixture using
+    # one would be modelling a state production must refuse.
+    step["approval"] = {"by": "operator", "at": "2026-09-17T00:00:00",
                         "fingerprint": approval.fingerprint(step)}
     return step
 
@@ -68,17 +74,26 @@ class TheExtractorGuardsEveryPath(unittest.TestCase):
         self.assertEqual(heyreachfactory._step_copy(li_step),
                          "this is linkedin copy")
 
-    def test_inmail_prefers_message_over_note(self):
-        """The precedence the duplicated extractor reversed.
+    def test_inmail_refuses_a_message_the_fingerprint_does_not_cover(self):
+        """THIS TEST USED TO ASSERT THE DEFECT, and the precedence it defended
+        was the hole.
 
-        A variant carrying BOTH fields is where the two paths diverged. The
-        canonical order is `message` first.
+        It read `test_inmail_prefers_message_over_note` and required
+        `message` to win over `note`. But `approval.fingerprint` hashes
+        channel, subject, body and note - NOT `message`. So "the canonical
+        order is message first" meant "the field nobody certifies wins", and a
+        step approved and then edited in `message` recomputed to the same
+        stamp and shipped the edit. Found by an independent model attacking
+        the extractor.
+
+        A step carrying BOTH now yields nothing rather than choosing the
+        uncertified one. None reaches `assemble_linkedin_copy`'s `missing`
+        list, which refuses the whole push.
         """
         step = _stamped({"channel": "linkedin", "linkedin_action": "inmail",
                          "subject": "S", "message": "FROM-message",
                          "note": "FROM-note"})
-        self.assertEqual(heyreachfactory._step_copy(step),
-                         {"subject": "S", "message": "FROM-message"})
+        self.assertIsNone(heyreachfactory._step_copy(step))
 
     def test_inmail_falls_back_to_note_when_message_is_absent(self):
         step = _stamped({"channel": "linkedin", "linkedin_action": "inmail",

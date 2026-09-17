@@ -6,6 +6,45 @@ a cycle.
 """
 import hashlib
 
+# WHO MAY BLESS WORDS A STRANGER WILL READ.
+#
+# The fingerprint answers "have these words changed since they were approved".
+# It cannot answer "did a person approve them", and for one shape of step it
+# never will: `li2`-`li5` are `generated: true`, so `cadence.expand_step`
+# returns the stored words verbatim, the hash never moves, and an approval the
+# SYSTEM recorded for itself stays current forever.
+#
+# Measured 2026-09-17 across the estate: 84 approvals stamped `by: "claude"`,
+# 83 of them on generated steps. None of those contacts reaches READY today -
+# but only because they happen to cover one to three of the five LinkedIn
+# steps rather than all five. That is luck, not a gate.
+#
+# ACCOUNTABILITY IS A SHAPE, NOT A NAME. An allowlist of individuals goes stale
+# the first time somebody new joins; a denylist of machine names fails OPEN for
+# the next model added to this repo. So the test is whether the approver is an
+# identity somebody can be held to: an address, or a declared operator arm that
+# the client config names. `claude`, `qwen`, `glm`, `system`, `unknown` are
+# none of those and never will be.
+OPERATOR_ARMS = frozenset({"operator", "operator-control-arm"})
+
+
+def is_accountable_approver(by):
+    """Could a person be held to this approval afterwards?
+
+    True for an address, or for one of the declared operator arms. False for a
+    bare token - which is what every automated approver in this repository has
+    ever written, and what a future one will write too.
+    """
+    who = str(by or "").strip().lower()
+    if not who:
+        return False
+    if who in OPERATOR_ARMS:
+        return True
+    # `zvonimir@x.co (operator authorisation 2026-09-16)` - the address is the
+    # accountable part and the parenthetical is provenance.
+    head = who.split("(", 1)[0].strip()
+    return "@" in head and "." in head.rsplit("@", 1)[-1]
+
 
 def fingerprint(step):
     """What was approved. Any edit to the words changes this."""

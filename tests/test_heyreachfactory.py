@@ -38,7 +38,7 @@ def _approved_li_step(key, day, action, *, note=None, subject=None,
     # the literal `f"fp-{key}"`, which certifies nothing; that only ever
     # passed because `_step_copy` asked whether an approval existed rather
     # than whether it covered the words underneath it.
-    step["approval"] = {"fingerprint": approval.fingerprint(step),
+    step["approval"] = {"by": "operator", "fingerprint": approval.fingerprint(step),
                         "at": "2026-09-14T00:00:00"}
     return step
 
@@ -57,7 +57,7 @@ def _full_record(contact_key="pat"):
     # The alternative is stamped over its own subject and note. It carries no
     # `channel` of its own - it inherits the parent step's, which `_step_copy`
     # is passed separately - so the fingerprint covers exactly what is here.
-    inmail_alt["approval"] = {"fingerprint": approval.fingerprint(inmail_alt),
+    inmail_alt["approval"] = {"by": "operator", "fingerprint": approval.fingerprint(inmail_alt),
                               "at": "2026-09-14T00:00:00"}
     return {
         "id": "acme", "client": "productive", "domain": "acme.test",
@@ -538,7 +538,8 @@ class MultiVariantSequence(unittest.TestCase):
             fp = _approval.fingerprint(variant_step)
             approved_variants.append({
                 **v,
-                "approval": {"fingerprint": fp, "at": "2026-09-15T00:00:00"}
+                "approval": {"by": "operator", "fingerprint": fp,
+                             "at": "2026-09-15T00:00:00"}
             })
 
         step = {"key": key, "day": day, "channel": "linkedin",
@@ -578,7 +579,8 @@ class MultiVariantSequence(unittest.TestCase):
             fp = _approval.fingerprint(variant_step)
             approved_variants.append({
                 **v,
-                "approval": {"fingerprint": fp, "at": "2026-09-15T00:00:00"}
+                "approval": {"by": "operator", "fingerprint": fp,
+                             "at": "2026-09-15T00:00:00"}
             })
         li1_spec["variants"] = approved_variants
 
@@ -656,7 +658,8 @@ class MultiVariantSequence(unittest.TestCase):
             fp = _approval.fingerprint(variant_step)
             approved_variants.append({
                 **v,
-                "approval": {"fingerprint": fp, "at": "2026-09-15T00:00:00"}
+                "approval": {"by": "operator", "fingerprint": fp,
+                             "at": "2026-09-15T00:00:00"}
             })
         li1_spec["variants"] = approved_variants
 
@@ -720,7 +723,8 @@ class MultiVariantSequence(unittest.TestCase):
             fp = _approval.fingerprint(variant_step)
             approved_variants.append({
                 **v,
-                "approval": {"fingerprint": fp, "at": "2026-09-15T00:00:00"}
+                "approval": {"by": "operator", "fingerprint": fp,
+                             "at": "2026-09-15T00:00:00"}
             })
         li1_spec["variants"] = approved_variants
 

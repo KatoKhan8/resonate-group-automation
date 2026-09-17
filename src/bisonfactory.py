@@ -707,6 +707,12 @@ def _certified_copy(step, key, extra=None):
         # No approval, or an approval that records nothing about the words it
         # was given for. Neither certifies anything.
         return None
+    if not approval.is_accountable_approver(stamp.get("by")):
+        # An approval this system recorded for itself is not an approval. The
+        # fingerprint proves the words have not moved; it cannot prove a person
+        # ever read them, and on a `generated: true` step the words never move,
+        # so a self-stamp would stay current forever.
+        return None
     entry = {"step_key": key, "subject": (step or {}).get("subject"),
              "body": (step or {}).get("body")}
     material = dict(step or {})

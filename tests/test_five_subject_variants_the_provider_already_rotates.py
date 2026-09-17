@@ -59,7 +59,7 @@ def _approved_email_step(step_key, subject, body):
     """A stored email step with approval covering these exact words."""
     step = {"key": step_key, "day": 5, "channel": "email",
             "generated": True, "subject": subject, "body": body}
-    step["approval"] = {"fingerprint": approval.fingerprint(step),
+    step["approval"] = {"by": "operator", "fingerprint": approval.fingerprint(step),
                         "at": "2026-09-14T00:00:00"}
     return step
 
@@ -79,13 +79,13 @@ def _record_with_variant_approvals(contact_key="c1", *, variant_index=0):
             "subject": chosen["subject"], "body": chosen["body"],
             "variant_id": chosen["variant_id"],
             "variant_style": chosen["style"]}
-    step["approval"] = {"fingerprint": approval.fingerprint(step),
+    step["approval"] = {"by": "operator", "fingerprint": approval.fingerprint(step),
                         "at": "2026-09-14T00:00:00"}
     # Also store day1 generated step.
     day1 = {"key": "day1", "day": 1, "channel": "email", "generated": True,
             "subject": "quick question about Acme",
             "body": "Hi Champ,\n\nBody here.\n\nBest,\nZ"}
-    day1["approval"] = {"fingerprint": approval.fingerprint(day1),
+    day1["approval"] = {"by": "operator", "fingerprint": approval.fingerprint(day1),
                         "at": "2026-09-14T00:00:00"}
     return {
         "id": "rec-variant", "client": "demo", "domain": "acme.test",
@@ -222,7 +222,7 @@ class HeyReachVariantsOnTheWire(CampaignTest):
                 "note": first["note"],
                 "variant_id": first["variant_id"],
                 "variant_style": first["style"]}
-        step["approval"] = {"fingerprint": approval.fingerprint(step),
+        step["approval"] = {"by": "operator", "fingerprint": approval.fingerprint(step),
                             "at": "2026-09-14T00:00:00"}
         # Build a full record with this step.
         from tests.test_heyreachfactory import _full_record

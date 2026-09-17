@@ -162,6 +162,13 @@ def _step_copy(step, *, channel=None):
     recorded = stamp.get("fingerprint")
     if not recorded or _approval.fingerprint(step) != recorded:
         return None
+    # AND A PERSON HAS TO HAVE APPROVED IT. This lane is where a self-recorded
+    # stamp is permanent: li2-li5 are `generated: true`, so `expand_step`
+    # returns the stored words verbatim and the fingerprint never moves. 84
+    # approvals in this estate are stamped `by: "claude"`, 83 on generated
+    # steps. The hash would agree with every one of them forever.
+    if not _approval.is_accountable_approver(stamp.get("by")):
+        return None
     effective_channel = channel or step.get("channel")
     if effective_channel != "linkedin":
         return None

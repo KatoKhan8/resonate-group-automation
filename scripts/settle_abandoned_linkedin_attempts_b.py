@@ -35,11 +35,34 @@ from src import actionledger                                   # noqa: E402
 from src.providers import heyreach, load_env                   # noqa: E402
 
 REFUSED_CAMPAIGN = 605732
-KEYS = (
-    "aubryandco-com:jamal-fraiser:li1:linkedin",
-    "tractorbeam-com:audrey-hancock:li1:linkedin",
-    "tractorbeam-com:michelle-parsons:li1:linkedin",
-)
+# THE KEYS ARE DERIVED, NOT LISTED. Three real prospect identifiers were
+# hardcoded here and `tests/test_fixture_hygiene.py` is right to refuse them:
+# tracked source is not where 300 real companies and 92 real contacts belong.
+# The unsettled keys for this channel are read from the ledger instead, which
+# is also more honest - a hardcoded list settles what somebody typed, and this
+# settles what is actually outstanding.
+KEY_SUFFIX = ":li1:linkedin"
+
+
+def outstanding_keys():
+    """LinkedIn keys still sitting at `attempted`, read from the ledger.
+
+    ONLY `attempted`, AND THE NARROWING IS THE POINT. Deriving these from the
+    ledger replaced a hardcoded list of three real prospect identifiers - and
+    the first version asked for every UNSETTLED key, which swept in the LIVE
+    campaign's three `unresolved` ones and proposed settling them `abandoned`.
+    They are not abandoned; they are a running campaign that has not reached
+    anybody yet, and `unresolved` exists precisely to say "nobody knows".
+    Blanket-settling that as "it never happened" would destroy the one record
+    saying the question is open. The dry run caught it, which is what dry runs
+    are for.
+    """
+    return sorted({row.get("key") for row in actionledger.unsettled()
+                   if str(row.get("key") or "").endswith(KEY_SUFFIX)
+                   and actionledger.state_of(row.get("key"))
+                   == actionledger.ATTEMPTED})
+
+
 WHY = ("activation of HeyReach campaign 605732 was refused at the write door "
        "by `_require_approved_words` before any provider write; the campaign "
        "is DRAFT, never started, and nothing was sent under these keys")
@@ -79,7 +102,7 @@ def main(argv=None):
     print("\n=== LEDGER ===")
     unsettled = {row.get("key") for row in actionledger.unsettled()}
     targets = []
-    for key in KEYS:
+    for key in outstanding_keys():
         state = actionledger.state_of(key)
         print(f"  {key}  state={state}")
         if key in unsettled:

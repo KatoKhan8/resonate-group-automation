@@ -47,7 +47,7 @@ def _approved_step(key, day, action, *, note=None):
             "linkedin_action": action, "generated": True}
     if note is not None:
         step["note"] = note
-    step["approval"] = {"fingerprint": approval.fingerprint(step),
+    step["approval"] = {"by": "operator", "fingerprint": approval.fingerprint(step),
                         "at": "2026-09-14T00:00:00"}
     return step
 
@@ -1002,18 +1002,36 @@ class LinkAddLeadNotEnabled(_NoPatchOutlivesItsTest):
         self.assertTrue(
             providerwrites.is_conditional(providerwrites.LINKEDIN_ADD_LEAD))
 
-    def test_the_condition_has_no_way_to_admit_an_activation(self):
-        """Nothing in CONDITIONAL could ever turn activation on.
+    def test_activation_admits_exactly_one_campaign_per_channel(self):
+        """WHAT THIS USED TO ASSERT, AND WHY IT MOVED.
 
-        `add_lead` is conditionally open because a campaign state exists -
-        DRAFT - in which the write reaches nobody. No campaign state makes
-        activation reach nobody, so it carries no condition at all and there
-        is no value anybody can pass to `perform` that admits it.
+        It read "nothing in CONDITIONAL could ever turn activation on" and
+        required both ACTIVATE verbs to be absent from SUPPORTED and
+        CONDITIONAL. That was true until an operator granted each one, scoped
+        to a single named campaign - so the blanket seal is gone and the
+        property worth keeping is the NARROWNESS of what replaced it.
+
+        `add_lead` remains the stricter case and is untouched: it is
+        conditionally open only because DRAFT is a campaign state in which the
+        write reaches nobody. No campaign state makes ACTIVATION reach nobody,
+        which is why activation is scoped by name rather than by state.
         """
         for operation in (providerwrites.LINKEDIN_ACTIVATE,
                           providerwrites.EMAIL_ACTIVATE):
-            self.assertNotIn(operation, providerwrites.CONDITIONAL)
-            self.assertNotIn(operation, providerwrites.SUPPORTED)
+            self.assertIn(operation, providerwrites.SUPPORTED)
+            self.assertIn(operation, providerwrites.CONDITIONAL)
+
+        # LinkedIn: one provider campaign, and every other id refused.
+        require = providerwrites.require_conditional_permission
+        for other in ("599020", "604869", "605487", "", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.LINKEDIN_ACTIVATE, other, None)
+
+        # Email: the canonical row must be the named one AND must be bound.
+        for other in ("481", "485", "487"):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.EMAIL_ACTIVATE, other,
+                        "productive-email-control-v2")
 
     def test_linkedin_add_lead_is_declared(self):
         channel, facing, why = providerwrites.describe(
