@@ -1,0 +1,32 @@
+{
+  "quarter": 1,
+  "tests_run": 2137,
+  "failures": 7,
+  "errors": 15,
+  "skipped": 0,
+  "wall_seconds": 109.3,
+  "failure_names": [
+    "FAIL: test_decide_blocks_a_bounced_address (tests.test_a_bounced_address_stops_being_sendable.TheSENDPathReadsIt.test_decide_blocks_a_bounced_address)",
+    "FAIL: test_li2_through_li6_appear_for_an_unconnected_contact (tests.test_a_gated_step_is_waiting_not_absent.GatedStepsAppearInTheTimeline.test_li2_through_li6_appear_for_an_unconnected_contact)",
+    "FAIL: test_deliverable_contract_is_now_confirmed (tests.test_a_refusal_is_not_a_purchase.ALocalRefusalIsFree.test_deliverable_contract_is_now_confirmed)",
+    "FAIL: test_a_fallback_for_another_field_is_walked_past (tests.test_an_email_is_not_a_finished_person.AKnownCompanyFieldIsNotReBought.test_a_fallback_for_another_field_is_walked_past)",
+    "FAIL: test_the_two_company_fields_route_independently (tests.test_an_email_is_not_a_finished_person.AKnownCompanyFieldIsNotReBought.test_the_two_company_fields_route_independently)",
+    "FAIL: test_add_lead_is_refused_for_finished (tests.test_campaign_cannot_send.TheNarrowedSeals.test_add_lead_is_refused_for_finished)",
+    "FAIL: test_finished_is_not_proven_safe (tests.test_campaign_cannot_send.ThePredicateReadsProviderTruth.test_finished_is_not_proven_safe)",
+    "ERROR: test_each_gated_step_names_the_unmet_requirement (tests.test_a_gated_step_is_waiting_not_absent.GatedStepsAppearInTheTimeline.test_each_gated_step_names_the_unmet_requirement)",
+    "ERROR: test_the_acceptance_releases_the_waiting_steps (tests.test_a_gated_step_is_waiting_not_absent.GatedStepsAppearInTheTimeline.test_the_acceptance_releases_the_waiting_steps)",
+    "ERROR: test_push_does_not_pick_up_waiting_steps (tests.test_a_gated_step_is_waiting_not_absent.WaitingStepsAreNotExposures.test_push_does_not_pick_up_waiting_steps)",
+    "ERROR: test_waiting_steps_are_not_confirmed_touches (tests.test_a_gated_step_is_waiting_not_absent.WaitingStepsAreNotExposures.test_waiting_steps_are_not_confirmed_touches)",
+    "ERROR: test_second_write_appends_not_replaces (tests.test_bison_campaign_write.AppendBehaviourProven.test_second_write_appends_not_replaces)",
+    "ERROR: test_passes_when_campaign_holds_identical_steps (tests.test_bison_campaign_write.EnsureSequenceRefusesNonEmpty.test_passes_when_campaign_holds_identical_steps)",
+    "ERROR: test_refuses_when_campaign_holds_different_steps (tests.test_bison_campaign_write.EnsureSequenceRefusesNonEmpty.test_refuses_when_campaign_holds_different_steps)",
+    "ERROR: test_blind_retry_doubles_the_sequence (tests.test_bison_campaign_write.RetryQuestion.test_blind_retry_doubles_the_sequence)",
+    "ERROR: test_correct_recovery_read_before_write (tests.test_bison_campaign_write.RetryQuestion.test_correct_recovery_read_before_write)",
+    "ERROR: test_once_or_twice_check (tests.test_bison_campaign_write.RetryQuestion.test_once_or_twice_check)",
+    "ERROR: test_threading_is_false_true_false (tests.test_bison_campaign_write.SequenceShape.test_threading_is_false_true_false)",
+    "ERROR: test_three_steps_in_cadence_order (tests.test_bison_campaign_write.SequenceShape.test_three_steps_in_cadence_order)",
+    "ERROR: test_waits_are_declared (tests.test_bison_campaign_write.SequenceShape.test_waits_are_declared)",
+    "ERROR: test_held_steps_carry_wait_in_days (tests.test_bison_campaign_write.SequenceWriteAndReadback.test_held_steps_carry_wait_in_days)",
+    "ERROR: test_write_three_steps_readback_matches (tests.test_bison_campaign_write.SequenceWriteAndReadback.test_write_three_steps_readback_matches)"
+  ]
+}

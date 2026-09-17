@@ -1,0 +1,26 @@
+{
+  "quarter": "2-no-e2e",
+  "tests_run": 2682,
+  "failures": 12,
+  "errors": 4,
+  "skipped": 1,
+  "wall_seconds": 291.1,
+  "failure_names": [
+    "FAIL: test_the_contract_is_confirmed_in_code (tests.test_contactout_first.TestDeliverableContractIsConfirmed.test_the_contract_is_confirmed_in_code)",
+    "FAIL: test_the_response_shape_is_confirmed_in_code (tests.test_deliverable.TestTheAnswerIsNotGuessed.test_the_response_shape_is_confirmed_in_code)",
+    "FAIL: test_the_shape_is_confirmed_in_code (tests.test_deliverable_contract.TheContractGateIsNowOpen.test_the_shape_is_confirmed_in_code)",
+    "FAIL: test_all_unusable_means_empty_public_evidence (tests.test_for_prompt_quality.ForPromptFiltersUnusable.test_all_unusable_means_empty_public_evidence)",
+    "FAIL: test_hook_step_also_filters_unusable (tests.test_for_prompt_quality.ForPromptFiltersUnusable.test_hook_step_also_filters_unusable)",
+    "FAIL: test_unusable_rows_are_excluded_from_public_evidence (tests.test_for_prompt_quality.ForPromptFiltersUnusable.test_unusable_rows_are_excluded_from_public_evidence)",
+    "FAIL: test_fresh_rows_come_first_after_refresh (tests.test_for_prompt_quality.ForPromptHandlesRefresh.test_fresh_rows_come_first_after_refresh)",
+    "FAIL: test_strong_before_medium (tests.test_for_prompt_quality.ForPromptRanksByQuality.test_strong_before_medium)",
+    "FAIL: test_emailbison_posts_only_to_routes_it_declares (tests.test_invariants.TestNothingCanSend.test_emailbison_posts_only_to_routes_it_declares)",
+    "FAIL: test_all_linkedin_steps_affected (tests.test_ladder_impact.TestAnalyzeRecord.test_all_linkedin_steps_affected)",
+    "FAIL: test_full_linkedin_shape (tests.test_ladder_impact.TestAnalyzeRecord.test_full_linkedin_shape)",
+    "FAIL: test_every_guard_appears_exactly_once (tests.test_mutation_anchors.EveryAnchorStillMatches.test_every_guard_appears_exactly_once)",
+    "ERROR: test_verify_runs_now_that_the_shape_is_confirmed (tests.test_deliverable.TestTheAnswerIsNotGuessed.test_verify_runs_now_that_the_shape_is_confirmed)",
+    "ERROR: test_require_contract_does_not_raise (tests.test_deliverable_contract.TheContractGateIsNowOpen.test_require_contract_does_not_raise)",
+    "ERROR: test_every_dropped_record_carries_its_reason (tests.test_ingest.TestPhase1Csv.test_every_dropped_record_carries_its_reason)",
+    "ERROR: test_queue_has_a_record_for_every_row (tests.test_ingest.TestPhase1Csv.test_queue_has_a_record_for_every_row)"
+  ]
+}

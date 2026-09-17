@@ -1,0 +1,30 @@
+{
+  "quarter": 3,
+  "tests_run": 2849,
+  "failures": 9,
+  "errors": 11,
+  "skipped": 0,
+  "wall_seconds": 266.1,
+  "failure_names": [
+    "FAIL: test_every_http_write_in_the_repository_is_declared (tests.test_nothing_writes_to_a_provider.NoUndeclaredProviderWrite.test_every_http_write_in_the_repository_is_declared)",
+    "FAIL: test_a_config_cannot_raise_the_limit_by_being_unreadable (tests.test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_a_config_cannot_raise_the_limit_by_being_unreadable)",
+    "FAIL: test_a_second_contact_does_not_reset_the_company_count (tests.test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_a_second_contact_does_not_reset_the_company_count)",
+    "FAIL: test_it_is_asked_before_content_and_cannot_be_out_ranked (tests.test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_it_is_asked_before_content_and_cannot_be_out_ranked)",
+    "FAIL: test_a_plain_hand_off_holds_the_referrer (tests.test_referral.TheWholeChain.test_a_plain_hand_off_holds_the_referrer)",
+    "FAIL: test_the_company_is_paused_afterwards (tests.test_replaysim.TestThePositiveChain.test_the_company_is_paused_afterwards)",
+    "FAIL: test_each_one_classifies_as_documented (tests.test_replaysim.TestTheScenarios.test_each_one_classifies_as_documented)",
+    "FAIL: test_model_calls_are_counted (tests.test_set_regeneration.GenerateRecordIntegrationTest.test_model_calls_are_counted)",
+    "FAIL: test_successful_regeneration_replaces_all_notes (tests.test_set_regeneration.SetRegenerationTransactionTest.test_successful_regeneration_replaces_all_notes)",
+    "ERROR: test_email_five_no_issues_for_clean_copy (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_no_issues_for_clean_copy)",
+    "ERROR: test_email_five_renders_all_five_emails (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_renders_all_five_emails)",
+    "ERROR: test_email_five_shows_angle (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_angle)",
+    "ERROR: test_email_five_shows_day_numbers (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_day_numbers)",
+    "ERROR: test_email_five_shows_ladder_purposes (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_ladder_purposes)",
+    "ERROR: test_email_five_shows_next_branch (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_next_branch)",
+    "ERROR: test_email_five_shows_provider_variables (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_provider_variables)",
+    "ERROR: test_email_missing_reports_product_name_absent (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_missing_reports_product_name_absent)",
+    "ERROR: test_email_missing_shows_missing_for_em3 (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_missing_shows_missing_for_em3)",
+    "ERROR: test_email_preview_renders_through_bisonfactory_variables_for (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_preview_renders_through_bisonfactory_variables_for)",
+    "ERROR: test_email_preview_two_leads_render_different_copy (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_preview_two_leads_render_different_copy)"
+  ]
+}

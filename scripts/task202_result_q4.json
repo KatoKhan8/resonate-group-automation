@@ -1,0 +1,33 @@
+{
+  "quarter": 4,
+  "tests_run": 2276,
+  "failures": 16,
+  "errors": 7,
+  "skipped": 5,
+  "wall_seconds": 319.1,
+  "failure_names": [
+    "FAIL: test_benchmark_estimate_follows_cadence (tests.test_task034_llm_estimate.TestEstimateMovesWithCadence.test_benchmark_estimate_follows_cadence)",
+    "FAIL: test_costsim_derives_from_named_cadence (tests.test_task034_llm_estimate.TestEstimateMovesWithCadence.test_costsim_derives_from_named_cadence)",
+    "FAIL: test_li_heavy_has_five_emails_and_six_linkedin (tests.test_task034_llm_estimate.TestGeneratedKeysDerivesFromCadence.test_li_heavy_has_five_emails_and_six_linkedin)",
+    "FAIL: test_the_check_returns_the_reason_when_the_company_is_past_policy (tests.test_the_account_is_the_unit_of_outreach.TheDecisionConsultsIt.test_the_check_returns_the_reason_when_the_company_is_past_policy)",
+    "FAIL: test_a_company_past_its_weekly_limit_is_held (tests.test_the_account_is_the_unit_of_outreach.TheDecisionItselfHoldsIt.test_a_company_past_its_weekly_limit_is_held)",
+    "FAIL: test_it_is_asked_before_any_content_work (tests.test_the_account_is_the_unit_of_outreach.TheDecisionItselfHoldsIt.test_it_is_asked_before_any_content_work)",
+    "FAIL: test_the_client_file_selects_the_linkedin_heavy_sequence (tests.test_the_cadence_reacts_to_what_the_prospect_did.TheConfiguredCadenceAndTheConfiguredCapsAgree.test_the_client_file_selects_the_linkedin_heavy_sequence)",
+    "FAIL: test_it_is_the_shape_the_operator_asked_for (tests.test_the_cadence_the_client_chose_is_the_one_that_runs.TheClientRunsTheSequenceItNames.test_it_is_the_shape_the_operator_asked_for)",
+    "FAIL: test_resume_is_declared_and_authorised_for_one_campaign_only (tests.test_the_emailbison_write_door_is_enforced.TheDoorDidNotWidenWhatThisModuleMaySend.test_resume_is_declared_and_authorised_for_one_campaign_only)",
+    "FAIL: test_a_site_that_defeats_it_falls_through (tests.test_the_free_leg_runs_before_the_paid_one.TheFreeLegSettlesIt.test_a_site_that_defeats_it_falls_through)",
+    "FAIL: test_boilerplate_is_refused_rather_than_stored (tests.test_the_free_leg_runs_before_the_paid_one.TheFreeLegSettlesIt.test_boilerplate_is_refused_rather_than_stored)",
+    "FAIL: test_the_linkedin_path_refuses_before_it_imports_a_transport (tests.test_the_prototype_cannot_send.EveryLivePathRefuses.test_the_linkedin_path_refuses_before_it_imports_a_transport)",
+    "FAIL: test_a_dry_run_calls_nothing_and_still_says_it_would (tests.test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_a_dry_run_calls_nothing_and_still_says_it_would)",
+    "FAIL: test_the_call_is_on_the_waterfall_ledger_with_its_reason (tests.test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_call_is_on_the_waterfall_ledger_with_its_reason)",
+    "FAIL: test_the_provider_is_called (tests.test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_provider_is_called)",
+    "FAIL: test_the_field_routes_to_blitz (tests.test_two_providers_disagreeing_is_not_a_headcount.TheProviderCanActuallyBeReached.test_the_field_routes_to_blitz)",
+    "ERROR: test_removing_thread_reply_from_step_is_detected (tests.test_task081_thread_reply.BreakTheWiring.test_removing_thread_reply_from_step_is_detected)",
+    "ERROR: test_wrong_pattern_is_detected (tests.test_task081_thread_reply.BreakTheWiring.test_wrong_pattern_is_detected)",
+    "ERROR: test_follow_up_step_still_carries_subject (tests.test_task081_thread_reply.FactoryCarriesThreadReply.test_follow_up_step_still_carries_subject)",
+    "ERROR: test_thread_reply_matches_ladder_pattern (tests.test_task081_thread_reply.FactoryCarriesThreadReply.test_thread_reply_matches_ladder_pattern)",
+    "ERROR: test_flag_round_trips_through_fake_provider (tests.test_task081_thread_reply.ThreadReplyRoundTrips.test_flag_round_trips_through_fake_provider)",
+    "ERROR: test_follow_up_step_keeps_subject_after_round_trip (tests.test_task081_thread_reply.ThreadReplyRoundTrips.test_follow_up_step_keeps_subject_after_round_trip)",
+    "ERROR: test_the_reported_cost_replaces_the_assumed_one (tests.test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_reported_cost_replaces_the_assumed_one)"
+  ]
+}
