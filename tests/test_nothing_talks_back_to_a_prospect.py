@@ -75,12 +75,39 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
              # Added 2026-09-15. It is a LIFECYCLE verb and it belongs in this
              # set for the reason the set exists: starting a campaign that
              # holds ZERO leads changes a campaign's state and sends nothing.
-             # The verb that sends is `heyreach.activate`, which is still here
-             # and still sealed.
-             "heyreach.start_empty_for_staging"})
+             # The verb that starts a campaign holding people is
+             # `heyreach.activate`, which is also here.
+             "heyreach.start_empty_for_staging",
+             # Added 2026-09-16. A STAGING verb, and the narrowest one here:
+             # it adds a lead to a LIST rather than to a campaign, and its
+             # condition reads the list FROM THE PROVIDER at the moment of
+             # the write and refuses unless `campaignIds` is empty. A list
+             # attached to no campaign reaches nobody, whatever is in it.
+             "heyreach.add_lead_to_list"})
 
     def test_and_no_send_verb_is_supported(self):
-        """Every declared write stops something or stages something.
+        """No enabled verb TRANSMITS TEXT THIS SYSTEM COMPOSED.
+
+        RE-POINTED 2026-09-16, AND THE DISTINCTION IT NOW TURNS ON IS REAL
+        RATHER THAN A CONVENIENCE. This docstring used to open "every declared
+        write stops something or stages something", and that sentence is no
+        longer true: an operator granted both ACTIVATE verbs, and activating
+        a campaign is how the messages in its approved sequence start
+        reaching people. Leaving the old sentence in place would have made
+        this file assert something false about a system that can now send.
+
+        What this file is for survives that intact, because it was never
+        "nothing reaches a prospect" - that is `providerwrites`' own
+        `CONDITIONAL`, asserted at the bottom of this test and in
+        `test_the_stop_can_be_performed`. This file answers a narrower and
+        harder question: can this system ANSWER somebody? For that the
+        property is about the VOCABULARY - there is no verb that takes text
+        and puts it in front of a named person. An activation starts a
+        sequence whose every word was fingerprint-bound and approved by an
+        accountable human before the campaign existed; it composes nothing,
+        it cannot be pointed at one person, and it cannot be reached from an
+        inbound reply. `SendMessage` and `bison.add_lead` remain absent, and
+        `NoModelIsAskedWhatToSayBack` below is the other half of the claim.
 
         The list grew on 2026-09-13 and the property did not. Each addition
         either reduces what somebody receives or builds a campaign that is
@@ -110,6 +137,30 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
                                   `CONDITIONAL` and not just a place in the
                                   tuple
 
+          heyreach.add_lead_to_list
+                                  adds to a LIST the provider confirms, at
+                                  the moment of the write, is attached to no
+                                  campaign. A list attached to nothing
+                                  reaches nobody
+          heyreach.create_list    makes an EMPTY list attached to no
+                                  campaign - nothing to read, nothing to
+                                  prove, so deliberately unconditional
+          heyreach.create_campaign
+                                  creates a DRAFT, and a DRAFT sends
+                                  nothing. Conditional on the list bound to
+                                  it being ours, unbound and holding only
+                                  approved leads
+          bison.assign_sender     binds a seat to a campaign and transmits
+                                  nothing - but attaching a seat is what
+                                  makes sending possible at all, so it
+                                  carries EMAIL_ACTIVATE's own condition
+          heyreach.activate       starts ONE named LinkedIn campaign, and
+          bison.activate          starts ONE named email campaign. These are
+                                  the two that make approved sequences run.
+                                  Neither composes a word and neither can be
+                                  aimed at a person; both refuse every
+                                  campaign but the one an operator named
+
         Enumerated rather than derived, so adding one stays a decision. The
         assertion that actually guards this file is the loop below.
         """
@@ -119,7 +170,35 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
             (pw.LINKEDIN_PAUSE, pw.EMAIL_PAUSE, pw.EMAIL_STOP_LEAD,
              pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE,
              pw.LINKEDIN_SET_SEQUENCE, pw.LINKEDIN_ADD_LEAD,
-             pw.LINKEDIN_START_EMPTY_FOR_STAGING))
+             pw.LINKEDIN_START_EMPTY_FOR_STAGING,
+             pw.LINKEDIN_ADD_LEAD_TO_LIST,
+             pw.EMAIL_ASSIGN_SENDER, pw.EMAIL_ACTIVATE,
+             pw.LINKEDIN_CREATE_CAMPAIGN, pw.LINKEDIN_ACTIVATE,
+             pw.LINKEDIN_CREATE_LIST))
+
+        # NO ENABLED VERB IS A SEND VERB, checked against the same vocabulary
+        # `test_no_declared_operation_sends_a_message` uses. That test asks it
+        # of everything declared; this asks it of everything ENABLED, so a
+        # send verb could not arrive by being granted without being declared.
+        sending = [op for op in providerwrites.SUPPORTED
+                   if op.split(".")[-1].lower() in SENDING_VERBS]
+        self.assertEqual(sending, [],
+                         f"an enabled operation sends a message: {sending}")
+
+        # AND THE TWO THAT MAKE A CAMPAIGN RUN NAME ONE CAMPAIGN EACH.
+        # Membership of the tuple above is not the permission for either, and
+        # this file would otherwise read as though it were.
+        require = pw.require_conditional_permission
+        for operation in (pw.LINKEDIN_ACTIVATE, pw.EMAIL_ACTIVATE):
+            self.assertIn(operation, pw.CONDITIONAL, operation)
+        self.assertTrue(require(pw.LINKEDIN_ACTIVATE,
+                                pw._AUTHORIZED_LINKEDIN_CANARY, None))
+        for other in ("599020", "604869", "605487", "605733", "", None):
+            with self.assertRaises(pw.WriteRefused):
+                require(pw.LINKEDIN_ACTIVATE, other, None)
+        for other in ("481", "485", "487", "", None):
+            with self.assertRaises(pw.WriteRefused):
+                require(pw.EMAIL_ACTIVATE, other, "productive-email-control-v2")
         for operation, (_channel, prospect_facing, _why) in                 providerwrites.OPERATIONS.items():
             # NARROWED, TASK-137. This asserted that NOTHING
             # prospect-facing was supported - true of a system that
@@ -129,8 +208,12 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
             # second becomes possible safely. The property that has
             # to hold now: no prospect-facing verb is enabled without
             # a condition deciding, per write, whether it reaches
-            # anyone. `heyreach.add_lead` has one; the activate verbs
-            # have none and so can never be admitted.
+            # anyone. `heyreach.add_lead` is conditional on the
+            # destination's STATE; the two ACTIVATE verbs cannot be,
+            # because no campaign state makes an activation reach
+            # nobody, so they are scoped BY NAME instead - asserted
+            # above. `bison.add_lead` has no condition and is
+            # therefore still refused outright.
             if not prospect_facing:
                 continue
             if providerwrites.is_supported(operation):

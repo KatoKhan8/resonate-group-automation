@@ -220,13 +220,45 @@ class DraftIsNotProspectFacing(unittest.TestCase):
                                return_value={"status": "IN_PROGRESS"}):
             self.assertFalse(heyreach.campaign_cannot_send(999999))
 
-    def test_start_campaign_is_not_in_supported(self):
-        """The verb that moves DRAFT to running is sealed."""
-        self.assertNotIn(heyreach.LINKEDIN_ACTIVATE
-                         if hasattr(heyreach, "LINKEDIN_ACTIVATE")
-                         else "heyreach.activate",
-                         __import__("src.providerwrites",
-                                    fromlist=["SUPPORTED"]).SUPPORTED)
+    def test_start_campaign_names_one_campaign_and_not_this_draft(self):
+        """RENAMED from `test_start_campaign_is_not_in_supported`.
+
+        The old name asserted the blanket seal on the verb that moves DRAFT
+        to running. An operator narrowed that seal on 2026-09-16, granting
+        `heyreach.activate` SCOPED BY NAME to campaign 605732, so the name
+        pinned the opposite of the truth and the assertion under it would
+        have been deleted rather than moved.
+
+        The property this class needs is not "no campaign may be started" -
+        it is "STARTING IS NOT SOMETHING BINDING A LIST TO A DRAFT DOES". A
+        DRAFT created here is 999999 and every other id in this module, and
+        none of them may be started: the grant names exactly one campaign
+        that this module never creates, touches or returns. So binding a
+        list to a DRAFT still costs the unbound-list staging property and
+        still sends nothing, which is the whole claim of the class.
+        """
+        providerwrites = __import__("src.providerwrites",
+                                    fromlist=["SUPPORTED"])
+        activate = (heyreach.LINKEDIN_ACTIVATE
+                    if hasattr(heyreach, "LINKEDIN_ACTIVATE")
+                    else "heyreach.activate")
+        self.assertIn(activate, providerwrites.SUPPORTED)
+        self.assertTrue(
+            providerwrites.is_conditional(activate),
+            "heyreach.activate is enabled with no condition, which would "
+            "make every DRAFT this module creates startable")
+
+        require = providerwrites.require_conditional_permission
+        # Exactly one campaign, and it is not one of ours. 999999 is the
+        # DRAFT id this module uses throughout; 604869 and 605487 are dead
+        # ends asserted refused rather than dropped; the near misses and
+        # ""/None prove the match is exact and fails closed.
+        self.assertTrue(require(
+            activate, providerwrites._AUTHORIZED_LINKEDIN_CANARY, None))
+        for other in ("999999", "599020", "604869", "605487",
+                      "605733", "60573", "", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(activate, other, None)
 
 
 if __name__ == "__main__":

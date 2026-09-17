@@ -258,16 +258,73 @@ class EveryShippedWriteUsesADeclaredRoute(ProviderTest):
 class TheDoorDidNotWidenWhatThisModuleMaySend(unittest.TestCase):
     """Enforcement must not have quietly become permission."""
 
-    def test_resume_is_declared_but_still_unsupported(self):
-        """The route is on the allowlist so that `resume_campaign` can work
-        the day it is authorised. What keeps it from sending TODAY is
-        `providerwrites.SUPPORTED`, not the absence of the route - and those
-        two facts must not be confused for one another."""
+    def test_resume_is_declared_and_authorised_for_one_campaign_only(self):
+        """RENAMED from `test_resume_is_declared_but_still_unsupported`.
+
+        The route has been on the allowlist since before any permission
+        existed, so that `resume_campaign` would work the day it was
+        authorised. It was authorised on 2026-09-16 - so the old name, which
+        asserted the verb was unsupported, now states the opposite of the
+        truth and would have had to be deleted rather than moved.
+
+        The two facts this test exists to keep apart are unchanged: a ROUTE
+        on the allowlist is one this module CAN call, and a PERMISSION is
+        what decides whether it does. What has moved is that the permission
+        is no longer "no", it is "one campaign" - and that is the thing this
+        class must prove did not quietly become a channel. Membership of
+        `SUPPORTED` alone would licence activating 481, which holds 23 people
+        with 6 to 40 historical touches each under a sequence nobody approved
+        here.
+        """
         from src import providerwrites
 
         self.assertIsNotNone(bison.route_of("/campaigns/451/resume"))
-        self.assertFalse(
+        self.assertTrue(
             providerwrites.is_supported(providerwrites.EMAIL_ACTIVATE))
+        self.assertTrue(
+            providerwrites.is_conditional(providerwrites.EMAIL_ACTIVATE),
+            "bison.activate is enabled with no condition, which is a licence "
+            "over every campaign in that workspace")
+
+        require = providerwrites.require_conditional_permission
+        # THE CANONICAL ROW IS CHECKED FIRST, because the provider slot in the
+        # grant is unpinned and the row is what supplies the expected provider
+        # id. A write naming any other row is refused before a provider id is
+        # even resolved, so no provider campaign is reachable through it.
+        for other in ("481", "485", "487", "451", "", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.EMAIL_ACTIVATE, other,
+                        "productive-email-control-v2")
+        # And with the RIGHT row named, every provider id but the one that row
+        # is actually bound to is still refused - the binding check the `None`
+        # in the grant preserves rather than drops. 481 and 485 must never be
+        # activated: 481 holds strangers, and 485's sequence violates the
+        # threading invariant and `set_sequence` appends, so it cannot be
+        # corrected in place.
+        want_canonical = providerwrites._AUTHORIZED_EMAIL_CAMPAIGN[1]
+        for other in ("481", "485", "451", "4870", "48", "", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.EMAIL_ACTIVATE, other, want_canonical)
+
+        # The one pair that is admitted, resolved from canonical state rather
+        # than written down here - so the test cannot drift from the binding.
+        from src import campaigns as _campaigns
+        bound = (_campaigns.get(want_canonical) or {}).get("bison_campaign_id")
+        self.assertTrue(bound,
+                        f"{want_canonical} carries no `bison_campaign_id`, so "
+                        f"there is no provider campaign the grant can be "
+                        f"checked against")
+        self.assertTrue(require(providerwrites.EMAIL_ACTIVATE, str(bound),
+                                want_canonical))
+
+        # WHAT DID NOT COME WITH IT. `bison.add_lead` reaches a person on a
+        # channel that can now be activated, and `bison.set_limits` is a cap
+        # this build could raise on the campaign it just started. Neither was
+        # granted.
+        self.assertFalse(
+            providerwrites.is_supported(providerwrites.EMAIL_ADD_LEAD))
+        self.assertFalse(
+            providerwrites.is_supported(providerwrites.EMAIL_SET_LIMITS))
 
     def test_there_is_no_delete_route(self):
         for path in ("/campaigns/451", "/leads/993", "/campaigns"):

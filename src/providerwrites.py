@@ -83,9 +83,19 @@ discovers a route by mutating production, so anything unestablished is declared
              pause / activate                 no documented route
 
 Every one of those was probed read-only or is named in the provider modules;
-none has had a successful write response read back. So `SUPPORTED` stays empty
-until each is separately established, reviewed and tested - one route per
+none has had a successful write response read back. So `SUPPORTED` stayed empty
+until each was separately established, reviewed and tested - one route per
 change, never a batch.
+
+THAT PARAGRAPH USED TO END "SO `SUPPORTED` STAYS EMPTY", AND IT NO LONGER IS.
+Fourteen verbs are enabled as of 2026-09-17, each under a written operator
+grant, and the two that reach a person - `heyreach.activate` and
+`bison.activate` - each carry a CONDITION naming exactly one campaign. The
+rule the paragraph describes was followed rather than abandoned: every route
+was established, reviewed and tested on its own. Leaving the old sentence
+standing would have made this docstring the thing a reader trusts instead of
+the tuple, which is how a stale comment becomes a false claim about a safety
+surface.
 
 THE ONE RULE THAT MATTERS MOST.
 
@@ -1030,12 +1040,12 @@ CONDITIONAL[EMAIL_ACTIVATE] = _is_the_authorized_email_campaign
 
 # THE ONE LINKEDIN CAMPAIGN AN ACTIVATION COULD EVER NAME.
 #
-# Written BEFORE the permission is granted, deliberately. `LINKEDIN_ACTIVATE`
-# is not in `SUPPORTED` and must not be added here - but when the operator
-# decides, membership alone would be a channel-wide licence over an account
-# holding 83 campaigns, 12 of them the client's own and IN_PROGRESS. The
-# operator's grant will name one campaign, so the condition names one campaign
-# and exists in advance.
+# Written BEFORE the permission was granted, deliberately, and the reasoning
+# held: membership alone would be a channel-wide licence over an account
+# holding 83 campaigns, 13 of them IN_PROGRESS and all but one the client's
+# own. `LINKEDIN_ACTIVATE` IS in `SUPPORTED` now - the operator decided on
+# 2026-09-16 - and it names one campaign, which is exactly what this condition
+# was built in advance to make possible.
 #
 # RE-SCOPED 2026-09-16 from 604869 to 605487 and then to 605732, under:
 # "APPROVE HEYREACH ACTIVATION: campaign 605487, 4 approved READY leads."

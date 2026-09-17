@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """The first provider write this build has BUILT, and it is a stop.
 
-Built, not enabled. `providerwrites.SUPPORTED` is still empty and every
-operation still refuses. The distinction is the point of this file.
+Built before it was enabled, and the ORDER is the point of this file.
+`providerwrites.SUPPORTED` was empty when this was written and every
+operation refused; it holds fourteen verbs now, including two that make a
+campaign send. That is not a retraction of anything below - it is the
+sequence this file argued for, arriving. The stop was built first, validated
+first and enabled first, and the starts that came later are each scoped to
+one named campaign while neither pause carries a condition at all. A build
+that had acquired the ability to start before the ability to end would have
+failed the tests here rather than passed them.
 
 WHY A STOP FIRST. The killswitch could refuse to START a campaign and could
 not END one, so for a campaign already running in the vendor UI it was a
@@ -110,16 +117,63 @@ class ThePauseIsPerformable(QueueTest):
         # leads, so nothing is sent, and its condition refuses a campaign
         # holding anyone. The provider forced it - DRAFT refuses leads and
         # cannot be paused, so start-then-pause is the only route to a
-        # stageable campaign. `heyreach.activate` - starting a campaign that
-        # HOLDS people - is still sealed and carries no condition.
+        # stageable campaign.
+        #
+        # SIX MORE JOINED ON 2026-09-16 by written operator authorization -
+        # see OPERATOR-AUTHORIZATION-2026-09-16.md. This list is NOT a
+        # loosening of the property; the property was never "the set is
+        # small", it is "every member of the set is named here by somebody
+        # who read why". Four of the six are campaign-BUILDING and reach
+        # nobody:
+        #
+        #   heyreach.create_campaign  creates a DRAFT, and a DRAFT sends
+        #                             nothing. Conditional on the LIST that
+        #                             will be bound to it - ours, unbound,
+        #                             holding only approved leads, read live
+        #   heyreach.create_list      makes an EMPTY list attached to no
+        #                             campaign. Nothing to read and nothing
+        #                             to prove, so deliberately unconditional
+        #   heyreach.add_lead_to_list adds to a list the provider confirms,
+        #                             at the moment of the write, is attached
+        #                             to no campaign
+        #   bison.assign_sender       attaching a seat is what makes sending
+        #                             possible at all, so it shares
+        #                             EMAIL_ACTIVATE's condition and refuses
+        #                             every canonical row but the named one
+        #
+        # The other two are the ACTIVATE verbs, and they are the ones that
+        # make a campaign send. `heyreach.activate` is no longer sealed and
+        # this comment used to say it was. What replaced the seal is
+        # NARROWER than membership and is asserted in
+        # `test_no_supported_verb_reaches_a_prospect_unconditionally`: each
+        # carries a CONDITIONAL naming ONE campaign per channel, and every
+        # other id on either channel is refused.
         proven = {"heyreach.pause", "bison.pause", "bison.stop_lead",
                   "bison.create_campaign", "bison.set_sequence",
                   "heyreach.set_sequence", "heyreach.add_lead",
-                  "heyreach.start_empty_for_staging"}
+                  "heyreach.start_empty_for_staging",
+                  "heyreach.add_lead_to_list", "heyreach.create_campaign",
+                  "heyreach.create_list", "heyreach.activate",
+                  "bison.assign_sender", "bison.activate"}
         for operation in providerwrites.OPERATIONS:
             if operation in proven:
                 continue
             self.assertFalse(providerwrites.is_supported(operation), operation)
+
+        # WHAT DID NOT COME WITH IT, named rather than left to the loop
+        # above. The loop is a statement about everything; these four are the
+        # ones whose absence the grant was explicitly not a grant of, and a
+        # loop that silently had nothing left to check would still pass.
+        #
+        # `heyreach.assign_sender` and `heyreach.set_limits` are a seat this
+        # build could attach and a cap it could raise - which is how a
+        # validated one-person canary silently becomes a bigger campaign
+        # without any verb in the set above being called again.
+        # `bison.add_lead` reaches a person on the channel that is now
+        # activatable, and nobody granted it.
+        for sealed in ("heyreach.assign_sender", "heyreach.set_limits",
+                       "bison.add_lead", "bison.set_limits"):
+            self.assertFalse(providerwrites.is_supported(sealed), sealed)
 
     def test_no_supported_verb_reaches_a_prospect_unconditionally(self):
         """NARROWED, TASK-137. The property that has to survive every
@@ -132,6 +186,16 @@ class ThePauseIsPerformable(QueueTest):
         cannot send from sending somebody a message. The property that
         actually has to hold is that no prospect-facing verb is enabled
         WITHOUT a condition deciding, per write, whether it reaches anyone.
+
+        RE-POINTED 2026-09-16. The open list grew from one to three when an
+        operator granted both ACTIVATE verbs. The property is unchanged and
+        it was never the COUNT - it is that nothing reaches a person on tuple
+        membership alone. `add_lead` is conditional on the destination's
+        STATE (a campaign the provider says cannot send); the two ACTIVATE
+        verbs cannot be, because no campaign state makes an activation reach
+        nobody, so they are scoped BY NAME to one campaign per channel
+        instead. That scope is asserted below rather than taken on trust,
+        because a condition that admits everything is worse than none.
         """
         for operation, (_c, facing, _w) in providerwrites.OPERATIONS.items():
             if not facing:
@@ -144,10 +208,44 @@ class ThePauseIsPerformable(QueueTest):
             else:
                 self.assertFalse(providerwrites.is_supported(operation),
                                  operation)
-        # The one that is open, named, so a second one is a decision.
+        # The ones that are open, named, so a fourth one is a decision.
         facing_and_open = [op for op in providerwrites.PROSPECT_FACING
                            if providerwrites.is_supported(op)]
-        self.assertEqual(facing_and_open, [providerwrites.LINKEDIN_ADD_LEAD])
+        self.assertEqual(facing_and_open, [providerwrites.LINKEDIN_ADD_LEAD,
+                                           providerwrites.LINKEDIN_ACTIVATE,
+                                           providerwrites.EMAIL_ACTIVATE])
+        # `bison.add_lead` is the fourth prospect-facing verb and it is
+        # sealed outright, so the list above is demonstrably not just
+        # "everything that reaches a person".
+        self.assertFalse(
+            providerwrites.is_supported(providerwrites.EMAIL_ADD_LEAD),
+            "bison.add_lead reaches a person and nobody granted it")
+
+        # EXACTLY ONE CAMPAIGN PER CHANNEL. Membership alone would be a
+        # channel-wide licence: on LinkedIn over the 83 campaigns in that
+        # account, 12 of them the client's own and IN_PROGRESS; on email over
+        # 481, which holds 23 people already written to under a sequence
+        # nobody approved here.
+        require = providerwrites.require_conditional_permission
+        self.assertTrue(require(providerwrites.LINKEDIN_ACTIVATE,
+                                providerwrites._AUTHORIZED_LINKEDIN_CANARY,
+                                None))
+        # 594061 is the campaign this file's pause was validated against;
+        # 604869 and 605487 are DEAD ENDS rather than merely un-granted, and
+        # are asserted refused rather than dropped. "605733" and "60573" are
+        # near misses of the granted id, and ""/None prove it fails closed.
+        for other in ("594061", "599020", "604869", "605487",
+                      "605733", "60573", "", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.LINKEDIN_ACTIVATE, other, None)
+        # Email is checked on the CANONICAL row first, because the provider
+        # slot is unpinned and the row supplies the expected provider id. A
+        # write naming any other row is refused before a provider id is even
+        # resolved, so 481 and 485 cannot be reached through it.
+        for other in ("481", "485", "487", "", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.EMAIL_ACTIVATE, other,
+                        "productive-email-control-v2")
 
     def test_it_performs_and_is_confirmed_by_the_read_back(self):
         spy = Spy(status="PAUSED")
@@ -195,18 +293,88 @@ class ThePauseIsPerformable(QueueTest):
 
 
 class TheStartIsStillRefused(unittest.TestCase):
-    """Both routes exist on the vendor. Only one is enabled, and it is not
-    the one that creates exposure."""
+    """Both routes exist on the vendor. The start is enabled for ONE named
+    campaign and refused for every other, and it is still refused outright to
+    any caller who has not passed the gate ladder.
 
-    def test_activate_is_not_supported(self):
-        self.assertFalse(providerwrites.is_supported("heyreach.activate"))
+    RE-POINTED 2026-09-16. This class asserted that the start did not exist as
+    a permission at all, which was right until an operator granted
+    `heyreach.activate` scoped to campaign 605732. The class name is still
+    accurate for everything this file is about: the start is refused for the
+    83 other campaigns in that account, and refused even for 605732 without
+    an `executionguard.Authorization`.
+    """
+
+    def test_activate_is_supported_only_for_the_named_canary(self):
+        """RENAMED from `test_activate_is_not_supported`.
+
+        The old name asserted a blanket seal that an operator deliberately
+        narrowed, so leaving it would have pinned the opposite of the truth.
+        The property that replaced it is not weaker in any way that matters:
+        the verb is enabled, it carries a condition, and the condition admits
+        exactly ONE provider campaign and refuses every other id. Widening
+        that is a new operator decision, not a refactor.
+        """
+        self.assertTrue(providerwrites.is_supported("heyreach.activate"))
+        self.assertTrue(
+            providerwrites.is_conditional("heyreach.activate"),
+            "heyreach.activate is supported and unconditional, which is a "
+            "licence to start any of the 83 campaigns in that account")
+        require = providerwrites.require_conditional_permission
+        self.assertTrue(require("heyreach.activate",
+                                providerwrites._AUTHORIZED_LINKEDIN_CANARY,
+                                None))
+        # Every other id, including the two DEAD ENDS (604869's bound list
+        # holds a contact whose account `collision.account_policy` holds;
+        # 605487's list was staged on the account gate alone) and the
+        # campaigns this file's pause was validated against. The near misses
+        # and ""/None prove the match is exact and fails closed.
+        for other in ("594061", "599020", "604869", "605487",
+                      "605733", "60573", "605732x", "", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require("heyreach.activate", other, None)
 
     def test_activate_refuses_before_touching_a_transport(self):
+        """The name is unchanged because the property is: nothing reaches the
+        vendor. What changed is WHICH refusal fires.
+
+        It was `WriteUnsupported` - the OFF switch - which was right until the
+        operator authorized 605732. Now the refusal comes from the
+        requirement that a prospect-facing verb carry a real
+        `executionguard.Authorization`, which only `authorize()` mints and
+        only after every per-contact gate passes. That is a stronger seal
+        than absence in one respect: absence stopped everyone, this stops
+        everyone who has not passed the gates, and it fires for the GRANTED
+        campaign too. Precedent:
+        `test_heyreach_start_is_sealed.ActivateIsSealed.
+        test_perform_refuses_activate_without_an_authorization`.
+        """
+        # The AUTHORIZED campaign, deliberately. If the grant were the whole
+        # permission this call would proceed, and the transport would be
+        # touched.
         spy = Spy()
-        with self.assertRaises(providerwrites.WriteUnsupported):
-            providerwrites.perform("heyreach.activate", transport=spy.transport,
+        with self.assertRaises(providerwrites.WriteRefused) as ctx:
+            providerwrites.perform(
+                "heyreach.activate",
+                provider_campaign_id=(
+                    providerwrites._AUTHORIZED_LINKEDIN_CANARY),
+                transport=spy.transport, readback=spy.readback)
+        self.assertIn("Authorization", str(ctx.exception))
+        self.assertEqual(spy.calls, [])
+
+        # And an UNAUTHORIZED campaign is refused on the same first gate,
+        # never reaching the condition that would refuse it second. Two
+        # independent refusals stand between this call and the vendor.
+        spy = Spy()
+        with self.assertRaises(providerwrites.WriteRefused):
+            providerwrites.perform("heyreach.activate",
+                                   provider_campaign_id="599020",
+                                   transport=spy.transport,
                                    readback=spy.readback)
         self.assertEqual(spy.calls, [])
+        with self.assertRaises(providerwrites.WriteRefused):
+            providerwrites.require_conditional_permission(
+                "heyreach.activate", "599020", None)
 
     def test_the_module_refuses_to_write_to_any_other_route(self):
         for route in ("/campaign/Resume", "/campaign/StartCampaign",
@@ -253,10 +421,19 @@ class TheStartIsStillRefused(unittest.TestCase):
         # DRAFT -> PAUSED is not a transition this vendor has. Start-then-pause
         # is the only route to a stageable campaign.
         #
-        # What still may not happen is starting a campaign that HOLDS PEOPLE.
-        # That is `heyreach.activate`, it is absent from SUPPORTED, it carries
-        # no condition, and the two verbs share a route and are told apart by
-        # a lead count the provider supplies - asserted below.
+        # NARROWED AGAIN 2026-09-16. Starting a campaign that HOLDS PEOPLE is
+        # `heyreach.activate`, and this said it was absent from SUPPORTED and
+        # carried no condition. An operator granted it, SCOPED BY NAME to
+        # campaign 605732, so the absence is gone and what is asserted below
+        # is the narrowness that replaced it: enabled, conditional, and
+        # refusing every other id on the channel.
+        #
+        # The route list is unaffected by that grant and that is the point of
+        # keeping the two assertions in one test. `StartCampaign` was already
+        # on WRITE_ROUTES while the permission did not exist, and the two
+        # verbs share that route and are told apart by a lead count the
+        # provider supplies - so a route being writable never was the
+        # permission, and a permission arriving does not widen the routes.
         # `/campaign/StartCampaign` is present too, and Resume was not the
         # verb for a DRAFT campaign after all - it answers 400 "not paused,
         # finished or failed". Resume is ACTIVATION (a paused campaign holds
@@ -272,11 +449,22 @@ class TheStartIsStillRefused(unittest.TestCase):
                          f"a route that reaches a prospect is writable: {reaching}")
         self.assertIn("/campaign/Resume", heyreach.WRITE_ROUTES)
         self.assertIn("/campaign/StartCampaign", heyreach.WRITE_ROUTES)
-        self.assertNotIn("heyreach.activate", providerwrites.SUPPORTED)
-        self.assertNotIn("heyreach.activate", providerwrites.CONDITIONAL)
+        self.assertIn("heyreach.activate", providerwrites.SUPPORTED)
+        self.assertIn("heyreach.activate", providerwrites.CONDITIONAL)
+        # And the condition is the permission: one campaign, every other
+        # id refused.
+        with self.assertRaises(providerwrites.WriteRefused):
+            providerwrites.require_conditional_permission(
+                "heyreach.activate", "594061", None)
         self.assertIn("heyreach.start_empty_for_staging",
                       providerwrites.CONDITIONAL)
         self.assertIn("/campaign/Pause", heyreach.WRITE_ROUTES)
+        # THE STOP IS STILL BROADER THAN THE START, which is the asymmetry
+        # this whole file was written to establish. `heyreach.pause` is
+        # supported and carries NO condition, so it may stop any campaign;
+        # `heyreach.activate` may start exactly one.
+        self.assertTrue(providerwrites.is_supported("heyreach.pause"))
+        self.assertFalse(providerwrites.is_conditional("heyreach.pause"))
 
 
 
