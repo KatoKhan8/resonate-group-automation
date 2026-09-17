@@ -42,8 +42,18 @@ def is_accountable_approver(by):
         return True
     # `zvonimir@x.co (operator authorisation 2026-09-16)` - the address is the
     # accountable part and the parenthetical is provenance.
+    #
+    # BOTH SIDES OF THE @ HAVE TO BE THERE. An earlier version asked only for
+    # an `@` and a dot after it, which accepted `@example.com` - a domain with
+    # nobody in front of it, which is not an identity anybody can be reached
+    # at. Its own test caught that, which is the argument for writing the
+    # negative cases out rather than trusting the shape to be obvious.
     head = who.split("(", 1)[0].strip()
-    return "@" in head and "." in head.rsplit("@", 1)[-1]
+    if head.count("@") != 1:
+        return False
+    local, _, domain = head.partition("@")
+    return bool(local.strip()) and "." in domain and bool(
+        domain.rsplit(".", 1)[-1].strip())
 
 
 def fingerprint(step):

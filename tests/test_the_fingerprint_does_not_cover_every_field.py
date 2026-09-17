@@ -129,5 +129,65 @@ class TheFingerprintDoesNotCoverMessage(unittest.TestCase):
                          "the approved note")
 
 
+class TheFingerprintDoesNotCoverWhoApproved(unittest.TestCase):
+    """The third thing outside the hash, and the one that had 84 instances.
+
+    The fingerprint answers "have these words changed since approval". It
+    cannot answer "did a person approve them" - and on a `generated: true`
+    step the words never move, so a stamp the system wrote for itself agrees
+    with the hash forever. Measured across the estate on 2026-09-17: 84
+    approvals written `by: "claude"`, 83 of them on generated steps.
+    """
+
+    def test_a_machine_name_is_not_accountable(self):
+        for who in ("claude", "qwen", "glm", "grok", "system", "assistant",
+                    "fixture", "unknown", "", None, "  "):
+            self.assertFalse(approval.is_accountable_approver(who), repr(who))
+
+    def test_an_address_is_accountable(self):
+        for who in ("zvonimir@resonategroup.co",
+                    "zvonimir@resonategroup.co (operator authorisation "
+                    "2026-09-16)",
+                    "  Someone@Example.COM  "):
+            self.assertTrue(approval.is_accountable_approver(who), repr(who))
+
+    def test_a_declared_operator_arm_is_accountable(self):
+        for who in ("operator", "operator-control-arm", "OPERATOR"):
+            self.assertTrue(approval.is_accountable_approver(who), repr(who))
+
+    def test_something_merely_shaped_like_an_address_is_not_enough(self):
+        """`a@b` has no dot in its domain; an accountable identity is one
+        somebody could actually be reached at."""
+        for who in ("a@b", "@example.com", "claude@", "claude @ example"):
+            self.assertFalse(approval.is_accountable_approver(who), repr(who))
+
+    def test_a_self_recorded_email_approval_certifies_nothing(self):
+        step = {"channel": "email", "subject": "S", "body": "the words"}
+        step["approval"] = {"by": "claude",
+                            "fingerprint": approval.fingerprint(step)}
+        # The hash agrees - that was never the question.
+        self.assertEqual(approval.fingerprint(step),
+                         step["approval"]["fingerprint"])
+        self.assertIsNone(bisonfactory._certified_copy(step, "em1"))
+
+    def test_a_self_recorded_linkedin_approval_certifies_nothing(self):
+        """The lane where it would have been permanent."""
+        step = {"channel": "linkedin", "linkedin_action": "connect",
+                "generated": True, "note": "the words"}
+        step["approval"] = {"by": "claude",
+                            "fingerprint": approval.fingerprint(step)}
+        self.assertEqual(approval.fingerprint(step),
+                         step["approval"]["fingerprint"])
+        self.assertIsNone(heyreachfactory._step_copy(step))
+
+    def test_the_same_words_from_a_person_do_certify(self):
+        """The other half: the gate must not refuse everything."""
+        step = {"channel": "linkedin", "linkedin_action": "connect",
+                "generated": True, "note": "the words"}
+        step["approval"] = {"by": "operator",
+                            "fingerprint": approval.fingerprint(step)}
+        self.assertEqual(heyreachfactory._step_copy(step), "the words")
+
+
 if __name__ == "__main__":
     unittest.main()

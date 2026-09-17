@@ -464,3 +464,109 @@ actually populates.
 
 No provider write route was called. Campaign 605732 and EmailBison 487 were
 read but not modified. No file under `src/` was edited.
+
+---
+
+## Amendment, 2026-09-17 — the two reporting defects above are fixed
+
+This audit read the provider and changed nothing. A follow-up changed
+`src/senderinventory.py` only, to make the repository report what the audit
+measured. Still READ-ONLY against both providers: no write route was called,
+campaign 605732 and EmailBison 487 were not touched, and no `--live` was run,
+so `work/senders.jsonl` on disk is unchanged and still holds the stale values
+described below.
+
+### Which `accountLimits` member means what — established, not inferred
+
+`POST /li_account/GetAll`, 41 seats, re-read 2026-09-17. The twelve numbers are
+six `<action>Limit` / `<action>Max` pairs, and the pairing is not symmetric:
+
+| | `connectioRequestLimit` | `connectioRequestMax` |
+|---|---|---|
+| distinct values over 41 seats | 0, 5, 10, 15, 17, 18, 19, 22, 23, 25, 40 | **40, and only 40** |
+| on the 8 seats with a dead credential | varies (5 – 40) | 40 |
+| `Limit > Max` anywhere | never | — |
+
+The same shape holds for `messageLimit`/`messageLimitMax`,
+`inMailLimit`/`inMailLimitMax`, `profileViewLimit`/`profileViewLimitMax`,
+`followLimit`/`followLimitMax` and `postLikeLimit`/`postLikeLimitMax`: the
+`...Limit` member varies per seat, the `...Max` member is 40 on every row.
+
+A number identical on a seat carrying thirteen live campaigns and on a seat
+whose credential is dead is a plan ceiling, not that seat's allowance. So:
+
+- **`connectioRequestLimit` is the CONFIGURED daily limit.**
+- **`connectioRequestMax` is the plan ceiling it may be configured up to.**
+- **Neither is remaining-today, and no field anywhere is.** Fifteen keys on the
+  seat row and twelve numbers in `accountLimits`; not one of the twenty-seven
+  is a used-today or left-today count. Remaining today is **UNKNOWN** and is
+  now reported as the word, never as a number.
+
+### The corrected numbers
+
+| | value | field it comes from |
+|---|---|---|
+| Configured connection capacity, 32 rostered seats | **1,014/day** | Σ `accountLimits.connectioRequestLimit` |
+| Plan ceiling, same 32 seats | 1,280/day | Σ `accountLimits.connectioRequestMax` = 40 × 32 |
+| Over-report the roster used to carry | **+26.2%** | the ceiling reported as the capacity |
+| Remaining today | **UNKNOWN** | no such field exists |
+| Rostered seats affected | 13 of 32 | `connectioRequestLimit != connectioRequestMax` |
+
+Section 7's "1,280/day where the provider's configured limits total 1,014"
+stands; `senderidentity.roster()` now reports 1,014 from rows built after the
+fix. `docs/state/SENDER-CAPACITY.json`'s 1,054 was always correct —
+`scripts/sender_capacity.py` read `connectioRequestLimit` all along; the
+difference from 1,014 is seat `174810`, which that script counts and the
+roster does not.
+
+### What changed
+
+- `senderinventory.build_linkedin` stores `connectioRequestLimit` as
+  `daily_limit`. The ceiling is kept under `provider_state.connection_max`.
+- `senderinventory.li_readiness` no longer tells an operator that a seat has
+  "no connection requests left against today's limit". It says the configured
+  limit is 0, which is what is true and does not imply waiting for midnight.
+- The LinkedIn report separates `connection_capacity_per_day` (configured)
+  from `connection_plan_ceiling_per_day` (the ceiling), and
+  `connection_remaining_today` is the string `"unknown"` — a word rather than
+  `None` so that `int(x or 0)` and `sum()` cannot turn it back into a zero.
+- `senderinventory.reconcile_linkedin` reports the attestation gap and the
+  drift between the stored roster and provider truth, and refreshes the
+  provider-owned fields of seats already in the roster. Reachable as
+  `python -m src.senderinventory --workspace productive --reconcile-linkedin`.
+
+### Seat 174810 is still not in the roster, and now it is on the record
+
+The gap is reported rather than closed. `reconcile_linkedin` lists all nine
+provider seats the roster does not name with each one's eligibility in the
+provider's own fields — the eight dead ones as not eligible, `174810` as
+eligible at the provider and `usable: false` — and the live run against the
+provider today returns `unrostered_but_eligible: ["174810"]`.
+
+Nothing here attests it. Section 2's criterion 4 is unchanged: HeyReach has no
+owner field, so attestation is an operator's decision about whose LinkedIn
+profile speaks to a stranger, and the reconcile write-back adds no rows at all.
+**That decision is still open and is now the only thing standing between "32
+eligible" and "33".**
+
+### Still stale on disk, and what closes it
+
+`work/senders.jsonl` was written 2026-09-13 and no `--live` was run, so it
+still holds `daily_limit: 40` on all 32 rows and
+`li-174892.provider_state.active_campaigns: 12` against the provider's 13. The
+dry reconcile reports all 14 drifted fields. An operator closes it with
+
+    python -m src.senderinventory --workspace productive --reconcile-linkedin --live
+
+which rewrites the provider-owned fields of the 32 rostered seats and adds
+none. Until then, read capacity from the reconcile report rather than from the
+stored roster.
+
+### Not fixed
+
+- `scripts/sender_capacity.py` still has no attestation check, so its
+  "33 healthy" and its 1,054/day both include `174810`. Section 7 already
+  records this; the fix above did not touch that script.
+- `senderinventory` has a constant for `messageLimit` but none for
+  `messageLimitMax`, so the message ceiling is not stored. Nothing reads it
+  today.
