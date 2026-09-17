@@ -1181,6 +1181,23 @@ def update_lead(lead_id, fields):
     held = variables_of(lead(lead_id))
     for wanted in fields.get("custom_variables") or []:
         got = held.get(wanted["name"])
+        # CLEARING A VARIABLE: THE PROVIDER STORES ABSENCE, NOT AN EMPTY STRING.
+        #
+        # `PATCH /leads/{id}` MERGES, so a variable cannot be removed by
+        # omitting it - TASK-217 clears the numbered positions above the
+        # sequence length by writing "" into them instead. The provider reads
+        # those back as None, and comparing "" to None raised on a write that
+        # had done exactly what was asked: measured on lead 203708,
+        # `subject_2=''` reading back `None`.
+        #
+        # THIS IS NOT A LOOSENED COMPARISON. It is only reached when the value
+        # ASKED FOR is empty, and the invariant those writes exist to enforce
+        # is "this position carries no prospect-facing words". Absent and empty
+        # both satisfy it; nothing else is accepted for either. A non-empty
+        # value still has to match exactly, so copy that was updated and did
+        # not take still raises - which is the failure this function is for.
+        if not str(wanted["value"] or "") and not str(got or ""):
+            continue
         if got != wanted["value"]:
             raise ProviderError(
                 f"emailbison update_lead: asked for "

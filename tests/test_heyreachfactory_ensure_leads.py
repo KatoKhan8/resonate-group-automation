@@ -20,21 +20,35 @@ import tempfile
 import unittest
 from unittest import mock
 
-from src import (campaigns, clients, collision, configdiff, executionguard,
-                 heyreachfactory, killswitch, providerwrites, store)
+from src import (approval, campaigns, clients, collision, configdiff,
+                 executionguard, heyreachfactory, killswitch, providerwrites,
+                 store)
 from src.providers import bison, heyreach
 
 
 # ----------------------------------------------- fixture helpers
 
 def _approved_step(key, day, action, *, note=None):
-    """One approved LinkedIn cadence step."""
+    """One approved LinkedIn cadence step, stamped over its OWN final words.
+
+    THE STAMP IS TAKEN LAST, AND IT IS TAKEN OVER THIS STEP. It used to be
+    the literal string `f"fp-{key}"` - a stamp that certifies nothing, which
+    passed only because `heyreachfactory._step_copy` asked whether an
+    approval EXISTED rather than whether it covered the words underneath it.
+    A fixture whose approval does not match its own copy cannot tell a
+    correctly approved step from an edited one, so it could not have caught
+    the defect the gate now closes.
+
+    The step is therefore built in full - channel, action and note - and only
+    then stamped, because `approval.fingerprint` hashes the words and any
+    later edit moves it.
+    """
     step = {"key": key, "day": day, "channel": "linkedin",
-            "linkedin_action": action, "generated": True,
-            "approval": {"fingerprint": f"fp-{key}",
-                         "at": "2026-09-14T00:00:00"}}
+            "linkedin_action": action, "generated": True}
     if note is not None:
         step["note"] = note
+    step["approval"] = {"fingerprint": approval.fingerprint(step),
+                        "at": "2026-09-14T00:00:00"}
     return step
 
 

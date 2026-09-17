@@ -550,7 +550,8 @@ def provider_heyreach(campaign_id):
 
 # ------------------------------------------------------- APPROVED, EmailBison
 
-def _expected_lead_variables(contact_copy, sequence, first_name=""):
+def _expected_lead_variables(contact_copy, sequence, first_name="",
+                             attribution=None):
     """The custom variables one lead should carry at the provider.
 
     The sequence is a template of merge fields - `{SUBJECT_1}`, `{BODY_1}` -
@@ -568,6 +569,20 @@ def _expected_lead_variables(contact_copy, sequence, first_name=""):
     variables carry ``subject_1`` plus one body per step and nothing else.
     """
     values = {}
+    # ATTRIBUTION IS MODELLED HERE RATHER THAN EXCLUDED FROM THE COMPARISON.
+    #
+    # `bisonfactory._variables_for` writes `record_id`, `contact_key` and
+    # `client` onto every lead, and `adapters.from_emailbison` reads the first
+    # two back off an inbound reply - without them a reply arrives attached to
+    # an address and nothing else, and reply-stop cannot find the person it is
+    # meant to stop. So they are load-bearing, not noise.
+    #
+    # They were absent from this side, so the comparison scored each of them
+    # `approved '' vs provider '<value>'` and every campaign failed `lead_copy`
+    # for carrying exactly what it was supposed to carry. Skipping them would
+    # have fixed the symptom and stopped checking three variables that decide
+    # whether a reply can be attributed. Stating them keeps them checked.
+    values.update(attribution or {})
     if len(contact_copy) <= 1:
         values["subject"] = (contact_copy[0].get("subject") or "") if contact_copy else ""
         values["body"] = (contact_copy[0].get("body") or "") if contact_copy else ""
@@ -675,7 +690,10 @@ def approved_bison(campaign, recs=None, config=None):
             if approved_here:
                 leads.add(address)
                 lead_copy[address] = _expected_lead_variables(
-                    contact_copy, sequence)
+                    contact_copy, sequence,
+                    attribution={"record_id": rec.get("id") or "",
+                                 "contact_key": contact.get("key") or "",
+                                 "client": campaign.get("client") or ""})
     if not leads:
         raise DiffRefused(
             "no contact on any listed record has an approved email step, so "
@@ -1076,6 +1094,22 @@ def compare_bison(campaign, recs=None, config=None, expect_workspace=None):
         for key in all_keys:
             want = expected.get(key, "")
             got = actual.get(key, "")
+            # A CLEARED POSITION READS BACK AS ABSENT, NOT AS EMPTY.
+            #
+            # `PATCH /leads/{id}` merges, so TASK-217 clears the numbered
+            # positions above the sequence length by writing "" into them; the
+            # provider stores that as null and returns None. Comparing "" to
+            # None reported a mismatch on a lead that held exactly what was
+            # asked for - and then crashed formatting it, because `_show(None)`
+            # returns None and the message slices it.
+            #
+            # NOT A LOOSENED COMPARISON: this is reached only when BOTH sides
+            # are empty, and the invariant these positions carry is "no
+            # prospect-facing words here". Absent and empty both satisfy it.
+            # Any non-empty difference still fails, which is the whole point of
+            # the gate - a subject_2 that acquired words would still be caught.
+            if not str(want or "") and not str(got or ""):
+                continue
             if want != got:
                 copy_failures.append(
                     f"lead_copy:{_hash_email(email)}.{key}: "

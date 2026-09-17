@@ -12,7 +12,7 @@ a copy block keyed by role. This test file proves:
 """
 import unittest
 
-from src import cadencelibrary, providerwrites
+from src import approval, cadencelibrary, providerwrites
 from src.providers import heyreach
 from src import heyreachfactory
 
@@ -27,14 +27,19 @@ def _approved_li_step(key, day, action, *, note=None, subject=None,
     path reads step.get("note", "") and no code writes a `message` field.
     """
     step = {"key": key, "day": day, "channel": "linkedin",
-            "linkedin_action": action, "generated": True,
-            "approval": {"fingerprint": f"fp-{key}", "at": "2026-09-14T00:00:00"}}
+            "linkedin_action": action, "generated": True}
     if note is not None:
         step["note"] = note
     if subject is not None:
         step["subject"] = subject
     if alternative is not None:
         step["alternative"] = alternative
+    # THE STAMP IS TAKEN OVER THIS STEP, AND IT IS TAKEN LAST. It used to be
+    # the literal `f"fp-{key}"`, which certifies nothing; that only ever
+    # passed because `_step_copy` asked whether an approval existed rather
+    # than whether it covered the words underneath it.
+    step["approval"] = {"fingerprint": approval.fingerprint(step),
+                        "at": "2026-09-14T00:00:00"}
     return step
 
 
@@ -43,12 +48,17 @@ def _full_record(contact_key="pat"):
     inmail_alt = {"requires": "connection_not_accepted",
                   "linkedin_action": "inmail",
                   "capability": cadencelibrary.CAP_INMAIL,
-                  "generated": True, "approval": {"fingerprint": "fp-li3-inmail"},
+                  "generated": True,
                   "subject": "A thought on your delivery pipeline",
                   "note": "Hi, I noticed your team runs delivery across "
                           "several groups. We help ops leaders see margin "
                           "while the project is still running. Worth a "
                           "quick look?"}
+    # The alternative is stamped over its own subject and note. It carries no
+    # `channel` of its own - it inherits the parent step's, which `_step_copy`
+    # is passed separately - so the fingerprint covers exactly what is here.
+    inmail_alt["approval"] = {"fingerprint": approval.fingerprint(inmail_alt),
+                              "at": "2026-09-14T00:00:00"}
     return {
         "id": "acme", "client": "productive", "domain": "acme.test",
         "contacts": [{"key": contact_key, "name": "Pat Morgan",

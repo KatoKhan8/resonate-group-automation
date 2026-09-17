@@ -34,8 +34,24 @@ no contact's own sentence may appear anywhere in the graph.
 import json
 import unittest
 
-from src import heyreachfactory
+from src import approval, heyreachfactory
 from tests.test_heyreachfactory import _full_record, _record_missing_step
+
+
+def rewrite_note(rec, contact_key, step_key, note):
+    """Give a step different words AND the approval that certifies them.
+
+    A fixture that edits a step's note without re-stamping it is an
+    edited-after-approval step, and `heyreachfactory._step_copy` now refuses
+    one - correctly. Every test below that rewrites a note is asking a
+    different question (whose words reach whose lead, does the claims gate
+    fire), so the words it substitutes have to be approved words.
+    """
+    step = rec["cadence"][contact_key][step_key]
+    step["note"] = note
+    step["approval"] = dict(step.get("approval") or {},
+                            fingerprint=approval.fingerprint(step))
+    return step
 
 
 def config_with_fallbacks(**overrides):
@@ -88,7 +104,7 @@ class TheGraphCarriesNobodysWords(unittest.TestCase):
         first = _full_record("pat")
         second = _full_record("carla")
         second["id"] = "beta"
-        second["cadence"]["carla"]["li1"]["note"] = "Hi Carla, quite different."
+        rewrite_note(second, "carla", "li1", "Hi Carla, quite different.")
 
         built = plan([first, second])
         fields = {c["contact_key"]: c["custom_fields"]
@@ -278,9 +294,9 @@ class LinkedInCopyIsClaimCheckedBeforeItCanBePushed(unittest.TestCase):
         """With one contact and that contact unsafe, the whole plan refuses -
         there is nobody left to build a campaign for."""
         rec = _full_record("pat")
-        rec["cadence"]["pat"]["li2"]["note"] = (
-            "Following up on our previous discussions about your delivery "
-            "pipeline.")
+        rewrite_note(rec, "pat", "li2",
+                     "Following up on our previous discussions about your "
+                     "delivery pipeline.")
         with self.assertRaises(heyreachfactory.FactoryRefused) as caught:
             plan([rec])
         self.assertIn("does not support", str(caught.exception))
@@ -291,8 +307,8 @@ class LinkedInCopyIsClaimCheckedBeforeItCanBePushed(unittest.TestCase):
         regeneration job on copy that already exists; one message covering
         both sends a reader to the wrong place."""
         rec = _full_record("pat")
-        rec["cadence"]["pat"]["li2"]["note"] = (
-            "Following up on our previous discussions.")
+        rewrite_note(rec, "pat", "li2",
+                     "Following up on our previous discussions.")
         with self.assertRaises(heyreachfactory.FactoryRefused) as caught:
             plan([rec])
         message = str(caught.exception)

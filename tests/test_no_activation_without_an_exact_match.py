@@ -20,45 +20,66 @@ field happened to fail first.
 
 ## The findings are the tests that do not pass
 
-Six mutations this gate cannot see are written as `expectedFailure` rather than
+Mutations this gate cannot see are written as `expectedFailure` rather than
 omitted, because a gap nobody wrote down is a gap somebody rediscovers in front
-of a client. Every one of them is on the EMAIL channel or on a dimension
-neither channel models:
+of a client. Six were recorded. THREE ARE NOW CLOSED, and each closed one is
+kept here as a positive assertion rather than deleted, so a regression brings
+the finding back rather than removing the only record of it:
 
-  1. an email campaign with NO approved copy diffs PASS
-  2. WHO is in an email campaign does not block - `lead_set` is required on
-     HeyReach and not on EmailBison
-  3. `compare_bison` can never reach PASS at all
-  4. `EmailBison` per-domain send cap - read, then discarded by the `_` prefix
-  5. `HeyReach` per-campaign daily limit - no read route exists (documented)
-  6. the sending SCHEDULE on either provider - in neither side of the diff, and
-     not in `campaigns.material()` either, so it is outside the approval too
+  1. CLOSED - an email campaign with NO approved copy used to diff PASS. It is
+     `DiffRefused` now: `test_an_email_campaign_with_no_approved_copy_is_refused`
+  2. CLOSED - WHO is in an email campaign now blocks; `lead_set` is in
+     `REQUIRED_BISON`: `test_who_is_in_an_email_campaign_blocks`
+  3. CLOSED - `compare_bison` can reach PASS (TASK-215 reconciled `day1` with
+     `step1`): `test_the_email_campaign_as_staged_passes`
+  4. OPEN - `EmailBison` per-domain send cap: read, then discarded by the `_`
+     prefix, so nothing scores it
+  5. OPEN - `HeyReach` per-campaign daily limit: no read route exists
+  6. OPEN - the sending SCHEDULE on either provider: in neither side of the
+     diff, and not in `campaigns.material()` either, so it is outside the
+     approval too
+  7. OPEN, and new with the threaded shape - `config["email_sequence"]` IS
+     side A of the email sequence comparison and is NOT in
+     `campaigns.sending_config()`, so it can be rewritten after approval
+     without moving the fingerprint:
+     `test_the_email_sequence_is_not_covered_and_it_defines_side_a`
 
-(1) is the serious one, and it is the defect `configdiff` exists to prevent
-reproduced on the channel nobody tested. `approved_bison` adds every emailable
-contact to the approved lead set BEFORE it filters on approval, so a campaign
-where nobody approved a single word produces an APPROVED_CONFIG with a
-populated lead set and empty copy - and a provider campaign holding those leads
-with no active sequence step matches it exactly. `approved_heyreach` refuses
-this case by name (`no APPROVED and renderable LinkedIn step ... an unapproved
-step is not an approved config`). The email side has no such refusal.
+(3) was the one that hid the rest. While no email campaign could reach PASS,
+every email verdict below was FAIL whatever the fixture did, so a mutation test
+on that channel proved only that FAIL was still FAIL. The unmutated email
+comparison is now asserted to PASS, which is what makes each email mutation
+below a statement about that mutation.
 
-(2) is the same correction this module already made once. `lead_set` was added
-to `REQUIRED_HEYREACH` so the diff would assert WHO the provider holds rather
-than how many; `REQUIRED_BISON` never got the field, though `provider_bison`
-pages the full lead set and `approved_bison` builds one. Swap one address for
-another and the report says `lead_set: mismatch` while the verdict never
-mentions it, because the count still agrees.
+(4) is now the serious one and it got worse when (3) closed: the email
+comparison reaches PASS with a per-domain send cap of 500 the approved side has
+no opinion about. It decides how many people at one company hear from us in a
+day.
 
-(3) shapes every email test below: `approved_bison` names its steps with
-cadence keys (`day1`) and `provider_bison` names them with provider order
-(`step1`), and `actions` is in `REQUIRED_BISON`. The two can never be equal, so
-`compare_bison` cannot return PASS for any campaign with approved copy. It
-fails closed, which is the safe direction, but it means the email half of this
-gate has never once been exercised against a match, and it masks every other
-email verdict. Email tests therefore assert
-`failures == {the standing defect} | {the mutation}`, which flips loudly the
-day the naming is reconciled.
+(2) was the same correction this module had already made once. `lead_set` was
+added to `REQUIRED_HEYREACH` so the diff would assert WHO the provider holds
+rather than how many; `REQUIRED_BISON` did not get the field for a while,
+though `provider_bison` pages the full lead set and `approved_bison` builds
+one. Until it did, swapping one address for another produced
+`lead_set: mismatch` in the report and a verdict that never mentioned it,
+because the count still agreed.
+
+## WHAT THE FIXTURE OWES THE COMPARISON
+
+The provider side is built FROM the approved side and then mutated once. That
+is deliberate - a fixture that restates the copy by hand agrees with nobody the
+day a template changes - but it has one cost, and the cost is the whole risk in
+a module like this: a field the fixture copies and no test mutates is a field
+being compared to itself.
+
+So every field the fixture supplies has a mutation that must catch it, and the
+two added with the threaded shape are no exception. `thread_replies` has
+`test_a_follow_up_that_stopped_being_a_thread_reply`; the per-lead custom
+variables have `test_a_lead_holding_copy_nobody_approved`. The invariant they
+encode - ONLY THE OPENER OWNS A SUBJECT, every step referencing `{SUBJECT_1}`,
+`subject_2..N` never generated - is asserted directly on the approved side by
+`test_only_the_opener_carries_a_subject_variable`, so a later step regaining a
+subject of its own is caught even though both sides of the diff would still
+agree about it.
 """
 import unittest
 from unittest import mock
@@ -77,10 +98,19 @@ BISON_CAMPAIGN = "9001"
 BISON_SEAT = "3131"
 BISON_WORKSPACE = 99
 
-# `approved_bison` says `day1`; `provider_bison` says `step1`; `actions` is
-# required. Named rather than tolerated, so an email assertion states which
-# failure is the mutation under test and which is the standing defect.
-STANDING_EMAIL_DEFECT = {"actions"}
+# THE STANDING EMAIL DEFECT IS CLOSED, AND THIS IS DELIBERATELY STILL HERE.
+#
+# It used to be `{"actions"}`: `approved_bison` named its steps with cadence
+# keys (`day1`) and `provider_bison` named them with provider order (`step1`),
+# `actions` is in `REQUIRED_BISON`, and the two could never be equal - so no
+# email campaign could reach PASS and every email assertion below had to carry
+# the standing failure alongside its own mutation.
+#
+# TASK-215 reconciled the naming: both sides now say `step{order}`. The set is
+# empty, which is what "an email mutation fails for its own field and nothing
+# else" means, and the name is kept so the day another standing defect appears
+# there is one place to put it rather than nine expected sets to widen.
+STANDING_EMAIL_DEFECT = frozenset()
 
 # No HeyReach read route exposes a per-campaign daily limit, so the field comes
 # back UNVERIFIABLE on every comparison. It is deliberately absent from
@@ -231,6 +261,21 @@ class Factory(CampaignTest):
             "subjects": list(approved["subjects"]),
             "bodies": list(approved["bodies"]),
             "delays": list(approved["delays"]),
+            # THE THREADED SHAPE. `(False, True, True, ...)` - only the opener
+            # starts a thread and every follow-up continues it, which is the
+            # TASK-219 invariant. A fixture that left this off made the
+            # provider look like a campaign of five unthreaded emails each
+            # owning its own subject, which is the shape the invariant exists
+            # to forbid.
+            "thread_replies": list(approved["thread_replies"]),
+            # PER-LEAD CUSTOM VARIABLES, email -> {subject_1, body_1..body_N}.
+            # This is where the approval fingerprint is enforced at the
+            # provider: the sequence carries placeholders and the words each
+            # prospect receives travel as custom variables on the lead. A
+            # fixture that served leads with no variables made every email
+            # comparison fail on `lead_copy` before any mutation was reached.
+            "lead_copy": {email: dict(values) for email, values
+                          in (approved["_lead_copy"] or {}).items()},
             "max_emails_per_day": approved["max_emails_per_day"],
             "max_new_leads_per_day": approved["max_new_leads_per_day"],
             "per_domain_cap": 3,
@@ -240,27 +285,49 @@ class Factory(CampaignTest):
 
     def compare_email(self, campaign, recs, **mutation):
         held = self.held_by_bison(campaign, recs, **mutation)
-        steps = [{"order": i + 1, "active": True, "email_subject": subject,
-                  "email_body": body, "wait_in_days": delay}
-                 for i, (subject, body, delay)
-                 in enumerate(zip(held["subjects"], held["bodies"],
-                                  held["delays"]))]
+        # INDEXED, NOT ZIPPED. `zip` stops at the shortest list, so a mutation
+        # that lengthens `subjects`/`bodies`/`delays` without lengthening
+        # `thread_replies` would have been silently truncated back to the
+        # approved length and the extra step would never reach the provider
+        # side at all - a fixture that makes a mutation undetectable.
+        steps = []
+        for i in range(len(held["subjects"])):
+            threaded = held["thread_replies"][i] \
+                if i < len(held["thread_replies"]) else False
+            steps.append({"order": i + 1, "active": True,
+                          "email_subject": held["subjects"][i],
+                          "email_body": held["bodies"][i],
+                          "wait_in_days": held["delays"][i],
+                          "thread_reply": threaded})
         row = {"id": held["campaign_id"], "name": held["name"],
                "status": held["status"],
                "max_emails_per_day": held["max_emails_per_day"],
                "max_new_leads_per_day": held["max_new_leads_per_day"],
                "daily_max_sends_per_receiving_domain": held["per_domain_cap"]}
         base = f"/campaigns/{held['campaign_id']}"
+        # `provider_bison` pages the campaign's leads for the ADDRESSES and
+        # then reads each lead individually for its CUSTOM VARIABLES - the
+        # campaign leads route does not carry them. A lead row with no `id` is
+        # skipped by that second read, so a fixture without ids produced an
+        # empty `_lead_variables` and every approved lead came back MISSING.
+        lead_ids = {email: 8000 + i for i, email in enumerate(held["leads"])}
         pages = {
             base: {"data": row},
             f"{base}/sender-emails?page=1": {
                 "data": [{"id": i} for i in held["sender_ids"]],
                 "meta": {"total": len(held["sender_ids"])}},
             f"{base}/leads?page=1": {
-                "data": [{"email": e} for e in held["leads"]],
+                "data": [{"id": lead_ids[e], "email": e}
+                         for e in held["leads"]],
                 "meta": {"total": len(held["leads"])}},
             f"{base}/sequence-steps": {"data": steps},
         }
+        for email, lead_id in lead_ids.items():
+            values = held["lead_copy"].get(email) or {}
+            pages[f"/leads/{lead_id}"] = {
+                "data": {"id": lead_id, "email": email,
+                         "custom_variables": [{"name": k, "value": v}
+                                              for k, v in sorted(values.items())]}}
 
         def transport(method, url, headers, body=None, timeout=None):
             path = url.split("https://bison.test", 1)[-1]
@@ -286,6 +353,42 @@ class AnExactMatchIsTheOnlyThingThatPasses(Factory):
         campaign, recs = self.stage()
         readback = self.compare_linkedin(campaign, recs)
         self.assertEqual(readback.verdict, configdiff.PASS, readback.failures)
+
+    def test_the_email_campaign_as_staged_passes(self):
+        """THE FINDING THAT CLOSED, and it was the one that masked the others.
+
+        `approved_bison` used to name its steps with cadence keys (`day1`) and
+        `provider_bison` with provider order (`step1`), and `actions` is in
+        `REQUIRED_BISON` - so no email campaign with approved copy could ever
+        reach PASS. This was an `expectedFailure` for exactly that reason. The
+        email half of the gate failed closed, which is the safe direction, and
+        it meant the half had never once been exercised against a match: every
+        email verdict below was FAIL whatever the fixture did.
+
+        TASK-215 reconciled the naming and compared like for like - sequence
+        placeholders against placeholders, declared waits against waits,
+        per-lead custom variables against the approved resolved copy. So this
+        is a real assertion now, and it is the control the mutations need: a
+        mutation test only means something if the unmutated case passes.
+        """
+        campaign, recs = self.stage()
+        readback = self.compare_email(campaign, recs)
+        self.assertEqual(readback.verdict, configdiff.PASS, readback.failures)
+
+    def test_and_the_email_diff_checked_enough_to_mean_something(self):
+        """The same control the LinkedIn side has. A PASS from a comparison
+        that examined three fields is not agreement."""
+        campaign, recs = self.stage()
+        readback = self.compare_email(campaign, recs)
+        self.assertGreaterEqual(readback.diff["checked"], 12)
+        for field in ("lead_set", "subjects", "bodies", "delays",
+                      "thread_replies", "actions"):
+            self.assertIn(field, readback.diff["fields"])
+        # And the per-lead copy was actually read, rather than skipped because
+        # the provider offered nothing to compare.
+        self.assertTrue(readback.provider["_lead_variables"])
+        self.assertEqual(set(readback.provider["_lead_variables"]),
+                         set(readback.approved["_lead_copy"]))
 
     def test_and_it_checked_enough_to_mean_something(self):
         """A diff that examined nothing must not read as agreement."""
@@ -456,8 +559,12 @@ class OneEmailMutationAtATime(Factory):
                            STANDING_EMAIL_DEFECT, blocking={"lead_count"})
 
     def test_a_missing_lead(self):
-        self.check({"lead_set", "lead_count"}, blocking={"lead_count"},
-                   leads=[])
+        """Three fields, and all three are the mutation: who, how many, and
+        whose approved words the provider is no longer holding. A lead the
+        provider does not have has no custom variables either, and
+        `lead_copy` says so by hashed address rather than by count."""
+        self.check({"lead_set", "lead_count", "lead_copy"},
+                   blocking={"lead_count"}, leads=[])
 
     def test_wrong_subject(self):
         campaign, recs = self.stage()
@@ -484,6 +591,16 @@ class OneEmailMutationAtATime(Factory):
         self.assert_blocks(readback, {"delays"}, STANDING_EMAIL_DEFECT)
 
     def test_an_extra_sequence_step(self):
+        """A sixth email nobody approved, caught on every dimension it moves.
+
+        `thread_replies` and `actions` are in the set because they are not
+        decoration: the extra step is a sixth `step{order}` the approved side
+        does not name, and it opens a NEW THREAD with a subject of its own -
+        the exact shape TASK-219's invariant forbids. A test that expected
+        only the copy fields would pass just as readily against a provider
+        that had lost the threading, which is a different defect wearing the
+        same failure.
+        """
         campaign, recs = self.stage()
         approved = configdiff.approved_bison(campaign, recs, self.config)
         readback = self.compare_email(
@@ -491,8 +608,90 @@ class OneEmailMutationAtATime(Factory):
             subjects=list(approved["subjects"]) + ["one more nobody approved"],
             bodies=list(approved["bodies"]) + ["and a body nobody approved"],
             delays=list(approved["delays"]) + [30])
-        self.assert_blocks(readback, {"subjects", "bodies", "delays"},
+        self.assert_blocks(
+            readback,
+            {"subjects", "bodies", "delays", "actions", "thread_replies"},
+            STANDING_EMAIL_DEFECT)
+
+    def test_a_follow_up_that_stopped_being_a_thread_reply(self):
+        """ONLY THE OPENER OWNS A SUBJECT, asserted as a mutation.
+
+        `thread_replies` and `lead_copy` are the two fields this module's
+        fixture now supplies from the approved side, and a field a fixture
+        supplies and nothing mutates is a field being compared to itself. This
+        is the mutation for the first of them.
+
+        A follow-up whose `thread_reply` flag is gone at the provider starts a
+        NEW THREAD. It still carries `{SUBJECT_1}` in this fixture, so the
+        subjects agree and the copy agrees - the flag is the whole difference,
+        and `thread_replies` is the only field that can see it.
+        """
+        campaign, recs = self.stage()
+        approved = configdiff.approved_bison(campaign, recs, self.config)
+        threads = list(approved["thread_replies"])
+        self.assertTrue(threads[1], "the fixture sequence is not threaded; "
+                                    "this mutation has nothing to undo")
+        threads[1] = False
+        readback = self.compare_email(campaign, recs, thread_replies=threads)
+        self.assert_blocks(readback, {"thread_replies"},
                            STANDING_EMAIL_DEFECT)
+
+    def test_a_lead_holding_copy_nobody_approved(self):
+        """The mutation for the other supplied field.
+
+        The sequence at the provider carries PLACEHOLDERS; the words a
+        prospect actually receives are custom variables on the lead. So a
+        campaign can hold the approved template, the approved people and the
+        approved limits, and still send something nobody blessed. Nothing in
+        the sequence diff can see that - `lead_copy` is the only field that
+        compares the resolved words.
+        """
+        campaign, recs = self.stage()
+        approved = configdiff.approved_bison(campaign, recs, self.config)
+        copy = {email: dict(values)
+                for email, values in approved["_lead_copy"].items()}
+        address = sorted(copy)[0]
+        self.assertIn("body_1", copy[address], "the fixture lead carries no "
+                                               "body_1 to alter")
+        copy[address]["body_1"] += "\n\nps. a line nobody approved."
+        readback = self.compare_email(campaign, recs, lead_copy=copy)
+        # Not `assert_blocks`: `lead_copy` is not in `REQUIRED_BISON` because
+        # it is not scored by `diff()` at all. `compare_bison` sets the verdict
+        # to FAIL directly when a lead's variables disagree, which is stronger
+        # than membership of the required tuple - there is no way to report
+        # this field without failing on it. Asserted as that, rather than
+        # squeezed into a helper whose last assertion would be false here.
+        self.assertEqual(readback.verdict, configdiff.FAIL)
+        self.assertEqual(failing(readback),
+                         STANDING_EMAIL_DEFECT | {"lead_copy"})
+        detail = readback.diff["fields"]["lead_copy"]["detail"]
+        self.assertTrue(any("body_1" in line for line in detail), detail)
+        self.assertFalse(any(address in line for line in detail),
+                         "the diff logged a prospect address in clear")
+
+    def test_only_the_opener_carries_a_subject_variable(self):
+        """The invariant stated on the APPROVED side, not just diffed.
+
+        `subject_2..N` must not exist. If a later step ever regained its own
+        subject variable, `thread_replies` would still agree and the copy
+        would still agree - the fixture would simply carry one more variable
+        on both sides and nothing here would notice. This is the assertion
+        that notices.
+        """
+        campaign, recs = self.stage()
+        approved = configdiff.approved_bison(campaign, recs, self.config)
+        self.assertEqual(approved["thread_replies"][0], False,
+                         "the opener must start the thread")
+        self.assertTrue(all(approved["thread_replies"][1:]),
+                        "every follow-up must continue the opener's thread")
+        self.assertEqual(set(approved["subjects"]), {"{SUBJECT_1}"},
+                         "every step must reference the opener's subject")
+        for address, values in approved["_lead_copy"].items():
+            extra = {k for k in values if k.startswith("subject_")
+                     and k != "subject_1"}
+            self.assertEqual(extra, set(), "a follow-up owns a subject "
+                                           "variable of its own")
+            self.assertIn("subject_1", values)
 
     def test_wrong_daily_limit(self):
         """The one limit EmailBison does publish, so the diff can assert it."""
@@ -520,25 +719,40 @@ class MutationsThisGateCannotSee(Factory):
     stays true.
     """
 
-    @unittest.expectedFailure
-    def test_an_email_campaign_with_no_approved_copy_should_not_pass(self):
-        """THE SERIOUS ONE. `approved_bison` runs `leads.add(address)` BEFORE
-        it filters on approval, so every emailable contact is in the approved
-        lead set whether or not one word of theirs was ever blessed. With no
-        approved step the approved copy is empty, and a provider campaign
-        holding those leads with no active sequence step matches it exactly.
+    def test_an_email_campaign_with_no_approved_copy_is_refused(self):
+        """THE SERIOUS ONE, AND IT IS CLOSED. Kept as an assertion, not
+        deleted, because it is the defect this whole module exists to prevent.
 
-        The gate whose entire purpose is "the provider holds what was approved"
-        therefore certifies a campaign against an approval that does not exist.
-        `approved_heyreach` refuses this by name - "an unapproved step is not an
-        approved config" - and the email side has no equivalent.
+        `approved_bison` used to run `leads.add(address)` BEFORE it filtered on
+        approval, so every emailable contact was in the approved lead set
+        whether or not one word of theirs had been blessed. With no approved
+        step the approved copy was empty, and a provider campaign holding those
+        leads with no active sequence step matched it exactly - so the gate
+        whose entire purpose is "the provider holds what was approved"
+        certified a campaign against an approval that did not exist.
+        `approved_heyreach` had refused this by name from the start; the email
+        side had no equivalent.
+
+        It refuses now, and it refuses rather than merely FAILING, which is the
+        stronger answer: `DiffRefused` means the question could not be asked,
+        and `executionguard` cannot mistake it for a comparison that ran. A
+        FAIL verdict would have been enough to block, but it would also have
+        claimed a diff had been performed against an approval that is not there.
         """
         campaign, recs = self.stage(approve_email=False, approve_linkedin=True)
-        readback = self.compare_email(campaign, recs, subjects=[], bodies=[],
-                                      delays=[])
-        self.assertEqual(readback.verdict, configdiff.FAIL,
-                         "a campaign nobody approved any copy for passed the "
-                         "provider-agreement gate")
+        with self.assertRaises(configdiff.DiffRefused) as caught:
+            self.compare_email(campaign, recs, subjects=[], bodies=[],
+                               delays=[])
+        self.assertIn("approved", str(caught.exception))
+        # And the refusal is about the APPROVAL, not about the campaign row -
+        # the SAME campaign and the SAME records compare fine the moment the
+        # copy is approved. Asserted because "it refused" is only interesting
+        # if the thing it refused could otherwise have been compared.
+        self.approve_drafts(recs)
+        store.save(recs)
+        recs = store.load()
+        self.assertEqual(self.compare_email(campaign, recs).verdict,
+                         configdiff.PASS)
 
     def test_who_is_in_an_email_campaign_blocks(self):
         """CLOSED. `lead_set` is in `REQUIRED_BISON` now, as it always was in
@@ -565,10 +779,16 @@ class MutationsThisGateCannotSee(Factory):
         by nothing. It decides how many people at one company hear from us in a
         day, and the approved side has no opinion about it at all.
 
-        Asserted as a CHANGE to the failing set rather than as a FAIL verdict.
-        A bare `assertEqual(verdict, FAIL)` reports an unexpected success here -
-        the comparison does fail, on the standing `actions` defect, and would
-        pass this test while noticing nothing whatever about the cap.
+        THIS BECAME THE SERIOUS ONE when the `actions` naming was reconciled.
+        While `compare_bison` could never reach PASS, a campaign with a cap
+        nobody approved was blocked anyway, for an unrelated reason. It reaches
+        PASS now, so a per-domain send cap of 500 on an approved campaign is
+        certified by the gate.
+
+        Still asserted as a CHANGE to the failing set rather than as a FAIL
+        verdict, so that the day the cap IS scored this reports an unexpected
+        success naming the cap, rather than being satisfiable by any other
+        field that happens to fail alongside it.
         """
         campaign, recs = self.stage()
         untouched = failing(self.compare_email(campaign, recs))
@@ -603,16 +823,6 @@ class MutationsThisGateCannotSee(Factory):
         self.assertTrue(
             {"schedule", "sending_window", "sending_days", "timezone"}
             & set(readback.diff["fields"]))
-
-    @unittest.expectedFailure
-    def test_compare_bison_should_be_able_to_pass(self):
-        """`approved_bison` says `day1`; `provider_bison` says `step1`; both are
-        the `actions` field and `actions` is in `REQUIRED_BISON`. No email
-        campaign with approved copy can ever reach PASS, so the email half of
-        this gate has never been exercised against an exact match."""
-        campaign, recs = self.stage()
-        readback = self.compare_email(campaign, recs)
-        self.assertEqual(readback.verdict, configdiff.PASS, readback.failures)
 
     def test_the_two_channels_disagree_about_the_expected_status(self):
         """Not expectedFailure, because this one is demonstrable today.
@@ -706,20 +916,156 @@ class TheFingerprintDoesNotCoverTheSchedule(Factory):
             self.assertEqual(self.fingerprints(campaign, recs, altered), before,
                              f"config.{key} is now covered - delete this test")
 
+    def test_the_email_sequence_is_not_covered_and_it_defines_side_a(self):
+        """A FINDING, and it is a different shape from the four above.
+
+        `approved_bison` builds the expected SEQUENCE - the subjects, the
+        bodies, the declared waits and the thread-reply pattern - by calling
+        `bisonfactory._sequence_steps(config["email_sequence"], ...)`. That
+        block is side A of the email half of this gate.
+
+        `campaigns.sending_config()` reads six keys and `email_sequence` is not
+        one of them. So editing the sequence after approval moves WHAT THE GATE
+        EXPECTS, in the same direction and by the same amount as the provider
+        would have to move to keep agreeing with it, while the approval stays
+        current and the fingerprint does not budge.
+
+        The other four findings here are fields outside the comparison. This
+        one is a field that defines the comparison and is still outside the
+        approval, which is worse: the two halves of "no activation without an
+        exact match" are supposed to be independent, and here one of them can
+        be rewritten without disturbing the other.
+
+        Asserted as the behaviour that HOLDS today rather than as an
+        `expectedFailure`, so it turns over loudly the day `sending_config()`
+        is given the key.
+        """
+        campaign, recs = self.stage()
+        before = self.fingerprints(campaign, recs)
+        altered = dict(self.config)
+        sequence = {k: dict(v) for k, v
+                    in (self.config["email_sequence"]["steps"]).items()}
+        sequence["day1"]["body"] = "<p>{BODY_1}</p><p>and a line nobody blessed</p>"
+        altered["email_sequence"] = dict(self.config["email_sequence"],
+                                         steps=sequence)
+        self.assertEqual(
+            self.fingerprints(campaign, recs, altered), before,
+            "the email sequence is covered by the approval now - delete this "
+            "test and say so in the module docstring")
+        # And the edit really does move the side the gate compares against.
+        self.assertNotEqual(
+            configdiff.approved_bison(campaign, recs, altered)["bodies"],
+            configdiff.approved_bison(campaign, recs, self.config)["bodies"],
+            "the sequence edit changed nothing, so this proves nothing")
+
 
 class NoActivationOnAnythingLessThanAnExactMatch(Factory):
     """The diff's verdict has to actually stop the write, not merely exist."""
 
-    def test_activation_is_refused_at_the_write_door_regardless(self):
-        """Activation is BLOCKING by construction rather than by a flag, on
-        both channels. This is the outermost reason no mutation here can reach
-        a prospect, and it is asserted first so the gate tests below are read
-        as defence in depth rather than as the only defence."""
+    def test_activation_names_exactly_one_campaign_on_each_channel(self):
+        """THE STRONGER STATEMENT THAT REPLACED "ACTIVATION IS IMPOSSIBLE".
+
+        This used to assert that `LINKEDIN_ACTIVATE` and `EMAIL_ACTIVATE` were
+        both unsupported, which was the outermost reason no mutation in this
+        module could reach a prospect. On 2026-09-16 the operator authorized
+        both, each SCOPED TO ONE CAMPAIGN - see
+        `OPERATOR-AUTHORIZATION-2026-09-16.md`.
+
+        Deleting the assertion would have quietly dropped the guarantee.
+        Membership of `SUPPORTED` alone is a CHANNEL-WIDE LICENCE: on email it
+        would admit campaign 481, which holds people already written to under
+        a sequence nobody approved here; on LinkedIn it would admit the
+        client's own in-progress campaigns. So what is asserted is the scope:
+        the verb is enabled, the condition exists, and the condition refuses
+        every campaign but the named one - including the right provider
+        campaign offered under the wrong canonical row, which is how a send
+        reaches a campaign nobody approved.
+        """
         for operation in (providerwrites.LINKEDIN_ACTIVATE,
                           providerwrites.EMAIL_ACTIVATE):
-            self.assertFalse(providerwrites.is_supported(operation))
-            with self.assertRaises(providerwrites.WriteUnsupported):
-                providerwrites.require_supported(operation)
+            self.assertTrue(providerwrites.is_supported(operation))
+            self.assertTrue(
+                providerwrites.is_conditional(operation),
+                f"{operation} is supported and unconditional, which is a "
+                f"licence over every campaign on the channel")
+
+    def test_email_activation_refuses_every_campaign_but_the_authorized_one(self):
+        """RE-SCOPED to the v3 rebuild, and the provider slot is UNPINNED.
+
+        485 must not be activated - its sequence violates the threading
+        invariant and `set_sequence` appends, so it cannot be corrected - and
+        the replacement's provider id does not exist until the provider assigns
+        it. `_AUTHORIZED_EMAIL_CAMPAIGN` therefore carries None in the provider
+        slot, meaning "resolve it from `bison_campaign_id` on the named row".
+
+        The binding check is PRESERVED, not dropped, which is what this asserts:
+        the canonical row must be the named one, the row must actually be bound,
+        and the provider id must be the one it is bound to. An unbound row
+        authorizes nothing at all - the fail-closed case that matters, because
+        it is the state the row is in before the campaign exists.
+        """
+        require = providerwrites.require_conditional_permission
+        want_provider, want_canonical = providerwrites._AUTHORIZED_EMAIL_CAMPAIGN
+        self.assertIsNone(want_provider)
+
+        # A row that is not the named one is refused whatever it names.
+        for provider_id in ("481", "485", "9999", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.EMAIL_ACTIVATE, provider_id,
+                        "productive-email-control-v2")
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.EMAIL_ACTIVATE, provider_id, None)
+
+        # The named row, but unbound: nothing to check against, so nothing is
+        # permitted. This is the state before the campaign is created.
+        with mock.patch.object(campaigns, "get",
+                               return_value={"campaign_id": want_canonical}):
+            with self.assertRaises(providerwrites.WriteRefused) as caught:
+                require(providerwrites.EMAIL_ACTIVATE, "485", want_canonical)
+            self.assertIn("bison_campaign_id", str(caught.exception))
+
+        # The named row, bound: that provider campaign and no other.
+        bound = {"campaign_id": want_canonical, "bison_campaign_id": 4242}
+        with mock.patch.object(campaigns, "get",
+                               return_value=bound):
+            self.assertTrue(require(providerwrites.EMAIL_ACTIVATE, "4242",
+                                    want_canonical))
+            for other in ("485", "481", "424", "42420", "", None):
+                with self.assertRaises(providerwrites.WriteRefused):
+                    require(providerwrites.EMAIL_ACTIVATE, other,
+                            want_canonical)
+
+    def test_linkedin_activation_refuses_every_campaign_but_the_canary(self):
+        require = providerwrites.require_conditional_permission
+        with self.assertRaises(providerwrites.WriteRefused):
+            require(providerwrites.LINKEDIN_ACTIVATE, HEYREACH_CAMPAIGN, None)
+        with self.assertRaises(providerwrites.WriteRefused):
+            require(providerwrites.LINKEDIN_ACTIVATE, "599020", None)
+        # RE-SCOPED 2026-09-16: the operator's grant moved from 604869 to
+        # 605487, and the condition moved with it. 604869 is asserted REFUSED
+        # rather than dropped - its bound list holds one contact whose account
+        # `collision.account_policy` holds, so it must not start.
+        for other in ("604869", "605487"):
+            with self.assertRaises(providerwrites.WriteRefused):
+                require(providerwrites.LINKEDIN_ACTIVATE, other, None)
+        self.assertTrue(require(providerwrites.LINKEDIN_ACTIVATE, "605732",
+                                None))
+
+    def test_the_campaign_under_test_here_could_never_be_activated(self):
+        """The property the old assertion actually carried, kept.
+
+        Every campaign in this module is the fictional demo one, and neither
+        channel's condition names it. So no mutation here can reach a
+        prospect even if every gate below it were removed.
+        """
+        require = providerwrites.require_conditional_permission
+        campaign, _recs = self.stage()
+        with self.assertRaises(providerwrites.WriteRefused):
+            require(providerwrites.EMAIL_ACTIVATE, BISON_CAMPAIGN,
+                    campaign["campaign_id"])
+        with self.assertRaises(providerwrites.WriteRefused):
+            require(providerwrites.LINKEDIN_ACTIVATE, HEYREACH_CAMPAIGN,
+                    campaign["campaign_id"])
 
     def test_a_failed_readback_refuses_at_the_readback_gate(self):
         """And the trace proves nothing earlier fired: tenancy, approval and

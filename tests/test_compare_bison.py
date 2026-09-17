@@ -152,17 +152,32 @@ def _write_jsonl(path, rows):
             f.write(json.dumps(row) + "\n")
 
 
-def _lead_vars(contact_copy, multi_step=True):
-    """Build the custom variables a lead should carry."""
+def _lead_vars(contact_copy, multi_step=True, record_id="", contact_key="",
+               client="productive"):
+    """Build the custom variables a lead should carry.
+
+    ATTRIBUTION IS PART OF WHAT A REAL LEAD CARRIES.
+    `bisonfactory._variables_for` writes `record_id`, `contact_key` and
+    `client` onto every lead it stages, and `adapters.from_emailbison` reads
+    the first two back off an inbound reply to attribute it. A fixture that
+    omits them models a provider state the factory never produces, so once the
+    comparator started checking them these tests failed against a lead shape
+    that does not exist in production.
+    """
+    attribution = [{"name": "record_id", "value": record_id},
+                   {"name": "contact_key", "value": contact_key},
+                   {"name": "client", "value": client}]
     if not multi_step:
-        return [{"name": "subject", "value": contact_copy[0]["subject"]},
-                {"name": "body", "value": contact_copy[0]["body"]}]
+        return attribution + [
+            {"name": "subject", "value": contact_copy[0]["subject"]},
+            {"name": "body", "value": contact_copy[0]["body"]}]
     # THREADED SHAPE: only the opener owns a subject. A follow-up continues
     # the original thread, so subject_2 and subject_3 are written EMPTY -
     # which is what `_expected_lead_variables` requires and what
     # `_stale_clearances` writes. A fixture that supplies them non-empty is
     # modelling the pre-2026-09-16 shape the comparator now refuses.
-    out = [{"name": "subject_1", "value": contact_copy[0]["subject"]}]
+    out = attribution + [
+        {"name": "subject_1", "value": contact_copy[0]["subject"]}]
     for i, entry in enumerate(contact_copy, start=1):
         if i > 1:
             out.append({"name": f"subject_{i}", "value": ""})
@@ -255,8 +270,10 @@ class _Base(unittest.TestCase):
                                      first_name="Alice", last_name="Smith")
         bob_id = self.fb.add_lead("bob@example.org",
                                    first_name="Bob", last_name="Jones")
-        self.fb.leads[alice_id]["custom_variables"] = _lead_vars(alice_copy)
-        self.fb.leads[bob_id]["custom_variables"] = _lead_vars(bob_copy)
+        self.fb.leads[alice_id]["custom_variables"] = _lead_vars(
+            alice_copy, record_id="rec-a", contact_key="alice")
+        self.fb.leads[bob_id]["custom_variables"] = _lead_vars(
+            bob_copy, record_id="rec-b", contact_key="bob")
         self.fb.members[501] = [alice_id, bob_id]
 
 
@@ -284,11 +301,23 @@ class CompareBisonPass(_Base):
         recs = list(store.load())
 
         approved = configdiff.approved_bison(campaign, recs, CONFIG)
-        # Subjects should be the placeholders from the config.
+        # Subjects should be the placeholders from the config - and under the
+        # threaded shape that is `{SUBJECT_1}` on EVERY step.
+        #
+        # THIS ASSERTION PINNED THE PRE-THREADING SHAPE. It expected
+        # `{SUBJECT_2}` and `{SUBJECT_3}`, which is precisely the defect the
+        # invariant forbids: only the opener owns a subject, a follow-up
+        # continues the original thread, and the provider prepends "Re:"
+        # itself. A config that generated a second independent subject would
+        # now be refused at activation preflight, so a test demanding one was
+        # asserting the campaign shape must be wrong.
         self.assertEqual(approved["subjects"],
-                         ("{SUBJECT_1}", "{SUBJECT_2}", "{SUBJECT_3}"))
-        # Delays should be the declared wait_in_days, not cadence days.
-        self.assertEqual(approved["delays"], (3, 4, 0))
+                         ("{SUBJECT_1}", "{SUBJECT_1}", "{SUBJECT_1}"))
+        # Delays should be the declared wait_in_days, not cadence days. The
+        # final wait is 1 rather than 0 because the provider REJECTS 0 -
+        # measured by TASK-219 - so a config declaring 0 could never be
+        # written and a test expecting it pinned a shape that cannot exist.
+        self.assertEqual(approved["delays"], (3, 4, 1))
         # Actions should use provider naming.
         self.assertEqual(approved["actions"], ("step1", "step2", "step3"))
 

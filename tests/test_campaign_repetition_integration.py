@@ -13,7 +13,7 @@ should refuse.
 """
 import unittest
 
-from src import heyreachfactory
+from src import approval, heyreachfactory
 from tests.test_heyreachfactory import _full_record
 from tests.test_the_sequence_belongs_to_nobody import (
     campaign_row, config_with_fallbacks)
@@ -43,6 +43,15 @@ def _record_with_repetition_on_cold_path():
     rec["cadence"]["pat"]["li3"]["note"] = (
         "how do you currently ensure visibility into your "
         "delivery projects today?")
+    # RE-STAMP THE EDITED STEPS. This fixture is about REPETITION, so the two
+    # rewritten notes have to be approved copy - otherwise `_step_copy` refuses
+    # them for drifting from their stamp, the plan dies on missing copy, and
+    # the repetition checker is never reached. An approval certifies words; a
+    # fixture that edits words has to certify the new ones.
+    for key in ("li2", "li3"):
+        step = rec["cadence"]["pat"][key]
+        step["approval"] = dict(step.get("approval") or {},
+                                fingerprint=approval.fingerprint(step))
     return rec
 
 

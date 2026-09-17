@@ -941,7 +941,26 @@ CONDITIONAL[LINKEDIN_CREATE_CAMPAIGN] = (
 # provider id says which campaign at EmailBison and the canonical id says
 # which row this deployment believes it is - and a mismatch between them is
 # how a lead reaches a campaign nobody approved.
-_AUTHORIZED_EMAIL_CAMPAIGN = ("485", "productive-email-control-v2")
+#
+# RE-SCOPED 2026-09-16 to the v3 rebuild. 485 MUST NOT be activated and is
+# being replaced, for two reasons both read off the provider: its sequence
+# violates the threading invariant (step 2 carries `Re: {SUBJECT_2}`, step 3 is
+# `thread_reply: false` with its own `{SUBJECT_3}`), and `bison.set_sequence`
+# APPENDS - POST-only, PUT answers 405 - so it cannot be corrected in place.
+#
+# THE PROVIDER SLOT IS None AND THAT IS DELIBERATE. A campaign's provider id
+# does not exist until the provider assigns it at creation, and this provider
+# ARCHIVES a campaign that sits without a sending account - measured at ~6 and
+# ~10 minutes on 484 and 485. Pinning a literal would mean creating the
+# campaign, editing this file, and attaching the sender afterwards, with the
+# archive clock running through the gap.
+#
+# So the CANONICAL row is the authority and the binding check is preserved
+# rather than dropped: `None` means "resolve the expected provider id from
+# `bison_campaign_id` on the named row". A write is still refused unless it
+# names that exact row AND the provider campaign that row is actually bound to.
+# What is no longer required is that a human knew the number in advance.
+_AUTHORIZED_EMAIL_CAMPAIGN = (None, "productive-email-control-v3")
 
 
 def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
@@ -964,6 +983,32 @@ def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
     campaign is not a refactor.
     """
     want_provider, want_canonical = _AUTHORIZED_EMAIL_CAMPAIGN
+
+    # THE CANONICAL ROW IS CHECKED FIRST WHEN THE PROVIDER SLOT IS UNPINNED.
+    #
+    # With `want_provider` None the row supplies the expected provider id, so
+    # the row has to be established before it can supply anything - otherwise a
+    # write naming the right row but the wrong provider campaign would be
+    # compared against nothing. Order matters here and nowhere else in this
+    # function.
+    if want_provider is None:
+        if str(campaign_id or "").strip() != want_canonical:
+            raise WriteRefused(
+                f"this authorization covers canonical campaign "
+                f"{want_canonical!r} only, and this write names "
+                f"{campaign_id!r}. The transport was not reached")
+        from . import campaigns as _campaigns
+        row = _campaigns.get(want_canonical) or {}
+        bound = row.get("bison_campaign_id")
+        if not bound:
+            raise WriteRefused(
+                f"canonical campaign {want_canonical!r} carries no "
+                f"`bison_campaign_id`, so there is no provider campaign this "
+                f"authorization can be checked against. A write that cannot be "
+                f"bound to a known campaign is a write that could reach any of "
+                f"them. The transport was not reached")
+        want_provider = str(bound).strip()
+
     if str(provider_campaign_id or "").strip() != want_provider:
         raise WriteRefused(
             f"this authorization covers EmailBison campaign {want_provider} "
