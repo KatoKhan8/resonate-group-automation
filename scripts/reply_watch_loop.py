@@ -55,7 +55,22 @@ def main(argv=None):
     load_env(os.path.join(root, "config", ".env"))
     os.environ["REPLY_POLL_ENABLED"] = "1"
 
-    from src import poller
+    # `replywatch.poll_once`, NOT `poller.run`. This loop called the lower
+    # level directly and silently lost four things the wrapper does:
+    #
+    #   the TENANCY PIN   `poll_once` passes expect=expected_workspace(provider)
+    #                     and `poller.run` skips the check entirely when
+    #                     `expect` is None. A credential pointed at another
+    #                     estate would have had its replies ingested and
+    #                     applied to OUR records.
+    #   the per-provider lock, so two pollers could not overlap
+    #   the status file, which is how anybody knows polling is alive - it read
+    #                     "last succeeded 2026-09-17T08:21Z" after this loop
+    #                     had been polling happily for three hours
+    #   `_alert`, which says once that reply protection has stopped
+    #
+    # `poll_once` also never raises: a failure is a status, not a crash.
+    from src import replywatch
 
     emit(f"WATCHING replies on {', '.join(PROVIDERS)}")
     errors = {p: 0 for p in PROVIDERS}
@@ -63,9 +78,8 @@ def main(argv=None):
     while True:
         for provider in PROVIDERS:
             try:
-                report = poller.run(provider, live=True)
-                errors[provider] = 0
-            except Exception as exc:                # provider transport only
+                report = replywatch.poll_once(provider, live=True)
+            except Exception as exc:                # should not happen
                 errors[provider] += 1
                 if errors[provider] in (3, 12):
                     emit(f"POLL-ERROR {provider} unreadable "
@@ -74,16 +88,25 @@ def main(argv=None):
 
             if not isinstance(report, dict):
                 continue
-            if report.get("skipped"):
+
+            # `poll_once` reports failure rather than raising, so the error
+            # path is read off the status it returns.
+            if report.get("last_error"):
+                errors[provider] = int(report.get("consecutive_failures") or 0)
+                if errors[provider] in (3, 12):
+                    emit(f"POLL-ERROR {provider} unreadable "
+                         f"{errors[provider]}x: {report['last_error'][:90]}")
+                continue
+            errors[provider] = 0
+
+            if report.get("skipped_reason"):
                 skips[provider] += 1
                 if skips[provider] == 2:
                     emit(f"SKIPPED {provider} lock held twice running")
                 continue
             skips[provider] = 0
 
-            ingested = report.get("ingested")
-            count = (len(ingested) if isinstance(ingested, (list, tuple))
-                     else int(ingested or 0))
+            count = int(report.get("new_replies_ingested") or 0)
             if count:
                 emit(f"REPLY {provider} ingested={count} - the lead is "
                      f"stopped on both channels")
