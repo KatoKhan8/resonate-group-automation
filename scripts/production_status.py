@@ -359,10 +359,19 @@ def main(argv=None):
                       f"used after two hours and at least 11 of 15 by the "
                       f"end of the day, and campaign 487 received none of "
                       f"them. Two hours is not a day and a cap is not a "
-                      f"count. Read the movement with `py -3 "
-                      f"scripts/bison_mailbox_utilisation.py --report` "
-                      f"across a FULL window before concluding anything "
-                      f"about this mailbox's room.")
+                      f"count.")
+                print(f"      THE FORWARD BOOK IS NOW WALKED IN FULL, so "
+                      f"this no longer has to be inferred from movement at "
+                      f"all: `py -3 scripts/bison_forward_book_census.py "
+                      f"--report` reads every scheduled row in every active "
+                      f"campaign (183,239 of them on 2026-09-18) and says "
+                      f"which day each mailbox is booked to its limit. "
+                      f"Sampling could only ever UNDERCOUNT, so it could "
+                      f"prove a mailbox FULL and never prove one FREE; the "
+                      f"complete walk proves both. "
+                      f"`bison_mailbox_utilisation.py` measures movement "
+                      f"TODAY, which is a different question from what a "
+                      f"mailbox is committed to TOMORROW.")
     print(f"  EMAILBISON_REPLIES   = {em.get('replies')}")
     print(f"  EMAILBISON_BOUNCED   = {em.get('bounced')}")
     print(f"  EMAILBISON_FIRST_SEND= {em.get('first_send')}")
