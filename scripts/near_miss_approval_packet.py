@@ -98,7 +98,17 @@ def main(argv=None):
 
     os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
     stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    by_record = {rec["id"]: rec for rec in recs}
+
+    # THE SCREEN HASHES ITS IDENTIFIERS, DELIBERATELY - it is a report that may
+    # be committed, and `work/` holds 300 real companies. So its rows carry
+    # `contact: h(record_id, contact_key)` and no raw ids, and a packet cannot
+    # look a record up from one. The pair is recovered by rebuilding the same
+    # hash over live state, using the screen's OWN `h` so the two cannot drift.
+    by_hash = {}
+    for rec in recs:
+        for contact in rec.get("contacts") or []:
+            by_hash[cohort.h(rec.get("id"), contact.get("key"))] = (rec,
+                                                                    contact)
 
     with open(OUTPUT, "w", encoding="utf-8") as fh:
         fh.write("# Near-miss approval packet\n\n")
@@ -111,14 +121,17 @@ def main(argv=None):
                  "the lint and claims verdicts beside it. Nothing here is "
                  "approved by generating this file.\n\n---\n\n")
 
+        unmatched = []
         for channel, row in rows:
-            rec = by_record.get(row.get("record_id"))
-            if rec is None:
+            found = by_hash.get(row.get("contact"))
+            if found is None:
+                # NOT A SILENT SKIP. The first version of this loop `continue`d
+                # here, so the packet reported "17 contacts written" over a
+                # file containing none of them - a report that looked healthy
+                # and was empty, which is the exact failure CLAUDE.md names.
+                unmatched.append((channel, row.get("contact")))
                 continue
-            contact = next((c for c in rec.get("contacts") or []
-                            if c.get("key") == row.get("contact_key")), None)
-            if contact is None:
-                continue
+            rec, contact = found
             fh.write(f"## {channel} - {rec.get('company') or rec['id']} - "
                      f"{contact.get('name') or contact.get('key')}\n\n")
             fh.write(f"- record `{rec['id']}` contact `{contact.get('key')}`\n")
@@ -145,6 +158,13 @@ def main(argv=None):
                 fh.write("\n")
             fh.write("---\n\n")
 
+    if unmatched:
+        print(f"REFUSED: {len(unmatched)} near-miss row(s) matched no contact "
+              f"in live state, so the packet would be incomplete without "
+              f"saying so:")
+        for channel, digest in unmatched:
+            print(f"  {channel} {digest}")
+        return 3
     print(f"{len(rows)} near-miss contacts written to")
     print(f"  {OUTPUT}")
     print("\nNothing was approved. `approve.approve_step` is the action a "

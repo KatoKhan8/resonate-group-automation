@@ -60,10 +60,25 @@ most plausibly that "new leads for today" are assigned on a cycle and 487 was
 activated mid-window - and the watcher will say. HeyReach exposes no schedule
 read route at all, so its dispatch time cannot be asserted either way.
 
-**And on HeyReach it will be slow when it starts.** Seat 174892's 40/day is a
-PER-ACCOUNT limit that the vendor shares proportionally across every campaign
-the seat is in, and it is in 13. Campaign 605732's share is roughly 3
-connection requests a day. That is a capacity fact, not a defect.
+**And on HeyReach it will be slow when it starts, for a reason more READY leads
+cannot fix.** Seat 174892 is healthy - active, auth valid, NO cooldown on
+search, connection request, connection note or InMail, and
+`connectioRequestLimit` at its ceiling of 40. It is also in **46 campaigns, 13
+of them IN_PROGRESS**, and the vendor shares a seat's per-account limit
+proportionally across the campaigns it is in. Campaign 605732's share is
+roughly **3 connection requests a day**, against a cohort of 3.
+
+THAT IS THE LINKEDIN BOTTLENECK, AND IT IS NOT INVENTORY. The estate holds 81
+contacts with a LinkedIn cadence. None of them would move faster, because the
+constraint is the share of one seat, not the supply of people. More capacity
+means more SEATS, and that is blocked by two things recorded in
+`docs/HEYREACH-SENDER-CAPACITY-2026-09-17.md`: `executionguard` refuses a
+canonical campaign holding more than one seat, and sticky assignment is
+currently preserved only BY that arity - every productive `linkedin_account`
+row has `sender_id` null and there are zero ownership attestations, so
+everything falls back to the hardcoded seat. Add a second seat before fixing
+that and the provider's own rotation decides which human a prospect hears
+from.
 
 ### Ledger
 
