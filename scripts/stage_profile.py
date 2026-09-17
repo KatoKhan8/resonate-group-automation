@@ -61,6 +61,16 @@ DEFAULT_SIZES = (50, 500, 5000)
 RUNS = 3
 
 
+def _fake_resolver(domain):
+    """Fake DNS resolver that returns Google MX records instantly.
+
+    The task rules say 'No network calls.' Real DNS lookups for .test domains
+    would either timeout or return NXDOMAIN slowly. This simulates a normal
+    domain with Google mail, so the MX screening logic runs without network.
+    """
+    return ["aspmx.l.google.com", "alt1.aspmx.l.google.com"]
+
+
 def _memory_mb():
     """Resident memory. None if the platform will not say."""
     try:
@@ -249,6 +259,7 @@ def measure_stage(size, tmp):
 
         # -------------------------------------------------- 4. MX screening
         # DNS resolution per contact domain. Uses the MX cache.
+        # Uses a fake resolver to avoid real network calls (task rule).
         def stage_mx_screening():
             cache = {}
             resolved = 0
@@ -259,7 +270,8 @@ def measure_stage(size, tmp):
                     if not domain:
                         continue
                     try:
-                        mx.for_domain(domain, config, cache=cache, save=False)
+                        mx.for_domain(domain, config, cache=cache, save=False,
+                                      resolver=_fake_resolver)
                         resolved += 1
                         reason = mx.block_reason(c, config)
                         if reason:
@@ -464,7 +476,7 @@ def measure_stage(size, tmp):
                     if domain:
                         try:
                             mx.for_domain(domain, config, cache=cache,
-                                          save=False)
+                                          save=False, resolver=_fake_resolver)
                         except Exception:
                             pass
             # verification plan
