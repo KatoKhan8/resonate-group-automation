@@ -122,3 +122,47 @@ So the cross-cohort reuse fix is "persist this cache under its existing
 semantics, with the per-field TTL `research` already implements", not "rework
 evidence identity". That is a much smaller change than the hypothesis implied.
 Its hit rate is being measured before anything is built on it.
+
+---
+
+## UPDATE 2026-09-18: the journal is wired, and it is NOT a clean win
+
+`QUEUE_JOURNAL=1`, same harness, 5,000 records and 1,000 checkpoints:
+
+    PATH              BYTES WRITTEN   AMPLIFICATION   WALL TIME
+    whole-file (off)      4,369 MB         4918.9x      211.7 s
+    journal    (on)           1.0 MB          1.1x      262.3 s
+
+**Writes fall by a factor of 4,369. Wall time gets 24% WORSE.**
+
+Both numbers are real and the second one is the one to act on. The journal
+removes the quadratic WRITE and leaves the O(N) READ - and then makes that
+read slightly worse, because `save` must now read the base file AND replay a
+journal that grows all pass. At 1,000 checkpoints that costs more than the
+writes it saved.
+
+So the honest status is: **the shape is fixed, the bottleneck moved.**
+
+### What it is nonetheless worth
+
+- 4.4 GB per pass becomes 1 MB. That is write endurance on an SSD, and it is
+  transfer volume on anything synced or networked, neither of which shows up
+  in a wall clock.
+- One changed record costs 1.0 KB instead of 4.4 MB. The amplification is
+  1.1x, which is as close to optimal as this gets.
+- It is the precondition for fixing the read. While every checkpoint rewrote
+  the file, an index over the base was pointless.
+
+### What it does NOT do, and what comes next
+
+It does not make 5,000 records a comfortable workload on its own. The
+remaining cost is the full read per checkpoint, for the digest and the two
+loss guards, and narrowing that needs an INDEX - offsets per record id, so a
+guard can read the rows a delta touches instead of all of them. That is a
+larger change than this one and it is not started.
+
+**The flag stays OFF by default until the read is fixed too.** Turning it on
+today trades 4.4 GB of writes for 50 seconds, and which of those matters
+depends on a constraint nobody has stated yet. It is wired, tested and
+measured so that the decision can be made on numbers rather than on
+architecture.
