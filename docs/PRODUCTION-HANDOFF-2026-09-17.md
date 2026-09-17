@@ -41,9 +41,41 @@ answers this system exists to keep apart.
                         across 153 follow-ups. We never write it.
                         No SUBJECT_2/3 exists anywhere.
 
-**SENDER 3941 IS NO LONGER ATTACHED, and that is deliberate.** It was attached
-under operator authorization, then removed during a recovery (section 2). Do
-not re-attach without reading the arity constraint below.
+**SENDER 3941 IS NO LONGER ATTACHED, and the reason is stronger than the
+recovery that removed it.** It was attached under operator authorization and
+taken off while restoring the campaign - but a later design review established
+what the two inboxes actually were:
+
+    2736  one human
+    3941  a DIFFERENT human
+
+They are two different people. Had 487 resumed holding both, its ten prospects
+would each have heard from one of two humans, chosen by provider rotation, and
+nothing would have recorded which. `executionguard`'s arity rule was not an
+obstacle to work around; it was the only thing standing between those ten
+people and an unattributable sender. Do not re-attach a second inbox until
+per-lead attribution exists - see
+`docs/SENDER-ATTRIBUTION-DESIGN-2026-09-17.md`, which specifies the predicate
+that would REPLACE the arity rule rather than relax it.
+
+Two facts from that design a fresh session needs before touching sender
+capacity:
+
+  HeyReach    per-lead sender is CONTROLLABLE and PROVABLE. `linkedInSenderId`
+              is returned per lead and already mapped at heyreach.py:2696;
+              nothing outside the provider module reads it.
+  EmailBison  per-lead sender is OBSERVABLE but NOT CONTROLLABLE, and not
+              observable BEFORE activation - the scheduled-emails queue is
+              empty until a campaign runs. So email's honest ceiling is any
+              number of inboxes belonging to exactly ONE attested human.
+
+  Stickiness today is an accident of arity. All 225 email and all 32 LinkedIn
+  productive accounts carry `sender_id: null` and there are ZERO ownership
+  attestations, so `eligible_senders` returns [], `allocate` raises, `ensure`
+  SWALLOWS it, and everything falls back to the hardcoded seat.
+
+  There is no idle healthy capacity on HeyReach: 7 of 41 seats are idle and
+  every one of them is dead (`authIsValid: false`).
 
 ### HeyReach
 
