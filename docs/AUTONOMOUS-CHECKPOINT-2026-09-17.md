@@ -54,11 +54,33 @@ reasoned about, because a plausible story is not a diagnosis:
                                         the gap AFTER a step, which is what
                                         this repository assumed.
 
-So 487 is configured like three campaigns that have sent 170,000 emails
-between them. The remaining explanation is provider-side scheduling latency -
-most plausibly that "new leads for today" are assigned on a cycle and 487 was
-activated mid-window - and the watcher will say. HeyReach exposes no schedule
-read route at all, so its dispatch time cannot be asserted either way.
+**AND THEN THE SEVENTH CHECK FOUND IT: THE SENDER IS ALREADY SPOKEN FOR.**
+Sender 2736 is attached to campaigns 352, 328 AND 327 - all three ACTIVE, and
+between them they have sent 173,558 emails. Its `daily_limit` is 15 a day,
+total, and campaign 487 is the fourth claimant on it and the newcomer.
+
+That is the same shape as the HeyReach constraint, on the other channel:
+
+    workspace 10 senders          225
+    committed to active/paused    222
+    UNCOMMITTED                     3   -> 3941, 3930, 3919
+                                         all Connected, 15/day, warmup on
+
+So EmailBison throughput for 487 is not 15/day. It is whatever is left of one
+mailbox's 15/day after three campaigns with six figures of momentum have taken
+their share, which today is zero. This is a capacity fact and not a defect, and
+no amount of additional READY inventory changes it.
+
+**THE ACTIONABLE VERSION: 487 SHOULD HAVE A SENDER OF ITS OWN.** Three
+uncommitted mailboxes exist, 45/day between them. Attaching one is a provider
+write against a LIVE campaign, so it is NOT done here - `bison.assign_sender`
+is authorized only for the campaign named in `_AUTHORIZED_EMAIL_CAMPAIGN`, and
+changing who a prospect hears from is a decision about identity, not a
+throughput tweak.
+
+HeyReach exposes no schedule read route at all, so its dispatch time cannot be
+asserted either way - but its constraint is already established and identical
+in kind: one seat, shared thirteen ways.
 
 **And on HeyReach it will be slow when it starts, for a reason more READY leads
 cannot fix.** Seat 174892 is healthy - active, auth valid, NO cooldown on
