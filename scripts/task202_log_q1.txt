@@ -1,0 +1,276 @@
+======================================================================
+ERROR: test_each_gated_step_names_the_unmet_requirement (tests.test_a_gated_step_is_waiting_not_absent.GatedStepsAppearInTheTimeline.test_each_gated_step_names_the_unmet_requirement)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_a_gated_step_is_waiting_not_absent.py", line 64, in test_each_gated_step_names_the_unmet_requirement
+    step = timeline[step_key]
+           ~~~~~~~~^^^^^^^^^^
+KeyError: 'li6'
+
+======================================================================
+ERROR: test_the_acceptance_releases_the_waiting_steps (tests.test_a_gated_step_is_waiting_not_absent.GatedStepsAppearInTheTimeline.test_the_acceptance_releases_the_waiting_steps)
+Once connected, li2..li6 are no longer waiting.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_a_gated_step_is_waiting_not_absent.py", line 87, in test_the_acceptance_releases_the_waiting_steps
+    self.assertNotEqual(timeline[step_key]["status"], "waiting",
+                        ~~~~~~~~^^^^^^^^^^
+KeyError: 'li6'
+
+======================================================================
+ERROR: test_push_does_not_pick_up_waiting_steps (tests.test_a_gated_step_is_waiting_not_absent.WaitingStepsAreNotExposures.test_push_does_not_pick_up_waiting_steps)
+push.collect filters on status == 'eligible'. A waiting step
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_a_gated_step_is_waiting_not_absent.py", line 247, in test_push_does_not_pick_up_waiting_steps
+    self.assertNotEqual(steps[step_key]["status"], "eligible")
+                        ~~~~~^^^^^^^^^^
+KeyError: 'li6'
+
+======================================================================
+ERROR: test_waiting_steps_are_not_confirmed_touches (tests.test_a_gated_step_is_waiting_not_absent.WaitingStepsAreNotExposures.test_waiting_steps_are_not_confirmed_touches)
+A waiting step has not reached anybody. Counting it would be
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_a_gated_step_is_waiting_not_absent.py", line 236, in test_waiting_steps_are_not_confirmed_touches
+    self.assertEqual(steps[step_key]["status"], "waiting")
+                     ~~~~~^^^^^^^^^^
+KeyError: 'li6'
+
+======================================================================
+ERROR: test_second_write_appends_not_replaces (tests.test_bison_campaign_write.AppendBehaviourProven.test_second_write_appends_not_replaces)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_bison_campaign_write.py", line 258, in test_second_write_appends_not_replaces
+    steps = bisonfactory._sequence_steps(
+        CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_passes_when_campaign_holds_identical_steps (tests.test_bison_campaign_write.EnsureSequenceRefusesNonEmpty.test_passes_when_campaign_holds_identical_steps)
+If the sequence was already written correctly, _ensure_sequence
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_bison_campaign_write.py", line 340, in test_passes_when_campaign_holds_identical_steps
+    steps = bisonfactory._sequence_steps(
+        CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_refuses_when_campaign_holds_different_steps (tests.test_bison_campaign_write.EnsureSequenceRefusesNonEmpty.test_refuses_when_campaign_holds_different_steps)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_bison_campaign_write.py", line 323, in test_refuses_when_campaign_holds_different_steps
+    "sequence": bisonfactory._sequence_steps(
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_blind_retry_doubles_the_sequence (tests.test_bison_campaign_write.RetryQuestion.test_blind_retry_doubles_the_sequence)
+Simulate: create succeeds, sequence write succeeds but the
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_bison_campaign_write.py", line 378, in test_blind_retry_doubles_the_sequence
+    steps = bisonfactory._sequence_steps(
+        CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_correct_recovery_read_before_write (tests.test_bison_campaign_write.RetryQuestion.test_correct_recovery_read_before_write)
+The correct recovery: read what the provider holds first.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_bison_campaign_write.py", line 399, in test_correct_recovery_read_before_write
+    steps = bisonfactory._sequence_steps(
+        CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_once_or_twice_check (tests.test_bison_campaign_write.RetryQuestion.test_once_or_twice_check)
+A check that distinguishes 'sequence written once' from
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_bison_campaign_write.py", line 435, in test_once_or_twice_check
+    steps = bisonfactory._sequence_steps(
+        CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_threading_is_false_true_false (tests.test_bison_campaign_write.SequenceShape.test_threading_is_false_true_false)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_bison_campaign_write.py", line 160, in test_threading_is_false_true_false
+    steps = bisonfactory._sequence_steps(
+        CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_three_steps_in_cadence_order (tests.test_bison_campaign_write.SequenceShape.test_three_steps_in_cadence_order)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_bison_campaign_write.py", line 153, in test_three_steps_in_cadence_order
+    steps = bisonfactory._sequence_steps(
+        CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_waits_are_declared (tests.test_bison_campaign_write.SequenceShape.test_waits_are_declared)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_bison_campaign_write.py", line 167, in test_waits_are_declared
+    steps = bisonfactory._sequence_steps(
+        CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_held_steps_carry_wait_in_days (tests.test_bison_campaign_write.SequenceWriteAndReadback.test_held_steps_carry_wait_in_days)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_bison_campaign_write.py", line 235, in test_held_steps_carry_wait_in_days
+    steps = bisonfactory._sequence_steps(
+        CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_write_three_steps_readback_matches (tests.test_bison_campaign_write.SequenceWriteAndReadback.test_write_three_steps_readback_matches)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_bison_campaign_write.py", line 212, in test_write_three_steps_readback_matches
+    steps = bisonfactory._sequence_steps(
+        CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+FAIL: test_decide_blocks_a_bounced_address (tests.test_a_bounced_address_stops_being_sendable.TheSENDPathReadsIt.test_decide_blocks_a_bounced_address)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_a_bounced_address_stops_being_sendable.py", line 116, in test_decide_blocks_a_bounced_address
+    self.assertEqual(verdict.get("verdict"), "blocked")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'skipped' != 'blocked'
+- skipped
++ blocked
+
+
+======================================================================
+FAIL: test_li2_through_li6_appear_for_an_unconnected_contact (tests.test_a_gated_step_is_waiting_not_absent.GatedStepsAppearInTheTimeline.test_li2_through_li6_appear_for_an_unconnected_contact)
+The whole point. Five steps that were invisible are now waiting.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_a_gated_step_is_waiting_not_absent.py", line 57, in test_li2_through_li6_appear_for_an_unconnected_contact
+    self.assertIn(step_key, timeline,
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                  f"{step_key} is missing from the timeline")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'li6' not found in {'li1': {'note': 'hi Pat, i work with agency teams on utilisation. curious how Acme Ltd handles it at your size. happy to connect.', 'channel': 'linkedin', 'template': 'linkedin_intro', 'generated': False, 'day': 1, 'requires': None, 'linkedin_state': 'no_evidence', 'linkedin_action': 'connect', 'status': 'unapproved'}, 'li2': {'channel': 'linkedin', 'day': 3, 'requires': 'connected', 'linkedin_state': 'no_evidence', 'linkedin_action': 'message', 'waiting_on': 'this step needs a person who can be sent a direct message, and the state here is: nothing recorded on LinkedIn yet', 'status': 'waiting'}, 'li3': {'channel': 'linkedin', 'day': 6, 'requires': 'connected', 'linkedin_state': 'no_evidence', 'linkedin_action': 'message', 'waiting_on': 'this step needs a person who can be sent a direct message, and the state here is: nothing recorded on LinkedIn yet', 'status': 'waiting'}, 'li4': {'channel': 'linkedin', 'day': 10, 'requires': 'connected', 'linkedin_state': 'no_evidence', 'linkedin_action': 'message', 'waiting_on': 'this step needs a person who can be sent a direct message, and the state here is: nothing recorded on LinkedIn yet', 'status': 'waiting'}, 'li5': {'channel': 'linkedin', 'day': 15, 'requires': 'connected', 'linkedin_state': 'no_evidence', 'linkedin_action': 'message', 'waiting_on': 'this step needs a person who can be sent a direct message, and the state here is: nothing recorded on LinkedIn yet', 'status': 'waiting'}} : li6 is missing from the timeline
+
+======================================================================
+FAIL: test_deliverable_contract_is_now_confirmed (tests.test_a_refusal_is_not_a_purchase.ALocalRefusalIsFree.test_deliverable_contract_is_now_confirmed)
+TASK-196: the response shape was read and documented. The parser
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_a_refusal_is_not_a_purchase.py", line 33, in test_deliverable_contract_is_now_confirmed
+    self.assertTrue(deliverable.contract_verified())
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_a_fallback_for_another_field_is_walked_past (tests.test_an_email_is_not_a_finished_person.AKnownCompanyFieldIsNotReBought.test_a_fallback_for_another_field_is_walked_past)
+`company_information` holds three Blitz calls for three fields.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_an_email_is_not_a_finished_person.py", line 262, in test_a_fallback_for_another_field_is_walked_past
+    self.assertEqual(
+    ~~~~~~~~~~~~~~~~^
+        fieldplan.plan_field(rec, "email_domain")["next_call"],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        "blitz-linkedin-to-domain")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'webfetch-crawl' != 'blitz-linkedin-to-domain'
+- webfetch-crawl
++ blitz-linkedin-to-domain
+
+
+======================================================================
+FAIL: test_the_two_company_fields_route_independently (tests.test_an_email_is_not_a_finished_person.AKnownCompanyFieldIsNotReBought.test_the_two_company_fields_route_independently)
+A known LinkedIn URL must not suppress the mail-domain question.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_an_email_is_not_a_finished_person.py", line 251, in test_the_two_company_fields_route_independently
+    self.assertEqual(mail["next_call"], "blitz-linkedin-to-domain")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'webfetch-crawl' != 'blitz-linkedin-to-domain'
+- webfetch-crawl
++ blitz-linkedin-to-domain
+
+
+======================================================================
+FAIL: test_add_lead_is_refused_for_finished (tests.test_campaign_cannot_send.TheNarrowedSeals.test_add_lead_is_refused_for_finished)
+NARROWED BY CLAUDE 2026-09-15. This asserted FINISHED was safe.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_campaign_cannot_send.py", line 391, in test_add_lead_is_refused_for_finished
+    with self.assertRaises(heyreach.ProviderError):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ProviderError not raised
+
+======================================================================
+FAIL: test_finished_is_not_proven_safe (tests.test_campaign_cannot_send.ThePredicateReadsProviderTruth.test_finished_is_not_proven_safe)
+A campaign that has run once is not proven inert for a new lead.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_campaign_cannot_send.py", line 39, in test_finished_is_not_proven_safe
+    with self.assertRaises(heyreach.ProviderError):
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ProviderError not raised
+
+----------------------------------------------------------------------
+Ran 2137 tests in 109.015s
+
+FAILED (failures=7, errors=15, expected failures=11)

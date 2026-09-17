@@ -1,0 +1,186 @@
+======================================================================
+ERROR: test_verify_runs_now_that_the_shape_is_confirmed (tests.test_deliverable.TestTheAnswerIsNotGuessed.test_verify_runs_now_that_the_shape_is_confirmed)
+The parser is allowed to run. A real response is classified.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_deliverable.py", line 108, in test_verify_runs_now_that_the_shape_is_confirmed
+    entry = deliverable.verify("someone@example.test", sleep=lambda s: None)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\providers\deliverable.py", line 518, in verify
+    require_contract()
+    ~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\providers\deliverable.py", line 200, in require_contract
+    raise ContractNotVerified(
+    ...<4 lines>...
+        f"--max-credits 1, then set {SHAPE_VAR}=confirmed")
+src.providers.deliverable.ContractNotVerified: Deliverable's response shape is undocumented and has not been read from a real answer, so a credit spent now might buy an answer this adapter cannot interpret. Read one first with python -m src.validate --provider deliverable --live-validation --max-credits 1, then set DELIVERABLE_RESULT_SHAPE=confirmed
+
+======================================================================
+ERROR: test_require_contract_does_not_raise (tests.test_deliverable_contract.TheContractGateIsNowOpen.test_require_contract_does_not_raise)
+The parser is now allowed to run.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_deliverable_contract.py", line 95, in test_require_contract_does_not_raise
+    deliverable.require_contract()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\providers\deliverable.py", line 200, in require_contract
+    raise ContractNotVerified(
+    ...<4 lines>...
+        f"--max-credits 1, then set {SHAPE_VAR}=confirmed")
+src.providers.deliverable.ContractNotVerified: Deliverable's response shape is undocumented and has not been read from a real answer, so a credit spent now might buy an answer this adapter cannot interpret. Read one first with python -m src.validate --provider deliverable --live-validation --max-credits 1, then set DELIVERABLE_RESULT_SHAPE=confirmed
+
+======================================================================
+ERROR: test_every_dropped_record_carries_its_reason (tests.test_ingest.TestPhase1Csv.test_every_dropped_record_carries_its_reason)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_ingest.py", line 40, in test_every_dropped_record_carries_its_reason
+    for r in store.list_records(state="dropped"):
+             ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\store.py", line 897, in list_records
+    raise TypeError(
+        "list_records requires an explicit client argument. "
+        "Pass client=store.ALL for every tenant, or a client slug.")
+TypeError: list_records requires an explicit client argument. Pass client=store.ALL for every tenant, or a client slug.
+
+======================================================================
+ERROR: test_queue_has_a_record_for_every_row (tests.test_ingest.TestPhase1Csv.test_queue_has_a_record_for_every_row)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_ingest.py", line 26, in test_queue_has_a_record_for_every_row
+    self.assertEqual(len(store.list_records(state="queued")), 2)
+                         ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\store.py", line 897, in list_records
+    raise TypeError(
+        "list_records requires an explicit client argument. "
+        "Pass client=store.ALL for every tenant, or a client slug.")
+TypeError: list_records requires an explicit client argument. Pass client=store.ALL for every tenant, or a client slug.
+
+======================================================================
+FAIL: test_the_contract_is_confirmed_in_code (tests.test_contactout_first.TestDeliverableContractIsConfirmed.test_the_contract_is_confirmed_in_code)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_contactout_first.py", line 264, in test_the_contract_is_confirmed_in_code
+    self.assertTrue(deliverable.contract_verified())
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_the_response_shape_is_confirmed_in_code (tests.test_deliverable.TestTheAnswerIsNotGuessed.test_the_response_shape_is_confirmed_in_code)
+TASK-196: the shape was read live 2026-09-07 and documented in
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_deliverable.py", line 99, in test_the_response_shape_is_confirmed_in_code
+    self.assertTrue(deliverable.contract_verified())
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_the_shape_is_confirmed_in_code (tests.test_deliverable_contract.TheContractGateIsNowOpen.test_the_shape_is_confirmed_in_code)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_deliverable_contract.py", line 91, in test_the_shape_is_confirmed_in_code
+    self.assertTrue(deliverable.result_shape_confirmed())
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_all_unusable_means_empty_public_evidence (tests.test_for_prompt_quality.ForPromptFiltersUnusable.test_all_unusable_means_empty_public_evidence)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_for_prompt_quality.py", line 107, in test_all_unusable_means_empty_public_evidence
+    self.assertNotIn("public_evidence", block)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'public_evidence' unexpectedly found in {'company': 'Acme', 'domain': 'acme.test', 'facts': {}, 'public_evidence': [{'field': 'team', 'source_url': 'https://example.test/team', 'retrieved_at': '2026-09-15T00:00:00+00:00', 'fact': 'fresh team fact about the company'}, {'field': 'careers', 'source_url': 'https://example.test/careers', 'retrieved_at': '2026-09-15T00:00:00+00:00', 'fact': 'fresh careers fact about the company'}, {'field': 'services', 'source_url': 'https://example.test/services', 'retrieved_at': '2026-09-15T00:00:00+00:00', 'fact': 'fresh services fact about the company'}], 'contact': {}, 'angle': None, 'prior_contact': False, 'angle_wording': None, 'product': {}, 'sender_identity': {}, 'evidence': [], 'research': [{'fact': 'old team fact about the company', 'source_url': 'https://example.test/team', 'retrieved_at': '2026-09-05T00:00:00+00:00'}, {'fact': 'old careers fact about the company', 'source_url': 'https://example.test/careers', 'retrieved_at': '2026-09-05T00:00:00+00:00'}, {'fact': 'old services fact about the company', 'source_url': 'https://example.test/services', 'retrieved_at': '2026-09-05T00:00:00+00:00'}, {'fact': 'fresh team fact about the company', 'source_url': 'https://example.test/team', 'retrieved_at': '2026-09-15T00:00:00+00:00'}, {'fact': 'fresh careers fact about the company', 'source_url': 'https://example.test/careers', 'retrieved_at': '2026-09-15T00:00:00+00:00'}], 'tone': None, 'hook': None}
+
+======================================================================
+FAIL: test_hook_step_also_filters_unusable (tests.test_for_prompt_quality.ForPromptFiltersUnusable.test_hook_step_also_filters_unusable)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_for_prompt_quality.py", line 119, in test_hook_step_also_filters_unusable
+    self.assertTrue(any("Index" in f for f in facts))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_unusable_rows_are_excluded_from_public_evidence (tests.test_for_prompt_quality.ForPromptFiltersUnusable.test_unusable_rows_are_excluded_from_public_evidence)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_for_prompt_quality.py", line 98, in test_unusable_rows_are_excluded_from_public_evidence
+    self.assertTrue(any("resourcing" in f for f in facts))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_fresh_rows_come_first_after_refresh (tests.test_for_prompt_quality.ForPromptHandlesRefresh.test_fresh_rows_come_first_after_refresh)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_for_prompt_quality.py", line 171, in test_fresh_rows_come_first_after_refresh
+    self.assertTrue(any("twenty" in f for f in facts))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_strong_before_medium (tests.test_for_prompt_quality.ForPromptRanksByQuality.test_strong_before_medium)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_for_prompt_quality.py", line 140, in test_strong_before_medium
+    self.assertIn("series B", pub[0]["fact"])
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'series B' not found in 'fresh team fact about the company'
+
+======================================================================
+FAIL: test_emailbison_posts_only_to_routes_it_declares (tests.test_invariants.TestNothingCanSend.test_emailbison_posts_only_to_routes_it_declares)
+The guarantee moved from the verb to the route, and got stronger.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_invariants.py", line 269, in test_emailbison_posts_only_to_routes_it_declares
+    self.assertTrue(bound, "v3 carries no bison_campaign_id, so nothing "
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                           "can be checked against it")
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: None is not true : v3 carries no bison_campaign_id, so nothing can be checked against it
+
+======================================================================
+FAIL: test_all_linkedin_steps_affected (tests.test_ladder_impact.TestAnalyzeRecord.test_all_linkedin_steps_affected)
+All 6 LinkedIn rungs changed.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_ladder_impact.py", line 152, in test_all_linkedin_steps_affected
+    self.assertIn(f"li{i}", affected_keys)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'li6' not found in {'li1', 'li3', 'li4', 'li5', 'li2'}
+
+======================================================================
+FAIL: test_full_linkedin_shape (tests.test_ladder_impact.TestAnalyzeRecord.test_full_linkedin_shape)
+15 contacts x 5 generated LinkedIn steps (li2-li6) = 75.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_ladder_impact.py", line 217, in test_full_linkedin_shape
+    self.assertEqual(len(result["affected"]), 75)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 60 != 75
+
+======================================================================
+FAIL: test_every_guard_appears_exactly_once (tests.test_mutation_anchors.EveryAnchorStillMatches.test_every_guard_appears_exactly_once)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_mutation_anchors.py", line 69, in test_every_guard_appears_exactly_once
+    self.assertEqual(missing, [], "these mutations can no longer fire; "
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                  "the code moved under them")
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: ["events: a second unclassified reply inhe[131 chars]py)'] != []
+
+First list contains 2 additional elements.
+First extra element 0:
+"events: a second unclassified reply inherits the first one's verdict (src/events.py)"
+
++ []
+- ["events: a second unclassified reply inherits the first one's verdict "
+-  '(src/events.py)',
+-  'assignment: a paused or blocked inbox is still allocated prospects '
+-  '(src/assignment.py)'] : these mutations can no longer fire; the code moved under them
+
+----------------------------------------------------------------------
+Ran 2682 tests in 291.126s
+
+FAILED (failures=12, errors=4, skipped=1, expected failures=1)

@@ -1,0 +1,353 @@
+======================================================================
+ERROR: test_email_five_no_issues_for_clean_copy (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_no_issues_for_clean_copy)
+The email_five fixture with two clean leads reports no issues.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_render_preview.py", line 277, in test_email_five_no_issues_for_clean_copy
+    text = render_preview("email_five")
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2832, in render_preview
+    return render_email_preview(
+        campaign_name, config=config, recs=recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2217, in render_email_preview
+    plan = _build_email_plan(config, recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 1971, in _build_email_plan
+    sequence = bisonfactory._sequence_steps(
+        config.get("email_sequence"), cadence_steps)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_email_five_renders_all_five_emails (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_renders_all_five_emails)
+The email_five fixture shows five FINAL RENDERED sections.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_render_preview.py", line 221, in test_email_five_renders_all_five_emails
+    text = render_preview("email_five")
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2832, in render_preview
+    return render_email_preview(
+        campaign_name, config=config, recs=recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2217, in render_email_preview
+    plan = _build_email_plan(config, recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 1971, in _build_email_plan
+    sequence = bisonfactory._sequence_steps(
+        config.get("email_sequence"), cadence_steps)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_email_five_shows_angle (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_angle)
+Each email step shows the contact's angle.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_render_preview.py", line 252, in test_email_five_shows_angle
+    text = render_preview("email_five")
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2832, in render_preview
+    return render_email_preview(
+        campaign_name, config=config, recs=recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2217, in render_email_preview
+    plan = _build_email_plan(config, recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 1971, in _build_email_plan
+    sequence = bisonfactory._sequence_steps(
+        config.get("email_sequence"), cadence_steps)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_email_five_shows_day_numbers (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_day_numbers)
+Each email step shows its cadence day.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_render_preview.py", line 247, in test_email_five_shows_day_numbers
+    text = render_preview("email_five")
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2832, in render_preview
+    return render_email_preview(
+        campaign_name, config=config, recs=recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2217, in render_email_preview
+    plan = _build_email_plan(config, recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 1971, in _build_email_plan
+    sequence = bisonfactory._sequence_steps(
+        config.get("email_sequence"), cadence_steps)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_email_five_shows_ladder_purposes (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_ladder_purposes)
+Each email step shows its ladder rung purpose.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_render_preview.py", line 229, in test_email_five_shows_ladder_purposes
+    text = render_preview("email_five")
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2832, in render_preview
+    return render_email_preview(
+        campaign_name, config=config, recs=recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2217, in render_email_preview
+    plan = _build_email_plan(config, recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 1971, in _build_email_plan
+    sequence = bisonfactory._sequence_steps(
+        config.get("email_sequence"), cadence_steps)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_email_five_shows_next_branch (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_next_branch)
+Each email step shows what happens next.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_render_preview.py", line 258, in test_email_five_shows_next_branch
+    text = render_preview("email_five")
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2832, in render_preview
+    return render_email_preview(
+        campaign_name, config=config, recs=recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2217, in render_email_preview
+    plan = _build_email_plan(config, recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 1971, in _build_email_plan
+    sequence = bisonfactory._sequence_steps(
+        config.get("email_sequence"), cadence_steps)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_email_five_shows_provider_variables (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_provider_variables)
+The preview shows subject_N and body_N variable names.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_render_preview.py", line 237, in test_email_five_shows_provider_variables
+    text = render_preview("email_five")
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2832, in render_preview
+    return render_email_preview(
+        campaign_name, config=config, recs=recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2217, in render_email_preview
+    plan = _build_email_plan(config, recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 1971, in _build_email_plan
+    sequence = bisonfactory._sequence_steps(
+        config.get("email_sequence"), cadence_steps)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_email_missing_reports_product_name_absent (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_missing_reports_product_name_absent)
+The email_missing fixture flags that no email names the product.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_render_preview.py", line 272, in test_email_missing_reports_product_name_absent
+    text = render_preview("email_missing")
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2832, in render_preview
+    return render_email_preview(
+        campaign_name, config=config, recs=recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2217, in render_email_preview
+    plan = _build_email_plan(config, recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 1971, in _build_email_plan
+    sequence = bisonfactory._sequence_steps(
+        config.get("email_sequence"), cadence_steps)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_email_missing_shows_missing_for_em3 (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_missing_shows_missing_for_em3)
+The email_missing fixture shows MISSING for em3.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_render_preview.py", line 264, in test_email_missing_shows_missing_for_em3
+    text = render_preview("email_missing")
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2832, in render_preview
+    return render_email_preview(
+        campaign_name, config=config, recs=recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2217, in render_email_preview
+    plan = _build_email_plan(config, recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 1971, in _build_email_plan
+    sequence = bisonfactory._sequence_steps(
+        config.get("email_sequence"), cadence_steps)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_email_preview_renders_through_bisonfactory_variables_for (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_preview_renders_through_bisonfactory_variables_for)
+The variables in the preview are what _variables_for produces.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_render_preview.py", line 291, in test_email_preview_renders_through_bisonfactory_variables_for
+    plan = _build_email_plan(config, [rec])
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 1971, in _build_email_plan
+    sequence = bisonfactory._sequence_steps(
+        config.get("email_sequence"), cadence_steps)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_email_preview_two_leads_render_different_copy (tests.test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_preview_two_leads_render_different_copy)
+Two leads with different angles render different email copy.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_render_preview.py", line 306, in test_email_preview_two_leads_render_different_copy
+    text = render_preview("email_five")
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2832, in render_preview
+    return render_email_preview(
+        campaign_name, config=config, recs=recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 2217, in render_email_preview
+    plan = _build_email_plan(config, recs)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\scripts\render_preview.py", line 1971, in _build_email_plan
+    sequence = bisonfactory._sequence_steps(
+        config.get("email_sequence"), cadence_steps)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+FAIL: test_every_http_write_in_the_repository_is_declared (tests.test_nothing_writes_to_a_provider.NoUndeclaredProviderWrite.test_every_http_write_in_the_repository_is_declared)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_nothing_writes_to_a_provider.py", line 198, in test_every_http_write_in_the_repository_is_declared
+    self.assertEqual(
+    ~~~~~~~~~~~~~~~~^
+        undeclared, [],
+        ^^^^^^^^^^^^^^^
+    ...<3 lines>...
+        "a vendor spells as POST, add it to ALLOWED with the reason."
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        % (undeclared,))
+        ^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: [('src/providers/bison.py', 'DELETE')] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+('src/providers/bison.py', 'DELETE')
+
+- [('src/providers/bison.py', 'DELETE')]
++ [] : HTTP writes nobody declared: [('src/providers/bison.py', 'DELETE')]
+If one of these is a prospect-facing action it must go through src/executionguard.py and src/providerwrites.py. If it is a read a vendor spells as POST, add it to ALLOWED with the reason.
+
+======================================================================
+FAIL: test_a_config_cannot_raise_the_limit_by_being_unreadable (tests.test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_a_config_cannot_raise_the_limit_by_being_unreadable)
+`{}` must mean the default, not "no limit".
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_red_team_tonights_guards.py", line 222, in test_a_config_cannot_raise_the_limit_by_being_unreadable
+    self.assertEqual(eligibility._account_fatigue(rec, rec["contacts"][0], None),
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                     eligibility.HELD_ACCOUNT_FATIGUE)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: None != 'held:account_fatigue'
+
+======================================================================
+FAIL: test_a_second_contact_does_not_reset_the_company_count (tests.test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_a_second_contact_does_not_reset_the_company_count)
+The whole point: the limit is the company's, not the person's.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_red_team_tonights_guards.py", line 215, in test_a_second_contact_does_not_reset_the_company_count
+    self.assertEqual(
+    ~~~~~~~~~~~~~~~~^
+        eligibility._account_fatigue(rec, rec["contacts"][1], {}),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        eligibility.HELD_ACCOUNT_FATIGUE)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: None != 'held:account_fatigue'
+
+======================================================================
+FAIL: test_it_is_asked_before_content_and_cannot_be_out_ranked (tests.test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_it_is_asked_before_content_and_cannot_be_out_ranked)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_red_team_tonights_guards.py", line 231, in test_it_is_asked_before_content_and_cannot_be_out_ranked
+    self.assertEqual(verdict["reasons"], [eligibility.HELD_ACCOUNT_FATIGUE])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: ['held:verification_unknown'] != ['held:account_fatigue']
+
+First differing element 0:
+'held:verification_unknown'
+'held:account_fatigue'
+
+- ['held:verification_unknown']
++ ['held:account_fatigue']
+
+======================================================================
+FAIL: test_a_plain_hand_off_holds_the_referrer (tests.test_referral.TheWholeChain.test_a_plain_hand_off_holds_the_referrer)
+A referral is not permission to keep writing to the person who
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_referral.py", line 288, in test_a_plain_hand_off_holds_the_referrer
+    self.assertTrue(self.champ(rec).get("paused"))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: None is not true
+
+======================================================================
+FAIL: test_the_company_is_paused_afterwards (tests.test_replaysim.TestThePositiveChain.test_the_company_is_paused_afterwards)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_replaysim.py", line 72, in test_the_company_is_paused_afterwards
+    self.assertEqual(result["pause_reason"], "reply_received")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'positive' != 'reply_received'
+- positive
++ reply_received
+
+
+======================================================================
+FAIL: test_each_one_classifies_as_documented (tests.test_replaysim.TestTheScenarios.test_each_one_classifies_as_documented)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_replaysim.py", line 43, in test_each_one_classifies_as_documented
+    self.assertTrue(result["classification_matches_expectation"],
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"{name}: got {result['classification']}, "
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"expected {result['expected_classification']}")
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : linkedin_reply: got positive, expected neutral
+
+======================================================================
+FAIL: test_model_calls_are_counted (tests.test_set_regeneration.GenerateRecordIntegrationTest.test_model_calls_are_counted)
+Set regeneration counts model calls through the standard hook.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_set_regeneration.py", line 379, in test_model_calls_are_counted
+    self.assertGreaterEqual(calls, 6,
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+                            "at least one call per note in the set")
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 5 not greater than or equal to 6 : at least one call per note in the set
+
+======================================================================
+FAIL: test_successful_regeneration_replaces_all_notes (tests.test_set_regeneration.SetRegenerationTransactionTest.test_successful_regeneration_replaces_all_notes)
+When all new notes pass, the old set is replaced.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_set_regeneration.py", line 225, in test_successful_regeneration_replaces_all_notes
+    self.assertEqual(len(result), 6)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+AssertionError: 5 != 6
+
+----------------------------------------------------------------------
+Ran 2849 tests in 266.054s
+
+FAILED (failures=9, errors=11, expected failures=3)

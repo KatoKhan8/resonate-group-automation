@@ -1,0 +1,271 @@
+======================================================================
+ERROR: test_removing_thread_reply_from_step_is_detected (tests.test_task081_thread_reply.BreakTheWiring.test_removing_thread_reply_from_step_is_detected)
+If _sequence_steps did NOT add thread_reply, the assertion fails.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_task081_thread_reply.py", line 256, in test_removing_thread_reply_from_step_is_detected
+    steps = bisonfactory._sequence_steps(
+        SEQUENCE_CONFIG, cadencelibrary.PRODUCTIVE_LI_HEAVY_V1)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_wrong_pattern_is_detected (tests.test_task081_thread_reply.BreakTheWiring.test_wrong_pattern_is_detected)
+If the pattern were all-False (the old defect), the test fails.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_task081_thread_reply.py", line 271, in test_wrong_pattern_is_detected
+    steps = bisonfactory._sequence_steps(
+        SEQUENCE_CONFIG, cadencelibrary.PRODUCTIVE_LI_HEAVY_V1)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_follow_up_step_still_carries_subject (tests.test_task081_thread_reply.FactoryCarriesThreadReply.test_follow_up_step_still_carries_subject)
+A follow-up step carries email_subject - the flag is the mechanism,
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_task081_thread_reply.py", line 112, in test_follow_up_step_still_carries_subject
+    steps = bisonfactory._sequence_steps(
+        SEQUENCE_CONFIG, cadencelibrary.PRODUCTIVE_LI_HEAVY_V1)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_thread_reply_matches_ladder_pattern (tests.test_task081_thread_reply.FactoryCarriesThreadReply.test_thread_reply_matches_ladder_pattern)
+Step 2 and 4 are True; steps 1, 3, 5 are False.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_task081_thread_reply.py", line 104, in test_thread_reply_matches_ladder_pattern
+    steps = bisonfactory._sequence_steps(
+        SEQUENCE_CONFIG, cadencelibrary.PRODUCTIVE_LI_HEAVY_V1)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_flag_round_trips_through_fake_provider (tests.test_task081_thread_reply.ThreadReplyRoundTrips.test_flag_round_trips_through_fake_provider)
+Build steps, write them, read them back. thread_reply survives.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_task081_thread_reply.py", line 168, in test_flag_round_trips_through_fake_provider
+    steps = bisonfactory._sequence_steps(
+        SEQUENCE_CONFIG, cadencelibrary.PRODUCTIVE_LI_HEAVY_V1)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_follow_up_step_keeps_subject_after_round_trip (tests.test_task081_thread_reply.ThreadReplyRoundTrips.test_follow_up_step_keeps_subject_after_round_trip)
+After write+read, a follow-up step has both subject and flag.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_task081_thread_reply.py", line 188, in test_follow_up_step_keeps_subject_after_round_trip
+    steps = bisonfactory._sequence_steps(
+        SEQUENCE_CONFIG, cadencelibrary.PRODUCTIVE_LI_HEAVY_V1)
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\src\bisonfactory.py", line 300, in _sequence_steps
+    raise FactoryRefused(
+    ...<6 lines>...
+        f"to true or change the subject to match the opener")
+src.bisonfactory.FactoryRefused: step 3 is not a thread reply but carries a distinct subject ('{SUBJECT_3}' vs opener '{SUBJECT_1}'). Only the opener owns a subject; follow-ups must be thread replies referencing the opener's subject. Set thread_reply to true or change the subject to match the opener
+
+======================================================================
+ERROR: test_the_reported_cost_replaces_the_assumed_one (tests.test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_reported_cost_replaces_the_assumed_one)
+`fair_usage.records_used` is the only real cost Blitz has.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_two_providers_disagreeing_is_not_a_headcount.py", line 224, in test_the_reported_cost_replaces_the_assumed_one
+    row = next(r for r in rec["waterfall"] if r["call"] == "blitz-company")
+StopIteration
+
+======================================================================
+FAIL: test_benchmark_estimate_follows_cadence (tests.test_task034_llm_estimate.TestEstimateMovesWithCadence.test_benchmark_estimate_follows_cadence)
+benchmark.measure derives the count from the cadence.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_task034_llm_estimate.py", line 163, in test_benchmark_estimate_follows_cadence
+    self.assertEqual(result["counters"]["llm_calls_would_be"], expected)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 200 != 220
+
+======================================================================
+FAIL: test_costsim_derives_from_named_cadence (tests.test_task034_llm_estimate.TestEstimateMovesWithCadence.test_costsim_derives_from_named_cadence)
+costsim derives llm_calls_per_contact from the cadence name.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_task034_llm_estimate.py", line 137, in test_costsim_derives_from_named_cadence
+    self.assertEqual(result_li["assumptions"]["llm_calls_per_contact"], 11)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 10 != 11
+
+======================================================================
+FAIL: test_li_heavy_has_five_emails_and_six_linkedin (tests.test_task034_llm_estimate.TestGeneratedKeysDerivesFromCadence.test_li_heavy_has_five_emails_and_six_linkedin)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_task034_llm_estimate.py", line 32, in test_li_heavy_has_five_emails_and_six_linkedin
+    self.assertEqual(len(linkedin), 6)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+AssertionError: 5 != 6
+
+======================================================================
+FAIL: test_the_check_returns_the_reason_when_the_company_is_past_policy (tests.test_the_account_is_the_unit_of_outreach.TheDecisionConsultsIt.test_the_check_returns_the_reason_when_the_company_is_past_policy)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_the_account_is_the_unit_of_outreach.py", line 84, in test_the_check_returns_the_reason_when_the_company_is_past_policy
+    self.assertEqual(
+    ~~~~~~~~~~~~~~~~^
+        eligibility._account_fatigue(rec, rec["contacts"][0], {}),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        eligibility.HELD_ACCOUNT_FATIGUE)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: None != 'held:account_fatigue'
+
+======================================================================
+FAIL: test_a_company_past_its_weekly_limit_is_held (tests.test_the_account_is_the_unit_of_outreach.TheDecisionItselfHoldsIt.test_a_company_past_its_weekly_limit_is_held)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_the_account_is_the_unit_of_outreach.py", line 124, in test_a_company_past_its_weekly_limit_is_held
+    self.assertIn(eligibility.HELD_ACCOUNT_FATIGUE, verdict["reasons"])
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'held:account_fatigue' not found in ['held:verification_unknown']
+
+======================================================================
+FAIL: test_it_is_asked_before_any_content_work (tests.test_the_account_is_the_unit_of_outreach.TheDecisionItselfHoldsIt.test_it_is_asked_before_any_content_work)
+A held account should cost no lint and no claim check, and a
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_the_account_is_the_unit_of_outreach.py", line 137, in test_it_is_asked_before_any_content_work
+    self.assertEqual(verdict["reasons"], [eligibility.HELD_ACCOUNT_FATIGUE])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: ['held:verification_unknown'] != ['held:account_fatigue']
+
+First differing element 0:
+'held:verification_unknown'
+'held:account_fatigue'
+
+- ['held:verification_unknown']
++ ['held:account_fatigue']
+
+======================================================================
+FAIL: test_the_client_file_selects_the_linkedin_heavy_sequence (tests.test_the_cadence_reacts_to_what_the_prospect_did.TheConfiguredCadenceAndTheConfiguredCapsAgree.test_the_client_file_selects_the_linkedin_heavy_sequence)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_the_cadence_reacts_to_what_the_prospect_did.py", line 762, in test_the_client_file_selects_the_linkedin_heavy_sequence
+    self.assertEqual(shape["total"], 11)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+AssertionError: 10 != 11
+
+======================================================================
+FAIL: test_it_is_the_shape_the_operator_asked_for (tests.test_the_cadence_the_client_chose_is_the_one_that_runs.TheClientRunsTheSequenceItNames.test_it_is_the_shape_the_operator_asked_for)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_the_cadence_the_client_chose_is_the_one_that_runs.py", line 40, in test_it_is_the_shape_the_operator_asked_for
+    self.assertEqual(shape["linkedin"], 6)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 5 != 6
+
+======================================================================
+FAIL: test_resume_is_declared_and_authorised_for_one_campaign_only (tests.test_the_emailbison_write_door_is_enforced.TheDoorDidNotWidenWhatThisModuleMaySend.test_resume_is_declared_and_authorised_for_one_campaign_only)
+RENAMED from `test_resume_is_declared_but_still_unsupported`.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_the_emailbison_write_door_is_enforced.py", line 313, in test_resume_is_declared_and_authorised_for_one_campaign_only
+    self.assertTrue(bound,
+    ~~~~~~~~~~~~~~~^^^^^^^
+                    f"{want_canonical} carries no `bison_campaign_id`, so "
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"there is no provider campaign the grant can be "
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    f"checked against")
+                    ^^^^^^^^^^^^^^^^^^^
+AssertionError: None is not true : productive-email-control-v3 carries no `bison_campaign_id`, so there is no provider campaign the grant can be checked against
+
+======================================================================
+FAIL: test_a_site_that_defeats_it_falls_through (tests.test_the_free_leg_runs_before_the_paid_one.TheFreeLegSettlesIt.test_a_site_that_defeats_it_falls_through)
+`JS_RENDERING_REQUIRED` is a real answer that routes the account
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_the_free_leg_runs_before_the_paid_one.py", line 97, in test_a_site_that_defeats_it_falls_through
+    self.assertTrue(spend.called, "the paid leg was never reached")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : the paid leg was never reached
+
+======================================================================
+FAIL: test_boilerplate_is_refused_rather_than_stored (tests.test_the_free_leg_runs_before_the_paid_one.TheFreeLegSettlesIt.test_boilerplate_is_refused_rather_than_stored)
+The same filter the paid leg uses. A cookie policy must not reach
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_the_free_leg_runs_before_the_paid_one.py", line 111, in test_boilerplate_is_refused_rather_than_stored
+    self.assertTrue(spend.called,
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+                    "a page of boilerplate was treated as evidence")
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : a page of boilerplate was treated as evidence
+
+======================================================================
+FAIL: test_the_linkedin_path_refuses_before_it_imports_a_transport (tests.test_the_prototype_cannot_send.EveryLivePathRefuses.test_the_linkedin_path_refuses_before_it_imports_a_transport)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_the_prototype_cannot_send.py", line 53, in test_the_linkedin_path_refuses_before_it_imports_a_transport
+    self.assertIn("cannot send", str(caught.exception))
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'cannot send' not found in 'run build.py first'
+
+======================================================================
+FAIL: test_a_dry_run_calls_nothing_and_still_says_it_would (tests.test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_a_dry_run_calls_nothing_and_still_says_it_would)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_two_providers_disagreeing_is_not_a_headcount.py", line 231, in test_a_dry_run_calls_nothing_and_still_says_it_would
+    self.assertIn("blitz-company", [o["call"] for o in done])
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'blitz-company' not found in []
+
+======================================================================
+FAIL: test_the_call_is_on_the_waterfall_ledger_with_its_reason (tests.test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_call_is_on_the_waterfall_ledger_with_its_reason)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_two_providers_disagreeing_is_not_a_headcount.py", line 215, in test_the_call_is_on_the_waterfall_ledger_with_its_reason
+    self.assertEqual(len(rows), 1)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_the_provider_is_called (tests.test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_provider_is_called)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_two_providers_disagreeing_is_not_a_headcount.py", line 208, in test_the_provider_is_called
+    called.assert_called_once_with(FACTS["linkedin"])
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Zvonimir\AppData\Local\Python\pythoncore-3.14-64\Lib\unittest\mock.py", line 996, in assert_called_once_with
+    raise AssertionError(msg)
+AssertionError: Expected 'company' to be called once. Called 0 times.
+
+======================================================================
+FAIL: test_the_field_routes_to_blitz (tests.test_two_providers_disagreeing_is_not_a_headcount.TheProviderCanActuallyBeReached.test_the_field_routes_to_blitz)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_two_providers_disagreeing_is_not_a_headcount.py", line 134, in test_the_field_routes_to_blitz
+    self.assertEqual(step["call"], "blitz-company")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'webfetch-crawl' != 'blitz-company'
+- webfetch-crawl
++ blitz-company
+
+
+----------------------------------------------------------------------
+Ran 2276 tests in 319.143s
+
+FAILED (failures=16, errors=7, skipped=5, expected failures=3)

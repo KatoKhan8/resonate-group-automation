@@ -1,0 +1,37 @@
+======================================================================
+FAIL: test_the_state_of_every_record (tests.test_e2e.TestTheFinalShape.test_the_state_of_every_record)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Zvonimir\Desktop\resonate-qwen-worker\tests\test_e2e.py", line 750, in test_the_state_of_every_record
+    self.assertEqual(states, {
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^
+        "clearwater": "approved",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+        "skyline": "approved",
+        ^^^^^^^^^^^^^^^^^^^^^^
+    })
+    ^^
+AssertionError: {'cle[228 chars]n-co': 'dropped', 'redwood': 'approved', 'skyline': 'held'} != {'cle[228 chars]n-co': 'dropped', 'redwood': 'approved', 'skyline': 'approved'}
+  {'blocked-co': 'dropped',
+   'clearwater': 'approved',
+   'clearwater-again': 'dropped',
+   'deadletter': 'dropped',
+   'harborview': 'held',
+   'kestrel': 'dropped',
+   'no-domain-co': 'dropped',
+   'northwind': 'approved',
+   'redwood': 'approved',
+   'samename': 'approved',
+-  'skyline': 'held',
+?              ^ -
+
++  'skyline': 'approved',
+?              ^^^^^^
+
+   'stonebridge': 'held'}
+
+----------------------------------------------------------------------
+Ran 81 tests in 503.298s
+
+FAILED (failures=1)
