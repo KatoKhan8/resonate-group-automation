@@ -137,3 +137,45 @@ class TenancyIsNotOptional(Roster):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AMalformedRowIsRefusedNotTidiedUp(Roster):
+    """The near-miss while fixing a wording problem, pinned so it cannot recur.
+
+    GLM noted that `i not in (None, "")` let `False`, `0` and `" "` through to
+    die further down as "not in the roster" - a refusal, with misleading text.
+    The first fix SKIPPED those instead, which turned a refusal into an
+    acceptance: `[good_id, False]` would have resolved to the good id as
+    though the canonical row were clean. That is a silent fallback on a safety
+    path, introduced while improving a sentence.
+
+    An ABSENT entry is dropped. A malformed one is refused.
+    """
+
+    def test_a_boolean_in_the_row_refuses_the_whole_row(self):
+        ids = [self.inbox("eb-1", 1, owner="ada")]
+        with self.assertRaises(so.NotOneHuman) as caught:
+            so.one_attested_human([False] + ids, WS, si.EMAIL)
+        self.assertIn("not a usable", str(caught.exception))
+
+    def test_a_none_string_in_the_row_refuses_the_whole_row(self):
+        ids = [self.inbox("eb-1", 1, owner="ada")]
+        with self.assertRaises(so.NotOneHuman):
+            so.one_attested_human(["None"] + ids, WS, si.EMAIL)
+
+    def test_a_non_numeric_id_refuses_rather_than_blaming_the_roster(self):
+        ids = [self.inbox("eb-1", 1, owner="ada")]
+        with self.assertRaises(so.NotOneHuman) as caught:
+            so.one_attested_human(["abc"] + ids, WS, si.EMAIL)
+        self.assertIn("not a usable", str(caught.exception))
+
+    def test_an_absent_entry_is_still_dropped(self):
+        """`None` and `""` mean the row simply does not name a second sender.
+        That is not malformed and must not become a refusal."""
+        ids = [self.inbox("eb-1", 1, owner="ada")]
+        self.assertEqual(
+            so.one_attested_human([None, ""] + ids, WS, si.EMAIL), "ada")
+
+    def test_a_duplicate_id_is_harmless(self):
+        ids = [self.inbox("eb-1", 1, owner="ada")]
+        self.assertEqual(so.one_attested_human(ids + ids, WS, si.EMAIL), "ada")

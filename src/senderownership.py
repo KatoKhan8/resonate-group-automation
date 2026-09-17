@@ -251,7 +251,29 @@ def one_attested_human(provider_account_ids, workspace, channel, rows=None):
                           to them would attribute real sends to nobody
         several humans    the failure the arity rule exists to prevent
     """
-    ids = [str(i) for i in (provider_account_ids or []) if i not in (None, "")]
+    # A MALFORMED ENTRY IS REFUSED, NOT DROPPED, and the first attempt at
+    # this got it backwards. GLM noted that `i not in (None, "")` let `False`,
+    # `0` and `" "` through to die further down as "not in the roster" - a
+    # refusal with misleading text. Rewriting it to SKIP those turned a
+    # refusal into an acceptance: a canonical row reading
+    # `[good_id, False]` would have resolved to the good id as though the row
+    # were clean. That is the silent fallback on a safety path this
+    # repository forbids, introduced while fixing a wording problem.
+    #
+    # So: an absent entry (None or empty) is dropped, exactly as before.
+    # Anything else that is not a usable id is REFUSED, with text that names
+    # the real problem instead of blaming the roster.
+    ids = []
+    for raw in (provider_account_ids or []):
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            continue
+        if isinstance(raw, bool) or not str(raw).strip().isdigit():
+            raise NotOneHuman(
+                f"{raw!r} is not a usable {channel} sender id. A canonical "
+                f"row carrying it is malformed, and resolving the rest as "
+                f"though it were clean would attribute an action from a row "
+                f"nobody can read")
+        ids.append(str(raw).strip())
     if not ids:
         raise NotOneHuman(
             f"no {channel} sender is named, so there is no human to attribute "

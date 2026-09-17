@@ -87,7 +87,8 @@ Answer, briefly:
 
 def _targets():
     """Built lazily so a broken import in one area cannot block the others."""
-    from src import store, actionledger, collision, bisonevents
+    from src import (store, actionledger, collision, bisonevents,
+                     senderownership)
     return {
         # ADDED 2026-09-17, and it is the one target reviewed BEFORE its code
         # has a production caller rather than after. `bisonevents` normalises
@@ -95,6 +96,14 @@ def _targets():
         # whether two deliveries are one event; EmailBison retries five times
         # over 24 hours and replays ten days, so a dedupe that can be defeated
         # is a duplicate state transition against a real person.
+        # The predicate that would REPLACE the sender arity rule, reviewed
+        # while it still has no caller. If it can be defeated, a prospect
+        # hears from two people in one conversation.
+        "attestation": (GENERIC_QUESTION, [
+            ("senderownership.one_attested_human",
+             senderownership.one_attested_human),
+            ("senderownership.resolve_owner", senderownership.resolve_owner),
+        ]),
         "webhook": (GENERIC_QUESTION, [
             ("bisonevents.normalise", bisonevents.normalise),
             ("bisonevents.event_key", bisonevents.event_key),
