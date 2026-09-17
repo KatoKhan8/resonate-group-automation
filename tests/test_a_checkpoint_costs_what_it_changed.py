@@ -215,3 +215,120 @@ class JournalTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConcurrencyGlmFound(unittest.TestCase):
+    """The defects GLM's adversarial review named, each reproduced first.
+
+    The review was run against this module BEFORE it had a caller. Three of
+    its findings were accepted; one was measured and is the reason `append`
+    now takes a lock at all.
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="journal-race-")
+        self.queue = os.path.join(self.dir, "queue.jsonl")
+        with open(self.queue, "w", encoding="utf-8", newline="\n") as f:
+            f.write(json.dumps(rec("a")) + "\n")
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_concurrent_appends_do_not_lose_entries(self):
+        """GLM finding 4a, MEASURED TRUE before it was fixed.
+
+        Six processes appending 400 lines each to one journal with a bare
+        `open(path, "a")` produced 2,193 of 2,400 lines, 207 missing and one
+        mangled, silently - because Windows implements append as
+        seek-to-EOF-then-write rather than atomically.
+
+        Threads here rather than processes: `store.lock` is a cross-process
+        advisory lock and this proves the serialisation it provides. The
+        process-level measurement is recorded in the module docstring.
+        """
+        import threading
+        errors = []
+
+        def worker(tag):
+            try:
+                for i in range(25):
+                    qj.append(self.queue,
+                              [rec(f"{tag}-{i}", pad="z" * 300)], "d0")
+            except Exception as exc:                       # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker, args=(f"t{n}",))
+                   for n in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [], f"append raised under contention: {errors}")
+        entries, torn = qj.read(self.queue)
+        self.assertFalse(torn, "a locked append must never leave a torn tail")
+        self.assertEqual(len(entries), 100,
+                         "every append must survive; this is the assertion "
+                         "that fails without the lock")
+        ids = {e["record"]["id"] for e in entries}
+        self.assertEqual(len(ids), 100)
+
+    def test_compaction_folds_in_and_then_drops_the_journal(self):
+        qj.append(self.queue, [rec("a", state="verified")], "d0")
+        qj.append(self.queue, [rec("b", state="queued")], "d0")
+        written = {}
+
+        def write_base(records):
+            written["records"] = records
+            with open(self.queue, "w", encoding="utf-8", newline="\n") as f:
+                for r in records:
+                    f.write(json.dumps(r) + "\n")
+
+        applied = qj.compact(self.queue, write_base)
+        self.assertEqual(applied, 2)
+        self.assertFalse(os.path.exists(qj.path_for(self.queue)),
+                         "the journal is dropped only AFTER the base is written")
+        ids = [r["id"] for r in written["records"]]
+        self.assertEqual(ids, ["a", "b"])
+        self.assertEqual(written["records"][0]["state"], "verified")
+
+    def test_compaction_is_a_noop_with_no_journal(self):
+        calls = []
+        self.assertEqual(
+            qj.compact(self.queue, lambda recs: calls.append(recs)), 0)
+        self.assertEqual(calls, [],
+                         "nothing to fold means the base is not rewritten")
+
+    def test_a_stale_delta_overwrites_a_newer_one_AND_THAT_IS_THE_HAZARD(self):
+        """GLM finding 3. ACCEPTED, NOT FIXED, and pinned here deliberately.
+
+        This test asserts the BAD behaviour, because the bad behaviour is
+        real and a wiring change has to deal with it. `replay` is
+        last-write-wins in file order with no version comparison, so:
+
+          1. A and B both read the record at t0.
+          2. B appends the record carrying paid verification evidence.
+          3. A appends its STALE copy, without that evidence.
+          4. replay keeps A's. The paid evidence is gone, nothing raises,
+             and `torn_tail` is clean.
+
+        `store.save` prevents exactly this with `refuse_evidence_loss` and
+        `expect_digest` on a read-and-compare path this module does not
+        reproduce. **A caller that appends deltas without running those
+        guards has removed them.** If a future change makes this test fail,
+        that is good news - it means the delta path grew the guard - and the
+        test should then be inverted rather than deleted.
+        """
+        paid = rec("a", state="verified",
+                   verification={"confirmations": ["contactout", "reoon"]})
+        stale = rec("a", state="queued", attempts=1)
+        qj.append(self.queue, [paid], "d0")      # B, newer knowledge
+        qj.append(self.queue, [stale], "d0")     # A, stale read
+
+        out, applied, torn = qj.replay([rec("a")], self.queue)
+        self.assertFalse(torn)
+        self.assertEqual(applied, 1)
+        self.assertEqual(out[0]["state"], "queued")
+        self.assertNotIn("verification", out[0],
+                         "THE HAZARD: paid verification evidence was dropped "
+                         "by a stale delta and nothing objected")

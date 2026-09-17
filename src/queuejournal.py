@@ -62,18 +62,47 @@ One JSON object per line, each a complete record plus a header:
 journal cannot be replayed onto the wrong base. Later entries for the same
 record id win - last write, in file order.
 
-## Crash safety
+## Crash safety, and the lock that turned out to be mandatory
 
-Append-and-flush, never truncate-and-rewrite, so the previous bytes are
-untouched by a failing write. A process dying mid-append can still leave a
+Append-and-flush-and-fsync, never truncate-and-rewrite, so the previous bytes
+are untouched by a failing write. A process dying mid-append can still leave a
 torn final line; `replay` discards a trailing line that does not parse and
 reports it, rather than raising. **A torn line anywhere but the end is not
 recoverable and raises**, because that means something other than a crash
 wrote here and guessing which records survived is how a fabricated state gets
 believed.
+
+**`open(path, "a")` IS NOT ATOMIC ACROSS PROCESSES ON WINDOWS, AND THIS WAS
+MEASURED RATHER THAN ASSUMED.** An earlier version of this file claimed
+appending was safe because it never truncates. GLM's adversarial review said
+the CRT implements append as seek-to-EOF-then-write, two operations, so two
+processes can land on the same offset. Six processes writing 400 lines each
+to one journal, on this machine:
+
+    expected 2400 lines, parsed 2193, MANGLED 1, MISSING 207
+
+Two of the six lost 112 and 95 lines with no error raised anywhere. So every
+write here takes `store.lock` - the same advisory lock the whole-file path
+uses, on the QUEUE path rather than the journal path, so that a compaction
+and an append cannot interleave either.
+
+## What this module still does NOT do, and a wiring change must
+
+`replay` is last-write-wins in file order. It has no notion of which delta was
+computed from which read, so two processes that both read at t0 and both
+checkpoint will silently keep the second one's version of a record - including
+when the first carried paid verification evidence and the second did not.
+`store.save` prevents that with `refuse_evidence_loss` and `expect_digest` on
+a read-and-compare path that this module does not reproduce. **A caller that
+appends deltas without running those guards has removed them.** That is
+recorded here, tested in `test_a_checkpoint_costs_what_it_changed` as a
+demonstrated hazard rather than a passing property, and is the reason this is
+still not wired.
 """
 import json
 import os
+
+from . import store
 
 SUFFIX = ".journal"
 
@@ -92,28 +121,33 @@ def path_for(queue_path):
     return queue_path + SUFFIX
 
 
-def append(queue_path, records, base_digest, at=None):
-    """Append one delta per record. Returns the number of entries written.
+def append(queue_path, records, base_digest, at=None, timeout=None):
+    """Append one delta per record, under the lock. Returns entries written.
 
-    Opened in append mode and flushed before returning: the bytes already in
-    the file are never rewritten, so a failure here cannot damage earlier
-    entries the way a truncating write can.
+    THE LOCK IS NOT OPTIONAL AND IS NOT BELT-AND-BRACES. `open(path, "a")` was
+    measured losing 207 of 2,400 lines across six concurrent processes on this
+    platform, silently. See the module docstring.
+
+    It is taken on the QUEUE path rather than the journal path, so that an
+    append and a compaction - which rewrites the base and then drops the
+    journal - exclude each other. A lock on the journal file would not.
     """
     records = [r for r in records if r]
     if not records:
         return 0
     journal = path_for(queue_path)
     os.makedirs(os.path.dirname(journal) or ".", exist_ok=True)
-    start = _count(journal)
-    with open(journal, "a", encoding="utf-8", newline="\n") as handle:
-        for offset, record in enumerate(records):
-            entry = {"seq": start + offset,
-                     "at": at,
-                     "base": base_digest,
-                     "record": record}
-            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        handle.flush()
-        os.fsync(handle.fileno())
+    with store.lock(timeout=timeout, for_path=queue_path):
+        start = _count(journal)
+        with open(journal, "a", encoding="utf-8", newline="\n") as handle:
+            for offset, record in enumerate(records):
+                entry = {"seq": start + offset,
+                         "at": at,
+                         "base": base_digest,
+                         "record": record}
+                handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
     return len(records)
 
 
@@ -223,6 +257,47 @@ def should_compact(queue_path, ratio=2.0, min_bytes=1_000_000):
     if base_bytes == 0:
         return True
     return journal_bytes / base_bytes >= ratio
+
+
+def compact(queue_path, write_base, base_digest=None, timeout=None):
+    """Fold the journal into the base, in the ONE order that is safe.
+
+    `write_base(records)` is injected rather than done here because the base
+    file belongs to `store` and this module must not become a second place
+    that knows how the queue is written.
+
+    THE ORDER IS THE WHOLE POINT, and GLM's review named the failure exactly:
+
+        die between base write and discard   harmless. The surviving journal
+                                             replays over a base that already
+                                             contains those deltas, and a
+                                             delta carries the WHOLE record,
+                                             so re-application is idempotent.
+                                             Cost is some dead entries.
+        die between discard and base write   EVERY delta since the previous
+                                             base is lost, permanently, with
+                                             nothing raised.
+
+    So: read, write the base, fsync it, and only then drop the journal. A
+    caller doing it by hand can get that backwards, which is why it is here
+    and not in a docstring telling them not to.
+
+    Returns the number of entries folded in.
+    """
+    with store.lock(timeout=timeout, for_path=queue_path):
+        base = []
+        if os.path.exists(queue_path):
+            with open(queue_path, encoding="utf-8") as handle:
+                base = [json.loads(line) for line in handle if line.strip()]
+        entries, _torn = read(queue_path, base_digest)
+        if not entries:
+            return 0
+        records, applied, _torn = replay(base, queue_path, base_digest)
+        write_base(records)
+        journal = path_for(queue_path)
+        if os.path.exists(journal):
+            os.remove(journal)
+        return applied
 
 
 def discard(queue_path):
