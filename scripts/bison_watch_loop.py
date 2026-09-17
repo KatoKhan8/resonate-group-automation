@@ -17,6 +17,9 @@ mean "unchanged" rather than "died an hour ago":
     COHORT      the lead count moved - the audience changed under us
     QUEUED      the scheduled-email queue gained or lost rows WITHOUT a send
     TOUCHED     the provider moved the campaign's own `updated_at`
+    SCHEDULE-MOVED  the EARLIEST scheduled_date changed - when the first
+                prospect hears from us is not the same fact as whether a row
+                exists, and 451's moved once overnight
     READ-ERROR  the provider could not be read, after it repeats
 
 WHY `QUEUED` AND `TOUCHED` EXIST, added 2026-09-17, and they are the whole
@@ -84,6 +87,16 @@ def snapshot():
         # Carried verbatim and compared for movement, never parsed: a format
         # this system has not seen still reports a touch rather than raising.
         "updated_at": row.get("updated_at"),
+        # A SCHEDULED DATE ON THIS PROVIDER IS AN INTENTION, NOT A COMMITMENT.
+        # Canary 451's single row moved once overnight - 2026-09-13T13:19Z to
+        # 2026-09-14T16:24Z, with nothing staged in between - and then fired
+        # twenty seconds late. So the row appearing is one event and the date
+        # it carries is another, and only the first was being watched.
+        # `min` because the question this answers is "when does the first
+        # prospect hear from us", and it is the number an operator plans on.
+        "first_scheduled": min(
+            [str(e.get("scheduled_date")) for e in queue
+             if e.get("scheduled_date")] or ["none"]),
     }
 
 
@@ -147,6 +160,10 @@ def main(argv=None):
             emit(f"TOUCHED 487 updated_at {previous['updated_at']} -> "
                  f"{current['updated_at']} (sent={current['emails_sent']}, "
                  f"queue={current['queue_rows']})")
+        if current["first_scheduled"] != previous["first_scheduled"]:
+            emit(f"SCHEDULE-MOVED 487 first send "
+                 f"{previous['first_scheduled']} -> "
+                 f"{current['first_scheduled']}")
 
         previous = current
         time.sleep(args.interval)
