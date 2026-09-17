@@ -57,20 +57,36 @@ OUTPUT = os.path.join(ROOT, "work", "approval",
                       "NEAR-MISS-PACKET-2026-09-17.md")
 
 
-def verdicts(text, rec, contact, config):
-    """Lint and claims, beside the words, so the read is one pass."""
+def verdicts(rec, contact, step_key, step, config):
+    """Lint and claims, beside the words, so the read is one pass.
+
+    `lint.check_step` IS THE CHANNEL-AWARE ONE, AND `lint.check` IS NOT.
+    `check` is documented "for one generated EMAIL": it reads `step["body"]`
+    and `step["subject"]`, so every LinkedIn step - whose copy lives in `note`
+    and which has no subject at all - came back `body_too_short,
+    subject_missing`. Sixty of seventy-five steps carried a verdict that was an
+    artefact of asking the wrong function. An operator reading that would
+    rightly stop trusting the packet. The screen uses `check_step`; so does
+    this, so the two say the same thing about the same step.
+
+    The signatures were guessed once before, too - `lint.check(text,
+    config=...)` and `claims.check(text, rec, contact, config=...)` both
+    raised, both were caught by the `except` below, and the packet printed
+    `claims: UNKNOWN` seventy-five times while looking complete.
+    """
     out = []
     try:
-        problems = lint.check(text, config=config) or []
+        problems = lint.check_step(rec, contact.get("key"), step) or []
         out.append("lint: clean" if not problems
                    else "lint: " + ", ".join(sorted(str(p) for p in problems)))
     except Exception as exc:
-        out.append(f"lint: UNKNOWN ({type(exc).__name__})")
+        out.append(f"lint: UNKNOWN ({type(exc).__name__}: {exc})")
+    text = step.get("body") or step.get("note") or ""
     try:
-        verdict = claims.check(text, rec, contact, config=config)
+        verdict = claims.check(text, rec, contact)
         out.append(f"claims: {verdict}")
     except Exception as exc:
-        out.append(f"claims: UNKNOWN ({type(exc).__name__})")
+        out.append(f"claims: UNKNOWN ({type(exc).__name__}: {exc})")
     return out
 
 
@@ -163,7 +179,7 @@ def main(argv=None):
                     fh.write(f"**Subject:** {subject}\n\n")
                 text = step.get("body") or step.get("note") or ""
                 fh.write("```\n" + str(text).strip() + "\n```\n\n")
-                for line in verdicts(text, rec, contact, config):
+                for line in verdicts(rec, contact, key, step, config):
                     fh.write(f"- {line}\n")
                 fh.write("\n")
             fh.write("---\n\n")

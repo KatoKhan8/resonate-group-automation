@@ -96,6 +96,38 @@ def linkedin():
     return out
 
 
+def _active_campaigns_using(sender_id):
+    """Every ACTIVE campaign this mailbox is attached to.
+
+    Read from the provider per campaign rather than from a sender field,
+    because no sender field says it. This is the number that turns a daily cap
+    into an actual share.
+    """
+    # NO `hasattr` FALLBACK HERE. The first version asked
+    # `bison.campaigns() if hasattr(bison, "campaigns") else ([], {})` - and
+    # there IS no `bison.campaigns`, so it silently returned nothing and the
+    # status printed `{2736: []}`, which reads as "this mailbox is not shared".
+    # It is shared with three ACTIVE campaigns that have sent 173,558 emails.
+    # A guard that turns "I could not ask" into "the answer is none" is the
+    # exact failure this file's own docstring is about.
+    #
+    # `_paged` over /campaigns is what `find_campaigns_by_name` walks, and it
+    # is walked rather than filtered because this API's `?search=` is an index
+    # that lags creation.
+    out = []
+    rows, _total = bison._paged(
+        "campaigns",
+        lambda page: bison.query(f"{bison.base()}/campaigns",
+                                 {"page": page, "per_page": 100}))
+    for row in rows or []:
+        if str(row.get("status") or "").lower() != "active":
+            continue
+        cid = row.get("id")
+        if cid and int(sender_id) in (bison.campaign_senders(cid) or []):
+            out.append(int(cid))
+    return out
+
+
 def email():
     out = {"campaign": EMAIL_CAMPAIGN}
     row = _try(bison.campaign, EMAIL_CAMPAIGN)
@@ -127,6 +159,24 @@ def email():
                     "warmup_enabled": entry.get("warmup_enabled"),
                 }
     out["sender_limits"] = limits or UNKNOWN
+
+    # A CAP IS NOT CAPACITY WHEN THE MAILBOX IS SHARED, and this over-stated it
+    # the same way the campaign figure did before it was corrected. Sender 2736
+    # is attached to campaigns 352, 328 and 327 as well as this one - all three
+    # ACTIVE, 173,558 emails sent between them - and its 15/day is a per-MAILBOX
+    # limit. Reporting 15 for this campaign says nothing about what this
+    # campaign will get, which today is zero. The count of other active
+    # claimants is what makes the number readable.
+    sharers = {}
+    for sender_id in (out["senders"] or []):
+        others = []
+        campaigns_seen = _try(_active_campaigns_using, sender_id)
+        if isinstance(campaigns_seen, str):
+            sharers[sender_id] = campaigns_seen
+            continue
+        others = [c for c in campaigns_seen if int(c) != EMAIL_CAMPAIGN]
+        sharers[sender_id] = others
+    out["sender_shared_with_active"] = sharers or UNKNOWN
     caps = [v["daily_limit"] for v in limits.values()
             if isinstance(v.get("daily_limit"), int)]
     campaign_cap = out["campaign_cap_per_day"]
@@ -231,6 +281,15 @@ def main(argv=None):
     print(f"  EMAILBISON_CAP/DAY   = {em.get('binding_cap_per_day')}  "
           f"(campaign {em.get('campaign_cap_per_day')}, "
           f"senders {em.get('sender_limits')})")
+    shared = em.get("sender_shared_with_active")
+    print(f"  EMAILBISON_SHARED    = {shared}")
+    if isinstance(shared, dict):
+        for sender_id, others in shared.items():
+            if isinstance(others, list) and others:
+                print(f"    sender {sender_id} also serves {len(others)} "
+                      f"other ACTIVE campaign(s): {others} - the daily cap is "
+                      f"per MAILBOX, so this campaign's share is a fraction "
+                      f"of it")
     print(f"  EMAILBISON_REPLIES   = {em.get('replies')}")
     print(f"  EMAILBISON_BOUNCED   = {em.get('bounced')}")
     print(f"  EMAILBISON_FIRST_SEND= {em.get('first_send')}")
