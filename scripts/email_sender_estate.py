@@ -250,6 +250,53 @@ def main(argv=None):
                   f"+{row['moved_in_window']:<4} of {row['daily_limit']}/day  "
                   f"campaigns {row['active_campaigns']}")
 
+    # MEASURED HEADROOM BY HUMAN, which is the only capacity number that means
+    # anything for this system. A campaign may hold several inboxes belonging
+    # to exactly ONE attested human without becoming unattributable, so the
+    # unit capacity is planned in is a PERSON and not a mailbox - and neither
+    # the roster nor `production_status` had ever grouped it that way.
+    #
+    # `used` is measured from the utilisation samples, so a human with no
+    # samples reads zero used and full headroom. That is why the window is
+    # printed above it: an unsampled estate would otherwise look entirely free.
+    if data["window"]:
+        print(f"\n=== MEASURED HEADROOM BY HUMAN ===")
+        print("  cap/day counts CONNECTED inboxes only. `used` is what moved "
+              "in the window above,")
+        print("  so a short window understates use and overstates headroom. "
+              "Read it against the window.")
+        print(f"  {'human':<16}{'inbox':>6}{'conn':>6}{'cap/day':>9}"
+              f"{'used':>6}{'headroom':>10}{'idle mb':>9}")
+        people = collections.defaultdict(
+            lambda: {"inboxes": 0, "connected": 0, "limit": 0, "used": 0,
+                     "idle": 0})
+        for row in rows:
+            entry = people[h(row["name"]) or "unnamed"]
+            entry["inboxes"] += 1
+            if str(row["status"]) != "Connected":
+                continue
+            entry["connected"] += 1
+            entry["limit"] += int(row["daily_limit"] or 0)
+            moved = row["moved_in_window"]
+            if isinstance(moved, int):
+                entry["used"] += moved
+                if moved == 0:
+                    entry["idle"] += 1
+        total = collections.Counter()
+        for name, entry in sorted(people.items(),
+                                  key=lambda kv: -(kv[1]["limit"]
+                                                   - kv[1]["used"])):
+            head = entry["limit"] - entry["used"]
+            total["limit"] += entry["limit"]
+            total["used"] += entry["used"]
+            total["idle"] += entry["idle"]
+            print(f"  {name:<16}{entry['inboxes']:>6}{entry['connected']:>6}"
+                  f"{entry['limit']:>9}{entry['used']:>6}{head:>10}"
+                  f"{entry['idle']:>9}")
+        print(f"  {'TOTAL':<16}{'':>6}{'':>6}{total['limit']:>9}"
+              f"{total['used']:>6}{total['limit'] - total['used']:>10}"
+              f"{total['idle']:>9}")
+
     print(f"\n=== COMMITTED, BY CONTENTION ===")
     for row in sorted(committed, key=lambda r: -len(r["active_campaigns"]))[:12]:
         print(f"  {row['id']:>5}  {str(row['name'])[:24]:<24} "
