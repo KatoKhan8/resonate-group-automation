@@ -10,6 +10,28 @@ acting.**
 
 **UNKNOWN IS NEVER 0. LIVE IS NOT SENT. SCHEDULED IS NOT SENT.**
 
+## READ THE CLOCK BEFORE READING A ZERO
+
+This was written at **2026-09-17T22:50Z, which is 2026-09-18T00:50 in
+Zagreb.** The calendar date differs between the two, and both campaigns are
+scheduled against a window, so "it is the 18th and nothing has sent" is not a
+fault - it is the middle of the night.
+
+    EmailBison 487   window 09:00-17:00 Europe/Zagreb, Mon-Fri.   CLOSED.
+                     Opens ~8h after this was written. And 487 is queued for
+                     the 23rd regardless, so nothing is due today.
+    HeyReach 605732  default window 09:00-17:00 UTC, Mon-Fri - the campaign
+                     passes no schedule, so it runs on the vendor default,
+                     which is 05:00-13:00 US Eastern.   CLOSED.
+                     Opens ~10h after this was written, and its first
+                     connection request is due inside that window.
+
+**So the first thing to check on waking is the clock, then HeyReach.** If the
+UTC window has been open for hours and all three leads still read
+`leadConnectionStatus: None` with `lastActionTime` unmoved since the 17th,
+that is the falsifier in section 1 firing - investigate rather than extend the
+graph explanation.
+
 ---
 
 ## 1. PRODUCTION TRUTH, read 2026-09-18
