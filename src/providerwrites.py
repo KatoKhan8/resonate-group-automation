@@ -1061,6 +1061,116 @@ CONDITIONAL[EMAIL_ASSIGN_SENDER] = _is_the_authorized_email_campaign
 CONDITIONAL[EMAIL_ACTIVATE] = _is_the_authorized_email_campaign
 
 
+def _is_a_draft_campaign_this_deployment_staged(provider_campaign_id,
+                                                campaign_id=None):
+    """True only for OUR campaign, in DRAFT, read from the provider NOW.
+
+    WRITTEN BEFORE THE PERMISSION EXISTS, and that is the point.
+    `EMAIL_ADD_LEAD` is not in `SUPPORTED`, so nothing calls this yet. The
+    reason to write it first is that granting the verb without a predicate
+    would license putting a lead into ANY campaign in the workspace, and
+    three of them are the client's own holding 41,280 leads between them. A
+    grant is a smaller decision when the thing it turns on is already scoped,
+    tested and reviewable.
+
+    ## Why DRAFT and not "not started"
+
+    `bison.NOT_STARTED_STATES` is `("draft", "paused")` and this accepts only
+    the first. A paused campaign is one click from resuming, and the lead
+    added while it was paused is then sent to - so "paused" proves the
+    campaign is not sending, which is a different claim from "this lead will
+    not be sent to". `LINKEDIN_ADD_LEAD` reached the same conclusion the hard
+    way: its permission originally admitted PAUSED, on the premise that a
+    paused campaign does not send, and the premise was false.
+
+    ## Why the status is read here rather than passed in
+
+    A human can press Start in the vendor UI between the plan and the write.
+    A status the caller looked up earlier is a status that was true earlier.
+    This reads at the moment of the write, and an unreadable campaign refuses
+    rather than defaulting - `except Exception` returning False would make an
+    unreachable provider look like a safe destination.
+
+    ## What it deliberately does NOT check
+
+    Whether the leads themselves are approved. That is `approval`'s job and
+    duplicating it here would put the same rule in two places that can
+    disagree. This answers one question: can this destination send.
+    """
+    from . import campaigns as _campaigns
+    from .providers import bison
+
+    if provider_campaign_id in (None, "", 0):
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD} requires `provider_campaign_id` so the "
+            f"destination's state can be read at the moment of the write. "
+            f"None was given, so nothing can be proven. The transport was "
+            f"not reached")
+    if campaign_id in (None, ""):
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD} requires the CANONICAL campaign id as well as "
+            f"the provider's. Without it there is no row to prove this "
+            f"campaign is one this deployment staged, and 'it is a draft' is "
+            f"not on its own a permission. The transport was not reached")
+
+    # 1. OURS? The canonical row is the ownership record and it is READ here
+    #    rather than accepted as an argument.
+    try:
+        row = _campaigns.require(str(campaign_id))
+    except Exception as e:
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD}: canonical campaign {campaign_id!r} could not "
+            f"be read ({type(e).__name__}: {e}), so nothing proves this "
+            f"provider campaign is ours. The transport was not reached"
+        ) from None
+
+    # 2. THE EXACT BINDING. A row naming a different provider campaign is a
+    #    row about a different campaign, however well it matches otherwise.
+    bound = str(row.get("bison_campaign_id") or "").strip()
+    if not bound or bound != str(provider_campaign_id).strip():
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD}: canonical campaign {campaign_id!r} is bound "
+            f"to EmailBison campaign {bound!r} and this write names "
+            f"{str(provider_campaign_id)!r}. A mismatched binding is how a "
+            f"lead reaches a campaign nobody approved. The transport was not "
+            f"reached")
+
+    # 3. AND WHAT THE PROVIDER SAYS RIGHT NOW.
+    try:
+        live = bison.campaign(provider_campaign_id)
+    except Exception as e:
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD}: the state of EmailBison campaign "
+            f"{provider_campaign_id} could not be established "
+            f"({type(e).__name__}: {e}). A campaign whose status is unknown "
+            f"is not a campaign proven unable to send. The transport was not "
+            f"reached") from None
+    status = str((live or {}).get("status") or "").strip().lower()
+    if not status:
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD}: EmailBison campaign {provider_campaign_id} "
+            f"reports no status at all. An absent status is not a draft. The "
+            f"transport was not reached")
+    if status != "draft":
+        raise WriteRefused(
+            f"{EMAIL_ADD_LEAD}: EmailBison campaign {provider_campaign_id} "
+            f"reads {status!r}, not 'draft'. Only a draft proves a lead added "
+            f"now will not be sent to - a paused campaign is one resume away "
+            f"from sending everyone in it. The transport was not reached")
+    return True
+
+
+# DELIBERATELY NOT WIRED. Registering the predicate without the verb in
+# SUPPORTED would change nothing today and would read, to the next person, as
+# though the permission existed. The wiring line belongs in the same change
+# as the operator's grant:
+#
+#     CONDITIONAL[EMAIL_ADD_LEAD] = _is_a_draft_campaign_this_deployment_staged
+#
+# and `EMAIL_ADD_LEAD` added to SUPPORTED beside it. Neither alone is the
+# change.
+
+
 # THE ONE LINKEDIN CAMPAIGN AN ACTIVATION COULD EVER NAME.
 #
 # Written BEFORE the permission was granted, deliberately, and the reasoning
