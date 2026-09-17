@@ -85,10 +85,24 @@ a documented cursor mode and **it was verified live on this estate**:
 `per_page` stays 15, so it is not cheaper - ~12,000 requests, ~2 hours - only
 possible. `scripts/bison_forward_book_census.py` is resumable by design.
 
-**Campaign 352 was still walking when this was written.** It cannot change the
-conclusion (it can only raise counts that already reached the limit) but it
-will answer the open question: which mailboxes estate-wide genuinely have
-room. The script REFUSES to report that while any walk is incomplete.
+**THE WALK IS NOW COMPLETE** - all four campaigns, 183,239 rows - and it
+answered the open question. See `docs/REAL-HEADROOM-2026-09-18.md`:
+
+    151  connected + healthy + room on the 18th   2,205 emails of headroom
+     59  no room on the 18th
+     15  not connected
+
+**The constraint was never the estate. It is that 487 names ONE mailbox and
+that mailbox is full.** 2736's owner holds a single inbox with room on the
+18th, and only 9 emails of it. Senders 3939-3948 read 15 of 15 free, used 0,
+connected and healthy. ATTESTED AND USABLE: **0** - which is why none of it is
+reachable by an allocator, though a canonical row can still name one exactly
+as 487 names 2736.
+
+Caveat that must travel with it: "free now" is not "will stay free". The
+scheduler runs at the END of every sending day, so the client's own campaigns
+can book some of this later today. Re-read the book immediately before
+activating anything.
 
 ### Ruled out
 
@@ -351,8 +365,10 @@ from its stored cursor:
 
     327  COMPLETE  48,759 rows
     328  COMPLETE  38,744 rows
-    352  PARTIAL   ~1,500 of 95,726
+    352  COMPLETE  95,726 rows
     487  COMPLETE  10 rows
+    -----------------------------
+         183,239 rows. Nothing left to walk; re-run only to refresh.
 
 Qwen is IDLE. Its worktree `resonate-qwen-5` is on
 `crawl-cache-persistence-2026-09-17`, merged.
@@ -366,9 +382,9 @@ operator.
 
 ## 11. NEXT HIGHEST-VALUE ACTIONS
 
-1. **Finish the 352 walk**, then read `--report`. It answers which mailboxes
-   estate-wide have real room, which is the input to every capacity decision
-   and to any second campaign.
+1. **DONE overnight - the walk finished.** 151 inboxes and 2,205 emails of
+   headroom on the 18th, none attested. The remaining capacity work is
+   ATTESTATION, which is a human statement, not a measurement.
 2. **The HeyReach falsifier is due.** Check 605732 on the 19th.
 3. **The two operator decisions** (section 3) and the archive decision
    (section 4). Nothing about the email cohort moves without the first.
