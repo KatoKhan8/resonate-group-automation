@@ -187,3 +187,100 @@ def dry_run_report(workspace, rows=None):
         "resolved_accounts": resolved,
         "unresolved_accounts": needs_attestation,
     }
+
+
+class NotOneHuman(Exception):
+    """A set of provider inboxes does not resolve to exactly one human.
+
+    Raised rather than answered, and never downgraded to None. `resolve_owner`
+    returns None because "nobody has said" is a legitimate answer about ONE
+    account; this is a question about a SET, and every way of failing it -
+    an unattested inbox, two humans, an inbox from another tenant - is a
+    refusal that has to reach a caller with its reason attached.
+    """
+
+
+def one_attested_human(provider_account_ids, workspace, channel, rows=None):
+    """The single human who owns ALL of these inboxes, or a refusal.
+
+    ## What this is for
+
+    `executionguard._sender_for` refuses any campaign whose canonical row
+    names more than one sender: "a guarded action is attributed to exactly
+    one". That rule is right about ACTIONS and wrong about INBOXES, and the
+    difference is now measured rather than assumed:
+
+    - EmailBison DOCUMENTS per-lead sender stickiness - "once a lead has been
+      sent an email in a campaign, the same Sender Email will send the
+      remaining steps for that lead" - and this estate's own queue agrees:
+      243 leads across campaigns holding 59 and 222 senders, zero rotations
+      (`scripts/bison_sender_stickiness.py`).
+    - So several inboxes belonging to ONE human cannot produce a prospect who
+      hears from two people. The arity rule's purpose survives; its
+      implementation is stricter than its purpose.
+
+    That is the whole of what this predicate says, and it is deliberately
+    less than a licence to attach anything:
+
+        one human  -> their sender_id
+        anything else -> NotOneHuman, with the reason
+
+    ## Why it has no caller yet, on purpose
+
+    Adopting it inside `_sender_for` needs a decision this function does not
+    make: **what the action ledger then records as `sender_id`.** Today it
+    records a provider inbox. With several inboxes per campaign the honest
+    record is the HUMAN, with the inbox observed afterwards from
+    `scheduled_emails[].sender_email` - which EmailBison populates before the
+    send. Changing what a ledger column means is not a side effect of a
+    predicate, so the predicate lands first and alone.
+
+    ## Every way this refuses, and why none of them is a None
+
+        no ids            a campaign naming no sender cannot attribute
+                          anything; the existing rule already refuses this
+        unknown inbox     a provider id this workspace's roster does not
+                          name. Scoped through `by_provider_account`, which
+                          is workspace-scoped for the reason its docstring
+                          gives: a provider id is somebody else's namespace
+        unattested        the inbox is ours and nobody has said who operates
+                          it. This is the common case today - zero of 225
+                          productive inboxes are attested - and it must stay
+                          a refusal, because the roster's `productive` humans
+                          do not exist at the provider and attaching accounts
+                          to them would attribute real sends to nobody
+        several humans    the failure the arity rule exists to prevent
+    """
+    ids = [str(i) for i in (provider_account_ids or []) if i not in (None, "")]
+    if not ids:
+        raise NotOneHuman(
+            f"no {channel} sender is named, so there is no human to attribute "
+            f"an action to")
+    rows = si.load() if rows is None else rows
+    owners, unattested, unknown = {}, [], []
+    for provider_id in ids:
+        account = si.by_provider_account(workspace, channel, provider_id, rows)
+        if account is None:
+            unknown.append(provider_id)
+            continue
+        owner = resolve_owner(account, rows)
+        if not owner:
+            unattested.append(provider_id)
+            continue
+        owners.setdefault(owner, []).append(provider_id)
+    if unknown:
+        raise NotOneHuman(
+            f"{channel} inbox(es) {sorted(unknown)} are not in {workspace}'s "
+            f"roster; an inbox this workspace cannot name is an inbox nobody "
+            f"here can be answerable for")
+    if unattested:
+        raise NotOneHuman(
+            f"{channel} inbox(es) {sorted(unattested)} have no attested "
+            f"owner. Who operates an inbox is a human statement and is not "
+            f"inferred from a provider display name")
+    if len(owners) != 1:
+        raise NotOneHuman(
+            f"{channel} inboxes resolve to {len(owners)} humans "
+            f"({sorted(owners)}); a prospect must not hear from two people "
+            f"in one conversation")
+    return next(iter(owners))
