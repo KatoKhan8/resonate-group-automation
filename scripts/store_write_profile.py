@@ -89,9 +89,26 @@ def _bytes_written(before, after):
 DEFAULT_SIZES = (50, 500, 5000)
 RUNS = 3
 
+# HOW BIG A REAL RECORD IS, MEASURED RATHER THAN IMAGINED.
+#
+# `work/queue.jsonl` on 2026-09-18: 17,486,311 bytes over 550 records =
+# 31,793 bytes each. The synthetic record this script started with was 859
+# bytes, so every byte figure it produced was **37x optimistic** - GLM's
+# storage review caught it, and it had already been published.
+#
+# The padding below is synthetic filler, not real data. What is taken from
+# the estate is the SIZE and nothing else: no company, no contact, no address.
+REAL_RECORD_BYTES = 31_793
 
-def _record(i):
-    """One representative record. Average, not best case."""
+
+def _record(i, target_bytes=REAL_RECORD_BYTES):
+    """One representative record, PADDED TO THE REAL MEASURED SIZE.
+
+    Representative means representative in the dimension that costs: bytes.
+    A record a thirty-seventh of the real size makes every write look cheap
+    and makes the whole-file path look survivable, which is exactly the
+    mistake this padding removes.
+    """
     rec = store.new_record(f"perf{i:06d}", "cold", "demo",
                            f"Perf Co {i}", f"perf{i:06d}.test")
     rec["state"] = "queued"
@@ -108,10 +125,16 @@ def _record(i):
         "email": f"person{c}@perf{i:06d}.test",
         "verification": {"status": "unverified", "confirmations": []},
     } for c in range(2)]
+    # Pad to the measured size. The evidence a real record carries - provider
+    # answers, crawl results, timelines - is what makes it 31.8 KB, and the
+    # cost of that is bytes on disk regardless of their content.
+    shortfall = target_bytes - len(json.dumps(rec, ensure_ascii=False))
+    if shortfall > 0:
+        rec["_synthetic_padding"] = "x" * shortfall
     return rec
 
 
-def measure(size):
+def measure(size, record_bytes=REAL_RECORD_BYTES):
     """One pass: build `size` records, then checkpoint as a real run would."""
     tmp = tempfile.mkdtemp(prefix=f"perfstore{size}-")
     # `use_directory` takes no "put it back" argument, so the restore is the
@@ -120,7 +143,7 @@ def measure(size):
     was = os.environ.get("QUEUE")
     try:
         store.use_directory(tmp)
-        recs = [_record(i) for i in range(size)]
+        recs = [_record(i, record_bytes) for i in range(size)]
 
         t0 = time.perf_counter()
         store.save(recs)
@@ -175,12 +198,16 @@ def main():
     ap.add_argument("--sizes", default=",".join(str(s) for s in DEFAULT_SIZES))
     ap.add_argument("--runs", type=int, default=RUNS)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--record-bytes", type=int, default=REAL_RECORD_BYTES,
+                    dest="record_bytes",
+                    help=f"bytes per synthetic record (default "
+                         f"{REAL_RECORD_BYTES}, the measured real size)")
     args = ap.parse_args()
     sizes = [int(s) for s in args.sizes.split(",") if s.strip()]
 
     results = []
     for size in sizes:
-        trials = [measure(size) for _ in range(args.runs)]
+        trials = [measure(size, args.record_bytes) for _ in range(args.runs)]
         best = dict(trials[0])
         best["total_write_s"] = round(
             statistics.median(t["total_write_s"] for t in trials), 4)
@@ -194,7 +221,9 @@ def main():
         return
 
     print(f"CHECKPOINT_EVERY = {run.CHECKPOINT_EVERY}   runs = {args.runs} "
-          f"(median)")
+          f"(median)   record = {args.record_bytes:,} bytes"
+          + ("  [REAL measured size]" if args.record_bytes == REAL_RECORD_BYTES
+             else "  [NOT the real size]"))
     print()
     hdr = (f"{'RECORDS':>8} {'QUEUE_KB':>10} {'CHECKPOINTS':>12} "
            f"{'TOTAL_WRITE_S':>14} {'MED_WRITE_S':>12} {'MB_WRITTEN':>12} "

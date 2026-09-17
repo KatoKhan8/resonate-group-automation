@@ -166,3 +166,77 @@ today trades 4.4 GB of writes for 50 seconds, and which of those matters
 depends on a constraint nobody has stated yet. It is wired, tested and
 measured so that the decision can be made on numbers rather than on
 architecture.
+
+---
+
+## CORRECTION 2026-09-18: every byte figure above was 37x too small
+
+GLM's storage review checked the arithmetic against the REAL estate and it
+does not match what this benchmark was measuring. Verified:
+
+    work/queue.jsonl   17,486,311 bytes over 550 records = 31,793 B/record
+    synthetic record used by store_write_profile.py       =    859 B/record
+    UNDERSTATEMENT                                              37.0x
+
+The synthetic record carried a name, a domain, two contacts and a short
+summary. A real record carries what enrichment PUTS in it - provider answers,
+crawl evidence, timelines, verification history - and that is what makes it
+31.8 KB. The benchmark was measuring a record shape that does not exist.
+
+`_record()` now pads to the measured size and the size is a named constant
+with its provenance. The padding is synthetic filler: what is taken from the
+estate is the SIZE and nothing else - no company, no contact, no address.
+
+### Re-measured at the real record size, 500 records
+
+    PATH              BYTES WRITTEN   AMPLIFICATION   WALL TIME
+    whole-file (off)      1,517 MB          499.8x       13.3 s
+    journal    (on)           3.0 MB          1.0x       22.4 s
+
+**506x fewer bytes. 69% slower.** The time penalty is WORSE with real-sized
+records than with the toy ones, because the O(N) read-and-replay that
+journalling leaves in place is itself proportional to record size.
+
+### 5,000 records: MODELLED, not measured, and why
+
+    whole-file    ~159 GB written per pass
+    journal         ~30 MB written per pass
+
+**This one is deliberately not measured.** Writing 159 GB to the operator's
+SSD to confirm a number that two measured points and a proven-quadratic
+scaling law already give is a real hardware cost for no new information. The
+model is the measured 500-record figure scaled by the measured quadratic, and
+it agrees with the independent arithmetic (5,000 x 31,793 B = 159 MB per
+whole-file write, x 1,000 checkpoints = 159 GB).
+
+Anything reported as 4.4 GB earlier in this document is the 859-byte record.
+**The real figure is ~159 GB per pass.**
+
+### What the correction changes
+
+It does not change the RANKING - persistence was the number one bottleneck at
+4.4 GB and is more so at 159 GB. It changes two things:
+
+1. **The journal is worth far more than it looked.** 159 GB to 30 MB per pass
+   is not a tuning gain, it is the difference between a pass that is safe to
+   run repeatedly and one that is not.
+2. **The read is now unambiguously the thing to fix.** 69% slower on real
+   records, and the whole penalty is the O(N) read-and-replay. An index over
+   the base is no longer a nice-to-have.
+
+### GLM's own recommendation, rejected again and for a new reason
+
+It proposed `CHECKPOINT_EVERY` 5 -> 100 or 5 -> 500 as the highest
+benefit/risk change. Rejected, as on 2026-09-17: the interval is a durability
+decision and `store.save`'s docstring records a reproduced incident where a
+wider window lost a reply, an unsubscribe, a drop reason and three purchased
+decision-makers.
+
+But its accompanying observation is sharp and worth keeping: *"durability is
+unchanged IF deltas are journalled per-record between checkpoints."* That
+points at a real design - separate the cheap DURABILITY append, which can
+happen per record, from the expensive CONSISTENCY pass that reads, merges and
+runs both loss guards. **It is not safe to adopt as stated**, because the loss
+guards are what protect against a concurrent writer and running them a
+hundred times less often widens exactly that window. Recorded as a lead, not
+a plan.
