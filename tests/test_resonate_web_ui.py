@@ -50,9 +50,11 @@ class ControlCenter(WebTest):
     def test_search_happens_before_pagination_and_retains_the_query(self):
         original = store.load()
         try:
-            rows = [store.new_record(f"ui-{i}", "ui-search", "productive",
+            rows = [store.new_record(f"ui-{i}", "domains", "productive",
                                      f"Needle & Sons {i:03d}", f"ui-{i}.test")
                     for i in range(105)]
+            for row in rows:
+                row["batch"] = "ui-search"
             store.save(original + rows)
             status, body, _ = self.session.get("/companies?" + urlencode({
                 "batch": "ui-search", "q": "Needle & Sons", "page": 2}))

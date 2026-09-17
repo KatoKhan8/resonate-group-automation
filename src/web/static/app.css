@@ -394,6 +394,8 @@ tbody tr:hover td{background:#15221f}
 .metric-bars{display:grid;gap:15px}
 .metric-bar{display:grid;grid-template-columns:120px 1fr 40px;gap:12px;align-items:center;font-size:12px}
 .metric-bar strong{text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+.metric-bar.warn{--accent:var(--warn)}
+.metric-bar.block{--accent:var(--block)}
 progress{display:block;width:100%;height:7px;border:none;border-radius:5px;overflow:hidden;appearance:none;background:#23303b;accent-color:var(--accent)}
 progress::-webkit-progress-bar{background:#23303b}
 progress::-webkit-progress-value{background:var(--accent);border-radius:5px}
@@ -447,3 +449,9 @@ progress::-moz-progress-bar{background:var(--accent);border-radius:5px}
 .push-end{margin-left:auto}
 .input-wide{min-width:min(220px,100%)}
 .login .brand{padding:0 0 24px;margin-bottom:24px}
+
+/* Grid tracks must be allowed to shrink around dense operational tables. */
+.panel,.grid2>*,.grid3>*,.dashboard-layout>*{min-width:0}
+@media(max-width:1200px){.dashboard-layout{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:1000px){.grid2,.grid3{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:620px){table.kv{table-layout:fixed}table.kv th{width:38%}table.kv td{overflow-wrap:anywhere}.audit-preview li{overflow-wrap:anywhere}.tag{white-space:normal}}

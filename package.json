@@ -1,0 +1,13 @@
+{
+  "name": "resonate-os-web-checks",
+  "private": true,
+  "description": "Development checks only; the application runtime remains Python standard library.",
+  "scripts": {
+    "test:web": "node tests/browser/control-center.cjs",
+    "lint:web": "node --check src/web/static/app.js && node --check tests/browser/control-center.cjs",
+    "build:web": "python -m src.web.build"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

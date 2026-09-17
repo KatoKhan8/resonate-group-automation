@@ -868,7 +868,7 @@ def distribution_chart(counts, title):
     if not total:
         return empty("No data yet", "Import a batch to see the qualification distribution.")
     bars = ''.join(
-        f'<div class="metric-bar"><span>{esc(name.replace("_", " "))}</span>'
+        f'<div class="metric-bar {kind(name)}"><span>{esc(name.replace("_", " "))}</span>'
         f'<progress value="{attr(count)}" max="{attr(total)}" '
         f'aria-label="{attr(name)}: {attr(count)} of {attr(total)}">'
         f'{esc(count)} of {esc(total)}</progress><strong>{esc(count)}</strong></div>'
