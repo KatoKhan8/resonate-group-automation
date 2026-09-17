@@ -282,6 +282,53 @@ class TestNothingCanSend(unittest.TestCase):
             providerwrites.EMAIL_ACTIVATE, str(bound),
             "productive-email-control-v3"))
 
+    def test_no_operation_claims_a_permission_it_does_not_have(self):
+        """An entry may not open "SUPPORTED" while absent from SUPPORTED.
+
+        ONE DIRECTION ONLY, deliberately. Six supported verbs open with
+        "Enabled 2026-09-16 ..." instead of the word, so requiring the word
+        of every supported verb would fail on a wording choice - the brittle
+        text-assertion this repository has been bitten by before.
+
+        The inverse is never harmless. `describe` is what a person reads
+        before deciding whether a route is available, and an entry that
+        announces SUPPORTED while `is_supported` returns False sends that
+        person to a call site to find out. `EMAIL_ADD_LEAD` did exactly that:
+        its entry opened "SUPPORTED, AND IT IS A TWO-STEP" because the ROUTE
+        had been proven live on 2026-09-12, while the PERMISSION was never
+        granted. Those are different facts and only one of them licenses a
+        write.
+        """
+        from src import providerwrites
+        liars = [op for op, (_ch, _facing, why) in providerwrites.OPERATIONS.items()
+                 if why.strip().upper().startswith("SUPPORTED")
+                 and op not in providerwrites.SUPPORTED]
+        self.assertEqual(liars, [],
+                         f"these entries claim SUPPORTED but are not in the "
+                         f"SUPPORTED tuple: {liars}")
+
+    def test_a_lead_cannot_be_put_into_an_email_campaign(self):
+        """`EMAIL_ADD_LEAD` stays unsupported until a predicate scopes it.
+
+        Not a style rule. The verb is prospect-facing - attaching to a
+        running campaign is acted on immediately - and unlike
+        `EMAIL_ACTIVATE` and `EMAIL_ASSIGN_SENDER` it carries no conditional
+        naming one campaign. Membership alone would therefore reach ANY
+        campaign in the workspace, and three of them are the client's own
+        holding 41,280 leads between them.
+        """
+        from src import providerwrites
+        self.assertFalse(
+            providerwrites.is_supported(providerwrites.EMAIL_ADD_LEAD))
+        self.assertNotIn(providerwrites.EMAIL_ADD_LEAD,
+                         providerwrites.CONDITIONAL)
+        channel, prospect_facing, _why = providerwrites.OPERATIONS[
+            providerwrites.EMAIL_ADD_LEAD]
+        self.assertEqual(channel, "email")
+        self.assertTrue(prospect_facing,
+                        "if this verb is ever reclassified as not "
+                        "prospect-facing, the reason above stops holding")
+
     def test_heyreachs_post_is_gated_on_an_allowlist(self):
         from src.providers import heyreach
         self.assertNotIn("/campaign/AddLeadsToCampaignV2", heyreach.READ_ROUTES)
