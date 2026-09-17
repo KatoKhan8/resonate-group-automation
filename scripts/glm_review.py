@@ -87,8 +87,18 @@ Answer, briefly:
 
 def _targets():
     """Built lazily so a broken import in one area cannot block the others."""
-    from src import store, actionledger, collision
+    from src import store, actionledger, collision, bisonevents
     return {
+        # ADDED 2026-09-17, and it is the one target reviewed BEFORE its code
+        # has a production caller rather than after. `bisonevents` normalises
+        # an unauthenticated inbound payload from the internet and decides
+        # whether two deliveries are one event; EmailBison retries five times
+        # over 24 hours and replays ten days, so a dedupe that can be defeated
+        # is a duplicate state transition against a real person.
+        "webhook": (GENERIC_QUESTION, [
+            ("bisonevents.normalise", bisonevents.normalise),
+            ("bisonevents.event_key", bisonevents.event_key),
+        ]),
         "storage": (STORAGE_QUESTION, [
             ("store.save", store.save),
             ("store.load", store.load),
