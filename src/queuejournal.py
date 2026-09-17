@@ -121,7 +121,8 @@ def path_for(queue_path):
     return queue_path + SUFFIX
 
 
-def append(queue_path, records, base_digest, at=None, timeout=None):
+def append(queue_path, records, base_digest, at=None, timeout=None,
+           locked=False):
     """Append one delta per record, under the lock. Returns entries written.
 
     THE LOCK IS NOT OPTIONAL AND IS NOT BELT-AND-BRACES. `open(path, "a")` was
@@ -137,18 +138,33 @@ def append(queue_path, records, base_digest, at=None, timeout=None):
         return 0
     journal = path_for(queue_path)
     os.makedirs(os.path.dirname(journal) or ".", exist_ok=True)
+    if locked:
+        _append_locked(journal, records, base_digest, at)
+        return len(records)
     with store.lock(timeout=timeout, for_path=queue_path):
-        start = _count(journal)
-        with open(journal, "a", encoding="utf-8", newline="\n") as handle:
-            for offset, record in enumerate(records):
-                entry = {"seq": start + offset,
-                         "at": at,
-                         "base": base_digest,
-                         "record": record}
-                handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
+        _append_locked(journal, records, base_digest, at)
     return len(records)
+
+
+def _append_locked(journal, records, base_digest, at):
+    """The write itself. THE CALLER HOLDS THE LOCK.
+
+    Split out because `store.save` already holds `store.lock` for the whole
+    read-guard-write window, and `store.lock` is an exclusive-create advisory
+    lock rather than a reentrant one - taking it again from inside would block
+    until its own timeout and then fail. A caller that already holds it passes
+    `locked=True`; one that does not must not.
+    """
+    start = _count(journal)
+    with open(journal, "a", encoding="utf-8", newline="\n") as handle:
+        for offset, record in enumerate(records):
+            entry = {"seq": start + offset,
+                     "at": at,
+                     "base": base_digest,
+                     "record": record}
+            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def _count(journal):
@@ -259,7 +275,8 @@ def should_compact(queue_path, ratio=2.0, min_bytes=1_000_000):
     return journal_bytes / base_bytes >= ratio
 
 
-def compact(queue_path, write_base, base_digest=None, timeout=None):
+def compact(queue_path, write_base, base_digest=None, timeout=None,
+            locked=False):
     """Fold the journal into the base, in the ONE order that is safe.
 
     `write_base(records)` is injected rather than done here because the base
@@ -284,20 +301,27 @@ def compact(queue_path, write_base, base_digest=None, timeout=None):
 
     Returns the number of entries folded in.
     """
+    if locked:
+        return _compact_locked(queue_path, write_base, base_digest)
     with store.lock(timeout=timeout, for_path=queue_path):
-        base = []
-        if os.path.exists(queue_path):
-            with open(queue_path, encoding="utf-8") as handle:
-                base = [json.loads(line) for line in handle if line.strip()]
-        entries, _torn = read(queue_path, base_digest)
-        if not entries:
-            return 0
-        records, applied, _torn = replay(base, queue_path, base_digest)
-        write_base(records)
-        journal = path_for(queue_path)
-        if os.path.exists(journal):
-            os.remove(journal)
-        return applied
+        return _compact_locked(queue_path, write_base, base_digest)
+
+
+def _compact_locked(queue_path, write_base, base_digest):
+    """The fold itself. THE CALLER HOLDS THE LOCK. See `append`'s note."""
+    base = []
+    if os.path.exists(queue_path):
+        with open(queue_path, encoding="utf-8") as handle:
+            base = [json.loads(line) for line in handle if line.strip()]
+    entries, _torn = read(queue_path, base_digest)
+    if not entries:
+        return 0
+    records, applied, _torn = replay(base, queue_path, base_digest)
+    write_base(records)
+    journal = path_for(queue_path)
+    if os.path.exists(journal):
+        os.remove(journal)
+    return applied
 
 
 def discard(queue_path):

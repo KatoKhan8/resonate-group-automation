@@ -404,8 +404,42 @@ class Snapshot(list):
         return out + list(edits.values())
 
 
+def journalling():
+    """Is the delta checkpoint path on? OFF unless QUEUE_JOURNAL says so.
+
+    Default off because this changes how the only file holding real client
+    state is written. On, `save` appends the rows it actually changed instead
+    of rewriting every record, and `load` replays those deltas over the base.
+    Every guard runs exactly as before - the read, the digest check, the
+    three-way merge, `refuse_evidence_loss` and `refuse_history_loss` are all
+    unchanged and still see the FULL merged set. Only the write narrows.
+
+    So this halves the work rather than fixing it: 4.4 GB of writes at 5,000
+    records becomes a few megabytes, while the O(N) READ per checkpoint
+    stays. That read needs an index to fix and an index is a bigger change
+    than this one. Writes are the expensive half and the only half that costs
+    write endurance.
+    """
+    return (os.environ.get("QUEUE_JOURNAL") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _current_records():
+    """The queue as it actually is: the base file with any deltas replayed.
+
+    One definition, used by both `load` and `save`, because a reader and a
+    writer disagreeing about what is on disk is the whole hazard.
+    """
+    rows = read_jsonl(queue_path())
+    if journalling():
+        from . import queuejournal
+        rows, _applied, _torn = queuejournal.replay(rows, queue_path())
+    return rows
+
+
 def load():
-    return Snapshot(read_jsonl(queue_path()))
+    """The queue, with any journalled deltas replayed over the base file."""
+    return Snapshot(_current_records())
 
 
 # ------------------------------------------------- the second barrier
@@ -479,6 +513,45 @@ def _write(recs):
         for r in recs:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     os.replace(tmp, path)
+
+
+def _write_delta(on_disk, recs):
+    """Append only the rows that differ from what is on disk. Caller locked.
+
+    `recs` is the fully merged result, so the comparison is exact: a row whose
+    serialised form matches the disk row is not written at all, and a row the
+    disk has never seen is written whole.
+
+    COMPACTION HAPPENS HERE, under the same lock, and the ORDER MATTERS - base
+    first, then drop the journal. Reversed, a crash between the two loses every
+    delta since the last base, silently. `queuejournal.compact` owns that
+    ordering; this just decides when.
+    """
+    from . import queuejournal
+    path = queue_path()
+    # THE BARRIER COVERS THE SIDECAR TOO. `_write` asks it and this path does
+    # not go through `_write`, so without this a test that forgot to isolate
+    # the store would write `queue.jsonl.journal` into the real `work/`
+    # directory - the exact failure `refuse_production_write` exists to stop,
+    # arriving through a file that did not exist when it was written.
+    refuse_production_write(path)
+    # BOOTSTRAP. With no base file there is nothing to append a delta ONTO,
+    # and writing one would leave `queue.jsonl` absent while the state lived
+    # entirely in a sidecar - which every other reader of this repo, and
+    # every backup of it, would read as an empty estate.
+    if not os.path.exists(path):
+        _write(recs)
+        return
+    by_id = {r.get("id"): r for r in on_disk
+             if isinstance(r, dict) and "id" in r}
+    changed = [r for r in recs
+               if isinstance(r, dict) and "id" in r
+               and _frozen(r) != (_frozen(by_id[r["id"]])
+                                  if r["id"] in by_id else None)]
+    if changed:
+        queuejournal.append(path, changed, digest(path), at=now(), locked=True)
+    if queuejournal.should_compact(path):
+        queuejournal.compact(path, _write, locked=True)
 
 
 class EvidenceLost(RuntimeError):
@@ -683,8 +756,23 @@ def digest(path=None):
     path = path or queue_path()
     if not os.path.exists(path):
         return "absent"
+    digestor = hashlib.sha256()
     with open(path, "rb") as handle:
-        return hashlib.sha256(handle.read()).hexdigest()[:32]
+        digestor.update(handle.read())
+    # THE JOURNAL IS PART OF "AS IT IS ON DISK RIGHT NOW".
+    #
+    # With journalling on, a checkpoint deliberately leaves the base file
+    # untouched, so a digest of the base alone would be IDENTICAL before and
+    # after somebody else's write. `expect_digest` exists to catch exactly
+    # that write, and hashing only the base would have turned the
+    # optimistic-concurrency refusal into a no-op that still looked present.
+    if journalling():
+        from . import queuejournal
+        sidecar = queuejournal.path_for(path)
+        if os.path.exists(sidecar):
+            with open(sidecar, "rb") as handle:
+                digestor.update(handle.read())
+    return digestor.hexdigest()[:32]
 
 
 def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
@@ -740,7 +828,19 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
     a far narrower window than the whole file.
     """
     with lock(timeout):
-        on_disk = read_jsonl(queue_path())
+        # `on_disk` MUST BE THE CURRENT STATE, NOT THE BASE FILE.
+        #
+        # Everything below depends on it: the digest check, the three-way
+        # merge, and both loss guards. With journalling on, the base file is
+        # deliberately NOT rewritten, so reading it alone would hand all four
+        # of them a stale picture - and a guard comparing against stale state
+        # is not a guard. `test_on_still_refuses_to_drop_paid_evidence`
+        # caught exactly that: EvidenceLost stopped being raised, silently,
+        # because the evidence it was protecting lived in the journal.
+        #
+        # This read stays O(N). Narrowing it needs an index and is a larger
+        # change; only the WRITE narrows here.
+        on_disk = _current_records()
         if expect_digest is not None and digest() != expect_digest:
             raise QueueChanged(
                 "the queue changed while this work was in progress, so writing "
@@ -759,7 +859,16 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         # different thing from a guard with a hole in it.
         if not allow_history_loss:
             refuse_history_loss(on_disk, recs)
-        _write(recs)
+        # THE ONLY THING JOURNALLING CHANGES IS WHICH BYTES GET WRITTEN.
+        # Everything above this line - the read, the digest check, the
+        # three-way merge, and both loss guards - has already run over the
+        # FULL merged set, exactly as it does on the whole-file path. The
+        # delta is computed from the result, so it cannot contain a row the
+        # guards did not see.
+        if journalling():
+            _write_delta(on_disk, recs)
+        else:
+            _write(recs)
         # Only after the write, and only if it happened: a refused checkpoint
         # must leave the caller still holding unpersisted edits, or the next
         # one would treat them as already on disk and stop re-asserting them.

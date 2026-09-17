@@ -46,7 +46,45 @@ import time
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 
-from src import run, store
+from src import queuejournal, run, store
+
+
+def _persisted_state():
+    """`(base_size, base_mtime, journal_size)` - enough to tell what MOVED."""
+    path = store.queue_path()
+    sidecar = queuejournal.path_for(path)
+    base_size = os.path.getsize(path) if os.path.exists(path) else 0
+    base_mtime = os.path.getmtime(path) if os.path.exists(path) else 0
+    jrnl = os.path.getsize(sidecar) if os.path.exists(sidecar) else 0
+    return base_size, base_mtime, jrnl
+
+
+def _bytes_written(before, after):
+    """Bytes THIS checkpoint actually put on disk.
+
+    TWO EARLIER VERSIONS OF THIS WERE WRONG, IN OPPOSITE DIRECTIONS, AND BOTH
+    LOOKED PLAUSIBLE.
+
+    Measuring `getsize(queue_path())` after each save was right only while
+    every save rewrote the whole file. Journalling stops the base moving, so
+    it reported 446 KB per checkpoint whether the write had cost 446 KB or
+    900 bytes - the optimisation was invisible.
+
+    Summing base+journal SIZE after each save was worse: it charges every
+    checkpoint for the whole accumulated journal, so the delta path measured
+    547x against the whole-file path's 492x. The delta path was winning and
+    the instrument said it was losing.
+
+    What a checkpoint writes is: the base file IF it was rewritten, plus
+    however much the journal GREW. A rewrite is detected by mtime or size
+    moving, because a rewrite of identical content is still a write.
+    """
+    base_before, mtime_before, jrnl_before = before
+    base_after, mtime_after, jrnl_after = after
+    written = max(0, jrnl_after - jrnl_before)
+    if mtime_after != mtime_before or base_after != base_before:
+        written += base_after
+    return written
 
 DEFAULT_SIZES = (50, 500, 5000)
 RUNS = 3
@@ -87,8 +125,8 @@ def measure(size):
         t0 = time.perf_counter()
         store.save(recs)
         initial_write = time.perf_counter() - t0
-        path = store.queue_path()
-        file_bytes = os.path.getsize(path)
+        base_size, _m, _j = _persisted_state()
+        file_bytes = base_size
 
         # The cost of ONE record changing, measured `size` times over - which
         # is what a pipeline pass does, one record at a time.
@@ -104,10 +142,11 @@ def measure(size):
             recs[i]["touched"] = n
             payload_bytes += len(
                 json.dumps(recs[i], ensure_ascii=False).encode("utf-8"))
+            before_state = _persisted_state()
             t0 = time.perf_counter()
             store.save(recs)
             per_write.append(time.perf_counter() - t0)
-            bytes_written += os.path.getsize(store.queue_path())
+            bytes_written += _bytes_written(before_state, _persisted_state())
             writes += 1
 
         return {
