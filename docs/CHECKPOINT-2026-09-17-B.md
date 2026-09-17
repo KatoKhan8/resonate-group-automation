@@ -153,3 +153,36 @@ deterministic-first audit. The seal re-pointing. D1/D2. And now also:
   are account-blocked as well.
 - **Verifying the 159 is not the bottleneck** and is gated on a vendor
   decision regardless.
+
+---
+
+## ADDENDUM, 2026-09-17T15:02:48Z — 487 IS QUEUED
+
+Section 1's prediction was **wrong and is withdrawn**. It said 487 would emit
+`TOUCHED` then `QUEUED` between 07:00Z and 07:30Z on 2026-09-18, when the
+Zagreb window opened on an already-active campaign. Both fired at **15:02:48Z
+on 2026-09-17, two minutes after that window CLOSED.** The provider assigns on
+a cycle and the cycle ran at the close of the sending day, not its opening.
+One observation is not a schedule.
+
+    QUEUED 487 scheduled rows 0 -> 10 (none sent)
+    TOUCHED 487 updated_at 2026-09-17T10:45:10Z -> 15:02:48Z
+
+Ten rows, one per lead, opener step, `thread_reply: false`, sender 2736,
+status `scheduled`, **all dated 2026-09-23** between 07:12Z and 14:00Z - which
+is 09:12 to 16:00 Zagreb, every one inside the campaign's own window.
+
+**The copy renders.** Across all ten: zero unresolved placeholders, zero empty
+subjects or bodies, zero greetings with no name. First name, company and
+industry all resolved. Ingest to rendered provider copy is proven end to end
+for this cohort; only the send has not happened.
+
+The ledger's 13 keys stay `unresolved`. **Scheduled is not sent**, and the
+rule that a key becomes `sent` only when the provider says that person was
+sent to is unchanged.
+
+**The instruction in section 3 stands and is now stronger: do not touch 487.**
+Not a pause, a re-approval, a sender change or a re-activation. The queue is
+the first real artefact this campaign has produced. See
+`docs/487-IS-QUEUED-AND-THE-HYPOTHESIS-IS-WRONG-2026-09-17.md`, and watch
+`SCHEDULE-MOVED` - canary 451's row moved once overnight before firing.
