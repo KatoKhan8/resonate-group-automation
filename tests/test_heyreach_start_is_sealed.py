@@ -24,22 +24,68 @@ class ActivateCampaignExists(unittest.TestCase):
         self.assertTrue(callable(heyreach.activate_campaign))
 
     def test_activate_campaign_refuses_lead_count_mismatch(self):
-        """expect_leads containment: the provider disagrees with the caller."""
-        with mock.patch.object(heyreach, "campaign_leads",
-                               return_value=([], 9)):
-            with self.assertRaises(heyreach.ProviderError) as ctx:
-                heyreach.activate_campaign(599020, expect_leads=1)
+        """expect_leads containment: the provider disagrees with the caller.
+
+        A campaign that is NOT a draft holds its own leads, so the count comes
+        from `campaign_leads` - the original question, unchanged.
+        """
+        with mock.patch.object(heyreach, "campaign_read",
+                               return_value={"status": "PAUSED"}):
+            with mock.patch.object(heyreach, "campaign_leads",
+                                   return_value=([], 9)):
+                with self.assertRaises(heyreach.ProviderError) as ctx:
+                    heyreach.activate_campaign(599020, expect_leads=1)
         self.assertIn("holds", str(ctx.exception))
         self.assertIn("9", str(ctx.exception))
         self.assertIn("expected", str(ctx.exception))
         self.assertIn("1", str(ctx.exception))
 
+    def test_a_drafts_audience_is_counted_on_its_bound_list(self):
+        """WHERE A DRAFT'S PEOPLE ACTUALLY ARE.
+
+        Leads enrol when a campaign STARTS, so a DRAFT bound to a list of
+        three reads ZERO from `campaign_leads`. Counting there refused every
+        honest caller and admitted no dishonest one. The containment is real
+        only if it counts the audience where this campaign's status keeps it.
+        """
+        with mock.patch.object(
+                heyreach, "campaign_read",
+                return_value={"status": "DRAFT", "linkedInUserListId": 944355}):
+            with mock.patch.object(heyreach, "campaign_leads",
+                                   return_value=([], 0)):
+                with mock.patch.object(heyreach, "list_leads",
+                                       return_value=([], 3)) as listed:
+                    with self.assertRaises(heyreach.ProviderError) as ctx:
+                        heyreach.activate_campaign(605732, expect_leads=1)
+        listed.assert_called_once_with(944355)
+        self.assertIn("bound list 944355", str(ctx.exception))
+        self.assertIn("3", str(ctx.exception))
+
+    def test_a_drafts_bound_list_count_must_match_too(self):
+        """The list is not a free pass: it must equal what the caller said."""
+        with mock.patch.object(
+                heyreach, "campaign_read",
+                return_value={"status": "DRAFT", "linkedInUserListId": 944355}):
+            with mock.patch.object(heyreach, "list_leads",
+                                   return_value=([], 3)):
+                with mock.patch.object(heyreach, "_write", return_value={}):
+                    with mock.patch.object(
+                            heyreach, "campaign_read",
+                            side_effect=[
+                                {"status": "DRAFT",
+                                 "linkedInUserListId": 944355},
+                                {"status": "IN_PROGRESS"}]):
+                        heyreach.activate_campaign(605732, expect_leads=3,
+                                                   attempts=1, interval=0)
+
     def test_activate_campaign_refuses_missing_total(self):
         """A None total is not a zero."""
-        with mock.patch.object(heyreach, "campaign_leads",
-                               return_value=([], None)):
-            with self.assertRaises(heyreach.ProviderError) as ctx:
-                heyreach.activate_campaign(599020, expect_leads=0)
+        with mock.patch.object(heyreach, "campaign_read",
+                               return_value={"status": "PAUSED"}):
+            with mock.patch.object(heyreach, "campaign_leads",
+                                   return_value=([], None)):
+                with self.assertRaises(heyreach.ProviderError) as ctx:
+                    heyreach.activate_campaign(599020, expect_leads=0)
         self.assertIn("no lead total", str(ctx.exception))
 
     def test_activate_campaign_classifies_unknown_status(self):
@@ -121,12 +167,24 @@ class ActivateIsSealed(unittest.TestCase):
 
     def test_activation_cannot_name_another_campaign(self):
         """599020 is FINISHED and holds the client's estate nearby. An
-        activation that can name any campaign is not a canary."""
-        with self.assertRaises(providerwrites.WriteRefused):
-            providerwrites.require_conditional_permission(
-                providerwrites.LINKEDIN_ACTIVATE, "599020", None)
+        activation that can name any campaign is not a canary.
+
+        RE-SCOPED 2026-09-16 from 604869 to 605487 with the condition itself.
+        The property under test is unchanged - exactly ONE campaign may be
+        activated and every other id is refused - but the id it names moved
+        when the operator's grant moved. 604869 is asserted REFUSED here
+        rather than dropped: its bound list holds one contact whose account
+        `collision.account_policy` holds, so it is not merely un-granted, it
+        is a campaign that must not start.
+        """
+        # "605487 " is deliberately absent: the condition strips whitespace,
+        # so a padded id is the SAME id and admitting it is correct.
+        for other in ("599020", "604869", "605487", "605486", "", None):
+            with self.assertRaises(providerwrites.WriteRefused):
+                providerwrites.require_conditional_permission(
+                    providerwrites.LINKEDIN_ACTIVATE, other, None)
         self.assertTrue(providerwrites.require_conditional_permission(
-            providerwrites.LINKEDIN_ACTIVATE, "604869", None))
+            providerwrites.LINKEDIN_ACTIVATE, "605732", None))
 
     def test_perform_refuses_activate_without_an_authorization(self):
         """The seal moved from membership to the gate ladder.

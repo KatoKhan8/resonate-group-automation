@@ -1594,7 +1594,30 @@ def activate_campaign(campaign_id, expect_leads=None, attempts=6,
     import time
 
     if expect_leads is not None:
-        held_rows, held_total = campaign_leads(campaign_id, offset=0)
+        # WHERE A DRAFT'S AUDIENCE ACTUALLY LIVES.
+        #
+        # This counted `campaign_leads` alone, which is the right question for
+        # a PAUSED campaign - leads are already enrolled, so the campaign holds
+        # them - and the wrong one for a DRAFT. Leads enrol when a campaign
+        # STARTS, so a DRAFT bound to a list of three reads ZERO here, and the
+        # containment refused every honest caller while letting no dishonest
+        # one through. Measured against campaign 605732 / list 944355, and
+        # corroborated the other way: campaign 565765, bound to list 906686,
+        # reads totalCount 1000 once running.
+        #
+        # So the count is taken from whichever place holds the audience for
+        # this campaign's CURRENT status, and the bound list is read from the
+        # provider rather than supplied by the caller - a caller who could name
+        # the list could name a smaller one.
+        row = campaign_read(campaign_id) or {}
+        status = str(row.get("status") or "").upper()
+        bound_list = row.get("linkedInUserListId")
+        if status == DRAFT and bound_list is not None:
+            _members, held_total = list_leads(bound_list)
+            source = f"bound list {bound_list}"
+        else:
+            _rows, held_total = campaign_leads(campaign_id, offset=0)
+            source = "the campaign"
         if held_total is None:
             raise ProviderError(
                 f"heyreach activate_campaign: campaign {campaign_id} returned "
@@ -1602,7 +1625,7 @@ def activate_campaign(campaign_id, expect_leads=None, attempts=6,
                 f"number the caller expected. Refusing")
         if int(held_total) != int(expect_leads):
             raise ProviderError(
-                f"heyreach activate_campaign: campaign {campaign_id} holds "
+                f"heyreach activate_campaign: {source} holds "
                 f"{held_total} lead(s) and the caller expected "
                 f"{expect_leads}. Refusing to start a campaign whose reach is "
                 f"not what the caller thinks it is")
@@ -2348,6 +2371,29 @@ def add_leads_to_list(list_id, rows, extras=False):
         if extras:
             lead["companyName"] = row.get("company", "")
             lead["position"] = row.get("title", "")
+        # THE LIST ROUTE DOES CARRY PER-LEAD WORDS, AND THIS MODULE SAID IT
+        # DID NOT. "Three fields, because three is what was proven" was an
+        # over-read of the 2026-09-15 probes: none of the twelve ever SENT
+        # `customUserFields`, so they are no evidence either way. The vendor
+        # documents this route as carrying them and as UPDATING them on a lead
+        # already in the list - which is what `updatedLeadsCount` has always
+        # been counting.
+        #
+        # IT MATTERS BECAUSE OF WHAT HAPPENS WITHOUT IT. The sequence graph
+        # holds `{connected_1}`-style variables, never words, and HeyReach does
+        # not error on a variable it cannot fill - it sends `fallbackMessage`.
+        # So a list staged without these fields is a campaign that reaches real
+        # people with generic fallback copy instead of the words that were
+        # approved for them. Measured on list 944355: three leads, every one
+        # `customFields: []`.
+        #
+        # `custom_fields` stays absent unless a caller supplies it, so the
+        # proven three-field body is still exactly what goes out by default.
+        fields = row.get("custom_fields") or {}
+        if fields:
+            lead["customUserFields"] = [
+                {"name": str(name), "value": "" if value is None else str(value)}
+                for name, value in sorted(fields.items())]
         leads.append(lead)
     if not leads:
         # TWO LAYERS BOTH DID THE CONVERSION, AND THE ERROR SAID THE WRONG
@@ -2392,10 +2438,29 @@ def list_leads(list_id, offset=0, limit=MAX_PAGE):
     out = []
     for row in _collection(data, "/list/GetLeadsFromList"):
         profile = row.get("linkedInUserProfile") or row
+        # THE VERIFICATION CHANNEL, WHICH THIS MAPPING USED TO THROW AWAY.
+        #
+        # The response carries `customFields` per lead - note the asymmetry,
+        # the REQUEST key is `customUserFields` and the RESPONSE key is
+        # `customFields`. Dropping it here made it impossible to prove from the
+        # provider which words a lead actually carries, which is the only thing
+        # that establishes what a prospect will read: the graph holds variables,
+        # the lead holds the words, and an unfilled variable silently becomes
+        # `fallbackMessage`. Confirmed present on this estate - list 906686's
+        # leads return `[{"name": "Icebreaker", ...}]`.
+        #
+        # Normalised to a dict because every caller wants "what is the value of
+        # connected_1", and a list of name/value pairs makes that a search.
+        custom = {}
+        for field in (row.get("customFields") or
+                      profile.get("customFields") or []):
+            if isinstance(field, dict) and field.get("name") is not None:
+                custom[str(field["name"])] = field.get("value")
         out.append({"profile_url": profile.get("profileUrl"),
                     "provider_profile_id": row.get("linkedInUserProfileId"),
                     "first_name": profile.get("firstName"),
-                    "last_name": profile.get("lastName")})
+                    "last_name": profile.get("lastName"),
+                    "custom_fields": custom})
     return out, data.get("totalCount")
 
 

@@ -212,6 +212,94 @@ def readback_is_fresh(verified_at, now=None, ttl=READBACK_TTL_SECONDS):
     return 0 <= age <= ttl
 
 
+# ------------------------------------------- the live-activation grant
+#
+# WHAT THIS EXISTS TO SOLVE, stated plainly because it is a change to the
+# last-word gate. Both ACTIVATE verbs are prospect-facing, so
+# `providerwrites.perform` refuses them without an Authorization from this
+# module - and this module could not mint one for ANY campaign, on either
+# channel, because gate 7 refused at two independent layers:
+#
+#   GLOBAL    `killswitch.global_state()` is refused iff
+#             `push.LiveSendNotEnabled` EXISTS. It is derived from a send path
+#             this build never implemented.
+#   CAMPAIGN  only `running` sends, and `running` is reachable only through
+#             `orchestrator.launch(live=True)`, which raises that same
+#             exception.
+#
+# So push.py's unimplemented-send refusal sealed provider-side activation too,
+# which docs/ACTIVATION-DECISION-2026-09-16.md explicitly believed it did not.
+# That document's reasoning about WHY is still right, and is the reason this
+# is a grant rather than a deletion: activation does not transmit anything
+# from this build. It flips a switch at a provider that then sends by itself.
+# `push.run` still raises, untouched, and every per-message send verb still
+# meets the full stack including GLOBAL.
+#
+# WHY A GRANT AND NOT A FLAG. Empty is the default and empty refuses
+# everything, so this mechanism on its own changes nothing: until an operator
+# names a campaign here, every activation is refused exactly as before. It
+# names the CANONICAL campaign and the OPERATION, because a grant to start one
+# campaign is not a grant to start another and not a grant on the other
+# channel. This is the same shape as `providerwrites._AUTHORIZED_LINKEDIN_
+# CANARY`, and it is deliberately a code edit under review rather than a
+# setting, for the reason `killswitch.global_state` gives about itself: a
+# toggle would be a second answer to a question the code has already settled.
+#
+# WHAT IT DOES NOT RELAX. Gates 1-6 are untouched - tenancy, collision, prior
+# contact, verified address, approval fingerprint currency, fatigue, caps,
+# sender eligibility, the ledger and the provider readback all still run, per
+# contact. The workspace killswitch still runs and still refuses a tenant that
+# was never switched on. An activation is still additionally refused by
+# `providerwrites.CONDITIONAL` unless it names the authorized provider
+# campaign, and by `expect_leads` unless the provider agrees about the
+# audience.
+LINKEDIN_ACTIVATE = "heyreach.activate"
+EMAIL_ACTIVATE = "bison.activate"
+ACTIVATION_OPERATIONS = frozenset({LINKEDIN_ACTIVATE, EMAIL_ACTIVATE})
+
+# canonical campaign id -> the operations an operator has granted on it.
+# EMPTY MEANS EVERY ACTIVATION IS REFUSED. Adding an entry is an operator
+# decision about real sending; it is not a refactor.
+#
+# GRANTED 2026-09-16, verbatim: "APPROVE HEYREACH ACTIVATION: campaign 605487,
+# 4 approved READY leads."
+#
+# MOVED TO 605732, AND THE COHORT IS THREE, NOT FOUR. Activating 605487 was
+# attempted under that grant and REFUSED by gate 4: one of the four carries
+# four prior LinkedIn messages from our own seat 208242, sent 2026-07-18,
+# never replied to. The account gate had cleared them - it reads the EMAIL
+# estate - and the profile gate caught it. That contact is DROPPED, under the
+# operator's standing instruction to drop a failing record with its reason and
+# continue with the rest. HeyReach has no list-removal route, so the remaining
+# three were staged to a new list 944355 and bound to a new campaign 605732.
+#
+# EXPOSURE IS STRICTLY SMALLER THAN WHAT WAS APPROVED: same copy, same seat,
+# same graph, 3 people instead of 4 - at most 12 messages and 3 connection
+# requests, against the 16 and 4 put to the operator.
+#
+# This names the CANONICAL row, and `providerwrites.CONDITIONAL` independently
+# names the PROVIDER campaign 605487. Both must agree for an activation to
+# happen, which is what stops a canonical row being re-pointed at a different
+# provider campaign after the grant was given.
+LIVE_ACTIVATION_GRANTS = {
+    "productive-linkedin-cohort-v2": frozenset({LINKEDIN_ACTIVATE}),
+}
+
+
+def activation_is_granted(operation, campaign):
+    """Has an operator granted THIS operation on THIS canonical campaign?
+
+    Fails closed on everything: an unnamed operation, an unnamed campaign, a
+    campaign with no entry, or an entry that does not name this operation.
+    """
+    if operation not in ACTIVATION_OPERATIONS:
+        return False
+    campaign_id = (campaign or {}).get("campaign_id")
+    if not campaign_id:
+        return False
+    return operation in (LIVE_ACTIVATION_GRANTS.get(campaign_id) or frozenset())
+
+
 def authorize(*, operation, channel, campaign, rec, contact, step_key,
               workspace, config=None, recs=None, now=None, by="system",
               readback=None, reserve=True, staging=False):
@@ -670,7 +758,29 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
                 f"{campaign.get('client')!r} is off: {ws_state['why']}. "
                 f"No lead was staged", gates)
         gates.append("killswitch:workspace")
+    elif activation_is_granted(operation, campaign):
+        # A GRANTED ACTIVATION ASKS THE WORKSPACE LAYER AND THE GRANT.
+        # Not a third staging mode: `staging` claims "this reaches nobody",
+        # and an activation reaches everybody in the audience. The claim here
+        # is different and narrower - an operator has named this campaign and
+        # this verb, and the exposure was measured before they did. The two
+        # layers skipped are skipped for stated reasons, not for convenience:
+        # GLOBAL describes `push.run`, which is not on this path and still
+        # raises; CAMPAIGN requires `running`, which nothing in this build can
+        # reach, so requiring it would make the grant unusable rather than
+        # safe. Everything else in gate 7 and gates 1-6 still ran.
+        ws_state = killswitch.workspace_state(campaign.get("client"))
+        if not ws_state["sending"]:
+            raise NotAuthorized(
+                "killswitch",
+                f"the killswitch for workspace "
+                f"{campaign.get('client')!r} is off: {ws_state['why']}. "
+                f"Nothing was activated", gates)
+        gates.append("killswitch:workspace")
+        gates.append("killswitch:activation-grant")
     else:
+        # An ACTIVATE verb with no grant lands here and is refused by GLOBAL,
+        # which is the fail-closed default this mechanism is built around.
         try:
             killswitch.require(workspace=campaign.get("client"),
                                campaign=campaign, rec=rec, contact=contact,

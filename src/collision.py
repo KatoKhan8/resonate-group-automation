@@ -127,6 +127,82 @@ KNOWN_STATUSES = frozenset({IN_SEQUENCE, "sequence_finished", SENDING_PAUSED,
                             REPLIED, BOUNCED, STOPPED})
 UNKNOWN = "unknown"
 
+# ------------------------------------------- our own staging, and only ours
+#
+# OUR OWN STAGING ARTIFACT IS NOT THE CLIENT'S HISTORY, AND IT LOOKED
+# IDENTICAL. Measured 2026-09-16 on workspace 10 (PRODUCTIVE):
+#
+#     campaign 485  emails_sent 0  total_leads_contacted 0  opened 0
+#                   replied 0  bounced 0  unsubscribed 0  status draft
+#                   -> membership(485) reads `stopped` for 10 of 10 leads
+#
+# The provider stops a campaign's memberships when it archives a campaign that
+# has no sending account attached. `stopped` is a SUSPECT status, so every one
+# of those ten accounts answered HOLD - "a campaign at this account ended
+# early and the status does not say whether we stopped it, they unsubscribed,
+# or the provider stopped it on a reply" - and `bisonfactory` refused the
+# whole cohort. The status was a fact about a campaign of ours that has never
+# sent an email, and it was being read as a fact about the prospect.
+#
+# WHAT THIS DOES NOT DO, AND THE LIST IS THE DESIGN.
+#
+#   - It does not infer "safe" from ownership. A campaign being ours is the
+#     cheap FILTER that decides which campaigns are worth a provider read; it
+#     is never the evidence. `_ours` alone cannot exclude anything.
+#   - It does not infer "we stopped it". Nothing here reads the stop reason,
+#     because the provider does not record one. It proves the opposite thing:
+#     that no email was ever sent from this campaign at all, in which case
+#     there is no stop reason to get wrong.
+#   - It does not cache a verdict or hardcode a campaign number. The evidence
+#     is re-read from the provider in every process that asks (see
+#     `forget_staging_evidence`), so a campaign that sends tomorrow stops
+#     being an artifact tomorrow.
+#   - A campaign with any confirmed touch is not an artifact, ever. Every
+#     counter must be present AND integral AND zero; a counter the provider
+#     does not return is unread, and unread is not zero.
+
+#: The campaign statuses at which EmailBison is definitively not sending.
+#: Deliberately a positive list: `bison.STARTED_STATES` and
+#: `bison.STARTING_STATES` are the words known to mean "it is going out", and
+#: every OTHER word - including the ones nobody here has read yet - has to
+#: fail this check, because "I do not recognise this state" is not "it is not
+#: sending". A campaign sitting at 0 sent because it started thirty seconds
+#: ago is the case this arm exists for.
+NOT_SENDING_STATES = frozenset({"draft", "paused", "archived", "failed",
+                                bison.PENDING_DELETION})
+
+#: Every campaign counter that must be present, integral and zero before the
+#: campaign may be called prospect-facing-silent. `opened` and `unique_opens`
+#: are in here even though an open is not a send: an open is only possible
+#: after one, so a non-zero open count contradicts `emails_sent: 0` and the
+#: contradiction has to fail closed rather than pick a winner.
+ZERO_COUNTERS = ("emails_sent", "total_leads_contacted", "opened",
+                 "unique_opens", "replied", "unique_replies", "bounced",
+                 "unsubscribed", "interested")
+
+#: Scheduled-email row statuses that mean the row never left the building.
+#: `scheduled_emails` is the provider's own pre-send queue and it is the one
+#: place a send is visible as a row rather than as a counter - campaign 451,
+#: which sent exactly one email, carries exactly one row reading `sent`. Any
+#: word outside this set, and any row carrying `sent_at`, disqualifies.
+QUEUE_NOT_SENT = frozenset({"scheduled", "stopped", "cancelled", "canceled",
+                            "paused", "draft", "skipped"})
+
+#: The membership statuses our own zero-send staging leaves on a lead, and the
+#: only ones an exclusion may remove. `bounced` is absent on purpose: a bounce
+#: is a fact about the ADDRESS, not about the campaign that discovered it, and
+#: it survives whoever staged the lead. `replied`, `in_sequence` and
+#: `sequence_finished` are absent because none of them can be true of a
+#: campaign that has sent nothing, so seeing one means the evidence is wrong.
+EXCLUDABLE_MEMBERSHIP = frozenset({STOPPED, SENDING_PAUSED})
+
+#: Action-ledger states that mean one of our own sends may have reached a
+#: person on this campaign. `failed` (the provider refused before acting) and
+#: `abandoned` (a human called it off) are the only two that prove it did not,
+#: so everything else - including `unresolved`, which exists precisely to say
+#: "nobody knows" - disqualifies.
+LEDGER_MAY_HAVE_REACHED = frozenset({"attempted", "sent", "unresolved"})
+
 
 class CollisionUnknown(RuntimeError):
     """The provider could not be asked, or answered unusably.
@@ -270,6 +346,12 @@ def touches_of(row):
             "status": entry.get("status"),
             "emails_sent": entry.get("emails_sent"),
             "replies": entry.get("replies"),
+            # Carried because `_excludable` needs it, and it was the one
+            # per-campaign counter the provider returns that this function
+            # dropped. An open is only possible after a send, so a membership
+            # claiming an open contradicts a campaign claiming none - and a
+            # contradiction has to be visible to be refused.
+            "opens": entry.get("opens"),
             "interested": entry.get("interested"),
         })
     return {
@@ -295,6 +377,365 @@ def touches_of(row):
             if _norm(c["status"]) and _norm(c["status"]) not in KNOWN_STATUSES}),
         "created_at": row.get("created_at"),
     }
+
+
+def _int(value):
+    """`value` as an int, or None. A string counter is not an int here.
+
+    Fail-closed on purpose: every caller below treats None as "unread", and
+    unread must never satisfy a "must be zero" test.
+    """
+    return value if isinstance(value, int) and not isinstance(value, bool) \
+        else None
+
+
+def campaign_bindings():
+    """Provider campaign id -> the canonical campaign row that claims it.
+
+    `work/campaigns.jsonl` is this system's own record of which EmailBison
+    campaign it built for which client campaign, written by the factory the
+    instant the provider answers. It is one half of the ownership proof and
+    it is not sufficient by itself - see `_ours`.
+
+    A provider id claimed by two canonical rows is DROPPED rather than
+    resolved. An ambiguous claim of ownership is not a claim, and picking the
+    last writer would make the answer depend on file order.
+    """
+    from . import campaigns          # lazy: campaigns pulls cadence and lint
+
+    try:
+        rows = list(campaigns.load())
+    except Exception:                 # noqa: BLE001 - see below
+        # A binding file that cannot be read means nothing can be proven ours,
+        # which means nothing is excluded and every membership row reaches
+        # `account_policy` exactly as it did before this code existed. That is
+        # the safe direction, so it is silent rather than fatal: refusing here
+        # would take the account gate itself offline over a file that only
+        # ever RELAXES a verdict.
+        return {}
+    out, ambiguous = {}, set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        bound = _int(row.get("bison_campaign_id"))
+        if bound is None:
+            try:
+                bound = int(str(row.get("bison_campaign_id")).strip())
+            except (TypeError, ValueError):
+                continue
+        if bound in out:
+            ambiguous.add(bound)
+        out[bound] = row
+    for key in ambiguous:
+        out.pop(key, None)
+    return out
+
+
+def _ours(campaign_id, binding, provider_row):
+    """Is this provider campaign one this system built? Proven on both sides.
+
+    OWNERSHIP IS NEVER EVIDENCE OF SAFETY and this function does not pretend
+    otherwise - it is the cheap filter that decides which campaigns are worth
+    spending a provider read on. `staging_artifact_evidence` calls it first
+    and then has to prove, from the provider, that the campaign reached
+    nobody. Both must hold.
+
+    It is proven on BOTH sides because either side alone is forgeable by
+    accident. `work/campaigns.jsonl` is a local file this system writes, so it
+    can name a provider campaign that was deleted and rebuilt by somebody
+    else under the same id. The provider's own `name` carries the canonical
+    binding - `bisonfactory.provider_campaign_name` derives it as
+    `"<human> [<client>/<campaign_id>]"` - so the provider itself states who
+    the campaign belongs to. The two have to agree about the same client and
+    the same canonical campaign, or this answers no.
+
+    The suffix is recomputed here rather than imported, because importing
+    `bisonfactory` from this module closes an import cycle - the factory
+    imports `collision`. `tests/test_our_own_staging_is_not_their_history.py`
+    pins the two derivations against each other so the duplication cannot
+    drift silently.
+    """
+    if not isinstance(binding, dict):
+        return False, "no canonical campaign row claims this provider campaign"
+    client = str(binding.get("client") or "").strip()
+    canonical = str(binding.get("campaign_id") or "").strip()
+    if not client or not canonical:
+        return False, "the canonical campaign row names no client or campaign"
+    suffix = f" [{client}/{canonical}]"
+    name = str((provider_row or {}).get("name") or "")
+    if not name.endswith(suffix):
+        return False, (f"the provider's own name for campaign {campaign_id} "
+                       f"does not carry this system's binding {suffix.strip()}")
+    return True, f"claimed by {client}/{canonical} on both sides"
+
+
+def _ledger_is_silent(binding):
+    """Has this system ever recorded a prospect-facing action on this campaign?
+
+    The provider's counters are one witness; this repository's own audit trail
+    is a second and independent one. `actionledger` writes a reservation
+    BEFORE the provider is called, so a send that timed out mid-flight leaves
+    a row here even when no counter at the provider ever moved - which is the
+    exact case a counter-only check would read as silence.
+
+    An unreadable ledger answers no. A missing audit trail is not a clean one.
+    """
+    from . import actionledger
+
+    canonical = str((binding or {}).get("campaign_id") or "").strip()
+    if not canonical:
+        return False, "no canonical campaign to look up in the action ledger"
+    try:
+        rows = actionledger.load()
+    except Exception as e:                       # noqa: BLE001 - fail closed
+        return False, (f"the action ledger could not be read "
+                       f"({type(e).__name__}), so it cannot certify silence")
+    hits = [r for r in rows
+            if isinstance(r, dict)
+            and str(r.get("campaign_id") or "") == canonical
+            and _norm(r.get("state")) in LEDGER_MAY_HAVE_REACHED]
+    if hits:
+        return False, (f"this system's action ledger holds {len(hits)} "
+                       f"unrefuted prospect-facing action(s) for {canonical}")
+    return True, f"no prospect-facing action recorded for {canonical}"
+
+
+def _queue_is_silent(campaign_id):
+    """The provider's own pre-send queue, read as "did anything ever leave".
+
+    Independent of the counters: `scheduled_emails` returns one ROW per
+    message, and a sent one says so. Campaign 451 - one email, one recipient -
+    answers a single row reading `sent`; 481 and 485 answer none.
+
+    A read that raises answers no. `scheduled_emails` refuses a queue too big
+    to walk rather than returning its first page, and a campaign nobody can
+    walk is a campaign nobody can clear.
+    """
+    try:
+        rows = bison.scheduled_emails(campaign_id)
+    except Exception as e:                       # noqa: BLE001 - fail closed
+        return False, (f"the scheduled-email queue for campaign {campaign_id} "
+                       f"could not be read ({type(e).__name__})")
+    for row in rows:
+        if not isinstance(row, dict):
+            return False, "a scheduled-email row was not readable"
+        if row.get("sent_at"):
+            return False, (f"campaign {campaign_id} has a queue row that was "
+                           f"already sent")
+        state = _norm(row.get("status"))
+        if state not in QUEUE_NOT_SENT:
+            return False, (f"campaign {campaign_id} has a queue row reading "
+                           f"{state!r}, which this system cannot read as "
+                           f"unsent")
+    return True, (f"{len(rows)} queue row(s) for campaign {campaign_id}, none "
+                  f"of them sent")
+
+
+def zero_send_evidence(campaign_id, provider_row=None):
+    """Positive proof from the provider that this campaign reached nobody.
+
+    Every counter in `ZERO_COUNTERS` must be PRESENT, an int, and zero, and
+    the campaign must be in a state at which the provider is definitively not
+    sending. A counter the provider omits is unread; unread is not zero, and
+    reading it as zero is how a campaign that has been working for a month
+    gets called staging.
+
+    Returns `(proven, why, counters)`. Never raises: a provider that cannot be
+    read is simply not proof.
+    """
+    if provider_row is None:
+        try:
+            provider_row = bison.campaign(campaign_id)
+        except Exception as e:                   # noqa: BLE001 - fail closed
+            return False, (f"campaign {campaign_id} could not be read at the "
+                           f"provider ({type(e).__name__})"), {}
+    if not isinstance(provider_row, dict):
+        return False, f"campaign {campaign_id} did not answer with a row", {}
+
+    counters = {name: _int(provider_row.get(name)) for name in ZERO_COUNTERS}
+    unread = sorted(n for n, v in counters.items() if v is None)
+    if unread:
+        return False, (f"campaign {campaign_id} does not report "
+                       f"{', '.join(unread)}; an unread counter is not a zero "
+                       f"one"), counters
+    nonzero = sorted(n for n, v in counters.items() if v != 0)
+    if nonzero:
+        return False, (f"campaign {campaign_id} has touched somebody: "
+                       f"{', '.join(f'{n}={counters[n]}' for n in nonzero)}"
+                       ), counters
+
+    state = _norm(provider_row.get("status"))
+    if state not in NOT_SENDING_STATES:
+        return False, (f"campaign {campaign_id} reads status {state!r}, which "
+                       f"is not a state this system has verified means "
+                       f"`not sending`; a campaign that started a moment ago "
+                       f"also reports zero"), counters
+    return True, (f"campaign {campaign_id} is {state} and every prospect-"
+                  f"facing counter the provider reports is zero"), counters
+
+
+def staging_artifact_evidence(campaign_id, bindings=None):
+    """Is this provider campaign one of OUR proven-zero-send staging artifacts?
+
+    Four independent arms, ALL of which must hold, and none of which is
+    ownership-on-its-own:
+
+      1. ours, stated by this system's binding file AND by the provider's own
+         campaign name, and the two agree;
+      2. every prospect-facing counter the provider reports is zero, and the
+         campaign is in a state at which it is definitively not sending;
+      3. the provider's pre-send queue holds no row that ever went out;
+      4. this repository's action ledger records no unrefuted prospect-facing
+         action against the canonical campaign.
+
+    Returns a dict. `proven` is the answer; `why` is the sentence an operator
+    reads; `arms` is every arm's own verdict, so a refusal names the arm that
+    refused rather than the rule number.
+    """
+    bindings = campaign_bindings() if bindings is None else bindings
+    binding = bindings.get(campaign_id)
+    out = {"campaign_id": campaign_id, "proven": False, "arms": {},
+           "counters": {}, "checked_at": store.now()}
+
+    # Arm 1 first, and it is deliberately the cheapest: it costs one local
+    # file read and it decides whether the provider is worth asking at all.
+    if not isinstance(binding, dict):
+        out["arms"]["ours"] = (False, "no canonical campaign row claims this "
+                                      "provider campaign")
+        out["why"] = out["arms"]["ours"][1]
+        return out
+    try:
+        provider_row = bison.campaign(campaign_id)
+    except Exception as e:                       # noqa: BLE001 - fail closed
+        out["arms"]["ours"] = (False, f"campaign {campaign_id} could not be "
+                                      f"read ({type(e).__name__})")
+        out["why"] = out["arms"]["ours"][1]
+        return out
+
+    out["arms"]["ours"] = _ours(campaign_id, binding, provider_row)
+    if out["arms"]["ours"][0]:
+        proven, why, counters = zero_send_evidence(campaign_id, provider_row)
+        out["counters"] = counters
+        out["status"] = _norm(provider_row.get("status"))
+        out["arms"]["zero_send"] = (proven, why)
+        if proven:
+            out["arms"]["queue"] = _queue_is_silent(campaign_id)
+            if out["arms"]["queue"][0]:
+                out["arms"]["ledger"] = _ledger_is_silent(binding)
+
+    refused = [why for _ok, why in out["arms"].values() if not _ok]
+    out["proven"] = not refused and len(out["arms"]) == 4
+    out["why"] = (refused[0] if refused else
+                  "; ".join(why for _ok, why in out["arms"].values()))
+    return out
+
+
+# Per-process, and that is the whole contract. The evidence is re-derived from
+# the provider by the first ask in each run and reused for the rest of that
+# run, so a campaign that starts sending is an artifact for at most one run's
+# worth of reads and never across runs. Nothing is written to disk, and no
+# campaign number is written down anywhere: delete this dict and the next ask
+# goes back to the provider.
+_EVIDENCE = {}
+
+
+def forget_staging_evidence():
+    """Drop what this process has read about our own campaigns.
+
+    Called by tests, and available to any long-lived process that wants the
+    provider asked again mid-run.
+    """
+    _EVIDENCE.clear()
+
+
+def staging_artifacts(campaign_ids, bindings=None):
+    """The subset of `campaign_ids` that is provably our own silent staging.
+
+    Reads the provider once per candidate per process. Campaigns no canonical
+    row claims never reach the provider at all, which is what keeps a worked
+    estate - where a lead can sit in a dozen of the client's own campaigns -
+    from costing a dozen reads per account.
+    """
+    bindings = campaign_bindings() if bindings is None else bindings
+    found = {}
+    for campaign_id in campaign_ids:
+        key = _int(campaign_id)
+        if key is None:
+            try:
+                key = int(str(campaign_id).strip())
+            except (TypeError, ValueError):
+                continue
+        if key not in bindings:
+            continue                      # not ours: never read, never excluded
+        if key not in _EVIDENCE:
+            _EVIDENCE[key] = staging_artifact_evidence(key, bindings)
+        if _EVIDENCE[key].get("proven"):
+            found[key] = _EVIDENCE[key]
+    return found
+
+
+def _excludable(entry, evidence):
+    """May THIS membership row be dropped, given proof about its campaign?
+
+    The campaign-level proof is necessary and not sufficient. This row has to
+    agree: a status our own staging actually leaves, and its own counters at
+    zero. A row that disagrees with the campaign it belongs to is a row this
+    system has misread, and a misreading must not be resolved in favour of
+    sending.
+    """
+    if not evidence.get("proven"):
+        return False, "not proven to be our own silent staging"
+    state = _norm(entry.get("status"))
+    if state not in EXCLUDABLE_MEMBERSHIP:
+        return False, (f"membership reads {state!r}, which our own zero-send "
+                       f"staging does not leave behind")
+    for field in ("emails_sent", "replies", "opens"):
+        if _int(entry.get(field)) != 0:
+            return False, (f"membership reports {field}="
+                           f"{entry.get(field)!r}, which contradicts a "
+                           f"campaign that has sent nothing")
+    if entry.get("interested"):
+        return False, "membership is marked interested"
+    return True, evidence.get("why") or "our own proven-zero-send staging"
+
+
+def without_our_staging(person, bindings=None):
+    """One `touches_of` answer with our own silent staging rows removed.
+
+    Returns `(person, excluded)`. `person` is rebuilt, never mutated in place,
+    and its derived fields - `in_sequence`, `unknown_statuses` - are recomputed
+    from what is left. `emails_sent` is NOT recomputed and does not need to be:
+    a row may only be excluded when it sent nothing, so the lead's totals are
+    arithmetically untouched. That is the invariant that keeps thirteen real
+    emails to a colleague visible after this runs.
+    """
+    campaigns_of = [c for c in (person.get("campaigns") or [])
+                    if isinstance(c, dict)]
+    artifacts = staging_artifacts(
+        {c.get("campaign_id") for c in campaigns_of}, bindings)
+    kept, excluded = [], []
+    for entry in campaigns_of:
+        key = _int(entry.get("campaign_id"))
+        evidence = artifacts.get(key) if key is not None else None
+        drop, why = (_excludable(entry, evidence) if evidence
+                     else (False, "not ours, or not proven silent"))
+        if drop:
+            excluded.append({"campaign_id": key,
+                             "status": _norm(entry.get("status")),
+                             "why": why})
+        else:
+            kept.append(entry)
+    if not excluded:
+        return person, []
+    rebuilt = dict(person, campaigns=kept)
+    rebuilt["in_sequence"] = any(_norm(c.get("status")) == IN_SEQUENCE
+                                 for c in kept)
+    rebuilt["unknown_statuses"] = sorted({
+        _norm(c.get("status")) for c in kept
+        if _norm(c.get("status")) and _norm(c.get("status"))
+        not in KNOWN_STATUSES})
+    rebuilt["our_staging_excluded"] = excluded
+    return rebuilt, excluded
 
 
 def profile_slug(url):
@@ -614,10 +1055,28 @@ def check_account(domain, expect_workspace=REQUIRED):
 
     Account-level, because outreach is account-based here: a colleague
     mid-sequence is a fact about the company even when the person we picked is
-    untouched.
+    untouched. That stays mandatory: nothing below turns this into a
+    person-level question, and `check_address` is not a substitute for it.
+
+    OUR OWN SILENT STAGING IS REMOVED FROM THE HISTORY, AND ONLY THAT. Every
+    membership row is kept unless four independent arms prove it belongs to a
+    campaign this system built that has never sent an email to anybody - see
+    `staging_artifact_evidence`. The exclusions are reported on the answer, in
+    `our_staging_excluded`, so an operator reading a clear account can see
+    exactly what was taken out of it and why.
+
+    The account's own totals are untouched by this. A row may only be dropped
+    when it sent nothing, so `emails_sent_total` is the same number before and
+    after, and an account with real history keeps it.
     """
     rows = leads_for_domain(domain, expect_workspace=expect_workspace)
     people = [touches_of(r) for r in rows if isinstance(r, dict)]
+    bindings = campaign_bindings()
+    excluded = []
+    for index, person in enumerate(people):
+        people[index], dropped = without_our_staging(person, bindings)
+        for entry in dropped:
+            excluded.append(dict(entry, email=person.get("email")))
     sent = sum(p["emails_sent"] for p in people)
     return {
         "domain": _norm(domain),
@@ -625,6 +1084,7 @@ def check_account(domain, expect_workspace=REQUIRED):
         "workspace": expect_workspace,
         "leads": len(people),
         "people": people,
+        "our_staging_excluded": excluded,
         "emails_sent_total": sent,
         "anyone_in_sequence": any(p["in_sequence"] for p in people),
         "unknown_statuses": sorted({s for p in people
@@ -667,6 +1127,14 @@ def account_policy(account):
       unanswerable                  -> HOLD. Missing evidence is not positive
                                        evidence; an estate we could not read
                                        cannot certify that nobody is in it.
+
+    WHAT THIS DOES NOT DECIDE, AND MUST NOT. Whether a membership row is the
+    client's history or this system's own silent staging is settled before the
+    account reaches here, by `check_account` calling `without_our_staging`,
+    and only on four arms of positive provider evidence that nothing was ever
+    sent. Every verdict above is unchanged for genuine history: a `stopped`
+    whose campaign has sent even one email is still a HOLD here, because that
+    row is still in `people` when this function reads it.
 
     Returns (decision, why). The `why` is the sentence an operator reads, so
     it names the account fact rather than the rule number.
@@ -717,8 +1185,26 @@ def account_policy(account):
     sent = int(account.get("emails_sent_total") or 0)
     if sent:
         return ALLOW, (f"{sent} email(s) were sent to this account in finished "
-                       f"campaigns with no reply; history, not a live conflict")
-    return ALLOW, "no prior contact at this account"
+                       f"campaigns with no reply; history, not a live conflict"
+                       f"{_staging_note(account)}")
+    return ALLOW, f"no prior contact at this account{_staging_note(account)}"
+
+
+def _staging_note(account):
+    """What an ALLOW had removed from it, appended to the operator's sentence.
+
+    An account that reads clear BECAUSE this system took its own rows out of
+    it must say so. Silence here would make the exclusion invisible at exactly
+    the moment somebody is deciding to spend on the account.
+    """
+    excluded = [e for e in (account.get("our_staging_excluded") or [])
+                if isinstance(e, dict)]
+    if not excluded:
+        return ""
+    ids = sorted({str(e.get("campaign_id")) for e in excluded})
+    return (f" ({len(excluded)} membership row(s) of our own campaign(s) "
+            f"{', '.join(ids)} excluded: each is proven at the provider to "
+            f"have sent nothing to anybody)")
 
 
 def main(argv=None):

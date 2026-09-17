@@ -991,7 +991,24 @@ CONDITIONAL[EMAIL_ACTIVATE] = _is_the_authorized_email_campaign
 # holding 83 campaigns, 12 of them the client's own and IN_PROGRESS. The
 # operator's grant will name one campaign, so the condition names one campaign
 # and exists in advance.
-_AUTHORIZED_LINKEDIN_CANARY = "604869"
+#
+# RE-SCOPED 2026-09-16 from 604869 to 605487 and then to 605732, under:
+# "APPROVE HEYREACH ACTIVATION: campaign 605487, 4 approved READY leads."
+#
+# 604869 is NOT this and never was. Its bound list 940797 holds exactly one
+# contact, and `collision.account_policy` HOLDS that contact's account - nine
+# emails across two campaigns, one `stopped` for a reason the provider does not
+# record. The hold stands. 604869 stays DRAFT and is not activated.
+#
+# 605487 is NOT it either. It is bound to list 943957, staged from the account
+# gate alone, and gate 4 refused one of its four at activation for four prior
+# LinkedIn messages from our own seat. There is no list-removal route on this
+# vendor, so a list with the wrong membership can only be replaced.
+#
+# 605732 is bound to list 944355, which holds the THREE contacts that BOTH
+# collision gates clear, and carries a sequence graph hashing identical to the
+# audited 599020.
+_AUTHORIZED_LINKEDIN_CANARY = "605732"
 
 
 def _is_the_authorized_linkedin_canary(provider_campaign_id, campaign_id=None):
