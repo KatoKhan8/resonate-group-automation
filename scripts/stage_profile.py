@@ -61,6 +61,142 @@ from src import (cadence, clients, companies, dedupe, enrich, evidence,
 DEFAULT_SIZES = (50, 500, 5000)
 RUNS = 3
 
+# ---------------------------------------------------------------------------
+# TASK-222: latency model for provider calls.
+#
+# Every value is ASSUMED unless a source in this repo states otherwise.
+# The only reference point in the repo is "~300ms per call" from
+# docs/PERF-STAGE-BASELINE-2026-09-17.md, which is itself an assumption.
+# No live provider latency has been measured. The bands below are LOW/MID/HIGH
+# around that reference, with wider spreads for providers whose response
+# contracts are unknown to this codebase.
+#
+# Sources consulted:
+#   - docs/PERF-STAGE-BASELINE-2026-09-17.md: "~300ms per call" (ASSUMED)
+#   - src/providers/__init__.py: TIMEOUT = 25 (upper bound, not typical)
+#   - src/providers/xai.py: XAI_TIMEOUT = 300 (LLM, very slow)
+#   - docs/GROK-PROVIDER-RESEARCH-2026-09-17.md: rate limits, not latency
+#   - docs/SCALE-MEASUREMENT-30K.md: "12.4 seconds per call" for bison batch
+#
+# A sleep-based model is fine and must be labelled a MODEL everywhere.
+# ---------------------------------------------------------------------------
+
+# Latency bands in SECONDS per call, by provider call name.
+# LOW = optimistic, MID = reference (~300ms baseline), HIGH = pessimistic.
+# All values are ASSUMED unless marked otherwise.
+LATENCY_MODEL = {
+    # ContactOut: the primary enrichment provider.
+    # ~300ms is the baseline reference (ASSUMED).
+    "people-count":                       {"low": 0.10, "mid": 0.20, "high": 0.50},
+    "decision-makers":                    {"low": 0.20, "mid": 0.40, "high": 1.00},
+    "company-information-from-domain":    {"low": 0.10, "mid": 0.30, "high": 0.80},
+    # Verification providers.
+    # Deliverable and Reoon are simpler APIs than ContactOut.
+    "email-verifier":                     {"low": 0.10, "mid": 0.30, "high": 0.80},
+    "deliverable-verify":                 {"low": 0.15, "mid": 0.40, "high": 1.00},
+    "reoon-verify":                       {"low": 0.15, "mid": 0.40, "high": 1.00},
+    # AI Ark: people search fallback, slower index.
+    "aiark-people-search":               {"low": 0.50, "mid": 1.00, "high": 3.00},
+    # Blitz: record-based billing, medium latency.
+    "blitz-company":                      {"low": 0.15, "mid": 0.40, "high": 1.00},
+    "blitz-domain-to-linkedin":           {"low": 0.15, "mid": 0.40, "high": 1.00},
+    "blitz-linkedin-to-domain":           {"low": 0.15, "mid": 0.40, "high": 1.00},
+    "blitz-employee-finder":              {"low": 0.20, "mid": 0.50, "high": 1.50},
+    "blitz-email":                        {"low": 0.15, "mid": 0.40, "high": 1.00},
+    # Apify: actor runs, compute-billed, highly variable.
+    "apify-research":                     {"low": 1.00, "mid": 3.00, "high": 8.00},
+    # xAI research: LLM call, very slow (XAI_TIMEOUT=300 in code).
+    "xai-research":                       {"low": 2.00, "mid": 5.00, "high": 10.00},
+    # Web crawl: HTTP fetch, variable by target.
+    "webfetch-crawl":                     {"low": 0.20, "mid": 0.50, "high": 2.00},
+    # LLM calls (generate stage): from AI-CALL-SITE-INVENTORY token counts.
+    # At ~20 tok/s output and ~4,000 input tokens, ~2-5s per call is reasonable.
+    "llm-draft":                          {"low": 2.00, "mid": 4.00, "high": 8.00},
+    "llm-linkedin_note":                  {"low": 1.00, "mid": 2.50, "high": 5.00},
+    "llm-diagnose":                       {"low": 1.00, "mid": 2.00, "high": 4.00},
+    "llm-hook":                           {"low": 0.50, "mid": 1.50, "high": 3.00},
+    "llm-persona_angle":                  {"low": 1.00, "mid": 2.00, "high": 4.00},
+}
+
+# Default band when --latency is used without a band specifier.
+DEFAULT_LATENCY_BAND = "mid"
+
+
+def _count_calls_by_provider(ops):
+    """Break down ops into per-call-name counts for latency modelling.
+
+    Returns a dict: {call_name: count} for calls that would reach a network.
+    """
+    counts = {}
+    for op in ops:
+        cost = op.get("cost", 0)
+        call = op.get("call", "")
+        if cost > 0 or call in ("people-count", "webfetch-crawl"):
+            counts[call] = counts.get(call, 0) + 1
+    return counts
+
+
+def _count_verification_by_provider(candidates, policy):
+    """Break down verification plan into per-provider counts.
+
+    Returns a dict: {call_name: count} for verification calls.
+    """
+    counts = {}
+    for c in candidates:
+        steps = verification.plan(c, policy)
+        for step in steps:
+            call_name = f"{step['provider']}-verify"
+            # Normalise to match LATENCY_MODEL keys.
+            if call_name == "contactout-verify":
+                call_name = "email-verifier"
+            counts[call_name] = counts.get(call_name, 0) + 1
+    return counts
+
+
+def model_serial_wait(enrich_counts, verify_counts, band="mid"):
+    """Sum of (count × latency) across all provider calls.
+
+    This is the wall time if every call runs one after another with no
+    overlap. The model, not a measurement.
+    """
+    total = 0.0
+    by_provider = {}
+    for call_name, count in enrich_counts.items():
+        latencies = LATENCY_MODEL.get(call_name)
+        if latencies is None:
+            continue
+        lat = latencies.get(band, latencies["mid"])
+        wait = count * lat
+        total += wait
+        by_provider[call_name] = {"count": count, "latency_s": lat,
+                                   "wait_s": round(wait, 2)}
+    for call_name, count in verify_counts.items():
+        latencies = LATENCY_MODEL.get(call_name)
+        if latencies is None:
+            continue
+        lat = latencies.get(band, latencies["mid"])
+        wait = count * lat
+        total += wait
+        by_provider[call_name] = {"count": count, "latency_s": lat,
+                                   "wait_s": round(wait, 2)}
+    return round(total, 2), by_provider
+
+
+def model_concurrency(serial_wait, total_calls, k, critical_path_s=None):
+    """Model bounded concurrency at pool size K.
+
+    Ideal speedup: serial / K. But the critical path (sequential
+    dependencies) cannot be parallelised, so the real time is at least
+    critical_path_s. Returns (modelled_wall_s, speedup_factor).
+    """
+    if k <= 0:
+        return serial_wait, 1.0
+    ideal = serial_wait / k
+    floor = critical_path_s or 0
+    modelled = max(ideal, floor)
+    speedup = serial_wait / max(modelled, 0.001)
+    return round(modelled, 2), round(speedup, 2)
+
 
 def _fake_resolver(domain):
     """Fake DNS resolver that returns Google MX records instantly.
@@ -229,11 +365,15 @@ def measure_stage(size, tmp):
         def stage_enrich_plan():
             total_ops = 0
             provider_calls = 0
+            by_provider = {}
             for rec in recs:
                 ops = enrich.plan(rec, config)
                 total_ops += len(ops)
                 provider_calls += _count_provider_calls(ops)
-            return {"total_ops": total_ops, "provider_calls": provider_calls}
+                for call_name, count in _count_calls_by_provider(ops).items():
+                    by_provider[call_name] = by_provider.get(call_name, 0) + count
+            return {"total_ops": total_ops, "provider_calls": provider_calls,
+                    "calls_by_provider": by_provider}
 
         median, all_times, results = _time(stage_enrich_plan)
         stages["enrich_plan"] = {
@@ -241,6 +381,7 @@ def measure_stage(size, tmp):
             "all_times": [round(t, 6) for t in all_times],
             "ops_planned": results[0]["total_ops"],
             "provider_calls": results[0]["provider_calls"],
+            "calls_by_provider": results[0]["calls_by_provider"],
             "cache_hits_crawl": 0,
             "cache_hits_mx": 0,
         }
@@ -326,13 +467,20 @@ def measure_stage(size, tmp):
             policy = verification.policy_for(config)
             total_candidates = 0
             total_steps = 0
+            by_provider = {}
             for rec in recs:
                 candidates = enrich.verification_candidates(rec)
                 total_candidates += len(candidates)
                 for c in candidates:
                     steps = verification.plan(c, policy)
                     total_steps += len(steps)
-            return {"candidates": total_candidates, "steps": total_steps}
+                    for step in steps:
+                        call_name = f"{step['provider']}-verify"
+                        if call_name == "contactout-verify":
+                            call_name = "email-verifier"
+                        by_provider[call_name] = by_provider.get(call_name, 0) + 1
+            return {"candidates": total_candidates, "steps": total_steps,
+                    "calls_by_provider": by_provider}
 
         median, all_times, results = _time(stage_verification_plan)
         stages["verification_plan"] = {
@@ -341,6 +489,7 @@ def measure_stage(size, tmp):
             "candidates": results[0]["candidates"],
             "verification_steps": results[0]["steps"],
             "provider_calls": results[0]["steps"],
+            "calls_by_provider": results[0]["calls_by_provider"],
             "cache_hits_crawl": 0,
             "cache_hits_mx": 0,
         }
@@ -546,6 +695,11 @@ def measure_stage(size, tmp):
 
         total_median, total_all, _ = _time(full_pipeline)
 
+        # Aggregate per-provider call counts across enrich and verification.
+        enrich_by_provider = stages.get("enrich_plan", {}).get("calls_by_provider", {})
+        verify_by_provider = stages.get("verification_plan", {}).get("calls_by_provider", {})
+        total_provider_calls = sum(enrich_by_provider.values()) + sum(verify_by_provider.values())
+
         return {
             "records": size,
             "total_contacts": total_contacts,
@@ -569,6 +723,10 @@ def measure_stage(size, tmp):
             "unattributed_pct": round(
                 (total_median - stage_total)
                 / max(total_median, 1e-9) * 100, 1),
+            # TASK-222: per-provider call breakdown for latency modelling.
+            "enrich_calls_by_provider": enrich_by_provider,
+            "verify_calls_by_provider": verify_by_provider,
+            "total_provider_calls": total_provider_calls,
         }
 
     finally:
@@ -817,19 +975,107 @@ def print_summary(results, scaling, bottlenecks, hypotheses):
         print(f"    {data['measurement']}")
 
 
+def latency_report(results, band="mid", concurrency_levels=None):
+    """TASK-222: model provider wait time from call counts and latency bands.
+
+    Returns a list of dicts, one per size, with serial wait and concurrency
+    projections. Also prints the table.
+    """
+    if concurrency_levels is None:
+        concurrency_levels = [1, 4, 8, 16]
+
+    report = []
+    for r in results:
+        enrich_counts = r.get("enrich_calls_by_provider", {})
+        verify_counts = r.get("verify_calls_by_provider", {})
+        total_calls = r.get("total_provider_calls", 0)
+        serial_s, by_provider = model_serial_wait(enrich_counts, verify_counts,
+                                                   band=band)
+
+        # Local CPU time is the measured pipeline time minus provider wait.
+        # At zero-latency the measured time IS the CPU time.
+        cpu_s = r["total_pipeline_s"]
+        total_with_wait = cpu_s + serial_s
+        wait_fraction = serial_s / max(total_with_wait, 0.001)
+
+        conc = {}
+        for k in concurrency_levels:
+            wall, speedup = model_concurrency(serial_s, total_calls, k)
+            conc[k] = {"wall_s": wall, "speedup": speedup}
+
+        entry = {
+            "records": r["records"],
+            "provider_calls": total_calls,
+            "latency_band": band,
+            "serial_wait_s": serial_s,
+            "cpu_time_s": round(cpu_s, 2),
+            "total_with_wait_s": round(total_with_wait, 2),
+            "wait_fraction": round(wait_fraction, 3),
+            "by_provider": by_provider,
+            "concurrency": conc,
+        }
+        report.append(entry)
+
+    # Print the table.
+    print("\n" + "=" * 90)
+    print(f"TASK-222: LATENCY MODEL (band={band}, ALL VALUES ASSUMED)")
+    print("=" * 90)
+    hdr = (f"  {'RECORDS':>8s} {'PROV_CALLS':>11s} {'BAND':>5s} "
+           f"{'SERIAL_WAIT':>12s} {'CPU_TIME':>10s} {'TOTAL':>10s} "
+           f"{'WAIT%':>7s}")
+    for k in concurrency_levels:
+        hdr += f" {'K='+str(k):>10s}"
+    print(hdr)
+    print("  " + "-" * (len(hdr) - 2))
+    for e in report:
+        row = (f"  {e['records']:>8,d} {e['provider_calls']:>11,d} "
+               f"{e['latency_band']:>5s} "
+               f"{e['serial_wait_s']:>10.1f}s {e['cpu_time_s']:>8.1f}s "
+               f"{e['total_with_wait_s']:>8.1f}s "
+               f"{e['wait_fraction']*100:>6.1f}%")
+        for k in concurrency_levels:
+            c = e["concurrency"].get(k, {})
+            row += f" {c.get('wall_s', 0):>8.1f}s"
+        print(row)
+
+    # Print per-provider breakdown for the largest size.
+    if report:
+        largest = report[-1]
+        print(f"\n  Per-provider breakdown at {largest['records']:,} records "
+              f"(band={band}):")
+        print(f"  {'CALL':<35s} {'COUNT':>7s} {'LAT_s':>7s} {'WAIT_s':>10s}")
+        print("  " + "-" * 62)
+        for call_name, info in sorted(largest["by_provider"].items(),
+                                       key=lambda x: -x[1]["wait_s"]):
+            print(f"  {call_name:<35s} {info['count']:>7,d} "
+                  f"{info['latency_s']:>7.2f} {info['wait_s']:>10.1f}")
+
+    return report
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sizes", default=",".join(str(s) for s in DEFAULT_SIZES))
     ap.add_argument("--runs", type=int, default=RUNS)
     ap.add_argument("--json", action="store_true")
+    # TASK-222: latency modelling options.
+    ap.add_argument("--latency", choices=["low", "mid", "high"],
+                    help="Apply a latency model to provider calls (ASSUMED "
+                         "values). Off by default; existing numbers unchanged.")
+    ap.add_argument("--concurrency", default="1,4,8,16",
+                    help="Comma-separated pool sizes to model (default: 1,4,8,16)")
     args = ap.parse_args()
     sizes = [int(s) for s in args.sizes.split(",") if s.strip()]
+    concurrency_levels = [int(k) for k in args.concurrency.split(",")
+                          if k.strip()]
 
     print("TASK-220: per-stage pipeline measurement")
     print("=" * 60)
     print("All estates are SYNTHETIC (synthetic.dataset()).")
     print("No provider is called. Provider calls are COUNTED from the plan.")
     print(f"Runs per size: {args.runs} (median)")
+    if args.latency:
+        print(f"Latency model: ON (band={args.latency}, ALL VALUES ASSUMED)")
     print()
 
     results = run_profile(sizes, args.runs)
@@ -838,6 +1084,11 @@ def main():
     hypotheses = adjudicate_hypotheses(results)
 
     print_summary(results, scaling, bottlenecks, hypotheses)
+
+    latency_data = None
+    if args.latency:
+        latency_data = latency_report(results, band=args.latency,
+                                       concurrency_levels=concurrency_levels)
 
     # Save full results as JSON
     output = {
@@ -856,6 +1107,18 @@ def main():
             "no_pii": True,
         },
     }
+    if latency_data:
+        output["latency_model"] = {
+            "band": args.latency,
+            "all_values_assumed": True,
+            "sources": [
+                "docs/PERF-STAGE-BASELINE-2026-09-17.md: ~300ms per call (ASSUMED)",
+                "src/providers/__init__.py: TIMEOUT=25 (upper bound)",
+                "src/providers/xai.py: XAI_TIMEOUT=300 (LLM)",
+                "docs/GROK-PROVIDER-RESEARCH-2026-09-17.md: rate limits, not latency",
+            ],
+            "sizes": latency_data,
+        }
     out_path = os.path.join(ROOT, "out", "stage_profile_results.json")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:

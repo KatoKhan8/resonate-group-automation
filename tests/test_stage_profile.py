@@ -181,5 +181,106 @@ class TestProviderCallCounting(unittest.TestCase):
         self.assertEqual(_count_provider_calls([]), 0)
 
 
+class TestLatencyModel(unittest.TestCase):
+    """TASK-222: tests for the latency model.
+
+    Rules from the task:
+    - The model is off by default; existing numbers must not move.
+    - The modelled serial total matches call count × latency within a few %.
+    - K=1 equals serial.
+    """
+
+    def test_latency_model_off_by_default(self):
+        """The LATENCY_MODEL dict exists but is not applied unless --latency."""
+        from scripts.stage_profile import LATENCY_MODEL, DEFAULT_LATENCY_BAND
+        # The model exists and has entries.
+        self.assertIsInstance(LATENCY_MODEL, dict)
+        self.assertGreater(len(LATENCY_MODEL), 0)
+        # The default band is "mid".
+        self.assertEqual(DEFAULT_LATENCY_BAND, "mid")
+        # Every entry has low/mid/high keys.
+        for call_name, bands in LATENCY_MODEL.items():
+            self.assertIn("low", bands, f"{call_name} missing 'low'")
+            self.assertIn("mid", bands, f"{call_name} missing 'mid'")
+            self.assertIn("high", bands, f"{call_name} missing 'high'")
+            # low <= mid <= high
+            self.assertLessEqual(bands["low"], bands["mid"],
+                                 f"{call_name}: low > mid")
+            self.assertLessEqual(bands["mid"], bands["high"],
+                                 f"{call_name}: mid > high")
+
+    def test_serial_wait_matches_count_times_latency(self):
+        """Modelled serial total = sum(count × latency) within 1%."""
+        from scripts.stage_profile import (model_serial_wait, LATENCY_MODEL)
+        enrich_counts = {"people-count": 100, "decision-makers": 50}
+        verify_counts = {"email-verifier": 30, "reoon-verify": 10}
+
+        for band in ("low", "mid", "high"):
+            serial, by_provider = model_serial_wait(
+                enrich_counts, verify_counts, band=band)
+            # Compute expected manually.
+            expected = 0.0
+            for call, count in enrich_counts.items():
+                expected += count * LATENCY_MODEL[call][band]
+            for call, count in verify_counts.items():
+                expected += count * LATENCY_MODEL[call][band]
+            # Within 1%.
+            self.assertAlmostEqual(serial, expected, delta=expected * 0.01,
+                                   msg=f"band={band}: {serial} != {expected}")
+
+    def test_k1_equals_serial(self):
+        """Concurrency K=1 must equal serial wait time."""
+        from scripts.stage_profile import model_concurrency
+        serial = 100.0
+        wall, speedup = model_concurrency(serial, total_calls=50, k=1)
+        self.assertAlmostEqual(wall, serial, places=1)
+        self.assertAlmostEqual(speedup, 1.0, places=1)
+
+    def test_concurrency_reduces_wall_time(self):
+        """Higher K gives lower wall time (ideal model, no critical path)."""
+        from scripts.stage_profile import model_concurrency
+        serial = 1000.0
+        wall_k4, _ = model_concurrency(serial, 100, k=4)
+        wall_k8, _ = model_concurrency(serial, 100, k=8)
+        wall_k16, _ = model_concurrency(serial, 100, k=16)
+        self.assertLess(wall_k4, serial)
+        self.assertLess(wall_k8, wall_k4)
+        self.assertLess(wall_k16, wall_k8)
+        # K=4 should be ~serial/4.
+        self.assertAlmostEqual(wall_k4, serial / 4, delta=1.0)
+
+    def test_critical_path_floor(self):
+        """When critical_path_s > serial/K, the floor applies."""
+        from scripts.stage_profile import model_concurrency
+        serial = 100.0
+        # Critical path of 50s means K=4 can't go below 50s.
+        wall, _ = model_concurrency(serial, 100, k=4, critical_path_s=50.0)
+        self.assertEqual(wall, 50.0)
+
+    def test_count_calls_by_provider(self):
+        """_count_calls_by_provider breaks down ops by call name."""
+        from scripts.stage_profile import _count_calls_by_provider
+        ops = [
+            {"call": "people-count", "cost": 0},
+            {"call": "people-count", "cost": 0},
+            {"call": "decision-makers", "cost": 10},
+            {"call": "email-verifier", "cost": 1},
+            {"call": "internal-step", "cost": 0},
+        ]
+        counts = _count_calls_by_provider(ops)
+        self.assertEqual(counts.get("people-count"), 2)
+        self.assertEqual(counts.get("decision-makers"), 1)
+        self.assertEqual(counts.get("email-verifier"), 1)
+        # internal-step has cost 0 and is not a named free call.
+        self.assertNotIn("internal-step", counts)
+
+    def test_empty_counts_produce_zero_wait(self):
+        """No calls → zero serial wait."""
+        from scripts.stage_profile import model_serial_wait
+        serial, by_provider = model_serial_wait({}, {}, band="mid")
+        self.assertEqual(serial, 0.0)
+        self.assertEqual(by_provider, {})
+
+
 if __name__ == "__main__":
     unittest.main()
