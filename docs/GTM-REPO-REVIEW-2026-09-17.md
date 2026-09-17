@@ -277,3 +277,56 @@ put every gate in the position of a column somebody could reorder.
 **Nothing here is adopted because another repository has it.** Each of the
 four ADAPT items is a task to be measured against our own production
 evidence, and the existing invariants stay authoritative.
+
+---
+
+## CORRECTION TO MY OWN VERDICT, 2026-09-17 — ADAPT #1 misdescribed us
+
+I put "evidence TTL by FIELD, not by record" first on the ADAPT list, on
+OpenGTM's `cache.py` (`TTL_DAYS`: email 30 days, founded 365). Checking our
+own code before writing the task shows that recommendation was built on a
+wrong picture of this system.
+
+**We already have a freshness model, and it is richer than a TTL.**
+`evidence.freshness(published_at, today, policy)` returns a bucket, a
+continuous score and an age in days, with UNKNOWN when the date cannot be
+parsed and an explicit refusal to treat a FUTURE date as fresh - "a future
+date is bad data, not fresh news". A flat per-field expiry would be a
+downgrade of that, not an upgrade.
+
+They are answering two different questions:
+
+    ours        is this fact fresh enough to SAY to a prospect
+    OpenGTM's   is this fact stale enough to BUY again
+
+**The second question is real and we do not answer it. But a TTL is not what
+we are missing there - identity is.**
+
+    evidence.evidence_id(record_id, source_url, fact, contact_key)
+
+The docstring says it is "derived from what the evidence *is*, so the same
+fact discovered twice keeps one id". It is not: `record_id` is in the hashed
+material. Demonstrated:
+
+    evidence_id("acme-com",         url, "They opened a Berlin office")
+      -> ev_94dd6c48272c
+    evidence_id("acme-com-cohort2", url, "They opened a Berlin office")
+      -> ev_8b56aae46b9c
+
+Same company, same source URL, same sentence, two ids. So a company met in a
+second cohort re-pays for evidence already bought, and no TTL of any length
+would prevent that, because the cache would never recognise the hit.
+
+That is a **docstring-versus-behaviour disagreement** of the same kind this
+session has been finding all day, and it sits on the identity function for
+paid evidence.
+
+**Revised ADAPT #1: stable evidence identity across cohorts**, which is P6 in
+the handoff's own list and which the handoff already measured from the other
+side ("`evidence_id` hashes `record_id`, so a company met in a second cohort
+reuses nothing already paid for"). The prevalence is currently small - 4 of
+550 records carry any evidence - so this is cheap to fix now and expensive to
+fix once the estate is full of it.
+
+The remaining three ADAPT items stand: a cost/yield ledger as evidence for
+changing the routing policy, a spend ceiling in money, and connector cursors.
