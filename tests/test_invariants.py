@@ -659,8 +659,8 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
     # themselves. Membership is asserted below, so this is a checklist that
     # cannot silently fall behind the code.
     SELF_WRITERS = ("agencydnc", "clientreview", "discovery", "gtm",
-                    "observability", "poller", "replywatch", "signals",
-                    "spendledger", "tagsync", "mx")
+                    "observability", "poller", "replywatch", "research",
+                    "signals", "spendledger", "tagsync", "mx")
 
     def _real(self, name):
         return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")

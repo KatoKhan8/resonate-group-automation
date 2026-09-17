@@ -14,9 +14,14 @@ blocked on.
 """
 import argparse
 import datetime
+import json
+import logging
+import os
 
 from . import clients, events, evidence as ev, store
 from .providers import ProviderError, apify
+
+log = logging.getLogger(__name__)
 
 # Why public evidence is genuinely required. A scrape with any other reason is
 # refused rather than run.
@@ -33,24 +38,160 @@ NEED_REFRESH = "public_evidence_stale_refresh_required"
 # the company context on a 3-contact record was a duplicate of itself, at
 # roughly 2.5 contacts per domain. The crawl itself gets the same treatment.
 #
-# Pass-scoped: cleared at the start of each `enrich.run()` pass. Evidence must
-# not age out mid-pass or persist across passes pretending to be current.
+# Pass-scoped in-memory layer: cleared at the start of each `enrich.run()`
+# pass. Evidence must not age out mid-pass or persist across passes pretending
+# to be current. The persisted layer underneath answers only when entries are
+# still fresh by the per-field TTL, which is what makes carrying them across
+# passes legitimate.
 _crawl_cache = {}
+_persisted_cache = None  # loaded lazily, None means "not yet loaded"
+_dirty = False           # has anything been added since the last flush?
 
 
-def crawl_cache_get(domain):
-    """Cached crawl result for this domain, or None."""
-    return _crawl_cache.get(domain)
+def crawl_cache_path():
+    """Path obtained from `store`, never spelled here."""
+    return os.path.abspath(
+        os.environ.get("CRAWL_CACHE")
+        or os.path.join(os.path.dirname(store.queue_path()),
+                        "crawl-cache.json"))
+
+
+def load_crawl_cache():
+    """Load the persisted crawl cache from disk.
+
+    A corrupt or unparseable file is a cache MISS and a warning, never an
+    exception and never a silently empty dict that looks like a cold start.
+    """
+    global _persisted_cache
+    path = crawl_cache_path()
+    if not os.path.exists(path):
+        _persisted_cache = {}
+        return _persisted_cache
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            log.warning("crawl cache: file is not a dict, treating as miss")
+            _persisted_cache = {}
+            return _persisted_cache
+        _persisted_cache = data
+        return _persisted_cache
+    except (OSError, ValueError, json.JSONDecodeError) as e:
+        log.warning("crawl cache: corrupt file (%s), treating as miss", e)
+        _persisted_cache = {}
+        return _persisted_cache
+
+
+def save_crawl_cache(cache):
+    """Persist the crawl cache to disk. Atomic write following mx pattern."""
+    path = crawl_cache_path()
+    store.refuse_production_write(path)
+    with store.lock(for_path=path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(cache, f, indent=2, sort_keys=True)
+        os.replace(tmp, path)
+    return cache
+
+
+def _fresh_entries(entries, today=None):
+    """Filter entries by per-field freshness. Returns only fresh ones."""
+    today = today or datetime.datetime.now(datetime.timezone.utc)
+    fresh = []
+    for entry in entries:
+        age = age_of(entry, today)
+        if age is None:
+            continue
+        if age <= ttl_for(entry.get("field")):
+            fresh.append(entry)
+    return fresh
+
+
+def crawl_cache_get(domain, today=None):
+    """Cached crawl result for this domain, or None.
+
+    Checks the in-memory layer first. On miss, checks the persisted layer
+    filtered by per-field freshness. Does NOT populate the in-memory layer
+    from the persisted one - the persisted layer answers directly so that
+    stale entries never enter the pass-scoped layer.
+    """
+    mem = _crawl_cache.get(domain)
+    if mem is not None:
+        return mem
+    persisted = _persisted_cache if _persisted_cache is not None else load_crawl_cache()
+    entries = persisted.get(domain)
+    if not entries:
+        return None
+    fresh = _fresh_entries(entries, today)
+    if not fresh:
+        return None
+    return fresh
 
 
 def crawl_cache_set(domain, evidence):
-    """Store a crawl result for reuse across contacts on this company."""
+    """Store a crawl result for reuse across contacts on this company.
+
+    Writes to both the in-memory pass-scoped layer and the persisted layer.
+    """
+    global _dirty
     _crawl_cache[domain] = evidence
+    persisted = (_persisted_cache if _persisted_cache is not None
+                 else load_crawl_cache())
+    persisted[domain] = evidence
+    _dirty = True
+    # DELIBERATELY NOT SAVED HERE. An earlier version called
+    # `save_crawl_cache` on every set, which rewrites the WHOLE cache file
+    # once per domain - so a pass over N domains performs N full-file writes
+    # of a file that grows to N entries. That is the same O(N^2) shape as the
+    # queue's whole-file checkpoint, reintroduced in a new file, and at 5,000
+    # domains it is the dominant cost of the run rather than a saving.
+    #
+    # `mx` already solves this and is the pattern the brief named: `enrich.run`
+    # loads the cache once at the start and saves it once at the end. This
+    # follows it. `flush_crawl_cache` is the save.
 
 
 def crawl_cache_clear():
-    """Clear the pass-scoped crawl cache. Called at the start of each run."""
+    """Clear the pass-scoped in-memory crawl cache.
+
+    Does NOT destroy the persisted layer. The persisted layer answers only
+    when entries are still fresh by the per-field TTL.
+    """
     _crawl_cache.clear()
+
+
+def flush_crawl_cache():
+    """Persist the cache if anything was added. Once per pass, not per domain.
+
+    Returns the number of domains held, or None if there was nothing to do.
+
+    A FAILURE HERE IS A WARNING AND NOT A CRASH, with one exception that is
+    deliberately allowed through: `ProductionStateUnderTest`. Swallowing that
+    one would turn the barrier that stops a test writing into the real `work/`
+    directory into a log line nobody reads, which is the opposite of what a
+    barrier is for. Everything else - a full disk, a permission error - costs
+    a re-crawl next pass and must not lose the run.
+    """
+    global _dirty
+    if not _dirty or _persisted_cache is None:
+        return None
+    try:
+        save_crawl_cache(_persisted_cache)
+    except store.ProductionStateUnderTest:
+        raise
+    except Exception as exc:                        # noqa: BLE001 - classified
+        log.warning("crawl cache: failed to persist (%s), continuing", exc)
+        return None
+    _dirty = False
+    return len(_persisted_cache)
+
+
+def _reset_persisted_cache():
+    """Reset the persisted cache global. Tests only."""
+    global _persisted_cache, _dirty
+    _persisted_cache = None
+    _dirty = False
 
 # -------------------------------------------------------------- evidence TTL
 

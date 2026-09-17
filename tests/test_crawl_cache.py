@@ -40,9 +40,11 @@ class TestCompanyLevelCrawlCache(unittest.TestCase):
 
     def setUp(self):
         research.crawl_cache_clear()
+        research._reset_persisted_cache()
 
     def tearDown(self):
         research.crawl_cache_clear()
+        research._reset_persisted_cache()
 
     @patch("src.webfetch.research", side_effect=_fake_research)
     def test_n_contacts_on_one_company_produce_one_crawl(self, mock_research):
@@ -67,17 +69,23 @@ class TestCompanyLevelCrawlCache(unittest.TestCase):
 
     @patch("src.webfetch.research", side_effect=_fake_research)
     def test_cleared_cache_produces_n_crawls(self, mock_research):
-        """After clearing the cache, each record triggers its own crawl."""
+        """After clearing BOTH layers, each record triggers its own crawl.
+
+        crawl_cache_clear() only clears the in-memory pass-scoped layer.
+        The persisted layer survives. To get a truly cold start, both must
+        be cleared.
+        """
         rec1 = _make_record("acme-1", "acme.com")
         research._from_the_site_itself(rec1, {})
         self.assertEqual(mock_research.call_count, 1)
 
         research.crawl_cache_clear()
+        research._reset_persisted_cache()
 
         rec2 = _make_record("acme-2", "acme.com")
         research._from_the_site_itself(rec2, {})
         self.assertEqual(mock_research.call_count, 2,
-                         "after clearing the cache, a second crawl should "
+                         "after clearing both layers, a second crawl should "
                          "occur for the same domain")
 
     @patch("src.webfetch.research", side_effect=_fake_research)
