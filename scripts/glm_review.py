@@ -85,11 +85,53 @@ Answer, briefly:
 """
 
 
+JOURNAL_QUESTION = """This is an append-only delta log intended to replace a
+whole-file rewrite on the checkpoint path of a production outreach system. It
+is NOT WIRED yet - this review is why.
+
+Context, all measured:
+
+- Today `store.save` rewrites every record on every checkpoint. At 5,000
+  records and 1,000 checkpoints that is 4.4 GB and 211 seconds.
+- `store.save` also READS the whole file each checkpoint, to run a digest
+  check and two guards: one refusing to drop paid verification evidence, one
+  refusing to rewrite event history.
+- Checkpoints happen every 5 records. Several processes may run concurrently;
+  the existing path holds a file lock and takes an optimistic digest.
+- A crash must leave a readable queue. This file holds 300 real companies.
+
+Answer, briefly and concretely:
+1. An interleaving of TWO processes appending and/or compacting that loses a
+   record, resurrects an old value, or produces a state neither wrote. Give
+   the exact order of operations.
+2. What breaks if a process dies between writing a compacted base file and
+   calling `discard` - and what breaks if it dies between `discard` and the
+   base write.
+3. Whether `replay`'s last-write-wins can silently revert a record when two
+   processes checkpoint overlapping record sets from different reads.
+4. Anything about fsync, os.replace, or append atomicity on Windows that
+   makes the crash-safety claim in the docstring false.
+5. NO FINDING for any of the above you cannot substantiate with a mechanism.
+
+--- {name} ---
+{source}
+"""
+
+
 def _targets():
     """Built lazily so a broken import in one area cannot block the others."""
     from src import (store, actionledger, collision, bisonevents,
-                     senderownership)
+                     senderownership, queuejournal)
     return {
+        # ADDED 2026-09-17, and reviewed BEFORE it has a caller for the same
+        # reason `webhook` was: this one decides what the queue IS after a
+        # crash. A dedupe that can be defeated costs a duplicate message; a
+        # replay that can be defeated costs the record of who was contacted.
+        "journal": (JOURNAL_QUESTION, [
+            ("queuejournal.replay", queuejournal.replay),
+            ("queuejournal.append", queuejournal.append),
+            ("queuejournal.read", queuejournal.read),
+        ]),
         # ADDED 2026-09-17, and it is the one target reviewed BEFORE its code
         # has a production caller rather than after. `bisonevents` normalises
         # an unauthenticated inbound payload from the internet and decides
