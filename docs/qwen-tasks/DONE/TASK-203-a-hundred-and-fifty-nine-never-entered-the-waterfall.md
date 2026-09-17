@@ -176,3 +176,27 @@ If a verification run were invoked on these 159 contacts, the tier-based caps wo
 
 **RISKS:** None — read-only analysis, no state changed  
 **RECOMMENDED CLAUDE ACTION:** Review findings in docs/NEVER-VERIFIED-2026-09-16.md. Decide whether to run verification on the 159 contacts (159-318 credits) and whether to raise the tier-based caps.
+
+---
+
+## CLAUDE INTEGRATION, 2026-09-17
+
+**ACCEPTED, and it holds up against live state exactly.** Recomputed by
+`scripts/verification_inventory.py` from `store.load()` rather than from the
+retired snapshot: NEVER_OFFERED is 159, `contact_skipped` 140,
+`stage_never_ran` 19. The cause is confirmed from the records' own
+`persona_plan.cap_reason`: 157 of the 159 read `tier C allows up to 1
+contact(s)`, and 151 sit on a record holding more contacts than its own cap.
+The distinction this task insisted on - refused-by-a-gate versus
+never-offered-to-the-gate - is now a permanent one that a script computes
+rather than a finding in a document.
+
+**The recommendation is answered with the number the task could not see.**
+The 159 sit on THIRTY-TWO records and 19 of those already have a sendable
+contact, so verifying all of them adds at most 13 accounts. The 29 contacts on
+the 13 account-less records cost 58 credits and carry the whole upside.
+Verification is also not the bottleneck: 67 records are already addressable
+and 17 contacts are approvable.
+
+`scripts/task203_*.py` read the snapshot and will now fail loudly. That is
+intended and they are left alone as the record of how this was measured.

@@ -149,3 +149,27 @@ RECOMMENDED CLAUDE ACTION:
 2. Decide whether to fix Deliverable's parser or relax confirmation policy
 3. Run generation on the 15 verified-but-no-cadence records
 4. Schedule human reads of the 23 unapproved cadences (NOT bulk approve)
+
+---
+
+## CLAUDE INTEGRATION, 2026-09-17
+
+**ACCEPTED as measurement, SUPERSEDED as a number.** The funnel shape is right
+and the priority order was not. Every figure here came from
+`work/queue.snapshot.jsonl`, retired on 2026-09-17 to
+`work/RETIRED-2026-09-17-queue.snapshot.jsonl` in all nine worktrees.
+
+Recomputed live by `scripts/verification_inventory.py`: SENDABLE 68, HELD 13,
+NEVER_OFFERED 159, NO_ADDRESS 37. This task's headline - "143 contacts held by
+insufficient confirmations - ContactOut says valid but Deliverable returns
+unparseable errors" - does not survive. TASK-203 established that Deliverable
+never returned anything to parse: the gate refused before any network call, so
+every Deliverable entry in the estate is a LOCAL refusal. Recommendation 1,
+"fix Deliverable's response parser", was work on a parser that was never
+reached.
+
+Recommendation 3 (generate for verified-but-no-cadence records) and 4
+(regenerate the partials) are live but are not the bottleneck: 67 records
+already have a sendable contact and only 17 contacts pass every gate except
+approval. See `docs/THE-159-ARE-WORTH-58-CREDITS-2026-09-17.md` and
+`docs/SEVENTEEN-AND-ONE-SIGNATURE-2026-09-17.md`.

@@ -1,11 +1,19 @@
 {
-  "generated_at": "2026-09-17T11:17:08+00:00",
+  "generated_at": "2026-09-17T11:37:23+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
   "branch_blindness": "Task stages in this ledger reflect master only. Tasks finished on worker branches but not yet integrated into master appear in their master stage (often TODO), not the stage the branch has moved them to. Run scripts/task173_scan.py --unintegrated for the cross-branch view.",
-  "master_head": "681abef8",
-  "origin_master_head": "681abef8",
+  "master_head": "8309f234",
+  "origin_master_head": "8309f234",
   "master_pushed": true,
   "tasks": [
+    {
+      "task": "TASK-202",
+      "file": "docs/qwen-tasks/TODO/TASK-202-run-the-whole-suite-and-say-what-is-red.md",
+      "stage": "TODO",
+      "last_commit": "714cf827",
+      "last_commit_at": "2026-09-17T13:23:04+02:00",
+      "reported": false
+    },
     {
       "task": "TASK-212",
       "file": "docs/qwen-tasks/TODO/TASK-212-ten-endpoints-we-do-not-call.md",
@@ -103,26 +111,6 @@
       "commit_sha": "1d2f0a9"
     },
     {
-      "task": "TASK-194",
-      "file": "docs/qwen-tasks/REVIEW/TASK-194-a-hundred-and-thirteen-qualified-and-thirty-two-ready.md",
-      "stage": "REVIEW",
-      "last_commit": "8663837f",
-      "last_commit_at": "2026-09-16T07:44:06+02:00",
-      "reported": true,
-      "declared_status": "DONE",
-      "commit_sha": "dfb5c65"
-    },
-    {
-      "task": "TASK-196",
-      "file": "docs/qwen-tasks/REVIEW/TASK-196-one-broken-parser-is-holding-143-contacts.md",
-      "stage": "REVIEW",
-      "last_commit": "44fa0cea",
-      "last_commit_at": "2026-09-16T08:09:53+02:00",
-      "reported": true,
-      "declared_status": "DONE",
-      "commit_sha": "1083787"
-    },
-    {
       "task": "TASK-197",
       "file": "docs/qwen-tasks/REVIEW/TASK-197-fifteen-records-that-never-had-copy-written.md",
       "stage": "REVIEW",
@@ -131,26 +119,6 @@
       "reported": true,
       "declared_status": "DONE",
       "commit_sha": "eb56e40"
-    },
-    {
-      "task": "TASK-203",
-      "file": "docs/qwen-tasks/REVIEW/TASK-203-a-hundred-and-fifty-nine-never-entered-the-waterfall.md",
-      "stage": "REVIEW",
-      "last_commit": "db75fa6a",
-      "last_commit_at": "2026-09-16T08:24:49+02:00",
-      "reported": true,
-      "declared_status": "DONE",
-      "commit_sha": "a311a5d"
-    },
-    {
-      "task": "TASK-204",
-      "file": "docs/qwen-tasks/REVIEW/TASK-204-retire-the-file-that-produced-a-wrong-number.md",
-      "stage": "REVIEW",
-      "last_commit": "7d7bf933",
-      "last_commit_at": "2026-09-16T08:24:21+02:00",
-      "reported": true,
-      "declared_status": "DONE",
-      "commit_sha": "b55fd5e"
     },
     {
       "task": "TASK-205",
@@ -217,14 +185,6 @@
       "stage": "BLOCKED",
       "last_commit": "2e3a3b9c",
       "last_commit_at": "2026-09-16T06:37:31+02:00",
-      "reported": false
-    },
-    {
-      "task": "TASK-202",
-      "file": "docs/qwen-tasks/BLOCKED/TASK-202-run-the-whole-suite-and-say-what-is-red.md",
-      "stage": "BLOCKED",
-      "last_commit": "f98071f8",
-      "last_commit_at": "2026-09-16T08:17:55+02:00",
       "reported": false
     },
     {
@@ -1358,8 +1318,8 @@
       "task": "TASK-122",
       "file": "docs/qwen-tasks/DONE/TASK-122-the-bison-readback-against-481.md",
       "stage": "DONE",
-      "last_commit": "24aa883b",
-      "last_commit_at": "2026-09-15T11:54:07+02:00",
+      "last_commit": "d765ccb1",
+      "last_commit_at": "2026-09-17T13:30:07+02:00",
       "reported": true,
       "declared_status": "FAIL",
       "commit_sha": "fb47811"
@@ -1992,6 +1952,16 @@
       "commit_sha": "cdfa5f0"
     },
     {
+      "task": "TASK-194",
+      "file": "docs/qwen-tasks/DONE/TASK-194-a-hundred-and-thirteen-qualified-and-thirty-two-ready.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "dfb5c65"
+    },
+    {
       "task": "TASK-195",
       "file": "docs/qwen-tasks/DONE/TASK-195-a-branch-that-did-no-work-can-hide-a-task-forever.md",
       "stage": "DONE",
@@ -2000,6 +1970,16 @@
       "reported": true,
       "declared_status": "DONE",
       "commit_sha": "5e29165"
+    },
+    {
+      "task": "TASK-196",
+      "file": "docs/qwen-tasks/DONE/TASK-196-one-broken-parser-is-holding-143-contacts.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "1083787"
     },
     {
       "task": "TASK-198",
@@ -2040,6 +2020,26 @@
       "reported": true,
       "declared_status": "DONE",
       "commit_sha": "ee37f9a"
+    },
+    {
+      "task": "TASK-203",
+      "file": "docs/qwen-tasks/DONE/TASK-203-a-hundred-and-fifty-nine-never-entered-the-waterfall.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "a311a5d"
+    },
+    {
+      "task": "TASK-204",
+      "file": "docs/qwen-tasks/DONE/TASK-204-retire-the-file-that-produced-a-wrong-number.md",
+      "stage": "DONE",
+      "last_commit": "",
+      "last_commit_at": "",
+      "reported": true,
+      "declared_status": "DONE",
+      "commit_sha": "b55fd5e"
     },
     {
       "task": "TASK-208",
@@ -2113,11 +2113,11 @@
   "branches": [
     {
       "branch": "master",
-      "head": "681abef8",
+      "head": "8309f234",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "681abef8",
-      "last_commit_at": "2026-09-17T13:11:17+02:00"
+      "remote_head": "8309f234",
+      "last_commit_at": "2026-09-17T13:36:14+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -3448,6 +3448,14 @@
       "last_commit_at": "2026-09-15T10:56:10+02:00"
     },
     {
+      "branch": "task202-suite-2026-09-17",
+      "head": "c5d5723c",
+      "commits_ahead_of_master": 1,
+      "pushed": false,
+      "remote_head": null,
+      "last_commit_at": "2026-09-17T13:25:45+02:00"
+    },
+    {
       "branch": "write-gate-add-lead-UNVERIFIED",
       "head": "8520dc6b",
       "commits_ahead_of_master": 1,
@@ -3459,7 +3467,7 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "681abef",
+      "head": "8309f23",
       "branch": "master",
       "uncommitted_files": 4,
       "clean": false
@@ -3515,17 +3523,17 @@
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-worker",
-      "head": "22e0e03",
-      "branch": "qwen-worker-r50",
-      "uncommitted_files": 0,
-      "clean": true
+      "head": "c5d5723",
+      "branch": "task202-suite-2026-09-17",
+      "uncommitted_files": 2,
+      "clean": false
     }
   ],
   "stage_counts": {
-    "TODO": 6,
+    "TODO": 7,
     "RUNNING": 1,
-    "REVIEW": 15,
-    "BLOCKED": 2,
-    "DONE": 196
+    "REVIEW": 11,
+    "BLOCKED": 1,
+    "DONE": 200
   }
 }

@@ -172,3 +172,23 @@ destroyed.
    all worktrees after confirming live state is the authority
 3. Review the 26+ documents carrying stale numbers (listed in FUNNEL-2026-09-16.md)
 4. The manifest (`docs/state/QUEUE-MANIFEST.json`) is the new durable reference
+
+---
+
+## CLAUDE INTEGRATION, 2026-09-17 — DONE
+
+Carried out, with one deliberate change to the method. The file was **renamed,
+not deleted**: `work/RETIRED-2026-09-17-queue.snapshot.jsonl` and
+`...-queue.snapshot.STAMP`, in all nine worktrees. CLAUDE.md forbids deleting
+valuable production data without a recoverable backup, and 12 MB of real
+prospect state is exactly that. Renaming achieves the whole goal - its fifteen
+readers are all historical `taskNNN_*` analysis scripts and every one of them
+now fails loudly instead of quietly answering from 2026-09-15.
+
+The manifest this task names as the replacement was itself publishing
+`stages: {"unset": 550}` and `dropped: 0`, because `durable_state.py` read
+`status`/`stage`/`dropped` and a record carries `state` and `drop_reason`.
+Fixed the same day with six behavioural tests, three of which go red when the
+old names are put back. A replacement reference that was wrong in the same
+direction as the thing it replaced would have made this task worse than
+useless.

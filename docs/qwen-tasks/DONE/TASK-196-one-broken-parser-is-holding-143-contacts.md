@@ -186,3 +186,26 @@ affected modules. All green.
    (this will spend verification credits)
 4. The "143 contacts" figure from TASK-194 needs reconciliation with the
    snapshot - the actual recoverable inventory is smaller than stated
+
+---
+
+## CLAUDE INTEGRATION, 2026-09-17
+
+**ACCEPTED, and the task's own premise was the finding.** It went looking for
+a broken parser and established that the parser had never been reached -
+`DELIVERABLE_RESULT_SHAPE` was unset, so `require_contract()` refused before
+any network call and every Deliverable verdict in the estate's history is a
+local refusal rather than a parse failure.
+
+**The one change NOT accepted, and it was already reverted on 2026-09-16:**
+this task changed `result_shape_confirmed()` to return True whenever
+`CONFIRMED_RESPONSE_SHAPE` was populated - a constant literal in the same
+file, so always. That is a gate opening itself, and the gate exists precisely
+to make an operator choose the spend it admits. The docstring now says so at
+length. Do not reopen it in code; it is one environment variable and it is
+the operator's.
+
+Recommendation 3 (run the waterfall for the 159) is answered with a number
+this task did not have: they sit on 32 records, 19 already addressable, so 58
+credits buys the entire account-level upside rather than 318. And none of it
+converts while the secondary vendor is closed.
