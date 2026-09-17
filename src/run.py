@@ -24,7 +24,7 @@ import argparse
 import time
 
 from . import (cadence, clients, enrich, events, generate, ingest, lint, llm, mx,
-               personas, push, qualify, render, research, store)
+               personas, push, qualify, render, research, store, waterfall)
 from .providers import apify
 
 # `qualify` sits between the company-level evidence and the person-level
@@ -452,6 +452,27 @@ def run(source=None, client=None, lane=None, model=None, day=21, spend=False,
         if info.get("status") == "failed"]
     report["notes"] = notes
     report["spend"] = spend
+
+    # THE SEVEN POLICY COUNTERS, COMPUTED. PROVIDER-ROUTING-POLICY.md section
+    # 7 names them and `waterfall.counters` has computed them correctly since
+    # TASK-207 - for nobody. Repo-wide, its only callers were four assertions
+    # in `tests/test_contactout_fallback_semantics.py`, so the routing policy
+    # was enforced per-step by `may_fall_back` and never observed in aggregate.
+    #
+    # Here rather than in a reporting script because this is the one place
+    # that holds the cohort just processed, and because a counter nobody runs
+    # is the same as a counter that does not exist. Derived from the ledger on
+    # the records themselves, so it is a read of durable state and not a
+    # second counter store that could drift from it.
+    #
+    # CONTACTOUT_CACHE_HITS comes back UNKNOWN, on purpose: there is no
+    # ContactOut cache to hit. See `waterfall.counters` and
+    # docs/MEASUREMENT-TRUTH-2026-09-17.md.
+    report["counters"] = waterfall.counters(targets)
+
+    # And what the model cost, which `spend` above cannot see: `enrich.spend()`
+    # is provider-enrichment only and never witnesses a model call.
+    report["tokens"] = llm.token_usage(targets)
     return report
 
 

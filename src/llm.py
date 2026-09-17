@@ -25,6 +25,10 @@ import time
 
 MAX_ATTEMPTS = 3
 
+# What a measurement could not establish. Never 0: this repository's
+# convention is that an absent number says so rather than reading as one.
+UNKNOWN = "UNKNOWN"
+
 FAILURE_MODES = ("unanswered_question", "no_pass_mark", "minimum_not_price",
                  "ignored_preference")
 
@@ -814,17 +818,163 @@ def check_evidence(evidence, rec):
     return evidence
 
 
+# ------------------------------------------------- what a model call cost
+#
+# The adapters already measure this and the measurement is thrown away.
+# `OpenAICompatibleModel.complete` appends model, seconds, chars, the three
+# token counts and (on OpenRouter) a real charge to `self.calls` - and
+# `self.calls` had zero readers in `src/`. The list also dies with the
+# process, so TOKENS_PER_DOMAIN could only ever be estimated.
+#
+# These two functions move that row onto the record, which is durable state
+# (`work/queue.jsonl`, through `store.py`) and is keyed by domain - which is
+# what TOKENS_PER_DOMAIN and the LLM half of SECONDS_PER_DOMAIN are asking
+# for. No second ledger: the record already travels with everything else
+# that was spent on it, exactly as `rec["waterfall"]` holds provider spend.
+#
+# ABSENT IS NOT ZERO. A field the adapter did not report is left OFF the row
+# rather than written as 0. `QwenCliModel.complete` records only model,
+# seconds and chars - the CLI returns text, not a usage object - so a Qwen row
+# carries no token counts at all, and `token_usage` below reports UNKNOWN for
+# that model rather than summing absent numbers into a confident total.
+
+USAGE_FIELDS_RECORDED = ("seconds", "chars", "prompt_tokens",
+                         "completion_tokens", "total_tokens",
+                         "reasoning_tokens", "cached_tokens", "cost")
+
+
+def usage_mark(model):
+    """How many usage rows this adapter has recorded so far.
+
+    Taken BEFORE a call so `record_usage_since` can attribute exactly the
+    rows that call produced. An adapter that records nothing (`NoModel`,
+    `ScriptedModel`, a test fake) has no `calls` at all and marks 0, which
+    makes the pair a no-op rather than an error - and, crucially, stops a
+    stale `calls[-1]` from being attributed to a call that never reported.
+
+    `calls` IS NOT A RESERVED NAME AND THIS MUST NOT ASSUME IT.
+    `tests/test_e2e.py`'s `E2EModel.calls` is an INTEGER call counter, and an
+    earlier version of this function called `len()` on it - which raised
+    `TypeError` inside `ask`, was not a `SchemaError`, and so escaped the
+    retry loop and failed the generate step for every record in the batch.
+    Telemetry must never be able to break the thing it measures: anything
+    that is not a list of usage dicts reports nothing at all.
+    """
+    calls = getattr(model, "calls", None)
+    return len(calls) if isinstance(calls, list) else 0
+
+
+def record_usage_since(rec, step, model, mark):
+    """Append what the calls since `mark` cost to `rec["model_calls"]`.
+
+    Returns the number of rows appended, so a caller can tell "the adapter
+    reported nothing" from "there was nothing to report".
+    """
+    if rec is None:
+        return 0
+    calls = getattr(model, "calls", None)
+    if not isinstance(calls, list) or len(calls) <= mark:
+        return 0
+    from . import store                  # deferred: store does not import llm
+    rows = rec.setdefault("model_calls", [])
+    added = 0
+    for call in calls[mark:]:
+        if not isinstance(call, dict):
+            continue
+        row = {"step": step,
+               "model": call.get("model") or getattr(model, "name", None),
+               "adapter": getattr(model, "name", None),
+               "at": store.now()}
+        for field in USAGE_FIELDS_RECORDED:
+            if call.get(field) is not None:
+                row[field] = call[field]
+        rows.append(row)
+        added += 1
+    return added
+
+
+def token_usage(records):
+    """TOKENS_PER_DOMAIN, by model, off the rows `record_usage_since` wrote.
+
+    UNKNOWN IS NEVER SILENTLY A NUMBER. A model reports a total only when
+    EVERY one of its calls reported one. Where any call is missing a count,
+    `total_tokens` is UNKNOWN and `measured_total_tokens` carries the part
+    that was measured, with `calls_missing_tokens` saying how much of the
+    picture is absent. Summing the measured part into `total_tokens` would
+    understate the real figure by an unknown amount while looking exact,
+    which is the failure this function exists to avoid.
+
+    `tokens_per_domain` is UNKNOWN for the same reason, and additionally
+    whenever no record carries a single model call - a run that never called
+    a model has no tokens per domain, and 0.0 would read as "the model was
+    free" rather than as "nobody asked".
+    """
+    records = list(records)
+    by_model = {}
+    domains_with_calls = 0
+    for rec in records:
+        rows = rec.get("model_calls") or []
+        if rows:
+            domains_with_calls += 1
+        for row in rows:
+            name = row.get("model") or row.get("adapter") or UNKNOWN
+            m = by_model.setdefault(name, {
+                "calls": 0, "calls_missing_tokens": 0,
+                "measured_prompt_tokens": 0, "measured_completion_tokens": 0,
+                "measured_total_tokens": 0, "seconds": 0.0})
+            m["calls"] += 1
+            m["seconds"] = round(m["seconds"] + (row.get("seconds") or 0), 3)
+            if row.get("total_tokens") is None:
+                m["calls_missing_tokens"] += 1
+                continue
+            m["measured_prompt_tokens"] += row.get("prompt_tokens") or 0
+            m["measured_completion_tokens"] += row.get("completion_tokens") or 0
+            m["measured_total_tokens"] += row["total_tokens"]
+
+    total_domains = len(records)
+    for m in by_model.values():
+        complete = m["calls_missing_tokens"] == 0 and m["calls"] > 0
+        m["total_tokens"] = m["measured_total_tokens"] if complete else UNKNOWN
+        m["prompt_tokens"] = (m["measured_prompt_tokens"] if complete
+                              else UNKNOWN)
+        m["completion_tokens"] = (m["measured_completion_tokens"] if complete
+                                  else UNKNOWN)
+        m["per_domain"] = (round(m["measured_total_tokens"] / total_domains, 1)
+                           if complete and total_domains else UNKNOWN)
+
+    every_model_complete = bool(by_model) and all(
+        m["calls_missing_tokens"] == 0 for m in by_model.values())
+    return {
+        "domains": total_domains,
+        "domains_with_model_calls": domains_with_calls,
+        "by_model": by_model,
+        "tokens_per_domain": (
+            round(sum(m["measured_total_tokens"] for m in by_model.values())
+                  / total_domains, 1)
+            if every_model_complete and total_domains else UNKNOWN),
+    }
+
+
 # ------------------------------------------------------------ the runner
 
 def ask(model, step, prompt, rec=None, extra_check=None, attempts=MAX_ATTEMPTS):
-    """Ask, validate, retry with the error fed back. Bounded, never a loop."""
+    """Ask, validate, retry with the error fed back. Bounded, never a loop.
+
+    When `rec` is given, what each attempt cost is appended to
+    `rec["model_calls"]` - EVERY attempt, not only the one that validated,
+    because a rejected answer is billed exactly like an accepted one and a
+    token count that ignored retries would understate a step by up to 3x.
+    """
     errors = []
     for attempt in range(1, max(1, attempts) + 1):
         text = prompt if attempt == 1 else (
             f"{prompt}\n\nYour previous answer was rejected: {errors[-1]}\n"
             "Return corrected JSON only.")
         try:
-            data = validate(step, parse(model.complete(text)))
+            mark = usage_mark(model)
+            raw = model.complete(text)
+            record_usage_since(rec, step, model, mark)
+            data = validate(step, parse(raw))
             if step == "persona_angle" and rec is not None:
                 check_evidence(data["evidence"], rec)
             if step == "hook" and rec is not None:

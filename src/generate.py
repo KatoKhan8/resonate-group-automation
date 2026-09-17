@@ -1388,7 +1388,8 @@ def _regenerate_linkedin_set(rec, contact, model, client=None):
                 prompt += ("\n## Your previous note was refused\n\n"
                            f"{rejected[-1]}\n\nWrite a new one. "
                            "Do not patch the old one.\n")
-            data, attempts, errors = llm.ask(model, "linkedin_note", prompt)
+            data, attempts, errors = llm.ask(model, "linkedin_note",
+                                             prompt, rec=rec)
             step_calls += attempts
             note = data["note"].strip()
             note = lint.normalise_punctuation(note)
@@ -1482,7 +1483,8 @@ def _regenerate_linkedin_set(rec, contact, model, client=None):
 
 
 def diagnose(rec, model):
-    data, attempts, errors = llm.ask(model, "diagnose", render_prompt("diagnose", rec))
+    data, attempts, errors = llm.ask(model, "diagnose",
+                                     render_prompt("diagnose", rec), rec=rec)
     rec["diagnosis"] = {"died_on": data.get("died_on"),
                         "died_because": data["died_because"],
                         "failure_mode": data["failure_mode"],
@@ -1539,7 +1541,8 @@ def linkedin_note(rec, contact, model, client=None, step_key="day3",
             prompt += ("\n## Your previous note was refused\n\n"
                        f"{rejected[-1]}\n\nWrite a new one. "
                        "Do not patch the old one.\n")
-        data, attempts, errors = llm.ask(model, "linkedin_note", prompt)
+        data, attempts, errors = llm.ask(model, "linkedin_note", prompt,
+                                         rec=rec)
         total_attempts += attempts
         note = data["note"].strip()
         # NORMALISE PUNCTUATION BEFORE LINT. A character substitution that
@@ -1629,7 +1632,7 @@ def draft(rec, contact, day, model, client=None, sequence=None):
             prompt += ("\n## Your previous draft failed lint\n\n"
                        f"{rejected[-1]}\n\nWrite a new one. "
                        "Do not patch the old one.\n")
-        data, _, schema_errors = llm.ask(model, "draft", prompt)
+        data, _, schema_errors = llm.ask(model, "draft", prompt, rec=rec)
         # NORMALISE PUNCTUATION BEFORE LINT. A character substitution that
         # changes no word is not a content failure and must not spend an
         # attempt. The model is told plainly to use ASCII punctuation and

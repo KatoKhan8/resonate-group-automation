@@ -548,12 +548,30 @@ def _text_audit(result, rec):
 # Aggregated from the waterfall ledger, which is the single source of truth.
 # A second counter store would drift from it; these read the rows.
 #
-# PROVIDER-ROUTING-POLICY.md names seven counters. CONTACTOUT_CACHE_HITS
-# cannot be derived from the ledger (a cache hit does not produce a row), so
-# it is tracked separately at the call site in src/providers/contactout.py
-# and merged in here by the caller.
+# PROVIDER-ROUTING-POLICY.md names seven counters. Six of them are derived
+# from the ledger rows below. The seventh, CONTACTOUT_CACHE_HITS, is not -
+# and the reason is not that it lives somewhere else.
+#
+# THERE IS NO CONTACTOUT CACHE. This comment used to say the count was
+# "tracked separately at the call site in src/providers/contactout.py".
+# Measured 2026-09-17: `grep -c cache src/providers/contactout.py` returns 0.
+# No cache is read, no cache is written, and no caller has ever passed a
+# number for this parameter. A cache hit is not merely unrecorded here; the
+# event it counts does not occur.
+#
+# So the default is UNKNOWN rather than 0. Zero is a claim - it says a cache
+# was consulted and never answered - and it is indistinguishable in a report
+# from the truth, which is that nothing was consulted at all. A benchmark
+# that read 0 here would compute a CACHE_HIT_RATE of 0% and believe it.
+#
+# `cache_hits` stays as a parameter because a real producer is a small
+# change away (see docs/MEASUREMENT-TRUTH-2026-09-17.md) and passing an int
+# reports that int. What is refused is inventing one.
 
-def counters(records, cache_hits=0):
+UNKNOWN = "UNKNOWN"
+
+
+def counters(records, cache_hits=None):
     """Aggregate the policy's seven counters from a collection of records.
 
     Each escalation carries its WHY: the reason code from the ledger row that
@@ -567,6 +585,11 @@ def counters(records, cache_hits=0):
     is transient (error, timeout, rate limit) - these should never appear
     because may_fall_back refuses them, but the counter makes a violation
     visible rather than silent.
+
+    CONTACTOUT_CACHE_HITS is `UNKNOWN` unless a caller passes a real count.
+    Nothing in this repository produces one: there is no ContactOut cache.
+    See the note above - reporting 0 would be a measurement of something
+    that does not exist.
     """
     contactout_calls = 0
     contactout_confirmed_misses = 0
@@ -608,7 +631,8 @@ def counters(records, cache_hits=0):
 
     return {
         "CONTACTOUT_CALLS": contactout_calls,
-        "CONTACTOUT_CACHE_HITS": cache_hits,
+        "CONTACTOUT_CACHE_HITS": (UNKNOWN if cache_hits is None
+                                  else cache_hits),
         "CONTACTOUT_CONFIRMED_MISSES": contactout_confirmed_misses,
         "CONTACTOUT_ERRORS": contactout_errors,
         "CRAWLER_CALLS": crawler_calls,

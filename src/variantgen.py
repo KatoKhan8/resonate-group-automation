@@ -585,7 +585,18 @@ def _generate_one(approach, node_type, prompt, llm_ask, model,
     from . import lint
 
     prompt_step = "draft" if node_type == "email" else "linkedin_note"
+
+    # WHAT THIS VARIANT COST, ON THE RECORD. This is the largest multiplier in
+    # the model inventory - up to five approaches per generated step - so a
+    # TOKENS_PER_DOMAIN that skipped it would be dominated by calls it could
+    # not see. Recorded around the seam rather than through it because
+    # `llm_ask` is injected: three callers pass a three-argument fake, and
+    # widening the signature would break them for no measurement gain. A fake
+    # reports no `calls`, so `mark`/`record_usage_since` is a no-op there.
+    from . import llm as _llm
+    mark = _llm.usage_mark(model)
     data, attempts, errors = llm_ask(model, prompt_step, prompt)
+    _llm.record_usage_since(rec, prompt_step, model, mark)
     if not data:
         return None
 
