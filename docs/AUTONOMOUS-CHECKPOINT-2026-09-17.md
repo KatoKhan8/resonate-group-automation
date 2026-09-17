@@ -75,7 +75,8 @@ no amount of additional READY inventory changes it.
 the health caveat and chose to proceed.
 
     487 senders now   [2736, 3941]
-    3941              Bernarda Vrbat, goproductivelab.shop, Connected,
+    3941              a Productive human on a secondary sending domain,
+                      Connected,
                       15/day, uncommitted to any other active campaign
     caveat            `health: warming` - warmup on AND zero lifetime sends.
                       `executionguard` gate 4 requires health in (None, "ok"),
