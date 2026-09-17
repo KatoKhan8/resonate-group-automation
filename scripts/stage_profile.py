@@ -42,6 +42,7 @@ not, the gap is reported as unattributed time.
 Median of 3 runs per size.
 """
 import argparse
+import collections
 import json
 import os
 import shutil
@@ -69,6 +70,22 @@ def _fake_resolver(domain):
     domain with Google mail, so the MX screening logic runs without network.
     """
     return ["aspmx.l.google.com", "alt1.aspmx.l.google.com"]
+
+
+# EVERY STAGE BELOW SWALLOWS EXCEPTIONS, AND THAT IS A HAZARD IN A
+# MEASURING INSTRUMENT: a stage that raises for every record does no work and
+# therefore reports a very good time. Calibrated on 2026-09-17 -
+# `qualify.company` and `generate.plan` both ran 20 of 20 synthetic records
+# clean - so the numbers in the baseline are real work. This counter is what
+# keeps that true when something changes: the errors are COUNTED and printed
+# beside each stage, so "fast" and "broken" stop looking alike.
+_ERRORS = collections.Counter()
+_CURRENT_STAGE = [None]
+
+
+def _swallowed(exc=None):
+    """Record that a stage skipped one unit of work."""
+    _ERRORS[_CURRENT_STAGE[0] or "unattributed"] += 1
 
 
 def _memory_mb():
@@ -124,7 +141,13 @@ def _load_config():
 
 
 def _time(fn, runs=RUNS):
-    """Run `fn` multiple times, return (median, all_times, all_results)."""
+    """Run `fn` multiple times, return (median, all_times, all_results).
+
+    Names the running stage so `_swallowed` can attribute a skipped unit of
+    work to it. Without that, a stage that quietly fails for every record is
+    indistinguishable from a stage that is simply fast.
+    """
+    _CURRENT_STAGE[0] = getattr(fn, "__name__", None)
     times = []
     results = []
     for _ in range(runs):
@@ -277,7 +300,7 @@ def measure_stage(size, tmp):
                         if reason:
                             blocked += 1
                     except Exception:
-                        pass
+                        _swallowed()
             # Cache hits = resolved - unique domains resolved
             unique_domains = len(cache)
             cache_hits = max(0, resolved - unique_domains)
@@ -333,7 +356,7 @@ def measure_stage(size, tmp):
                     qualify.company(rec, config)
                     touched += 1
                 except Exception:
-                    pass
+                    _swallowed()
             return {"touched": touched}
 
         median, all_times, results = _time(stage_qualify)
@@ -360,7 +383,7 @@ def measure_stage(size, tmp):
                     touched += 1
                     selected_total += len(sel) if sel else 0
                 except Exception:
-                    pass
+                    _swallowed()
             return {"touched": touched, "selected": selected_total}
 
         median, all_times, results = _time(stage_personas)
@@ -385,7 +408,7 @@ def measure_stage(size, tmp):
                     outstanding = generate.plan(rec, client=config)
                     total_steps += len(outstanding)
                 except Exception:
-                    pass
+                    _swallowed()
             return {"steps": total_steps}
 
         median, all_times, results = _time(stage_generate_plan)
@@ -414,7 +437,7 @@ def measure_stage(size, tmp):
                                 lint.check(rec, key, step)
                                 checks += 1
                             except Exception:
-                                pass
+                                _swallowed()
             return {"checks": checks}
 
         median, all_times, results = _time(stage_lint)
@@ -478,7 +501,7 @@ def measure_stage(size, tmp):
                             mx.for_domain(domain, config, cache=cache,
                                           save=False, resolver=_fake_resolver)
                         except Exception:
-                            pass
+                            _swallowed()
             # verification plan
             policy = verification.policy_for(config)
             for rec in recs:
@@ -490,7 +513,7 @@ def measure_stage(size, tmp):
                     try:
                         qualify.company(rec, config)
                     except Exception:
-                        pass
+                        _swallowed()
             # personas
             for rec in recs:
                 if rec.get("state") not in ("dropped", "pushed"):
@@ -498,14 +521,14 @@ def measure_stage(size, tmp):
                         personas.select(rec, config)
                         personas.export(rec)
                     except Exception:
-                        pass
+                        _swallowed()
             # generate plan
             for rec in recs:
                 if rec.get("state") not in ("dropped", "pushed"):
                     try:
                         generate.plan(rec, client=config)
                     except Exception:
-                        pass
+                        _swallowed()
             # lint
             for rec in recs:
                 for contact in (rec.get("contacts") or []):
@@ -518,7 +541,7 @@ def measure_stage(size, tmp):
                             try:
                                 lint.check(rec, key, step)
                             except Exception:
-                                pass
+                                _swallowed()
             return {}
 
         total_median, total_all, _ = _time(full_pipeline)
@@ -534,9 +557,17 @@ def measure_stage(size, tmp):
             "stages_sum_s": round(stage_total, 6),
             "total_pipeline_s": round(total_median, 6),
             "total_all_runs": [round(t, 6) for t in total_all],
-            "unattributed_s": round(max(0, total_median - stage_total), 6),
+            # SIGNED, not clamped. `max(0, ...)` reported 0.0% while
+            # stages_sum EXCEEDED total_pipeline by 10-21% at every size -
+            # which is the instrument saying "all time accounted for" about
+            # two numbers that disagree. They disagree because
+            # `full_pipeline` re-runs a SUBSET of the stages with caches
+            # already warm, so it is not the same workload as their sum and
+            # the difference is not "unattributed time" in either direction.
+            "stage_errors": dict(_ERRORS),
+            "unattributed_s": round(total_median - stage_total, 6),
             "unattributed_pct": round(
-                max(0, total_median - stage_total)
+                (total_median - stage_total)
                 / max(total_median, 1e-9) * 100, 1),
         }
 
@@ -590,10 +621,11 @@ def run_profile(sizes=DEFAULT_SIZES, runs=RUNS):
         final["total_pipeline_s"] = statistics.median(total_times)
         final["total_all_runs"] = total_times
         final["runs"] = runs
-        unattr = max(0, final["total_pipeline_s"] - final["stages_sum_s"])
+        unattr = final["total_pipeline_s"] - final["stages_sum_s"]
         final["unattributed_s"] = round(unattr, 6)
         final["unattributed_pct"] = round(
             unattr / max(final["total_pipeline_s"], 1e-9) * 100, 1)
+        final["stage_errors"] = dict(_ERRORS)
 
         results.append(final)
 

@@ -131,12 +131,39 @@ Ten stages, at 50, 500 and 5,000 synthetic records:
     store_save                x5.6    LINEAR
 
 **Interpretation:** The super-linear scaling at 50→500 is a fixed-overhead
-effect. At 50 records, the per-stage fixed costs (config loading, cache
-initialisation, Python import overhead) dominate. By 500 records, the
-variable cost per record takes over and scaling is linear or better. The
-500→5000 transition confirms: x10 records → x5.3 time, which is sub-linear.
-**No stage shows quadratic or worse scaling.** The pipeline is O(N) with a
-significant fixed overhead.
+effect. At 50 records the per-stage fixed costs (config loading, cache
+initialisation, import overhead) dominate; by 500 the variable cost per
+record takes over and scaling is linear or better. The 500→5,000 transition
+agrees: x10 records for x5.3 time.
+
+**CORRECTED ON REVIEW — THE "NO QUADRATIC SCALING" CONCLUSION WAS WRONG, AND
+IN THE DIRECTION THAT WOULD HAVE CANCELLED THE STORAGE WORK.**
+
+This harness calls `store.save()` ONCE per pass. **The pipeline calls it
+every five records.** So `store_save x5.6 LINEAR` above is a true statement
+about one whole-file write - which is of course linear in file size - and
+not about what a pass costs. A pass performs N/5 of those writes, each O(N),
+and that product is quadratic. `scripts/store_write_profile.py` measures the
+real thing directly:
+
+    RECORDS  CHECKPOINTS  WRITE_TIME  MB_WRITTEN  AMPLIFICATION
+        500          100      3.40 s        43.6       492.4x
+       5000         1000    211.72 s      4369.1      4918.9x
+
+x10 records, x62 time, x100 bytes. Persistence is quadratic and remains the
+number one bottleneck at the target scale. **Read the two documents together:
+this one ranks the stages of a single pass; that one measures what repeating
+the persistence step costs.** The 1.30s `store_save` figure below is one
+write of a 21 MB file, not a pass.
+
+A second correction: `unattributed` was computed as
+`max(0, total - stages_sum)` and printed 0.0% at every size while
+`stages_sum` EXCEEDED `total_pipeline` by 10-21%. That is an instrument
+reporting "all time accounted for" about two numbers that disagree. They
+disagree because `full_pipeline` re-runs a SUBSET of the stages with caches
+already warm, so it is not the same workload as their sum. The gap is now
+reported SIGNED (-17.0% at 50 records) and the two numbers are not to be
+read as a conservation check.
 
 ## Top 5 bottlenecks ranked by measured seconds at 5,000 records
 
@@ -145,7 +172,7 @@ significant fixed overhead.
 | 1 | generate_plan | 4.82s | 0.96 | `generate.plan()` iterates every contact × every cadence step, building the LLM call list. 13,806 steps planned at 5,000 records. |
 | 2 | icp_qualify | 4.54s | 0.91 | `qualify.company()` runs the full ICP fingerprint comparison per record. Each comparison touches evidence scoring, contradiction detection, and dimension matching. |
 | 3 | personas | 3.76s | 0.75 | `personas.select()` + `export()` walks every contact, scores them against the persona model, and writes the selection. |
-| 4 | store_save | 1.30s | 0.26 | One `store.save()` writes 53.7 MB for one record change. CHECKPOINT_EVERY=5 means N/5 full-file writes per pass. |
+| 4 | store_save | 1.30s | 0.26 | ONE `store.save()` of a 21 MB file. A PASS does N/5 of these - 1,000 at 5,000 records, 4.4 GB and 211 s. This row understates it by three orders of magnitude; see the correction above. |
 | 5 | lint | 0.62s | 0.12 | `lint.check()` runs per cadence step. At 5,000 records with ~2 contacts each and ~6 steps per contact, that is ~60,000 lint checks. |
 
 **Together, the top 3 (generate_plan + icp_qualify + personas) account for
