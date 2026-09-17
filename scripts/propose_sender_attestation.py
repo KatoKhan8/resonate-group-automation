@@ -136,6 +136,7 @@ def build():
             "health": (account or {}).get("health"),
             "lifetime": row.get("emails_sent_count"),
             "bounced": row.get("bounced_count"),
+            "signature": h(row.get("email_signature")),
         })
         if str(row.get("status")) == "Connected":
             entry["connected"] += 1
@@ -146,7 +147,19 @@ def build():
         elif so.resolve_owner(account, rows):
             entry["already_attested"] += 1
 
+    # WHICH SIGNATURE BLOCK EACH NAME SENDS UNDER.
+    #
+    # The provider publishes `email_signature` on every inbox, and measured on
+    # 2026-09-18 it maps ONE-TO-ONE onto display name for ten of the twelve
+    # names in this estate: each human's inboxes all carry that human's
+    # signature and nobody else's. It therefore DISCRIMINATES, which is what
+    # makes it evidence rather than decoration - an estate-wide template
+    # shared by everyone would say nothing about anybody.
+    signatures = {name: sorted({i["signature"] for i in entry["inboxes"]})
+                  for name, entry in groups.items()}
+
     return {"groups": groups, "canonical_humans": humans,
+            "signatures": signatures,
             "near_duplicates": near_duplicates(
                 [n.lower() for n in groups if n])}
 
@@ -178,7 +191,31 @@ def main(argv=None):
             print(f"    {h(left)} ({len(groups.get(left, {}).get('inboxes', []) or groups.get(left.title(), {}).get('inboxes', []) or [])} inboxes)"
                   f"  vs  {h(right)}")
             print(f"      one edit apart. One person typed twice, or two "
-                  f"colleagues. Reading the provider does not settle it.")
+                  f"colleagues. The NAME does not settle it.")
+            # But the signature might, and it is published per inbox.
+            sigs = data.get("signatures") or {}
+            left_sigs = set(sigs.get(left) or sigs.get(left.title()) or [])
+            right_sigs = set(sigs.get(right) or sigs.get(right.title()) or [])
+            shared = sorted(x for x in (left_sigs & right_sigs) if x)
+            others = sum(1 for name, ss in sigs.items()
+                         if name.strip().lower() not in (left, right)
+                         and shared and set(ss) & set(shared))
+            if shared and not others:
+                print(f"      EVIDENCE: both send under the SAME signature "
+                      f"block ({shared[0]}), and NO OTHER name in this estate "
+                      f"uses it. Every other human here has a signature of "
+                      f"their own, so this field discriminates - it is not a "
+                      f"shared template. That is consistent with one person "
+                      f"whose name was typed two ways, and it is still "
+                      f"EVIDENCE rather than proof: a team can share a block.")
+            elif shared:
+                print(f"      NOT EVIDENCE EITHER WAY: they share signature "
+                      f"{shared[0]}, but {others} other name(s) use it too, "
+                      f"so it is a template and says nothing about identity.")
+            else:
+                print(f"      They send under DIFFERENT signature blocks, "
+                      f"which points away from one person - though a person "
+                      f"can legitimately run two.")
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
