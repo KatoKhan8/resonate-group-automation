@@ -154,7 +154,7 @@ Run from Claude's worktree where `work/queue.jsonl` exists:
 ## RESULT BLOCK
 
     STATUS: DONE
-    COMMIT SHA: 2a8ec8f2
+    COMMIT SHA: 1a6e26f9
     TESTS: 180 pass (153 existing + 27 new), 0 fail, 0 regressions
     FILES CHANGED:
       - src/geo.py (ISO lookup, office parsing, city fallback)
