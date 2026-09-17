@@ -715,6 +715,38 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     # and the operator has one morning.
     opened = actionledger.accounts_opened_on(today, workspace=tenant,
                                              rows=ledger)
+
+    # AN ACCOUNT THIS CAMPAIGN ALREADY COMMITTED TO TODAY IS NOT A NEW ONE.
+    #
+    # `accounts_opened_on` counts only the states that mean "we may have
+    # reached somebody" - sent, attempted, unresolved - which is right for the
+    # question it was written to answer. It makes a RETRY of the same campaign
+    # look like a fresh opening: campaign 487 authorized all ten of its
+    # accounts at 08:07, its keys were later settled `abandoned` because
+    # nothing was sent, and the next authorization of THE SAME TEN PEOPLE then
+    # asked to open ten accounts again and was refused at the sixth.
+    #
+    # Those accounts are not new. They are enrolled at the provider right now,
+    # under a campaign the operator approved, and re-authorizing them adds no
+    # exposure that was not already decided. The ceiling exists so the pilot
+    # opens few companies a day and somebody can watch the replies - not to
+    # make an approved campaign unrestartable.
+    #
+    # THIS CANNOT BE USED TO OPEN A NEW ACCOUNT. It exempts an account only
+    # when this ledger already holds a row for it TODAY under THIS canonical
+    # campaign, in any state. A company we have not committed to today has no
+    # such row, counts, and is refused at the ceiling exactly as before.
+    campaign_id = str(campaign.get("campaign_id") or "")
+    committed_today = {
+        str(row.get("rec_id") or "")
+        for row in ledger
+        if isinstance(row, dict)
+        and str(row.get("campaign_id") or "") == campaign_id
+        and str(row.get("at") or "")[:10] == str(today)[:10]
+        and (not tenant or str(row.get("workspace") or "") == str(tenant))
+    }
+    opened = set(opened) | (committed_today - {""})
+
     if str(rec.get("id") or "") in opened:
         not_checking["new_accounts_per_day"] = (
             f"account {rec.get('id')!r} was already opened today, so this "

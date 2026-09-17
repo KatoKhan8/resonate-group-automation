@@ -313,6 +313,34 @@ def reserve(key, *, channel, workspace, campaign_id, sender_id, rec_id,
             # open costs nothing and must not be refused at the ceiling.
             opened = accounts_opened_on(row["at"], workspace=workspace,
                                         rows=rows)
+            # AND AN ACCOUNT THIS CAMPAIGN ALREADY COMMITTED TO TODAY.
+            #
+            # `accounts_opened_on` counts only the states that mean somebody
+            # may have been reached. That makes a RETRY of the same campaign
+            # look like a fresh opening: campaign 487 authorized all ten of its
+            # accounts, its keys were settled `abandoned` because nothing was
+            # sent, and the next authorization of THE SAME TEN PEOPLE asked to
+            # open ten accounts again and was refused at the sixth. Those
+            # companies are not new - they are enrolled at the provider under a
+            # campaign the operator approved, and re-authorizing them commits
+            # to nobody new.
+            #
+            # `executionguard` makes the same exemption at gate 5. It has to be
+            # made in BOTH places or they answer the same question differently,
+            # and the one inside the lock is the one that decides.
+            #
+            # IT CANNOT OPEN A NEW ACCOUNT: the row must already exist TODAY,
+            # in this workspace, under THIS campaign. A company we have not
+            # committed to today has no such row and is refused exactly as
+            # before.
+            day = str(row["at"])[:10]
+            opened = set(opened) | {
+                str(r.get("rec_id") or "") for r in rows
+                if isinstance(r, dict)
+                and str(r.get("campaign_id") or "") == str(campaign_id)
+                and str(r.get("workspace") or "") == str(workspace)
+                and str(r.get("at") or "")[:10] == day
+                and r.get("rec_id")}
             if (str(rec_id) not in opened
                     and len(opened) + 1 > int(cap_new_accounts)):
                 raise CapReached(

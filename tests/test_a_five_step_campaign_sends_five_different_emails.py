@@ -21,6 +21,33 @@ WHAT `wait_in_days` MEANS was measured, not assumed - see the note above
 `_sequence_steps`. It is the wait AFTER the step that declares it, read off
 381 discriminating scheduled-email pairs on the client's own live campaign
 352 on 2026-09-13.
+
+THE SHAPE OF THE FIVE STEPS CHANGED ON 2026-09-16 AND THIS MODULE HAD NOT
+FOLLOWED. It declared five steps each owning its own `{SUBJECT_n}` and none
+of them a thread reply - the pre-2026-09-16 shape - so every test in it hit
+the threading guard in `_sequence_steps` instead of the property it was
+written to assert. The guard was right and the fixture was wrong.
+
+THE INVARIANT THE FIXTURE NOW ENCODES: only the opener owns a subject.
+
+    em1   NEW EMAIL   thread_reply false, subject `{SUBJECT_1}`, body_1
+    em2   FOLLOW-UP   thread_reply TRUE,  subject `{SUBJECT_1}`, body_2
+    em3   FOLLOW-UP   thread_reply TRUE,  subject `{SUBJECT_1}`, body_3
+    em4   FOLLOW-UP   thread_reply TRUE,  subject `{SUBJECT_1}`, body_4
+    em5   FOLLOW-UP   thread_reply TRUE,  subject `{SUBJECT_1}`, body_5
+
+There is exactly ONE subject variable per lead. No `subject_2`..`subject_5`
+is generated, approved, or sent - the provider's own thread-reply mechanism
+continues the thread and prepends "Re:" itself, measured by TASK-159 across
+153 follow-ups, so nothing here writes a "Re:" of its own. Five DISTINCT
+BODIES is still the claim; five distinct subjects never was.
+
+FIVE IS NOT SPECIAL AND NEITHER IS THREE. Three steps is the production-safe
+CONTROL, not evidence that three touches is optimal; the number of touches is
+a parameter this engine has to hold at whatever value a future campaign picks.
+`tests/test_a_threaded_sequence_is_threaded_at_every_length.py` is the proof
+that the invariant does not depend on the length, and names the two lengths
+at which the engine does not yet hold it.
 """
 import unittest
 
@@ -37,19 +64,38 @@ CID = "camp-five-step"
 # the code unconditionally.
 WAITS = (3, 4, 4, 9)
 
+# THE OPENER'S SUBJECT, AND THERE IS NO OTHER ONE. Every step references
+# `{SUBJECT_1}`; the opener sends it, and the follow-ups are thread replies
+# so the provider continues the original thread. Written out five times
+# rather than looped, because the thing being asserted is that all five
+# strings are the SAME string.
+OPENER_SUBJECT = "{SUBJECT_1}"
+
+# The last wait is 1, NOT 0. `wait_in_days` is the gap until the next step,
+# so on the final step nothing reads it - but 0 is not inert at the provider:
+# campaign 485 was created and `set_sequence` raised, leaving it at 0 steps.
+# Both shipped client files carry 1 on their last step for this reason.
+FINAL_WAIT = 1
+
 SEQUENCE_CONFIG = {
     "title": "Resonate generated cadence",
+    # One opener and four follow-ups. The pattern is per-position in cadence
+    # order and it is what makes steps 2-5 thread replies rather than five
+    # cold opens - the ladder's own default for this cadence is
+    # (False, True, False, True, False), which would put steps 3 and 5 back
+    # in the shape the invariant forbids.
+    "thread_reply_pattern": [False, True, True, True, True],
     "steps": {
-        "em1": {"order": 1, "subject": "{SUBJECT_1}",
+        "em1": {"order": 1, "subject": OPENER_SUBJECT,
                 "body": "<p>{BODY_1}</p>", "wait_in_days": 3},
-        "em2": {"order": 2, "subject": "{SUBJECT_2}",
+        "em2": {"order": 2, "subject": OPENER_SUBJECT,
                 "body": "<p>{BODY_2}</p>", "wait_in_days": 4},
-        "em3": {"order": 3, "subject": "{SUBJECT_3}",
+        "em3": {"order": 3, "subject": OPENER_SUBJECT,
                 "body": "<p>{BODY_3}</p>", "wait_in_days": 4},
-        "em4": {"order": 4, "subject": "{SUBJECT_4}",
+        "em4": {"order": 4, "subject": OPENER_SUBJECT,
                 "body": "<p>{BODY_4}</p>", "wait_in_days": 9},
-        "em5": {"order": 5, "subject": "{SUBJECT_5}",
-                "body": "<p>{BODY_5}</p>", "wait_in_days": 0},
+        "em5": {"order": 5, "subject": OPENER_SUBJECT,
+                "body": "<p>{BODY_5}</p>", "wait_in_days": FINAL_WAIT},
     },
 }
 
@@ -65,11 +111,21 @@ CONFIG = {
 
 
 def approved(step_key, n):
-    return {"channel": "email",
+    """One approved step, stamped over the words it is about to ship.
+
+    THE STAMP COVERS THE WORDS. A literal `fp-{n}` was enough while staging
+    checked only that an approval EXISTED; `bisonfactory._certified_copy`
+    hashes the words it is about to stage and compares, so a stamp that
+    covers nothing is refused - which is the point of the stamp.
+    """
+    from src import approval as _approval
+
+    step = {"channel": "email",
             "subject": f"subject for {step_key}",
-            "body": f"<p>body for {step_key}</p>",
-            "approval": {"by": "operator", "at": "2026-09-13T00:00:00Z",
-                         "fingerprint": f"fp-{n}"}}
+            "body": f"<p>body for {step_key}</p>"}
+    step["approval"] = {"by": "operator", "at": "2026-09-13T00:00:00Z",
+                        "fingerprint": _approval.fingerprint(step)}
+    return step
 
 
 def record(rid, email, first, keys=("em1", "em2", "em3", "em4", "em5")):
@@ -101,6 +157,53 @@ class TheSequenceReproducesTheCadence(unittest.TestCase):
         """Four gaps for five steps. The fifth wait has no successor."""
         steps = self.steps()
         self.assertEqual(tuple(s["wait_in_days"] for s in steps[:-1]), WAITS)
+
+    def test_the_last_wait_is_not_zero(self):
+        """Inert is not the same as accepted. 485 was created with 0 steps."""
+        steps = self.steps()
+        self.assertNotEqual(steps[-1]["wait_in_days"], 0)
+        self.assertEqual(steps[-1]["wait_in_days"], FINAL_WAIT)
+
+    def test_only_the_opener_owns_a_subject(self):
+        """Five steps, one subject. `{SUBJECT_2}`..`{SUBJECT_5}` never exist.
+
+        Not "the follow-ups carry no subject" - they carry one, because the
+        flag is the mechanism and the provider stores the field either way.
+        They carry the OPENER'S subject, so there is exactly one subject
+        variable per lead and nothing numbered past the first to generate,
+        approve or accidentally send.
+        """
+        steps = self.steps()
+        self.assertEqual([s["email_subject"] for s in steps],
+                         [OPENER_SUBJECT] * 5)
+        self.assertEqual({s["email_subject"] for s in steps},
+                         {OPENER_SUBJECT})
+        for n in range(2, 6):
+            for step in steps:
+                self.assertNotIn(f"{{SUBJECT_{n}}}", step["email_subject"])
+
+    def test_every_step_after_the_opener_is_a_thread_reply(self):
+        """The opener opens; the other four continue what it opened."""
+        steps = self.steps()
+        self.assertFalse(steps[0]["thread_reply"])
+        self.assertEqual([s["thread_reply"] for s in steps[1:]], [True] * 4)
+
+    def test_nothing_here_writes_its_own_re_prefix(self):
+        """EmailBison prepends "Re:" itself - TASK-159, 153 follow-ups.
+
+        A hand-built "Re:" chain is simulated threading, and the read-back
+        comparator would call the provider's own prefix drift forever.
+        """
+        for step in self.steps():
+            self.assertFalse(step["email_subject"].lower().startswith("re:"),
+                             f"step {step['order']} writes its own Re:")
+
+    def test_each_step_carries_its_own_numbered_body(self):
+        """Five distinct bodies is the claim. Five subjects never was."""
+        steps = self.steps()
+        for n, step in enumerate(steps, start=1):
+            self.assertIn(f"{{BODY_{n}}}", step["email_body"])
+        self.assertEqual(len({s["email_body"] for s in steps}), 5)
 
     def test_a_declared_delay_that_contradicts_the_cadence_is_refused(self):
         """The delay is declared, so the check is what makes it true."""
@@ -166,45 +269,109 @@ class TheSequenceReproducesTheCadence(unittest.TestCase):
         self.assertIn("MAX_SEQUENCE_STEPS", str(caught.exception))
 
 
-class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):
-    """The config Productive actually runs, against the cadence it names.
+# The CONTROL cadence the live campaign runs: three email touches on days 1,
+# 4 and 8, so the gaps are 3 and 4. Written out here rather than read off the
+# campaign row, for two reasons. A test must not read live client state, and
+# a test that derives its expectation the same way the code does agrees with
+# the code unconditionally - the point of writing the days down is that
+# `productive.yaml`'s declared waits are checked AGAINST them.
+CONTROL_DAYS = (1, 4, 8)
+CONTROL_CADENCE = tuple(
+    {"key": f"em{n}", "day": day, "channel": "email", "generated": True}
+    for n, day in enumerate(CONTROL_DAYS, start=1))
+CONTROL_WAITS = (3, 4)
 
-    Everything above tests the checker with fixtures. This tests the two real
-    files, which is the pair that drifts: `email_sequence` lives in
-    `config/clients/productive.yaml` and the cadence lives in
-    `src/cadencelibrary.py`, and editing either one without the other is how
-    a campaign ends up sending on a schedule nobody described.
+
+class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):
+    """The config Productive actually runs, against the cadence it runs it on.
+
+    Everything above tests the checker with fixtures. This tests the real
+    file, which is the half that drifts: `email_sequence` lives in
+    `config/clients/productive.yaml` and the cadence lives either in
+    `src/cadencelibrary.py` or on the campaign row, and editing one without
+    the other is how a campaign ends up sending on a schedule nobody
+    described.
+
+    WHAT CHANGED ON 2026-09-16 AND WHY THIS CLASS LOOKS DIFFERENT. This class
+    used to assert that `productive.yaml` builds FIVE steps against the
+    library cadence its `cadence:` line names. It does not any more, and that
+    is deliberate rather than drift: the operator approved a three-step
+    CONTROL, `email_sequence` was cut to em1-em3, and the three-step cadence
+    travels on the campaign row as `cadence_steps` - which is how
+    `cadence.steps_for` resolves it in production. The client-level pair no
+    longer agrees, and the last test in this class is the one that says so:
+    the factory REFUSES that pair rather than staging five provider steps
+    against three approved ones. It is refused for the same reason campaign
+    484 was created wrong - five steps, three approvals - and refusing is the
+    fix that episode earned.
+
+    Three steps is the production-safe CONTROL, not a claim that three is the
+    right number. Nothing in this class asserts the number; it asserts that
+    whatever number is declared reproduces the cadence it is checked against.
     """
 
-    def test_productive_builds_five_steps_against_its_own_cadence(self):
-        from src import cadence, clients
+    def shipped(self):
+        from src import clients
 
-        config = clients.load("productive")
-        steps = bisonfactory._sequence_steps(
-            config.get("email_sequence"),
-            cadence.steps_for({"client": "productive"}, config=config))
+        return clients.load("productive").get("email_sequence")
+
+    def test_productive_builds_its_control_against_the_control_cadence(self):
+        steps = bisonfactory._sequence_steps(self.shipped(), CONTROL_CADENCE)
         self.assertEqual([s["step_key"] for s in steps],
-                         ["em1", "em2", "em3", "em4", "em5"])
-        self.assertEqual(tuple(s["wait_in_days"] for s in steps[:-1]), WAITS)
-        # The merge field and the variable it resolves to are the same
-        # number. A template asking for `{SUBJECT_3}` while the lead carries
-        # `subject_2` renders nothing, and every readback still agrees.
+                         ["em1", "em2", "em3"])
+        self.assertEqual(tuple(s["wait_in_days"] for s in steps[:-1]),
+                         CONTROL_WAITS)
+        self.assertNotEqual(steps[-1]["wait_in_days"], 0)
+
+    def test_the_shipped_control_owns_exactly_one_subject(self):
+        """The live sequence, read off the file the live campaign was built
+        from. A template asking for `{SUBJECT_3}` while the lead carries no
+        `subject_3` renders nothing, and every readback still agrees.
+        """
+        steps = bisonfactory._sequence_steps(self.shipped(), CONTROL_CADENCE)
+        self.assertEqual({s["email_subject"] for s in steps},
+                         {OPENER_SUBJECT})
+        self.assertFalse(steps[0]["thread_reply"])
+        self.assertTrue(all(s["thread_reply"] for s in steps[1:]))
+        for step in steps:
+            self.assertFalse(
+                step["email_subject"].lower().startswith("re:"),
+                "the provider prepends Re: itself; a hand-built one is "
+                "simulated threading")
         for n, step in enumerate(steps, start=1):
-            self.assertIn(f"{{SUBJECT_{n}}}", step["email_subject"])
             self.assertIn(f"{{BODY_{n}}}", step["email_body"])
 
     def test_every_merge_field_the_sequence_uses_is_declared_at_the_provider(self):
         """A variable the workspace does not hold is a 422 mid-batch."""
-        from src import cadence, clients
         from src.providers.bison import LEAD_VARIABLES
 
-        config = clients.load("productive")
-        steps = bisonfactory._sequence_steps(
-            config.get("email_sequence"),
-            cadence.steps_for({"client": "productive"}, config=config))
+        steps = bisonfactory._sequence_steps(self.shipped(), CONTROL_CADENCE)
+        # ONE subject variable, however many steps there are.
+        self.assertIn("subject_1", LEAD_VARIABLES)
         for n in range(1, len(steps) + 1):
-            self.assertIn(f"subject_{n}", LEAD_VARIABLES)
             self.assertIn(f"body_{n}", LEAD_VARIABLES)
+
+    def test_the_three_step_control_refuses_the_five_step_library_cadence(self):
+        """The drift this class exists to catch, caught by a refusal.
+
+        `productive.yaml` still names `productive_li_heavy_v1`, whose email
+        half is five steps, because that is the fallback for a campaign that
+        carries no cadence of its own. The CONTROL is three. Staging a
+        campaign with no `cadence_steps` override must therefore REFUSE, not
+        quietly write five provider steps with copy for three - that is
+        campaign 484, where `_ensure_leads` caught it one gate later and all
+        ten contacts were rejected.
+        """
+        from src import cadence, clients
+
+        config = clients.load("productive")
+        library = cadence.steps_for({"client": "productive"}, config=config)
+        email_keys = [s.get("key") for s in library
+                      if s.get("channel") == "email"]
+        self.assertEqual(email_keys, ["em1", "em2", "em3", "em4", "em5"])
+        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+            bisonfactory._sequence_steps(self.shipped(), library)
+        self.assertIn("em4", str(caught.exception))
 
 
 class TheWordsTravelWithThePerson(QueueTest):
@@ -240,22 +407,54 @@ class TheWordsTravelWithThePerson(QueueTest):
         self.assertEqual(len(held), 5)
         self.assertEqual([s["order"] for s in held], [1, 2, 3, 4, 5])
         self.assertEqual([s["email_subject"] for s in held],
-                         [f"{{SUBJECT_{n}}}" for n in range(1, 6)])
+                         [OPENER_SUBJECT] * 5)
         self.assertEqual(tuple(s["wait_in_days"] for s in held[:-1]), WAITS)
+        self.assertNotEqual(held[-1]["wait_in_days"], 0)
+
+    def test_the_provider_holds_one_opener_and_four_thread_replies(self):
+        """The flag reaches the wire, not just the plan.
+
+        The threading is the provider's mechanism, so a sequence that was
+        threaded in `_sequence_steps` and arrived flat is five cold opens to
+        a real person - and the read-back would agree it was correct.
+        """
+        report = self.stage()
+        held = self.bison.sequence_steps(report["provider"]["campaign_id"])
+        self.assertEqual([bool(s.get("thread_reply")) for s in held],
+                         [False, True, True, True, True])
 
     def test_every_step_gets_its_own_words(self):
-        """`{SUBJECT_3}` resolves to the third step's approved subject.
+        """`{BODY_3}` resolves to the third step's approved body.
 
         Not to the first one's. Matching by position instead of by cadence
         key is the mistake that would put a day-twelve approval in the
         day-one slot the first time somebody approved out of order.
+
+        The subject is not in this list because there is only one of them:
+        see the test below.
         """
         self.stage()
         lead = next(iter(self.bison.leads.values()))
         held = self.bison.variables_of(lead)
         for n, key in enumerate(("em1", "em2", "em3", "em4", "em5"), start=1):
-            self.assertEqual(held[f"subject_{n}"], f"subject for {key}")
             self.assertEqual(held[f"body_{n}"], f"<p>body for {key}</p>")
+        self.assertEqual(len({held[f"body_{n}"] for n in range(1, 6)}), 5)
+
+    def test_the_lead_carries_one_subject_and_no_numbered_follow_up_one(self):
+        """`subject_2`..`subject_5` are never generated for a threaded lead.
+
+        `bison._variables` drops empty values, so they are absent rather
+        than blank. The absence is the point: there is no second subject to
+        approve, to send, or to leave behind on the lead when the sequence
+        changes length.
+        """
+        self.stage()
+        held = self.bison.variables_of(next(iter(self.bison.leads.values())))
+        self.assertEqual(held["subject_1"], "subject for em1")
+        for n in range(2, 6):
+            self.assertFalse(held.get(f"subject_{n}"),
+                             f"subject_{n} reached the provider with "
+                             f"{held.get(f'subject_{n}')!r}")
 
     def test_a_multi_step_lead_carries_no_unnumbered_copy(self):
         """One shape per campaign. A variable no template reads is noise."""

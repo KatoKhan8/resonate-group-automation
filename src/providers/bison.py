@@ -426,6 +426,20 @@ WRITE_ROUTES = (
     "/campaigns/{campaign_id}/leads/stop-future-emails",   # stop ONE person
     "/campaigns/{campaign_id}/schedule",            # when it may send
     "/campaigns/{campaign_id}/attach-sender-emails",  # which inboxes
+    # REMOVING AN INBOX IS A STOPPING VERB, and that is why it belongs here.
+    # This tuple admits two kinds only, and detaching a sender is squarely the
+    # second: a campaign that sends from one fewer mailbox reaches NOBODY it
+    # would not otherwise have reached. It cannot add exposure.
+    #
+    # DOCUMENTED, NOT GUESSED. `docs/BISON-API-CAPABILITY-MAP-2026-09-14.md`
+    # and `docs/BISON-API-ROUTE-EVIDENCE-2026-09-15.md` both already listed
+    # this route as "DOCS | not probed"; the vendor's
+    # campaigns/adding-and-removing-sender-emails page specifies it, and
+    # bcharleson/emailbison-cli implements it as DELETE independently. This
+    # module's own history is three wrong conclusions that a route did not
+    # exist, each reached by guessing a URL and reading the failure as
+    # absence - so it is added on documentation, not on a probe.
+    "/campaigns/{campaign_id}/remove-sender-emails",  # which inboxes, fewer
     "/leads",                                       # create a lead
     # UPDATE ONE LEAD'S FIELDS. Staging, and of the narrowest kind: the only
     # caller is `update_lead`, which rewrites the custom variables carrying
@@ -501,6 +515,11 @@ def _patch(path, body):
 def _put(path, body):
     _allow("PUT", path)
     return request("PUT", base() + path, _json_headers(), body)
+
+
+def _delete(path, body):
+    _allow("DELETE", path)
+    return request("DELETE", base() + path, _json_headers(), body)
 
 
 def _json_headers():
@@ -1131,6 +1150,50 @@ def attach_senders(campaign_id, sender_email_ids):
         raise ProviderError(
             f"emailbison attach_senders: the provider answered {status} but "
             f"sender(s) {missing} are not on campaign {campaign_id}. This "
+            f"route reports success for a write it did not make")
+    return {"campaign_id": campaign_id, "senders": bound}
+
+
+REMOVE_SENDERS_PATH = "/campaigns/{campaign_id}/remove-sender-emails"
+
+
+def detach_senders(campaign_id, sender_email_ids):
+    """Unbind inboxes from a campaign, and read back who is left.
+
+    SUBTRACTIVE, NOT A SET. The vendor route removes the ids you name and
+    leaves the rest, which is the mirror of `attach_senders` - measured today,
+    attach ADDS: posting `[2736]` to a campaign holding `[2736, 3941]` left it
+    holding both. So "this campaign now sends from exactly these inboxes" is
+    reached by naming what to remove, never by naming what should remain.
+
+    THE MEMBERSHIP READ IS THE ORACLE, for the same reason it is on attach:
+    this API reports success for writes it did not make. This raises unless
+    every sender asked for is actually GONE afterwards.
+
+    DELETE FIRST, POST AS THE DOCUMENTED FALLBACK. The vendor's own page
+    specifies DELETE in the endpoint block and POST in the curl example
+    beneath it; an independent CLI implementation says DELETE. So DELETE is
+    tried first and a 405 - the one status that means "wrong method" rather
+    than "wrong request" - falls back to POST rather than being read as the
+    route being absent. Any other failure raises.
+    """
+    wanted = [int(i) for i in (sender_email_ids or [])]
+    if not wanted:
+        raise ProviderError("emailbison detach_senders: no sender ids given")
+    path = REMOVE_SENDERS_PATH.format(campaign_id=campaign_id)
+    body = {"sender_email_ids": wanted}
+    status, data = _delete(path, body)
+    if status == 405:
+        status, data = _post(path, body)
+    if not ok(status):
+        raise ProviderError(
+            f"emailbison detach_senders: -> {status} {_message(data)}")
+    bound = campaign_senders(campaign_id)
+    still = [i for i in wanted if i in bound]
+    if still:
+        raise ProviderError(
+            f"emailbison detach_senders: the provider answered {status} but "
+            f"sender(s) {still} are STILL on campaign {campaign_id}. This "
             f"route reports success for a write it did not make")
     return {"campaign_id": campaign_id, "senders": bound}
 
