@@ -45,7 +45,17 @@ SYSTEM = (
     "answer is worth more than a plausible-sounding guess."
 )
 
-QUESTION = """Here are four functions from a live outreach system.
+# ONE FUNCTION PER CALL, AND THE REASON IS MEASURED. All four at once is an
+# 11.5k-character prompt, and GLM-5.3 spends most of its output budget on
+# reasoning tokens - a two-character answer cost 29 completion tokens, 26 of
+# them reasoning. The whole-file prompt exceeded the adapter's 60s per-attempt
+# cap twice: once returning an empty completion with finish_reason="length",
+# once timing out outright. The adapter refused both rather than handing back
+# "" as an answer, which is correct and is also why this is split.
+#
+# Smaller prompts are better auditing anyway: a model asked about one function
+# cannot hedge by talking about a different one.
+QUESTION = """Here is one function from a live outreach system.
 
 `_certified_copy` decides whether one email step's words may be staged to the
 provider. `approve_step` records an operator approval. `_step_copy` is the
@@ -60,78 +70,80 @@ Context you need:
 - The action ledger APPENDS; it never edits history.
 - These run per contact, at staging time and again at activation.
 
-For EACH function, answer:
+Answer:
 1. A concrete defeat, or NO DEFEAT FOUND.
 2. If there is a defeat: the exact steps, and what a prospect would receive.
-3. Which of the four is weakest, and why.
 
-Be brief. No preamble.
+Be brief. No preamble. Under 200 words.
 
---- _certified_copy ---
-{certified}
-
---- approve_step ---
-{approve_step}
-
---- _step_copy ---
-{step_copy}
-
---- _ledger_is_silent ---
-{ledger}
+--- {name} ---
+{source}
 """
 
 
-def build_prompt():
-    return QUESTION.format(
-        certified=inspect.getsource(bisonfactory._certified_copy),
-        approve_step=inspect.getsource(approve.approve_step),
-        step_copy=inspect.getsource(heyreachfactory._step_copy),
-        ledger=inspect.getsource(collision._ledger_is_silent),
-    )
+TARGETS = [
+    ("_certified_copy", bisonfactory._certified_copy),
+    ("approve_step", approve.approve_step),
+    ("_step_copy", heyreachfactory._step_copy),
+    ("_ledger_is_silent", collision._ledger_is_silent),
+]
+
+
+def build_prompt(name, fn):
+    return QUESTION.format(name=name, source=inspect.getsource(fn))
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--live", action="store_true",
                         help="call GLM; omit to print the prompt only")
-    parser.add_argument("--max-tokens", type=int, default=3000)
+    parser.add_argument("--max-tokens", type=int, default=6000)
     args = parser.parse_args(argv)
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     load_env(os.path.join(root, "config", ".env"))
 
-    prompt = build_prompt()
-    print(f"prompt chars: {len(prompt)}")
     if not args.live:
+        for name, fn in TARGETS:
+            print(f"  {name:20s} prompt chars: "
+                  f"{len(build_prompt(name, fn))}")
         print("\nDRY RUN: GLM was not called. Re-run with --live.")
         return 0
 
-    # GLM-5.3 spends most output tokens on reasoning - a two-character answer
-    # cost 29 completion tokens, 26 of them reasoning - so the budget is sized
-    # for the thinking, not the visible answer.
-    result = glm.complete(prompt, system=SYSTEM, max_tokens=args.max_tokens,
-                          timeout=60)
-    print(f"\nmodel     : {result['model']} "
-          f"(requested {result['requested_model']})")
-    print(f"seconds   : {result['seconds']}")
-    print(f"usage     : {result['usage']}")
-    print(f"finish    : {result['finish_reason']}")
-    print("\n" + "=" * 70)
-    print(result["content"])
+    findings = []
+    for name, fn in TARGETS:
+        prompt = build_prompt(name, fn)
+        print(f"\n--- {name} ({len(prompt)} chars) ---")
+        try:
+            result = glm.complete(prompt, system=SYSTEM,
+                                  max_tokens=args.max_tokens, timeout=60)
+        except Exception as exc:
+            print(f"  {type(exc).__name__}: {str(exc)[:140]}")
+            findings.append((name, None, f"{type(exc).__name__}: {exc}"))
+            continue
+        print(f"  {result['model']} {result['seconds']}s "
+              f"{result['usage']}")
+        print(result["content"][:1200])
+        findings.append((name, result, result["content"]))
 
     stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     os.makedirs(os.path.join(root, "docs"), exist_ok=True)
     with open(os.path.join(root, REPORT), "w", encoding="utf-8") as fh:
         fh.write("# GLM safety audit - copy-approval guards\n\n")
-        fh.write(f"Model {result['model']} (requested "
-                 f"{result['requested_model']}), {stamp}.\n"
-                 f"Usage {result['usage']}.\n\n")
+        fh.write(f"{stamp}. One call per function.\n\n")
         fh.write("A SECOND OPINION, NOT A VERDICT. Everything below is a lead "
                  "to check against the code and the tests by hand. A model's "
                  "opinion is evidence to investigate, never a reason to edit "
                  "a safety gate.\n\n---\n\n")
-        fh.write(result["content"])
-        fh.write("\n")
+        for name, result, content in findings:
+            fh.write(f"## {name}\n\n")
+            if result is not None:
+                fh.write(f"`{result['model']}`, {result['seconds']}s, "
+                         f"usage {result['usage']}.\n\n")
+            else:
+                fh.write("The call did not return.\n\n")
+            fh.write(content)
+            fh.write("\n\n")
     print(f"\nwritten to {REPORT}")
     return 0
 
