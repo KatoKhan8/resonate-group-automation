@@ -110,6 +110,11 @@ def main(argv=None):
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--max-tokens", type=int, default=6000)
+    # The adapter clamps this to `glm.GLM_TIMEOUT`, so asking for
+    # more than the ceiling is harmless and asking for less is the
+    # point of the flag. 60 was the ceiling until 2026-09-17 and
+    # both storage calls timed out against it.
+    parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args(argv)
 
     load_env(os.path.join(ROOT, "config", ".env"))
@@ -137,7 +142,7 @@ def main(argv=None):
         print(f"\n--- {name} ({len(prompt)} chars) ---")
         try:
             result = glm.complete(prompt, system=SYSTEM,
-                                  max_tokens=args.max_tokens, timeout=60)
+                                  max_tokens=args.max_tokens, timeout=args.timeout)
         except Exception as exc:
             print(f"  {type(exc).__name__}: {str(exc)[:140]}")
             findings.append((name, None, f"{type(exc).__name__}: {exc}"))

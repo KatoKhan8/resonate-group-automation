@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""Ask Grok, with web search, the provider questions we cannot answer from our
+own estate - and classify every answer.
+
+    py -3 scripts/grok_provider_research.py --list
+    py -3 scripts/grok_provider_research.py --question sender_selection
+    py -3 scripts/grok_provider_research.py --all --live
+
+READ-ONLY with respect to every provider that matters: it calls xAI and
+nothing else. No EmailBison write, no HeyReach write, no canonical state.
+
+## Why these questions and not a general search
+
+Each one is a decision this system is currently blocked on, and each has a
+consequence if it is guessed:
+
+`sender_selection`  If EmailBison picks a sender PER EMAIL from a campaign's
+                    attached pool, then attaching a second inbox means a
+                    prospect can hear from two humans in one thread and
+                    nothing records which. `executionguard`'s arity rule
+                    exists because nobody knows the answer. It is the single
+                    fact standing between campaign 487 and 2,610 emails a day
+                    of measured idle capacity.
+`timezone`          Campaign 487 is scheduled 09:00-17:00 Europe/Zagreb and
+                    its prospects are not in Zagreb. Whether the provider can
+                    send in the RECIPIENT's local hours decides whether that
+                    window is a bug or a constraint.
+`webhooks`          Every send, reply and bounce is currently discovered by
+                    polling on a 300s loop. A webhook would make reply
+                    suppression immediate rather than eventually.
+`bulk`              Ten leads took four provider calls each. The estate holds
+                    550 records.
+`scheduling`        487's ten leads were queued six days out and no route
+                    lists a mailbox's forward book, so the reason is inferred.
+
+## Classification, which is the point of the exercise
+
+Every answer is recorded as one of:
+
+    DOCUMENTED   the vendor's own documentation says it, with a URL
+    OBSERVED     we have seen it in this estate's own provider responses
+    HYPOTHESIS   a plausible reading with no source that settles it
+    UNKNOWN      the question was asked and not answered
+
+**A model answering confidently is not DOCUMENTED.** The prompt demands a
+source URL per claim and anything without one is downgraded here rather than
+by whoever reads the report. TASK-166 measured Grok returning ZERO unsourced
+facts over ten domains with web_search on, so the demand is reasonable - but
+it is checked rather than trusted.
+
+Nothing here may be acted on as provider truth until a readback against our
+own estate agrees with it. An invented capability acted on as real is the
+failure this whole file exists to avoid.
+"""
+
+import argparse
+import datetime
+import json
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+from src.providers import load_env, xai  # noqa: E402
+
+SYSTEM = (
+    "You research vendor API documentation. Answer ONLY from sources you can "
+    "cite with a URL. For every claim, give the URL. If the documentation "
+    "does not say, answer exactly 'NOT DOCUMENTED' for that point rather than "
+    "inferring - an invented capability is worse than an absent one, because "
+    "it will be built on. Be concise and concrete: endpoint names, field "
+    "names, parameter names, and what the documented behaviour actually is."
+)
+
+QUESTIONS = {
+    "sender_selection": """EmailBison (emailbison.com) cold email platform API.
+When a campaign has MULTIPLE sender email accounts attached:
+1. How does EmailBison choose which sender sends a given email? Round robin,
+   random, per-lead sticky, per-thread sticky, configurable?
+2. If a lead receives a multi-step sequence, do all steps go from the SAME
+   sender inbox, or can different steps come from different inboxes?
+3. Is there any setting, field or API parameter that controls or pins sender
+   selection per lead or per thread?
+4. What does the API return that identifies which sender sent or will send a
+   given scheduled email?
+Cite documentation URLs.""",
+
+    "timezone": """EmailBison cold email platform API and app.
+1. A campaign schedule has a timezone plus start/end times and weekday flags.
+   Is the sending window interpreted in the CAMPAIGN's timezone, the
+   workspace's, or the recipient's?
+2. Does EmailBison support sending in the RECIPIENT's local timezone
+   ("timezone-aware sending", "send in prospect local time")?
+3. Can a timezone be set or inferred PER LEAD, and is there a lead field for
+   it?
+4. Can a campaign's schedule or timezone be changed after the campaign is
+   running, and what happens to already-scheduled emails?
+Cite documentation URLs.""",
+
+    "webhooks": """EmailBison cold email platform API.
+1. Does EmailBison support webhooks? Which events - email sent, opened,
+   replied, bounced, unsubscribed, lead status change?
+2. How are webhooks configured - API endpoint or app only? What is the
+   payload shape and is there signature verification?
+3. Is there any push or streaming alternative to polling for replies?
+Cite documentation URLs.""",
+
+    "bulk": """EmailBison cold email platform API.
+1. Which endpoints accept BULK input - creating many leads at once, attaching
+   many leads to a campaign, updating many leads, adding many senders?
+2. What are the documented per-request limits (max items, page sizes)?
+3. What are the documented rate limits, and what does the API return when one
+   is hit?
+Cite documentation URLs.""",
+
+    "scheduling": """EmailBison cold email platform API.
+1. How does EmailBison decide WHEN a campaign's leads are scheduled? Is there
+   documentation of the scheduling cycle, and when new leads for a day are
+   assigned?
+2. Is there any endpoint that shows a SENDER EMAIL's forward schedule or
+   remaining capacity - across all the campaigns that sender is attached to,
+   not just one campaign?
+3. How do `max_emails_per_day` on a campaign and `daily_limit` on a sender
+   email interact when a sender serves several campaigns?
+4. Does mailbox warmup consume a sender's daily limit?
+Cite documentation URLs.""",
+
+    "heyreach_sender": """HeyReach LinkedIn automation platform API.
+1. When a campaign has multiple LinkedIn sender accounts, how is the sender
+   chosen per lead? Is `accountLeadPairs` on AddLeadsToCampaignV2 the
+   documented way to pin a specific sender to a specific lead?
+2. Is a campaign's sending schedule readable through the API after creation?
+   Which endpoint?
+3. Does HeyReach support webhooks for connection accepted, message reply, or
+   lead status change?
+Cite documentation URLs.""",
+}
+
+
+def ask(name, live, model=None, timeout=180):
+    prompt = QUESTIONS[name]
+    if not live:
+        return {"question": name, "chars": len(prompt), "live": False}
+    answer = xai.respond(
+        [{"role": "system", "content": SYSTEM},
+         {"role": "user", "content": prompt}],
+        model=model, tools=[{"type": "web_search"}], timeout=timeout)
+    return {"question": name, "live": True, "content": answer.get("content"),
+            "sources": answer.get("search_urls") or [],
+            "usage": answer.get("usage"), "model": answer.get("model"),
+            # `respond` does not return a duration; the report prints what is
+            # there rather than inventing a number for a field it lacks.
+            "status": answer.get("status"),
+            "refusal": answer.get("refusal")}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--question", action="append", dest="questions")
+    parser.add_argument("--all", action="store_true")
+    parser.add_argument("--list", action="store_true")
+    parser.add_argument("--live", action="store_true")
+    parser.add_argument("--out", default=os.path.join(
+        ROOT, "docs", "GROK-PROVIDER-RESEARCH-2026-09-17.md"))
+    args = parser.parse_args(argv)
+
+    if args.list:
+        for name in QUESTIONS:
+            print(f"  {name}")
+        return 0
+
+    names = list(QUESTIONS) if args.all else (args.questions or [])
+    if not names:
+        print("nothing asked; --list shows the questions, --all asks them all")
+        return 2
+
+    load_env(os.path.join(ROOT, "config", ".env"))
+    results = []
+    for name in names:
+        print(f"--- {name} ---", flush=True)
+        try:
+            result = ask(name, args.live)
+        except Exception as exc:                  # noqa: BLE001 - classified
+            print(f"  {type(exc).__name__}: {str(exc)[:160]}", flush=True)
+            results.append({"question": name, "error":
+                            f"{type(exc).__name__}: {exc}"})
+            continue
+        results.append(result)
+        if result.get("live"):
+            print(f"  {result.get('model')} status={result.get('status')} "
+                  f"{len(result.get('sources') or [])} sources", flush=True)
+            print(str(result.get("content"))
+                  .encode("ascii", "replace").decode("ascii")[:1200],
+                  flush=True)
+        else:
+            print(f"  {result['chars']} chars (dry run)", flush=True)
+
+    if not args.live:
+        print("\nDRY RUN: xAI was not called.")
+        return 0
+
+    stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with open(args.out, "w", encoding="utf-8") as handle:
+        handle.write(f"# Grok provider research\n\n{stamp}. One call per "
+                     f"question, web_search enabled.\n\n")
+        handle.write(
+            "**CLASSIFY BEFORE BELIEVING.** Every claim below is the model's, "
+            "and a confident answer is not a documented one. A point is\n"
+            "DOCUMENTED only where a source URL states it, OBSERVED only "
+            "where this estate's own provider responses show it, and\n"
+            "HYPOTHESIS or UNKNOWN otherwise. Nothing here is provider truth "
+            "until a readback against our own estate agrees with it.\n\n---\n\n")
+        for result in results:
+            handle.write(f"## {result['question']}\n\n")
+            if result.get("error"):
+                handle.write(f"**CALL FAILED:** {result['error']}\n\n")
+                continue
+            handle.write(f"`{result.get('model')}`, "
+                         f"{result.get('seconds')}s, "
+                         f"{len(result.get('sources') or [])} search URLs, "
+                         f"usage {result.get('usage')}.\n\n")
+            handle.write((result.get("content") or "") + "\n\n")
+            if result.get("sources"):
+                handle.write("Sources the model searched:\n\n")
+                for url in (result["sources"] or [])[:25]:
+                    handle.write(f"- {url}\n")
+                handle.write("\n")
+    print(f"\nwrote {args.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

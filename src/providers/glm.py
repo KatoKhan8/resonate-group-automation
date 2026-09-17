@@ -98,7 +98,22 @@ RATE_LIMIT_HEADERS_OBSERVED = ()
 MAX_PROMPT_CHARS = 60_000        # ~15k tokens of context, refused above it
 MAX_TOKENS_CAP = 8192
 DEFAULT_MAX_TOKENS = 1024
-GLM_TIMEOUT = 60                 # per attempt, seconds
+# PER ATTEMPT, SECONDS, AND IT IS A CEILING RATHER THAN A DEFAULT - `complete`
+# clamps whatever a caller asks for down to this, so nothing here can hang a
+# process indefinitely however the call site is written.
+#
+# RAISED FROM 60 ON 2026-09-17, on measurement rather than preference. This
+# model spends most of its output budget on reasoning tokens: the four calls
+# in `docs/GLM-SAFETY-AUDIT-2026-09-17.md` took 20.2s, 43.1s, 47.1s and 56.6s,
+# with 917 to 3,041 reasoning tokens each. The last of those cleared 60s by
+# three and a half seconds. At 60 the ceiling was inside the model's ordinary
+# working range, and `scripts/glm_review.py --target storage` proved it -
+# BOTH functions timed out, one on a 5,642-character prompt, and a review that
+# times out is a review that silently does not happen.
+#
+# 180 is three times the longest observed call. It is still a ceiling and
+# still bounded; what it stops being is a coin toss.
+GLM_TIMEOUT = 180
 MAX_RETRIES = 2                  # so three attempts at most
 BACKOFF_BASE = 0.5
 
