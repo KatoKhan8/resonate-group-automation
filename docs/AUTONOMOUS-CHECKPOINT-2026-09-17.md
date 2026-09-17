@@ -21,10 +21,44 @@ forward from scrollback.
     EMAILBISON_SENT=0      counter 0, queue 0 rows
     EMAILBISON_FIRST_SEND=FALSE
 
-**Zero sent is expected, not a fault.** Activation happened around 22:00 and
-01:00 Europe/Zagreb - outside any sane sending window. HeyReach exposes no
-schedule read route, so the dispatch time cannot be asserted from provider
-truth, only that nothing is erroring.
+**Zero sent, and six explanations have been TESTED AND RULED OUT.** Activation
+happened around 22:00 and 01:00 Europe/Zagreb, outside any sending window - but
+by 11:00 Zagreb, well inside 487's 09:00-17:00 window, it had still sent
+nothing. Each hypothesis below was checked against a CONTROL rather than
+reasoned about, because a plausible story is not a diagnosis:
+
+    the schedule says "Not Started"     RULED OUT. Campaigns 352, 328 and 327
+                                        are ACTIVE and have sent 93,057 /
+                                        35,506 / 44,988 emails. All three read
+                                        exactly the same. The field is
+                                        cosmetic. (An earlier check used 451,
+                                        which is COMPLETED - a bad control,
+                                        since a finished campaign's schedule
+                                        may have reset. Re-done properly.)
+    every lead reads "unverified"       RULED OUT. 451's single lead reads
+                                        `unverified` and was delivered.
+                                        EmailBison's own verifier was never
+                                        run; ours was, upstream.
+    the sender is unhealthy or capped   RULED OUT. 2736 is `Connected`,
+                                        warmup on, 1,742 emails sent
+                                        historically, 15/day configured and 0
+                                        used today.
+    the caps are wrong                  RULED OUT, but it corrected a number:
+                                        the BINDING cap is 15 (sender), not
+                                        the campaign's 20.
+    the leads are not enrolled          RULED OUT. All ten read `in_sequence`,
+                                        which is the healthy state.
+    step 1's `wait_in_days: 3` delays   RULED OUT. The client's own sending
+    the first send                      campaigns carry step-1 waits of 2 and
+                                        3 and send at volume, so the field is
+                                        the gap AFTER a step, which is what
+                                        this repository assumed.
+
+So 487 is configured like three campaigns that have sent 170,000 emails
+between them. The remaining explanation is provider-side scheduling latency -
+most plausibly that "new leads for today" are assigned on a cycle and 487 was
+activated mid-window - and the watcher will say. HeyReach exposes no schedule
+read route at all, so its dispatch time cannot be asserted either way.
 
 **And on HeyReach it will be slow when it starts.** Seat 174892's 40/day is a
 PER-ACCOUNT limit that the vendor shares proportionally across every campaign
