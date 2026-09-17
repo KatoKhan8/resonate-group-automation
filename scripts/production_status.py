@@ -49,6 +49,10 @@ LINKEDIN_CAMPAIGN = 605732
 LINKEDIN_LIST = 944355
 EMAIL_CAMPAIGN = 487
 
+# The tenant every count in this file is scoped to. Named once so a report
+# cannot silently describe a different client than the campaigns above.
+CLIENT = "productive"
+
 SENT_MESSAGE = {"MessageSent", "MessageReply"}
 SENT_CONNECTION = {"ConnectionSent", "ConnectionAccepted"}
 EMAIL_SENT_WORDS = {"sent", "delivered"}
@@ -267,7 +271,49 @@ def estate():
                 with_li_cadence += 1
     return {"records": len(recs), "contacts": contacts,
             "contacts_with_email_cadence": with_email_cadence,
-            "contacts_with_linkedin_cadence": with_li_cadence}
+            "contacts_with_linkedin_cadence": with_li_cadence,
+            **roster_age()}
+
+
+def roster_age():
+    """How old the canonical sender roster's provider facts are.
+
+    THE DEFECT THIS REPORTS. `senderinventory` reads the provider and writes
+    `health` onto every account, and `assignment.usable_health` then reads
+    that STORED word when deciding who may send. Nothing re-runs the read and
+    nothing noticed its age: on 2026-09-17 the productive roster carried
+    provider facts from 2026-09-09, and fifteen inboxes had gone
+    `Connected -> Not connected` in between while canonical state still called
+    all fifteen `active: true, health: "ok"`.
+
+    That is harmless only because no productive account has an owner, so
+    `eligible_senders` returns [] and nobody is allocated to a dead inbox. It
+    stops being harmless the moment attestation lands, which is the whole of
+    P4 - so the age is reported next to the numbers rather than discovered
+    afterwards.
+
+    UNKNOWN, never a date, when the roster cannot be read or carries no
+    timestamp: "the roster is fresh" is not the safe reading of silence.
+    """
+    try:
+        from src import senderidentity as si
+        rows = si.load()
+    except Exception as exc:                        # noqa: BLE001
+        return {"roster_read_at": f"{UNKNOWN} ({type(exc).__name__})"}
+    stamps = sorted(
+        str((r.get("provider_state") or {}).get("read_at") or "")
+        for r in rows
+        if r.get("kind") in ("email_account", "linkedin_account")
+        and r.get("workspace") == CLIENT
+        and (r.get("provider_state") or {}).get("read_at"))
+    if not stamps:
+        return {"roster_read_at": UNKNOWN}
+    blocked = sum(1 for r in rows
+                  if r.get("kind") == "email_account"
+                  and r.get("workspace") == CLIENT
+                  and r.get("health") == "blocked")
+    return {"roster_read_at": f"{stamps[0][:19]} (oldest of {len(stamps)})",
+            "roster_blocked_inboxes": blocked}
 
 
 def main(argv=None):
