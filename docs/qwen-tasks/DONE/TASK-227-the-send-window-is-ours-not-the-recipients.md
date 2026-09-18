@@ -32,7 +32,7 @@ caller falls back to the existing production default.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (to be filled after commit)
+**COMMIT SHA:** 9c126097
 
 **TESTS:** 24 new tests in `tests/test_cohort_window.py`, all passing.
 27 existing `test_geo_iso` tests still passing. One pre-existing invariant
