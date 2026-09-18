@@ -2,8 +2,10 @@
 docs/PRODUCTION-HANDOFF-2026-09-18-B.md is the current state: read it first.
 It is written for a session with no conversation context and it supersedes
 every earlier handoff and context reset. THREE campaigns are LIVE - EmailBison
-487 and 489 and HeyReach 605732 - and NONE HAS SENT. 489 is the new one and
-the one that could send first; 487 is queued for the 23rd and was not touched.
+487 and 489 and HeyReach 605732 - and none of the three has sent yet. 489 is
+the new one and the one that could send first; 487 is queued for the 23rd and
+was not touched. "Nothing has EVER sent" is false: canary 451 sent one real
+email on 2026-09-14, so the end-to-end path is proven against a real prospect.
 Recompute provider truth before acting on any number in it.
 
 Read `docs/THE-ESTATE-IS-SATURATED-NOT-UNAPPROVED-2026-09-18.md` before

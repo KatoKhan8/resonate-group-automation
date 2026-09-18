@@ -9,7 +9,9 @@ acting on any number here.**
     py -3 scripts/bison_forward_book_census.py --report    who is booked when
 
 **UNKNOWN IS NEVER 0. LIVE IS NOT SENT. ACTIVE IS NOT SENT. SCHEDULED IS NOT
-SENT.**
+SENT.** And see section 1b: **one real email HAS been sent from this estate**,
+by canary 451 on 2026-09-14. "Nothing has ever sent" is false and was in the
+permission table until today.
 
 ## READ THE CLOCK BEFORE READING A ZERO
 
@@ -66,6 +68,45 @@ Today's UTC window had not opened when this was written. **Check it.**
 
 LIVE moved **13 -> 18** today. READY_NOW is 0 at both ends and that is the
 correct answer, not a stall: everybody who could move today moved.
+
+---
+
+## 1b. THE PIPELINE HAS ALREADY REACHED A REAL PROSPECT, ONCE
+
+Found 2026-09-18 and it corrects a claim that was in this repository's own
+permission table: "nothing has been sent by this system yet - confirmed
+touches are zero".
+
+**Campaign 451 sent one real email on 2026-09-14.** Provider truth:
+
+    451   status completed   total_leads 1   emails_sent 1   replied 0
+          lead 203657        membership `sequence_finished`, emails_sent 1
+          scheduled row      status `sent`
+                             scheduled 2026-09-14T16:24:00Z
+                             sent_at   2026-09-14T16:24:20Z   (20s late)
+          sender 3948        bernarda.vrbat@goproductive.online
+          subject            the CONTROL opener
+
+So the end-to-end path - stage, sequence, sender, schedule, activate, send -
+is PROVEN against a real person, and the canary-before-batch principle was
+honoured rather than skipped: **one on the 14th, five on 489, ten on 487.**
+
+**451's window was 09:00-17:00 America/New_York, which is 489's window
+exactly.** That makes it the best available precedent for what 489 should do,
+and it carries a warning as well as a reassurance:
+
+- Its scheduled row first appeared on the 13th carrying 13:19Z - nineteen
+  minutes after that window opened - and then **MOVED OVERNIGHT** to 16:24Z on
+  the 14th, where it fired.
+- **So a row appearing today is not a send today.** A `scheduled_emails` row
+  is a lookahead, and this one moved once before it meant anything.
+
+The falsifiable expectation for 489, written down so the waiting is a test
+rather than a hope: **rows should appear shortly after 13:00Z**, because that
+is when its window opens and 451's appeared 19 minutes into its own. If
+21:00Z passes with `queue 0/0`, the provider has not planned this campaign at
+all - which is a different and much more specific fact than "it has not sent",
+and is the point at which to investigate rather than wait.
 
 ---
 
