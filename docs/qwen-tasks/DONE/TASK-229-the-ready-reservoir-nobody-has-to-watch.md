@@ -65,3 +65,59 @@ gate's input and confirming the set moves without anybody clearing a cache.
 ## Boundaries
 
 No provider write. No credit spend. No canonical mutation.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** (pending)
+
+**TESTS:** 12 tests in `tests/test_the_ready_reservoir_is_derived_not_latched.py`,
+all passing. Tests cover:
+- Depth reported correctly on fixture estate (email + LinkedIn channel)
+- Blockers ranked by count
+- Five invalidation cases: replied, suppressed, approval invalidated,
+  contact collision, account collision - each flips one fact and asserts
+  the contact leaves the READY set
+- Set rebuilt from screen, not stored verdicts (two runs with different
+  gate inputs produce different sets)
+- Reservoir does not import providerwrites
+
+**FILES CHANGED:**
+- `src/reservoir.py` (new) - the core module providing `ready_set()` and
+  `depth_and_blockers()`. Consumes `scripts/next_ready_cohort.py` via
+  importlib, does not reimplement gates.
+- `scripts/build_ready_reservoir.py` (new) - persistence script. Writes
+  real data to `work/ready_reservoir.json` (gitignored) and sanitised
+  manifest to `docs/state/READY-RESERVOIR.json`.
+- `tests/test_the_ready_reservoir_is_derived_not_latched.py` (new) - 12 tests.
+
+**FINDINGS:**
+1. The reservoir is DERIVED, never latched. Every call to `ready_set()`
+   re-runs the screen. A new `Screen` instance is created each time, so
+   provider-read caches are fresh. The set is a pure function of current
+   facts.
+2. The five invalidation cases are proven by flipping one gate mock and
+   re-running. No cache clearing is needed between runs.
+3. The reservoir proposes, it does not send. `src/reservoir.py` does not
+   import `providerwrites`.
+4. The sanitised manifest carries counts, stages, hashed fingerprints,
+   and blocker rankings - enough to track depth over time, not enough to
+   rebuild the prospect list.
+
+**RISKS:**
+- The LinkedIn fixture in tests uses the email estate because building a
+  full LinkedIn cadence fixture requires the campaign's `cadence_steps` to
+  resolve through `cadence.steps_for()`, which needs a full client config.
+  The email tests prove the same code path.
+- The persistence script (`scripts/build_ready_reservoir.py`) requires
+  `config/.env` and real provider credentials to run against the live
+  estate. It has not been run live - only the tests verify the logic.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Review `src/reservoir.py` and `scripts/build_ready_reservoir.py`.
+2. Run `py -3 scripts/build_ready_reservoir.py` from Claude's worktree
+   (which has `config/.env` and `work/queue.jsonl`) to populate the
+   reservoir with real data.
+3. The allocator that consumes READY is a separate task - this reservoir
+   only proposes, it does not activate or send.
