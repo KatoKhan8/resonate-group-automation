@@ -291,6 +291,20 @@ change that removed a guard.** Check what a change stops refusing.
 The bison watcher takes `--campaign` now, because there are two. Reply
 protection was healthy and moving every cycle all morning.
 
+**DO NOT WRAP A MONITOR IN `timeout`.** The 489 watcher was armed as
+`timeout 36000 py -3 -u ...` and was killed with exit 124 after about two
+hours, having emitted only its startup line. The four monitors that have
+survived across sessions carry no such wrapper. Arm them exactly as written
+above, bare.
+
+That mattered for one reason worth keeping: the watcher is the thing that
+would have caught 489's first QUEUED row, and it died silently in the sense
+that mattered - the process was gone while the campaign it was watching was
+still live. Re-armed and confirmed running. **Check that the process list
+actually holds all five before trusting any silence**, because a monitor that
+is not running and a monitor with nothing to report look identical from the
+outside, which is the whole reason `work/replywatch.json` exists.
+
 ---
 
 ## 8. NEXT ACTIONS, in order
