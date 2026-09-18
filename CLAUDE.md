@@ -1,8 +1,15 @@
 # Resonate Group Automation
-docs/PRODUCTION-HANDOFF-2026-09-18.md is the current state: read it first.
+docs/PRODUCTION-HANDOFF-2026-09-18-B.md is the current state: read it first.
 It is written for a session with no conversation context and it supersedes
-every earlier handoff and context reset. Two campaigns are LIVE and NEITHER
-HAS SENT. Recompute provider truth before acting on any number in it.
+every earlier handoff and context reset. THREE campaigns are LIVE - EmailBison
+487 and 489 and HeyReach 605732 - and NONE HAS SENT. 489 is the new one and
+the one that could send first; 487 is queued for the 23rd and was not touched.
+Recompute provider truth before acting on any number in it.
+
+Read `docs/THE-ESTATE-IS-SATURATED-NOT-UNAPPROVED-2026-09-18.md` before
+planning any cohort growth. Approval is NOT the bottleneck: the client's own
+campaigns are mid-sequence at 65 of the accounts in this estate, and the
+account gate refuses correctly. Expansion is a sourcing problem.
 
 docs/CONTEXT-RESET-2026-09-15-E.md is kept for the two things it says that
 nothing else does: the HeyReach sequence holds MERGE VARIABLES and the words
