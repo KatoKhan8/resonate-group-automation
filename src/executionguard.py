@@ -40,13 +40,42 @@ ORDER MATTERS, AND IT IS FIXED.
                     was that established
   4. jit          - suppression, collision, fatigue, sender health, RE-READ now
   5. cap          - against the DURABLE ledger, not a caller's plan dict
-  6. ledger       - reserve the key, refusing an unsettled retry
+  6. ledger       - check the key is clear (refusing an unsettled retry)
   7. killswitch   - last, so it is the final word
+  8. reserve      - AFTER every gate, claim the key in the action ledger
 
 Tenancy first because every later answer is meaningless if it was read from the
 wrong estate. Killswitch last because it is an operator's stop button and must
-not be short-circuited by an earlier pass. The ledger reservation is second to
-last so that a killswitch refusal does not leave a reservation behind.
+not be short-circuited by an earlier pass.
+
+RESERVE-LATE, NOT RESERVE-THEN-RELEASE. The reservation is taken AFTER every
+gate passes, including the killswitch. This is deliberate and the alternative
+was considered and rejected:
+
+  Reserve-then-release would take the reservation early (inside gate 6, before
+  the killswitch) and release it if a later gate refuses. That tightens the
+  race window between gate 6 and the reservation by a few milliseconds, but
+  adds a release path that must undo a reservation under every failure mode -
+  killswitch, cap, sender, any future gate. A release path that must handle
+  every failure is a release path that will eventually miss one, and a missed
+  release is the exact defect this file exists to prevent: a reservation left
+  behind that blocks the retry (measured on campaign 489, 2026-09-18, and
+  HeyReach 605487 before it).
+
+  Reserve-late widens the race window between gate 6's check and the
+  reservation by the time the killswitch takes to run. That window is bounded:
+  the killswitch reads local state (campaign row, workspace switch) and does
+  not call the network. Two callers racing through it in the same millisecond
+  is possible in principle and has not been observed. If it were to happen,
+  the reservation's own transaction would catch the duplicate key - the second
+  caller's `reserve` would raise `ActionRefused` because the first caller's
+  row is already there. The race is between two callers both passing gate 6
+  and both reaching `reserve`; the ledger's own lock decides. That is the
+  same lock that decides every other reservation in the system, and it is
+  sufficient.
+
+  The choice is reserve-late because a wider race window is a theoretical
+  concern and a missed release is a measured defect.
 
 NOTHING HERE SENDS. `authorize()` is pure decision plus one ledger write.
 """
@@ -810,7 +839,12 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
             f"and record an out-of-band stop - HUMAN-ACTIONS-REQUIRED 5f")
     gates.append("stoppability")
 
-    # 6. LEDGER RESERVATION -------------------------------------------------
+    # 6. LEDGER CHECK (not reservation) -------------------------------------
+    # This CHECKS the key is clear using the ledger snapshot loaded at gate 5.
+    # The actual reservation happens AFTER gate 7 (the killswitch) - see the
+    # reserve-late comment in the module docstring. A check here refuses early
+    # if the key is already taken, but does NOT write anything. If a later gate
+    # refuses, the ledger is untouched.
     key = _key(rec, contact, step_key, channel)
     try:
         actionledger.require_clear(key, rows=ledger)
@@ -916,6 +950,13 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
         gates.append("killswitch")
 
     if reserve:
+        # RESERVE-LATE: this is the ONLY write to the action ledger in this
+        # function, and it runs AFTER every gate including the killswitch.
+        # A refusal at any gate raises before this point, leaving the ledger
+        # exactly as it found it. This is the property that campaign 489 lost
+        # when the reservation was taken before the killswitch and a killswitch
+        # refusal left `attempted` rows that blocked the retry.
+        #
         # `require_clear` above already asked, and this asks again under the
         # ledger's own lock - two processes racing the same key is exactly what
         # the reservation exists to stop, so the check that matters is the one

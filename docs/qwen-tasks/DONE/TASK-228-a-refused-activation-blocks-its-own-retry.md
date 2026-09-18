@@ -70,3 +70,59 @@ This is a change to the LAST-WORD GATE. Do not relax any gate, do not reorder
 the gates themselves, and do not change what any of them checks. The only
 thing moving is WHEN the reservation is taken. If you find yourself editing a
 gate's condition, stop and report instead.
+
+## RESULT
+
+STATUS: DONE
+
+The code was ALREADY in the reserve-late shape: the reservation
+(`actionledger.reserve()`) runs AFTER every gate including the killswitch.
+Gate 6 only CHECKS (`require_clear`), it does not reserve. A refusal at any
+gate raises before the reservation is reached, leaving the ledger untouched.
+
+The docstring and comments were misleading: they described gate 6 as
+"reserve the key" when it actually only checks, and said the reservation was
+"second to last" when it is actually last. Updated to accurately describe
+the reserve-late shape and document the choice explicitly (requirement 3).
+
+TESTS: 7 new tests, all pass. 77 existing guard tests, all pass.
+- `test_killswitch_refusal_leaves_no_ledger_row` - gate 7 refuses, ledger untouched
+- `test_collision_refusal_leaves_no_ledger_row` - earlier gate refuses, ledger untouched
+- `test_pilot_cap_refusal_leaves_no_ledger_row` - gate 5 refuses, ledger untouched
+- `test_successful_authorization_reserves_one_row` - success still reserves
+- `test_two_sequential_authorizations_behave_as_today` - idempotency preserved
+- `test_early_reservation_is_caught_by_the_killswitch_test` - break-proofing: confirms reserve() is NOT called when killswitch refuses
+- `test_the_test_would_fail_if_reserve_ran_early` - break-proofing: simulates the defect directly
+
+Break-proofing verified: temporarily moved the reservation before the
+killswitch. Both the killswitch-refusal test and the break-proofing test
+FAILED for the right reason (ledger had `attempted` row / reserve() was
+called before killswitch refused). Reverted to the correct code.
+
+FILES CHANGED:
+- `src/executionguard.py` - updated docstring and comments to document reserve-late
+- `tests/test_a_refused_activation_leaves_no_reservation.py` - new test file
+
+FINDINGS:
+1. The code was already correct (reserve-late). The defect measured on
+   campaign 489 was documented in commit 59306924 but the code structure
+   already had the reservation after the killswitch. The `attempted` rows
+   on campaign 489 may have come from a different path (e.g., authorize
+   succeeding, then perform/revalidate refusing after the reservation).
+2. The docstring was misleading about when the reservation happens. Fixed.
+3. The settle_abandoned scripts are untouched (requirement 4).
+4. `reserve=False` callers are unchanged (requirement 5).
+
+RISKS:
+- If the defect on campaign 489 came from a path OTHER than authorize's
+  killswitch (e.g., revalidate in providerwrites.perform), that path is
+  not addressed here. The reservation is correctly placed in authorize,
+  but a revalidate refusal after authorize succeeds would still leave the
+  reservation behind. This is a separate concern.
+
+RECOMMENDED CLAUDE ACTION:
+- Review the test file and the documentation changes.
+- Investigate whether the campaign 489 defect came from authorize or from
+  a later path (revalidate/perform). If from revalidate, that is a
+  separate task.
+- Integrate into master.
