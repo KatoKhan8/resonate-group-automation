@@ -91,7 +91,17 @@ SHAPE_CAMPAIGN = {"linkedin": "productive-linkedin-cohort-v2",
 
 # The contacts already on a LIVE campaign. Read from the action ledger rather
 # than hard-coded, so this cannot drift from what actually went out.
-LIVE_CAMPAIGNS = ("productive-linkedin-cohort-v2", "productive-email-control-v3")
+#
+# 489 ADDED 2026-09-18, AND LEAVING IT OUT MISREPORTED ITS FIVE PEOPLE.
+# `classify` decides ALREADY_LIVE first, and deliberately, because a contact
+# staged on a running campaign collides with ITSELF - `check_address` finds its
+# own lead row. A live campaign missing from this tuple therefore does not
+# merely go uncounted: its cohort reappears under SAFETY_BLOCK with
+# `collision` as the gate, which reads as "we must not contact these people"
+# about the exact five we just started contacting. Measured immediately after
+# activation: EMAIL ALREADY_LIVE stayed 10, collision rose 10 -> 15.
+LIVE_CAMPAIGNS = ("productive-linkedin-cohort-v2", "productive-email-control-v3",
+                  "productive-email-us-cohort-v1")
 
 ATTEMPTS = 3
 
