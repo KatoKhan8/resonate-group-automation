@@ -8,6 +8,15 @@ acting on any number here.**
     py -3 scripts/build_ready_reservoir.py          depth and ranked blockers
     py -3 scripts/bison_forward_book_census.py --report    who is booked when
 
+> **UPDATE 2026-09-18T15:51Z - THE 489 FALSIFIER FIRED. NO EMAIL SENT TODAY.**
+> Its window opened at 13:00Z and three hours later `scheduled_emails` is 0
+> and `updated_at` has not moved since activation. The campaign, the sender
+> and the schedule are all correct and sender 3437 has sent nine emails today
+> for other campaigns. Read `docs/489-WAS-NOT-PLANNED-2026-09-18.md` before
+> anything else: the likely cause is that planning happens at window CLOSE,
+> and the America/New_York window I chose closes at 21:00Z. Expected first
+> send is Monday 2026-09-21, and the test is to watch 21:00Z tonight.
+
 **UNKNOWN IS NEVER 0. LIVE IS NOT SENT. ACTIVE IS NOT SENT. SCHEDULED IS NOT
 SENT.** And see section 1b: **one real email HAS been sent from this estate**,
 by canary 451 on 2026-09-14. "Nothing has ever sent" is false and was in the
