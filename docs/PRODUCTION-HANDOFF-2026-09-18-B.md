@@ -44,6 +44,16 @@ writing. **The first thing to check on waking is the clock, then 489.**
 contacts, sender 3437, 5/day cap, a US business-hours window. Full account:
 `docs/THE-US-COHORT-IS-LIVE-2026-09-18.md`.
 
+**READ THIS BEFORE YOU READ A BOUNCE.** Sender 3437's lifetime bounce rate is
+**2.13%** - 38 on 1,784 sends - and `senderinventory.readiness()` calls it
+`('degraded', 'lifetime bounce rate 2.1% is at or above 2%')`. I chose it on
+`health_of()`, which checks connected and warming and does NOT look at the
+bounce rate, and found this after the campaign was live. It was not swapped:
+DEGRADED is a warning rather than a refusal, the rate is lifetime over 678
+leads contacted, the exposure is five addresses, and all five cleared two
+independent verifiers. 2736 reads 0.63% and the canary's 3948 reads 0.31%, so
+3437 is the worst of the three. If one of the five bounces, start here.
+
 `scripts/production_status.py` reported only 487 until this morning, which
 meant a reader checking `EMAILBISON_SENT = 0` was reading the quiet campaign
 rather than the live one. It now prints a labelled line per campaign.

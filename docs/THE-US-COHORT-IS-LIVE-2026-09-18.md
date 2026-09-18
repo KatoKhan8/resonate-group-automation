@@ -37,7 +37,9 @@ the answer is a different mailbox - not an edit to a correct campaign.
 ## The sender, and the trade that was refused
 
     3437   rendulicbojan@gproductive.com   Bojan Rendulic
-           health ok, 1,784 emails sent, 6 of 15 booked today, 9 free
+           health_of "ok", 1,784 emails sent, 6 of 15 booked today, 9 free
+           readiness DEGRADED - lifetime bounce rate 2.1%, at or above the
+           2% threshold. SEE THE CAVEAT BELOW; this was missed at selection.
 
 **The same human 487 already sends as**, on a different one of his six
 inboxes. His forward book is clear on every day this sequence needs: 09-22
@@ -51,6 +53,43 @@ the condition `senderinventory.health_of` calls HEALTH_WARMING and
 email of a cold `.shop` mailbox, from a human none of these five has heard
 from, to gain capacity the estate did not need. The system's own vocabulary
 already had a word for that inbox class and the word is not "free".
+
+## The caveat I missed when I chose this mailbox
+
+**Sender 3437's lifetime bounce rate is 2.13% - 38 bounces on 1,784 sends -
+and `senderinventory.readiness()` returns `('degraded', 'lifetime bounce rate
+2.1% is at or above 2%')` for it.** Found after the campaign was already live.
+
+I selected the mailbox on `senderinventory.health_of()`, which answers a
+narrower question than I was actually asking: it checks connected, and it
+checks warmup-with-zero-sends. It does not look at the bounce rate at all.
+`readiness()` is the function that asks the whole question and I did not run
+it. For comparison, on the same read:
+
+    2736   487's sender, 11 bounces / 1,757 sends    0.63%
+    3948   the canary's sender, 1 / 318              0.31%
+    3437   489's sender, 38 / 1,784                  2.13%   DEGRADED
+
+**What was NOT done about it, and why.** The sender was not swapped. DEGRADED
+is a warning rather than a refusal - `readiness` has NOT_READY for the latter -
+and the three things that make the marginal risk small here are specific:
+the rate is LIFETIME over 678 leads contacted rather than anything recent, the
+exposure is five addresses, and every one of those five cleared TWO
+independent verifiers (ContactOut `valid` plus Reoon
+`valid / deliverable / safe_to_send`). A historical bounce rate is a fact
+about the lists that mailbox has been pointed at before, not about five
+double-verified addresses.
+
+Against that, swapping the sender on a LIVE campaign is a provider write with
+its own failure modes, and the alternatives are worse: 2736 is booked to its
+limit today, and the three inboxes with an empty forward book are the
+never-sent ones rejected above.
+
+So the honest position is: the trade was made on an incomplete check, the
+check has now been completed, the answer did not change the decision, and an
+operator who disagrees should say so - `bison.detach_senders` and
+`attach_senders` are both supported. **If any of the five bounces, this is the
+first thing to read.**
 
 ## The window, and exactly how far it is from perfect
 
