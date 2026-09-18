@@ -111,6 +111,28 @@ and it carries a warning as well as a reassurance:
 - **So a row appearing today is not a send today.** A `scheduled_emails` row
   is a lookahead, and this one moved once before it meant anything.
 
+### Two diagnostics, so the waiting is not spent chasing the wrong thing
+
+**`schedule.status: "Not Started"` MEANS NOTHING. Do not chase it.** All three
+campaigns read it, including 451 - the one that actually sent:
+
+    489  active     schedule.status 'Not Started'   America/New_York
+    487  active     schedule.status 'Not Started'   Europe/Zagreb
+    451  completed  schedule.status 'Not Started'   America/New_York  <- SENT
+
+**`updated_at` is the diagnostic that does mean something.** Sibling campaigns
+352 and 328 move theirs every few minutes while the provider works them.
+
+    489  updated_at 2026-09-18T05:35:58Z   = the moment it was activated,
+                                             unmoved since
+    487  updated_at 2026-09-17T15:02:48Z   = our last write
+
+So the provider has NOT touched 489 since activation, which is consistent with
+the scheduler planning when the window opens rather than when a campaign is
+started. **If `updated_at` moves and `queue` stays 0/0, that is the provider
+looking at this campaign and declining to plan it - a much more interesting
+fact than silence, and worth investigating immediately.**
+
 The falsifiable expectation for 489, written down so the waiting is a test
 rather than a hope: **rows should appear shortly after 13:00Z**, because that
 is when its window opens and 451's appeared 19 minutes into its own. If
