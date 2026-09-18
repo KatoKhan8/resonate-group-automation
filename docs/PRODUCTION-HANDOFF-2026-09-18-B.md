@@ -73,12 +73,27 @@ rather than the live one. It now prints a labelled line per campaign.
             sender 174892
             lastActionTime UNMOVED since 2026-09-17 on all three
 
-**THE FALSIFIER IS DUE AND IS NOW OVERDUE ONCE MORE.** The standing
-explanation for why nothing has sent is a graph one. The previous handoff set
-the test: if a full window passes with all three still at
-`leadConnectionStatus: None` and `lastActionTime` unmoved since the 17th, the
-explanation is wrong and it should be investigated rather than extended.
-Today's UTC window had not opened when this was written. **Check it.**
+**THE FALSIFIER WAS RUN AT 15:55Z AND DID NOT FIRE.** Its exact condition was
+`leadConnectionStatus: None` on all three **AND `lastActionTime` unmoved since
+the 17th**. Read after a full open window today:
+
+    4684b25b0372  connection None   last 2026-09-18T13:56:29Z
+    c01f0c88111c  connection None   last 2026-09-18T14:02:05Z
+    4258f756357d  connection None   last 2026-09-18T10:33:49Z
+
+**`lastActionTime` MOVED on all three, today.** So the provider IS working
+these leads, and the graph explanation survives the test that was set for it -
+the sequence opens on CHECK_IS_CONNECTION / VIEW_PROFILE nodes, which are
+actions that produce no connection request.
+
+That is the honest reading of the test as written. **It is not the same as
+saying the campaign is fine.** Two days live, three leads, daily provider
+activity, and still zero connection requests and zero messages. The graph
+explanation accounts for a day; it accounts less well for a third one. If the
+19th shows movement again with connection still `None`, the useful question
+stops being "is the graph explanation true" and becomes "how many
+VIEW_PROFILE days does this graph spend before CONNECTION_REQUEST, and is that
+what was approved".
 
 ### Cohort
 
