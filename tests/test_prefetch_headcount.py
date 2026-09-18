@@ -99,15 +99,14 @@ def _run_serial(records, people_count, budget, notes, timeout=None):
     people-count step. Same spend bridge, same waterfall writer, no
     concurrency - the baseline the prefetch must match.
 
-    `timeout` is honoured with a per-call deadline, so a slow call in
-    the serial baseline produces the same `timed_out` outcome the
-    concurrent path would. Without this, a 1-second sleep in the
-    baseline would succeed while the concurrent path (with a 50ms
-    timeout) would time out, and the two runs would disagree for the
-    wrong reason.
+    TASK-231: `timeout` is no longer used. A callable that raises
+    `TimeoutError` (including `HttpTimeout` from the HTTP transport) is
+    treated as a timeout - the same classification the concurrent path
+    produces. The old `timeout` parameter wrapped the call in a
+    ThreadPoolExecutor and used `fut.result(timeout=...)`; that was the
+    defect (abandoned the wait, did not abort the request). Enforcement
+    moved to the HTTP layer.
     """
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError
-
     spend = _bridge_spend(budget, notes)
     for rec in records:
         facts = rec.get("company_facts") or {}
@@ -118,22 +117,15 @@ def _run_serial(records, people_count, budget, notes, timeout=None):
                          "contactout", rec=rec)
         if not approved:
             continue
-        if timeout is not None:
-            with ThreadPoolExecutor(max_workers=1) as ex:
-                fut = ex.submit(people_count, domain=rec["domain"])
-                try:
-                    count = fut.result(timeout=timeout)
-                except TimeoutError:
-                    continue
-                except Exception:
-                    rec.setdefault("failures", []).append("people-count")
-                    continue
-        else:
-            try:
-                count = people_count(domain=rec["domain"])
-            except Exception:
-                rec.setdefault("failures", []).append("people-count")
-                continue
+        try:
+            count = people_count(domain=rec["domain"])
+        except TimeoutError:
+            # A timeout at the HTTP layer: the request was aborted.
+            # Same classification as the concurrent path.
+            continue
+        except Exception:
+            rec.setdefault("failures", []).append("people-count")
+            continue
         facts = dict(facts)
         facts["headcount_signal"] = count.get("profiles")
         rec["company_facts"] = facts
@@ -380,6 +372,10 @@ class BreakProof(QueueTest):
         This is the same property that catches a scramble on a paid
         route: the pattern of successes and failures across records is
         part of the ledger, not just the values that landed.
+
+        TASK-231: timeout is now enforced at the HTTP layer. The callable
+        raises TimeoutError instead of sleeping past a gather-level
+        deadline.
         """
         real_gather = gather_mod.gather
 
@@ -390,7 +386,7 @@ class BreakProof(QueueTest):
         # Reversed, the timeout lands on r3 instead of r2.
         def mixed(domain):
             if domain == "beta.test":
-                time.sleep(1.0)
+                raise TimeoutError("HTTP timed out")
             return {"profiles": 7}
 
         serial_recs = [
@@ -400,7 +396,7 @@ class BreakProof(QueueTest):
             _make_rec("r4", "delta.test"),
         ]
         serial_budget = enrich.Budget(cap=None)
-        _run_serial(serial_recs, mixed, serial_budget, [], timeout=0.05)
+        _run_serial(serial_recs, mixed, serial_budget, [])
 
         scrambled_recs = [
             _make_rec("r1", "alpha.test"),
@@ -413,7 +409,7 @@ class BreakProof(QueueTest):
             prefetch_headcount(
                 scrambled_recs, mixed,
                 _bridge_spend(scrambled_budget, []),
-                k=8, timeout=0.05,
+                k=8,
             )
 
         # The ok values are all 7 - indistinguishable.
@@ -476,9 +472,12 @@ class FailureIsolation(QueueTest):
         self.assertEqual(result["failed"], 1)
 
     def test_a_timeout_leaves_neighbours_intact(self):
-        def slow_on_beta(domain):
+        """TASK-231: timeout is now enforced at the HTTP layer. The
+        callable raises TimeoutError (including HttpTimeout from the
+        transport) instead of sleeping past a gather-level deadline."""
+        def timeout_on_beta(domain):
             if domain == "beta.test":
-                time.sleep(1.0)
+                raise TimeoutError("HTTP timed out")
             return _fake_people_count(domain)
 
         recs = [
@@ -488,8 +487,8 @@ class FailureIsolation(QueueTest):
         ]
         budget = enrich.Budget(cap=None)
         result = prefetch_headcount(
-            recs, slow_on_beta, _bridge_spend(budget, []),
-            k=4, timeout=0.05,
+            recs, timeout_on_beta, _bridge_spend(budget, []),
+            k=4,
         )
 
         self.assertEqual(recs[0]["company_facts"]["headcount_signal"], 10)

@@ -8,6 +8,7 @@ Provider modules return trimmed dicts, never raw payloads (section 9, trap 8).
 """
 import json
 import os
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -49,6 +50,31 @@ class ProviderError(RuntimeError):
 
 class MissingKey(ProviderError):
     """No credential configured for this provider."""
+
+
+class HttpTimeout(TimeoutError):
+    """The HTTP request was ABORTED at the socket layer.
+
+    This proves WE stopped waiting. It does NOT prove the SERVER stopped
+    working: the request may have been received and processed before the
+    socket closed. For a GET that distinction costs nothing; for a paid
+    POST it is the whole question - a retry policy must not retry a write
+    it cannot prove did not happen.
+
+    Inherits from TimeoutError so a generic timeout catch recognises it,
+    and from nothing else so it is distinguishable from a transport error,
+    a refusal (4xx) and a server error (5xx).
+    """
+
+
+class HttpTransportError(ProviderError):
+    """A network-level failure: DNS, connection refused, unreachable host.
+
+    Distinct from HttpTimeout: the connection was refused or the host was
+    unreachable, not that we gave up waiting on a live connection. A retry
+    policy may retry this (the request demonstrably did not arrive); it
+    must NOT retry HttpTimeout on a POST (the request may have arrived).
+    """
 
 
 def load_env(path=None):
@@ -181,8 +207,33 @@ def _urllib_transport(method, url, headers, body, timeout):
         # loop, which is the worst place to leak one.
         with e:
             return e.code, e.read().decode("utf-8", "replace")
-    except Exception as e:                       # network down, DNS, timeout
-        raise ProviderError(f"{type(e).__name__}: {redact(e)}") from None
+    except TimeoutError:
+        # socket.timeout IS TimeoutError in Python 3.10+. The timeout fired
+        # at the HTTP layer: the socket was closed, the request was ABORTED.
+        # This proves WE stopped waiting; see HttpTimeout docstring for the
+        # honesty caveat about what this does NOT prove.
+        raise HttpTimeout(
+            f"HTTP {method} timed out after {timeout}s"
+        ) from None
+    except urllib.error.URLError as e:
+        reason = str(getattr(e, "reason", e)).lower()
+        if "timed out" in reason or "timeout" in reason:
+            raise HttpTimeout(
+                f"HTTP {method} timed out after {timeout}s"
+            ) from None
+        raise HttpTransportError(
+            f"{type(e).__name__}: {redact(e)}"
+        ) from None
+    except OSError as e:
+        # Connection refused, DNS failure, network unreachable - the request
+        # demonstrably did not arrive. Distinct from HttpTimeout.
+        raise HttpTransportError(
+            f"{type(e).__name__}: {redact(e)}"
+        ) from None
+    except Exception as e:
+        raise HttpTransportError(
+            f"{type(e).__name__}: {redact(e)}"
+        ) from None
 
 
 _transport = _urllib_transport
