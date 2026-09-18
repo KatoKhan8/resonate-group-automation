@@ -73,3 +73,77 @@ confirm every one of the 33 reports STILL UNKNOWN rather than CLEAR.
 No provider WRITE. No credit spend - the events and reply feeds are GETs, and
 `enrich.COSTS` has no entry that this needs. No canonical mutation. Do not
 touch `collision.account_policy`'s decision function in this task.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 2a8f57e9
+
+**TESTS:** 21 tests in `tests/test_stopped_cause_resolution.py`, all passing.
+Plus `tests/test_our_own_staging_is_not_their_history` (38 tests, all passing).
+One pre-existing failure in `tests/test_invariants` (`test_emailbison_posts_only_to_routes_it_declares`)
+is unrelated to this task and exists on origin/master.
+
+**FILES CHANGED:**
+- `src/stoppedcause.py` (new) - READ-ONLY resolver module
+- `tests/test_stopped_cause_resolution.py` (new) - 21 tests
+
+**FINDINGS:**
+
+The module `src/stoppedcause.py` resolves the cause of a `stopped` membership
+from evidence that already exists:
+
+1. **Events feed** (`/api/events` via `bisonevents.normalise`): checks for
+   `unsubscribed`, `replied`, and `bounced` event kinds.
+2. **Membership counters**: the lead's own `replies` count, `status: replied`,
+   and `interested` flag.
+3. **Lead status**: `bounced` lead status.
+4. **Action ledger**: our own `bison.stop_lead` operations settled as `sent`
+   or `attempted`.
+5. **Campaign state**: `sequence_finished` status with no adverse signal.
+
+Classifications (in priority order):
+- **UNSUBSCRIBED**: definite STOP, forever
+- **REPLIED_INTERESTED**: definite STOP - the account is answered
+- **BOUNCED**: STOP for that address
+- **WE_STOPPED_IT**: our own action, not a prospect signal
+- **SEQUENCE_FINISHED**: ran to the end, nobody replied
+- **STILL_UNKNOWN**: none of the above. **The hold stays.**
+
+THE REQUIREMENT THAT OUTRANKS THE FEATURE is enforced:
+
+- `STILL_UNKNOWN` is an explicit arm of the resolver, not a default fall-through.
+- The break-proof test creates 33 accounts with NO evidence from any source
+  and asserts ALL 33 report `STILL_UNKNOWN`, not `CLEAR`.
+- Missing evidence is never positive evidence.
+
+The module is READ-ONLY: it reports, it does not change `collision`'s
+verdicts, does not write canonical state, and does not contact anybody.
+Wiring the resolution into the account gate WIDENS who may be contacted and
+is a separate decision, not a refactor.
+
+**LIVE MEASUREMENT OWED:** The module is built and tested against fixtures.
+Running it against the live 33 accounts requires a real events fetcher
+wired to `/api/events` with cursor pagination. That is a separate wiring
+task - this module provides the `events_fetch` callback interface for it.
+The split (how many of the 33 resolve to each class) cannot be reported
+from this worktree because live provider reads are Claude's, run from
+Claude's worktree. The module is ready for that measurement.
+
+**RISKS:**
+- The events fetcher interface (`events_fetch(lead_id, campaign_id)`) needs
+  a real implementation wired to `/api/events` with cursor pagination. The
+  module provides the interface; the implementation is owed.
+- The action ledger match uses `campaign_id` and `lead_id`/`contact_key`.
+  If the ledger's key shape changes, the match may need updating.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Wire a real `events_fetch` implementation that calls `/api/events` with
+   cursor pagination, filtering by lead_id and campaign_id.
+2. Run the resolver against the live 33 HOLD accounts and report the split.
+3. For any account resolving to CLEAR (SEQUENCE_FINISHED with no adverse
+   signal), document exactly what evidence cleared it so an operator can
+   check a sample by hand.
+4. Decide whether to wire the resolution into `collision.account_policy` -
+   this WIDENS who may be contacted and is a separate decision.
