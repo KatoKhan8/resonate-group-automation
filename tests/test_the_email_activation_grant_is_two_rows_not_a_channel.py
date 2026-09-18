@@ -203,3 +203,57 @@ class TestTheOtherEmailVerbSharesTheCondition(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBothGrantTablesMustAgree(unittest.TestCase):
+    """Activation needs TWO independent grants and that is the design.
+
+    `providerwrites._AUTHORIZED_EMAIL_CAMPAIGNS` decides which provider
+    campaign a canonical row may reach. `executionguard.LIVE_ACTIVATION_GRANTS`
+    decides whether an operator has granted the ACT of activating that row at
+    all - it is gate 7, the killswitch, and it is the reason the first live
+    attempt at campaign 489 was refused five times out of five with both
+    tables otherwise satisfied.
+
+    Neither is sufficient alone. These assertions are what stops a future
+    widening that edits one file from being enough.
+    """
+
+    def test_the_email_rows_are_granted_in_both_tables(self):
+        from src import executionguard
+        for canonical in (V3, US):
+            with self.subTest(canonical=canonical):
+                self.assertIn(
+                    canonical,
+                    [c for _, c in providerwrites._AUTHORIZED_EMAIL_CAMPAIGNS])
+                self.assertTrue(executionguard.activation_is_granted(
+                    providerwrites.EMAIL_ACTIVATE,
+                    {"campaign_id": canonical}))
+
+    def test_a_row_in_neither_table_is_refused_by_both(self):
+        from src import executionguard
+        for canonical in ("productive-email-control-v2",
+                          "productive-email-liheavy-v1", "camp-1"):
+            with self.subTest(canonical=canonical):
+                self.assertFalse(executionguard.activation_is_granted(
+                    providerwrites.EMAIL_ACTIVATE,
+                    {"campaign_id": canonical}))
+                with self.assertRaises(providerwrites.WriteRefused):
+                    require("487", canonical)
+
+    def test_the_email_grant_does_not_leak_onto_linkedin(self):
+        """A grant to start an email campaign is not a grant on the other
+        channel, and the frozenset per row is what enforces it."""
+        from src import executionguard
+        for canonical in (V3, US):
+            with self.subTest(canonical=canonical):
+                self.assertFalse(executionguard.activation_is_granted(
+                    executionguard.LINKEDIN_ACTIVATE,
+                    {"campaign_id": canonical}))
+
+    def test_an_unnamed_campaign_fails_closed(self):
+        from src import executionguard
+        for campaign in ({}, {"campaign_id": ""}, {"campaign_id": None}, None):
+            with self.subTest(campaign=campaign):
+                self.assertFalse(executionguard.activation_is_granted(
+                    providerwrites.EMAIL_ACTIVATE, campaign))

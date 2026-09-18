@@ -319,9 +319,28 @@ ACTIVATION_OPERATIONS = frozenset({LINKEDIN_ACTIVATE, EMAIL_ACTIVATE})
 # differs because the operator asked for a campaign that could carry the
 # approved sequence at all. A grant that refused on that basis would be
 # refusing the thing it was given for.
+#
+# EMAILBISON, SECOND COHORT, GRANTED 2026-09-18. A fresh written operator
+# authorization: the five contacts on the 2026-09-18 approval packet, the same
+# three approved CONTROL steps, a 5/day cap, and sender 3437 - a different
+# inbox of BOJAN RENDULIC, the same human 487 already sends as. At most 15
+# emails.
+#
+# IT IS A SECOND COHORT AND NOT A SECOND CHANCE AT THE FIRST. 487 is untouched
+# and still queued for the 23rd, because its only mailbox is booked to its
+# limit every sending day until then - reproduced 2026-09-18 from the complete
+# 183,239-row forward-book walk. Sender 3437 has 9 of 15 free today and a clear
+# book on every day this sequence needs.
+#
+# THE OTHER TABLE STILL HAS TO AGREE. `providerwrites._AUTHORIZED_EMAIL_
+# CAMPAIGNS` independently names the canonical row AND resolves the provider
+# campaign it is bound to, and `_NEVER_ACTIVATE` refuses 481 and 485 whatever
+# row points at them. An entry here alone activates nothing; that separation
+# is what stops one edit from being sufficient.
 LIVE_ACTIVATION_GRANTS = {
     "productive-linkedin-cohort-v2": frozenset({LINKEDIN_ACTIVATE}),
     "productive-email-control-v3": frozenset({EMAIL_ACTIVATE}),
+    "productive-email-us-cohort-v1": frozenset({EMAIL_ACTIVATE}),
 }
 
 

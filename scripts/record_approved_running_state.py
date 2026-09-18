@@ -58,6 +58,20 @@ TARGETS = [
      "provider_id": 487, "expected": "active"},
     {"canonical": "productive-linkedin-cohort-v2", "channel": "linkedin",
      "provider_id": 605732, "expected": "IN_PROGRESS"},
+    # ADDED 2026-09-18. Campaign 489, the five-contact US cohort, activated
+    # under the operator's 2026-09-18 authorization and confirmed `active` by
+    # provider read-back.
+    #
+    # ITS ROW WAS WRITTEN `paused` DELIBERATELY AND THIS IS THE FLIP. The
+    # read-back that `executionguard.authorize` requires is taken BEFORE
+    # activation, when the campaign is legitimately still paused, so a row
+    # that said `active` at that moment made `configdiff` FAIL on `status`
+    # alone - 14 checks, one failure, and that one failure refuses the
+    # activation it was written to permit. Recording the running state is
+    # therefore a step that happens AFTER the provider confirms, which is what
+    # this script is for.
+    {"canonical": "productive-email-us-cohort-v1", "channel": "email",
+     "provider_id": 489, "expected": "active"},
 ]
 
 

@@ -250,12 +250,23 @@ def main(argv=None):
                 f"so there is no approved sequence to run. A cohort with no "
                 f"sequence expands whatever is stored on each record, which "
                 f"is the copy the CONTROL replaced.")
-        # The state the operator approves this campaign to BE in, so
-        # `configdiff` compares against a decision rather than against
-        # whatever the provider happens to report. See
-        # scripts/record_approved_running_state.py for why that difference is
-        # the whole value of the field.
-        row["provider_status_expected"] = "active"
+        # THE STATE THE OPERATOR APPROVES THIS CAMPAIGN TO BE IN - AND TODAY
+        # THAT IS `paused`, WHICH IS NOT A TYPO.
+        #
+        # `configdiff` builds the approved side's `status` from this field, and
+        # `executionguard.authorize` requires that comparison to PASS at the
+        # moment it mints an authorization. Activation happens AFTER the
+        # authorization, so at the instant it is checked the campaign is
+        # legitimately still paused. Writing `active` here makes the readback
+        # FAIL on `status` alone - measured on this row 2026-09-18, 14 checks,
+        # one failure, and that one failure refuses the activation it was
+        # written to permit.
+        #
+        # It is flipped to `active` after the provider confirms the campaign
+        # is running, through `scripts/record_approved_running_state.py`, which
+        # retakes the approval in the same pass because the row fingerprint
+        # covers this field. That is the same order v3 went through.
+        row["provider_status_expected"] = "paused"
         print(f"  {CANONICAL}: NEW")
     print(f"  records   : {len(row.get('record_ids') or [])}")
     print(f"  sender    : {SENDER_ID} (Bojan Rendulic, the human 487 sends as)")
