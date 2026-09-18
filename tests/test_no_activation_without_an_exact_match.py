@@ -990,31 +990,33 @@ class NoActivationOnAnythingLessThanAnExactMatch(Factory):
                 f"licence over every campaign on the channel")
 
     def test_email_activation_refuses_every_campaign_but_the_authorized_one(self):
-        """RE-SCOPED to the v3 rebuild, and the provider slot is UNPINNED.
+        """The grant is named rows, and since 2026-09-18 a named PROVIDER id.
 
         485 must not be activated - its sequence violates the threading
         invariant and `set_sequence` appends, so it cannot be corrected - and
-        the replacement's provider id does not exist until the provider assigns
-        it. Every entry in `_AUTHORIZED_EMAIL_CAMPAIGNS` therefore carries None
-        in the provider slot, meaning "resolve it from `bison_campaign_id` on
-        the named row".
+        481 holds people under a sequence nobody approved here.
 
-        The binding check is PRESERVED, not dropped, which is what this asserts:
-        the canonical row must be a named one, the row must actually be bound,
-        and the provider id must be the one it is bound to. An unbound row
-        authorizes nothing at all - the fail-closed case that matters, because
-        it is the state the row is in before the campaign exists.
+        THE PROVIDER SLOT WAS `None` AND IS NOW PINNED, and that is a
+        strengthening rather than a rescope. `None` meant "resolve the expected
+        id from `bison_campaign_id` on the named row", which had a real reason
+        while a campaign was being created: the provider assigns the id at
+        creation and ARCHIVES a campaign that sits without a sender, so pinning
+        a literal first would have run that clock. It also left a defeat, which
+        a GLM review found and which reproduced exactly on 2026-09-18 - edit
+        the v3 row's `bison_campaign_id` from 487 to 327, one of the CLIENT's
+        own live campaigns, and `require(EMAIL_ACTIVATE, "327", v3)` returned
+        True. The row supplied the target, so moving the row moved the target
+        and nothing mismatched.
 
-        WIDENED 2026-09-18 from one row to two, so every assertion below now
-        runs against EVERY authorized row rather than the single one. The
-        property is unchanged and the coverage is larger: each row admits the
-        one provider campaign it is bound to and refuses every other.
+        Both campaigns now exist, so both are pinned, and the row must AGREE
+        with the pin rather than supply it. What this asserts is unchanged in
+        spirit and stronger in fact: each row admits exactly one provider
+        campaign and refuses every other, and now also refuses its own row when
+        that row has been re-bound.
         """
         require = providerwrites.require_conditional_permission
         grant = providerwrites._AUTHORIZED_EMAIL_CAMPAIGNS
         self.assertTrue(grant, "the grant names no canonical row at all")
-        for want_provider, _ in grant:
-            self.assertIsNone(want_provider)
 
         # A row that is not a named one is refused whatever it names.
         for provider_id in ("481", "485", "9999", None):
@@ -1024,11 +1026,11 @@ class NoActivationOnAnythingLessThanAnExactMatch(Factory):
             with self.assertRaises(providerwrites.WriteRefused):
                 require(providerwrites.EMAIL_ACTIVATE, provider_id, None)
 
-        for _, want_canonical in grant:
+        for want_provider, want_canonical in grant:
             with self.subTest(canonical=want_canonical):
                 # The named row, but unbound: nothing to check against, so
                 # nothing is permitted. This is the state the row is in before
-                # its campaign exists.
+                # its campaign exists, and it must stay fail-closed.
                 with mock.patch.object(
                         campaigns, "get",
                         return_value={"campaign_id": want_canonical}):
@@ -1038,16 +1040,35 @@ class NoActivationOnAnythingLessThanAnExactMatch(Factory):
                                 want_canonical)
                     self.assertIn("bison_campaign_id", str(caught.exception))
 
-                # The named row, bound: that provider campaign and no other.
+                # The named row, correctly bound: that campaign and no other.
+                correct = want_provider if want_provider is not None else 4242
                 bound = {"campaign_id": want_canonical,
-                         "bison_campaign_id": 4242}
+                         "bison_campaign_id": correct}
                 with mock.patch.object(campaigns, "get", return_value=bound):
                     self.assertTrue(require(providerwrites.EMAIL_ACTIVATE,
-                                            "4242", want_canonical))
+                                            str(correct), want_canonical))
                     for other in ("485", "481", "424", "42420", "", None):
+                        if str(other) == str(correct):
+                            continue
                         with self.assertRaises(providerwrites.WriteRefused):
                             require(providerwrites.EMAIL_ACTIVATE, other,
                                     want_canonical)
+
+                # THE NEW ONE. The row re-bound to something else - including
+                # the client's own live campaigns - is refused even when the
+                # caller names the same wrong number.
+                if want_provider is None:
+                    continue
+                for rebound in (327, 328, 352, 481, 485, 9999):
+                    if str(rebound) == str(want_provider):
+                        continue
+                    drifted = {"campaign_id": want_canonical,
+                               "bison_campaign_id": rebound}
+                    with mock.patch.object(campaigns, "get",
+                                           return_value=drifted):
+                        with self.assertRaises(providerwrites.WriteRefused):
+                            require(providerwrites.EMAIL_ACTIVATE,
+                                    str(rebound), want_canonical)
 
     def test_linkedin_activation_refuses_every_campaign_but_the_canary(self):
         require = providerwrites.require_conditional_permission

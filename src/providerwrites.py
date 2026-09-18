@@ -999,10 +999,61 @@ CONDITIONAL[LINKEDIN_CREATE_CAMPAIGN] = (
 # The second exists because 487 cannot send before the 23rd - its only mailbox
 # is booked to its limit every sending day until then - and the answer to that
 # is a different cohort on a mailbox with room, never a change to 487.
+# PINNED 2026-09-18, AFTER A GLM REVIEW REPRODUCED THE DEFEAT THE `None` LEFT
+# OPEN. The unpinned slot meant the ROW supplied the expected provider id, so
+# the binding check compared a caller's number against a number the row
+# supplied - and when the row is wrong, both sides are wrong together:
+#
+#     bison_campaign_id on the v3 row edited 487 -> 327 (a CLIENT campaign)
+#     require_conditional_permission(EMAIL_ACTIVATE, "327", v3)  ->  True
+#
+# Reproduced exactly, 2026-09-18. `_NEVER_ACTIVATE` caught nothing because it
+# names 481 and 485, and the client's own live campaigns are not on it.
+#
+# The `None` had a real reason: a campaign's provider id does not exist until
+# the provider assigns it at creation, and this provider ARCHIVES a campaign
+# that sits without a sending account - measured at ~6 and ~10 minutes on 484
+# and 485 - so pinning a literal would have meant creating the campaign,
+# editing this file, and attaching the sender with the archive clock running.
+#
+# That reason expired the moment each campaign existed. Both do. So both are
+# pinned, and the row must now AGREE with the pin rather than supply it. A new
+# entry may still be added with `None` while its campaign is being created;
+# it should be pinned as soon as the provider assigns the id.
 _AUTHORIZED_EMAIL_CAMPAIGNS = (
-    (None, "productive-email-control-v3"),
-    (None, "productive-email-us-cohort-v1"),
+    (487, "productive-email-control-v3"),
+    (489, "productive-email-us-cohort-v1"),
 )
+
+
+def _provider_key(value):
+    """One canonical spelling of a provider campaign id, or None.
+
+    EVERY COMPARISON IN THIS MODULE GOES THROUGH THIS, and a GLM review is why.
+    The checks were `str(x).strip()` against `str(y).strip()`, which makes
+    `481`, `"481"`, `481.0`, `"0481"` and `" 481"` up to five different
+    campaigns. Reproduced 2026-09-18: a row bound to `481.0` or `"0481"`
+    slipped past `_NEVER_ACTIVATE` entirely, because `"481.0" != "481"`.
+
+    These ids are integers at the provider. So an integral value in any
+    spelling collapses to its integer form, and anything that is not an
+    integral id - a name, a float with a fraction, an empty string, None -
+    returns None and every caller treats that as a refusal. Fail closed:
+    a value this cannot canonicalise is a value nothing may be authorized
+    against.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        number = float(text)
+    except (TypeError, ValueError):
+        return None
+    if number != int(number):
+        return None                    # 481.5 is not a campaign
+    return str(int(number))
 
 # REFUSED WHATEVER ROW NAMES THEM, AND THIS IS NOT REDUNDANT.
 #
@@ -1081,35 +1132,62 @@ def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
             f"is a new operator decision. The transport was not reached")
     want_provider, want_canonical = entry
 
-    if want_provider is None:
-        from . import campaigns as _campaigns
-        row = _campaigns.get(want_canonical) or {}
-        bound = row.get("bison_campaign_id")
-        if not bound:
-            raise WriteRefused(
-                f"canonical campaign {want_canonical!r} carries no "
-                f"`bison_campaign_id`, so there is no provider campaign this "
-                f"authorization can be checked against. A write that cannot be "
-                f"bound to a known campaign is a write that could reach any of "
-                f"them. The transport was not reached")
-        want_provider = str(bound).strip()
+    from . import campaigns as _campaigns
+    row = _campaigns.get(want_canonical)
+    if not isinstance(row, dict):
+        raise WriteRefused(
+            f"canonical campaign {want_canonical!r} did not read back as a "
+            f"campaign row (got {type(row).__name__}). A permission that "
+            f"cannot read the row it is scoped to authorizes nothing. The "
+            f"transport was not reached")
+    bound = _provider_key(row.get("bison_campaign_id"))
+    if not bound:
+        raise WriteRefused(
+            f"canonical campaign {want_canonical!r} carries no usable "
+            f"`bison_campaign_id` (it reads "
+            f"{row.get('bison_campaign_id')!r}), so there is no provider "
+            f"campaign this authorization can be checked against. A write "
+            f"that cannot be bound to a known campaign is a write that could "
+            f"reach any of them. The transport was not reached")
 
-    # AFTER the row resolves it and BEFORE the write is admitted, because the
+    # THE PIN IS THE AUTHORITY AND THE ROW MUST AGREE WITH IT.
+    #
+    # This is the half that was missing. When the entry carried `None` the row
+    # SUPPLIED the expected id, so a row edited to name a different campaign
+    # was not a mismatch - it simply moved the target, and the caller's number
+    # matched the moved target. Reproduced 2026-09-18 against the v3 row
+    # re-bound to 327, one of the CLIENT's own live campaigns: permitted.
+    #
+    # With the id pinned, a row that disagrees is a binding fault and says so.
+    if want_provider is not None:
+        pinned = _provider_key(want_provider)
+        if bound != pinned:
+            raise WriteRefused(
+                f"canonical row {want_canonical!r} is bound to EmailBison "
+                f"campaign {bound}, but this authorization is pinned to "
+                f"{pinned}. The row and the grant disagree about which "
+                f"campaign this is, which is how a send reaches a campaign "
+                f"nobody approved. Re-binding a row does not move a grant. "
+                f"The transport was not reached")
+        bound = pinned
+
+    # AFTER the id is canonical and BEFORE the write is admitted, because the
     # thing being guarded against is a row that resolves to the wrong number.
-    if want_provider in _NEVER_ACTIVATE:
+    if bound in _NEVER_ACTIVATE:
         raise WriteRefused(
             f"canonical row {want_canonical!r} resolves to EmailBison "
-            f"campaign {want_provider}, which is on the never-activate list. "
+            f"campaign {bound}, which is on the never-activate list. "
             f"481 holds people under a sequence nobody approved here and 485 "
             f"holds live 487's own ten leads; either would put a second, "
             f"unapproved message in front of somebody. A row pointing at one "
             f"of them is a binding fault, not a permission. The transport was "
             f"not reached")
 
-    if str(provider_campaign_id or "").strip() != want_provider:
+    offered_provider = _provider_key(provider_campaign_id)
+    if offered_provider is None or offered_provider != bound:
         raise WriteRefused(
             f"canonical row {want_canonical!r} is bound to EmailBison "
-            f"campaign {want_provider}, and this write names "
+            f"campaign {bound}, and this write names "
             f"{provider_campaign_id!r}. A mismatched binding is how a send "
             f"reaches a campaign nobody approved. The transport was not "
             f"reached")

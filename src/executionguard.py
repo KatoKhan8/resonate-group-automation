@@ -348,14 +348,39 @@ def activation_is_granted(operation, campaign):
     """Has an operator granted THIS operation on THIS canonical campaign?
 
     Fails closed on everything: an unnamed operation, an unnamed campaign, a
-    campaign with no entry, or an entry that does not name this operation.
+    campaign that is not a row, a campaign with no entry, or an entry that
+    does not name this operation.
+
+    TWO WAYS THIS FAILED OPEN, BOTH FOUND BY A GLM REVIEW AND BOTH REPRODUCED
+    ON 2026-09-18.
+
+    A TRUTHY NON-DICT CRASHED INSTEAD OF REFUSING. `(campaign or {}).get` sends
+    `None`, `0`, `""` and `[]` to the empty dict and refuses them, and passes a
+    truthy non-dict straight through to `.get`, which raises `AttributeError`.
+    A list, a string or a partially-parsed row therefore left this function as
+    an exception rather than as a verdict - and in this system only a refusal
+    is safe, so the decision moved to whatever `except` sits above the caller.
+    `isinstance` is the fix and it refuses rather than raising.
+
+    `in` ON A STRING IS SUBSTRING MATCHING. The grants table is a source
+    literal holding frozensets today, so nothing reaches this - but if any
+    future writer ever stored a NOTE instead of a set, `"bison.activate" in
+    "bison.activate denied pending review"` is **True**, and a sentence
+    REFUSING a grant would have granted it. Reproduced exactly. The membership
+    test now requires a real set, so a malformed entry refuses instead of
+    reading as permission.
     """
     if operation not in ACTIVATION_OPERATIONS:
         return False
-    campaign_id = (campaign or {}).get("campaign_id")
+    if not isinstance(campaign, dict):
+        return False
+    campaign_id = campaign.get("campaign_id")
     if not campaign_id:
         return False
-    return operation in (LIVE_ACTIVATION_GRANTS.get(campaign_id) or frozenset())
+    granted = LIVE_ACTIVATION_GRANTS.get(campaign_id)
+    if not isinstance(granted, (set, frozenset)):
+        return False
+    return operation in granted
 
 
 def authorize(*, operation, channel, campaign, rec, contact, step_key,

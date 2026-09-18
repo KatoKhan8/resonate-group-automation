@@ -118,9 +118,56 @@ Answer, briefly and concretely:
 """
 
 
+ACTIVATION_QUESTION = """This is the permission layer of a cold-outreach
+system, and these functions are the last thing between a staged campaign and
+real emails reaching real people at a third-party provider (EmailBison).
+
+Context you need, all of it true today:
+
+- Activation is granted per CANONICAL ROW, not per channel. Two independent
+  tables must BOTH agree: `providerwrites._AUTHORIZED_EMAIL_CAMPAIGNS` says
+  which provider campaign a named row may reach, and
+  `executionguard.LIVE_ACTIVATION_GRANTS` says whether an operator granted the
+  ACT at all.
+- The provider slot in each allowlist entry is None, meaning "resolve the
+  expected provider campaign id from `bison_campaign_id` on the named row".
+  So the allowlist is only as safe as that field on a mutable local file.
+- `_NEVER_ACTIVATE` holds provider campaigns 481 and 485 and refuses them
+  whatever row resolves to them. 485 holds the SAME TEN PEOPLE as the live
+  campaign 487. 481 holds nine of those ten plus four people live on campaign
+  489. Starting either sends a second, unapproved message to somebody
+  mid-conversation.
+- These are called through `require_conditional_permission(operation,
+  provider_campaign_id, campaign_id)`. Both ids arrive as caller-supplied
+  values and may be str, int, None or empty.
+
+Find DEFEATS. For each, give the exact inputs or state, the call order, and
+what reaches a prospect as a result. I am specifically asking about:
+
+1. Type and whitespace confusion between str and int ids, and anything where
+   `"489"`, `489`, `" 489"` or `"489
+"` behave differently.
+2. Anything a caller can pass that makes a refusal become an acceptance.
+3. What happens if the canonical row is missing, is not a dict, has
+   `bison_campaign_id` of 0, None, "", a float, or a value that matches a
+   never-activate entry only after normalisation.
+4. Whether the two tables can disagree in a way that still permits a write.
+5. Exceptions that could escape as something other than a refusal, given that
+   a raised WriteRefused is safe and a returned True is not.
+
+Do not comment on style. Every finding must name a mechanism and its
+consequence. Answer with either NO FINDING or a numbered list, each item
+giving the trigger, the call order, and the prospect-facing result.
+
+--- {name} ---
+{source}
+"""
+
+
 def _targets():
     """Built lazily so a broken import in one area cannot block the others."""
     from src import (store, actionledger, collision, bisonevents,
+                     executionguard, providerwrites,
                      senderownership, queuejournal)
     return {
         # ADDED 2026-09-17, and reviewed BEFORE it has a caller for the same
@@ -145,6 +192,22 @@ def _targets():
             ("senderownership.one_attested_human",
              senderownership.one_attested_human),
             ("senderownership.resolve_owner", senderownership.resolve_owner),
+        ]),
+        # ADDED 2026-09-18, THE SAME DAY THE CODE WENT LIVE, and it is the
+        # highest-consequence target in this file: these two functions decide
+        # whether a real campaign starts emailing real people. The grant was
+        # widened from ONE canonical row to TWO that day, which is exactly the
+        # kind of change whose risk lives in what it stops refusing.
+        #
+        # The estate makes the stakes concrete. 481 and 485 must never start:
+        # 485 holds live 487's own ten leads, and 481 holds nine of them plus
+        # four contacts live on 489. A defeat here is a duplicate, unapproved
+        # message to somebody we are already mid-conversation with.
+        "activation": (ACTIVATION_QUESTION, [
+            ("providerwrites._is_the_authorized_email_campaign",
+             providerwrites._is_the_authorized_email_campaign),
+            ("executionguard.activation_is_granted",
+             executionguard.activation_is_granted),
         ]),
         "webhook": (GENERIC_QUESTION, [
             ("bisonevents.normalise", bisonevents.normalise),

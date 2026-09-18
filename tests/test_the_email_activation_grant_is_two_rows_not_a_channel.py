@@ -131,56 +131,96 @@ class TestEverythingElseStillRefuses(unittest.TestCase):
 
 
 class TestTheNeverActivateListHoldsWhenTheBindingIsWrong(unittest.TestCase):
-    """The binding check is the gate. This is what holds when it is handed a
-    wrong number - a row edited by hand, a bad migration, a staging run that
-    bound the wrong campaign."""
+    """What holds when the binding check is handed a wrong number.
 
-    def test_an_authorized_row_pointing_at_481_is_still_refused(self):
+    REWRITTEN 2026-09-18 WHEN THE ENTRIES WERE PINNED, and the rewrite is the
+    point rather than an inconvenience. With `(487, v3)` and `(489, us)` pinned
+    the PIN now refuses a re-bound row BEFORE `_NEVER_ACTIVATE` is consulted -
+    so the earlier version of these tests passed while exercising a different
+    guard than the one they named. CLAUDE.md: when you break a guard
+    deliberately, confirm the intended test failed for the intended reason and
+    that a different guard did not fire first. It did.
+
+    `_NEVER_ACTIVATE` is still live and still necessary, on the UNPINNED path:
+    a new entry may be added with `None` while its campaign is being created,
+    because this provider archives a campaign that sits without a sender and
+    pinning a literal first would run that clock. On that path the row supplies
+    the id, and this list is the only thing standing between a mis-bound new
+    row and 481 or 485. So these tests drive it there.
+    """
+
+    ROW = "productive-email-being-created"
+
+    def _unpinned(self, binding):
+        """An UNPINNED allowlist entry, plus a row bound to `binding`."""
+        real_get = campaigns.get
+        real_grant = providerwrites._AUTHORIZED_EMAIL_CAMPAIGNS
+
+        def fake_get(campaign_id, rows=None, _v=binding):
+            if campaign_id == self.ROW:
+                return {"campaign_id": self.ROW, "bison_campaign_id": _v}
+            return real_get(campaign_id, rows)
+
+        campaigns.get = fake_get
+        providerwrites._AUTHORIZED_EMAIL_CAMPAIGNS = (
+            real_grant + ((None, self.ROW),))
+        return real_get, real_grant
+
+    def _restore(self, real_get, real_grant):
+        campaigns.get = real_get
+        providerwrites._AUTHORIZED_EMAIL_CAMPAIGNS = real_grant
+
+    def test_an_unpinned_row_pointing_at_481_or_485_is_refused_by_the_list(self):
         for bad in sorted(providerwrites._NEVER_ACTIVATE):
             with self.subTest(bound=bad):
-                row = dict(campaigns.get(US) or {"campaign_id": US})
-                row["bison_campaign_id"] = int(bad)
-                real_get = campaigns.get
-
-                def fake_get(campaign_id, rows=None, _row=row):
-                    return _row if campaign_id == US else real_get(
-                        campaign_id, rows)
-
-                campaigns.get = fake_get
+                restore = self._unpinned(int(bad))
                 try:
                     with self.assertRaises(
                             providerwrites.WriteRefused) as caught:
-                        require(bad, US)
+                        require(bad, self.ROW)
                     self.assertIn("never-activate", str(caught.exception))
                 finally:
-                    campaigns.get = real_get
+                    self._restore(*restore)
 
-    def test_the_guard_is_what_refuses_and_not_the_binding_check(self):
+    def test_the_list_is_what_refuses_and_not_something_else(self):
         """Break-proofing, in the form the rule asks for.
 
-        With `_NEVER_ACTIVATE` emptied the same call must start PASSING -
-        which proves the previous test was exercising this guard and not
-        merely landing on the binding mismatch that would refuse anyway. If
-        this assertion ever fails, the case above is being carried by a
-        different check and stops being evidence for this one.
+        With `_NEVER_ACTIVATE` emptied the same call must start PASSING. If it
+        still refuses, this case is being carried by a different check and
+        stops being evidence for this one - which is exactly what happened to
+        the previous version of this test once the entries were pinned.
         """
-        row = dict(campaigns.get(US) or {"campaign_id": US})
-        row["bison_campaign_id"] = 481
-        real_get, real_never = campaigns.get, providerwrites._NEVER_ACTIVATE
-
-        def fake_get(campaign_id, rows=None, _row=row):
-            return _row if campaign_id == US else real_get(campaign_id, rows)
-
-        campaigns.get = fake_get
+        restore = self._unpinned(481)
+        real_never = providerwrites._NEVER_ACTIVATE
         providerwrites._NEVER_ACTIVATE = frozenset()
         try:
             self.assertTrue(
-                require("481", US),
+                require("481", self.ROW),
                 "with the never-activate list emptied this should pass; if it "
-                "still refuses, the list is not what refuses 481")
+                "still refuses, that list is not what refuses 481 here")
+        finally:
+            providerwrites._NEVER_ACTIVATE = real_never
+            self._restore(*restore)
+
+    def test_a_pinned_row_pointing_at_481_is_refused_by_the_pin_instead(self):
+        """The pinned path refuses earlier, and says so in different words.
+
+        Asserted rather than left implicit, so a reader knows which guard is
+        doing the work on which path.
+        """
+        real_get = campaigns.get
+
+        def fake_get(campaign_id, rows=None):
+            if campaign_id == US:
+                return {"campaign_id": US, "bison_campaign_id": 481}
+            return real_get(campaign_id, rows)
+        campaigns.get = fake_get
+        try:
+            with self.assertRaises(providerwrites.WriteRefused) as caught:
+                require("481", US)
+            self.assertIn("pinned", str(caught.exception))
         finally:
             campaigns.get = real_get
-            providerwrites._NEVER_ACTIVATE = real_never
 
 
 class TestTheOtherEmailVerbSharesTheCondition(unittest.TestCase):
@@ -257,3 +297,137 @@ class TestBothGrantTablesMustAgree(unittest.TestCase):
             with self.subTest(campaign=campaign):
                 self.assertFalse(executionguard.activation_is_granted(
                     providerwrites.EMAIL_ACTIVATE, campaign))
+
+
+class TestTheFourDefeatsGlmFound(unittest.TestCase):
+    """GLM adversarial review, 2026-09-18. All four reproduced before they
+    were fixed; these are the regressions.
+
+    The first two are the ones that mattered: with the provider id unpinned,
+    the binding check compared a caller's number against a number the ROW
+    supplied, so a row edited to name a different campaign did not mismatch -
+    it moved the target.
+    """
+
+    def _with_binding(self, value, canonical=V3):
+        """Run against a canonical row bound to `value`, restoring after."""
+        real = campaigns.get
+
+        def fake(campaign_id, rows=None, _v=value, _c=canonical):
+            if campaign_id == _c:
+                return {"campaign_id": _c, "bison_campaign_id": _v}
+            return real(campaign_id, rows)
+        return real, fake
+
+    def test_a_row_rebound_to_a_client_campaign_is_refused(self):
+        """327, 328 and 352 are the CLIENT's live campaigns.
+
+        `_NEVER_ACTIVATE` never caught this: it names 481 and 485, and the
+        client's own campaigns are not on it. The pin is what catches it.
+        """
+        for client_campaign in (327, 328, 352):
+            with self.subTest(bound=client_campaign):
+                real, fake = self._with_binding(client_campaign)
+                campaigns.get = fake
+                try:
+                    with self.assertRaises(providerwrites.WriteRefused) as e:
+                        require(str(client_campaign), V3)
+                    self.assertIn("pinned", str(e.exception))
+                finally:
+                    campaigns.get = real
+
+    def test_one_authorized_row_rebound_to_the_others_campaign(self):
+        """Re-binding a row does not move a grant."""
+        real, fake = self._with_binding(489, canonical=V3)
+        campaigns.get = fake
+        try:
+            with self.assertRaises(providerwrites.WriteRefused):
+                require("489", V3)
+        finally:
+            campaigns.get = real
+
+    def test_a_non_canonical_spelling_cannot_slip_past_never_activate(self):
+        """`481.0` and `"0481"` are not different campaigns from `481`.
+
+        Before `_provider_key`, `str(481.0).strip()` was `"481.0"`, which is
+        not in a set holding `"481"`, so the never-activate list missed it
+        entirely and the write was PERMITTED. Reproduced 2026-09-18.
+        """
+        for spelling in (481.0, "0481", " 481", "485.0", 485.0, "0485"):
+            with self.subTest(bound=spelling):
+                real, fake = self._with_binding(spelling)
+                campaigns.get = fake
+                try:
+                    with self.assertRaises(providerwrites.WriteRefused):
+                        require(str(spelling).strip(), V3)
+                finally:
+                    campaigns.get = real
+
+    def test_provider_key_canonicalises_and_refuses_what_it_cannot(self):
+        key = providerwrites._provider_key
+        for same in (481, "481", 481.0, "481.0", " 481 ", "0481"):
+            with self.subTest(value=same):
+                self.assertEqual(key(same), "481")
+        for unusable in (None, "", "   ", "not-a-number", 481.5, "481.5",
+                         True, False, [], {}):
+            with self.subTest(value=unusable):
+                self.assertIsNone(key(unusable))
+
+    def test_a_row_that_is_not_a_row_refuses_rather_than_raising(self):
+        real = campaigns.get
+
+        def fake(campaign_id, rows=None):
+            return ["not", "a", "row"] if campaign_id == V3 else real(
+                campaign_id, rows)
+        campaigns.get = fake
+        try:
+            with self.assertRaises(providerwrites.WriteRefused):
+                require("487", V3)
+        finally:
+            campaigns.get = real
+
+
+class TestTheGrantTableCannotBeTalkedIntoAgreeing(unittest.TestCase):
+    def test_a_truthy_non_dict_campaign_refuses_instead_of_crashing(self):
+        """`(campaign or {}).get` passed a truthy non-dict through to `.get`
+        and raised AttributeError. Only a refusal is safe here; an exception
+        moves the decision to whatever `except` sits above the caller."""
+        from src import executionguard
+        for row in (["x"], "a-string", 5, 3.4, ("a",)):
+            with self.subTest(row=row):
+                self.assertFalse(executionguard.activation_is_granted(
+                    providerwrites.EMAIL_ACTIVATE, row))
+
+    def test_falsy_campaigns_still_refuse(self):
+        from src import executionguard
+        for row in (None, {}, 0, "", []):
+            with self.subTest(row=row):
+                self.assertFalse(executionguard.activation_is_granted(
+                    providerwrites.EMAIL_ACTIVATE, row))
+
+    def test_a_grant_value_that_is_not_a_set_refuses(self):
+        """`in` on a string is SUBSTRING matching, so a note REFUSING a grant
+        read as granting it: "bison.activate" in "bison.activate denied
+        pending review" is True."""
+        from src import executionguard
+        saved = dict(executionguard.LIVE_ACTIVATION_GRANTS)
+        try:
+            for bad in ("bison.activate denied pending review",
+                        ["bison.activate"], ("bison.activate",),
+                        {"bison.activate": False}, 1):
+                with self.subTest(value=bad):
+                    executionguard.LIVE_ACTIVATION_GRANTS["camp-x"] = bad
+                    self.assertFalse(executionguard.activation_is_granted(
+                        providerwrites.EMAIL_ACTIVATE,
+                        {"campaign_id": "camp-x"}))
+        finally:
+            executionguard.LIVE_ACTIVATION_GRANTS.clear()
+            executionguard.LIVE_ACTIVATION_GRANTS.update(saved)
+
+    def test_a_real_frozenset_grant_still_works(self):
+        from src import executionguard
+        for canonical in (V3, US):
+            with self.subTest(canonical=canonical):
+                self.assertTrue(executionguard.activation_is_granted(
+                    providerwrites.EMAIL_ACTIVATE,
+                    {"campaign_id": canonical}))

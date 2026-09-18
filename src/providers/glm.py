@@ -96,7 +96,27 @@ RATE_LIMIT_HEADERS_OBSERVED = ()
 
 # Bounds.  Nothing here may run unbounded.
 MAX_PROMPT_CHARS = 60_000        # ~15k tokens of context, refused above it
-MAX_TOKENS_CAP = 8192
+# RAISED FROM 8192 ON 2026-09-18, on the same argument that raised the
+# timeout from 60 the day before, and for a cap that had no justification of
+# its own beyond "nothing here may run unbounded".
+#
+# This model spends most of its output budget on REASONING tokens - a measured
+# 1,638 of 2,112 on one short review call - and reasoning counts against
+# `max_tokens`. So the cap is not a limit on the answer, it is a limit on the
+# thinking plus the answer, and when it binds the endpoint returns 200 with an
+# EMPTY completion and `finish_reason: "length"`. The adapter correctly refuses
+# that rather than handing back "", which would read as "no findings".
+#
+# `docs/PRODUCTION-HANDOFF-2026-09-18.md` already prescribes the remedy - "Use
+# --max-tokens 24000. The default 6000 is not enough for a multi-part
+# question" - and that instruction COULD NOT TAKE EFFECT, because this line
+# silently clamped 24000 to 8192. Measured 2026-09-18: the activation review
+# returned an empty completion on BOTH functions at a requested 24000, with
+# prompts of 7,291 and 2,821 characters.
+#
+# 32768 is four times the old cap and still a ceiling. What it stops being is
+# a documented remedy that the code discards without saying so.
+MAX_TOKENS_CAP = 32768
 DEFAULT_MAX_TOKENS = 1024
 # PER ATTEMPT, SECONDS, AND IT IS A CEILING RATHER THAN A DEFAULT - `complete`
 # clamps whatever a caller asks for down to this, so nothing here can hang a
