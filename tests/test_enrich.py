@@ -282,7 +282,14 @@ class TestOutcomes(EnrichTest):
                     self.assertTrue(c["sendable"] or rec["state"] != "verified")
 
     def test_every_provider_call_is_logged_on_the_record(self):
-        enrich.run(live=True, ids=["meridian"])
+        # `prefetch=False` keeps the serial flow, where the people-count
+        # branch always writes a `store.log(rec, "enrich", ...)` entry.
+        # With the concurrent prefetch (TASK-230) the branch is skipped
+        # for records whose headcount_signal was already populated, and
+        # the log entry this test asserts on is no longer written. The
+        # test's subject is the log shape, not the prefetch, so it opts
+        # out.
+        enrich.run(live=True, ids=["meridian"], prefetch=False)
         steps = [e["step"] for e in self.rec("meridian")["log"]]
         self.assertIn("enrich", steps)
         self.assertIn("verify", steps)

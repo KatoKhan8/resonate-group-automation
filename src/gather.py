@@ -1,30 +1,56 @@
 #!/usr/bin/env python3
-"""A bounded-concurrency gather primitive that cannot break the spend audit.
+"""A bounded-concurrency gather primitive and its first caller.
 
-## The measurement this exists to answer
+## The measurement this rests on
 
-`docs/PERF-LATENCY-MODEL-2026-09-18.md`: provider wait is 98-99% of a real
-5,000-record pass in every latency band, against ~15s of our own CPU. K=4
-would take a pass from ~33 minutes of waiting to ~8.
+`docs/PERF-CONCURRENCY-MEASURED-2026-09-18.md`, against live ContactOut:
 
-## What this module is, and what it is not
+    K=1   2.10 req/s   p50 0.461s
+    K=4   8.19 req/s   p50 0.477s   3.89x
+    K=8  16.78 req/s   p50 0.454s   7.98x     <- operate here
+    K=12 17.29 req/s   p50 0.432s   8.23x     <- the knee, and it is ours
 
-This is a concurrency primitive for I/O-bound HTTP calls. It is NOT wired
-into `enrich.run` - that is a separate reviewable decision, the same way
-`queuejournal` was landed before `store.save` was touched.
+Zero 429s at every level. Latency did not degrade under concurrency; p95
+improved. `people-count` is 4,822 of the 8,760 provider calls in a modelled
+5,000-record pass; at K=8 the serial ~37-minute wait becomes ~5.
 
-The shape is decide-serially, fetch-concurrently, apply-serially:
+## What this module is
 
-    1. DECIDE   which calls to make, serially, in record order. No I/O.
-    2. GATHER   execute those calls concurrently, bounded at K. No decisions,
-                no spending, no state mutation - just round trips.
-    3. APPLY    consume the results serially, IN THE ORIGINAL ORDER, charging
-                the budget and appending to the ledger exactly as today.
+Two things, landed together because the primitive without a caller is the
+mistake TASK-029 / TASK-028 / TASK-019 all made:
 
-This module is step 2 only. It does not touch the store, the budget, the
-ledger or any record. Step 3 in the original order is what makes the ledger
-byte-identical to a serial run, which is the property that keeps the spend
-audit working.
+    1. `gather`             the concurrency primitive: decide-serially,
+                            fetch-concurrently, apply-serially. Step 2 only.
+    2. `prefetch_headcount` the first caller: prefetches
+                            `company_facts.headcount_signal` across records
+                            before `enrich.run` walks them one at a time.
+
+The shape is decide-serially, fetch-concurrently, apply-serially IN INPUT
+ORDER. Input order is what keeps the waterfall ledger byte-identical to a
+serial run, and that is the acceptance test.
+
+## Why THIS call and not a more important one
+
+Because it costs nothing. `enrich.COSTS["people-count"]` is 0. The gather
+docstring names the trap that makes concurrency dangerous here: a timed-out
+call STILL REACHED THE PROVIDER AND STILL COST A CREDIT. On a paid route,
+fifty timeouts under-count the ledger by fifty credits and
+`costs.reconcile()` then reports clean against a wrong number. On a route
+that costs zero, that entire failure mode has no value to be wrong about.
+
+So the call that dominates the count is also the only one where the first
+wiring cannot corrupt the spend audit. That is the whole argument for
+starting here, and it is why this module does NOT touch
+`decision-makers`, `email-verifier` or any other paid route.
+
+## What stays serial
+
+EVERY call still goes through `spend()`, which writes the waterfall ledger.
+`spend()` is the DECIDE phase. It runs serially. The shared `Budget` cap,
+the ledger append order, the `new_accounts_per_day` reservation lock, and
+checkpoint ordering all stay serial - see section 7 of
+`docs/PRODUCTION-HANDOFF-2026-09-18.md`. Two concurrent charges read the
+same `spent` and both pass, so a 260-credit cap silently spends 262.
 
 ## Why ThreadPoolExecutor and not asyncio
 
@@ -253,3 +279,141 @@ def gather(
         raise GatherIncomplete(submit_failure, outcomes)
 
     return outcomes
+
+
+# Default K. Measured against live ContactOut on 2026-09-18:
+#
+#     K=1   2.10 req/s   p50 0.461s
+#     K=4   8.19 req/s   p50 0.477s   3.89x
+#     K=8  16.78 req/s   p50 0.454s   7.98x     <- here
+#     K=12 17.29 req/s   p50 0.432s   8.23x     <- the knee
+#
+# K=12 buys 3% and raises max from 0.516s to 0.945s. Do not default higher.
+DEFAULT_HEADCOUNT_K = 8
+
+
+def prefetch_headcount(records, people_count, spend, k=DEFAULT_HEADCOUNT_K,
+                       timeout=None):
+    """Prefetch `company_facts.headcount_signal` across records concurrently.
+
+    THE FIRST CALLER of `gather`. The shape is decide-serially,
+    fetch-concurrently, apply-serially IN INPUT ORDER:
+
+        1. DECIDE   which records still need the call, serially, in record
+                    order. No I/O. Records that already carry
+                    `headcount_signal` are skipped - the same guard
+                    `enrich_record` uses, so a prefetch and a serial run
+                    make the same decisions.
+
+        2. GATHER   call `people_count(domain=rec["domain"])` for each
+                    chosen record, bounded at K. No decisions, no spending,
+                    no state mutation - just round trips.
+
+        3. APPLY    walk the results in INPUT ORDER. For each:
+                      - ok:        call `spend` (which writes the waterfall
+                                   step and charges the budget), then write
+                                   `headcount_signal` onto the record.
+                      - timed_out: treat as a provider failure; do not
+                                   call `spend`, do not write; the record
+                                   keeps its chance to buy the call in
+                                   `enrich_record`.
+                      - failed:    same as timed_out.
+
+    The apply order is what keeps the waterfall ledger byte-identical to a
+    serial run. `spend()` is the DECIDE phase and runs serially; the shared
+    `Budget` cap is NOT made concurrent (two concurrent charges read the
+    same `spent` and both pass, so a 260-credit cap silently spends 262).
+
+    Args:
+        records:       the records, in input order. Each must carry
+                       `rec["domain"]` and `rec.get("company_facts")`.
+        people_count:  callable taking `domain=` and returning a dict with
+                       a `"profiles"` key. The free ContactOut call in
+                       production; a fake in tests.
+        spend:         callable accepting at least
+                       `spend(call, why, provider="contactout")`. Returns
+                       truthy on approval (and writes the waterfall step),
+                       falsy on refusal. The record is passed as a keyword
+                       argument `rec=rec` so a bridge that needs it can
+                       accept it via `**kw`; a bridge that does not need
+                       it ignores the keyword.
+        k:             max concurrent calls. Defaults to 8.
+        timeout:       per-item timeout in seconds; passed to `gather`.
+
+    Returns:
+        `{"attempted": N, "ok": N, "failed": N, "timed_out": N,
+          "skipped_already_present": N, "skipped_budget_refused": N}`
+    """
+    # --- DECIDE: serially, in record order. No I/O. ---------------------
+    need = []
+    skipped_already = 0
+    for rec in records:
+        facts = rec.get("company_facts") or {}
+        if "headcount_signal" in facts:
+            skipped_already += 1
+            continue
+        need.append(rec)
+
+    if not need:
+        return {"attempted": 0, "ok": 0, "failed": 0, "timed_out": 0,
+                "skipped_already_present": skipped_already,
+                "skipped_budget_refused": 0}
+
+    # --- GATHER: bounded concurrent I/O. No decisions, no mutation. -----
+    outcomes = gather(
+        need,
+        lambda rec: people_count(domain=rec["domain"]),
+        k=k,
+        timeout=timeout,
+    )
+
+    # --- APPLY: serially, IN INPUT ORDER. -------------------------------
+    # Input order is what keeps the waterfall byte-identical to a serial
+    # run, and that is the acceptance test. The Budget cap stays in this
+    # serial lane: `spend` is called once at a time, so two concurrent
+    # charges cannot read the same `spent` and both pass.
+    ok = failed = timed_out = budget_refused = 0
+    for rec, outcome in zip(need, outcomes):
+        if outcome.is_ok:
+            # `spend` is the DECIDE phase. It runs serially, writes the
+            # waterfall step, and only then is the prefetched value written
+            # onto the record. A `spend` that returns falsy (cap reached)
+            # leaves the record untouched so `enrich_record` can surface
+            # the refusal through its own path.
+            #
+            # The record is passed as `rec=` so a bridge that needs it -
+            # to charge the right budget key or write the right ledger -
+            # can accept it via `**kw`. A bridge that does not need it
+            # (the test fake, a pure budget gate) ignores the keyword and
+            # keeps the simple `(call, why, provider)` signature.
+            approved = spend(
+                "people-count",
+                "confirm the domain is staffed",
+                "contactout",
+                rec=rec,
+            )
+            if not approved:
+                budget_refused += 1
+                continue
+            count = outcome.value or {}
+            facts = dict(rec.get("company_facts") or {})
+            facts["headcount_signal"] = count.get("profiles")
+            rec["company_facts"] = facts
+            ok += 1
+        elif outcome.is_timed_out:
+            # A timed-out call still reached the provider and may yet
+            # succeed there. On a paid route that is a ledger hole; on
+            # people-count it costs zero and the record keeps its chance
+            # to buy the call in `enrich_record`.
+            timed_out += 1
+        else:
+            failed += 1
+            # Per-record failure does not fail the pass. Append to the
+            # record's `failures` list so `enrich_record`'s existing
+            # failure-tracking picks it up.
+            rec.setdefault("failures", []).append("people-count")
+
+    return {"attempted": len(need), "ok": ok, "failed": failed,
+            "timed_out": timed_out,
+            "skipped_already_present": skipped_already,
+            "skipped_budget_refused": budget_refused}
