@@ -60,28 +60,22 @@ the right abstraction for wrapping existing blocking I/O.
 
 ## A TIMED-OUT CALL STILL REACHED THE PROVIDER, AND STILL COST A CREDIT
 
-`timeout` abandons the WAIT. It does not cancel the request: `shutdown(wait=
-False)` leaves that thread running until its underlying I/O finishes. So a
-call that times out here has been dispatched to the provider, may well
-succeed there, and will be billed there.
+**FIXED (TASK-231).** The timeout is now enforced at the HTTP layer:
+`src/providers._urllib_transport` passes `timeout` to
+`urllib.request.urlopen`, which aborts the socket when the deadline
+expires. `gather` no longer has its own `timeout` parameter - that was
+the defect, two timeouts with the same name and different guarantees.
 
-**That is a hole in the spend audit if the APPLY step only charges for `ok`.**
-A pass with fifty timeouts would under-count the ledger by fifty credits, and
-`costs.reconcile()` would report a clean audit against a number that is wrong.
+A callable that raises `TimeoutError` (including `HttpTimeout` from the
+HTTP transport) is classified as `timed_out` in the Outcome. This proves
+WE stopped waiting; it does NOT prove the SERVER stopped working. For a
+GET that distinction costs nothing; for a paid POST it is the whole
+question, and the report must state which of the two was achieved.
 
-So the wiring change must do one of two things, and it is a decision rather
-than a detail:
-
-    charge for `timed_out` too   the credit was spent whether or not the
-                                 answer arrived. Conservative and correct for
-                                 the ledger; it charges for answers nobody got.
-    enforce the timeout at the
-    HTTP layer instead           where it actually aborts the request. This is
-                                 the better answer, and the provider modules
-                                 already carry `TIMEOUT = 25`.
-
-**Prefer the second.** `timeout` here is a backstop against a hung thread, not
-a budget mechanism, and using it as one is how the ledger drifts.
+**That is why no paid route is wired into `gather` yet.** The people-count
+call costs zero, so the honesty caveat has no value to be wrong about.
+Wiring a paid route needs the idempotency contract from
+`src/ratelimit.py` as a separate task.
 
 ## Rate limits: K is a ceiling, not a target
 
@@ -93,7 +87,7 @@ retries: a 429 is a result the caller classifies, not something this
 primitive hides.
 """
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Callable, List, Optional, Sequence, TypeVar
 
@@ -116,16 +110,6 @@ class GatherIncomplete(RuntimeError):
             f"{len(outcomes)} items ({type(cause).__name__}: {cause})")
         self.cause = cause
         self.outcomes = outcomes
-
-
-class _CallableTimeoutError(BaseException):
-    """Wraps a TimeoutError raised BY the callable, so gather can tell it
-    apart from a TimeoutError raised by the future's own deadline.
-
-    Both surface as `TimeoutError` from `Future.result(timeout=...)`. Without
-    this wrapper, a callable that raises TimeoutError (e.g. a socket timeout)
-    would be misclassified as `timed_out` instead of `failed`.
-    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,7 +175,6 @@ def gather(
     items: Sequence[T],
     call: Callable[[T], R],
     k: int = 4,
-    timeout: Optional[float] = None,
     min_interval: Optional[float] = None,
 ) -> List[Outcome]:
     """Execute `call` for each item with bounded concurrency.
@@ -200,20 +183,26 @@ def gather(
     completion order. The callable is executed exactly once per item. No
     retries, no shared mutable state, no state mutation of any kind.
 
+    **Timeout enforcement lives at the HTTP layer**, not here. The transport
+    in `src/providers/__init__.py` passes `timeout` to `urllib.request.urlopen`,
+    which aborts the socket when the deadline expires. A callable that raises
+    `TimeoutError` (including `HttpTimeout` from the transport) is classified
+    as `timed_out`. There is no second, weaker timeout here with the same
+    name and different guarantees - that was the defect.
+
+    A `TimeoutError` from the callable proves WE stopped waiting. It does NOT
+    prove the SERVER stopped working: for a paid POST the request may have
+    been processed before the socket closed. See `HttpTimeout` in
+    `src/providers/__init__.py`.
+
     Args:
         items: The inputs, processed in order.
         call: A callable taking one item and returning a result. It must not
               retry - a retry hidden inside the pool would double-spend at a
-              paid provider.
+              paid provider. If the callable raises `TimeoutError` (including
+              `HttpTimeout` from the HTTP transport), the outcome is
+              `timed_out`; any other exception is `failed`.
         k: Maximum concurrent calls. Defaults to 4.
-        timeout: Per-item timeout in seconds, measured from when this
-                 function STARTS WAITING on that item, not from when the item
-                 was dispatched. Items are collected in input order, so an
-                 item late in the list has been running while its
-                 predecessors were collected and is therefore allowed more
-                 total wall time than `timeout`. It is a backstop against a
-                 hung thread, not a deadline. See the module docstring on why
-                 it must not be used as a budget mechanism.
         min_interval: Minimum seconds between dispatches. None means no
                       throttling. K is still the concurrency ceiling.
 
@@ -222,12 +211,6 @@ def gather(
     """
     if not items:
         return []
-
-    def _wrapped(item):
-        try:
-            return call(item)
-        except TimeoutError as exc:
-            raise _CallableTimeoutError(exc) from exc
 
     outcomes: List[Outcome] = [Outcome.not_attempted()] * len(items)
     executor = ThreadPoolExecutor(max_workers=k)
@@ -243,7 +226,7 @@ def gather(
                     time.sleep(min_interval - elapsed)
             last_submit = time.monotonic()
             try:
-                futures[i] = executor.submit(_wrapped, item)
+                futures[i] = executor.submit(call, item)
             except BaseException as exc:          # noqa: BLE001 - classified
                 # THE POOL REFUSED TO TAKE MORE WORK - interpreter shutdown,
                 # a thread that cannot be created, memory. Raising here would
@@ -259,12 +242,15 @@ def gather(
             if fut is None:
                 continue                          # never submitted
             try:
-                result = fut.result(timeout=timeout)
+                result = fut.result()
                 outcomes[i] = Outcome.ok(result)
             except TimeoutError:
+                # The callable raised TimeoutError (including HttpTimeout
+                # from the HTTP transport). The request was ABORTED at the
+                # socket layer. This is NOT the same as a future-level
+                # timeout (which no longer exists here); it is the HTTP
+                # layer's timeout firing, which is the enforcement point.
                 outcomes[i] = Outcome.timed_out()
-            except _CallableTimeoutError as exc:
-                outcomes[i] = Outcome.failed(exc.__cause__)
             except BaseException as exc:
                 outcomes[i] = Outcome.failed(exc)
     finally:
@@ -293,7 +279,7 @@ DEFAULT_HEADCOUNT_K = 8
 
 
 def prefetch_headcount(records, people_count, spend, k=DEFAULT_HEADCOUNT_K,
-                       timeout=None, on_applied=None):
+                       on_applied=None):
     """Prefetch `company_facts.headcount_signal` across records concurrently.
 
     THE FIRST CALLER of `gather`. The shape is decide-serially,
@@ -324,6 +310,10 @@ def prefetch_headcount(records, people_count, spend, k=DEFAULT_HEADCOUNT_K,
     `Budget` cap is NOT made concurrent (two concurrent charges read the
     same `spent` and both pass, so a 260-credit cap silently spends 262).
 
+    Timeout enforcement lives at the HTTP layer (`src/providers.TIMEOUT`),
+    not here. A callable that raises `TimeoutError` (including `HttpTimeout`
+    from the transport) produces a `timed_out` outcome.
+
     Args:
         records:       the records, in input order. Each must carry
                        `rec["domain"]` and `rec.get("company_facts")`.
@@ -338,7 +328,6 @@ def prefetch_headcount(records, people_count, spend, k=DEFAULT_HEADCOUNT_K,
                        accept it via `**kw`; a bridge that does not need
                        it ignores the keyword.
         k:             max concurrent calls. Defaults to 8.
-        timeout:       per-item timeout in seconds; passed to `gather`.
 
     Returns:
         `{"attempted": N, "ok": N, "failed": N, "timed_out": N,
@@ -364,7 +353,6 @@ def prefetch_headcount(records, people_count, spend, k=DEFAULT_HEADCOUNT_K,
         need,
         lambda rec: people_count(domain=rec["domain"]),
         k=k,
-        timeout=timeout,
     )
 
     # --- APPLY: serially, IN INPUT ORDER. -------------------------------

@@ -428,14 +428,19 @@ class ConcurrencyActuallyOverlaps(unittest.TestCase):
 
 
 class Timeout(unittest.TestCase):
-    """Per-item timeout produces timed_out, not an infinite hang."""
+    """A callable that raises TimeoutError produces timed_out.
 
-    def test_slow_item_times_out(self):
-        def slow(item):
-            time.sleep(1.0)
-            return item
+    Timeout enforcement lives at the HTTP layer (TASK-231). `gather` no
+    longer has a `timeout` parameter. A callable that raises `TimeoutError`
+    (including `HttpTimeout` from the HTTP transport) is classified as
+    `timed_out`.
+    """
 
-        results = gather([1, 2, 3], slow, k=4, timeout=0.05)
+    def test_callable_raising_timeout_is_timed_out(self):
+        def raises_timeout(item):
+            raise TimeoutError("simulated HTTP timeout")
+
+        results = gather([1, 2, 3], raises_timeout, k=4)
         self.assertEqual(len(results), 3)
         for o in results:
             self.assertTrue(o.is_timed_out)
@@ -443,35 +448,36 @@ class Timeout(unittest.TestCase):
     def test_fast_items_succeed_while_slow_times_out(self):
         def mixed(item):
             if item == 1:
-                time.sleep(1.0)
+                raise TimeoutError("simulated HTTP timeout")
             return item
 
-        results = gather([0, 1, 2], mixed, k=4, timeout=0.05)
+        results = gather([0, 1, 2], mixed, k=4)
         self.assertEqual(len(results), 3)
         self.assertTrue(results[0].is_ok)
         self.assertTrue(results[1].is_timed_out)
         self.assertTrue(results[2].is_ok)
 
-    def test_no_timeout_means_no_timeout(self):
-        def slow(item):
-            time.sleep(0.05)
+    def test_no_timeout_error_means_ok(self):
+        def fast(item):
             return item
 
-        results = gather([1], slow, k=1, timeout=None)
+        results = gather([1], fast, k=1)
         self.assertEqual(len(results), 1)
         self.assertTrue(results[0].is_ok)
         self.assertEqual(results[0].value, 1)
 
-    def test_callable_raising_timeout_error_is_failed_not_timed_out(self):
-        """If the callable itself raises TimeoutError, that is a result,
-        not the gather's timeout firing."""
+    def test_callable_raising_timeout_error_is_timed_out_not_failed(self):
+        """TASK-231: a callable that raises TimeoutError is now
+        classified as timed_out, not failed. The old behavior wrapped it
+        in _CallableTimeoutError and called it failed; the new behavior
+        recognises that a TimeoutError from the HTTP transport IS a
+        timeout, regardless of where it was raised."""
         def raises_timeout(item):
             raise TimeoutError("from the callable")
 
-        results = gather([1], raises_timeout, k=1, timeout=5.0)
+        results = gather([1], raises_timeout, k=1)
         self.assertEqual(len(results), 1)
-        self.assertTrue(results[0].is_failed)
-        self.assertIsInstance(results[0].value, TimeoutError)
+        self.assertTrue(results[0].is_timed_out)
 
 
 class MinInterval(unittest.TestCase):
