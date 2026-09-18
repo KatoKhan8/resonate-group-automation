@@ -1,0 +1,60 @@
+{
+  "generated_at": "2026-09-18T06:47:27+00:00",
+  "derived_from": "scripts/next_ready_cohort.py via src/reservoir.py",
+  "proposes_does_not_send": true,
+  "channels": {
+    "linkedin": {
+      "depth": 0,
+      "population": 81,
+      "buckets": {
+        "SAFETY_BLOCKED": 71,
+        "ALREADY_LIVE": 3,
+        "NEAR_MISS": 7
+      },
+      "blockers_ranked": [
+        [
+          "approval",
+          66
+        ],
+        [
+          "copy",
+          9
+        ],
+        [
+          "PASS",
+          3
+        ],
+        [
+          "account_collision",
+          2
+        ],
+        [
+          "collision",
+          1
+        ]
+      ],
+      "ready_hashes": []
+    },
+    "email": {
+      "depth": 0,
+      "population": 51,
+      "buckets": {
+        "ALREADY_LIVE": 15,
+        "SAFETY_BLOCKED": 36
+      },
+      "blockers_ranked": [
+        [
+          "approval",
+          36
+        ],
+        [
+          "collision",
+          15
+        ]
+      ],
+      "ready_hashes": []
+    }
+  },
+  "estate_fingerprint": "d33cbd6d4ed10f26",
+  "record_count": 550
+}
