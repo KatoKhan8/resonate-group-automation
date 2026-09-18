@@ -136,18 +136,29 @@ belonging to 487.
 
 ## Three defects found on the way, all by gates doing their job
 
-**1. A refused activation poisons its own retry.** Run 1 minted five
-authorizations, was refused at gate 7 by the killswitch, and left five
-`attempted` ledger rows. On run 2 those rows made
-`collision.staging_artifact_evidence` stop proving 489 was our own silent
-staging - three arms passed, the ledger arm refused - so all five contacts
-read TOUCHED against the campaign that had just loaded them.
-`executionguard` says the killswitch is last "so that a killswitch refusal
-does not leave a reservation behind". It is last and it leaves one anyway.
-Settled ABANDONED against provider truth by
-`scripts/settle_abandoned_email_attempts.py`, never FAILED: nobody asked the
-provider. **The underlying ordering defect is NOT fixed** and is in
-PRODUCT-GAPS.md.
+**1. An authorization that is minted and never used leaves a reservation
+nothing settles.** CORRECTED on the day it was written: the first reading of
+this blamed the killswitch, and that was wrong. `actionledger.reserve` runs
+AFTER the killswitch, so a killswitch refusal writes nothing - and the
+session's own record proves it, because run A refused all five at the
+killswitch and run B then authorized all five, which gate 6 would have refused
+as an unsettled retry had run A left anything.
+
+What actually happened: run B authorized all five and each correctly reserved,
+then `providerwrites.perform` raised before the transport - `no transport
+supplied`, my own caller bug - so nothing reached the provider and nothing
+settled the keys. On run C those five `attempted` rows broke the ledger arm of
+`collision.staging_artifact_evidence`, the campaign stopped proving itself our
+own silent staging, and all five contacts read TOUCHED against the campaign
+that had just loaded them.
+
+The all-or-nothing activation shape makes this routine: one authorization per
+contact, abort if any refuses, and every one minted before the refusal has
+already reserved. HeyReach 605487 hit the same thing - three of four
+authorized, the fourth refused - which is why
+`settle_abandoned_linkedin_attempts.py` already existed. Settled ABANDONED
+against provider truth by `scripts/settle_abandoned_email_attempts.py`, never
+FAILED: nobody asked the provider. **Not fixed**; PRODUCT-GAPS 44.
 
 **2. `provider_status_expected` must read `paused` until the campaign runs.**
 The readback `executionguard.authorize` requires is taken BEFORE activation.

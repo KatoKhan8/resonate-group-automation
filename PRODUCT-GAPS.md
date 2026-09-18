@@ -3577,45 +3577,82 @@ two members one character apart shared a lookup key. Five mutations, all
 caught, including one that kept only the first of the three segments - two
 members can share the leading pair.
 
-## 44. A refused activation blocks its own retry, measured 2026-09-18
+## 44. An unused authorization leaves a reservation nothing settles
 
-`executionguard.authorize` RESERVES a ledger key while its gates run, and the
-killswitch is gate 7. Its own comment says the killswitch is last "so that a
-killswitch refusal does not leave a reservation behind". It is last, and a
-reservation is left behind anyway, because the reservation is taken during the
-run rather than after all seven gates pass.
+CORRECTED 2026-09-18, the same day it was written, because the first version
+of this entry named the wrong mechanism and the correction is the useful part.
 
-That alone would be untidy. What makes it a gap is the second-order effect,
-measured on EmailBison campaign 489 within four minutes:
+### What was claimed, and why it was wrong
 
-    run 1   5 authorized, refused at gate 7 (killswitch), 0 emails sent,
-            5 ledger keys left at `attempted`
-    run 2   0 authorized, refused at gate 3 (collision), on run 1's own rows
+The entry said a killswitch refusal leaves a ledger reservation behind, and
+that `executionguard`'s own comment - "the ledger reservation is second to
+last so that a killswitch refusal does not leave a reservation behind" - was
+therefore false.
 
-`collision.staging_artifact_evidence` proves a campaign is our own silent
-staging on four arms, and the fourth is "this repository's action ledger
-records no unrefuted prospect-facing action against the canonical campaign".
-Five unrefuted attempts is not silence, so 489 stopped qualifying, its five
-leads stopped being excluded from their own collision history, and every
-contact read TOUCHED - "loaded as a lead, nothing sent yet" - against the
+**It is not false.** `actionledger.reserve` runs AFTER `gates.append(
+"killswitch")`, so a killswitch refusal raises before any ledger write is
+reached. Gate 6 is `require_clear`, a CHECK that writes nothing.
+
+The session's own record proves it rather than the code read alone. On
+2026-09-18, in order:
+
+    run A   5 contacts REFUSED at gate 7 (killswitch)
+    run B   5 contacts AUTHORIZED
+    run C   0 contacts authorized, refused at gate 3 (collision)
+
+If run A had left reservations, run B could not have authorized anybody: gate
+6 refuses an unsettled retry, which is exactly what run C then hit. Run B
+succeeding is the measurement.
+
+### What actually happens
+
+**A minted authorization that is never used leaves a reservation, and nothing
+settles it automatically.**
+
+Run B authorized all five, and each authorization correctly reserved its key.
+Then `providerwrites.perform` raised before the transport - `no transport
+supplied`, a caller bug - so nothing was written to the provider and nothing
+settled the five keys. On run C those five `attempted` rows broke the ledger
+arm of `collision.staging_artifact_evidence`, the campaign stopped proving
+itself our own silent staging, and all five contacts read TOUCHED against the
 campaign that had just loaded them.
 
-**So the first refused activation of any campaign makes the second attempt
-refuse for a different and more alarming reason.** The gates are individually
-right; the ordering is what is wrong.
+**The all-or-nothing activation shape makes this routine rather than rare.**
+An activation mints one authorization per contact and aborts if any refuses,
+because the campaign emails everybody it holds or nobody. Every authorization
+minted before the refusal has already reserved. HeyReach campaign 605487 hit
+exactly this: three of four authorized, the fourth refused, and
+`scripts/settle_abandoned_linkedin_attempts.py` exists because of it.
 
-The settlement exists and is honest about what it settles:
-`scripts/settle_abandoned_email_attempts.py` proves from provider truth that
-the campaign is paused, every prospect-facing counter is zero and no scheduled
-row has gone out, then settles the keys ABANDONED - never FAILED, because
-nobody asked the provider. `settle_abandoned_linkedin_attempts.py` is the same
-shape on the other channel, written after the same thing happened to HeyReach
-campaign 605487.
+So the two channels did hit the same defect, and it is this one.
 
-**The fix is not made.** Reserving after all gates pass, or releasing a
-reservation when a later gate refuses, is a change to the last-word gate and
-wants its own review rather than a quiet edit during an activation. Two
-channels have now hit it, so it is a pattern rather than an incident.
+### Why it is not simply fixed
+
+A reservation is not obviously wrong at the moment it is taken. `authorize`
+cannot know whether its caller will use the authorization, and an
+authorization IS a claim on `new_accounts_per_day` - releasing it eagerly
+would let two callers both authorize the same last slot.
+
+What is missing is a way for a caller to say "I am not going to use this",
+and a rule about who says it. The settlement scripts do it by hand, from
+provider truth, and settle ABANDONED rather than FAILED because nobody asked
+the provider. That is the right classification and the wrong ergonomics: it
+needs a person to notice.
+
+The shapes worth considering, none chosen:
+
+- an authorization context manager that settles ABANDONED on an exception
+  path, so the caller cannot forget
+- a sweep that settles any `attempted` key older than N minutes whose campaign
+  provider truth proves silent - the settlement scripts generalised
+- making `perform` settle the key it was handed when it refuses before the
+  transport, which covers the measured case and not the all-or-nothing one
+
+### Evidence
+
+    scripts/settle_abandoned_email_attempts.py
+    scripts/settle_abandoned_linkedin_attempts.py
+    docs/THE-US-COHORT-IS-LIVE-2026-09-18.md
 
 ---
 

@@ -1,37 +1,46 @@
 #!/usr/bin/env python3
-"""Settle the ledger reservations left by the refused 489 activation.
+"""Settle a ledger reservation that was minted and never used.
 
     py -3 scripts/settle_abandoned_email_attempts.py            # dry run
     py -3 scripts/settle_abandoned_email_attempts.py --live      # settle
 
-WHAT HAPPENED, and it is a defect worth reading before it is settled.
+WHAT HAPPENED, and the first account of it here was WRONG.
 
-Activating EmailBison campaign 489 minted authorizations for all five of its
-contacts - each of which RESERVES a ledger key - and was then refused at gate
-7, the killswitch, because `executionguard.LIVE_ACTIVATION_GRANTS` did not yet
-name the canonical row. `providerwrites.perform` was never reached and the
-campaign was never started.
+Activating EmailBison campaign 489 took three runs on 2026-09-18:
 
-THE FIVE KEYS WERE LEFT `attempted`, AND THAT POISONED THE CAMPAIGN AGAINST
-ITSELF. `collision.staging_artifact_evidence` proves a campaign is our own
-silent staging on four arms, and the fourth is "this repository's action ledger
-records no unrefuted prospect-facing action against the canonical campaign".
-Five unrefuted attempts is not silence. So on the NEXT attempt, campaign 489
-stopped qualifying as our own staging, its five leads stopped being excluded
-from the collision history, and all five contacts read TOUCHED - "loaded as a
-lead, nothing sent yet" - against the very campaign that had just loaded them.
+    run A   5 contacts REFUSED at gate 7 (killswitch) - the canonical row was
+            not yet in `executionguard.LIVE_ACTIVATION_GRANTS`
+    run B   5 contacts AUTHORIZED, then `providerwrites.perform` raised
+            `no transport supplied` - a caller bug, before the transport
+    run C   0 contacts authorized, REFUSED at gate 3 (collision)
 
-Measured 2026-09-18, in this order:
+The first version of this docstring blamed run A: it said a killswitch refusal
+leaves a reservation behind. **That is false.** `actionledger.reserve` runs
+AFTER `gates.append("killswitch")`, so a killswitch refusal raises before any
+ledger write. The record above proves it without reading the code: if run A
+had left reservations, run B could not have authorized anybody, because gate 6
+refuses an unsettled retry - which is exactly what run C then hit.
 
-    run 1   5 authorized, refused at gate 7 (killswitch), 0 emails sent
-    run 2   0 authorized, refused at gate 3 (collision), on run 1's own rows
+**The five rows came from run B, where authorize SUCCEEDED.** Each
+authorization correctly reserved its key. Then `perform` raised before
+reaching the provider, so nothing was sent and nothing settled the keys.
 
-`executionguard` puts the killswitch last and says why: "last so that a
-killswitch refusal does not leave a reservation behind". It is last, and a
-reservation is left behind anyway, because the reservation is taken while the
-gates run rather than after all of them pass. A refused activation therefore
-blocks its own retry. That is recorded in PRODUCT-GAPS.md; this script is the
-settlement, not the fix.
+THE POISONING IS REAL AND THE MECHANISM IS THIS ONE.
+`collision.staging_artifact_evidence` proves a campaign is our own silent
+staging on four arms, and the fourth is "the action ledger records no
+unrefuted prospect-facing action against the canonical campaign". Five
+unrefuted attempts is not silence. So on run C campaign 489 stopped
+qualifying, its five leads stopped being excluded from their own collision
+history, and every contact read TOUCHED - "loaded as a lead, nothing sent
+yet" - against the campaign that had just loaded them.
+
+AND THE ALL-OR-NOTHING SHAPE MAKES IT ROUTINE. An activation mints one
+authorization per contact and aborts if any refuses, because the campaign
+emails everybody it holds or nobody. Every authorization minted before the
+refusal has already reserved. `settle_abandoned_linkedin_attempts.py` exists
+because HeyReach campaign 605487 hit precisely that - three of four
+authorized, the fourth refused. Two channels, one defect, and it is this one
+rather than the killswitch. PRODUCT-GAPS.md 44.
 
 WHY `ABANDONED` AND NOT `FAILED`. `FAILED` says the provider was asked and did
 not do it. Nobody asked. The refusal happened two layers above the transport.
@@ -63,9 +72,15 @@ REFUSED_CAMPAIGN = 489
 # what is actually outstanding.
 KEY_SUFFIX = ":em1:email"
 
-WHY = (f"activation of EmailBison campaign {REFUSED_CAMPAIGN} was refused at "
-       f"gate 7 (killswitch) before any provider write; the campaign is "
-       f"paused, has sent nothing, and nothing was sent under these keys")
+# WHAT THE SETTLEMENT RECORDS, and it names the caller rather than a gate.
+# The first version of this said "refused at gate 7 (killswitch)", which
+# was wrong: the killswitch refusal never reserved anything. These keys
+# come from an authorization that SUCCEEDED and was then not used, because
+# `providerwrites.perform` raised before the transport.
+WHY = (f"an authorization for EmailBison campaign {REFUSED_CAMPAIGN} was "
+       f"minted and never used - `perform` raised before the transport - "
+       f"and provider truth confirms the campaign is not sending and has "
+       f"sent nothing under these keys")
 
 
 def outstanding_keys():
