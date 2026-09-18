@@ -24,6 +24,7 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+from src.bisonfactory import _comparable_step
 from src.providers import bison
 
 
@@ -93,11 +94,37 @@ def build_rows(expected_steps, observed_steps, campaign_data=None):
     # --- per-step comparison ---
     for i, (exp, obs) in enumerate(zip(expected_steps, observed_steps), start=1):
         order = exp.get("order", i)
-        # subject
+        # SUBJECT, COMPARED THROUGH THE SAME NORMALISATION `configdiff` USES.
+        #
+        # EmailBison prepends "Re: " ITSELF on a `thread_reply` step - measured
+        # across 153 follow-ups by TASK-159 and stated in
+        # `bisonfactory._comparable_step`, which is where the one copy of this
+        # rule lives. This script compared the raw strings, so it reported
+        # `step_2_subject  {SUBJECT_1}  vs  Re: {SUBJECT_1}  ** FAIL **` on
+        # campaigns that are CORRECT - measured on 487 and 489, two failures
+        # each, both spurious, while `configdiff.compare_bison` returned PASS
+        # on the same campaigns in the same minute.
+        #
+        # That is worse than cosmetic. This readback is the COMPARE half of
+        # WRITE -> READ BACK -> COMPARE -> RECONCILE, and a compare that cries
+        # FAIL on a difference which is correct by construction teaches an
+        # operator to ignore the verdict.
+        #
+        # IMPORTED, NOT REIMPLEMENTED. A second copy of the rule is how the two
+        # drift, and the cases that must still FAIL are exactly the ones a
+        # re-implementation gets wrong: a follow-up wearing a DIFFERENT subject
+        # under its "Re: ", and a "Re: " on a step that is not a thread reply
+        # at all.
+        exp_subject, _, _ = _comparable_step(
+            exp.get("email_subject"), exp.get("email_body"),
+            bool(exp.get("thread_reply", False)))
+        obs_subject, _, _ = _comparable_step(
+            obs.get("email_subject"), obs.get("email_body"),
+            bool(obs.get("thread_reply", False)))
         rows.append((f"step_{order}_subject",
                      _fmt(exp.get("email_subject", "")),
                      _fmt(obs.get("email_subject", "")),
-                     exp.get("email_subject") == obs.get("email_subject")))
+                     exp_subject == obs_subject))
         # body
         rows.append((f"step_{order}_body",
                      _fmt(exp.get("email_body", "")),
