@@ -105,6 +105,7 @@ import os
 from . import store
 
 SUFFIX = ".journal"
+INDEX_SUFFIX = ".journal.idx"
 
 
 class JournalCorrupt(RuntimeError):
@@ -119,6 +120,101 @@ class JournalCorrupt(RuntimeError):
 def path_for(queue_path):
     """The journal beside its queue. One definition, as `store` does it."""
     return queue_path + SUFFIX
+
+
+def _index_path(queue_path):
+    """The index beside the journal. DERIVED, never authoritative."""
+    return queue_path + INDEX_SUFFIX
+
+
+def _read_index(queue_path):
+    """The index as a dict, or None when it is missing or corrupt.
+
+    The index is DERIVED from the journal. A missing or corrupt index is not
+    an error - it is rebuilt on the next read. A caller that trusts a stale
+    index would replay the wrong state; a caller that rebuilds every time
+    would lose the optimisation. The compromise: try to read it, fall back to
+    a scan when it does not parse.
+    """
+    idx_path = _index_path(queue_path)
+    if not os.path.exists(idx_path):
+        return None
+    try:
+        with open(idx_path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        if not isinstance(data, dict):
+            return None
+        return data
+    except (ValueError, OSError):
+        return None
+
+
+def _write_index(queue_path, index):
+    """Persist the index. Atomic enough: a torn write is detected on read."""
+    idx_path = _index_path(queue_path)
+    tmp = idx_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(index, handle)
+    os.replace(tmp, idx_path)
+
+
+def _build_index(queue_path):
+    """Scan the journal and build the index from scratch.
+
+    The index maps record id to the byte offset of that record's LAST entry
+    in the journal. Last-write-wins in file order, which is the same rule
+    `replay` applies. A torn tail is skipped silently - it is the crash
+    signature, not a corruption.
+    """
+    journal = path_for(queue_path)
+    if not os.path.exists(journal):
+        return {}
+    index = {}
+    byte_offset = 0
+    with open(journal, encoding="utf-8", newline="\n") as handle:
+        for line in handle:
+            line_bytes = len(line.encode("utf-8"))
+            stripped = line.strip()
+            if not stripped:
+                byte_offset += line_bytes
+                continue
+            try:
+                entry = json.loads(stripped)
+            except ValueError:
+                byte_offset += line_bytes
+                continue
+            if not isinstance(entry, dict):
+                byte_offset += line_bytes
+                continue
+            record = entry.get("record") or {}
+            rid = record.get("id")
+            if rid is not None:
+                index[rid] = byte_offset
+            byte_offset += line_bytes
+    return index
+
+
+def _get_or_build_index(queue_path):
+    """The index, rebuilt if it is missing or does not parse."""
+    index = _read_index(queue_path)
+    if index is not None:
+        return index
+    index = _build_index(queue_path)
+    try:
+        _write_index(queue_path, index)
+    except OSError:
+        pass
+    return index
+
+
+def _read_entry_at(journal_path, byte_offset):
+    """One entry from the journal at a known byte offset."""
+    with open(journal_path, encoding="utf-8", newline="\n") as handle:
+        handle.seek(byte_offset)
+        line = handle.readline()
+    if not line.strip():
+        return None
+    return json.loads(line.strip())
 
 
 def append(queue_path, records, base_digest, at=None, timeout=None,
@@ -154,17 +250,36 @@ def _append_locked(journal, records, base_digest, at):
     lock rather than a reentrant one - taking it again from inside would block
     until its own timeout and then fail. A caller that already holds it passes
     `locked=True`; one that does not must not.
+
+    THE INDEX IS UPDATED HERE, inside the same lock. The index maps record id
+    to the byte offset of that record's last entry. Each new entry overwrites
+    the previous offset for that record, which is the same last-write-wins
+    rule `replay` applies.
     """
     start = _count(journal)
+    queue_path = journal[:-len(SUFFIX)]
+    index = _read_index(queue_path)
+    if index is None:
+        index = _build_index(queue_path)
     with open(journal, "a", encoding="utf-8", newline="\n") as handle:
         for offset, record in enumerate(records):
             entry = {"seq": start + offset,
                      "at": at,
                      "base": base_digest,
                      "record": record}
-            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            line = json.dumps(entry, ensure_ascii=False) + "\n"
+            entry_bytes = len(line.encode("utf-8"))
+            rid = record.get("id")
+            if rid is not None:
+                current_size = handle.tell()
+                index[rid] = current_size
+            handle.write(line)
         handle.flush()
         os.fsync(handle.fileno())
+    try:
+        _write_index(queue_path, index)
+    except OSError:
+        pass
 
 
 def _count(journal):
@@ -227,21 +342,54 @@ def replay(base_records, queue_path, base_digest=None):
     journal introduces are appended in first-seen order. A caller that needs
     a stable order for NEW records gets file order, which is the order they
     were checkpointed in.
+
+    THE INDEX MAKES THIS O(M) WHERE M IS THE NUMBER OF UNIQUE RECORDS IN THE
+    JOURNAL, not O(J) where J is the total number of entries. The index maps
+    record id to the byte offset of that record's last entry, so we seek
+    directly to it rather than scanning the entire journal. If the index is
+    missing or corrupt, it is rebuilt from the journal - the index is DERIVED
+    and never authoritative.
     """
-    entries, torn_tail = read(queue_path, base_digest)
-    if not entries:
-        return list(base_records), 0, torn_tail
+    journal = path_for(queue_path)
+    if not os.path.exists(journal):
+        return list(base_records), 0, False
+
+    index = _get_or_build_index(queue_path)
+    if not index:
+        return list(base_records), 0, False
 
     latest = {}
-    for entry in entries:
+    torn_tail = False
+    for rid, byte_offset in index.items():
+        try:
+            entry = _read_entry_at(journal, byte_offset)
+        except (ValueError, OSError):
+            continue
+        if entry is None:
+            continue
         record = entry.get("record") or {}
-        rid = record.get("id")
-        if rid is None:
+        if record.get("id") is None:
             raise JournalCorrupt(
-                f"{path_for(queue_path)} seq {entry.get('seq')} holds a "
-                f"record with no `id`. A delta that cannot name its record "
-                f"cannot be applied to one")
+                f"{journal} at offset {byte_offset} holds a record with no "
+                f"`id`. A delta that cannot name its record cannot be applied")
         latest[rid] = record
+
+    if base_digest is not None:
+        wrong = set()
+        for byte_offset in index.values():
+            try:
+                entry = _read_entry_at(journal, byte_offset)
+                if entry:
+                    wrong.add(entry.get("base"))
+            except (ValueError, OSError):
+                pass
+        wrong -= {base_digest}
+        if wrong:
+            raise JournalCorrupt(
+                f"{journal} holds entries computed against base digest(s) "
+                f"{sorted(wrong)!r} and the base on disk is {base_digest!r}. "
+                f"Replaying a delta onto a base it was not computed from is "
+                f"how a record reverts to a value nobody wrote")
 
     out = []
     seen = set()
@@ -321,6 +469,9 @@ def _compact_locked(queue_path, write_base, base_digest):
     journal = path_for(queue_path)
     if os.path.exists(journal):
         os.remove(journal)
+    idx = _index_path(queue_path)
+    if os.path.exists(idx):
+        os.remove(idx)
     return applied
 
 
@@ -335,3 +486,6 @@ def discard(queue_path):
     journal = path_for(queue_path)
     if os.path.exists(journal):
         os.remove(journal)
+    idx = _index_path(queue_path)
+    if os.path.exists(idx):
+        os.remove(idx)
