@@ -689,6 +689,182 @@ def schedulable(resolution, config=None):
     return True, "local sending windows can be computed"
 
 
+# ----------------------------------------- cohort window proposal (TASK-227)
+#
+# A campaign sends to a cohort, not to a timezone. When the campaign's
+# schedule is set to 09:00-17:00 Europe/Zagreb but the recipients are in
+# US Eastern, 09:00 Zagreb is 03:00 Eastern - an email that lands at 3 AM
+# is visibly automated and the kind of mistake a prospect remembers.
+#
+# This function is PURE READ-ONLY. It does not write to any campaign, does
+# not call any provider, does not spend any credit. It reads each recipient's
+# location evidence, classifies it, and either proposes a coherent window or
+# returns NO PROPOSAL with a reason so the caller falls back to the existing
+# production default. The rule that outranks the feature: a guessed timezone
+# is worse than a missing one.
+
+RESOLVED = "resolved"
+AMBIGUOUS = "ambiguous"
+# UNKNOWN already defined above as a confidence level; reused as a status.
+
+
+def _classify_recipient(rec, config=None):
+    """Classify one recipient's location evidence.
+
+    Returns a dict with:
+      status:        RESOLVED / AMBIGUOUS / UNKNOWN
+      timezone:      the IANA name or None
+      confidence:    the geo confidence label
+      region:        the GTM region or Other
+      country:       the country name or None
+      why:           human-readable explanation
+    """
+    resolution = from_record(rec, config=config)
+    tz = resolution.get("timezone")
+    conf = resolution.get("timezone_confidence", UNKNOWN)
+    country = resolution.get("country")
+    region = resolution.get("region", OTHER)
+
+    if tz and conf in (HIGH, MEDIUM):
+        return {
+            "status": RESOLVED,
+            "timezone": tz,
+            "confidence": conf,
+            "region": region,
+            "country": country,
+            "why": resolution.get("why", ""),
+        }
+    if tz and conf == LOW:
+        return {
+            "status": AMBIGUOUS,
+            "timezone": None,
+            "confidence": LOW,
+            "region": region,
+            "country": country,
+            "why": (resolution.get("why")
+                    or "timezone confidence too low to propose"),
+        }
+    if country or region != OTHER:
+        return {
+            "status": AMBIGUOUS,
+            "timezone": None,
+            "confidence": conf,
+            "region": region,
+            "country": country,
+            "why": (resolution.get("why")
+                    or "location known but timezone not determined"),
+        }
+    return {
+        "status": UNKNOWN,
+        "timezone": None,
+        "confidence": UNKNOWN,
+        "region": OTHER,
+        "country": None,
+        "why": resolution.get("why") or "no usable location evidence",
+    }
+
+
+def propose_cohort_window(recipients, config=None, min_resolved=3,
+                          channel="email"):
+    """Propose a send window for a cohort from recipient locations.
+
+    Pure read-only: no writes, no provider calls, no credit spend.
+
+    Each recipient is classified:
+      RESOLVED  - has a timezone with HIGH or MEDIUM confidence
+      AMBIGUOUS - has some location info but no confident timezone
+      UNKNOWN   - no usable location evidence
+
+    A proposal is returned only when at least *min_resolved* recipients
+    share a single timezone. Otherwise NO PROPOSAL is returned with a
+    reason so the caller falls back to the production default.
+
+    Returns a dict:
+      ok:             bool
+      timezone:       IANA name or None
+      region:         GTM region or None
+      window:         {start, end} in local time or None
+      reason:         why no proposal (when not ok)
+      classifications: list of per-recipient classification dicts
+      summary:        {resolved, ambiguous, unknown, total}
+    """
+    if not recipients:
+        return {
+            "ok": False,
+            "timezone": None,
+            "region": None,
+            "window": None,
+            "reason": "no recipients provided",
+            "classifications": [],
+            "summary": {"resolved": 0, "ambiguous": 0, "unknown": 0,
+                        "total": 0},
+        }
+
+    classifications = []
+    for rec in recipients:
+        classifications.append(_classify_recipient(rec, config=config))
+
+    resolved = [c for c in classifications if c["status"] == RESOLVED]
+    ambiguous = [c for c in classifications if c["status"] == AMBIGUOUS]
+    unknown = [c for c in classifications if c["status"] == UNKNOWN]
+
+    summary = {
+        "resolved": len(resolved),
+        "ambiguous": len(ambiguous),
+        "unknown": len(unknown),
+        "total": len(classifications),
+    }
+
+    if not resolved:
+        return {
+            "ok": False,
+            "timezone": None,
+            "region": None,
+            "window": None,
+            "reason": "no recipients resolved to a timezone",
+            "classifications": classifications,
+            "summary": summary,
+        }
+
+    if len(resolved) < min_resolved:
+        return {
+            "ok": False,
+            "timezone": None,
+            "region": None,
+            "window": None,
+            "reason": (f"only {len(resolved)} of {len(classifications)} "
+                       f"recipients resolved; need at least {min_resolved}"),
+            "classifications": classifications,
+            "summary": summary,
+        }
+
+    timezones = set(c["timezone"] for c in resolved)
+    if len(timezones) > 1:
+        return {
+            "ok": False,
+            "timezone": None,
+            "region": None,
+            "window": None,
+            "reason": ("recipients span multiple timezones: "
+                       + ", ".join(sorted(timezones))),
+            "classifications": classifications,
+            "summary": summary,
+        }
+
+    tz = resolved[0]["timezone"]
+    region = resolved[0]["region"]
+    spec = windows(config)[channel]
+    return {
+        "ok": True,
+        "timezone": tz,
+        "region": region,
+        "window": {"start": spec["start"], "end": spec["end"]},
+        "reason": None,
+        "classifications": classifications,
+        "summary": summary,
+    }
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--country")
