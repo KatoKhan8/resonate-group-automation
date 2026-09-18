@@ -105,7 +105,7 @@ say so in your report rather than attempting it here.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (pending)
+**COMMIT SHA:** 8c105f7334c49cc342d8dc908bf86e6bb74ab387
 
 **TESTS:** 15 new tests in `tests/test_prefetch_headcount.py`, all pass.
 Full existing suite still green (215 tests across the affected modules:
