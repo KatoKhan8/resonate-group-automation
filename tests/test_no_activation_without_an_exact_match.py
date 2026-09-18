@@ -995,20 +995,28 @@ class NoActivationOnAnythingLessThanAnExactMatch(Factory):
         485 must not be activated - its sequence violates the threading
         invariant and `set_sequence` appends, so it cannot be corrected - and
         the replacement's provider id does not exist until the provider assigns
-        it. `_AUTHORIZED_EMAIL_CAMPAIGN` therefore carries None in the provider
-        slot, meaning "resolve it from `bison_campaign_id` on the named row".
+        it. Every entry in `_AUTHORIZED_EMAIL_CAMPAIGNS` therefore carries None
+        in the provider slot, meaning "resolve it from `bison_campaign_id` on
+        the named row".
 
         The binding check is PRESERVED, not dropped, which is what this asserts:
-        the canonical row must be the named one, the row must actually be bound,
+        the canonical row must be a named one, the row must actually be bound,
         and the provider id must be the one it is bound to. An unbound row
         authorizes nothing at all - the fail-closed case that matters, because
         it is the state the row is in before the campaign exists.
+
+        WIDENED 2026-09-18 from one row to two, so every assertion below now
+        runs against EVERY authorized row rather than the single one. The
+        property is unchanged and the coverage is larger: each row admits the
+        one provider campaign it is bound to and refuses every other.
         """
         require = providerwrites.require_conditional_permission
-        want_provider, want_canonical = providerwrites._AUTHORIZED_EMAIL_CAMPAIGN
-        self.assertIsNone(want_provider)
+        grant = providerwrites._AUTHORIZED_EMAIL_CAMPAIGNS
+        self.assertTrue(grant, "the grant names no canonical row at all")
+        for want_provider, _ in grant:
+            self.assertIsNone(want_provider)
 
-        # A row that is not the named one is refused whatever it names.
+        # A row that is not a named one is refused whatever it names.
         for provider_id in ("481", "485", "9999", None):
             with self.assertRaises(providerwrites.WriteRefused):
                 require(providerwrites.EMAIL_ACTIVATE, provider_id,
@@ -1016,24 +1024,30 @@ class NoActivationOnAnythingLessThanAnExactMatch(Factory):
             with self.assertRaises(providerwrites.WriteRefused):
                 require(providerwrites.EMAIL_ACTIVATE, provider_id, None)
 
-        # The named row, but unbound: nothing to check against, so nothing is
-        # permitted. This is the state before the campaign is created.
-        with mock.patch.object(campaigns, "get",
-                               return_value={"campaign_id": want_canonical}):
-            with self.assertRaises(providerwrites.WriteRefused) as caught:
-                require(providerwrites.EMAIL_ACTIVATE, "485", want_canonical)
-            self.assertIn("bison_campaign_id", str(caught.exception))
+        for _, want_canonical in grant:
+            with self.subTest(canonical=want_canonical):
+                # The named row, but unbound: nothing to check against, so
+                # nothing is permitted. This is the state the row is in before
+                # its campaign exists.
+                with mock.patch.object(
+                        campaigns, "get",
+                        return_value={"campaign_id": want_canonical}):
+                    with self.assertRaises(
+                            providerwrites.WriteRefused) as caught:
+                        require(providerwrites.EMAIL_ACTIVATE, "485",
+                                want_canonical)
+                    self.assertIn("bison_campaign_id", str(caught.exception))
 
-        # The named row, bound: that provider campaign and no other.
-        bound = {"campaign_id": want_canonical, "bison_campaign_id": 4242}
-        with mock.patch.object(campaigns, "get",
-                               return_value=bound):
-            self.assertTrue(require(providerwrites.EMAIL_ACTIVATE, "4242",
-                                    want_canonical))
-            for other in ("485", "481", "424", "42420", "", None):
-                with self.assertRaises(providerwrites.WriteRefused):
-                    require(providerwrites.EMAIL_ACTIVATE, other,
-                            want_canonical)
+                # The named row, bound: that provider campaign and no other.
+                bound = {"campaign_id": want_canonical,
+                         "bison_campaign_id": 4242}
+                with mock.patch.object(campaigns, "get", return_value=bound):
+                    self.assertTrue(require(providerwrites.EMAIL_ACTIVATE,
+                                            "4242", want_canonical))
+                    for other in ("485", "481", "424", "42420", "", None):
+                        with self.assertRaises(providerwrites.WriteRefused):
+                            require(providerwrites.EMAIL_ACTIVATE, other,
+                                    want_canonical)
 
     def test_linkedin_activation_refuses_every_campaign_but_the_canary(self):
         require = providerwrites.require_conditional_permission

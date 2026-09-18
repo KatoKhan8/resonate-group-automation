@@ -984,52 +984,104 @@ CONDITIONAL[LINKEDIN_CREATE_CAMPAIGN] = (
 # `bison_campaign_id` on the named row". A write is still refused unless it
 # names that exact row AND the provider campaign that row is actually bound to.
 # What is no longer required is that a human knew the number in advance.
-_AUTHORIZED_EMAIL_CAMPAIGN = (None, "productive-email-control-v3")
+# WIDENED 2026-09-18, BY ONE ROW, UNDER WRITTEN OPERATOR AUTHORIZATION.
+#
+# This was a single pair. It is now an explicit allowlist keyed by CANONICAL
+# ROW, and the shape is the point: a row that is not written here is refused
+# before the transport is reached, so widening stays a decision somebody makes
+# in a diff rather than something a caller can argue its way into.
+#
+#   productive-email-control-v3     campaign 487, the 10-contact CONTROL
+#   productive-email-us-cohort-v1   the 5-contact US cohort approved
+#                                   2026-09-18, sender 3437, same three
+#                                   approved CONTROL steps, 5/day
+#
+# The second exists because 487 cannot send before the 23rd - its only mailbox
+# is booked to its limit every sending day until then - and the answer to that
+# is a different cohort on a mailbox with room, never a change to 487.
+_AUTHORIZED_EMAIL_CAMPAIGNS = (
+    (None, "productive-email-control-v3"),
+    (None, "productive-email-us-cohort-v1"),
+)
+
+# REFUSED WHATEVER ROW NAMES THEM, AND THIS IS NOT REDUNDANT.
+#
+# The allowlist above resolves a provider id FROM a canonical row, so it is
+# only as safe as the `bison_campaign_id` on that row. A row edited - by hand,
+# by a bad migration, by a staging run that bound the wrong campaign - to
+# point at 481 or 485 would otherwise carry this authorization straight onto
+# one of them.
+#
+#   481  PAUSED, 23 leads under a sequence nobody approved here. FOUR of the
+#        five US-cohort contacts are already leads in it, `stopped` with 0
+#        emails sent - measured 2026-09-18. Resuming it is the one action
+#        that could put a second, unapproved message in front of them.
+#   485  DRAFT, and 10 of its 10 leads are 487's leads. Its sequence violates
+#        the threading invariant and `set_sequence` APPENDS, so it cannot be
+#        corrected in place.
+#
+# Belt and braces on purpose: the binding check is the gate, and this is the
+# thing that holds if the binding check is ever given a wrong number.
+_NEVER_ACTIVATE = frozenset({"481", "485"})
 
 
 def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
-    """True only for the provider campaign `productive-email-control-v3` names.
+    """True only for a provider campaign an authorized canonical row names.
 
-    **That is campaign 487 today, NOT 485.** The grant was written against 485
-    and re-scoped to the v3 rebuild the same day; this function resolves the
-    provider id from the canonical row rather than a literal, so it followed
-    the re-scope automatically. 485 still exists as a DRAFT and still holds
-    the SAME TEN PEOPLE as live 487 - measured 2026-09-17, 10 of 10 hashed
-    addresses in common - so a reader who believes this function points at 485
-    is one edit away from a duplicate send to every lead in the live campaign.
-    It does not point there and must not be made to.
+    **487 and the US cohort, NOT 485 and NOT 481.** The original grant was
+    written against 485 and re-scoped to the v3 rebuild the same day; this
+    function resolves each provider id from its canonical row rather than from
+    a literal, so it followed the re-scope automatically. 485 still exists as
+    a DRAFT and still holds the SAME TEN PEOPLE as live 487 - measured
+    2026-09-17, 10 of 10 hashed addresses in common - so a reader who believes
+    this function points at 485 is one edit away from a duplicate send to
+    every lead in the live campaign. It does not point there, `_NEVER_ACTIVATE`
+    refuses it even if a row is edited to, and it must not be made to.
 
-    Enabled 2026-09-16 under written operator authorization, which was
-    explicit about its own scope: one campaign, sender 2736, the existing 10
-    approved contacts, the existing approved 3-step CONTROL, a 20/day cap, and
-    "NOT authorization to ... activate other campaigns, change copy, add
-    unapproved contacts, or increase caps".
+    Enabled 2026-09-16 under written operator authorization scoped to one
+    campaign: sender 2736, the existing 10 approved contacts, the approved
+    3-step CONTROL, a 20/day cap, and "NOT authorization to ... activate other
+    campaigns, change copy, add unapproved contacts, or increase caps".
+
+    WIDENED 2026-09-18 by exactly one row, under a fresh written operator
+    authorization, and the scope of THAT one is: the five contacts on the
+    2026-09-18 approval packet, the same three approved CONTROL steps, sender
+    3437 - a different inbox of the SAME HUMAN 487 already sends as - a 5/day
+    cap, and a US business-hours window. It is not a workspace grant and not a
+    channel grant. Every campaign in this estate that is not one of the two
+    rows above is refused by the first check below, which includes the
+    client's own 327/328/352, the historical 481 and 485, every draft, and
+    every campaign created after this line was written.
 
     WHY A CONDITION RATHER THAN PLAIN MEMBERSHIP. `EMAIL_ACTIVATE` is the
     first verb in this system that makes a campaign send. Membership of
     `SUPPORTED` alone is a channel-wide licence: it would admit activating 481,
     which holds 23 people with 6 to 40 historical touches each under a
-    non-CONTROL sequence. The operator granted one campaign, so the permission
-    is one campaign.
+    non-CONTROL sequence. The operator granted named campaigns, so the
+    permission is named campaigns.
 
-    Widening this is a new operator decision. Editing the tuple above to add a
-    campaign is not a refactor.
+    Widening this is a new operator decision. Adding an entry to the tuple
+    above is not a refactor.
     """
-    want_provider, want_canonical = _AUTHORIZED_EMAIL_CAMPAIGN
+    offered = str(campaign_id or "").strip()
 
-    # THE CANONICAL ROW IS CHECKED FIRST WHEN THE PROVIDER SLOT IS UNPINNED.
+    # THE CANONICAL ROW IS CHECKED FIRST, AND THAT ORDER IS LOAD-BEARING.
     #
-    # With `want_provider` None the row supplies the expected provider id, so
-    # the row has to be established before it can supply anything - otherwise a
-    # write naming the right row but the wrong provider campaign would be
-    # compared against nothing. Order matters here and nowhere else in this
-    # function.
+    # Each entry's provider slot is None, so the ROW supplies the expected
+    # provider id. The row therefore has to be identified before it can supply
+    # anything - otherwise a write naming an unknown row but a valid provider
+    # campaign would be compared against nothing.
+    entry = next((e for e in _AUTHORIZED_EMAIL_CAMPAIGNS if e[1] == offered),
+                 None)
+    if entry is None:
+        raise WriteRefused(
+            f"this authorization covers canonical campaign(s) "
+            f"{sorted(c for _, c in _AUTHORIZED_EMAIL_CAMPAIGNS)} only, and "
+            f"this write names {campaign_id!r}. Activating any other campaign "
+            f"is a new operator decision. The transport was not reached")
+    want_provider, want_canonical = entry
+
     if want_provider is None:
-        if str(campaign_id or "").strip() != want_canonical:
-            raise WriteRefused(
-                f"this authorization covers canonical campaign "
-                f"{want_canonical!r} only, and this write names "
-                f"{campaign_id!r}. The transport was not reached")
         from . import campaigns as _campaigns
         row = _campaigns.get(want_canonical) or {}
         bound = row.get("bison_campaign_id")
@@ -1042,18 +1094,25 @@ def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
                 f"them. The transport was not reached")
         want_provider = str(bound).strip()
 
+    # AFTER the row resolves it and BEFORE the write is admitted, because the
+    # thing being guarded against is a row that resolves to the wrong number.
+    if want_provider in _NEVER_ACTIVATE:
+        raise WriteRefused(
+            f"canonical row {want_canonical!r} resolves to EmailBison "
+            f"campaign {want_provider}, which is on the never-activate list. "
+            f"481 holds people under a sequence nobody approved here and 485 "
+            f"holds live 487's own ten leads; either would put a second, "
+            f"unapproved message in front of somebody. A row pointing at one "
+            f"of them is a binding fault, not a permission. The transport was "
+            f"not reached")
+
     if str(provider_campaign_id or "").strip() != want_provider:
         raise WriteRefused(
-            f"this authorization covers EmailBison campaign {want_provider} "
-            f"only, and this write names {provider_campaign_id!r}. The "
-            f"2026-09-16 grant is scoped to one campaign; activating another "
-            f"is a new operator decision. The transport was not reached")
-    if str(campaign_id or "").strip() != want_canonical:
-        raise WriteRefused(
-            f"provider campaign {want_provider} is authorized, but the "
-            f"canonical row offered is {campaign_id!r} rather than "
-            f"{want_canonical!r}. A mismatched binding is how a send reaches a "
-            f"campaign nobody approved. The transport was not reached")
+            f"canonical row {want_canonical!r} is bound to EmailBison "
+            f"campaign {want_provider}, and this write names "
+            f"{provider_campaign_id!r}. A mismatched binding is how a send "
+            f"reaches a campaign nobody approved. The transport was not "
+            f"reached")
     return True
 
 

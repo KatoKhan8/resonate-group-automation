@@ -301,21 +301,46 @@ class TheDoorDidNotWidenWhatThisModuleMaySend(unittest.TestCase):
         # activated: 481 holds strangers, and 485's sequence violates the
         # threading invariant and `set_sequence` appends, so it cannot be
         # corrected in place.
-        want_canonical = providerwrites._AUTHORIZED_EMAIL_CAMPAIGN[1]
-        for other in ("481", "485", "451", "4870", "48", "", None):
-            with self.assertRaises(providerwrites.WriteRefused):
-                require(providerwrites.EMAIL_ACTIVATE, other, want_canonical)
-
-        # The one pair that is admitted, resolved from canonical state rather
-        # than written down here - so the test cannot drift from the binding.
+        #
+        # WIDENED 2026-09-18 FROM ONE ROW TO TWO, so this walks EVERY
+        # authorized row instead of the single one the grant used to hold. It
+        # is the stronger form of the same assertion: each row admits exactly
+        # the provider campaign it is bound to and refuses every other, which
+        # is the property that has to survive any future widening as well.
         from src import campaigns as _campaigns
-        bound = (_campaigns.get(want_canonical) or {}).get("bison_campaign_id")
-        self.assertTrue(bound,
-                        f"{want_canonical} carries no `bison_campaign_id`, so "
-                        f"there is no provider campaign the grant can be "
+        authorized = [c for _, c in providerwrites._AUTHORIZED_EMAIL_CAMPAIGNS]
+        self.assertTrue(authorized, "the grant names no canonical row at all")
+        bindings = {}
+        for want_canonical in authorized:
+            for other in ("481", "485", "451", "4870", "48", "", None):
+                with self.assertRaises(providerwrites.WriteRefused):
+                    require(providerwrites.EMAIL_ACTIVATE, other,
+                            want_canonical)
+            bound = (_campaigns.get(want_canonical) or {}).get(
+                "bison_campaign_id")
+            if bound:
+                bindings[want_canonical] = str(bound)
+
+        # The pairs that are admitted, resolved from canonical state rather
+        # than written down here - so the test cannot drift from the binding.
+        # A row with no binding yet is skipped rather than failed: the US
+        # cohort's provider campaign does not exist until the factory creates
+        # it, and an unbound row is refused by the predicate anyway, which the
+        # loop above just proved.
+        self.assertTrue(bindings,
+                        f"none of {authorized} carries a `bison_campaign_id`, "
+                        f"so there is no provider campaign the grant can be "
                         f"checked against")
-        self.assertTrue(require(providerwrites.EMAIL_ACTIVATE, str(bound),
-                                want_canonical))
+        for want_canonical, bound in bindings.items():
+            self.assertTrue(require(providerwrites.EMAIL_ACTIVATE, bound,
+                                    want_canonical))
+            # And no row may borrow another's campaign.
+            for stranger, other_bound in bindings.items():
+                if stranger == want_canonical:
+                    continue
+                with self.assertRaises(providerwrites.WriteRefused):
+                    require(providerwrites.EMAIL_ACTIVATE, other_bound,
+                            want_canonical)
 
         # WHAT DID NOT COME WITH IT. `bison.add_lead` reaches a person on a
         # channel that can now be activated, and `bison.set_limits` is a cap
