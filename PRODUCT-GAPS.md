@@ -3577,6 +3577,48 @@ two members one character apart shared a lookup key. Five mutations, all
 caught, including one that kept only the first of the three segments - two
 members can share the leading pair.
 
+## 44. A refused activation blocks its own retry, measured 2026-09-18
+
+`executionguard.authorize` RESERVES a ledger key while its gates run, and the
+killswitch is gate 7. Its own comment says the killswitch is last "so that a
+killswitch refusal does not leave a reservation behind". It is last, and a
+reservation is left behind anyway, because the reservation is taken during the
+run rather than after all seven gates pass.
+
+That alone would be untidy. What makes it a gap is the second-order effect,
+measured on EmailBison campaign 489 within four minutes:
+
+    run 1   5 authorized, refused at gate 7 (killswitch), 0 emails sent,
+            5 ledger keys left at `attempted`
+    run 2   0 authorized, refused at gate 3 (collision), on run 1's own rows
+
+`collision.staging_artifact_evidence` proves a campaign is our own silent
+staging on four arms, and the fourth is "this repository's action ledger
+records no unrefuted prospect-facing action against the canonical campaign".
+Five unrefuted attempts is not silence, so 489 stopped qualifying, its five
+leads stopped being excluded from their own collision history, and every
+contact read TOUCHED - "loaded as a lead, nothing sent yet" - against the
+campaign that had just loaded them.
+
+**So the first refused activation of any campaign makes the second attempt
+refuse for a different and more alarming reason.** The gates are individually
+right; the ordering is what is wrong.
+
+The settlement exists and is honest about what it settles:
+`scripts/settle_abandoned_email_attempts.py` proves from provider truth that
+the campaign is paused, every prospect-facing counter is zero and no scheduled
+row has gone out, then settles the keys ABANDONED - never FAILED, because
+nobody asked the provider. `settle_abandoned_linkedin_attempts.py` is the same
+shape on the other channel, written after the same thing happened to HeyReach
+campaign 605487.
+
+**The fix is not made.** Reserving after all gates pass, or releasing a
+reservation when a later gate refuses, is a change to the last-word gate and
+wants its own review rather than a quiet edit during an activation. Two
+channels have now hit it, so it is a pattern rather than an incident.
+
+---
+
 ## EmailBison, measured 2026-09-13
 
 ### A bulk CSV upload permanently accretes a lead list
