@@ -72,9 +72,22 @@ REPLIED_INTERESTED = "replied_interested"
 BOUNCED = "bounced"
 WE_STOPPED_IT = "we_stopped_it"
 SEQUENCE_FINISHED = "sequence_finished"
+#: The membership sent NOTHING, so whatever stopped it was not the
+#: prospect. Added 2026-09-18 because it is the one cause answerable
+#: without the events feed, and `/api/events` replays only TEN DAYS while
+#: these memberships are months old - so for most of them the feed will
+#: have nothing and the honest answer would be STILL_UNKNOWN forever.
+#:
+#: It is NOT a clearance and must never be read as one. It says one
+#: membership carried no message, which is a fact about that membership
+#: and not about the account: a colleague on another campaign may have
+#: been emailed thirteen times. `collision.check_account` remains the
+#: thing that decides an account, and this changes none of its verdicts.
+NEVER_CONTACTED = "never_contacted"
 STILL_UNKNOWN = "still_unknown"
 
 ALL_OUTCOMES = (UNSUBSCRIBED, REPLIED_INTERESTED, BOUNCED, WE_STOPPED_IT,
+                NEVER_CONTACTED,
                 SEQUENCE_FINISHED, STILL_UNKNOWN)
 
 # Event kinds that resolve the cause. These are the normalised kinds from
@@ -139,6 +152,40 @@ def _ledger_has_stop(lead_id, campaign_id, ledger_rows=None):
             if state in ("sent", "attempted"):
                 return True, row
     return False, None
+
+
+def _counter(value):
+    """An integer counter, or None when the value cannot be read as one.
+
+    NOT "or 0", AND MY OWN TEST CAUGHT THAT. The first version returned 0 for
+    `None`, `""`, `"three"` and `{}`, which made an UNREADABLE counter say
+    "nobody was emailed" - missing evidence dressed as positive evidence, on
+    the exact branch that decides whether a stop could have been a prospect's
+    refusal. `None` here means "cannot tell", and the caller keeps the hold.
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if text.lstrip("-").isdigit():
+            return int(text)
+        return None
+    return None
+
+
+def _membership_for(person, campaign_id):
+    """This person's membership row for ONE campaign, or None.
+
+    None when the campaign is not in the person's membership list, and the
+    caller must treat that as "cannot tell" rather than as zero: an absent
+    row is missing evidence, and missing evidence is never positive evidence.
+    """
+    for c in person.get("campaigns") or []:
+        if isinstance(c, dict) and str(c.get("campaign_id")) == str(campaign_id):
+            return c
+    return None
 
 
 def _membership_says_replied(person):
@@ -235,13 +282,36 @@ def resolve(person, campaign_id, events_fetch=None, ledger_rows=None):
         out["evidence"] = f"action ledger: {ledger_row.get('key')} settled {ledger_row.get('state')}"
         return out
 
-    # 5. SEQUENCE_FINISHED: the campaign ran to the end, no adverse signal.
+    # 5. NEVER_CONTACTED: this membership sent nothing at all.
+    #
+    # LAST AMONG THE POSITIVE ANSWERS, and deliberately. Every branch above
+    # names something that HAPPENED - an unsubscribe, a reply, a bounce, our
+    # own recorded stop - and each of those outranks "and also no email went
+    # out", because a lead can carry a real refusal from a prior campaign
+    # while this membership sent nothing.
+    #
+    # It is the only cause answerable without the events feed, which is why
+    # it is here: `/api/events` replays TEN DAYS and these memberships are
+    # months old, so a resolver that depended on it would return
+    # STILL_UNKNOWN for nearly all of them and the 33 would stay a question.
+    membership = _membership_for(person, campaign_id)
+    sent = _counter(membership.get("emails_sent")) if membership else None
+    if sent == 0:
+        out["outcome"] = NEVER_CONTACTED
+        out["evidence"] = ("membership emails_sent is 0: nobody at this "
+                           "address was written to on this campaign, so the "
+                           "stop is not a prospect signal. This is a fact "
+                           "about ONE membership and not a clearance for the "
+                           "account")
+        return out
+
+    # 6. SEQUENCE_FINISHED: the campaign ran to the end, no adverse signal.
     if _campaign_is_finished(person, campaign_id):
         out["outcome"] = SEQUENCE_FINISHED
         out["evidence"] = "campaign status is sequence_finished, no reply/bounce/unsubscribe"
         return out
 
-    # 6. STILL_UNKNOWN: none of the above. The hold stays.
+    # 7. STILL_UNKNOWN: none of the above. The hold stays.
     out["evidence"] = ("no unsubscribe, reply, bounce, ledger stop, or "
                        "sequence_finished found; missing evidence is not "
                        "positive evidence")

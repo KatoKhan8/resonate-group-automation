@@ -364,3 +364,80 @@ class BatchResolutionTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNeverContactedIsAFactNotAClearance(unittest.TestCase):
+    """A stopped membership that sent NOTHING cannot carry a prospect's
+    refusal - nobody at that address was written to on that campaign.
+
+    It is the only cause answerable without the events feed, and that matters
+    more than it sounds: `/api/events` replays TEN DAYS while these
+    memberships are months old, so a resolver that depended on it would return
+    STILL_UNKNOWN for nearly all of them and the 33 would stay a question
+    forever.
+    """
+
+    def _zero_send(self, **kw):
+        person = _person(**kw)
+        person["emails_sent"] = 0
+        person["campaigns"][0]["emails_sent"] = 0
+        return person
+
+    def test_a_stopped_membership_that_sent_nothing(self):
+        person = self._zero_send()
+        result = stoppedcause.resolve(person, campaign_id=200,
+                                      events_fetch=lambda **kw: [],
+                                      ledger_rows=[])
+        self.assertEqual(result["outcome"], stoppedcause.NEVER_CONTACTED)
+        self.assertIn("emails_sent is 0", result["evidence"])
+
+    def test_it_does_not_outrank_a_real_refusal(self):
+        """Every branch above it names something that HAPPENED, and a lead can
+        carry a real refusal from a prior campaign while THIS membership sent
+        nothing. A reply must still win."""
+        person = self._zero_send(replies=2)
+        result = stoppedcause.resolve(person, campaign_id=200,
+                                      events_fetch=lambda **kw: [],
+                                      ledger_rows=[])
+        self.assertEqual(result["outcome"], stoppedcause.REPLIED_INTERESTED)
+
+    def test_an_unsubscribe_event_still_wins(self):
+        person = self._zero_send()
+        events = [{"kind": "unsubscribed",
+                   "provider_event_type": "LEAD_UNSUBSCRIBED",
+                   "occurred_at": "2026-01-02T00:00:00Z"}]
+        result = stoppedcause.resolve(person, campaign_id=200,
+                                      events_fetch=lambda **kw: events,
+                                      ledger_rows=[])
+        self.assertEqual(result["outcome"], stoppedcause.UNSUBSCRIBED)
+
+    def test_an_absent_membership_row_is_not_a_zero(self):
+        """Missing evidence is never positive evidence. A campaign the person
+        has no membership row for must NOT read as 'sent nothing'."""
+        person = _person(campaign_id=200)
+        result = stoppedcause.resolve(person, campaign_id=999,
+                                      events_fetch=lambda **kw: [],
+                                      ledger_rows=[])
+        self.assertEqual(result["outcome"], stoppedcause.STILL_UNKNOWN)
+
+    def test_a_non_numeric_emails_sent_does_not_read_as_zero(self):
+        """`None` or a string must not be coerced into 'nobody was emailed'."""
+        for bad in (None, "", "three", {}):
+            with self.subTest(emails_sent=bad):
+                person = _person()
+                person["campaigns"][0]["emails_sent"] = bad
+                result = stoppedcause.resolve(person, campaign_id=200,
+                                              events_fetch=lambda **kw: [],
+                                              ledger_rows=[])
+                self.assertNotEqual(result["outcome"],
+                                    stoppedcause.NEVER_CONTACTED,
+                                    "an unreadable counter is not a zero one")
+
+    def test_never_contacted_is_in_the_split(self):
+        person = self._zero_send()
+        result = stoppedcause.resolve(person, campaign_id=200,
+                                      events_fetch=lambda **kw: [],
+                                      ledger_rows=[])
+        split = stoppedcause.report_split([result])
+        self.assertEqual(split[stoppedcause.NEVER_CONTACTED], 1)
+        self.assertEqual(split[stoppedcause.STILL_UNKNOWN], 0)
