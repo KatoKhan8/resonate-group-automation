@@ -59,6 +59,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.providers import bison, load_env                       # noqa: E402
 
+# THE DEFAULT IS 487 AND THE ARGUMENT EXISTS BECAUSE THERE ARE NOW TWO.
+# Campaign 489 - the five-contact US cohort - went active 2026-09-18 and
+# needs the same watch. One process per campaign rather than one process
+# over a list, so a read error on either cannot silence the other.
 PROVIDER_ID = 487
 SENT_WORDS = {"sent", "delivered"}
 
@@ -67,9 +71,10 @@ def emit(line):
     print(line, flush=True)
 
 
-def snapshot():
-    row = bison.campaign(PROVIDER_ID) or {}
-    queue = bison.scheduled_emails(PROVIDER_ID) or []
+def snapshot(provider_id=None):
+    provider_id = PROVIDER_ID if provider_id is None else provider_id
+    row = bison.campaign(provider_id) or {}
+    queue = bison.scheduled_emails(provider_id) or []
     sent_rows = 0
     for entry in queue:
         state = str(entry.get("status") or entry.get("state") or "").lower()
@@ -103,7 +108,10 @@ def snapshot():
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--interval", type=float, default=300.0)
+    parser.add_argument("--campaign", type=int, default=PROVIDER_ID,
+                        help="the EmailBison campaign to watch")
     args = parser.parse_args(argv)
+    watched = args.campaign
 
     load_env(os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "config", ".env"))
@@ -112,41 +120,41 @@ def main(argv=None):
     errors = 0
     while True:
         try:
-            current = snapshot()
+            current = snapshot(watched)
             errors = 0
         except Exception as exc:
             errors += 1
             if errors in (3, 12):
-                emit(f"READ-ERROR 487 unreadable {errors}x: "
+                emit(f"READ-ERROR {watched} unreadable {errors}x: "
                      f"{type(exc).__name__}")
             time.sleep(args.interval)
             continue
 
         if previous is None:
-            emit(f"WATCHING 487 status={current['status']} "
+            emit(f"WATCHING {watched} status={current['status']} "
                  f"leads={current['leads']} sent={current['emails_sent']}")
             previous = current
             time.sleep(args.interval)
             continue
 
         if current["status"] != previous["status"]:
-            emit(f"STATUS 487 {previous['status']} -> {current['status']}")
+            emit(f"STATUS {watched} {previous['status']} -> {current['status']}")
         if current["leads"] != previous["leads"]:
-            emit(f"COHORT 487 leads {previous['leads']} -> {current['leads']}")
+            emit(f"COHORT {watched} leads {previous['leads']} -> {current['leads']}")
         if current["emails_sent"] > previous["emails_sent"]:
-            emit(f"SEND 487 emails_sent {previous['emails_sent']} -> "
+            emit(f"SEND {watched} emails_sent {previous['emails_sent']} -> "
                  f"{current['emails_sent']}")
         if current["sent_rows"] > previous["sent_rows"]:
-            emit(f"SEND 487 queue rows sent {previous['sent_rows']} -> "
+            emit(f"SEND {watched} queue rows sent {previous['sent_rows']} -> "
                  f"{current['sent_rows']} of {current['queue_rows']}")
         if current["replied"] > previous["replied"]:
-            emit(f"REPLY 487 replied {previous['replied']} -> "
+            emit(f"REPLY {watched} replied {previous['replied']} -> "
                  f"{current['replied']}")
         if current["bounced"] > previous["bounced"]:
-            emit(f"BOUNCE 487 bounced {previous['bounced']} -> "
+            emit(f"BOUNCE {watched} bounced {previous['bounced']} -> "
                  f"{current['bounced']}")
         if current["unsubscribed"] > previous["unsubscribed"]:
-            emit(f"UNSUB 487 unsubscribed {previous['unsubscribed']} -> "
+            emit(f"UNSUB {watched} unsubscribed {previous['unsubscribed']} -> "
                  f"{current['unsubscribed']}")
         # AFTER the send lines, and only when they did not fire. A queue that
         # grew because something was sent is already reported above; this is
@@ -154,14 +162,14 @@ def main(argv=None):
         # which is the first observable sign it has looked at this campaign.
         if (current["queue_rows"] != previous["queue_rows"]
                 and current["sent_rows"] == previous["sent_rows"]):
-            emit(f"QUEUED 487 scheduled rows {previous['queue_rows']} -> "
+            emit(f"QUEUED {watched} scheduled rows {previous['queue_rows']} -> "
                  f"{current['queue_rows']} (none sent)")
         if current["updated_at"] != previous["updated_at"]:
-            emit(f"TOUCHED 487 updated_at {previous['updated_at']} -> "
+            emit(f"TOUCHED {watched} updated_at {previous['updated_at']} -> "
                  f"{current['updated_at']} (sent={current['emails_sent']}, "
                  f"queue={current['queue_rows']})")
         if current["first_scheduled"] != previous["first_scheduled"]:
-            emit(f"SCHEDULE-MOVED 487 first send "
+            emit(f"SCHEDULE-MOVED {watched} first send "
                  f"{previous['first_scheduled']} -> "
                  f"{current['first_scheduled']}")
 
