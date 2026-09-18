@@ -49,6 +49,18 @@ LINKEDIN_CAMPAIGN = 605732
 LINKEDIN_LIST = 944355
 EMAIL_CAMPAIGN = 487
 
+# EVERY LIVE EMAIL CAMPAIGN, BECAUSE THERE ARE NOW TWO.
+#
+# 489 - the five-contact US cohort - went active 2026-09-18 and this
+# screen did not know it existed. That is worse than an omission on the
+# main production status: 487 is queued for the 23rd and 489 is the one
+# due to send first, so a reader checking `EMAILBISON_SENT = 0` was
+# reading the quiet campaign and not the live one.
+#
+# Ordered oldest first so the historical reading of this screen does not
+# move, and every per-campaign line is labelled with its id.
+EMAIL_CAMPAIGNS = (487, 489)
+
 # The tenant every count in this file is scoped to. Named once so a report
 # cannot silently describe a different client than the campaigns above.
 CLIENT = "productive"
@@ -132,16 +144,16 @@ def _active_campaigns_using(sender_id):
     return out
 
 
-def email():
-    out = {"campaign": EMAIL_CAMPAIGN}
-    row = _try(bison.campaign, EMAIL_CAMPAIGN)
+def email(campaign_id=EMAIL_CAMPAIGN):
+    out = {"campaign": campaign_id}
+    row = _try(bison.campaign, campaign_id)
     if isinstance(row, str):
         return dict(out, status=row, live=UNKNOWN, sent=UNKNOWN)
     out["status"] = str(row.get("status") or "").lower()
     out["live"] = out["status"] == "active"
     out["cohort"] = row.get("total_leads")
     out["campaign_cap_per_day"] = row.get("max_emails_per_day")
-    out["senders"] = _try(bison.campaign_senders, EMAIL_CAMPAIGN)
+    out["senders"] = _try(bison.campaign_senders, campaign_id)
 
     # THE BINDING CAP IS THE SMALLER OF THE TWO, AND IT IS NOT THE CAMPAIGN'S.
     #
@@ -197,7 +209,7 @@ def email():
         if isinstance(campaigns_seen, str):
             sharers[sender_id] = campaigns_seen
             continue
-        others = [c for c in campaigns_seen if int(c) != EMAIL_CAMPAIGN]
+        others = [c for c in campaigns_seen if int(c) != campaign_id]
         sharers[sender_id] = others
     out["sender_shared_with_active"] = sharers or UNKNOWN
     caps = [v["daily_limit"] for v in limits.values()
@@ -211,19 +223,35 @@ def email():
         out["binding_cap_per_day"] = UNKNOWN
 
     counter = row.get("emails_sent")
-    queue = _try(bison.scheduled_emails, EMAIL_CAMPAIGN)
+    queue = _try(bison.scheduled_emails, campaign_id)
     if isinstance(queue, str):
         queue_sent = UNKNOWN
         queue_rows = UNKNOWN
+        first_scheduled = UNKNOWN
     else:
         queue_rows = len(queue or [])
         queue_sent = 0
+        # WHEN THE FIRST PROSPECT HEARS FROM US IS NOT THE SAME FACT AS
+        # WHETHER A ROW EXISTS, and this screen reported only the second.
+        # `bison_watch_loop` already watches this because campaign 451's
+        # earliest date MOVED overnight before it fired.
+        #
+        # `None` and "no rows at all" are kept apart deliberately: a column
+        # that reads "none" while ten openers are queued for the 23rd is the
+        # dashboard tile PRODUCT-GAPS exists to prevent.
+        dates = []
         for entry in queue or []:
             state = str(entry.get("status") or entry.get("state") or "").lower()
             if state in EMAIL_SENT_WORDS or entry.get("sent_at"):
                 queue_sent += 1
+            when = entry.get("scheduled_date")
+            if when:
+                dates.append(str(when))
+        first_scheduled = min(dates) if dates else ("none queued"
+                                                   if queue_rows == 0
+                                                   else UNKNOWN)
     out.update(sent_counter=counter, queue_rows=queue_rows,
-               queue_sent=queue_sent,
+               queue_sent=queue_sent, first_scheduled=first_scheduled,
                replies=row.get("replied"), bounced=row.get("bounced"),
                unsubscribed=row.get("unsubscribed"))
     # A send is claimed only when a witness says so. Two witnesses; either is
@@ -324,7 +352,10 @@ def main(argv=None):
     load_env(os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "config", ".env"))
 
-    report = {"linkedin": linkedin(), "email": email(),
+    emails = {str(cid): email(cid) for cid in EMAIL_CAMPAIGNS}
+    report = {"linkedin": linkedin(),
+              "email": emails[str(EMAIL_CAMPAIGN)],
+              "emails": emails,
               "ledger": ledger(), "estate": estate()}
     if args.json:
         print(json.dumps(report, indent=1, default=str))
@@ -375,6 +406,26 @@ def main(argv=None):
     print(f"  EMAILBISON_REPLIES   = {em.get('replies')}")
     print(f"  EMAILBISON_BOUNCED   = {em.get('bounced')}")
     print(f"  EMAILBISON_FIRST_SEND= {em.get('first_send')}")
+
+    # EVERY LIVE EMAIL CAMPAIGN, LABELLED. The block above is campaign 487
+    # and keeps its historical shape; this is the one a reader needs when
+    # asking "has anything sent today", because 487 is queued for the 23rd.
+    print("")
+    print("=== EMAIL CAMPAIGNS, EACH ONE ===")
+    for cid in EMAIL_CAMPAIGNS:
+        one = emails[str(cid)]
+        first = one.get("first_scheduled")
+        print(f"  {cid}  status={str(one.get('status')):8s} "
+              f"leads={one.get('cohort')} "
+              f"sent={one.get('sent')} "
+              f"replies={one.get('replies')} bounced={one.get('bounced')} "
+              f"senders={one.get('senders')} "
+              f"queue={one.get('queue_sent')}/{one.get('queue_rows')} "
+              f"first_scheduled={first}")
+    if not any(int(emails[str(c)].get("sent") or 0) for c in EMAIL_CAMPAIGNS):
+        print("  NOTHING HAS SENT ON EITHER CAMPAIGN. ACTIVE IS NOT SENT and "
+              "SCHEDULED IS NOT SENT; a scheduled_emails row is a LOOKAHEAD "
+              "queue and 451's moved overnight before it fired.")
     print("\n=== LEDGER (latest state per key) ===")
     for state, count in sorted(report["ledger"].items()):
         print(f"  {state:12s} {count}")
