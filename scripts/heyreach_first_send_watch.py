@@ -31,11 +31,49 @@ import hashlib
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import actionledger, campaigns, liststaging, store        # noqa: E402
-from src.providers import heyreach, load_env                       # noqa: E402
+from src.providers import (ProviderError, heyreach,                # noqa: E402
+                           load_env)
+
+
+# HEYREACH IS INTERMITTENT AND A DIAGNOSTIC THAT DIES ON IT IS NOT A
+# DIAGNOSTIC. Measured 2026-09-18 around 07:20Z: `campaign_read` answered
+# 500 on 2 of 8 consecutive calls and twice hung to the full 25s timeout,
+# then recovered. This script crashed on the first one, on the morning its
+# whole job was to say whether the falsifier had fired.
+#
+# READS ONLY, and that is the entire licence for retrying here. A retried
+# GET asks the same question again; a retried write is a second write, and
+# `src/ratelimit.py` refuses to retry a non-idempotent verb without an
+# explicit idempotency assertion for exactly that reason. Nothing in this
+# file writes.
+#
+# It also gives up rather than looping: a provider that is down stays down,
+# and a script that retries forever reports nothing while looking busy.
+READ_ATTEMPTS = 4
+READ_BACKOFF = 2.0
+
+
+def _read(what, fn):
+    """One read, retried on a provider error, or raised with the count."""
+    last = None
+    for attempt in range(1, READ_ATTEMPTS + 1):
+        try:
+            return fn()
+        except ProviderError as exc:
+            last = exc
+            if attempt < READ_ATTEMPTS:
+                time.sleep(READ_BACKOFF * attempt)
+    raise SystemExit(
+        f"REFUSED: {what} failed {READ_ATTEMPTS} times, last: "
+        f"{type(last).__name__}: {str(last)[:120]}. The provider could not "
+        f"be read, which is NOT the same as nothing having been sent - "
+        f"UNKNOWN IS NEVER 0. Read `work/replywatch.json` for whether reply "
+        f"protection is also degraded, and try again.")
 
 CANONICAL = "productive-linkedin-cohort-v2"
 PROVIDER_ID = 605732
@@ -66,8 +104,10 @@ def ledger_keys():
 
 
 def read():
-    row = heyreach.campaign_read(PROVIDER_ID) or {}
-    rows, total = heyreach.campaign_leads(PROVIDER_ID)
+    row = _read(f"campaign_read({PROVIDER_ID})",
+                lambda: heyreach.campaign_read(PROVIDER_ID)) or {}
+    rows, total = _read(f"campaign_leads({PROVIDER_ID})",
+                        lambda: heyreach.campaign_leads(PROVIDER_ID))
     leads = []
     for lead in rows or []:
         raw = lead.get("raw") or {}
