@@ -1328,13 +1328,21 @@ def require_cap(live, cap):
     return True
 
 
-def run(live=False, cap=None, limit=None, ids=None, states=("queued", "enriched")):
+def run(live=False, cap=None, limit=None, ids=None, states=("queued", "enriched"),
+        prefetch=True):
     """Walk the queue. Dry by default: nothing is called and nothing is written.
 
     `cap=None` means UNLIMITED here, deliberately, because a caller writing
     that in code is making a choice. The refusal lives at the CLI - see
     `require_cap` - because that is where an operator's omission turns into an
     unbounded spend.
+
+    `prefetch=False` disables the concurrent headcount prefetch (TASK-230).
+    Tests that assert on the per-record log shape use this to keep the
+    serial flow, where the people-count branch always writes a
+    `store.log(rec, "enrich", ...)` entry. The prefetch is correct and
+    production-default; the opt-out is for tests whose subject is the
+    log shape, not the prefetch.
     """
     recs = store.load()
     budget = Budget(cap)
@@ -1357,6 +1365,89 @@ def run(live=False, cap=None, limit=None, ids=None, states=("queued", "enriched"
                and (states is None or r.get("state") in states)]
     if limit:
         targets = targets[:limit]
+
+    # --- TASK-230: prefetch the free call concurrently ------------------
+    # `people-count` is 4,822 of the 8,760 provider calls in a modelled
+    # 5,000-record pass and its serial cost is about 37 minutes. At K=8
+    # that becomes about 5. The call costs zero credits, so gather's
+    # timeout trap - a timed-out call still reached the provider and still
+    # cost a credit - has no value to be wrong about.
+    #
+    # The shape is decide-serially, fetch-concurrently, apply-serially IN
+    # INPUT ORDER. Input order is what keeps the waterfall ledger
+    # byte-identical to a serial run, which is the acceptance test.
+    # `spend()` is the DECIDE phase and runs serially; the shared Budget
+    # cap, the ledger append order, the `new_accounts_per_day` reservation
+    # lock, and checkpoint ordering all stay serial.
+    #
+    # Live only: a dry run plans via `plan()` and charges the in-memory
+    # budget without calling providers or writing the waterfall. A prefetch
+    # in dry run would write waterfall entries the planning pass would not,
+    # and the two reports would disagree.
+    prefetch_report = None
+    if live and targets and prefetch:
+        from . import gather as _gather
+
+        # The spend bridge: `prefetch_headcount` calls
+        # `spend(call, why, provider, rec=rec)` once per record in the
+        # apply loop, in input order. The bridge charges the shared
+        # budget and writes the waterfall step on the record the
+        # primitive passes via `rec=`. The Budget cap stays in this
+        # serial lane: the apply loop is serial, so two concurrent
+        # charges cannot read the same `spent` and both pass.
+        def _spend(call, why, provider="contactout", rec=None, **_kw):
+            # THIS BRIDGE IS FOR ONE FREE CALL AND REFUSES TO BE ANYTHING
+            # ELSE.
+            #
+            # The real `spend` is a closure inside `enrich_record` - it
+            # captures that record, its log and its budget - so the prefetch,
+            # which runs one level up in `run`, cannot reuse it and needs an
+            # adapter. For `people-count` the two are equivalent: cost
+            # lookup, budget charge, waterfall step.
+            #
+            # They stop being equivalent the moment anybody points this at a
+            # PAID PERSON-LEVEL call, because the real `spend` also enforces
+            # "company first" - no paid person-level call before an explicit
+            # ICP verdict - and TASK-205's evidence gate. This adapter
+            # enforces neither, and a reader adding a second call here would
+            # have no reason to notice. So it refuses by name rather than
+            # trusting the next reader.
+            if call != "people-count":
+                raise RuntimeError(
+                    f"the prefetch spend bridge is scoped to 'people-count' "
+                    f"and was asked for {call!r}. It does not enforce the "
+                    f"company-first gate or the evidence gate that "
+                    f"enrich_record's own `spend` applies to person-level "
+                    f"calls, so routing one through here would skip both. "
+                    f"Wire the paid route through `enrich_record`, and read "
+                    f"gather's timeout note first: a timed-out call still "
+                    f"reached the provider and still cost a credit.")
+            cost = COSTS.get(call, 0)
+            if not budget.charge(cost, f"{rec['id']}:{call}", call=call):
+                notes.append(f"{rec['id']}: cap reached, skipped {call}")
+                return False
+            from . import waterfall
+            waterfall.record_step(
+                rec, CALL_STAGE.get(call, "people_discovery"),
+                provider, call, reason=why, expected_cost=cost,
+            )
+            return True
+
+        # THE SAME LINE THE SERIAL PATH WRITES, in the same words, from
+        # inside the serial apply loop and in input order. Without it a
+        # provider call stops appearing on the record it was made about,
+        # which `test_every_provider_call_is_logged_on_the_record` asserts
+        # must never happen - and which it correctly failed on when the
+        # prefetch first landed.
+        def _logged(rec, count):
+            store.log(rec, "enrich",
+                      f"people-count: {count.get('profiles')} profiles "
+                      f"(free, prefetched)")
+
+        prefetch_report = _gather.prefetch_headcount(
+            targets, contactout.people_count, _spend,
+            on_applied=_logged,
+        )
 
     report = []
     configs = {}
@@ -1429,7 +1520,8 @@ def run(live=False, cap=None, limit=None, ids=None, states=("queued", "enriched"
             "crawl_cache": {"domains_held": crawl_cached},
             "mx_cache": {"at_start": mx_cache_at_start,
                          "at_end": len(mx_cache),
-                         "resolved_this_run": len(mx_cache) - mx_cache_at_start}}
+                         "resolved_this_run": len(mx_cache) - mx_cache_at_start},
+            "prefetch": prefetch_report}
 
 
 def main(argv=None):
