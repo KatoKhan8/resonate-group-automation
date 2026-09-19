@@ -194,6 +194,14 @@ watcher was killed at exit 124 that way on the 18th:
     bison_watch_loop.py --campaign 489 --interval 180
     heyreach_watch_loop.py --interval 300
     bison_mailbox_utilisation.py --interval 300 --samples 200 --quiet
+    bison_watch_loop.py --campaign 487 --interval 180     armed 10:20Z
+
+**THE FRESH CENSUS STOPPED ON NETWORK TIMEOUTS AND WAS RESUMED.** The first
+run completed 327 (48,759 rows) and 489, then lost the connection on 328 and
+never reached 352 or 487 - it saved progress and exited 0 rather than
+crashing, which is TASK-231's timeout classification working. A resume over
+328, 352 and 487 is running. **Re-run WITHOUT `--reset` to continue; `--reset`
+discards the walk.**
 
 **A FRESH FORWARD-BOOK CENSUS IS MID-WALK** and is the test for 489's
 inferred cause. Started 2026-09-19T09:28Z over campaigns 327, 328, 352, 487
@@ -273,9 +281,16 @@ question about the field name until the raw keys have been dumped.**
    `py -3 scripts/sender_pool_census.py` and settle 489's cause.
 3. **`scripts/make_481_inert.py --live`** once a human can approve it.
 4. **The seven LinkedIn approvals** - the only convertible inventory.
-5. **Wednesday 2026-09-23 from 08:41Z: 487's ten openers are due.** This is
-   the first real batch send this system will have made. Watch it rather
-   than assume it.
+5. **Wednesday 2026-09-23 from 08:41Z: 487's ten openers are due, and the
+   mailbox is contended.** Read
+   `docs/THE-CLIENTS-BOOK-IS-GROWING-INTO-OUR-DAY-2026-09-19.md` first:
+   client campaign 328 held ZERO rows on sender 2736 for the 23rd in the
+   complete walk of the 17th and holds at least FIVE now, which with 487's
+   own ten puts the mailbox at >=15 of 15 on the day it sends. What the
+   scheduler does with an oversubscribed day is UNKNOWN. This is the first
+   real batch send this system will have made. Watch it rather than assume
+   it - the 487 watcher is armed for exactly this and emits
+   `SCHEDULE-MOVED`.
 6. **Thursday 2026-09-24 from 13:05Z: 489's five.**
 7. Give `senderheadroom` a second caller - the cohort stager - so the NEXT
    cohort picks a mailbox by when it can send, not only by whether it is
