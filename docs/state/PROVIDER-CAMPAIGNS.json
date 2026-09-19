@@ -1,10 +1,140 @@
 {
-  "generated_at": "2026-09-16T13:35:46+00:00",
+  "generated_at": "2026-09-19T09:27:15+00:00",
   "source": "HeyReach public API, read-only. Credential env var: HEYREACH_KEY.",
   "heyreach": {
-    "campaigns_total_in_account": 84,
-    "campaigns_created_by_resonate": 2,
+    "campaigns_total_in_account": 86,
+    "campaigns_created_by_resonate": 4,
     "resonate_campaigns": [
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 605732,
+        "name": "RESONATE - PRODUCTIVE LINKEDIN COHORT V2 - CONTROL",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-16T19:57:32.64775Z",
+        "started_at": "2026-09-16T20:12:25.073226Z",
+        "lead_list_id": 944355,
+        "lead_list_name": "RESONATE - PRODUCTIVE LINKEDIN COHORT 2026-09-16 B",
+        "lead_count": 3,
+        "list_detail": {
+          "id": 944355,
+          "name": "RESONATE - PRODUCTIVE LINKEDIN COHORT 2026-09-16 B",
+          "count": 3,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174892,
+            "name_hash": "d7b929fb95a5",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 24,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 7,
+            "VIEW_PROFILE": 4,
+            "END": 10,
+            "FOLLOW": 1,
+            "CONNECTION_REQUEST": 1
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 8,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "32f8dde79bfa0f27"
+        },
+        "last_provider_readback": "2026-09-19T09:27:15+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 605487,
+        "name": "RESONATE - PRODUCTIVE LINKEDIN COHORT V1 - CONTROL",
+        "status": "DRAFT",
+        "classification": "DRAFT",
+        "created": "2026-09-16T18:01:00.578803Z",
+        "started_at": null,
+        "lead_list_id": 943957,
+        "lead_list_name": "RESONATE - PRODUCTIVE LINKEDIN COHORT 2026-09-16",
+        "lead_count": 0,
+        "list_detail": {
+          "id": 943957,
+          "name": "RESONATE - PRODUCTIVE LINKEDIN COHORT 2026-09-16",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174892,
+            "name_hash": "d7b929fb95a5",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 24,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 7,
+            "VIEW_PROFILE": 4,
+            "END": 10,
+            "FOLLOW": 1,
+            "CONNECTION_REQUEST": 1
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 8,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "32f8dde79bfa0f27"
+        },
+        "last_provider_readback": "2026-09-19T09:27:15+00:00"
+      },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 604869,
@@ -68,7 +198,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-16T13:35:46+00:00"
+        "last_provider_readback": "2026-09-19T09:27:15+00:00"
       },
       {
         "internal_campaign_id": "productive-linkedin-production-v1",
@@ -133,22 +263,25 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-16T13:35:46+00:00"
+        "last_provider_readback": "2026-09-19T09:27:15+00:00"
       }
     ],
     "status_totals": {
-      "DRAFT": 8,
+      "IN_PROGRESS": 13,
+      "DRAFT": 9,
       "FINISHED": 32,
-      "PAUSED": 32,
-      "IN_PROGRESS": 12
+      "PAUSED": 32
     },
     "linkedin_accounts_available": 41
   },
   "internal_vs_provider": {
-    "internal_records": 13,
+    "internal_records": 18,
     "internal_heyreach_ids": [
       "594061",
-      "599020"
+      "599020",
+      "604869",
+      "605487",
+      "605732"
     ],
     "claims_provider_does_not_confirm": [],
     "consistent": true

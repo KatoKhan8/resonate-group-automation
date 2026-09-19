@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-09-17T19:57:42+00:00",
+  "generated_at": "2026-09-19T09:32:14+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
   "branch_blindness": "Task stages in this ledger reflect master only. Tasks finished on worker branches but not yet integrated into master appear in their master stage (often TODO), not the stage the branch has moved them to. Run scripts/task173_scan.py --unintegrated for the cross-branch view.",
-  "master_head": "a5642482",
-  "origin_master_head": "a5642482",
+  "master_head": "5286e2cb",
+  "origin_master_head": "5286e2cb",
   "master_pushed": true,
   "tasks": [
     {
@@ -52,6 +52,70 @@
       "stage": "TODO",
       "last_commit": "23a95720",
       "last_commit_at": "2026-09-16T15:32:39+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-224",
+      "file": "docs/qwen-tasks/TODO/TASK-224-the-readback-fails-on-the-providers-own-Re.md",
+      "stage": "TODO",
+      "last_commit": "1a94156d",
+      "last_commit_at": "2026-09-18T07:08:40+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-225",
+      "file": "docs/qwen-tasks/TODO/TASK-225-a-rate-limiter-the-gather-can-be-given.md",
+      "stage": "TODO",
+      "last_commit": "1a94156d",
+      "last_commit_at": "2026-09-18T07:08:40+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-226",
+      "file": "docs/qwen-tasks/TODO/TASK-226-the-journal-moved-the-cost-to-the-read.md",
+      "stage": "TODO",
+      "last_commit": "1a94156d",
+      "last_commit_at": "2026-09-18T07:08:40+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-227",
+      "file": "docs/qwen-tasks/TODO/TASK-227-the-send-window-is-ours-not-the-recipients.md",
+      "stage": "TODO",
+      "last_commit": "1a94156d",
+      "last_commit_at": "2026-09-18T07:08:40+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-229",
+      "file": "docs/qwen-tasks/TODO/TASK-229-the-ready-reservoir-nobody-has-to-watch.md",
+      "stage": "TODO",
+      "last_commit": "de696f9c",
+      "last_commit_at": "2026-09-18T08:10:21+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-230",
+      "file": "docs/qwen-tasks/TODO/TASK-230-the-free-call-that-dominates-the-count.md",
+      "stage": "TODO",
+      "last_commit": "4abd18f4",
+      "last_commit_at": "2026-09-18T08:15:01+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-231",
+      "file": "docs/qwen-tasks/TODO/TASK-231-a-timeout-that-abandons-is-not-a-timeout.md",
+      "stage": "TODO",
+      "last_commit": "3dbfedea",
+      "last_commit_at": "2026-09-18T08:54:15+02:00",
+      "reported": false
+    },
+    {
+      "task": "TASK-232",
+      "file": "docs/qwen-tasks/TODO/TASK-232-thirty-three-accounts-held-by-a-question.md",
+      "stage": "TODO",
+      "last_commit": "e4682d21",
+      "last_commit_at": "2026-09-18T09:03:20+02:00",
       "reported": false
     },
     {
@@ -170,6 +234,14 @@
       "reported": true,
       "declared_status": "DONE",
       "commit_sha": "4c9d63d3"
+    },
+    {
+      "task": "TASK-228",
+      "file": "docs/qwen-tasks/REWORK/TASK-228-a-refused-activation-blocks-its-own-retry.md",
+      "stage": "REWORK",
+      "last_commit": "d8c6cd7d",
+      "last_commit_at": "2026-09-18T08:40:57+02:00",
+      "reported": false
     },
     {
       "task": "TASK-123",
@@ -2122,20 +2194,52 @@
       "last_commit_at": "2026-09-17T20:43:41+02:00"
     },
     {
-      "branch": "geo-iso-resolution-2026-09-17",
-      "head": "953c933a",
-      "commits_ahead_of_master": 4,
+      "branch": "bounded-gather-2026-09-18",
+      "head": "49946b48",
+      "commits_ahead_of_master": 2,
       "pushed": true,
-      "remote_head": "953c933a",
-      "last_commit_at": "2026-09-17T20:26:27+02:00"
+      "remote_head": "49946b48",
+      "last_commit_at": "2026-09-18T08:32:46+02:00"
+    },
+    {
+      "branch": "crawl-cache-persistence-2026-09-17",
+      "head": "e3ee9022",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "e3ee9022",
+      "last_commit_at": "2026-09-17T23:36:23+02:00"
+    },
+    {
+      "branch": "geo-iso-resolution-2026-09-17",
+      "head": "1818655e",
+      "commits_ahead_of_master": 6,
+      "pushed": true,
+      "remote_head": "1818655e",
+      "last_commit_at": "2026-09-18T07:11:31+02:00"
     },
     {
       "branch": "master",
-      "head": "a5642482",
+      "head": "5286e2cb",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "a5642482",
-      "last_commit_at": "2026-09-17T21:57:30+02:00"
+      "remote_head": "5286e2cb",
+      "last_commit_at": "2026-09-18T17:54:22+02:00"
+    },
+    {
+      "branch": "perf-instrumentation-2026-09-17",
+      "head": "81022b7d",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "81022b7d",
+      "last_commit_at": "2026-09-17T23:12:53+02:00"
+    },
+    {
+      "branch": "provider-latency-model-2026-09-18",
+      "head": "75ed1145",
+      "commits_ahead_of_master": 0,
+      "pushed": true,
+      "remote_head": "75ed1145",
+      "last_commit_at": "2026-09-18T00:57:50+02:00"
     },
     {
       "branch": "qwen-worker",
@@ -2915,11 +3019,11 @@
     },
     {
       "branch": "qwen-worker-6-r40",
-      "head": "d447163e",
-      "commits_ahead_of_master": 0,
+      "head": "80d8bab3",
+      "commits_ahead_of_master": 3,
       "pushed": true,
-      "remote_head": "d447163e",
-      "last_commit_at": "2026-09-16T08:39:26+02:00"
+      "remote_head": "80d8bab3",
+      "last_commit_at": "2026-09-18T09:09:06+02:00"
     },
     {
       "branch": "qwen-worker-6-r6",
@@ -2979,11 +3083,11 @@
     },
     {
       "branch": "qwen-worker-7-r28",
-      "head": "bd940e58",
-      "commits_ahead_of_master": 0,
-      "pushed": false,
-      "remote_head": "b8d801a7",
-      "last_commit_at": "2026-09-16T07:31:53+02:00"
+      "head": "b80d3631",
+      "commits_ahead_of_master": 3,
+      "pushed": true,
+      "remote_head": "b80d3631",
+      "last_commit_at": "2026-09-18T07:13:22+02:00"
     },
     {
       "branch": "qwen-worker-7-r3",
@@ -3083,11 +3187,11 @@
     },
     {
       "branch": "qwen-worker-8-r28",
-      "head": "88b0a5d4",
-      "commits_ahead_of_master": 0,
+      "head": "36a4ce61",
+      "commits_ahead_of_master": 8,
       "pushed": true,
-      "remote_head": "88b0a5d4",
-      "last_commit_at": "2026-09-16T07:18:38+02:00"
+      "remote_head": "36a4ce61",
+      "last_commit_at": "2026-09-18T09:06:08+02:00"
     },
     {
       "branch": "qwen-worker-8-r3",
@@ -3467,11 +3571,19 @@
     },
     {
       "branch": "staged-paused-activation-order-2026-09-17",
-      "head": "21e00adb",
-      "commits_ahead_of_master": 1,
+      "head": "e577b9e8",
+      "commits_ahead_of_master": 2,
       "pushed": true,
-      "remote_head": "21e00adb",
-      "last_commit_at": "2026-09-17T20:35:29+02:00"
+      "remote_head": "e577b9e8",
+      "last_commit_at": "2026-09-18T08:19:15+02:00"
+    },
+    {
+      "branch": "task-230-prefetch-headcount",
+      "head": "f0ada227",
+      "commits_ahead_of_master": 3,
+      "pushed": true,
+      "remote_head": "f0ada227",
+      "last_commit_at": "2026-09-18T08:44:13+02:00"
     },
     {
       "branch": "task202-suite-2026-09-17",
@@ -3493,59 +3605,59 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "a564248",
+      "head": "5286e2c",
       "branch": "master",
-      "uncommitted_files": 0,
-      "clean": true
+      "uncommitted_files": 1,
+      "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-2",
-      "head": "953c933",
+      "head": "1818655",
       "branch": "geo-iso-resolution-2026-09-17",
       "uncommitted_files": 0,
       "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-3",
-      "head": "21e00ad",
+      "head": "e577b9e",
       "branch": "staged-paused-activation-order-2026-09-17",
       "uncommitted_files": 0,
       "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-4",
-      "head": "2b8ab1a",
-      "branch": "bison-webhook-ingest-2026-09-17",
+      "head": "f0ada22",
+      "branch": "task-230-prefetch-headcount",
       "uncommitted_files": 0,
       "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-5",
-      "head": "b1154a7",
-      "branch": "qwen-worker-5-r46",
+      "head": "49946b4",
+      "branch": "bounded-gather-2026-09-18",
       "uncommitted_files": 0,
       "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-6",
-      "head": "d447163",
+      "head": "80d8bab",
       "branch": "qwen-worker-6-r40",
       "uncommitted_files": 0,
       "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-7",
-      "head": "bd940e5",
+      "head": "b80d363",
       "branch": "qwen-worker-7-r28",
       "uncommitted_files": 0,
       "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-8",
-      "head": "88b0a5d",
+      "head": "36a4ce6",
       "branch": "qwen-worker-8-r28",
-      "uncommitted_files": 0,
-      "clean": true
+      "uncommitted_files": 2,
+      "clean": false
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-worker",
@@ -3556,9 +3668,10 @@
     }
   ],
   "stage_counts": {
-    "TODO": 6,
+    "TODO": 14,
     "RUNNING": 1,
     "REVIEW": 11,
+    "REWORK": 1,
     "BLOCKED": 1,
     "DONE": 201
   }

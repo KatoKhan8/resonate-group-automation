@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-17T19:57:42+00:00",
+  "generated_at": "2026-09-19T09:32:14+00:00",
   "queue_path": "work/queue.jsonl",
   "gitignored": true,
   "present": true,
@@ -15,9 +15,9 @@
     "held": 33,
     "dropped": 126,
     "queued": 315,
-    "approved": 4,
-    "drafted": 8
+    "approved": 6,
+    "drafted": 6
   },
   "estate_fingerprint": "d33cbd6d4ed10f26",
-  "mtime": "2026-09-17T11:40:58.778914+00:00"
+  "mtime": "2026-09-18T05:28:24.064137+00:00"
 }
