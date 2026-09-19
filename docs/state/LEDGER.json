@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-09-19T09:32:14+00:00",
+  "generated_at": "2026-09-19T09:54:37+00:00",
   "generated_from": "docs/qwen-tasks/** and git. Derived, never hand-edited.",
   "branch_blindness": "Task stages in this ledger reflect master only. Tasks finished on worker branches but not yet integrated into master appear in their master stage (often TODO), not the stage the branch has moved them to. Run scripts/task173_scan.py --unintegrated for the cross-branch view.",
-  "master_head": "5286e2cb",
-  "origin_master_head": "5286e2cb",
+  "master_head": "823e05b7",
+  "origin_master_head": "823e05b7",
   "master_pushed": true,
   "tasks": [
     {
@@ -2219,11 +2219,11 @@
     },
     {
       "branch": "master",
-      "head": "5286e2cb",
+      "head": "823e05b7",
       "commits_ahead_of_master": 0,
       "pushed": true,
-      "remote_head": "5286e2cb",
-      "last_commit_at": "2026-09-18T17:54:22+02:00"
+      "remote_head": "823e05b7",
+      "last_commit_at": "2026-09-19T11:52:01+02:00"
     },
     {
       "branch": "perf-instrumentation-2026-09-17",
@@ -3605,9 +3605,9 @@
   "worktrees": [
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-group-automation",
-      "head": "5286e2c",
+      "head": "823e05b",
       "branch": "master",
-      "uncommitted_files": 1,
+      "uncommitted_files": 2,
       "clean": false
     },
     {
@@ -3656,8 +3656,8 @@
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-8",
       "head": "36a4ce6",
       "branch": "qwen-worker-8-r28",
-      "uncommitted_files": 2,
-      "clean": false
+      "uncommitted_files": 0,
+      "clean": true
     },
     {
       "path": "C:/Users/Zvonimir/Desktop/resonate-qwen-worker",

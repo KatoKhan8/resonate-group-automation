@@ -1,17 +1,30 @@
 # Resonate Group Automation
-docs/PRODUCTION-HANDOFF-2026-09-18-B.md is the current state: read it first.
+docs/PRODUCTION-HANDOFF-2026-09-19.md is the current state: read it first.
 It is written for a session with no conversation context and it supersedes
 every earlier handoff and context reset. THREE campaigns are LIVE - EmailBison
-487 and 489 and HeyReach 605732 - and none of the three has sent yet. 489 is
-the new one and the one that could send first; 487 is queued for the 23rd and
-was not touched. "Nothing has EVER sent" is false: canary 451 sent one real
-email on 2026-09-14, so the end-to-end path is proven against a real prospect.
-Recompute provider truth before acting on any number in it.
+487 and 489 and HeyReach 605732 - and none of the three has sent yet. 487's
+ten openers are scheduled for 2026-09-23 and 489's five for 2026-09-24, both
+correctly inside their own windows. "Nothing has EVER sent" is false: canary
+451 sent one real email on 2026-09-14, so the end-to-end path is proven
+against a real prospect. Recompute provider truth before acting on any number
+in it, and READ THE CLOCK FIRST - both campaigns are Mon-Fri, so a zero at a
+weekend is the calendar rather than a fault.
+
+Read `docs/THE-SEND-DATE-IS-THE-MAILBOX-2026-09-19.md` before trying to make
+anything send sooner. The day a cohort goes out is a property of the MAILBOX,
+not of the campaign: sender 2736 is booked 15/15 on the 21st by client
+campaign 327 and 15/15 on the 22nd by 328, so 487's openers went to the first
+day it had a free slot. No window, activation, approval or cap change moves
+that. `src/senderheadroom.py` is the primitive that answers WHEN a mailbox is
+free, and its refusal contract is load-bearing: a walk can only undercount, so
+FULL is provable from any walk and ROOM is provable from none but a complete,
+fresh, covering one. REFUSED IS NOT ROOM.
 
 Read `docs/THE-ESTATE-IS-SATURATED-NOT-UNAPPROVED-2026-09-18.md` before
 planning any cohort growth. Approval is NOT the bottleneck: the client's own
 campaigns are mid-sequence at 65 of the accounts in this estate, and the
-account gate refuses correctly. Expansion is a sourcing problem.
+account gate refuses correctly. Expansion is a sourcing problem, and latency
+is a sender problem - they are different problems with different fixes.
 
 docs/CONTEXT-RESET-2026-09-15-E.md is kept for the two things it says that
 nothing else does: the HeyReach sequence holds MERGE VARIABLES and the words
