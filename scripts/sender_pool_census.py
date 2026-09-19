@@ -61,12 +61,56 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+from src import senderheadroom as sh  # noqa: E402
 from src import senderidentity as si, senderownership as so  # noqa: E402
 from src.providers import bison, load_env  # noqa: E402
 
 CLIENT = "productive"
 EMAIL_CAMPAIGN = 487
 UTILISATION = os.path.join(ROOT, "work", "bison-mailbox-utilisation.jsonl")
+CENSUS = os.path.join(ROOT, sh.DEFAULT_STATE)
+
+
+def forward_book(provider_rows, active_campaign_ids, need=1):
+    """The soonest each connected mailbox could take `need` more. Read-only.
+
+    MEASURED_HEADROOM above answers "how much has this mailbox NOT sent
+    today". This answers "when does it next have a free slot", which is a
+    different question and the one that decides when a cohort actually goes
+    out: campaign 487's openers landed on 2026-09-23 because sender 2736 was
+    booked to its limit on the 21st and the 22nd by the client's own
+    campaigns, and nothing in selection looked.
+
+    `senderheadroom` refuses rather than guesses, and the refusals are
+    reported rather than folded into a zero - a mailbox whose forward book
+    cannot be proven empty is NOT a free mailbox.
+    """
+    try:
+        state = sh.load_state(CENSUS)
+    except sh.HeadroomRefused as exc:
+        return {"AVAILABLE": False, "WHY": str(exc), "ROWS": []}
+
+    complete, incomplete = sh.completeness(state)
+    fresh, age, stamp = sh.freshness(state)
+    covers, missing = sh.coverage(state, active_campaign_ids)
+
+    candidates = [(int(r["id"]), r.get("daily_limit")) for r in provider_rows
+                  if str(r.get("status")) == "Connected" and r.get("id")]
+    ranked = sh.rank(state, candidates, active_campaign_ids, need=need)
+
+    return {
+        "AVAILABLE": True,
+        "WALK_COMPLETE": complete,
+        "WALK_INCOMPLETE_CAMPAIGNS": list(incomplete),
+        "WALK_FINISHED_AT": stamp,
+        "WALK_AGE_HOURS": round(age, 1) if age is not None else None,
+        "WALK_FRESH": fresh,
+        "WALK_COVERS_ACTIVE": covers,
+        "WALK_MISSING_CAMPAIGNS": list(missing),
+        "PROVEN_FREE_SOMEDAY": sum(1 for r in ranked if r["day"]),
+        "COULD_NOT_BE_PROVEN_FREE": sum(1 for r in ranked if not r["day"]),
+        "ROWS": ranked,
+    }
 
 
 def h(value):
@@ -202,6 +246,13 @@ def census():
         "not a config change")
     out["PER_HUMAN"] = {k: v for k, v in sorted(
         per_human.items(), key=lambda kv: -kv[1]["headroom"])}
+
+    # WHEN, not just how much. The active campaign ids come from the provider
+    # read above rather than a constant, so a campaign nobody walked makes the
+    # forward book REFUSE instead of quietly under-reporting its commitments.
+    active_ids = sorted({str(c) for ids in serves.values() for c in ids})
+    out["ACTIVE_CAMPAIGNS_SEEN"] = active_ids
+    out["FORWARD_BOOK"] = forward_book(provider_rows, active_ids)
     return out
 
 
@@ -215,9 +266,34 @@ def main(argv=None):
         print(json.dumps(data, indent=2, sort_keys=True, default=str))
         return 0
     for key, value in data.items():
-        if key == "PER_HUMAN":
+        if key in ("PER_HUMAN", "FORWARD_BOOK"):
             continue
         print(f"{key}={value}")
+
+    book = data.get("FORWARD_BOOK") or {}
+    print("\nFORWARD BOOK - when a mailbox next has a free slot:")
+    if not book.get("AVAILABLE"):
+        print(f"  UNAVAILABLE: {book.get('WHY')}")
+        print("  Run `py -3 scripts/bison_forward_book_census.py` first.")
+    else:
+        print(f"  walk finished {book['WALK_FINISHED_AT']} "
+              f"({book['WALK_AGE_HOURS']}h old), complete="
+              f"{book['WALK_COMPLETE']} fresh={book['WALK_FRESH']} "
+              f"covers_active={book['WALK_COVERS_ACTIVE']}")
+        if book["WALK_INCOMPLETE_CAMPAIGNS"]:
+            print(f"  INCOMPLETE: {book['WALK_INCOMPLETE_CAMPAIGNS']}")
+        if book["WALK_MISSING_CAMPAIGNS"]:
+            print(f"  NOT WALKED: {book['WALK_MISSING_CAMPAIGNS']} - their "
+                  "rows book these mailboxes too")
+        print(f"  proven free on some day : {book['PROVEN_FREE_SOMEDAY']}")
+        print(f"  could NOT be proven free: "
+              f"{book['COULD_NOT_BE_PROVEN_FREE']}  <- NOT the same as full")
+        soonest = [r for r in book["ROWS"] if r["day"]][:10]
+        if soonest:
+            print(f"\n  {'sender':>8}{'limit':>7}  {'earliest':<12} why")
+            for row in soonest:
+                print(f"  {row['sender_id']:>8}{str(row['limit']):>7}  "
+                      f"{row['day']:<12} {row['reason']}")
     print("\nPER HUMAN (hashed), by measured headroom:")
     print(f"  {'human':<16}{'inboxes':>9}{'attested':>10}{'headroom':>10}")
     for name, entry in data["PER_HUMAN"].items():
