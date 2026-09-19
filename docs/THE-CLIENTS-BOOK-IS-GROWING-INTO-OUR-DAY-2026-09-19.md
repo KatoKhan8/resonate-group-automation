@@ -1,5 +1,15 @@
 # The client's book is growing into the day 487 is due
 
+> **CORRECTED 2026-09-19T11:35Z by
+> `docs/THE-SCHEDULER-PLACES-THE-WHOLE-COHORT-2026-09-19.md`.** This was
+> written from a 14%-complete walk of campaign 328 and warned the 23rd could
+> be OVERSUBSCRIBED. The completed walk reads it as exactly 15 of 15 - 328's
+> five and 487's ten and nothing more. The lower bound was right; the worry
+> that it would keep climbing was not. What stands: 328 held ZERO there in
+> the complete walk of the 17th and holds five now, so the mailbox has zero
+> slack on the day 487 sends. That justifies the watcher. It is NOT a
+> prediction that 487 will slip.
+
 Read 2026-09-19T10:15Z, from a fresh forward-book walk started at 09:28Z.
 **Addendum to `docs/THE-SEND-DATE-IS-THE-MAILBOX-2026-09-19.md`**, which
 proved the send date is a property of the mailbox. This is the part that

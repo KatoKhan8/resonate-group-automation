@@ -58,6 +58,17 @@ Monday closes at 17:00Z with `connection: None` -> it no longer does.
 
 `docs/THE-SEND-DATE-IS-THE-MAILBOX-2026-09-19.md`.
 
+> **UPDATED 2026-09-19T11:35Z: THE CENSUS COMPLETED AND THE RULE CHANGED.**
+> Read `docs/THE-SCHEDULER-PLACES-THE-WHOLE-COHORT-2026-09-19.md`. The
+> mailbox finding below STANDS. The rule does not: it is not "the first day
+> with a free slot" but **the first sending day with room for the WHOLE
+> COHORT**, which predicts BOTH campaigns exactly where the single-slot rule
+> gets 489 wrong. 489's date is now PROVEN rather than inferred. Two further
+> corrections there: the 23rd is exactly 15/15 rather than oversubscribed, and
+> **client campaign 352 books 16 rows on a mailbox whose `daily_limit` is 15**,
+> so `daily_limit` is not a hard provider cap and every capacity number in
+> this system rests on it.
+
 **The send date is not a property of the campaign. It is a property of the
 mailbox.** From the complete forward-book walk, per campaign, per sender,
 per day - sender 2736 carries 487, daily limit 15:
@@ -75,8 +86,9 @@ openers went to the first day its mailbox had a single free slot. **PROVEN,
 not inferred** - a complete walk of every scheduled row in every active
 campaign, and the ten rows on the 23rd are 487's own.
 
-489 is the same mechanism one step weaker: the walk predates its planning by
-a day, so it is INFERRED, and the fresh census is the test (section 6).
+489 is PROVEN too, by the completed walk - but by the whole-cohort rule, not
+this one. Sender 3437 had 2 free slots on the 22nd and 1 on the 23rd and
+489's five went to the 24th, the first day with room for all five.
 
 **No campaign-side change moves these dates.** Not the window, not the
 activation, not the approval, not the cap, not the sequence. This is
@@ -196,7 +208,14 @@ watcher was killed at exit 124 that way on the 18th:
     bison_mailbox_utilisation.py --interval 300 --samples 200 --quiet
     bison_watch_loop.py --campaign 487 --interval 180     armed 10:20Z
 
-**THE FRESH CENSUS STOPPED ON NETWORK TIMEOUTS AND WAS RESUMED.** The first
+**THE CENSUS IS COMPLETE**, as of 2026-09-19T11:30Z: all five campaigns,
+184,284 rows, every one `complete: true`. `senderheadroom` now answers FULL
+and ROOM rather than REFUSED. Re-walk before trusting it for a NEW cohort -
+the freshness gate refuses to prove ROOM from a walk over 24h old, and the
+client's book demonstrably grows day to day.
+
+The history, because it will happen again:
+**THE FIRST RUN STOPPED ON NETWORK TIMEOUTS AND WAS RESUMED.** The first
 run completed 327 (48,759 rows) and 489, then lost the connection on 328 and
 never reached 352 or 487 - it saved progress and exited 0 rather than
 crashing, which is TASK-231's timeout classification working. A resume over

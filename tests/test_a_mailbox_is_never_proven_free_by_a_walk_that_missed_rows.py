@@ -294,5 +294,65 @@ class DeliberateBreak(unittest.TestCase):
         self.assertEqual(word, senderheadroom.FULL, reason)
 
 
+class TheSchedulerPlacesTheWholeCohort(unittest.TestCase):
+    """The rule the provider was MEASURED to follow, from a complete walk.
+
+    `docs/THE-SCHEDULER-PLACES-THE-WHOLE-COHORT-2026-09-19.md`. The first
+    reading of the 487 case was "the first day with a free slot", and it is
+    refuted: sender 3437 had two free slots on the 22nd and one on the 23rd
+    and campaign 489's five leads went to the 24th anyway.
+
+    The rule that fits both campaigns exactly is **the first sending day with
+    room for the WHOLE cohort**, and cohort SIZE is what discriminates the
+    two. These are the real books, with each campaign's own rows removed -
+    the counterfactual of where the scheduler would place it.
+    """
+
+    def book(self, by_day):
+        return census({"client": walk(by_day)})
+
+    def test_the_ten_of_487_fit_on_the_23rd_and_not_before(self):
+        state = self.book({"2736|2026-09-21": 15, "2736|2026-09-22": 15,
+                           "2736|2026-09-23": 5})
+        day, reason = senderheadroom.earliest_day(
+            state, 2736, 15, ("client",), need=10,
+            on_or_after="2026-09-21", now=NOW)
+        self.assertEqual(day, "2026-09-23", reason)
+
+    def test_the_five_of_489_skip_two_days_that_have_room_for_fewer(self):
+        """The case the single-slot rule gets wrong."""
+        state = self.book({"3437|2026-09-21": 16, "3437|2026-09-22": 13,
+                           "3437|2026-09-23": 14, "3437|2026-09-24": 8})
+        day, reason = senderheadroom.earliest_day(
+            state, 3437, 15, ("client",), need=5,
+            on_or_after="2026-09-21", now=NOW)
+        self.assertEqual(day, "2026-09-24", reason)
+
+    def test_one_lead_would_have_gone_three_days_earlier(self):
+        """Cohort size is a scheduling input, not only a safety cap."""
+        state = self.book({"3437|2026-09-21": 16, "3437|2026-09-22": 13,
+                           "3437|2026-09-23": 14, "3437|2026-09-24": 8})
+        day, _ = senderheadroom.earliest_day(
+            state, 3437, 15, ("client",), need=1,
+            on_or_after="2026-09-21", now=NOW)
+        self.assertEqual(day, "2026-09-22",
+                         "a single lead fits where a cohort of five does not")
+
+    def test_an_overbooked_mailbox_is_full_rather_than_negative(self):
+        """MEASURED: client campaign 352 books 16 on a mailbox whose limit is 15.
+
+        `daily_limit` is therefore not a hard provider cap. FULL must still
+        refuse - it means 'at or past the number we treat as the limit', not
+        'the provider will refuse more' - and it must not underflow into
+        reporting free capacity.
+        """
+        state = self.book({"3437|2026-09-21": 16})
+        word, reason, free = senderheadroom.verdict(
+            state, 3437, "2026-09-21", 15, ("client",), need=1, now=NOW)
+        self.assertEqual(word, senderheadroom.FULL, reason)
+        self.assertIsNone(free)
+        self.assertIn("16 of 15", reason)
+
+
 if __name__ == "__main__":
     unittest.main()

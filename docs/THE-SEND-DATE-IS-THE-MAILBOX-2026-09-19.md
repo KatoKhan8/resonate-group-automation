@@ -1,5 +1,15 @@
 # The send date is set by the mailbox, not by the campaign
 
+> **SUPERSEDED IN PART, 2026-09-19T11:35Z, by
+> `docs/THE-SCHEDULER-PLACES-THE-WHOLE-COHORT-2026-09-19.md`.** The central
+> finding stands and is stronger: the send date is a property of the mailbox.
+> But the RULE stated below - "the first day its mailbox had a free slot" -
+> is REFUTED by the completed walk. Sender 3437 had two free slots on the
+> 22nd and one on the 23rd and 489 still went to the 24th. The rule is the
+> first sending day with room for the WHOLE COHORT, which predicts both
+> campaigns exactly. The 489 section below also expects the 22nd on stale
+> numbers; read the correction instead.
+
 Read 2026-09-19T09:30Z. **It is Saturday.** Both email campaigns are Mon-Fri,
 so nothing is due from either today and a zero today is the clock, not a fault.
 
