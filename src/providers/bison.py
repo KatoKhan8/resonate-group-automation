@@ -1803,6 +1803,98 @@ def fetch_replies(cursor=None, per_page=PER_PAGE_MAX, path=REPLIES_PATH):
     return rows, meta.get("next_cursor")
 
 
+EVENTS_PATH = "/events"
+
+# `/api/events` replays the last TEN DAYS and nothing older. That is not a
+# pagination limit a cursor can walk past, it is the retention of the feed, so
+# a question about an older membership is NOT answerable here however many
+# pages are read. `fetch_events` cannot enforce that - the caller has to know
+# what date it is asking about - but `events_window` below measures it.
+EVENTS_RETENTION_DAYS = 10
+
+
+def fetch_events(cursor=None, per_page=PER_PAGE_MAX):
+    """One page of the event feed. Read-only: this endpoint creates nothing.
+
+    Returns `(rows, next_cursor)`, the same shape as `fetch_replies`, and for
+    the same reason: the caller stores the cursor and this module holds no
+    state of its own.
+
+    THE ROWS ARE ENVELOPES, NOT EVENTS. Each carries the event under
+    `payload`, beside `webhook_deliveries` - `bisonevents.normalise` accepts
+    either that envelope or a bare payload and is the only thing that should
+    read the fields. 1,200 real rows were walked on 2026-09-17 and every
+    assumed field path was wrong; the envelope shape is recorded in
+    `src/bisonevents`.
+
+    Cursor pagination is not optional, exactly as on the reply feed: the
+    default offset mode carries no `next_cursor` and refuses `page` beyond
+    1000, so it is both uncheckpointable and unable to reach a real history.
+    """
+    params = {"per_page": min(int(per_page), PER_PAGE_MAX),
+              "pagination_type": "cursor"}
+    if cursor:
+        params["cursor"] = cursor
+    status, data = request(
+        "GET", query(f"{base()}{EVENTS_PATH}", params), headers())
+    if not ok(status):
+        raise ProviderError(f"emailbison events: {status}")
+    if not isinstance(data, dict):
+        raise ProviderError("emailbison events: unexpected response shape")
+    rows = data.get("data")
+    if not isinstance(rows, list):
+        # Identical reasoning to the reply feed: a 200 with no `data` array is
+        # a contract change, not an empty feed, and flattening it to `[]`
+        # would tell a caller it had caught up. A caller resolving why a
+        # membership stopped would then record STILL_UNKNOWN - an answer that
+        # looks like evidence of nothing rather than an unread feed.
+        raise ProviderError(
+            "emailbison events: no `data` array in the response (got "
+            f"{type(rows).__name__}); refusing to read that as no events")
+    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+    return rows, meta.get("next_cursor")
+
+
+def walk_events(limit=None, per_page=PER_PAGE_MAX, on_page=None):
+    """Walk the event feed by cursor. Returns `(rows, pages, exhausted)`.
+
+    `exhausted` is True only when the provider stopped offering a cursor -
+    i.e. the feed really ended - and False when `limit` cut the walk short.
+    A caller that cannot tell those apart will read a truncated walk as a
+    complete history, which on this feed means "no such event happened".
+
+    A REPEATING CURSOR IS THE END. This instance ignores `per_page` on some
+    routes and hands back the same token rather than a null one; asking again
+    would loop forever, so the same cursor twice is treated as exhaustion.
+    """
+    rows, pages, cursor, seen = [], 0, None, set()
+    while True:
+        page, cursor = fetch_events(cursor=cursor, per_page=per_page)
+        rows += page
+        pages += 1
+        if on_page:
+            on_page(pages, len(rows), cursor)
+        if not page or not cursor or cursor in seen:
+            return rows, pages, True
+        seen.add(cursor)
+        if limit is not None and len(rows) >= int(limit):
+            return rows, pages, False
+
+
+def events_window(rows):
+    """`(oldest, newest, n)` from `created_at` on the envelopes. Read-only.
+
+    What the feed can actually answer about, measured rather than assumed.
+    A question about a date outside this window has no answer here, and
+    `STILL_UNKNOWN` is the honest result rather than a negative finding.
+    """
+    stamps = sorted(str(r.get("created_at")) for r in rows
+                    if isinstance(r, dict) and r.get("created_at"))
+    if not stamps:
+        return None, None, 0
+    return stamps[0], stamps[-1], len(stamps)
+
+
 def check():
     """Read-only: list campaigns. Creates nothing, sends nothing."""
     try:
