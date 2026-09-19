@@ -311,9 +311,24 @@ question about the field name until the raw keys have been dumped.**
    it - the 487 watcher is armed for exactly this and emits
    `SCHEDULE-MOVED`.
 6. **Thursday 2026-09-24 from 13:05Z: 489's five.**
-7. Give `senderheadroom` a second caller - the cohort stager - so the NEXT
+7. **ATTEST ONE HUMAN TO ONE HEALTHY MAILBOX.** This is the highest-leverage
+   item the day produced - read
+   `docs/THE-LATENCY-IS-ATTESTATION-NOT-CAPACITY-2026-09-19.md`. The estate
+   is NOT capacity-starved: 210 connected mailboxes are proven free, and
+   **150 of them have room for a cohort of TEN on Monday 2026-09-21**. Not
+   one may be used, because `HUMAN_IDENTITY_ATTESTED = 0` and therefore
+   `SAFE_FOR_PRODUCTIVE = 0` - `eligible_senders` walks HUMANS and no
+   productive account has an attested owner. The latency is an ATTESTATION
+   problem, not a capacity one. A cohort needs ONE eligible mailbox with
+   room, which the arity rule already permits, so the smallest unblocking
+   change is one genuine attestation - NOT a pool and NOT the arity rule.
+   **Do not invent an attestation to unlock a send**, and do not try it on
+   487 or 489: whether the scheduler replans a LIVE campaign onto a newly
+   attached sender is UNKNOWN.
+8. Give `senderheadroom` a second caller - the cohort stager - so the NEXT
    cohort picks a mailbox by when it can send, not only by whether it is
-   healthy.
+   healthy. Cohort SIZE is a scheduling input: on sender 3437 a single lead
+   fits on the 22nd where five do not fit until the 24th.
 
 ## 11. SAFETY INVARIANTS — UNCHANGED, NOTHING WEAKENED
 
