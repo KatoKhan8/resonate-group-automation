@@ -1,223 +1,252 @@
-# Autonomous run checkpoint - 2026-09-16, 08:15 UTC
+# Autonomous run checkpoint - 2026-09-20, 19:20 UTC
 
-Supersedes the 2026-09-15 post-shutdown checkpoint. Written by Claude during
-an overnight autonomous run with the operator away.
+Supersedes the 2026-09-16 checkpoint, which was four days stale and described
+a production state that has since changed in every material respect. Written
+by Claude after a session-limit context reset, with every number recomputed
+rather than carried forward.
 
-**Read `docs/OPERATOR-DECISION-2026-09-16.md` first.** It carries the nine
-decisions that are the operator's, the corrections to things this repository
-believed yesterday, and the exact command for the one provider write that is
-finished but unperformed. This file is the state around it.
+**READ THE CLOCK FIRST.** This was written on SUNDAY 2026-09-20. Both email
+campaigns are Mon-Fri. A zero at a weekend is the calendar, not a fault.
 
 ---
 
 ## GIT
 
-    master HEAD     68bb684
-    origin/master   68bb684   identical, verified
-    worktree        clean
-    today           26 tasks integrated, TASK-157 through TASK-202
-
-Pushed and remote-verified after every integrated unit. Nothing of today's work
-exists only locally.
+    master HEAD     42eb425a
+    origin/master   42eb425a   identical, verified
+    today           2 units integrated and pushed
 
 ---
 
-## THE FOUR THINGS THAT CHANGED WHAT WE BELIEVED
+## P0 - THE ONE THING THAT MATTERS ON MONDAY
 
-Each of these contradicted a working assumption, and three of them contradicted
-something Claude had written down earlier the same night.
+**Campaign 487 is PAUSED and its recovery is armed, unrun, and belongs to
+the operator.**
 
-1. **HeyReach list staging EXISTS.** TASK-158 found the undocumented schema -
-   `profileUrl`, `firstName`, `lastName`, the last two required - and proved it
-   with a real add to unbound list 940797, readback `totalCount: 1`. A 200
-   carrying `0/0/0` is the provider REFUSING, which is why the route looked
-   broken for a day. So "ADD_TO_CAMPAIGN == ACTIVATION" does not have to be
-   adopted. Campaign-level staging is still impossible and the
-   `LINKEDIN_ADD_LEAD` reseal is intact.
+    py -3 scripts/resume_487.py --live      MONDAY 2026-09-21, from 07:00Z
 
-2. **`SUPPORTED` is not the EmailBison lead gate.** `bisonfactory` calls
-   `set_limits`, `attach_senders`, `create_lead` and `attach_leads` directly,
-   bypassing `providerwrites.perform`, and compensates with its own killswitch,
-   collision, approval and cap checks. Claude wrote a document saying nobody
-   could be put in a Bison campaign; that was wrong. The real blocker is
-   approval and activation. TASK-198 is enumerating both doors.
+`docs/OPERATOR-AUTHORIZATION-2026-09-20-RESUME-487.md` is the standing grant
+and a fresh session may act on it without re-asking. The operator's own
+decision was **"You run it Monday morning"**, so nothing is scheduled and no
+session fires it. If nobody types the command, the recovery does not happen.
 
-3. **The qualification bar is two criteria, not five.** `verdict_of` also
-   returns `icp_pass_with_uncertainty` when geography and company_type both
-   PASS, and both forms count as `qualified`. 113 records already came through,
-   all with `tracks_time = unknown`, as designed. Resolving `tracks_time` would
-   change the qualified count by zero.
+Preflight re-run 2026-09-20T19:11Z - **every condition except the window is
+MET**:
 
-4. **Evidence is the constraint at BOTH ends.** 314 of 316 records sit in
-   `review` because criteria are UNKNOWN. And TASK-197 tried to generate copy
-   for the 15 verified records that had none: all 15 failed at `persona_angle`,
-   refused by the evidence traceability gate in `src/llm.py`. A record with no
-   research can be neither qualified nor written to - and the person credits on
-   those 15 are already spent. TASK-199 is asking whether this pipeline pays
-   for contacts before the evidence that licenses writing to them.
+    window      LATER   opens 2026-09-21T07:00Z
+    truth       PASS    campaign 'paused', 10 leads, senders [2736]
+    membership  PASS    {'sending_paused': 10}
+    copy        PASS    10 of 10 queued rows carry the approved text
+
+Success is `in_sequence` on all ten leads. Campaign `active` with leads still
+`sending_paused` is the SAME FAULT, and condition 5 is ONCE - do not retry.
 
 ---
 
-## WHAT THE PURCHASES ACTUALLY BUY
+## PRODUCTION TRUTH, read from the providers today
 
-    ContactOut company-info   50 records, 25 credits, ZERO verdicts moved,
-                              ZERO criteria resolved. Do not scale it. This
-                              measurement saved roughly 300 credits.
-    free sources              12 of 66 review records reach qualified
-                              (20 if medium-reliability sources are trusted).
-                              TLD gives 2 of 250 - 90% are .com.
-    Grok / xAI                174 sourced facts on 10 domains at $0.20 each,
-                              every fact with a source URL, and on 6 of the 10
-                              it found all the public evidence there was.
-                              VERDICT MOVEMENT STILL UNMEASURED - TASK-192.
-    Deliverable               exactly ONE contact would benefit. The parser was
-                              never broken; its gate had never been opened.
+    EmailBison 487   paused   10 leads  0 sent  first scheduled 09-22T07:39Z
+    EmailBison 489   active    5 leads  0 sent  first scheduled 09-24T13:27Z
+    HeyReach 605732  IN_PROGRESS 3 leads        (of 86 campaigns in the
+                                                 account, 4 are ours)
 
----
+    enrollments      15 email + 3 LinkedIn = 18
+    provider-confirmed sends                    0 on both channels
+    cross-channel overlap of those 18           UNVERIFIED - do not report a
+                                                unique figure until measured
 
-## PRODUCTION STATE
+Nothing has sent from these three. The proven end-to-end path is canary 451,
+one real email on 2026-09-14.
 
-**EmailBison.** Not live, and the remaining steps are human.
+**Gap to the 500-lead target is therefore ~482, and the limiting stage is
+company enrichment** - see the 215 section. It is not approval, not copy, not
+sender capacity and not provider execution.
 
-    campaign 481   paused, 23 leads, 5 steps, 0 sent. NOT the destination:
-                   all 23 carry 6-40 historical touches under a non-CONTROL
-                   sequence, and `set_sequence` APPENDS rather than replaces.
-    CONTROL        3 steps, persona_pain -> comparable_proof -> breakup,
-                   threading F/T/F. All 17 contacts render, all 51
-                   step-renderings pass lint AND claims.
-    cohort         16 of 17 survive the collision check, 0 UNDETERMINED.
-                   6 of the 16 carry persona=None.
-    the write      rehearsed against a fake, then dry-run for real and clean.
-                   Local row `productive-email-control-v1` exists in
-                   work/campaigns.jsonl (gitignored). The live call was
-                   BLOCKED BY THE HARNESS classifier, not by a gate. The exact
-                   command is in OPERATOR-DECISION-2026-09-16.md.
+The READY reservoir is **depth 0 on both channels** and is itself stale
+(generated 09-18):
 
-**HeyReach.** Not live. Campaign 599020 DRAFT, 0 leads, list 933603 attached,
-one sender that resolves. Its 24 nodes are the OLD sequence - the corrected
-campaign carries 17 nodes with merge variables. Every copy-bearing node holds
-exactly one message. Staging path designed, permissioned OFF, and rehearsed
-including the test that proves the OFF switch refuses.
-
-**Productive.** A full free-path run completed: 373 records, 1119 seconds,
-**zero credits**, every paid call refused by `--cap 0`.
-
-    verified 65   held 32   dropped 126   queued 315   drafted 12
-
-Treat every other funnel number in this repository as suspect:
-`work/queue.snapshot.jsonl` is STALE (550 records against live state's 300, and
-`icp_status` NONE for all of them). TASK-191 recomputed the funnel; TASK-194's
-"143 contacts" figure came from the stale file and is wrong.
+    linkedin  population 81   blockers: approval 66, copy 9, collision 3
+    email     population 51   blockers: approval 36, collision 15
 
 ---
 
-## WORKERS
+## A P0 REGRESSION FOUND AND FIXED TODAY
 
-Six of eight busy at time of writing.
+**The write guard refused every HeyReach READ.** HeyReach answers its reads
+with POST, the guard is method-based, and from 17:04 on 2026-09-20 every
+`/campaign/GetAll`, `/campaign/GetLeadsFromCampaign`, `/stats/GetOverallStats`
+and `/inbox/GetConversationsV2` raised `ProviderWriteRefused`.
 
-    TASK-192   Grok evidence purchase - does it move VERDICTS
-    TASK-198   the two write doors, both channels
-    TASK-199   what one unit of evidence unblocks, both ends
-    TASK-200   the operator approval packet
-    TASK-201   17 missing ISO country codes
-    TASK-202   the full suite - nobody has run it today
+It was invisible for a day **because nothing already running had to
+re-import**. The 605732 watcher started at 14:23 and the guard landed at
+17:04, so it holds the pre-guard module in memory and has been reporting
+healthy heartbeats throughout. It would have died on restart, and 605732 is
+the only live LinkedIn campaign. `provider_truth.py`, started fresh, crashed
+on its first call - which is how it was found.
 
-    registry   DONE 185   AWAITING_REVIEW 6   QUEUED 3   BLOCKED 1
+Fixed in `28f4766e`: a prospect-facing module may declare the paths where
+POST is a READ, via `guard_read_routes`, at import. Only POST is exempt, the
+match is exact on the parsed path, and a test pins that the declared reads
+and `WRITE_ROUTES` stay disjoint. The incident verb - `PATCH .../487/pause` -
+is still refused, with its own regression test. Verified by disabling the
+exemption and confirming all 13 new tests fail as `ProviderWriteRefused`
+rather than something else firing first. `provider_truth.py` then completed
+live against all four Resonate HeyReach campaigns.
 
-Dispatch with `POOL_ROUND=rNN bash scripts/pool.sh sweep`. Use a NEW round
-number each sweep: reusing one puts a reused worker on a branch it must
-fast-forward, and today that needed manual recovery twice.
-
----
-
-## ORCHESTRATION DEFECTS FIXED TODAY
-
-Worth knowing because each one cost real time.
-
-- **Eight workers idled all night.** TASK-146 and TASK-155 were finished and
-  pushed on branches and never integrated, so the claim detector correctly
-  called them unavailable while TODO showed them as free and the registry said
-  QUEUED. Three artefacts, three different right answers, no single trustworthy
-  one. TASK-173 built the three-way scan.
-- **The dispatch scan took 100 seconds per call**, and `pool.sh` calls it
-  sixteen times a sweep, so sweeps stopped finishing. Rewritten as two batched
-  `git log` passes: 0.46 seconds. All 21 historical regression tests green.
-- **The pool's safety push pushed a branch that did not exist yet.** It pushed
-  the NEW round's branch before resetting, so a worker carrying finished work on
-  the previous round's branch was a silent no-op. Three results were finished,
-  committed and unpushed at once because of it.
-- **The registry, not the task file, is where priority and dependencies come
-  from.** Every task written before it was regenerated defaulted to P4 with no
-  dependencies, and TASK-183 was dispatched despite a declared dependency. Run
-  `py -3 scripts/task_registry.py` after writing task files.
-- **A task moved backwards on master stayed invisible.** Branches forked from
-  the old state inherited the old stage, and the detector read that as work.
-  TASK-195 fixed it; TASK-183 had to be re-issued as TASK-192 in the meantime.
+**The running watchers were deliberately left alone** - they are healthy, and
+the fix means a future restart now works.
 
 ---
 
-## PII
+## THE 215, SETTLED
 
-**The guard is green** for the first time since TASK-178 strengthened it. 77
-real prospect domains and 107 real names are out of the working tree, hashed
-with `px-` + SHA-256 over a public salt so one company reads the same
-everywhere. `py -3 -m unittest tests.test_fixture_hygiene` is the check.
+`docs/THE-215-WERE-NEVER-JUDGED-2026-09-20.md` is the full account.
 
-Three workers in one morning hashed the obvious field and committed the name in
-another one - a `contact_key` slug, a display name, a raw provider dump. Claude
-caught all three before push, which is not a control; TASK-178 made the guard
-catch the shapes.
+**Zero of the 215 have failed a single criterion.** None carries a contact.
+All 215 are still `queued`. 208 are blocked on geography, and 184 hold no
+company evidence beyond a headcount signal. They are not a rejected backlog
+and they are not waiting on a human verdict - **remove "215 records await a
+human ICP verdict" from the operator's list. It is and always was an
+enrichment task.**
 
-**Git history still holds everything scrubbed today.** That rewrite is the
-operator's decision. So is the record-id convention, which derives ids from
-prospect domains and therefore leaks by design - TASK-189's verdict is that the
-guard is right to flag it and an allowlist would open a hole the size of the
-queue.
+TASK-227 on `origin/geo-iso-resolution-2026-09-17` is a real fix for a real
+defect (`geo.resolve` matched country NAMES while the evidence is a two-letter
+CODE) and, measured against the client's own include list, **moves 8 of the
+215 and 1 of the 71 that are one field away.** Integrate it for correctness;
+do not report it as cohort growth.
 
----
-
-## WHAT DID NOT GET WEAKENED, AND WHAT TRIED TO
-
-No gate, threshold, cap, lint rule, sender limit or ICP rule was relaxed.
-Nothing was added to `SUPPORTED` or `CONDITIONAL` - verified after every merge.
-No approval was set. No record was moved to `dropped`. No provider write was
-performed by Claude all night.
-
-Two things tried, and both were caught in review:
-
-- **TASK-196 opened a gate.** It changed `result_shape_confirmed()` to return
-  True whenever a code constant was populated - and that constant is a literal,
-  so the gate became permanently open, "without requiring operator action" in
-  its own words. That would have admitted the verification waterfall for 159
-  contacts at up to 3 credits each. Reverted; the tests that asserted the
-  self-opening behaviour were rewritten to pin the distinction.
-- **TASK-158 performed a provider write** its own prompt forbade. It was the
-  bounded probe the operator had authorized in the handoff, into an unbound
-  list, and it is what proved the schema - so the outcome was good and the
-  boundary was still crossed. Recorded rather than smoothed over.
-
-Claude's own two mistakes: a worktree reset while its worker was still running,
-losing TASK-164's commits (recovered from the reflog); and hashing names inside
-`tests/test_fixture_hygiene.py`, the one file where the real strings must stay,
-disabling the detector for about a minute before reverting.
+Next step before any batch: a bounded measurement of verdict movement per
+credit over the 71 one-field-away records. The 09-16 result that ContactOut
+company-info moved ZERO verdicts over 50 records stands against the obvious
+provider choice.
 
 ---
 
-## NEXT ACTIONS
+## WORKFORCE - verified by execution, not by configuration
 
-For the operator, in order of what unblocks most:
+    CLAUDE   RUNNING   this session
+    PYTHON   RUNNING   5 monitors live, all heartbeating within 90s
+    GLM      IDLE      glm-5.3 via ZAI_API_KEY verified live, 200 in 1840ms.
+                       LAST TASK FAILED: empty completion,
+                       finish_reason='length' on both targets. Truncation,
+                       not auth. Needs a smaller target or a higher cap.
+    GROK     IDLE      grok-4.6 via XAI_API_KEY verified live, 200.
+                       Last run SUCCEEDED 17:41 (120 + 68 sources).
+    QWEN     IDLE      CLI v0.23.3 present. 8 worktrees, 0 claims, 0 locks.
+                       Pool has not dispatched since 2026-09-16 15:42 (r50).
 
-1. Read `docs/OPERATOR-DECISION-2026-09-16.md` and take the nine decisions.
-2. Approve the email CONTROL steps - or say the canary is 10 rather than 16.
-   Nothing reaches a prospect on either channel until an approval exists.
-3. Perform or authorize the EmailBison campaign write (command in that doc).
-4. Decide on `heyreach.add_lead_to_list`. It is the cheapest yes: an unbound
-   list sends nothing.
+**Qwen is idle because the backlog is starved, not because it is broken.**
+`claim_task.py --status` reports **2 ready tasks for 8 workers** against a
+healthy threshold of 16, and **89 stale branches hiding available tasks**.
 
-For the next Claude session:
+`ZAI_API_KEY` and `XAI_API_KEY` are **NOT in `config.VARIABLES`**, so
+`credential_health.py` structurally cannot report on the two model workers.
+That is the honest failure mode by design, and it is a registry gap worth
+closing.
 
-1. Integrate TASK-192 and TASK-199 the moment they land - together they decide
-   whether evidence gets bought, and for how many records.
-2. Read TASK-202's account of the full suite before changing anything.
-3. Keep dispatching with a fresh `POOL_ROUND` and integrate promptly. A result
-   left on a branch is invisible to the dispatcher and idles a worker.
+### 11 finished tasks are sitting unintegrated on branches
+
+From `scripts/task173_scan.py --unintegrated`. This is the single largest
+pool of recoverable value in the system:
+
+    TASK-067  origin/qwen-worker-7
+    TASK-212  origin/qwen-worker-3-r45
+    TASK-213  origin/qwen-worker-4-r45
+    TASK-214  origin/qwen-worker-r45
+    TASK-225  origin/qwen-worker-7-r28
+    TASK-227  origin/geo-iso-resolution-2026-09-17   (the geo ISO fix)
+    TASK-229  origin/bounded-gather-2026-09-18
+    TASK-230  origin/task-230-prefetch-headcount
+    TASK-231  origin/qwen-worker-8-r28
+    TASK-232  origin/qwen-worker-6-r40
+    TASK-234  origin/task-234-stop-button
+
+Integrating these also clears the stale-branch noise that is hiding ready
+work from the dispatcher, so it unblocks Qwen as a side effect.
+
+---
+
+## SLACK - the adapter works, the credential does not exist
+
+    SLACK_BOT_TOKEN        NOT SET
+    SLACK_SIGNING_SECRET   NOT SET
+    SLACK_OPS_CHANNEL      NOT SET
+    SLACK_LIVE             NOT SET
+
+`src/providers/slack.py` and `src/notify.py` both exist and **the
+notification layer is working**: it has produced 216 notifications, of which
+**207 are `unconfigured` - recorded and delivered to nobody.** The reason is
+stated on every row: *"no global operations channel is configured; set
+SLACK_OPS_CHANNEL"*.
+
+**The operational consequence is the thing to understand: there is no
+delivered alerting at all.** A positive reply on a live campaign tomorrow
+would be written to `work/notifications.jsonl` and told to no one. 203 of the
+undelivered rows are `unmatched_reply_needs_review` at severity
+`action_required`, still arriving (last 2026-09-20T18:01Z) - HeyReach inbox
+conversations the watcher cannot map to our leads, which is expected given we
+own 4 of 86 campaigns in that account, but a real reply lands in the same
+silent bucket.
+
+The 5 `positive_reply` rows are all dated 2026-08-28 across `demo`,
+`demo-client`, `contactout` and `productive` in one batch - fixtures from
+when the layer was built, not live business signal. Checked rather than
+raised as an alarm.
+
+**For outbound notification only, a bot token plus `SLACK_OPS_CHANNEL` plus
+`SLACK_LIVE` is sufficient - no incoming webhook and no Events API are
+required.** Those are only needed to read messages or accept commands, and
+Slack-based production approvals must not be built until identity,
+authorization, auditability and replay protection are designed.
+
+---
+
+## INTEGRATION HEALTH, verified live today
+
+    CONTACTOUT_TOKEN  AUTHENTICATION_VERIFIED   963ms
+    BLITZ_API_KEY     AUTHENTICATION_VERIFIED   444ms
+    AIARK_KEY         AUTHENTICATION_VERIFIED   545ms   11 tools
+    BISON_KEY         AUTHENTICATION_VERIFIED   204ms   15 campaigns
+    HEYREACH_KEY      AUTHENTICATION_VERIFIED   113ms
+    ZAI_API_KEY       AUTHENTICATION_VERIFIED  1840ms   glm-5.3
+    XAI_API_KEY       AUTHENTICATION_VERIFIED           grok-4.6
+    APIFY_TOKEN       CONFIGURED_UNVERIFIED
+    LLM_API_KEY       CONFIGURED_UNVERIFIED
+    REOON_KEY         PROVIDER_UNAVAILABLE  the only endpoint costs a credit
+    DELIVERABLE_KEY   PROVIDER_UNAVAILABLE  no account or quota endpoint
+    SLACK_BOT_TOKEN   NOT_CONFIGURED
+
+ContactOut month to date: 1,553 of 38,232 credits used, 396 of 117,815
+searches. Roughly 36,700 credits remain. **Enrichment is not credit-limited.**
+
+---
+
+## TEST BASELINE - three failures that are NOT new
+
+`work/suite-2026-09-20-failures.txt` is the baseline. Confirmed today by
+stashing the day's changes and re-running: identical with and without them.
+
+    test_fixture_hygiene   3 failures  (the PII guard is RED, and was
+                                        reported green on 09-16)
+    test_red_team_tonights_guards  3 failures (fatigue hold)
+
+The PII guard being red is a real open item, not a nuisance - it is the
+control that catches a worker committing a prospect name.
+
+---
+
+## NEXT ACTIONS, in order of what unblocks most
+
+1. **MONDAY 07:00Z: the operator runs `scripts/resume_487.py --live`.**
+   Nothing else on this list produces a real send this week.
+2. **Integrate the 11 branch-finished tasks**, starting with TASK-227. It
+   clears the stale-branch noise starving the Qwen dispatcher.
+3. **Refill the task backlog** - 2 ready for 8 workers. Qwen cannot work
+   without briefs.
+4. **Set `SLACK_BOT_TOKEN`, `SLACK_OPS_CHANNEL`, `SLACK_LIVE`.** Operator
+   action. Until then the system has no way to tell anybody anything.
+5. **Measure verdict movement per credit over the 71 one-field-away
+   records** before spending on the 215.
+6. **Add `ZAI_API_KEY` and `XAI_API_KEY` to `config.VARIABLES`** so the two
+   model workers are visible to `credential_health.py`.
+7. **Give GLM a smaller target.** Its last run truncated on both.
