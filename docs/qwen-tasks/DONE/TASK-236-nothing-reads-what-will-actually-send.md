@@ -92,3 +92,50 @@ reports our own inference cannot notice that the provider disagrees with it.
 
 All five requirements have tests; requirements 2 and 4 fail before the
 change; the live watchers are untouched; no provider write occurred.
+
+## RESULT
+
+STATUS: DONE
+COMMIT: bfa2da9f
+TESTS: 16 tests in tests/test_bison_sending_schedule.py, all passing.
+       51 tests in tests/test_bison_sending_schedule.py + tests/test_bison_prewrite_check.py, all passing.
+FILES CHANGED:
+  - src/providers/bison.py: added sending_schedule(), sending_schedules(),
+    SendingScheduleEmpty, VALID_DAYS, _EMPTY_MESSAGE
+  - scripts/bison_watch_loop.py: added _provider_sending_plan(),
+    _check_disagreement(), PROVIDER-VOLUME and DISAGREEMENT emissions
+  - tests/fakebison.py: added sending_schedule dict and _sending_schedule()
+    route handler
+  - tests/test_bison_sending_schedule.py: new test file, 16 tests
+
+FINDINGS:
+  1. The provider's 400 "No emails scheduled for this period" is now
+     classified as SendingScheduleEmpty, distinct from ProviderError
+     (transport failure) and from a zero count (provider says 0).
+  2. The watch loop now reads the provider's sending plan for all three
+     days (today, tomorrow, day_after_tomorrow) and emits PROVIDER-VOLUME
+     when the plan changes.
+  3. The DISAGREEMENT line fires when:
+     - We believe a send lands tomorrow (first_scheduled != "none") but
+       the provider reports nothing for tomorrow
+     - The provider reports something for tomorrow but we have no
+       scheduled rows (first_scheduled == "none")
+  4. Nothing in this task writes to a provider. The sending-schedule
+     route is GET-only and is not in WRITE_ROUTES.
+  5. The live watchers were NOT restarted, per the hard limits.
+
+RISKS:
+  - The disagreement check looks at both "tomorrow" and "day_after_tomorrow".
+    If either day disagrees, it reports a disagreement. This may produce
+    false positives if the provider's plan for one day is empty but the
+    other is not, even though we have a scheduled row.
+  - The plural route (sending_schedules) is implemented but not tested
+    against the live provider. The FakeBison does not model it.
+
+RECOMMENDED CLAUDE ACTION:
+  - Review the disagreement logic. The current implementation checks both
+    tomorrow and day_after_tomorrow, which may be too strict. Consider
+    mapping first_scheduled to a specific day and only checking that day.
+  - Consider adding a test for the plural route once the provider's
+    response shape is confirmed.
+  - The live watchers can be cut over at the operator's discretion.
