@@ -6,6 +6,7 @@ key-shaped before it is printed or written to disk.
 
 Provider modules return trimmed dicts, never raw payloads (section 9, trap 8).
 """
+import contextvars
 import json
 import os
 import socket
@@ -277,12 +278,51 @@ USER_AGENT = "resonate-group-automation/1.0 (+https://resonategroup.co)"
 # it also catches a caller that builds the URL itself and calls
 # `providers.request` directly - which a naive probe is quite likely to do.
 
+# ## WHAT THIS GUARD IS AND IS NOT - stated because overclaiming a safety
+# ## property is the failure this repository has already been bitten by
+#
+# It is a barrier against reaching a prospect-facing mutation BY ACCIDENT:
+# through a chain of library calls the caller did not intend to make. That is
+# the real failure mode and the one that actually happened - Buggie did not
+# authorise itself, it passed a bad dict and fell through `orchestrator.pause`
+# into the transport.
+#
+# **It is NOT enforcement against a determined in-process actor.** Anything
+# running in this process can call `allow_writes("because I said so")`, set
+# the env var, or monkeypatch `writes_allowed`. GLM's adversarial review
+# raised exactly this and it is conceded rather than argued with: in-process,
+# the honest ceiling is "process boundary or nothing", and this is a guard
+# and an audit trail, not a sandbox.
+#
+# The fix for THAT threat is a separate process with its own credentials -
+# an agent that never holds `config/.env` at all. That is real work and it is
+# not pretended to be done here. What is done here is that reaching a live
+# mutation now requires an ACT rather than an accident, and every refusal is
+# recorded with the pid and argv of whatever tried.
+
 WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 WRITES_ENV = "RESONATE_PROVIDER_WRITES"
 
 # Hosts whose mutations reach a real person. Populated by the provider
 # modules themselves; see `guard_prospect_facing`.
 _prospect_facing_hosts = set()
+
+
+def normalise_method(method):
+    """The HTTP verb as the wire will see it. NEVER trusts `str()`.
+
+    `str(b"post").upper()` is `"B'POST'"`, which is in no method set and so
+    fell straight past the guard - while `requests` and `httpx` both normalise
+    `b"post"` to `POST` and send it. A bytes verb was therefore an unguarded
+    mutation. Found by GLM's adversarial review and reproduced before it was
+    accepted.
+    """
+    if isinstance(method, (bytes, bytearray)):
+        try:
+            method = method.decode("ascii", "replace")
+        except Exception:
+            method = ""
+    return str(method or "").strip().upper()
 
 
 class _Unparseable(str):
@@ -366,9 +406,20 @@ def is_prospect_facing(url):
         return True
     return bool(host) and host in _prospect_facing_hosts
 
-# Set by `allow_writes` only. A list so nesting is a stack rather than a flag
-# that the inner block's exit switches off for the outer one.
-_write_scopes = []
+# Set by `allow_writes` only. A ContextVar rather than a module-level list,
+# and the difference is a real leak GLM found and this reproduced: with a
+# plain list, a worker THREAD running while the main thread held the block
+# read `writes_allowed() -> True` and could mutate a live campaign it was
+# never authorised for. `gather` runs a fixed pool of eight.
+#
+# A ContextVar isolates asyncio tasks AND threads in CPython, so the
+# authorization now belongs to the caller that opened it. It fails CLOSED
+# into any code that silently relied on the global scope - a thread spawned
+# inside the block is refused - which is the safe direction and is the point.
+#
+# The value is a tuple so nesting is a stack: an inner block's exit must not
+# switch off the outer one.
+_write_scopes = contextvars.ContextVar("provider_write_scopes", default=())
 
 
 class ProviderWriteRefused(RuntimeError):
@@ -380,8 +431,9 @@ class ProviderWriteRefused(RuntimeError):
 
 def writes_allowed():
     """(allowed, why). `why` is quotable in a refusal or an audit line."""
-    if _write_scopes:
-        return True, "allow_writes(%s)" % _write_scopes[-1]
+    scopes = _write_scopes.get()
+    if scopes:
+        return True, "allow_writes(%s)" % scopes[-1]
     if os.environ.get(WRITES_ENV) == "1":
         return True, "%s=1" % WRITES_ENV
     return False, "no %s and no allow_writes() scope" % WRITES_ENV
@@ -407,11 +459,14 @@ class allow_writes:
         self.reason = str(reason).strip()
 
     def __enter__(self):
-        _write_scopes.append(self.reason)
+        self._token = _write_scopes.set(_write_scopes.get() + (self.reason,))
         return self
 
     def __exit__(self, *exc):
-        _write_scopes.pop()
+        # `reset(token)` rather than popping: it restores exactly what this
+        # block replaced, so an inner block that somehow outlives its own
+        # exit cannot corrupt the outer one's view.
+        _write_scopes.reset(self._token)
         return False
 
 
@@ -447,7 +502,7 @@ def _log_refusal(method, url, why):
 
 def refuse_unauthorized_write(method, url):
     """Called before the socket, on every real-transport call."""
-    if str(method).upper() not in WRITE_METHODS:
+    if normalise_method(method) not in WRITE_METHODS:
         return
     if not is_prospect_facing(url):
         return
@@ -463,7 +518,7 @@ def refuse_unauthorized_write(method, url):
         "authorized, the entry point - not the library - opts in, with "
         "`RESONATE_PROVIDER_WRITES=1` or "
         "`with providers.allow_writes('<reason>'):`."
-        % (str(method).upper(), redact(str(url))[:200], why))
+        % (normalise_method(method), redact(str(url))[:200], why))
 
 
 def _urllib_transport(method, url, headers, body, timeout):

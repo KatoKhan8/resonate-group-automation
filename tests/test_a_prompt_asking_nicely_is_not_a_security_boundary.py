@@ -27,12 +27,18 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import unittest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 
 from src import providers  # noqa: E402
+# Imported for its REGISTRATION side effect, not for its API: `bison` calls
+# `guard_prospect_facing` at import, and without it `send.resonategroup.co`
+# is not in the guarded set and half these tests assert nothing. Test order
+# must not decide whether the guard is armed.
+from src.providers import bison, heyreach  # noqa: E402,F401
 
 
 class ProviderWriteGuardTest(unittest.TestCase):
@@ -47,8 +53,9 @@ class ProviderWriteGuardTest(unittest.TestCase):
         os.environ["PROVIDER_WRITE_REFUSALS"] = os.path.join(
             self.tmp, "refusals.jsonl")
         # Any scope a failing test left behind must not leak into this one.
-        del providers._write_scopes[:]
-        self.addCleanup(lambda: providers._write_scopes.clear())
+        # A ContextVar, not a list, since the thread-leak fix.
+        providers._write_scopes.set(())
+        self.addCleanup(providers._write_scopes.set, ())
         self.opened = []
         self._urlopen = providers.urllib.request.urlopen
         providers.urllib.request.urlopen = self._booby_trap
@@ -291,6 +298,86 @@ class ProviderWriteGuardTest(unittest.TestCase):
         before = set(providers._prospect_facing_hosts)
         providers.guard_prospect_facing("http://[tracking-link]")
         self.assertEqual(before, set(providers._prospect_facing_hosts))
+
+    # ----------------------------------- GLM's second round, all confirmed
+
+    def test_a_bytes_verb_does_not_evade_the_guard(self):
+        """`str(b"post").upper()` is `"B'POST'"`, which is in no method set,
+        so a bytes verb fell straight past the guard - while requests and
+        httpx both normalise `b"post"` to POST and SEND IT. Reproduced before
+        it was accepted."""
+        for verb in (b"POST", b"post", bytearray(b"patch"), " patch ",
+                     "Delete"):
+            with self.subTest(verb=verb):
+                with self.assertRaises(providers.ProviderWriteRefused):
+                    providers.refuse_unauthorized_write(
+                        verb,
+                        "https://send.resonategroup.co/api/campaigns/487/x")
+
+    def test_a_bytes_read_verb_is_still_not_refused(self):
+        self.assertIsNone(providers.refuse_unauthorized_write(
+            b"GET", "https://send.resonategroup.co/api/campaigns/487"))
+
+    def test_the_authorization_does_not_leak_into_another_thread(self):
+        """A plain module-level list let a worker THREAD read
+        writes_allowed() -> True while the main thread held the block, and
+        `gather` runs a pool of eight. Reproduced: the thread saw True.
+
+        A ContextVar fails CLOSED into code that relied on the global scope,
+        which is the safe direction and the point."""
+        seen = []
+
+        def worker():
+            seen.append(providers.writes_allowed()[0])
+
+        with providers.allow_writes("main thread only"):
+            t = threading.Thread(target=worker)
+            t.start()
+            t.join()
+        self.assertEqual([False], seen)
+
+    def test_a_thread_spawned_inside_the_block_is_refused_not_permitted(self):
+        refused = []
+
+        def worker():
+            try:
+                self.wire("PATCH")
+            except providers.ProviderWriteRefused:
+                refused.append(True)
+            except Exception:
+                refused.append(False)
+
+        with providers.allow_writes("main thread only"):
+            t = threading.Thread(target=worker)
+            t.start()
+            t.join()
+        self.assertEqual([True], refused)
+        self.assertEqual([], self.opened)
+
+    def test_nesting_still_works_after_the_contextvar_change(self):
+        with providers.allow_writes("outer"):
+            with providers.allow_writes("inner"):
+                self.assertIn("inner", providers.writes_allowed()[1])
+            allowed, why = providers.writes_allowed()
+            self.assertTrue(allowed)
+            self.assertIn("outer", why)
+        self.assertFalse(providers.writes_allowed()[0])
+
+    def test_the_guard_does_not_claim_to_stop_a_determined_insider(self):
+        """GLM's first finding, CONCEDED rather than argued with: anything in
+        this process can self-authorise. The guard stops reaching a mutation
+        BY ACCIDENT, which is the failure that actually happened - Buggie
+        passed a bad dict and fell through orchestrator.pause.
+
+        This test pins the HONESTY, because overclaiming a safety property is
+        the failure class the audit graded highest. The module must say what
+        it is not."""
+        source = open(providers.__file__, encoding="utf-8").read()
+        self.assertIn("NOT enforcement against a determined in-process actor",
+                      source)
+        # And the concession is true: self-authorising really does work.
+        with providers.allow_writes("an insider can do this"):
+            self.assertTrue(providers.writes_allowed()[0])
 
     # ---------------------------------------------------------- the shape
 
