@@ -16,8 +16,11 @@ be quadratic at the size that matters.
   python -m src.scalesim --sizes 100,1000,5000 --json
 """
 import argparse
+import contextlib
 import json
 import os
+import shutil
+import tempfile
 import time
 
 from . import (cadence, channels, clients, companies, enrich, mx,
@@ -184,8 +187,43 @@ def _provider_calls(recs, config):
             "maximum_credits": maximum}
 
 
-def measure(size, config=None, out_dir=None, max_cards=previewpage.MAX_CARDS):
-    """One full pre-production pass over `size` domains. Returns the numbers."""
+@contextlib.contextmanager
+def _isolated_store():
+    """Redirect the store to a temp directory, restore on exit.
+
+    The benchmark writes 5,000 synthetic records through ``store.save``.
+    Without isolation that replaces the production queue - ``work/`` is
+    gitignored, so there is no git recovery. The temp directory is real
+    enough for the save/load round-trip the benchmark measures, and the
+    restore happens even when the body raises.
+
+    Nested or repeated calls each save and restore their own snapshot, so
+    the three successive sizes in the published command do not leave the
+    store pointed at a deleted temp directory.
+    """
+    saved = {k: os.environ.get(k) for k in ("QUEUE",) + store.STATE_OVERRIDES}
+    tmp = tempfile.mkdtemp(prefix="scalesim-")
+    try:
+        store.use_directory(tmp)
+        yield tmp
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def measure(size, config=None, out_dir=None, max_cards=previewpage.MAX_CARDS,
+            write_to=None):
+    """One full pre-production pass over `size` domains. Returns the numbers.
+
+    `write_to` is an opt-in directory for the synthetic queue. When given it
+    replaces the temp directory the benchmark normally uses, so the records
+    survive the run. The production work directory is rejected explicitly -
+    see `_rejects_production_path` in the test module.
+    """
     config = config or clients.load("demo")
     timings = {}
 
@@ -193,6 +231,34 @@ def measure(size, config=None, out_dir=None, max_cards=previewpage.MAX_CARDS):
     recs = synthetic.dataset(size, config)
     timings["build_dataset"] = time.perf_counter() - start
 
+    if write_to:
+        target = os.path.abspath(write_to)
+        if target == store.PRODUCTION_WORK or target.startswith(
+                store.PRODUCTION_WORK + os.sep):
+            raise ValueError(
+                f"refusing to write synthetic records to the production "
+                f"state directory: {write_to}")
+        os.makedirs(target, exist_ok=True)
+        saved = {k: os.environ.get(k)
+                 for k in ("QUEUE",) + store.STATE_OVERRIDES}
+        try:
+            store.use_directory(target)
+            return _measure_body(size, recs, config, timings, out_dir,
+                                 max_cards)
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+    else:
+        with _isolated_store():
+            return _measure_body(size, recs, config, timings, out_dir,
+                                 max_cards)
+
+
+def _measure_body(size, recs, config, timings, out_dir, max_cards):
+    """The measured pipeline, with the store already pointing where it should."""
     start = time.perf_counter()
     store.save(recs)
     timings["save"] = time.perf_counter() - start
@@ -201,8 +267,13 @@ def measure(size, config=None, out_dir=None, max_cards=previewpage.MAX_CARDS):
     recs = store.load()
     timings["load"] = time.perf_counter() - start
 
-    # MX with a counting resolver and one shared cache, which is how the live
-    # path runs it: domain-level, so contacts at one company resolve once.
+    queue_bytes_path = store.queue_path()
+    queue_bytes = (os.path.getsize(queue_bytes_path)
+                   if os.path.exists(queue_bytes_path) else None)
+
+    # MX with a counting resolver and one shared cache, which is how the
+    # live path runs it: domain-level, so contacts at one company resolve
+    # once.
     resolver = CountingResolver()
     cache = {}
     start = time.perf_counter()
@@ -268,8 +339,7 @@ def measure(size, config=None, out_dir=None, max_cards=previewpage.MAX_CARDS):
                       "multichannel", "held")},
         "personalization": bands["bands"],
         "preview": sizes,
-        "queue_bytes": os.path.getsize(store.queue_path())
-        if os.path.exists(store.queue_path()) else None,
+        "queue_bytes": queue_bytes,
         "bottleneck": max(timings, key=timings.get) if timings else None,
     }
 
