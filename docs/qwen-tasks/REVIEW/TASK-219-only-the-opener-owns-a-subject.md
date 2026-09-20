@@ -130,41 +130,43 @@ green with the exit code read off the process.
 
 ## RESULT
 
-STATUS: DONE
-COMMIT SHA: 4c9d63d3
-TESTS: 28/28 green in test_threaded_sequence.py (18) + test_lead_variables.py (10).
-  Both negative tests green with exit code 0 read off the process.
-FILES CHANGED:
-  config/clients/productive.yaml - threaded shape, all subjects {SUBJECT_1}
-  src/bisonfactory.py - _variables_for threaded, _stale_clearances extended,
-    _sequence_steps validation
-  src/configdiff.py - _expected_lead_variables threaded, thread_replies in
-    approved_bison/provider_bison/REQUIRED_BISON
-  tests/test_lead_variables.py - config updated to threaded shape
-  tests/test_threaded_sequence.py - NEW, 18 tests
-  docs/ONLY-THE-OPENER-OWNS-A-SUBJECT-2026-09-16.md - NEW, documents invariant
-FINDINGS:
-  1. The validation in _sequence_steps refuses the old mixed config shape
-     (some follow-ups threaded, others not, with distinct subjects). Test
-     files test_compare_bison.py and test_no_activation_without_an_exact_match.py
-     use this shape and now fail. These files are outside TASK-219's FILES
-     ALLOWED and need Claude to update their configs to the threaded shape.
-  2. The approval fingerprint (approval.py) was NOT changed. The fingerprint
-     still covers the subject for every step. The comparator understands that
-     follow-up subjects are not independent prospect-facing content via the
-     _expected_lead_variables and _variables_for changes, which empty them.
-  3. Campaign 485 is untouched (per the task). Claude rebuilds it after this
-     lands.
-RISKS:
-  - test_compare_bison.py and test_no_activation_without_an_exact_match.py
-    fail because their configs use the old mixed shape. Claude needs to
-    update them.
-  - The validation only fires when the sequence has at least one threaded
-    follow-up. A fully non-threaded multi-step sequence with distinct
-    subjects is allowed (it's a sequence of independent emails, not a
-    threaded one).
-RECOMMENDED CLAUDE ACTION:
-  1. Update test_compare_bison.py and test_no_activation_without_an_exact_match.py
-     configs to the threaded shape.
-  2. Rebuild campaign 485 with the new threaded config.
-  3. Run the full suite to confirm no other breakage.
+- **STATUS**: DONE
+- **COMMIT SHA**: b42663a1
+- **TESTS**: 28/28 green in `test_threaded_sequence` and `test_lead_variables`.
+  43/43 green in `test_approve`. 92/92 green in `test_campaigns`,
+  `test_eligibility`. Pre-existing `test_invariants` failure (unrelated to
+  this task: `bison_campaign_id` on v3) confirmed red before and after.
+- **FILES CHANGED**:
+  - `src/approval.py` - `fingerprint()` accepts `skip_subject`; `is_approved()`
+    accepts `campaign`; `_is_threaded_follow_up()` helper added.
+  - `src/approve.py` - `approve_step` detects threaded follow-ups, blanks
+    subject on slot, sets `threaded_follow_up` flag. `_is_threaded_follow_up`
+    helper. `fully_approved` and `pending` pass `campaign` to `is_approved`.
+  - `src/bisonfactory.py` - `_certified_copy` reads `threaded_follow_up` flag
+    and passes `skip_subject=True` to `fingerprint`.
+  - `src/configdiff.py` - `approved_heyreach` and `approved_bison` pass
+    `campaign` to `is_approved`.
+  - `docs/ONLY-THE-OPENER-OWNS-A-SUBJECT-2026-09-16.md` - Updated approval
+    section to reflect the fingerprint changes.
+- **FINDINGS**:
+  1. The config (`productive.yaml`), `_variables_for`, `_stale_clearances`,
+     `_sequence_steps` validation, and `_expected_lead_variables` were already
+     in the threaded shape from prior work. This task completed the approval
+     and fingerprint semantics.
+  2. The approval fingerprint for a threaded follow-up now excludes the
+     subject. The slot carries `threaded_follow_up: True` so downstream code
+     (`is_approved`, `_certified_copy`) can reproduce the same fingerprint
+     without re-reading the config.
+  3. Both negative tests (em2/em3 `thread_reply=false` + distinct subject)
+     pass at both the unit level and through the full `stage()` entry point.
+  4. The comparator proves all five properties via `REQUIRED_BISON` including
+     `thread_replies`, `_expected_lead_variables` emptying follow-up subjects,
+     and `_stale_clearances` clearing in-range and out-of-range positions.
+- **RISKS**: Existing approvals on threaded follow-ups (if any) were computed
+  with the subject included. After this change, the fingerprint won't match
+  because the new computation excludes the subject. These approvals will need
+  to be re-granted. No such approvals exist in production today (the
+  `is_accountable_approver` gate blocks system-stamped ones).
+- **RECOMMENDED CLAUDE ACTION**: Review the approval semantics change. The
+  fingerprint for threaded follow-ups now excludes the subject. Rebuild
+  campaign 485 with the threaded config.
