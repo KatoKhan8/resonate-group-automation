@@ -63,7 +63,67 @@ sys.path.insert(0, ROOT)
 from src import store
 from src.providers import bison, load_env, request, ok
 
-ACTIVE_CLIENT_CAMPAIGNS = (327, 328, 352)
+# A campaign whose rows can still occupy a mailbox's forward book. Everything
+# else has no future rows to contribute.
+#
+# `archived` is terminal here and that is a decision rather than an omission:
+# the four archived campaigns in this estate carry tens of thousands of SENT
+# rows and no scheduled ones, so walking them costs hours and adds nothing to
+# a forward book. `paused` is NOT terminal - 487 sat paused with ten rows
+# booked on the 22nd, and leaving it out is exactly the bug below.
+TERMINAL_STATUSES = frozenset({"draft", "completed", "archived"})
+
+
+def forward_booking_campaigns():
+    """Every campaign that can still book a mailbox, asked of the provider.
+
+    ## THIS WAS A HARDCODED LITERAL AND IT SILENTLY BLINDED CAPACITY PLANNING
+
+    It read `ACTIVE_CLIENT_CAMPAIGNS = (327, 328, 352)` - the three client
+    campaigns, and nothing of ours. The walk of 2026-09-20T14:09Z therefore
+    covered three campaigns while SIX could book rows, and
+    `senderheadroom.coverage` correctly answered `(False, ('489',))`, which
+    makes `verdict` REFUSE every mailbox on every day.
+
+    That refusal is the safe direction and it is not a harmless one: REFUSED
+    IS NOT ROOM, so with a non-covering walk nothing can ever be proven free
+    and cohort scheduling has no input at all. The 09-19 walk covered all
+    five campaigns then active; the 09-20 walk used this default and dropped
+    two of them. Nothing reported a problem, because a literal cannot know
+    it has gone stale.
+
+    Same class as the credential audit that invented `CONTACTOUT_KEY`: a
+    hand-maintained list standing in for a registry that already exists.
+    **Ask the thing that knows.** The provider knows which campaigns it will
+    schedule from.
+
+    ## AND IT PAGES, because `per_page` is ignored
+
+    `GET /api/campaigns` answers 15 rows with `meta.last_page: 2` and
+    **ignores `per_page`** - verified against this estate. Reading page one
+    only returns 352 while omitting 327 and 328, the two largest client
+    campaigns in the book. A derived default that did not page would have
+    been worse than the literal it replaced, so this follows `meta.last_page`
+    to the end and refuses to guess.
+    """
+    campaigns, page, last = [], 1, 1
+    while page <= last:
+        status, data = request(
+            "GET", f"{bison.base()}/campaigns?page={page}", bison.headers(), None)
+        if not ok(status):
+            raise RuntimeError(
+                f"campaign list: HTTP {status}. The census will not fall back "
+                f"to a hardcoded list - pass --campaigns explicitly.")
+        if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+            raise RuntimeError(
+                "campaign list: unexpected response shape. Refusing rather "
+                "than walking a guessed set.")
+        campaigns.extend(data["data"])
+        last = int((data.get("meta") or {}).get("last_page") or 1)
+        page += 1
+    return tuple(sorted(
+        int(c["id"]) for c in campaigns
+        if str(c.get("status") or "").strip().lower() not in TERMINAL_STATUSES))
 
 
 def state_path():
@@ -248,8 +308,10 @@ def report(state, limits=None):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--campaigns", default=",".join(
-        str(c) for c in ACTIVE_CLIENT_CAMPAIGNS))
+    # No default here: the set is ASKED OF THE PROVIDER after load_env, so a
+    # stale literal cannot silently narrow the walk. See
+    # `forward_booking_campaigns`.
+    ap.add_argument("--campaigns", default=None)
     ap.add_argument("--checkpoint", type=int, default=50)
     ap.add_argument("--max-pages", type=int, default=None)
     ap.add_argument("--report", action="store_true")
@@ -274,8 +336,15 @@ def main():
         report(state, limits)
         return
 
+    if args.campaigns:
+        targets = [int(c) for c in args.campaigns.split(",") if c.strip()]
+    else:
+        targets = list(forward_booking_campaigns())
+        print("campaigns that can book a mailbox, per the provider: "
+              + ", ".join(str(c) for c in targets))
+
     started = time.perf_counter()
-    for cid in [int(c) for c in args.campaigns.split(",") if c.strip()]:
+    for cid in targets:
         try:
             walk(cid, state, checkpoint=args.checkpoint,
                  max_pages=args.max_pages, quiet=args.quiet)
