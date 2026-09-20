@@ -14,7 +14,7 @@ campaigns are Mon-Fri. A zero at a weekend is the calendar, not a fault.
 
     master HEAD     42eb425a
     origin/master   42eb425a   identical, verified
-    today           2 units integrated and pushed
+    today           4 units integrated and pushed
 
 ---
 
@@ -109,11 +109,13 @@ and they are not waiting on a human verdict - **remove "215 records await a
 human ICP verdict" from the operator's list. It is and always was an
 enrichment task.**
 
-TASK-227 on `origin/geo-iso-resolution-2026-09-17` is a real fix for a real
-defect (`geo.resolve` matched country NAMES while the evidence is a two-letter
-CODE) and, measured against the client's own include list, **moves 8 of the
-215 and 1 of the 71 that are one field away.** Integrate it for correctness;
-do not report it as cohort growth.
+The ISO-code fix for `geo.resolve` is **already on master** (`27bcdb67`,
+2026-09-17) - an earlier version of this checkpoint wrongly called it
+stranded. The 215's verdicts are STALE, computed 2026-09-12, five days
+before it landed. Re-qualifying all 215 against current master through the
+real `icp.score` path moves geography from 7 pass to 8 and yields **exactly
+ONE newly qualified record.** Worth running; not expansion. What IS still
+unintegrated on that branch is TASK-227's cohort send-window work.
 
 Next step before any batch: a bounded measurement of verdict movement per
 credit over the 71 one-field-away records. The 09-16 result that ContactOut
@@ -154,7 +156,8 @@ pool of recoverable value in the system:
     TASK-213  origin/qwen-worker-4-r45
     TASK-214  origin/qwen-worker-r45
     TASK-225  origin/qwen-worker-7-r28
-    TASK-227  origin/geo-iso-resolution-2026-09-17   (the geo ISO fix)
+    TASK-227  origin/geo-iso-resolution-2026-09-17   (cohort send window;
+              its ISO fix is ALREADY on master as 27bcdb67)
     TASK-229  origin/bounded-gather-2026-09-18
     TASK-230  origin/task-230-prefetch-headcount
     TASK-231  origin/qwen-worker-8-r28
@@ -239,14 +242,17 @@ control that catches a worker committing a prospect name.
 
 1. **MONDAY 07:00Z: the operator runs `scripts/resume_487.py --live`.**
    Nothing else on this list produces a real send this week.
-2. **Integrate the 11 branch-finished tasks**, starting with TASK-227. It
-   clears the stale-branch noise starving the Qwen dispatcher.
+2. **Integrate the 11 branch-finished tasks.** Their stale branches are what
+   hide ready work from the dispatcher, so this unblocks Qwen as a side
+   effect. Note TASK-227's branch conflicts on
+   `scripts/task_geo_iso_coverage.py`, which master already has.
 3. **Refill the task backlog** - 2 ready for 8 workers. Qwen cannot work
    without briefs.
 4. **Set `SLACK_BOT_TOKEN`, `SLACK_OPS_CHANNEL`, `SLACK_LIVE`.** Operator
    action. Until then the system has no way to tell anybody anything.
-5. **Measure verdict movement per credit over the 71 one-field-away
-   records** before spending on the 215.
+5. **Re-qualify the estate** to clear verdicts predating the 09-17 geo fix
+   (yields 1 lead, measured), then **measure verdict movement per credit**
+   over the 71 one-field-away records before spending on the 215.
 6. **Add `ZAI_API_KEY` and `XAI_API_KEY` to `config.VARIABLES`** so the two
    model workers are visible to `credential_health.py`.
 7. **Give GLM a smaller target.** Its last run truncated on both.

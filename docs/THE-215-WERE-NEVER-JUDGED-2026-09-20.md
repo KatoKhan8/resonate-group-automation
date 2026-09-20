@@ -2,8 +2,8 @@
 
 2026-09-20. Written to settle a question three handoffs have carried forward
 as an action item for a human, and to stop the next session spending a day on
-the wrong fix - including the fix that was already built and is sitting on a
-branch.
+the wrong fix - including one that was already built, already on master, and
+already measured to yield a single lead.
 
 Every number here is recomputed from `work/queue.jsonl` today.
 
@@ -60,10 +60,54 @@ given a preliminary ICP pass over whatever the intake carried, and never
 enriched. Nothing downstream is broken. The pipeline is correct and the
 records are empty.
 
-## The fix that already exists does not fix this, and that is the point
+## CORRECTION, same day: the fix was already on master
 
-`origin/geo-iso-resolution-2026-09-17` carries TASK-227, commit `9194b06c`,
-titled *"The offices string ends in an ISO code and geo never read it"*. It
+This section originally said the ISO fix was sitting unintegrated on
+`origin/geo-iso-resolution-2026-09-17`. **That was wrong, and the error is
+kept here rather than edited away.**
+
+`27bcdb67`, *"Qwen: the offices string ends in an ISO code and geo never read
+it. 21 -> 33"*, landed on master on **2026-09-17 20:28**. Master's
+`geo.from_record` resolves a trailing ISO today - verified directly:
+`offices: ["x, GB"]` returns `country_code: GB`, `Europe/London`. What is
+still unintegrated on that branch is TASK-227's *cohort send window* work,
+which is a different task that happens to share the branch.
+
+**So why do the 215 still read `geography: unknown`?** Because their stored
+verdicts were computed at `2026-09-12T23:15:02` - five days before the fix.
+The verdicts are stale, not the code. Nothing re-qualified the estate after
+the fix landed.
+
+Two of the codes above are worth separating. Master's `ISO_TO_COUNTRY` is a
+PARTIAL map: `GB` resolves, `UA` and `AR` do not. For the ICP question that
+is very nearly harmless - Ukraine and Argentina are on neither the include
+nor the exclude list, so the geography verdict is UNKNOWN either way. It
+costs accuracy only in the `why` string and in the timezone, which is the
+scheduler's problem rather than qualification's.
+
+### And the measurement that settles it
+
+All 215 re-qualified in memory against current master, through the real
+`icp.score` path, nothing written:
+
+    geography   was: unknown 208, pass 7
+                now: unknown 207, pass 8
+
+    icp_status  was: review 215
+                now: review 214, qualified 1
+
+**Exactly one record.** The hand-derived estimate below predicted 8 reaching
+geography PASS and 1 of the 71 converting, and both were right - but the
+reason was misattributed, and the conclusion is now stronger rather than
+weaker. Re-running qualification over the whole estate with the current code
+is cheap, correct, and worth doing. It yields ONE lead.
+
+The original analysis follows, with its ISO-code arithmetic intact because
+the arithmetic was sound.
+
+## The parsing fix is not the answer, and that is the point
+
+That branch's `9194b06c` is titled *"The offices string ends in an ISO code and geo never read it"*. It
 is a real defect and a real fix: `geo.resolve` matched free text against city
 and country NAMES while the evidence held is a two-letter CODE, so
 `offices: ["Buenos Aires, Buenos Aires, AR"]` resolved to
@@ -102,10 +146,11 @@ Two separate reasons it is small, and both matter:
    neither list, so it is unestablished rather than excluded" - which is the
    right answer and is not inventory.
 
-So the branch should be integrated for correctness and for the scheduler,
-and **it must not be integrated as the answer to the 215.** Reporting it as
-cohort growth would be the same error as the credential audit on the 19th:
-a confident number pointed at the wrong bottleneck.
+**It is on master and it is not the answer to the 215.** Reporting a
+re-qualification pass as cohort growth would be the same error as the
+credential audit on the 19th: a confident number pointed at the wrong
+bottleneck. Run it - one real lead is worth having, and stale verdicts are
+worth clearing - but do not call it expansion.
 
 ## What this does and does not license
 
