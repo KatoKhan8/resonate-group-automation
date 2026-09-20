@@ -566,6 +566,37 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
              # inert.
              LINKEDIN_CREATE_LIST)
 
+# ------------------------------------------------------- repeatable operations
+#
+# TASK-234 (2026-09-20): the staging-repeat guard was designed for CREATING
+# verbs: creating the same campaign twice is a duplicate and must be refused.
+# It is wrong for STATE-SETTING verbs. Pausing an already-paused campaign is
+# not a duplicate, it is a no-op that should succeed - and pausing a campaign
+# that has since been RESUMED is a completely different act that happens to
+# carry the same payload.
+#
+# The fingerprint is over the PAYLOAD. For a setter the payload is identical
+# every time by construction, so the guard can only ever fire. The result was
+# that the emergency stop reported stopped=False while canonical state said
+# PAUSED and the provider was still sending.
+#
+# The fix: declare which operations are repeatable. State-setting verbs
+# (pause, stop, activate, assign_sender) are repeatable - calling them again
+# does not build a second provider resource. Creating verbs (create_campaign,
+# set_sequence) are NOT repeatable - calling them again builds a second one.
+#
+# The staging-repeat guard in `perform` checks this set and skips the
+# `staged_already` check for repeatable operations.
+REPEATABLE = (
+    LINKEDIN_PAUSE,
+    EMAIL_PAUSE,
+    EMAIL_STOP_LEAD,
+    LINKEDIN_ACTIVATE,
+    EMAIL_ACTIVATE,
+    LINKEDIN_ASSIGN_SENDER,
+    EMAIL_ASSIGN_SENDER,
+)
+
 # ------------------------------------------- conditional permission
 #
 # A SECOND KEY FOR THE ONE DOOR THAT REACHES A PERSON.
@@ -1769,15 +1800,21 @@ def perform(operation, *, authorization=None, tenant=None, campaign=None,
         # the staging-repeat check and before the transport.
         require_conditional_permission(operation, provider_campaign_id,
                                        campaign)
-        done = staged_already(campaign, operation, payload)
-        if done is not None:
-            raise WriteRefused(
-                f"{operation} was already staged for campaign {campaign!r} at "
-                f"{done.get('at')} with the same material "
-                f"(fingerprint {done.get('fingerprint')}). Staging it again "
-                f"builds a second provider campaign; read provider truth and "
-                f"reuse what is there, or change the material so this is a "
-                f"different write")
+        # TASK-234: the staging-repeat guard is wrong for state-setting verbs.
+        # A pause whose payload fingerprints to the same value as a prior
+        # pause is not a duplicate - it is the same act repeated, which is
+        # the whole point of an emergency stop. The guard applies only to
+        # creating verbs, where the same payload means a second resource.
+        if operation not in REPEATABLE:
+            done = staged_already(campaign, operation, payload)
+            if done is not None:
+                raise WriteRefused(
+                    f"{operation} was already staged for campaign {campaign!r} at "
+                    f"{done.get('at')} with the same material "
+                    f"(fingerprint {done.get('fingerprint')}). Staging it again "
+                    f"builds a second provider campaign; read provider truth and "
+                    f"reuse what is there, or change the material so this is a "
+                    f"different write")
 
     if not callable(transport):
         raise WriteRefused("no transport supplied; refusing to guess one")
@@ -1835,7 +1872,11 @@ def perform(operation, *, authorization=None, tenant=None, campaign=None,
     # re-attemptable after a human has read provider truth, and recording it
     # here would refuse that retry on the strength of a write nobody could
     # confirm.
-    if not facing and verdict == ACCEPTED:
+    # TASK-234: repeatable operations are NOT recorded, because the next call
+    # with the same payload must also reach the provider. Recording would
+    # cause the staging-repeat guard to refuse it (if the guard were not
+    # already skipped for repeatable operations).
+    if not facing and verdict == ACCEPTED and operation not in REPEATABLE:
         record_staged(campaign, operation, payload, observed)
 
     # THE TOUCH IS WRITTEN BEFORE THE LEDGER SETTLES, and the order is the
