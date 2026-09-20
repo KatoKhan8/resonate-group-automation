@@ -20,6 +20,9 @@ mean "unchanged" rather than "died an hour ago":
     SCHEDULE-MOVED  the EARLIEST scheduled_date changed - when the first
                 prospect hears from us is not the same fact as whether a row
                 exists, and 451's moved once overnight
+    MEMBERSHIP  the per-lead status distribution changed. An ACTIVE campaign
+                whose leads read `sending_paused` is not sending, and the
+                campaign row does not say so - see `_membership_states`
     READ-ERROR  the provider could not be read, after it repeats
 
 WHY `QUEUED` AND `TOUCHED` EXIST, added 2026-09-17, and they are the whole
@@ -106,7 +109,42 @@ def snapshot(provider_id=None):
         "first_scheduled": min(
             [str(e.get("scheduled_date")) for e in queue
              if e.get("scheduled_date")] or ["none"]),
+        # WHAT THE CAMPAIGN SAYS IS NOT WHAT THE LEADS SAY, measured
+        # 2026-09-20. Campaign 487 reads `active` with ten rows queued for
+        # the 22nd, and all ten of its leads read `sending_paused` in their
+        # own `lead_campaign_data`. Campaign 489 - same factory, same day,
+        # same shape - reads `in_sequence` on all five, and so do single
+        # pages of the client's 327, 328 and 352, which are demonstrably
+        # sending. `resume_campaign` confirms the CAMPAIGN's status and
+        # nothing else, so this state is invisible to the readback that was
+        # supposed to catch it.
+        #
+        # A dict rather than a count, because the question is which statuses
+        # are present and in what proportion, and a single number cannot
+        # answer it. None when the campaign is too large for a bounded walk:
+        # UNKNOWN is a legitimate answer here and zero is not.
+        "membership": _membership_states(provider_id),
     }
+
+
+def _membership_states(provider_id):
+    """Per-lead status inside this campaign, counted. None if unreadable.
+
+    `membership()` walks and refuses past `PAGE_CAP` rather than returning a
+    page - correct, and it means a client-sized campaign has no cheap answer.
+    That refusal is caught and reported as None: a watcher must not die on a
+    campaign it cannot count, and must not report a partial count as a whole
+    one either.
+    """
+    try:
+        rows = bison.membership(provider_id) or {}
+    except Exception:
+        return None
+    out = {}
+    for status in rows.values():
+        key = str(status)
+        out[key] = out.get(key, 0) + 1
+    return out
 
 
 def main(argv=None):
@@ -190,6 +228,14 @@ def main(argv=None):
             emit(f"SCHEDULE-MOVED {watched} first send "
                  f"{previous['first_scheduled']} -> "
                  f"{current['first_scheduled']}")
+        # LAST, because it is the slowest-moving of the lot and the one whose
+        # movement is most likely to be the answer to a standing question.
+        # 487's ten leads have read `sending_paused` since it was activated;
+        # whether the provider flips them when the window opens is the
+        # falsifier this line exists to catch.
+        if current["membership"] != previous["membership"]:
+            emit(f"MEMBERSHIP {watched} per-lead status "
+                 f"{previous['membership']} -> {current['membership']}")
 
         previous = current
         time.sleep(args.interval)
