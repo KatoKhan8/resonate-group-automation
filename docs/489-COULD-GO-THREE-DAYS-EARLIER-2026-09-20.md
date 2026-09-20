@@ -85,10 +85,69 @@ docstring records that a campaign whose next sending window is days away
 07:00 New York time - fine on Monday, and a pause performed at the wrong hour
 could leave a healthy campaign strictly worse than slow.
 
+## UPDATE, same evening: it may re-plan itself, and no write may be needed
+
+Two things found after the above was written, both of which narrow the
+recommendation rather than change the measurement.
+
+**1. The scheduler does not only run on resume.** `docs/GROK-SCHEDULING-2026-09-20.md`
+records it as DOCUMENTED, with a source URL: the campaign scheduler runs
+**"every time the campaign is resumed, and at the end of every sending
+day"** - the pause/resume trick is described there only as the way to force a
+run *before* the end of the sending day.
+<https://docs.emailbison.com/campaigns/overview>
+
+489's schedule is Mon-Fri 09:00-17:00 America/New_York, so **its next
+scheduler run happens on its own at the end of Monday's sending day**, with
+no write from us. If the placement rule is "first day that fits the whole
+cohort" and Monday's book is still open when it runs, 489 re-plans earlier by
+itself.
+
+That makes the unauthorized pause/resume not merely forbidden but very likely
+unnecessary. **Wait for Monday's end-of-day run before proposing any write.**
+
+**2. There is a documented read for what will actually send**, which this
+repository was not using:
+
+    GET /api/campaigns/{id}/sending-schedule?day=today|tomorrow|day_after_tomorrow
+    GET /api/campaigns/sending-schedules
+
+Asked of both campaigns on 2026-09-20T20:0xZ, all three days:
+
+    487  today / tomorrow / day_after_tomorrow   400 "No emails scheduled for this period"
+    489  today / tomorrow / day_after_tomorrow   400 "No emails scheduled for this period"
+
+Read it carefully, because it is weaker evidence than it looks. Today is
+Sunday; 487 is PAUSED so it has no built volume by construction; and the
+window only reaches Tuesday the 22nd while 489's first send is planned for
+Thursday the 24th. So **all six answers are consistent with the picture above
+and none of them contradicts it.** What they establish is narrow and still
+worth having: as of tonight, the provider has no built sending volume for
+either campaign on Sunday, Monday or Tuesday.
+
+This endpoint is the authoritative answer to "what will actually send", which
+is a different question from `first_scheduled` on the campaign row, and
+nothing here reads it yet. Wiring it into the 487 and 489 watchers is the
+cheapest observability win available and is queued as engineering work.
+
+## The falsifier this creates
+
+**At the end of Monday's sending day, 489's scheduler runs.** Re-read
+`first_scheduled` on Tuesday morning:
+
+- moved earlier -> the end-of-day run re-plans against the current book, the
+  latency is self-correcting, and no write should ever have been considered.
+- unchanged at 09-24 -> the plan is sticky once made, the end-of-day run only
+  places NEW leads, and the question of an authorized re-plan becomes real.
+
+Either way it is answered by reading, on Tuesday, for free.
+
 ## What should happen
 
-1. **Do nothing to 489 today.** It is healthy, enrolled and scheduled. Three
-   days of latency is a cost; a failed campaign is a loss.
+1. **Do nothing to 489 today, and probably nothing at all.** It is healthy,
+   enrolled and scheduled, its scheduler runs on its own at the end of
+   Monday's sending day, and the falsifier above resolves on Tuesday by
+   reading. Three days of latency is a cost; a failed campaign is a loss.
 2. **Monday belongs to 487.** Its recovery is authorized, preflighted, and
    Monday is now provably the ONLY day its cohort of ten fits - sender 2736
    reads ROOM 15 free on Monday and FULL on both Tuesday and Wednesday. That

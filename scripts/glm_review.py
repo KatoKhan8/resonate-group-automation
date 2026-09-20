@@ -164,11 +164,51 @@ giving the trigger, the call order, and the prospect-facing result.
 """
 
 
+SUPPRESSION_QUESTION = """This is production code from a cold-outreach system.
+It ingests replies from email and LinkedIn providers and must stop any further
+message to somebody who has answered. A missed reply means we email a person
+who already replied, which is the worst failure this system has.
+
+`inbound.ingest` reads provider replies and saves canonical state. It takes
+`base = store.digest()` BEFORE building its records and then calls
+`store.save(recs, expect_digest=base)`, which REFUSES with QueueChanged if the
+queue changed in between. `leadstop._record` is called from inside that window
+and opens its own `store.transaction()`.
+
+THE SPECIFIC CLAIM TO ATTACK OR CONFIRM:
+
+  the nested transaction changes the digest, so the outer save raises
+  QueueChanged, and the REPLY_RECEIVED event, its classification and the
+  account pause are all DISCARDED - so for one poll interval (300s) the reply
+  does not exist in canonical state and a further message can be authorised
+  to somebody who just answered.
+
+Answer these, and say UNKNOWN rather than guessing:
+
+1. Is the claim TRUE? Trace the exact path. Name the line where the digest
+   changes and the line that refuses. If it is false, say why and what the
+   real behaviour is.
+2. Under what concrete conditions does it fire, and when does it NOT? Does it
+   need the stop write to actually happen, or is any `_record` call enough?
+3. Is the reply LOST permanently, or recovered on the next poll? What is the
+   real worst case - and is there any path where it is never recovered?
+4. Is there a case where the reply is discarded but the PROVIDER-side stop
+   already happened, leaving the two out of step in the other direction?
+5. What is the minimal fix? Judge specifically whether "record onto the
+   in-memory rec and let ingest's single save persist it" is correct and
+   complete, or whether it misses a caller that relies on `_record`
+   persisting on its own.
+6. What regression test would fail today and pass after the fix?
+
+Be concrete and cite the code. A confident wrong answer here is worse than
+UNKNOWN."""
+
+
 def _targets():
     """Built lazily so a broken import in one area cannot block the others."""
     from src import (store, actionledger, collision, bisonevents,
                      executionguard, providerwrites, providers,
-                     senderownership, queuejournal)
+                     senderownership, queuejournal, inbound, leadstop)
     return {
         # ADDED 2026-09-20 to review a change BEFORE it reaches master, which
         # is the first time this file has been used that way. Qwen's TASK-234
@@ -252,6 +292,25 @@ def _targets():
         "ledger": (GENERIC_QUESTION, [
             ("actionledger.reserve", actionledger.reserve),
             ("actionledger.settle", actionledger.settle),
+        ]),
+        # ADDED 2026-09-20 for PROBLEM-REGISTER ISSUE-001, and deliberately
+        # SMALL. The previous run of this file asked about
+        # `providerwrites.perform` - 14,912 characters - and came back with
+        # `finish_reason='length'` and an empty completion on both targets.
+        # These two are ~3,200 characters together, which is the fix for that
+        # as much as any setting is: the budget is spent on the answer rather
+        # than on re-reading the question.
+        #
+        # The claim to attack is specific. `_record` opens its own
+        # `store.transaction()` while `ingest` is mid-way between
+        # `base = store.digest()` and `store.save(recs, expect_digest=base)`,
+        # so the outer save is said to raise `QueueChanged` and discard the
+        # REPLY_RECEIVED event, its classification and the account pause -
+        # leaving `eligibility._replied` answering clean for a poll interval
+        # on somebody who has just replied.
+        "suppression": (SUPPRESSION_QUESTION, [
+            ("inbound.ingest", inbound.ingest),
+            ("leadstop._record", leadstop._record),
         ]),
         "collision": (GENERIC_QUESTION, [
             ("collision.check_account", collision.check_account),
