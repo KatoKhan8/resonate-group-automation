@@ -1,258 +1,167 @@
-# Autonomous run checkpoint - 2026-09-20, 19:20 UTC
+# Autonomous run checkpoint - 2026-09-20, 20:30 UTC
 
-Supersedes the 2026-09-16 checkpoint, which was four days stale and described
-a production state that has since changed in every material respect. Written
-by Claude after a session-limit context reset, with every number recomputed
-rather than carried forward.
+Written at the end of a long Sunday session, for a Monday morning reader.
+Every number recomputed today; nothing carried forward on trust.
 
-**READ THE CLOCK FIRST.** This was written on SUNDAY 2026-09-20. Both email
-campaigns are Mon-Fri. A zero at a weekend is the calendar, not a fault.
+**READ THE CLOCK FIRST.** Sunday. Both email campaigns are Mon-Fri. **Zero
+sends today is the calendar, not a fault**, and no amount of engineering
+changes that.
 
----
-
-## GIT
-
-    master HEAD     42eb425a
-    origin/master   42eb425a   identical, verified
-    today           4 units integrated and pushed
+    master HEAD / origin   ac6f7996   identical, verified
+    commits this session   19
+    SAFE_TO_CLEAR          TRUE
 
 ---
 
-## P0 - THE ONE THING THAT MATTERS ON MONDAY
-
-**Campaign 487 is PAUSED and its recovery is armed, unrun, and belongs to
-the operator.**
+## THE ONE THING THAT MATTERS ON MONDAY
 
     py -3 scripts/resume_487.py --live      MONDAY 2026-09-21, from 07:00Z
 
-`docs/OPERATOR-AUTHORIZATION-2026-09-20-RESUME-487.md` is the standing grant
-and a fresh session may act on it without re-asking. The operator's own
-decision was **"You run it Monday morning"**, so nothing is scheduled and no
-session fires it. If nobody types the command, the recovery does not happen.
+`docs/OPERATOR-AUTHORIZATION-2026-09-20-RESUME-487.md` is the standing grant.
+The operator's own decision was **"You run it Monday morning"** - nothing is
+scheduled, no cron exists, and **if nobody types it, the recovery does not
+happen.**
 
-Preflight re-run 2026-09-20T19:11Z - **every condition except the window is
-MET**:
+Preflight re-run 2026-09-20T19:11Z. Every condition MET except the window:
 
     window      LATER   opens 2026-09-21T07:00Z
-    truth       PASS    campaign 'paused', 10 leads, senders [2736]
+    truth       PASS    'paused', 10 leads, senders [2736]
     membership  PASS    {'sending_paused': 10}
-    copy        PASS    10 of 10 queued rows carry the approved text
+    copy        PASS    10 of 10 rows carry the approved text
 
-Success is `in_sequence` on all ten leads. Campaign `active` with leads still
-`sending_paused` is the SAME FAULT, and condition 5 is ONCE - do not retry.
+Success is `in_sequence` on all TEN. `active` with leads still
+`sending_paused` is the SAME FAULT. Condition 5 is ONCE - do not retry.
 
----
-
-## PRODUCTION TRUTH, read from the providers today
-
-    EmailBison 487   paused   10 leads  0 sent  first scheduled 09-22T07:39Z
-    EmailBison 489   active    5 leads  0 sent  first scheduled 09-24T13:27Z
-    HeyReach 605732  IN_PROGRESS 3 leads        (of 86 campaigns in the
-                                                 account, 4 are ours)
-
-    enrollments      15 email + 3 LinkedIn = 18
-    provider-confirmed sends                    0 on both channels
-    cross-channel overlap of those 18           UNVERIFIED - do not report a
-                                                unique figure until measured
-
-Nothing has sent from these three. The proven end-to-end path is canary 451,
-one real email on 2026-09-14.
-
-**Gap to the 500-lead target is therefore ~482, and the limiting stage is
-company enrichment** - see the 215 section. It is not approval, not copy, not
-sender capacity and not provider execution.
-
-The READY reservoir is **depth 0 on both channels** and is itself stale
-(generated 09-18):
-
-    linkedin  population 81   blockers: approval 66, copy 9, collision 3
-    email     population 51   blockers: approval 36, collision 15
+**Monday is now provably 487's only day.** With a covering census, sender
+2736 reads ROOM 15 free on Monday and FULL on both Tuesday and Wednesday.
 
 ---
 
-## A P0 REGRESSION FOUND AND FIXED TODAY
+## PRODUCTION TRUTH, 20:26Z
 
-**The write guard refused every HeyReach READ.** HeyReach answers its reads
-with POST, the guard is method-based, and from 17:04 on 2026-09-20 every
-`/campaign/GetAll`, `/campaign/GetLeadsFromCampaign`, `/stats/GetOverallStats`
-and `/inbox/GetConversationsV2` raised `ProviderWriteRefused`.
+    EmailBison 487   paused   10 leads  0 sent   sending_paused x10
+    EmailBison 489   active    5 leads  0 sent   first scheduled 09-24T13:27Z
+    HeyReach 605732  IN_PROGRESS  3 leads  0 connection requests, 0 messages
+    replies watcher  0 errors on either provider
 
-It was invisible for a day **because nothing already running had to
-re-import**. The 605732 watcher started at 14:23 and the guard landed at
-17:04, so it holds the pre-guard module in memory and has been reporting
-healthy heartbeats throughout. It would have died on restart, and 605732 is
-the only live LinkedIn campaign. `provider_truth.py`, started fresh, crashed
-on its first call - which is how it was found.
+    PROVIDER_CONFIRMED_SENDS   0 on both channels
+    EMAIL_LIVE 15 - LINKEDIN_LIVE 3 - EMAIL_READY 0 - LINKEDIN_READY 0
 
-Fixed in `28f4766e`: a prospect-facing module may declare the paths where
-POST is a READ, via `guard_read_routes`, at import. Only POST is exempt, the
-match is exact on the parsed path, and a test pins that the declared reads
-and `WRITE_ROUTES` stay disjoint. The incident verb - `PATCH .../487/pause` -
-is still refused, with its own regression test. Verified by disabling the
-exemption and confirming all 13 new tests fail as `ProviderWriteRefused`
-rather than something else firing first. `provider_truth.py` then completed
-live against all four Resonate HeyReach campaigns.
+**HeyReach is not stalled.** The graph spends 3h + 3h + 1 DAY before
+`CONNECTION_REQUEST`; all three leads read `InSequence` with `error_code`
+null; the 19th and 20th were the weekend on a Mon-Fri campaign. The falsifier
+can only run Monday.
 
-**The running watchers were deliberately left alone** - they are healthy, and
-the fix means a future restart now works.
+**489 may fix itself.** EmailBison's scheduler runs *"every time the campaign
+is resumed, AND at the end of every sending day"* - DOCUMENTED, with a source
+URL. So 489 re-plans on its own at the end of Monday's sending day. Its
+Thursday slot is FULL (15/15, including its own 5) while Monday has 12 free
+and Tuesday 15. **Free falsifier: re-read `first_scheduled` Tuesday morning.**
+Moved earlier means self-correcting and no write was ever needed. Unchanged
+means a plan is sticky once made, and the question becomes real.
+`docs/489-COULD-GO-THREE-DAYS-EARLIER-2026-09-20.md`.
 
 ---
 
-## THE 215, SETTLED
+## WHAT AN OPERATOR MUST DECIDE
 
-`docs/THE-215-WERE-NEVER-JUDGED-2026-09-20.md` is the full account.
-
-**Zero of the 215 have failed a single criterion.** None carries a contact.
-All 215 are still `queued`. 208 are blocked on geography, and 184 hold no
-company evidence beyond a headcount signal. They are not a rejected backlog
-and they are not waiting on a human verdict - **remove "215 records await a
-human ICP verdict" from the operator's list. It is and always was an
-enrichment task.**
-
-The ISO-code fix for `geo.resolve` is **already on master** (`27bcdb67`,
-2026-09-17) - an earlier version of this checkpoint wrongly called it
-stranded. The 215's verdicts are STALE, computed 2026-09-12, five days
-before it landed. Re-qualifying all 215 against current master through the
-real `icp.score` path moves geography from 7 pass to 8 and yields **exactly
-ONE newly qualified record.** Worth running; not expansion. What IS still
-unintegrated on that branch is TASK-227's cohort send-window work.
-
-Next step before any batch: a bounded measurement of verdict movement per
-credit over the 71 one-field-away records. The 09-16 result that ContactOut
-company-info moved ZERO verdicts over 50 records stands against the obvious
-provider choice.
+1. **Monday 07:00Z, run the 487 resume.** Nothing else produces a send.
+2. **Slack: set `SLACK_BOT_TOKEN`, `SLACK_OPS_CHANNEL`, `SLACK_LIVE`.**
+   The channels ALREADY EXIST - do not create any. `#resonate-notifs`
+   (C0AQB4KB9TM) for global ops; `#productive-resonate-outbound`
+   (C0ADUMGQX8S) and `#replies-productive` (C0BFUF4JRK9) per workspace.
+   207 of 216 notifications have been recorded and delivered to nobody.
+3. **One sender attestation.** `py -3 scripts/attestation_packet.py` prints
+   the candidates; 207 of 257 qualify with proven Monday room. It unblocks
+   nothing today - it lets the ALLOCATOR propose a mailbox for a future
+   cohort, which it currently cannot do at all.
 
 ---
 
-## WORKFORCE - verified by execution, not by configuration
+## WORKFORCE - verified by process, not by assignment
 
     CLAUDE   RUNNING   this session
-    PYTHON   RUNNING   5 monitors live, all heartbeating within 90s
-    GLM      IDLE      glm-5.3 via ZAI_API_KEY verified live, 200 in 1840ms.
-                       LAST TASK FAILED: empty completion,
-                       finish_reason='length' on both targets. Truncation,
-                       not auth. Needs a smaller target or a higher cap.
-    GROK     IDLE      grok-4.6 via XAI_API_KEY verified live, 200.
-                       Last run SUCCEEDED 17:41 (120 + 68 sources).
-    QWEN     IDLE      CLI v0.23.3 present. 8 worktrees, 0 claims, 0 locks.
-                       Pool has not dispatched since 2026-09-16 15:42 (r50).
+    PYTHON   RUNNING   5 monitors, all heartbeating inside 90s
+    QWEN     RUNNING   qwen-code v0.23.3, 2 claims live (TASK-235, TASK-237)
+    GLM      COMPLETED glm-5.3, reviewed ISSUE-001, findings integrated
+    GROK     IDLE      grok-4.6 verified live; its existing research was
+                       RECOVERED AND USED rather than re-run
 
-**Qwen is idle because the backlog is starved, not because it is broken.**
-`claim_task.py --status` reports **2 ready tasks for 8 workers** against a
-healthy threshold of 16, and **89 stale branches hiding available tasks**.
+**All eight worker branches are pushed and durable** - checked explicitly,
+because they were NOT. `git log @{u}..HEAD` with no upstream prints nothing,
+which I misread as "0 unpushed" while four finished branches sat local-only.
+That is the exact failure CLAUDE.md records from 2026-09-15. Verify with
+`git log master..HEAD`, never with `@{u}`.
 
-`ZAI_API_KEY` and `XAI_API_KEY` are **NOT in `config.VARIABLES`**, so
-`credential_health.py` structurally cannot report on the two model workers.
-That is the honest failure mode by design, and it is a registry gap worth
-closing.
-
-### 11 finished tasks are sitting unintegrated on branches
-
-From `scripts/task173_scan.py --unintegrated`. This is the single largest
-pool of recoverable value in the system:
-
-    TASK-067  origin/qwen-worker-7
-    TASK-212  origin/qwen-worker-3-r45
-    TASK-213  origin/qwen-worker-4-r45
-    TASK-214  origin/qwen-worker-r45
-    TASK-225  origin/qwen-worker-7-r28
-    TASK-227  origin/geo-iso-resolution-2026-09-17   (cohort send window;
-              its ISO fix is ALREADY on master as 27bcdb67)
-    TASK-229  origin/bounded-gather-2026-09-18
-    TASK-230  origin/task-230-prefetch-headcount
-    TASK-231  origin/qwen-worker-8-r28
-    TASK-232  origin/qwen-worker-6-r40
-    TASK-234  origin/task-234-stop-button
-
-Integrating these also clears the stale-branch noise that is hiding ready
-work from the dispatcher, so it unblocks Qwen as a side effect.
+**One dispatch failed silently and is worth knowing about.** Round r51 logged
+three tasks `DONE exit=0` within 45 seconds. They had not run - I dispatched
+before committing the briefs, so the workers correctly reported the files
+missing. The pool's exit code said success. **Read the worker log, not the
+exit code.**
 
 ---
 
-## SLACK - the adapter works, the credential does not exist
+## INTEGRATED TODAY
 
-    SLACK_BOT_TOKEN        NOT SET
-    SLACK_SIGNING_SECRET   NOT SET
-    SLACK_OPS_CHANNEL      NOT SET
-    SLACK_LIVE             NOT SET
+| Fix | Commit | Production |
+| --- | --- | --- |
+| The write guard refused every HeyReach READ; the live 605732 watcher survived only because it predates the guard by 3h and held the old module in memory | `28f4766e` | **VERIFIED** - provider_truth ran live |
+| The forward-book census walked a hardcoded 3 campaigns while 6 can book, so senderheadroom REFUSED every mailbox and capacity planning had no input at all | `d321c2ef` | **VERIFIED** - derived set matches the provider |
+| `active_campaign_ids=()` made coverage pass vacuously - the trap that produced a wrong ROOM reading earlier the same session | `c9ddf35d` | no caller yet |
+| senderheadroom counted weekdays from 0 while the repo is ISO, so `geo.windows()` days read Mon-Fri as Tue-**Saturday** | `5ff914d1` | no caller yet |
+| LIVE-READINESS claimed `SUPPORTED = ()` and "nothing sends" while 14 verbs were live and a real email had gone out | `03d9da3f` | n/a |
+| The PII guard had been RED since ~09-18 - two seat-holders' identifiers and **five real prospects hardcoded** in the script that builds 489's cohort | `cecd4223` | **13/13 green** |
+| GLM was sending NO SOURCE CODE for two runs, and wrote every review to a filename hardcoded to `2026-09-17` | `d5ae9836` | verified by re-run |
+| TASK-237: the reconciler settles activate keys from provider truth | `ac6f7996` | dry run on real ledger |
 
-`src/providers/slack.py` and `src/notify.py` both exist and **the
-notification layer is working**: it has produced 216 notifications, of which
-**207 are `unconfigured` - recorded and delivered to nobody.** The reason is
-stated on every row: *"no global operations channel is configured; set
-SLACK_OPS_CHANNEL"*.
-
-**The operational consequence is the thing to understand: there is no
-delivered alerting at all.** A positive reply on a live campaign tomorrow
-would be written to `work/notifications.jsonl` and told to no one. 203 of the
-undelivered rows are `unmatched_reply_needs_review` at severity
-`action_required`, still arriving (last 2026-09-20T18:01Z) - HeyReach inbox
-conversations the watcher cannot map to our leads, which is expected given we
-own 4 of 86 campaigns in that account, but a real reply lands in the same
-silent bucket.
-
-The 5 `positive_reply` rows are all dated 2026-08-28 across `demo`,
-`demo-client`, `contactout` and `productive` in one batch - fixtures from
-when the layer was built, not live business signal. Checked rather than
-raised as an alarm.
-
-**For outbound notification only, a bot token plus `SLACK_OPS_CHANNEL` plus
-`SLACK_LIVE` is sufficient - no incoming webhook and no Events API are
-required.** Those are only needed to read messages or accept commands, and
-Slack-based production approvals must not be built until identity,
-authorization, auditability and replay protection are designed.
+**TASK-237 needed one guard added in review.** Its loop walks `unsettled()` -
+ATTEMPTED *and* UNRESOLVED - and applied one rule to both. Settling an
+UNRESOLVED key FAILED would make it reservable again and re-open the
+duplicate-send path Buggie confirmed closed. Reachable: 13 of our 18 keys are
+UNRESOLVED. Positive evidence still settles; absence never does.
 
 ---
 
-## INTEGRATION HEALTH, verified live today
+## THE REGISTER, AND THE PATTERN UNDER IT
 
-    CONTACTOUT_TOKEN  AUTHENTICATION_VERIFIED   963ms
-    BLITZ_API_KEY     AUTHENTICATION_VERIFIED   444ms
-    AIARK_KEY         AUTHENTICATION_VERIFIED   545ms   11 tools
-    BISON_KEY         AUTHENTICATION_VERIFIED   204ms   15 campaigns
-    HEYREACH_KEY      AUTHENTICATION_VERIFIED   113ms
-    ZAI_API_KEY       AUTHENTICATION_VERIFIED  1840ms   glm-5.3
-    XAI_API_KEY       AUTHENTICATION_VERIFIED           grok-4.6
-    APIFY_TOKEN       CONFIGURED_UNVERIFIED
-    LLM_API_KEY       CONFIGURED_UNVERIFIED
-    REOON_KEY         PROVIDER_UNAVAILABLE  the only endpoint costs a credit
-    DELIVERABLE_KEY   PROVIDER_UNAVAILABLE  no account or quota endpoint
-    SLACK_BOT_TOKEN   NOT_CONFIGURED
+`docs/state/PROBLEM-REGISTER.md` is canonical. 9 open, 5 refuted-and-kept.
+Two rules it enforces on itself: **code written is not FIXED, and FIXED is
+not PRODUCTION_VERIFIED.**
 
-ContactOut month to date: 1,553 of 38,232 credits used, 396 of 117,815
-searches. Roughly 36,700 credits remain. **Enrichment is not credit-limited.**
+Six of today's defects are one shape: **a value that was true when written,
+cached somewhere with no way to notice it had gone stale** - a campaign list,
+a credential name, a weekday constant, a safety claim, a review filename, a
+scheduler plan. The answer is not vigilance. It is the `senderheadroom`
+model: carry the date and the source, and REFUSE rather than answer when you
+cannot prove you are current.
 
 ---
 
-## TEST BASELINE - three failures that are NOT new
+## RECOVERY FOR THE NEXT SESSION
 
-`work/suite-2026-09-20-failures.txt` is the baseline. Confirmed today by
-stashing the day's changes and re-running: identical with and without them.
+1. Read this file, then `docs/state/PROBLEM-REGISTER.md`.
+2. `py -3 scripts/resume_487.py --preflight` - safe at any hour, refuses
+   outside the window and prints when it opens.
+3. `py -3 scripts/provider_truth.py` and the heartbeats in `work/heartbeat/`.
+4. `py -3 scripts/claim_task.py --status` for the workers; check
+   `git log master..HEAD` in each `../resonate-qwen-*` worktree.
+5. **Do not re-run the census with `--reset`.** It now derives its campaign
+   set from the provider; a plain re-run resumes.
 
-    test_fixture_hygiene   3 failures  (the PII guard is RED, and was
-                                        reported green on 09-16)
-    test_red_team_tonights_guards  3 failures (fatigue hold)
+**Background processes do not survive a restart.** Five monitors and the Qwen
+pool are running now; none is supervised. If the machine reboots, restart the
+monitors bare - **never wrap a monitor in `timeout`**, that killed the 489
+watcher at exit 124 on the 18th.
 
-The PII guard being red is a real open item, not a nuisance - it is the
-control that catches a worker committing a prospect name.
+### Still open, highest value first
 
----
-
-## NEXT ACTIONS, in order of what unblocks most
-
-1. **MONDAY 07:00Z: the operator runs `scripts/resume_487.py --live`.**
-   Nothing else on this list produces a real send this week.
-2. **Integrate the 11 branch-finished tasks.** Their stale branches are what
-   hide ready work from the dispatcher, so this unblocks Qwen as a side
-   effect. Note TASK-227's branch conflicts on
-   `scripts/task_geo_iso_coverage.py`, which master already has.
-3. **Refill the task backlog** - 2 ready for 8 workers. Qwen cannot work
-   without briefs.
-4. **Set `SLACK_BOT_TOKEN`, `SLACK_OPS_CHANNEL`, `SLACK_LIVE`.** Operator
-   action. Until then the system has no way to tell anybody anything.
-5. **Re-qualify the estate** to clear verdicts predating the 09-17 geo fix
-   (yields 1 lead, measured), then **measure verdict movement per credit**
-   over the 71 one-field-away records before spending on the 215.
-6. **Add `ZAI_API_KEY` and `XAI_API_KEY` to `config.VARIABLES`** so the two
-   model workers are visible to `credential_health.py`.
-7. **Give GLM a smaller target.** Its last run truncated on both.
+- **ISSUE-001** reply ingestion discards the REPLY_RECEIVED event. Mechanism
+  confirmed, consequence narrower than claimed, **has never fired** (it needs
+  a reply that triggers a successful provider stop; zero replies so far).
+  Check the `sweep` caller before moving the write in-memory.
+- **ISSUE-002** a DNC cannot stop a running HeyReach sequence - TASK-235 is
+  in flight on `qwen-worker-2-r52` and had no tests at last look.
+- **TASK-236** provider `sending-schedule` endpoint into the watchers -
+  finished on `qwen-worker-3-r52`, not yet reviewed.
+- **9 more finished-but-unintegrated worker results**; 89 stale branches are
+  hiding ready work from the dispatcher.
