@@ -170,6 +170,22 @@ def _targets():
                      executionguard, providerwrites, providers,
                      senderownership, queuejournal)
     return {
+        # ADDED 2026-09-20 to review a change BEFORE it reaches master, which
+        # is the first time this file has been used that way. Qwen's TASK-234
+        # fix makes EMAIL_ACTIVATE and LINKEDIN_ACTIVATE `REPEATABLE`, so the
+        # staging-repeat guard no longer refuses a second activation.
+        #
+        # The justification is that a repeated state-setting verb is a no-op.
+        # For pause and stop_lead that holds - they can only ever mean
+        # somebody receives less. FOR ACTIVATE IT MAY NOT: EmailBison's own
+        # documentation says the campaign scheduler runs EVERY TIME a campaign
+        # is resumed, so a repeated activate REPLANS rather than doing
+        # nothing, and activation is the single most consequential verb here.
+        # 481 and 485 hold live 487's own leads.
+        "repeatable": (ACTIVATION_QUESTION, [
+            ("providerwrites.perform", providerwrites.perform),
+            ("providerwrites.staged_already", providerwrites.staged_already),
+        ]),
         # ADDED 2026-09-20, HOURS AFTER THE CODE LANDED, and it is the target
         # with the most recent blood on it. An audit agent paused LIVE
         # campaign 487 at 12:44:45Z by importing `src` and calling through;
