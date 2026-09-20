@@ -38,6 +38,7 @@ class FakeBison:
         self.attach_states = []    # campaign status at each attach-leads
         self.stopped = {}          # campaign id -> leads told to stop
         self.queue = {}            # campaign id -> pre-send rows
+        self.sending_schedule = {} # campaign id -> {day -> emails_being_sent}
         self._next_campaign = 500
         self._next_lead = 900
         self._next_step = 4000
@@ -232,6 +233,8 @@ class FakeBison:
             return 200, {"data": dict(campaign)}
         if tail == ["scheduled-emails"] and method == "GET":
             return self._page(self.queue.get(ident, []), params)
+        if tail == ["sending-schedule"] and method == "GET":
+            return self._sending_schedule(ident, params)
         return 404, {"data": {"success": False, "message": "no route"}}
 
     def _schedule(self, method, ident, body):
@@ -264,6 +267,24 @@ class FakeBison:
         row["timezone"] = body.get("timezone")
         row["id"] = 1
         return row
+
+    def _sending_schedule(self, campaign_id, params):
+        """The provider's answer to 'what will actually send' on a given day.
+
+        Returns 400 with "No emails scheduled for this period" when the
+        campaign has nothing planned for the requested day - the provider's
+        ordinary empty answer, not an error. A test pins this apart from a
+        transport failure and from a zero count.
+        """
+        day = params.get("day", "")
+        held = self.sending_schedule.get(campaign_id, {})
+        count = held.get(day)
+        if count is None:
+            # THE 400 IS THE EMPTY ANSWER. Measured 2026-09-20 against both
+            # live campaigns, all three days: HTTP 400 with this exact message.
+            return 400, {"data": {"success": False,
+                                  "message": "No emails scheduled for this period"}}
+        return 200, {"data": {"emails_being_sent": count, "day": day}}
 
     def _attach(self, ident, lead_ids):
         # What the campaign's status WAS at the moment somebody was put into

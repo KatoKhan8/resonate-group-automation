@@ -1538,6 +1538,145 @@ def scheduled_emails(campaign_id):
     return rows
 
 
+# ---------------------------------------------------------------- sending plan
+#
+# WHAT THE PROVIDER SAYS IT WILL SEND, AS OPPOSED TO WHAT WE INFER.
+#
+# Every question this repository asks about future sends is answered by
+# inference: `first_scheduled` on the campaign row, `senderheadroom` counting
+# rows per mailbox per day. Both are ours. The provider documents an endpoint
+# that answers directly:
+#
+#     GET /api/campaigns/{campaign_id}/sending-schedule
+#     GET /api/campaigns/sending-schedules
+#
+# Parameter `day`: `today` | `tomorrow` | `day_after_tomorrow`. Response field
+# `emails_being_sent`. Source: docs/GROK-SCHEDULING-2026-09-20.md; the spec is
+# <https://dedi.emailbison.com/api/reference.openapi>.
+#
+# THE WINDOW ONLY REACHES TWO DAYS OUT. It cannot answer questions about
+# Thursday. It is a near-term confirmation, not a planner.
+#
+# THE 400 IS NOT AN ERROR. Called by hand 2026-09-20 against both live
+# campaigns, all three days: HTTP 400 with
+# `{"data": {"success": false, "message": "No emails scheduled for this
+# period"}}`. That is the provider's ordinary "nothing here" answer, not a
+# transport failure. A monitor that treats it as a failure will alarm every
+# weekend; one that treats it as zero will report a healthy campaign as
+# silent. It has to be classified explicitly: a shape that is not a result is
+# not a zero.
+
+VALID_DAYS = ("today", "tomorrow", "day_after_tomorrow")
+
+#: The provider's own words for "nothing scheduled". Matched as a substring
+#: so a future rewording inside the same sentence still classifies.
+_EMPTY_MESSAGE = "No emails scheduled for this period"
+
+
+class SendingScheduleEmpty(ProviderError):
+    """The provider has nothing planned for this day.
+
+    Distinct from a transport failure (the call succeeded) and distinct from
+    a zero count (the provider said nothing, not zero). A monitor that cannot
+    tell these apart reports a healthy campaign as silent or a dead one as
+    healthy. This is the shape that is not a result and not a zero.
+    """
+
+
+def sending_schedule(campaign_id, day):
+    """What the provider says it will send on a given day. Read-only.
+
+    Returns a trimmed dict with `emails_being_sent` (int) and `day` (str).
+    Raises `SendingScheduleEmpty` when the provider reports nothing planned -
+    the 400 with "No emails scheduled for this period" - which is distinct
+    from a transport failure and from a zero count.
+
+    `day` is validated against `VALID_DAYS` before the call, because passing
+    an invalid value through would produce a 400 indistinguishable from the
+    empty result. A caller that cannot name the day it means must not proceed.
+    """
+    if day not in VALID_DAYS:
+        raise ProviderError(
+            f"emailbison sending_schedule: {day!r} is not one of "
+            f"{VALID_DAYS}. Refusing to pass an invalid day through: the "
+            f"provider's 400 for 'nothing here' would read as a transport "
+            f"failure rather than as an empty result")
+    status, data = request(
+        "GET",
+        query(f"{base()}/campaigns/{campaign_id}/sending-schedule",
+              {"day": day}),
+        headers())
+    if status == 400:
+        # THE 400 IS THE EMPTY ANSWER, NOT AN ERROR. The provider's own words
+        # are matched as a substring so a future rewording inside the same
+        # sentence still classifies. Anything else at 400 is a real refusal
+        # and raises as a transport failure.
+        msg = _message(data)
+        if _EMPTY_MESSAGE.lower() in msg.lower():
+            raise SendingScheduleEmpty(
+                f"emailbison sending_schedule: campaign {campaign_id} has no "
+                f"emails scheduled for {day}")
+        raise ProviderError(
+            f"emailbison sending_schedule: GET -> 400 {_message(data)}")
+    if not ok(status):
+        raise ProviderError(f"emailbison sending_schedule: GET -> {status}")
+    body = mapping(data, "sending_schedule").get("data") or {}
+    if isinstance(body, dict) and body.get("success") is False:
+        # A 200 with success:false is another empty shape. The provider
+        # sometimes answers this way instead of 400.
+        raise SendingScheduleEmpty(
+            f"emailbison sending_schedule: campaign {campaign_id} has no "
+            f"emails scheduled for {day}")
+    # Trimmed: only what the provider documents and what a monitor needs.
+    count = body.get("emails_being_sent") if isinstance(body, dict) else None
+    try:
+        count = int(count) if count is not None else 0
+    except (TypeError, ValueError):
+        count = 0
+    return {"emails_being_sent": count, "day": day}
+
+
+def sending_schedules(day):
+    """Every campaign's sending plan for a given day. Read-only.
+
+    The plural route. Returns a list of trimmed dicts, one per campaign that
+    has something scheduled. An empty estate raises `SendingScheduleEmpty`
+    the same way the singular route does.
+    """
+    if day not in VALID_DAYS:
+        raise ProviderError(
+            f"emailbison sending_schedules: {day!r} is not one of "
+            f"{VALID_DAYS}")
+    status, data = request(
+        "GET",
+        query(f"{base()}/campaigns/sending-schedules", {"day": day}),
+        headers())
+    if status == 400:
+        msg = _message(data)
+        if _EMPTY_MESSAGE.lower() in msg.lower():
+            raise SendingScheduleEmpty(
+                f"emailbison sending_schedules: no campaigns scheduled for "
+                f"{day}")
+        raise ProviderError(
+            f"emailbison sending_schedules: GET -> 400 {_message(data)}")
+    if not ok(status):
+        raise ProviderError(f"emailbison sending_schedules: GET -> {status}")
+    body = mapping(data, "sending_schedules").get("data") or {}
+    if isinstance(body, dict) and body.get("success") is False:
+        raise SendingScheduleEmpty(
+            f"emailbison sending_schedules: no campaigns scheduled for {day}")
+    # The plural route returns a list of campaigns, each with emails_being_sent.
+    if isinstance(body, list):
+        return [{"campaign_id": r.get("campaign_id") or r.get("id"),
+                 "emails_being_sent": int(r.get("emails_being_sent") or 0)}
+                for r in body if isinstance(r, dict)]
+    if isinstance(body, dict):
+        # A single-campaign shape, or the whole estate as one object.
+        return [{"campaign_id": body.get("campaign_id") or body.get("id"),
+                 "emails_being_sent": int(body.get("emails_being_sent") or 0)}]
+    return []
+
+
 # WHAT A CAMPAIGN'S `status` CAN SAY, CLASSIFIED RATHER THAN ASSUMED.
 # Observed on this instance: draft, paused, queued, active, failed, completed,
 # archived, and "pending deletion". Only the first group means the provider

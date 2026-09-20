@@ -87,6 +87,17 @@ def snapshot(provider_id=None):
         state = str(entry.get("status") or entry.get("state") or "").lower()
         if state in SENT_WORDS or entry.get("sent_at"):
             sent_rows += 1
+    # WHAT THE PROVIDER SAYS IT WILL SEND, as opposed to what we infer.
+    # The provider documents an endpoint that answers directly; this is the
+    # near-term confirmation, not a planner. The window only reaches two days
+    # out, so it cannot answer questions about Thursday.
+    #
+    # `SendingScheduleEmpty` is the provider's ordinary "nothing here" answer,
+    # not a transport failure. A monitor that treats it as a failure will
+    # alarm every weekend; one that treats it as zero will report a healthy
+    # campaign as silent. It is recorded as None (empty) distinct from 0
+    # (provider says zero) and distinct from a read error (unknown).
+    provider_plan = _provider_sending_plan(provider_id)
     return {
         "status": str(row.get("status") or "").lower(),
         "emails_sent": int(row.get("emails_sent") or 0),
@@ -124,7 +135,31 @@ def snapshot(provider_id=None):
         # answer it. None when the campaign is too large for a bounded walk:
         # UNKNOWN is a legitimate answer here and zero is not.
         "membership": _membership_states(provider_id),
+        # WHAT THE PROVIDER SAYS IT WILL SEND. A dict keyed by day, with
+        # values: int (count), None (empty - nothing scheduled), or "error"
+        # (could not read). The disagreement line fires when this says empty
+        # but `first_scheduled` says something is planned, or vice versa.
+        "provider_plan": provider_plan,
     }
+
+
+def _provider_sending_plan(provider_id):
+    """The provider's near-term sending plan, as the provider states it.
+
+    Returns a dict keyed by day (`today`, `tomorrow`, `day_after_tomorrow`).
+    Values: int (count), None (empty - nothing scheduled), or "error" (could
+    not read). A read error on one day does not poison the others.
+    """
+    out = {}
+    for day in bison.VALID_DAYS:
+        try:
+            result = bison.sending_schedule(provider_id, day)
+            out[day] = result.get("emails_being_sent", 0)
+        except bison.SendingScheduleEmpty:
+            out[day] = None
+        except Exception:
+            out[day] = "error"
+    return out
 
 
 def _membership_states(provider_id):
@@ -145,6 +180,38 @@ def _membership_states(provider_id):
         key = str(status)
         out[key] = out.get(key, 0) + 1
     return out
+
+
+def _check_disagreement(state):
+    """Whether the provider's plan disagrees with our inference.
+
+    Returns a string describing the disagreement, or None if they agree.
+    Two ways round:
+    - We believe a send lands tomorrow (first_scheduled is not "none") and
+      the provider reports nothing for tomorrow.
+    - The provider reports something for tomorrow but we have no scheduled
+      rows (first_scheduled is "none").
+
+    The window only reaches two days out, so we check `tomorrow` and
+    `day_after_tomorrow`. `today` is excluded because a send that already
+    happened is not a disagreement.
+    """
+    first = state.get("first_scheduled", "none")
+    plan = state.get("provider_plan") or {}
+    we_think_sending = first != "none"
+    # Check tomorrow and day_after_tomorrow. The provider's window only
+    # reaches two days out, and today's sends are already in flight.
+    for day in ("tomorrow", "day_after_tomorrow"):
+        provider_count = plan.get(day)
+        provider_thinks_sending = (isinstance(provider_count, int)
+                                   and provider_count > 0)
+        if we_think_sending and not provider_thinks_sending:
+            return (f"we believe first send at {first} but provider reports "
+                    f"{provider_count} for {day}")
+        if provider_thinks_sending and not we_think_sending:
+            return (f"provider reports {provider_count} for {day} but we "
+                    f"have no scheduled rows")
+    return None
 
 
 def main(argv=None):
@@ -236,6 +303,28 @@ def main(argv=None):
         if current["membership"] != previous["membership"]:
             emit(f"MEMBERSHIP {watched} per-lead status "
                  f"{previous['membership']} -> {current['membership']}")
+        # WHAT THE PROVIDER SAYS IT WILL SEND. Two lines:
+        #
+        # PROVIDER-VOLUME: the provider's near-term sending volume changed.
+        # This is the direct answer to "what will actually send", as opposed
+        # to our inference from `first_scheduled` or queue rows.
+        #
+        # DISAGREEMENT: the provider's answer disagrees with our inference.
+        # We believe a send lands tomorrow and the provider reports nothing
+        # for tomorrow, or vice versa. A disagreement is itself an event:
+        # 487's ten openers moved date twice without anybody being told, and
+        # both times the first hint was a human re-reading a number.
+        if current["provider_plan"] != previous["provider_plan"]:
+            emit(f"PROVIDER-VOLUME {watched} provider plan "
+                 f"{previous['provider_plan']} -> {current['provider_plan']}")
+        disagreement = _check_disagreement(current)
+        prev_disagreement = _check_disagreement(previous)
+        if disagreement != prev_disagreement:
+            if disagreement:
+                emit(f"DISAGREEMENT {watched} {disagreement}")
+            else:
+                emit(f"AGREEMENT {watched} provider plan now matches "
+                     f"first_scheduled={current['first_scheduled']}")
 
         previous = current
         time.sleep(args.interval)
