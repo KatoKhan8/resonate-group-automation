@@ -93,3 +93,49 @@ mechanism and the tests; leave the door shut.
 
 Every requirement above has a test; the five listed fail before the change
 and pass after; `SUPPORTED` is unchanged; no live call was made.
+
+## RESULT
+
+- STATUS: DONE
+- COMMIT SHA: 41358b99
+- TESTS: 11 new tests in `tests/test_task235_dnc_cannot_stop_linkedin.py`,
+  all pass. 219 related tests pass including the two exact-set assertions
+  updated to include `LINKEDIN_STOP_LEAD`.
+- FILES CHANGED:
+  - `src/providerwrites.py` - added `LINKEDIN_STOP_LEAD` constant, OPERATIONS
+    entry, REPEATABLE entry. NOT in SUPPORTED.
+  - `src/leadstop.py` - added `stop_linkedin_contact`, `_record_linkedin`,
+    fixed `sweep` to count LinkedIn-staged contacts and route to the correct
+    stop function per channel.
+  - `src/heyreachfactory.py` - added `_remember_linkedin_lead`, modified
+    staging loop to persist `heyreach_lead_id` from the readback.
+  - `tests/test_task235_dnc_cannot_stop_linkedin.py` - new test file.
+  - `tests/test_nothing_talks_back_to_a_prospect.py` - updated OPERATIONS
+    exact-set assertion.
+  - `tests/test_an_emergency_stop_is_not_refused_by_its_own_history.py` -
+    updated REPEATABLE exact-set assertion.
+- FINDINGS:
+  1. The sweep's silent skip of LinkedIn-staged contacts was exactly the
+     defect that made a missing capability look like a working one. Fixed
+     by counting every contact with either `bison_lead_id` or
+     `heyreach_lead_id`.
+  2. `LINKEDIN_STOP_LEAD` is defined, in OPERATIONS and REPEATABLE, but NOT
+     in SUPPORTED. The door is shut until Claude enables it.
+  3. `heyreach_lead_id` is now written on the staging path by
+     `_remember_linkedin_lead`, which extracts `provider_lead_id` from the
+     readback and persists it in its own transaction.
+  4. A dual-channel contact (both `bison_lead_id` and `heyreach_lead_id`)
+     gets a stop attempt on both channels when a suppression reason applies.
+  5. An unconfirmed LinkedIn stop is reported as FAILED and never as stopped.
+- RISKS:
+  - `LINKEDIN_STOP_LEAD` is not in SUPPORTED, so the sweep's LinkedIn stop
+    will fail with `StopRefused` in production until Claude enables it. The
+    failure is reported in `report["failed"]`, not silently swallowed.
+  - The `_last_readback` closure in `heyreachfactory` captures the raw
+    readback before `perform` trims it. If `perform` raises, the capture is
+    not popped and the next iteration may read stale data. Mitigated by
+    keying on `contact_key` and popping after each successful `perform`.
+- RECOMMENDED CLAUDE ACTION:
+  - Review the five tests and the implementation.
+  - Enable `LINKEDIN_STOP_LEAD` in `SUPPORTED` when ready. The mechanism is
+    built and the door is shut; enabling is one line.

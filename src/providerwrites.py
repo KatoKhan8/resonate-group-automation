@@ -135,6 +135,13 @@ LINKEDIN_START_EMPTY_FOR_STAGING = "heyreach.start_empty_for_staging"
 # yet carry this verb. NOT in SUPPORTED, NOT in CONDITIONAL - enabling is
 # an operator decision and this task does not have it.
 LINKEDIN_ADD_LEAD_TO_LIST = "heyreach.add_lead_to_list"
+# TASK-235 (2026-09-20): the LinkedIn counterpart of EMAIL_STOP_LEAD. Stops
+# ONE person's progression through a HeyReach campaign. NOT in SUPPORTED:
+# building the mechanism and leaving the door shut is Claude's decision after
+# review, the same treatment heyreach.add_lead got. The route is on
+# heyreach.WRITE_ROUTES and the implementation exists; this constant names it
+# so the ledger, the guard and the sweep can refer to it without strings.
+LINKEDIN_STOP_LEAD = "heyreach.stop_lead"
 
 EMAIL_ADD_LEAD = "bison.add_lead"
 EMAIL_CREATE_CAMPAIGN = "bison.create_campaign"
@@ -217,6 +224,18 @@ OPERATIONS = {
         "duplicateLeads: 0`) is treated as failure by the readback: the "
         "lead is not found in the list, so the verdict is UNKNOWN and "
         "`stage_lead` raises `ListStagingUnverified`"),
+    LINKEDIN_STOP_LEAD: ("linkedin", False,
+        "DEFINED BUT NOT ENABLED. TASK-235. The LinkedIn counterpart of "
+        "EMAIL_STOP_LEAD: stops ONE person's progression through a HeyReach "
+        "campaign after a DNC, unsubscribe, reply or suppression. The route "
+        "/campaign/StopLeadInCampaign is on heyreach.WRITE_ROUTES and "
+        "heyreach.stop_lead_in_campaign implements it with a readback that "
+        "fails closed - a lead still in RUNNING_LEAD_STATUSES raises rather "
+        "than being believed stopped. Not prospect-facing: it can only ever "
+        "reduce what somebody receives. NOT in SUPPORTED: enabling is an "
+        "operator decision and this task does not have it. In REPEATABLE: "
+        "a repeat can only mean somebody receives less, so a second call is "
+        "safe in the direction that matters"),
     LINKEDIN_CREATE_LIST: ("linkedin", False,
         "no documented route; the list was created by hand in the vendor UI"),
     LINKEDIN_CREATE_CAMPAIGN: ("linkedin", False,
@@ -621,6 +640,10 @@ REPEATABLE = (
     LINKEDIN_PAUSE,
     EMAIL_PAUSE,
     EMAIL_STOP_LEAD,
+    # TASK-235: a repeat stop can only mean somebody receives less, same
+    # argument as EMAIL_STOP_LEAD. Not in SUPPORTED - the mechanism exists
+    # and the door is shut until Claude enables it.
+    LINKEDIN_STOP_LEAD,
 )
 
 # ------------------------------------------- conditional permission

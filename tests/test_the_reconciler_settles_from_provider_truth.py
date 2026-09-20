@@ -357,7 +357,7 @@ class ReconcilerWritesConfirmedTouch(QueueTest):
         rec = {"id": "rec-1", "domain": "example.com",
                "contacts": [{"key": "k1",
                              "linkedin": "https://linkedin.com/in/test",
-                             "email": "t@x.com"}],
+                             "email": "t@example.com"}],
                "events": []}
         with open(self.queue, "w") as f:
             f.write(json.dumps(rec) + "\n")
@@ -513,10 +513,10 @@ class ReconcilerDryRunWritesNothing(QueueTest):
         with open(self.queue, "w") as f:
             f.write(json.dumps({"id": "rec-1", "domain": "x.com",
                                 "contacts": [{"key": "k1",
-                                              "email": "t@x.com"}]}) + "\n")
+                                              "email": "t@example.com"}]}) + "\n")
 
         fake_camp = {"status": "active"}
-        fake_lead = {"id": 42, "email": "t@x.com"}
+        fake_lead = {"id": 42, "email": "t@example.com"}
         fake_membership = {42: "in_sequence"}
 
         import io

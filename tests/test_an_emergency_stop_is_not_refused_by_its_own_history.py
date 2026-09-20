@@ -266,7 +266,10 @@ class CreatingVerbsAreNotRepeatable(CampaignTest):
         increase anybody's exposure."""
         self.assertEqual(
             {providerwrites.EMAIL_PAUSE, providerwrites.LINKEDIN_PAUSE,
-             providerwrites.EMAIL_STOP_LEAD},
+             providerwrites.EMAIL_STOP_LEAD,
+             # TASK-235: a repeat LinkedIn stop can only mean somebody
+             # receives less, same argument as EMAIL_STOP_LEAD.
+             providerwrites.LINKEDIN_STOP_LEAD},
             set(providerwrites.REPEATABLE))
 
     def test_a_second_create_with_the_same_payload_is_refused(self):
