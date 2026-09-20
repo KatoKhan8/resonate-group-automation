@@ -24,7 +24,9 @@ own measurements, and the GLM review docs.
 
 ## OPEN — ordered by production impact
 
-_9 open at creation; ISSUE-006 closed the same day. ISSUE-010 added 2026-09-20 from the sender-utilisation review._
+_9 open at creation; ISSUE-002, ISSUE-003 and ISSUE-006 closed the same day._
+
+_ ISSUE-010 added 2026-09-20 from the sender-utilisation review._
 
 ### ISSUE-001 · Reply ingestion discards the reply event · CRITICAL (latent)
 
@@ -77,38 +79,39 @@ changed the answer.
 - **Status** CONFIRMED · unassigned · no test covers it · **the `sweep`
   caller must be checked before the fix, not after**
 
-### ISSUE-002 · A DNC or unsubscribe cannot stop a running HeyReach sequence · HIGH
+### ISSUE-002 · A DNC could not stop a HeyReach sequence · HIGH · **FIXED `abfc844a`**
 
-- **Component** `src/leadstop.py`, `src/providerwrites.py`
-- **Impact** Cross-channel stop is one-directional. The email half is latent
-  (HeyReach-bound 4, Bison-bound 16, overlap 0). **The DNC and unsubscribe
-  half is live now.**
-- **Root cause** `heyreach.stop_lead_in_campaign` is implemented, on
-  `WRITE_ROUTES`, with refusal-on-unconfirmed-readback — and has **no caller
-  anywhere**. There is no `LINKEDIN_STOP_LEAD` verb while `EMAIL_STOP_LEAD`
-  exists. `heyreach_lead_id` is read by two modules and written by none, so no
-  record carries the id the stop route needs.
-- **Reproduction** Re-verified open 2026-09-20: `grep LINKEDIN_STOP_LEAD`
-  returns nothing and `stop_lead_in_campaign` has no caller outside its own
-  module.
-- **Also** `leadstop.sweep` `continue`s past every LinkedIn-staged contact
-  **without incrementing `report['checked']`** — a sweep that reports clean
-  because it counted nobody. That is the reason nothing surfaced this.
-- **Status** NEW · unassigned · candidate for Qwen, bounded and testable
+- `heyreach.stop_lead_in_campaign` was implemented, on `WRITE_ROUTES`, with a
+  fail-closed readback, and had **no caller anywhere**. No LinkedIn
+  counterpart to `EMAIL_STOP_LEAD` existed.
+- Invisible because `leadstop.sweep` skipped LinkedIn-staged contacts
+  **without incrementing `report['checked']`** - it reported clean because it
+  counted nobody. Fixed first and separately.
+- TASK-235 adds `LINKEDIN_STOP_LEAD`, `stop_linkedin_contact`, per-channel
+  sweep counting, and persists `heyreach_lead_id` on the staging path.
+  **The seal holds: NOT in SUPPORTED or CONDITIONAL**, verified after merge
+  (still 14 verbs). 28 new tests; 135 write-safety tests green.
+- **Carried forward:** `_record_linkedin` opens its own `store.transaction()`,
+  the same shape as `_record`, so it extends ISSUE-001 to the LinkedIn path.
+  It follows the existing convention and diverging would be worse. Fix both
+  together.
 
-### ISSUE-003 · Nothing settles the action ledger, and it is growing · MEDIUM
+### ISSUE-003 · The reconciler settled nothing · MEDIUM · **FIXED `ac6f7996`**
 
-- **Component** `scripts/reconcile_ledger.py`
-- **Impact** No confirmed touch exists for any of the fifteen people in 487
-  and 489. Reporting and fatigue both read confirmed touches.
-- **Root cause** `CHECKABLE = ("heyreach.add_lead",)` while the stuck keys are
-  `bison.activate` / `heyreach.activate`, so it settles **zero**. Nothing
-  schedules it, and the three live watch loops do not import `actionledger`.
-- **Measured 2026-09-20** 136 ledger rows: 64 attempted, 41 abandoned,
-  **26 unresolved**, 5 failed. The audit counted 18 unresolved that morning,
-  so the pool is growing.
-- **NOT a duplicate-send risk** — see REFUTED-001.
-- **Status** NEW · unassigned
+- `CHECKABLE = ("heyreach.add_lead",)` while every stuck key is an activate
+  verb, so it settled zero and reported success doing it.
+- TASK-237 adds both activate verbs and a new UNCONFIRMABLE state, so an
+  operation checkable against no provider is settled WITH A REASON rather
+  than skipped by a `continue` that printed "0 settled, 0 problems".
+- **A guard was added in review:** the loop walks `unsettled()`, which is
+  ATTEMPTED *and* UNRESOLVED, and applied one rule to both. Settling an
+  UNRESOLVED key FAILED would make it reservable and re-open the
+  duplicate-send path REFUTED-001 confirmed closed. Positive evidence still
+  settles; absence never does.
+- **CORRECTED:** this register previously said 26 unresolved. That counted
+  ROWS in an append-only log. It is **18 distinct keys - 14 unresolved, 4
+  attempted**, which is what Buggie said. The dry run now leaves 13 for a
+  person.
 
 ### ISSUE-004 · The Qwen backlog is starved and 10 results are stranded · HIGH (throughput)
 
