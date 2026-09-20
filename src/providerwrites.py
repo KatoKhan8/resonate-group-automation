@@ -587,14 +587,40 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
 #
 # The staging-repeat guard in `perform` checks this set and skips the
 # `staged_already` check for repeatable operations.
+# NARROWED BY CLAUDE ON INTEGRATION, 2026-09-20, and the reason arrived
+# AFTER the task was written.
+#
+# The task text proposed "pause/stop/activate/assign_sender yes", quoting the
+# audit's suggested fix, and Qwen implemented exactly that. Then Grok's
+# provider research came back with EmailBison's own documentation:
+#
+#   "The campaign scheduler runs in two cases: every time the campaign is
+#    RESUMED, and at the end of every sending day."
+#   https://docs.emailbison.com/campaigns/overview
+#
+# **So a repeated activate is NOT a no-op.** It triggers a scheduler run and
+# REPLANS the campaign - we watched 487's ten openers move from the 23rd to
+# the 22nd on one such run. The justification for making a state-setting verb
+# repeatable is that calling it again does nothing; for activate that premise
+# is now measured to be false.
+#
+# PAUSE and STOP_LEAD keep the fix, and the asymmetry is the point: they can
+# only ever mean somebody receives LESS, so a repeat is safe in the direction
+# that matters. Activation is the most consequential verb in this file - 481
+# and 485 hold live 487's own leads - and it is held back until the replan
+# consequence has been reviewed rather than shipped on a premise that has
+# since been falsified.
+#
+# ASSIGN_SENDER is held with it, not because it is known to be unsafe, but
+# because nothing has measured what a repeated sender attach does to a
+# campaign the provider has already planned. Unmeasured is not safe.
+#
+# This is a NARROWING of the worker's change, not a rejection of it: the
+# defect the task named - the emergency stop refusing itself - is fixed.
 REPEATABLE = (
     LINKEDIN_PAUSE,
     EMAIL_PAUSE,
     EMAIL_STOP_LEAD,
-    LINKEDIN_ACTIVATE,
-    EMAIL_ACTIVATE,
-    LINKEDIN_ASSIGN_SENDER,
-    EMAIL_ASSIGN_SENDER,
 )
 
 # ------------------------------------------- conditional permission

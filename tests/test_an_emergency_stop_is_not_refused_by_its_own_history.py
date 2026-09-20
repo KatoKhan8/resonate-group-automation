@@ -234,6 +234,41 @@ class CreatingVerbsAreNotRepeatable(CampaignTest):
         self.addCleanup(setattr, providerwrites, "SUPPORTED", self._restore)
         providerwrites.SUPPORTED = (providerwrites.EMAIL_CREATE_CAMPAIGN,)
 
+    def test_activate_is_NOT_repeatable_and_the_reason_is_measured(self):
+        """NARROWED ON INTEGRATION, 2026-09-20.
+
+        The task proposed activate as repeatable, on the premise that a
+        repeated state-setting verb is a no-op. Grok then returned
+        EmailBison's own documentation: "the campaign scheduler runs every
+        time the campaign is RESUMED". So a repeated activate REPLANS the
+        campaign - we watched 487's ten openers move a whole day on one such
+        run - and the premise is falsified.
+
+        Pause and stop keep the fix because they can only ever mean somebody
+        receives LESS. Activation is the most consequential verb in the file
+        and is held back until the replan consequence is reviewed.
+        """
+        self.assertIn(providerwrites.EMAIL_PAUSE, providerwrites.REPEATABLE)
+        self.assertIn(providerwrites.LINKEDIN_PAUSE,
+                      providerwrites.REPEATABLE)
+        self.assertIn(providerwrites.EMAIL_STOP_LEAD,
+                      providerwrites.REPEATABLE)
+        for held in (providerwrites.EMAIL_ACTIVATE,
+                     providerwrites.LINKEDIN_ACTIVATE,
+                     providerwrites.EMAIL_ASSIGN_SENDER,
+                     providerwrites.LINKEDIN_ASSIGN_SENDER):
+            with self.subTest(operation=held):
+                self.assertNotIn(held, providerwrites.REPEATABLE)
+
+    def test_every_repeatable_verb_can_only_mean_somebody_receives_less(self):
+        """The rule that decides membership of this set, asserted rather than
+        left in a comment. A verb belongs here only if repeating it cannot
+        increase anybody's exposure."""
+        self.assertEqual(
+            {providerwrites.EMAIL_PAUSE, providerwrites.LINKEDIN_PAUSE,
+             providerwrites.EMAIL_STOP_LEAD},
+            set(providerwrites.REPEATABLE))
+
     def test_a_second_create_with_the_same_payload_is_refused(self):
         """Creating verbs must still be deduplicated by the staging guard."""
         payload = {"name": "test-campaign"}
