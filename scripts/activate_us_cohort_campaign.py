@@ -23,7 +23,7 @@ consequence of a full mailbox, so the answer is a different mailbox.
 
 ## The sender, and the trade that was NOT taken
 
-    3437   rendulicbojan@gproductive.com   Bojan Rendulic
+    3437   <sender-3437-address>   <sender-3437-owner>
 
 The SAME HUMAN 487 already sends as, on a different one of his six inboxes:
 health `ok`, 1,784 emails sent from it, 6 of 15 booked today by campaign 352,

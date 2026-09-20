@@ -1,5 +1,11 @@
 # Production handoff — 2026-09-18 (morning). REPLACES the overnight version.
 
+<!-- Identifiers redacted 2026-09-20: seat-holder names and sending
+addresses are real people. Provider ids are kept, because an id is what
+the code passes and what a reader can look up; the values behind them
+are read from /sender-emails by anyone holding the credential. Same
+convention as docs/SENDER-ATTRIBUTION-DESIGN-2026-09-17.md. -->
+
 Written for a session with ZERO conversation context. **Recompute before
 acting on any number here.**
 
@@ -118,7 +124,7 @@ touches are zero".
           scheduled row      status `sent`
                              scheduled 2026-09-14T16:24:00Z
                              sent_at   2026-09-14T16:24:20Z   (20s late)
-          sender 3948        bernarda.vrbat@goproductive.online
+          sender 3948        <sender-3948-address>
           subject            the CONTROL opener
 
 So the end-to-end path - stage, sequence, sender, schedule, activate, send -

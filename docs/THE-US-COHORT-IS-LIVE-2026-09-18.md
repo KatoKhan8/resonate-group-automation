@@ -1,5 +1,11 @@
 # Campaign 489 is live: five approved contacts, a warm mailbox, a US window
 
+<!-- Identifiers redacted 2026-09-20: seat-holder names and sending
+addresses are real people. Provider ids are kept, because an id is what
+the code passes and what a reader can look up; the values behind them
+are read from /sender-emails by anyone holding the credential. Same
+convention as docs/SENDER-ATTRIBUTION-DESIGN-2026-09-17.md. -->
+
 Written 2026-09-18. Every number here was read from EmailBison, not inferred.
 **ACTIVE IS NOT SENT.** At the time of writing 489 has sent nothing, because
 its window has not opened.
@@ -12,7 +18,7 @@ its window has not opened.
     LEADS             5   (all in_sequence)
     SENT              0
     REPLIES/BOUNCES   0 / 0
-    SENDER            [3437]  rendulicbojan@gproductive.com
+    SENDER            [3437]  <sender-3437-address>
     CAP               5/day, 5 new leads/day
     WINDOW            09:00-17:00 America/New_York, Mon-Fri
     SEQUENCE          3 steps, thread_reply [false, true, true],
@@ -36,7 +42,7 @@ the answer is a different mailbox - not an edit to a correct campaign.
 
 ## The sender, and the trade that was refused
 
-    3437   rendulicbojan@gproductive.com   Bojan Rendulic
+    3437   <sender-3437-address>   <sender-3437-owner>
            health_of "ok", 1,784 emails sent, 6 of 15 booked today, 9 free
            readiness DEGRADED - lifetime bounce rate 2.1%, at or above the
            2% threshold. SEE THE CAVEAT BELOW; this was missed at selection.
@@ -146,7 +152,7 @@ because `work/` is gitignored for the reason that it names real people:
     1facb2457f55  b453289bf239  em2   98a86d2a6600f0f9   True
     1facb2457f55  b453289bf239  em3   084bc15a242989b8   True
 
-    by        zvonimir@resonategroup.co (operator authorisation 2026-09-18 US cohort)
+    by        <operator-address> (operator authorisation 2026-09-18 US cohort)
     at        2026-09-18T05:17:19Z
 
 `approval.is_accountable_approver` refuses a bare token, so `claude`, `qwen`

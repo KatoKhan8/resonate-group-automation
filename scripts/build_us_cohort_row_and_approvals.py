@@ -21,9 +21,9 @@ mailbox they send from has room today.
 
 ## The sender, and why it is not a new human
 
-    3437   rendulicbojan@gproductive.com
+    3437   <sender-3437-address>
 
-Bojan Rendulic - **the same human 487 already sends as**, on a different one
+<sender-3437-owner> - **the same human 487 already sends as**, on a different one
 of his six inboxes. Measured 2026-09-18:
 
     health          ok        (1,784 emails sent from it; genuinely warm)
@@ -92,6 +92,7 @@ and it is a refusal, not a warning.
 import argparse
 import difflib
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -131,13 +132,43 @@ SEQUENCE_FROM = "productive-email-control-v3"
 # The five the operator approved on 2026-09-18, named exactly. A list rather
 # than a query: an approval that covers "whatever the screen returns today" is
 # not an approval of anybody in particular.
-FIVE = [
-    ("28row-com", "janie-karas"),
-    ("digitalthirdcoast-com", "george-zlatin"),
-    ("ethoscreate-com", "christine-xoinis"),
-    ("roaringmedia-co", "jason-baker-advertising-marketing-leader"),
-    ("semcasting-com", "ray-kingman"),
-]
+#
+# THE NAMES LIVE IN `work/`, NOT HERE - moved 2026-09-20. They are five real
+# prospects, and the standing rule is that `work/` is gitignored because "it
+# is 300 real companies and 92 real contacts and it is not ours to publish".
+# This file is TRACKED, so it carries the pointer and the count while the
+# cohort itself is read from the sidecar.
+#
+# This list is why `tests/test_fixture_hygiene` was RED from 2026-09-18 -
+# and a red PII guard cannot catch the next leak, which is the real cost.
+# Record ids derive from prospect domains and so leak by construction;
+# TASK-189's verdict was that the guard is right to flag that and an
+# allowlist would open a hole the size of the queue. The fix is not to
+# exempt the data, it is to not track it.
+COHORT_FILE = os.path.join(os.path.dirname(store.queue_path()),
+                           "us-cohort-2026-09-18.json")
+
+
+def _load_cohort():
+    """The approved five, from the sidecar. REFUSES rather than defaulting.
+
+    An empty cohort here would build a campaign row naming nobody and pass
+    every count check that compares one derived number against another.
+    """
+    if not os.path.exists(COHORT_FILE):
+        raise SystemExit(
+            f"the approved cohort is not on this machine: {COHORT_FILE}. "
+            f"It holds real prospects, so it is gitignored and travels "
+            f"separately from the repository. Restore it before running.")
+    with open(COHORT_FILE, encoding="utf-8") as handle:
+        rows = (json.load(handle) or {}).get("cohort") or []
+    pairs = [(r["record_id"], r["contact_key"]) for r in rows]
+    if not pairs:
+        raise SystemExit(f"{COHORT_FILE} names nobody")
+    return pairs
+
+
+FIVE = _load_cohort()
 
 WINDOW = {
     "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
@@ -269,7 +300,7 @@ def main(argv=None):
         row["provider_status_expected"] = "paused"
         print(f"  {CANONICAL}: NEW")
     print(f"  records   : {len(row.get('record_ids') or [])}")
-    print(f"  sender    : {SENDER_ID} (Bojan Rendulic, the human 487 sends as)")
+    print(f"  sender    : {SENDER_ID} (<sender-3437-owner>, the human 487 sends as)")
     print(f"  window    : {WINDOW['start']}-{WINDOW['end']} "
           f"{WINDOW['timezone']}, {len(WINDOW['days'])} days")
     print(f"  daily cap : {row.get('daily_volume', {}).get('email')}")

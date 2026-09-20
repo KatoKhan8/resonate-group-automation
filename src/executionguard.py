@@ -323,7 +323,7 @@ ACTIVATION_OPERATIONS = frozenset({LINKEDIN_ACTIVATE, EMAIL_ACTIVATE})
 # EMAILBISON, SECOND COHORT, GRANTED 2026-09-18. A fresh written operator
 # authorization: the five contacts on the 2026-09-18 approval packet, the same
 # three approved CONTROL steps, a 5/day cap, and sender 3437 - a different
-# inbox of BOJAN RENDULIC, the same human 487 already sends as. At most 15
+# inbox of <SENDER-3437-OWNER>, the same human 487 already sends as. At most 15
 # emails.
 #
 # IT IS A SECOND COHORT AND NOT A SECOND CHANCE AT THE FIRST. 487 is untouched
