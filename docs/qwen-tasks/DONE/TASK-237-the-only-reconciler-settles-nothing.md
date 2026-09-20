@@ -95,3 +95,56 @@ separate review.
 
 All five requirements have tests; 1, 2 and 4 fail before the change; a dry
 run against the real ledger reports what it WOULD settle and writes nothing.
+
+## RESULT BLOCK
+
+STATUS: DONE
+COMMIT SHA: 4902c207
+TESTS: 15 new tests in tests/test_the_reconciler_settles_from_provider_truth.py,
+  all pass. 171 related tests across 6 modules pass (1 expected failure,
+  pre-existing).
+
+FILES CHANGED:
+  - src/actionledger.py: Added UNCONFIRMABLE state (terminal, settled,
+    unreservable). Added to settle()'s valid states.
+  - scripts/reconcile_ledger.py: Rewritten. Added _check_heyreach_activate
+    and _check_bison_activate checkers. Unknown operations settle to
+    UNCONFIRMABLE with reason. SENT settlements write confirmed touch.
+  - tests/test_the_reconciler_settles_from_provider_truth.py: New, 15 tests
+    covering all 5 requirements.
+
+FINDINGS:
+  1. The `continue` in the old reconciler was the whole bug. It silently
+     skipped any operation not in CHECKABLE, reporting "0 settled, 0 problems"
+     while 26 keys rotted. Fixed by replacing `continue` with UNCONFIRMABLE
+     settlement.
+  2. `_record_confirmed_touch` lives in providerwrites.py, not actionledger.py
+     as the task doc suggested. The reconciler constructs a minimal
+     Authorization from the ledger row to call it.
+  3. Bison identifies leads by email, not LinkedIn URL. Added _email_for()
+     helper alongside the existing _profile_for().
+  4. UNCONFIRMABLE is terminal (like SENT): it cannot be regressed to SENT
+     later, and it blocks re-reservation. This is the right direction - an
+     operation that genuinely cannot be confirmed should never read as success.
+
+SCHEDULING RECOMMENDATION (not wired in this task):
+  The reconciler should run on a cron schedule, not inside a watch loop.
+  Watch loops monitor live campaigns and adding reconciliation work to them
+  is a separate decision. A daily cron at a quiet hour (e.g. 03:17 local)
+  is sufficient - the keys being settled are already stuck, so urgency is
+  low. `py -3 scripts/reconcile_ledger.py --live --by reconciler-cron` is
+  the command. The dry-run form should run in CI on every commit.
+
+RISKS:
+  - The reconciler makes live provider reads. If the provider is slow or
+    rate-limited, the run will be slow. Not a safety issue (it is read-only)
+    but an operational one.
+  - _record_touch_for constructs an Authorization from ledger row data. If
+    the record has been deleted or the step is missing, the touch write will
+    fail. The reconciler catches and reports this without failing the run.
+
+RECOMMENDED CLAUDE ACTION:
+  Review the UNCONFIRMABLE state addition to actionledger.py. It is terminal,
+  which means a key settled to UNCONFIRMABLE can never be re-reserved or
+  regressed to SENT. This is the right direction but is a new state that
+  other modules may need to handle (e.g. reporting, fatigue counts).
