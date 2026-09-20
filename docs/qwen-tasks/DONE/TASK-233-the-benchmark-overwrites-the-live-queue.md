@@ -114,3 +114,48 @@ Found by the Buggie audit, 2026-09-20, finding #2, graded CRITICAL. The
 reproduction in that report was read-only - the three guards were inspected,
 not defeated against the real file. Reproduce it yourself against a temp
 store before you fix it: a fix for a defect nobody reproduced is a guess.
+
+## Result
+
+    STATUS             DONE
+    COMMIT SHA        8d1a6cf3
+    TESTS             tests.test_a_benchmark_cannot_overwrite_the_live_queue:
+                      10 passed, 0 failed
+                      tests.test_scalesim: 17 passed, 0 failed (pre-existing,
+                      all still green)
+                      tests.test_explorer.TestTheScaleSimulation: 7 passed,
+                      0 failed
+                      tests.test_invariants: 82 passed, 1 failed (pre-existing
+                      failure in test_emailbison_posts_only_to_routes_it_declares,
+                      unrelated - confirmed by running against stashed changes)
+    FILES CHANGED     src/scalesim.py
+                      tests/test_a_benchmark_cannot_overwrite_the_live_queue.py (new)
+                      docs/qwen-tasks/DONE/TASK-233-the-benchmark-overwrites-the-live-queue.md (moved from TODO/)
+    FINDINGS          1. The defect is real and reproducible. Removing the
+                         isolation wrapper causes the digest tests to fail
+                         with different SHA-256 hashes before/after, proving
+                         the queue was overwritten.
+                      2. store.refuse_production_write only fires when
+                         `unittest` is in sys.modules. From a normal shell,
+                         the benchmark writes freely to work/queue.jsonl.
+                      3. refuse_evidence_loss and refuse_history_loss are
+                         correct for their question (known records losing
+                         evidence/history) but structurally cannot catch a
+                         total replacement with unknown ids.
+                      4. The write_to parameter enforces production path
+                         rejection by comparing the resolved absolute path
+                         against store.PRODUCTION_WORK with both exact match
+                         and prefix match (for subdirectories).
+    RISKS             1. The _isolated_store context manager saves and
+                         restores environment variables. If a new state
+                         override is added to STATE_OVERRIDES but a caller
+                         bypasses use_directory, it could still leak. The
+                         save/restore covers the full tuple, so this is
+                         defensive.
+                      2. shutil.rmtree in the finally block uses
+                         ignore_errors=True. On Windows, a held file handle
+                         could leave temp files behind. This is the same
+                         pattern used elsewhere in the codebase.
+    RECOMMENDED       Integrate. The fix is minimal, the tests prove the
+    CLAUDE ACTION     defect and its cure, and no existing behaviour changes
+                      beyond isolating the benchmark's writes.
