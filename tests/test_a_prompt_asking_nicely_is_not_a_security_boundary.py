@@ -225,6 +225,73 @@ class ProviderWriteGuardTest(unittest.TestCase):
         with self.assertReachedWire():
             self.wire("PATCH", "https://some-new-provider.test/campaigns/1")
 
+    # ------------------------------------------- GLM's evasions, confirmed
+
+    def test_a_trailing_dot_fqdn_does_not_evade_the_guard(self):
+        """FOUND BY GLM'S ADVERSARIAL REVIEW, hours after the guard landed,
+        and REPRODUCED before it was accepted.
+
+        `send.resonategroup.co.` is a valid FQDN that DNS and HTTP resolve
+        identically, and the first version compared host strings exactly - so
+        `BISON_BASE=https://send.resonategroup.co./api` would have mutated
+        live campaigns with the guard reporting nothing to guard.
+        """
+        import src.providers.bison   # noqa: F401  - registers
+        self.assertTrue(providers.is_prospect_facing(
+            "https://send.resonategroup.co./api/campaigns/487/pause"))
+        with self.assertRaises(providers.ProviderWriteRefused):
+            self.wire("PATCH",
+                      "https://send.resonategroup.co./api/campaigns/487/pause")
+        self.assertEqual([], self.opened)
+
+    def test_case_does_not_evade_the_guard(self):
+        import src.providers.bison   # noqa: F401
+        with self.assertRaises(providers.ProviderWriteRefused):
+            self.wire("PATCH",
+                      "https://SEND.ResonateGroup.CO/api/campaigns/487/pause")
+
+    def test_a_malformed_url_does_not_raise_out_of_the_guard(self):
+        """Also GLM's. `urlsplit("http://[tracking-link]").hostname` raises
+        ValueError, and bracket placeholders are ordinary in scraped
+        signature HTML. `str(url or "")` proved the function was meant to be
+        total over garbage; it was not."""
+        for bad in ("http://[tracking-link]", "http://[", "http://[::zz]"):
+            with self.subTest(url=bad):
+                self.assertIsNotNone(providers.host_of(bad))   # no raise
+
+    def test_an_unreadable_destination_is_refused_rather_than_waved_through(self):
+        """Fail-closed, deliberately. A URL nobody can parse is not evidence
+        of safety, and it costs nothing real - urllib is about to reject it
+        anyway."""
+        with self.assertRaises(providers.ProviderWriteRefused):
+            self.wire("PATCH", "http://[tracking-link]/campaigns/1")
+        self.assertEqual([], self.opened)
+
+    def test_a_malformed_url_on_a_READ_is_still_not_refused(self):
+        """The fail-closed direction applies to mutations only. A read of a
+        garbage URL must reach urllib and fail there, as it always did."""
+        with self.assertRaises(Exception) as caught:
+            self.wire("GET", "http://[tracking-link]/x")
+        self.assertNotIsInstance(caught.exception,
+                                 providers.ProviderWriteRefused)
+
+    def test_registration_and_lookup_normalise_through_the_same_function(self):
+        """Two spellings of one host must not be able to disagree about
+        whether it is guarded."""
+        providers.guard_prospect_facing("https://Example.TEST./api")
+        try:
+            self.assertTrue(providers.is_prospect_facing(
+                "https://example.test/x"))
+            self.assertTrue(providers.is_prospect_facing(
+                "https://EXAMPLE.TEST./x"))
+        finally:
+            providers._prospect_facing_hosts.discard("example.test")
+
+    def test_an_unparseable_host_is_never_registered_as_guarded(self):
+        before = set(providers._prospect_facing_hosts)
+        providers.guard_prospect_facing("http://[tracking-link]")
+        self.assertEqual(before, set(providers._prospect_facing_hosts))
+
     # ---------------------------------------------------------- the shape
 
     def test_a_swapped_transport_is_untouched_by_the_guard(self):

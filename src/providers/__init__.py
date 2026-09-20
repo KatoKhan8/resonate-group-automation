@@ -285,25 +285,86 @@ WRITES_ENV = "RESONATE_PROVIDER_WRITES"
 _prospect_facing_hosts = set()
 
 
+class _Unparseable(str):
+    """A host that could not be read. Distinct from "no host", because on a
+    safety path those must not be the same answer."""
+
+
+def host_of(url_or_host):
+    """The comparable host, or `_Unparseable`, or None. NEVER raises.
+
+    THREE DEFECTS THIS FIXES, all found by GLM's adversarial review of the
+    first version within hours of it landing, and all reproduced before being
+    accepted:
+
+    1. IT RAISED. `urlsplit("http://[tracking-link]").hostname` raises
+       ValueError - "does not appear to be an IPv4 or IPv6 address" - and
+       bracket placeholders are ordinary in scraped signature HTML. The
+       function's own `str(url or "")` proved it was meant to be total over
+       garbage and it was not.
+    2. A TRAILING DOT EVADED IT. `send.resonategroup.co.` is a valid FQDN
+       that DNS and HTTP resolve identically to `send.resonategroup.co`, and
+       exact string comparison called it a different host. That is a real
+       bypass: `BISON_BASE=https://send.resonategroup.co./api` would have
+       mutated live campaigns with the guard reporting nothing to guard.
+    3. PUNYCODE AND UNICODE never matched each other.
+
+    So the host is normalised rather than compared raw: lower-cased, trailing
+    dot stripped, IDNA-folded where that is possible.
+    """
+    text = str(url_or_host or "").strip()
+    if not text:
+        return None
+    try:
+        host = urllib.parse.urlsplit(
+            text if "//" in text else "//" + text).hostname
+    except Exception:
+        # Unparseable is NOT "no host". A mutation whose destination cannot be
+        # read must not be waved through on the strength of an exception.
+        return _Unparseable(text[:200])
+    if not host:
+        return None
+    host = host.strip().rstrip(".").lower()
+    if not host:
+        return None
+    try:
+        # Folds unicode and punycode spellings onto one another. ASCII hosts
+        # pass through unchanged; a host IDNA cannot encode keeps its
+        # lower-cased form rather than becoming unparseable, because it is
+        # still a perfectly comparable string.
+        host = host.encode("idna").decode("ascii").lower()
+    except Exception:
+        pass
+    return host
+
+
 def guard_prospect_facing(url_or_host):
     """Declare a host whose mutations reach a prospect. Called at import by
     the modules that own `WRITE_ROUTES`, and by nothing else.
 
     Idempotent, and tolerant of being handed a full base URL, because that is
-    what the calling modules have to hand.
+    what the calling modules have to hand. Registration normalises through the
+    SAME function as the lookup - two spellings of one host must not be able
+    to disagree about whether it is guarded.
     """
-    text = str(url_or_host or "").strip()
-    if not text:
-        return
-    host = urllib.parse.urlsplit(
-        text if "//" in text else "//" + text).hostname
-    if host:
-        _prospect_facing_hosts.add(host.lower())
+    host = host_of(url_or_host)
+    if host and not isinstance(host, _Unparseable):
+        _prospect_facing_hosts.add(host)
 
 
 def is_prospect_facing(url):
-    host = urllib.parse.urlsplit(str(url or "")).hostname
-    return bool(host) and host.lower() in _prospect_facing_hosts
+    """True when a mutation to this URL could reach a prospect.
+
+    An UNPARSEABLE destination answers True. That is the fail-closed
+    direction and it is the right one on a safety path: a URL nobody can read
+    is not evidence of safety, and a mutation to one is refused rather than
+    permitted. It costs nothing real - a URL this cannot parse is one urllib
+    is about to reject anyway.
+    """
+    host = host_of(url)
+    if isinstance(host, _Unparseable):
+        return True
+    return bool(host) and host in _prospect_facing_hosts
 
 # Set by `allow_writes` only. A list so nesting is a stack rather than a flag
 # that the inner block's exit switches off for the outer one.
