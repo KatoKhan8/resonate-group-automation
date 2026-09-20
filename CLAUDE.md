@@ -88,6 +88,21 @@ is still being researched, personalisation depth is licensed by evidence
 rather than chosen, and campaign performance is never allowed to edit a
 safety policy.
 
+CREDENTIAL NAMES COME FROM `config.VARIABLES`. NEVER GUESS ONE.
+On 2026-09-20 a session reported ContactOut, Blitz, Apify and Slack as
+unauthenticated and concluded that decision-maker discovery and cohort
+expansion were impossible. It had invented four plausible variable names. The
+real ones are `CONTACTOUT_TOKEN`, `BLITZ_API_KEY` and `APIFY_TOKEN`; all were
+set, and ContactOut had 36,679 credits and 117,419 searches remaining. The
+codebase was never wrong - `src/config.py`, the adapters, `src/web/security.py`
+and `tests/base.py` all agree. **`CONTACTOUT_KEY` DOES NOT EXIST.**
+Run `py -3 scripts/credential_health.py --verify`, which reads the registry
+and so cannot invent a name, and which keeps five states apart:
+NOT_CONFIGURED / CONFIGURED_UNVERIFIED / AUTHENTICATION_VERIFIED /
+AUTHENTICATION_FAILED / PROVIDER_UNAVAILABLE. A set variable is NOT an
+authenticated one, and a transport failure is NOT a bad key. Never print a
+credential value.
+
 Rules
 
 - work/queue.jsonl holds record state and work/campaigns.jsonl holds campaign

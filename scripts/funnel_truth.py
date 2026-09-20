@@ -80,8 +80,12 @@ def main():
     print(f"  THE FIRST BIG DROP")
     print(f"    accounts carrying NO contact    {no_contact}"
           f"   ({100*no_contact//total}% of the estate)")
-    print(f"    -> these need decision-maker discovery, which is a PAID")
-    print(f"       ContactOut call. CONTACTOUT_KEY is currently ABSENT.")
+    print(f"    -> these need decision-maker discovery, a PAID ContactOut")
+    print(f"       call. ContactOut IS configured and authenticating:")
+    print(f"       `py -3 scripts/credential_health.py --verify`.")
+    print(f"       The variable is CONTACTOUT_TOKEN. An earlier version of")
+    print(f"       THIS script asserted CONTACTOUT_KEY was absent and")
+    print(f"       concluded the path was dead. It invented the name.")
     print()
     return 0
 
