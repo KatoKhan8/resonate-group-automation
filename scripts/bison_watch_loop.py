@@ -57,6 +57,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src import watchsink                                       # noqa: E402
 from src.providers import bison, load_env                       # noqa: E402
 
 # THE DEFAULT IS 487 AND THE ARGUMENT EXISTS BECAUSE THERE ARE NOW TWO.
@@ -68,6 +69,9 @@ SENT_WORDS = {"sent", "delivered"}
 
 
 def emit(line):
+    """Stdout only. The DURABLE emitter is built per campaign in `main` -
+    see `src/watchsink.py` for why printing alone was not a monitor.
+    """
     print(line, flush=True)
 
 
@@ -116,6 +120,12 @@ def main(argv=None):
     load_env(os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "config", ".env"))
 
+    # Durable from here down. `emit` still prints, so a person running this in
+    # a terminal sees what they always saw; the difference is that the line
+    # now also lands in `work/watch-events/bison-<id>.jsonl` and survives the
+    # shell. See the module docstring of `src/watchsink.py`.
+    emit = watchsink.emitter("bison", campaign=watched)
+
     previous = None
     errors = 0
     while True:
@@ -127,8 +137,16 @@ def main(argv=None):
             if errors in (3, 12):
                 emit(f"READ-ERROR {watched} unreadable {errors}x: "
                      f"{type(exc).__name__}")
+            # Beat anyway, with the reason. Alive-and-blind is a different
+            # incident from alive-and-nothing-changed and must not read as it.
+            watchsink.beat("bison", campaign=watched,
+                           note=f"READ-ERROR {errors}x {type(exc).__name__}")
             time.sleep(args.interval)
             continue
+
+        # EVERY poll, including the ones that emit nothing. This is what makes
+        # an empty event log readable as "unchanged" rather than "died".
+        watchsink.beat("bison", campaign=watched, state=current)
 
         if previous is None:
             emit(f"WATCHING {watched} status={current['status']} "

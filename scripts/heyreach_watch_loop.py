@@ -41,7 +41,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import liststaging                                     # noqa: E402
+from src import liststaging, watchsink                          # noqa: E402
 from src.providers import heyreach, load_env                     # noqa: E402
 
 PROVIDER_ID = 605732
@@ -54,6 +54,8 @@ def h12(value):
 
 
 def emit(line):
+    """Stdout only. The DURABLE emitter is built in `main` - see
+    `src/watchsink.py` for why printing alone was not a monitor."""
     print(line, flush=True)
 
 
@@ -87,6 +89,11 @@ def main(argv=None):
     load_env(os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "config", ".env"))
 
+    # Durable from here down. `emit` still prints; the difference is that the
+    # line now also lands in `work/watch-events/heyreach-605732.jsonl` and
+    # survives the shell that launched this process.
+    emit = watchsink.emitter("heyreach", campaign=PROVIDER_ID)
+
     previous = None
     consecutive_errors = 0
     while True:
@@ -100,8 +107,18 @@ def main(argv=None):
             if consecutive_errors in (3, 12):
                 emit(f"READ-ERROR 605732 unreadable {consecutive_errors}x: "
                      f"{type(exc).__name__}")
+            watchsink.beat("heyreach", campaign=PROVIDER_ID,
+                           note=f"READ-ERROR {consecutive_errors}x "
+                                f"{type(exc).__name__}")
             time.sleep(args.interval)
             continue
+
+        # EVERY poll, including the ones that emit nothing. `leads` is a dict
+        # keyed by a hashed profile - no PII reaches the heartbeat.
+        watchsink.beat("heyreach", campaign=PROVIDER_ID,
+                       state={"status": current.get("status"),
+                              "total": current.get("total"),
+                              "leads": len(current.get("leads") or {})})
 
         if previous is None:
             emit(f"WATCHING 605732 status={current['status']} "

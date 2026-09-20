@@ -93,7 +93,12 @@ STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    # What the PROVIDER did to a staged lead, as distinct from
                    # what this system did. A stray row here would claim a real
                    # prospect had been contacted, so it moves with the rest.
-                   "LEAD_OBSERVATIONS")
+                   "LEAD_OBSERVATIONS",
+                   # The background watchers' durable output and their
+                   # liveness beats. Not row state, but the file an operator
+                   # reads to answer "has it sent yet" - a test appending a
+                   # fixture SEND line there would be a fabricated send.
+                   "WATCH_EVENTS", "WATCH_HEARTBEAT")
 
 
 def use_directory(path):

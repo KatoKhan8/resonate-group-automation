@@ -660,7 +660,12 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
     # cannot silently fall behind the code.
     SELF_WRITERS = ("agencydnc", "clientreview", "discovery", "gtm",
                     "observability", "poller", "replywatch", "research",
-                    "signals", "spendledger", "tagsync", "mx")
+                    "signals", "spendledger", "tagsync", "mx",
+                    # The watchers' durable events and liveness beats. Added
+                    # 2026-09-20 with the module, and this checklist caught
+                    # it the same hour - which is the half of the pair that
+                    # keeps the list honest doing its job.
+                    "watchsink")
 
     def _real(self, name):
         return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")

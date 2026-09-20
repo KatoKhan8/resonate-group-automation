@@ -37,12 +37,15 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src import watchsink                                       # noqa: E402
 from src.providers import load_env                              # noqa: E402
 
 PROVIDERS = ("emailbison", "heyreach")
 
 
 def emit(line):
+    """Stdout only. The DURABLE emitter is built in `main` - see
+    `src/watchsink.py` for why printing alone was not a monitor."""
     print(line, flush=True)
 
 
@@ -71,6 +74,12 @@ def main(argv=None):
     #
     # `poll_once` also never raises: a failure is a status, not a crash.
     from src import replywatch
+
+    # Durable from here down. This loop already wrote `replywatch.json` and
+    # `notifications.jsonl`, so it was the one watcher that was not blind -
+    # but its own event lines still went to the dead pipe, so a REPLY line
+    # and a POLL-ERROR line were both unreadable after the shell exited.
+    emit = watchsink.emitter("replies")
 
     emit(f"WATCHING replies on {', '.join(PROVIDERS)}")
     errors = {p: 0 for p in PROVIDERS}
@@ -110,6 +119,10 @@ def main(argv=None):
             if count:
                 emit(f"REPLY {provider} ingested={count} - the lead is "
                      f"stopped on both channels")
+        # EVERY sweep, after both providers. Reply protection going quiet and
+        # reply protection dying look identical from the outside.
+        watchsink.beat("replies",
+                       state={"errors": dict(errors), "skips": dict(skips)})
         time.sleep(args.interval)
 
 
