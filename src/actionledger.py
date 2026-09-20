@@ -48,8 +48,9 @@ SENT = "sent"                # provider confirmed, and a read-back agreed
 FAILED = "failed"            # provider refused before acting. Safe to retry
 ABANDONED = "abandoned"      # a human decided not to complete it
 UNRESOLVED = "unresolved"    # provider truth could not settle it. NEVER retry
+UNCONFIRMABLE = "unconfirmable"  # provider cannot confirm this. Never success
 
-SETTLED = (SENT, FAILED, ABANDONED)
+SETTLED = (SENT, FAILED, ABANDONED, UNCONFIRMABLE)
 # UNRESOLVED is deliberately NOT settled. It is the state that exists so that
 # "we do not know whether they were contacted" can never be mistaken for
 # "they were not contacted", and it blocks the key forever until a human
@@ -64,7 +65,7 @@ BLOCKING = (ATTEMPTED, UNRESOLVED)
 # `sent` back to `attempted`, destroying the durable record that a real person
 # had been contacted. `stepstate` already writes the rule down: terminal means
 # terminal. This is the ledger implementing it.
-TERMINAL = (SENT,)
+TERMINAL = (SENT, UNCONFIRMABLE)
 UNRESERVABLE = BLOCKING + TERMINAL
 
 
@@ -367,7 +368,7 @@ def reserve(key, *, channel, workspace, campaign_id, sender_id, rec_id,
 def settle(key, state, *, why="", provider_response=None, readback=None,
            timeout=None):
     """Record what actually happened. Appends; never edits history."""
-    if state not in (SENT, FAILED, ABANDONED, UNRESOLVED):
+    if state not in (SENT, FAILED, ABANDONED, UNRESOLVED, UNCONFIRMABLE):
         raise ActionRefused(f"{state!r} is not a settlement")
     with store.file_transaction(path(), timeout) as rows:
         found = rows_for(key, rows)
