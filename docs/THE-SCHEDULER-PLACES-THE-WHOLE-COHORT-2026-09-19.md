@@ -98,12 +98,19 @@ the mailbox's own `daily_limit`.**
 That is a single client campaign booking past the cap this system treats as
 the ceiling on a mailbox. So:
 
-- `daily_limit` is **not a hard provider cap**, or not one enforced at
-  planning time. Something can overbook a mailbox.
-- Our model of FULL is therefore SOFTER than assumed. `senderheadroom` calls
-  16-of-15 FULL, which stays the right refusal - it will not add an
-  eleventh - but "FULL" means "at or past the number we treat as the limit",
-  NOT "the provider will refuse more".
+- `daily_limit` is **not enforced at BOOKING time**. Something can overbook a
+  mailbox.
+
+  > **NARROWED 2026-09-20 by `docs/THE-LIMIT-BOOKS-SOFT-AND-SENDS-HARD-2026-09-20.md`.**
+  > The original wording here was "not a hard provider cap", which was too
+  > broad. It is soft at BOOKING and HARD at SENDING: 47 mailboxes sent
+  > exactly 15 on 2026-09-17 and none sent more, across 225 mailboxes and
+  > four days. So an overbooked day sheds rows, and which row sheds is
+  > UNKNOWN.
+- Our model of FULL is therefore softer than assumed AT BOOKING. `senderheadroom`
+  calls 16-of-15 FULL, which stays the right refusal. **The 09-20 measurement
+  has since made FULL stronger than this paragraph claimed**: it does mean the
+  mailbox will not SEND more that day.
 - Whether the overbooked 16th actually sends on the 21st is **UNKNOWN**, and
   it is cheaply observable on Monday.
 

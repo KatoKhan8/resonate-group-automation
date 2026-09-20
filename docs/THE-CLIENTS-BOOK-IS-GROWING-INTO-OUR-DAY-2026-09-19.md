@@ -9,6 +9,14 @@
 > the complete walk of the 17th and holds five now, so the mailbox has zero
 > slack on the day 487 sends. That justifies the watcher. It is NOT a
 > prediction that 487 will slip.
+>
+> **PARTLY REINSTATED 2026-09-20 by
+> `docs/THE-LIMIT-BOOKS-SOFT-AND-SENDS-HARD-2026-09-20.md`.** Withdrawing the
+> warning was right that nothing had overflowed and WRONG to read a full day
+> as reassuring. The send cap is now measured as hard, so exactly 15 of 15
+> means the next row booked on that mailbox-day cannot send that day - and
+> which of the sixteen sheds is UNKNOWN. Still not a prediction that 487
+> slips; a precise statement of the exposure.
 
 Read 2026-09-19T10:15Z, from a fresh forward-book walk started at 09:28Z.
 **Addendum to `docs/THE-SEND-DATE-IS-THE-MAILBOX-2026-09-19.md`**, which

@@ -65,9 +65,11 @@ Monday closes at 17:00Z with `connection: None` -> it no longer does.
 > COHORT**, which predicts BOTH campaigns exactly where the single-slot rule
 > gets 489 wrong. 489's date is now PROVEN rather than inferred. Two further
 > corrections there: the 23rd is exactly 15/15 rather than oversubscribed, and
-> **client campaign 352 books 16 rows on a mailbox whose `daily_limit` is 15**,
-> so `daily_limit` is not a hard provider cap and every capacity number in
-> this system rests on it.
+> **client campaign 352 books 16 rows on a mailbox whose `daily_limit` is 15.**
+> NARROWED 2026-09-20: the limit is SOFT AT BOOKING and HARD AT SENDING - 47
+> mailboxes sent exactly 15 on the 17th and none sent more. So an overbooked
+> day SHEDS rows, which row is UNKNOWN, and 2736 sits at exactly 15/15 on the
+> day 487 sends. See `docs/THE-LIMIT-BOOKS-SOFT-AND-SENDS-HARD-2026-09-20.md`.
 
 **The send date is not a property of the campaign. It is a property of the
 mailbox.** From the complete forward-book walk, per campaign, per sender,
