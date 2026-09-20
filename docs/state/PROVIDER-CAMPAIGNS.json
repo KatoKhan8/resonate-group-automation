@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-19T09:27:15+00:00",
+  "generated_at": "2026-09-20T19:04:25+00:00",
   "source": "HeyReach public API, read-only. Credential env var: HEYREACH_KEY.",
   "heyreach": {
     "campaigns_total_in_account": 86,
@@ -68,7 +68,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-19T09:27:15+00:00"
+        "last_provider_readback": "2026-09-20T19:04:25+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -133,7 +133,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-19T09:27:15+00:00"
+        "last_provider_readback": "2026-09-20T19:04:25+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -198,7 +198,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-19T09:27:15+00:00"
+        "last_provider_readback": "2026-09-20T19:04:25+00:00"
       },
       {
         "internal_campaign_id": "productive-linkedin-production-v1",
@@ -263,7 +263,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-19T09:27:15+00:00"
+        "last_provider_readback": "2026-09-20T19:04:25+00:00"
       }
     ],
     "status_totals": {
