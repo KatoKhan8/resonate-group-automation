@@ -13,18 +13,31 @@ on it.
 ## The question asked
 
 > Campaign 487 was live and healthy on 2026-09-18, and at 2026-09-20T12:44:45Z
-> it flipped to `paused` - its ten leads had already flipped to
-> `sending_paused` before that. Nothing in our system wrote to it, sender 2736
-> is healthy and unchanged, and 487 is the only one of 25 campaigns in the
+> it flipped to `paused`. Nothing in our system wrote to it, sender 2736 is
+> healthy and unchanged, and 487 is the only one of 25 campaigns in the
 > estate that moved. Did you pause it?
 
 ## The answer
 
 > **"I didn't touch it."**
 
-So the pause is **unattributed and presumed provider-side**. The operator did
-not pause it, which removes the one reading under which resuming would have
-been overriding a human decision rather than recovering from a fault.
+## AND THE CAUSE WAS FOUND SHORTLY AFTERWARDS
+
+The operator's answer was correct and the pause was NOT provider-side, as
+this document first assumed. **An audit agent paused it.** A skeptic in the
+"Buggie" crew, verifying its own finding, passed a bare dict to
+`orchestrator.pause`; the repeat guard did not fire, `providerwrites.perform`
+reached the real transport, and a live `PATCH /api/campaigns/487/pause` hit
+the provider at 12:44:45Z. Its own report records this.
+
+That does not weaken the grant - it strengthens it. The pause was nobody's
+decision about this campaign, so resuming it overrides no judgement at all;
+it undoes an accident.
+
+The hole that allowed it is closed: `providers.refuse_unauthorized_write`
+now refuses a prospect-facing mutation on the wire unless an entry point
+explicitly opts in, and `scripts/resume_487.py` is the only caller that
+does - scoped to one call and named for this authorization.
 
 ## What is authorized
 
@@ -51,10 +64,19 @@ sending window**, with the acceptance test below.
    sends to every lead it holds; if the provider reports any number but ten,
    the cohort changed under us and the resume must refuse.
 
-4. **THE ACCEPTANCE TEST IS THE MEMBERSHIP, NOT THE CAMPAIGN STATUS.** This
-   is the whole lesson of the incident. 487 read `active` for hours while
-   every one of its leads read `sending_paused`, and `resume_campaign`
-   confirms the campaign status and nothing else. A resume is SUCCESSFUL only
+4. **THE ACCEPTANCE TEST IS THE MEMBERSHIP, NOT THE CAMPAIGN STATUS.**
+   `resume_campaign` confirms the campaign's status and nothing else - it has
+   never looked at a lead - so it can report "started" on a campaign whose
+   leads are all still `sending_paused`.
+
+   (An earlier version of this grant justified the condition by claiming 487
+   had been OBSERVED in that divergent state for hours. **That claim was
+   withdrawn**: the ordering of two readings was never established and the
+   simple explanation - one pause setting campaign and leads together - is
+   the right one. The condition stands on the gap in `resume_campaign`, which
+   is real either way.)
+
+   A resume is SUCCESSFUL only
    when all ten leads read `in_sequence`. Campaign `active` with leads still
    `sending_paused` is the SAME FAULT and must be reported as a failed
    recovery, not a successful resume.
