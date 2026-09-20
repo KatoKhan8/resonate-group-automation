@@ -167,9 +167,25 @@ giving the trigger, the call order, and the prospect-facing result.
 def _targets():
     """Built lazily so a broken import in one area cannot block the others."""
     from src import (store, actionledger, collision, bisonevents,
-                     executionguard, providerwrites,
+                     executionguard, providerwrites, providers,
                      senderownership, queuejournal)
     return {
+        # ADDED 2026-09-20, HOURS AFTER THE CODE LANDED, and it is the target
+        # with the most recent blood on it. An audit agent paused LIVE
+        # campaign 487 at 12:44:45Z by importing `src` and calling through;
+        # there was no barrier between an ad-hoc process and the real key.
+        # This guard is that barrier. If it can be defeated - by a method it
+        # does not class as a mutation, a host spelling that evades the
+        # registered set, a scope that outlives its block, a concurrent
+        # caller, or an entry point that opens the window and never closes it
+        # - then the fix for the incident does not hold, and it is better to
+        # learn that from a reviewer than from a second paused campaign.
+        "writeguard": (GENERIC_QUESTION, [
+            ("providers.refuse_unauthorized_write",
+             providers.refuse_unauthorized_write),
+            ("providers.is_prospect_facing", providers.is_prospect_facing),
+            ("providers.allow_writes", providers.allow_writes),
+        ]),
         # ADDED 2026-09-17, and reviewed BEFORE it has a caller for the same
         # reason `webhook` was: this one decides what the queue IS after a
         # crash. A dedupe that can be defeated costs a duplicate message; a
