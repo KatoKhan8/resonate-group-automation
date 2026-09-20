@@ -96,11 +96,23 @@ STALE_AFTER_HOURS = 24
 # one, and saying so is more useful than a date five months out.
 DEFAULT_HORIZON_DAYS = 21
 
-# Monday..Friday. Passed in by the caller rather than assumed, because which
-# days a cohort may send on is a property of the CAMPAIGN SCHEDULE and not of
-# the mailbox - 487 is Mon-Fri Europe/Zagreb while the client's own campaigns
-# demonstrably send at weekends.
-WEEKDAYS = (0, 1, 2, 3, 4)
+# Monday..Friday, **ISO: Monday is 1**. Passed in by the caller rather than
+# assumed, because which days a cohort may send on is a property of the
+# CAMPAIGN SCHEDULE and not of the mailbox - 487 is Mon-Fri Europe/Zagreb
+# while the client's own campaigns demonstrably send at weekends.
+#
+# ISO BECAUSE THE REST OF THE REPOSITORY IS ISO, and this module was the one
+# outlier. `geo.windows()["days"]` returns `[1, 2, 3, 4, 5]` under a comment
+# reading "Monday is 1, matching ISO weekday"; `geo.py`, `schedule.py` and
+# `ooo.py` all compare with `isoweekday()`. This module compared with
+# `weekday()` against a 0-based tuple, so the obvious wiring -
+# `earliest_day(..., sending_days=geo.windows(config)["days"])` - silently
+# read Monday..Friday as Tuesday..SATURDAY: it refused Monday and offered a
+# weekend, on an estate where both live campaigns are Mon-Fri.
+#
+# Found by Buggie 2026-09-20 and fixed before the first production caller
+# existed. A second representation of one truth is how the two drift.
+WEEKDAYS = (1, 2, 3, 4, 5)
 
 
 class HeadroomRefused(ValueError):
@@ -333,13 +345,22 @@ def earliest_day(state, sender_id, limit, active_campaign_ids=UNSUPPLIED, need=1
         start = on_or_after
 
     forward = book(state)
-    allowed = set(sending_days or ())
+    allowed = set(int(d) for d in (sending_days or ()))
+    # 0 is not a valid ISO weekday. It is unambiguous evidence the caller is
+    # using `datetime.weekday()` numbering, and guessing which convention was
+    # meant is exactly how Monday became Saturday. Refuse instead.
+    if 0 in allowed:
+        raise HeadroomRefused(
+            "sending_days uses ISO numbering (Monday is 1, Sunday is 7) to "
+            "match geo.windows() and schedule.py; 0 is not a weekday. A "
+            "0-based set from datetime.weekday() would shift every day by "
+            "one and admit a weekend.")
     first_refusal = None
     looked = 0
 
     for offset in range(int(horizon_days) + 1):
         day = start + datetime.timedelta(days=offset)
-        if allowed and day.weekday() not in allowed:
+        if allowed and day.isoweekday() not in allowed:
             continue
         looked += 1
         state_word, reason, free = verdict(

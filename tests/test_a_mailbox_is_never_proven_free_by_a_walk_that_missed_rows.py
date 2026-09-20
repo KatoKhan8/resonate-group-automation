@@ -162,8 +162,41 @@ class TheMeasured487CaseReproduces(unittest.TestCase):
         state = the_487_estate()
         day, _ = senderheadroom.earliest_day(
             state, 9999, 15, ACTIVE, on_or_after="2026-09-19",
-            sending_days=range(7), now=NOW)
+            sending_days=range(1, 8), now=NOW)
         self.assertEqual(day, "2026-09-19")
+
+    def test_sending_days_are_iso_and_a_zero_based_set_is_refused(self):
+        """`geo.windows()["days"]` is `[1..5]` under a comment reading
+        "Monday is 1, matching ISO weekday", and schedule.py and ooo.py both
+        compare with isoweekday(). This module compared with weekday()
+        against a 0-based tuple, so the obvious wiring read Mon-Fri as
+        Tue-SATURDAY - refusing Monday and offering a weekend, on an estate
+        where both live campaigns are Mon-Fri.
+
+        0 is not an ISO weekday, so a 0-based set is unambiguous evidence of
+        the other convention and is refused rather than guessed at."""
+        state = the_487_estate()
+        with self.assertRaises(senderheadroom.HeadroomRefused) as caught:
+            senderheadroom.earliest_day(
+                state, 9999, 15, ACTIVE, on_or_after="2026-09-19",
+                sending_days=(0, 1, 2, 3, 4), now=NOW)
+        self.assertIn("ISO", str(caught.exception))
+
+    def test_the_iso_days_geo_actually_returns_select_monday_to_friday(self):
+        """The wiring that was broken, pinned end to end: what
+        `geo.windows` returns must select weekdays here, not shift by one.
+        2026-09-19 is a Saturday and the 21st is the Monday."""
+        from src import geo
+        iso_days = geo.windows({})["days"]
+        self.assertEqual([1, 2, 3, 4, 5], list(iso_days))
+        day, reason = senderheadroom.earliest_day(
+            the_487_estate(), 9999, 15, ACTIVE, on_or_after="2026-09-19",
+            sending_days=iso_days, now=NOW)
+        self.assertEqual("2026-09-21", day,
+                         f"ISO Mon-Fri must skip the weekend: {reason}")
+
+    def test_the_default_is_iso_monday_to_friday(self):
+        self.assertEqual((1, 2, 3, 4, 5), senderheadroom.WEEKDAYS)
 
 
 class ARefusedDayIsNeverFallenThroughTo(unittest.TestCase):
