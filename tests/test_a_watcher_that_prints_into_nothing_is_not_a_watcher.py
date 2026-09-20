@@ -143,6 +143,23 @@ class WatchSinkTest(unittest.TestCase):
         self.assertEqual({"bison:487": sorted([os.getpid(), 999999])},
                          watchsink.contenders())
 
+    def test_a_replaced_watcher_is_not_a_contended_one(self):
+        """The event files outlive a restart, so a watcher that was stopped
+        and replaced leaves its pid behind and reads as contended for ever.
+        Measured on the live fleet 2026-09-20: the unscoped call named both
+        bison watchers an hour after they were restarted onto new code.
+        The window is the caller's to state."""
+        watchsink.record("bison", "WATCHING 487 old", campaign=487, at=100.0)
+        path = watchsink.events_path("bison", 487)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write('{"at": "2026-09-20T12:59:00Z", "source": "bison", '
+                    '"watcher": "bison:487", "kind": "WATCHING", '
+                    '"line": "WATCHING 487 new", "campaign": 487, '
+                    '"pid": 999999}' + "\n")
+        self.assertIn("bison:487", watchsink.contenders())
+        self.assertEqual({}, watchsink.contenders(
+            since="2026-09-20T12:58:00Z"))
+
     def test_a_torn_line_is_reported_rather_than_dropped(self):
         """Dropping it would hide the evidence that a second writer had
         reached this file, which is the failure the split prevents."""

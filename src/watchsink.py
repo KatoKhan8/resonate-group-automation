@@ -323,6 +323,17 @@ def contenders(since=None):
     Reported rather than prevented, because a lock on the write path is the
     thing this module refused: the reading side can say which files are
     contended, and the fix is to stop running two of the same watcher.
+
+    **PASS `since` OR THIS OVER-REPORTS.** The event files are durable across
+    restarts, so a watcher that was STOPPED and REPLACED leaves its old pid
+    behind and reads as contended for ever. Measured 2026-09-20: the fleet
+    was restarted at 12:49Z onto new code and the unscoped call named both
+    bison watchers, with `since="2026-09-20T12:50:00Z"` returning {}.
+
+    A replaced watcher and a contended one are different facts and an
+    operator must not read the first as the second, so the caller states the
+    window it means. `since=None` answers "has this file EVER had two
+    writers", which is a real question and rarely the one being asked.
     """
     seen = {}
     for row in events(since=since):
