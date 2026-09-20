@@ -15,8 +15,8 @@ import json
 import re
 import urllib.parse
 
-from . import (ProviderError, failed, guard_prospect_facing, key, mapping,
-               ok, request, result)
+from . import (ProviderError, failed, guard_prospect_facing, guard_read_routes,
+               key, mapping, ok, request, result)
 
 BASE = "https://api.heyreach.io/api/public"
 
@@ -206,6 +206,17 @@ READ_ROUTES_ALL = READ_ROUTES + ("/lead/GetLead", "/li_account/GetAll",
                                  # list row is a count rather than an identity.
                                  "/list/GetLeadsFromList",
                                  "/campaign/GetCampaignsForLead")
+
+# THIS PROVIDER READS WITH POST, and the transport guard is method-based, so
+# every one of the routes above was refused from the moment that guard landed
+# on 2026-09-20 - including the reads the LIVE 605732 watcher makes. Declared
+# here, beside the allowlist `_read` already enforces, so the two cannot
+# drift: the guard exempts a POST on exactly these paths and nothing else.
+#
+# `READ_GET_ROUTES` is deliberately NOT declared. Those are GETs, and the
+# guard never refuses a GET - registering them would imply POST is allowed on
+# them, which is the opposite of what that tuple means.
+guard_read_routes(BASE, READ_ROUTES_ALL)
 
 # Read-only GETs. Separate from the POST allowlist above because these take
 # their argument in the query string, not a body.

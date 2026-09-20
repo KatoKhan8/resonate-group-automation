@@ -442,5 +442,158 @@ class ProviderWriteGuardTest(unittest.TestCase):
             os.environ["PROVIDER_WRITE_REFUSALS"]))
 
 
+class PostThatReadsTest(unittest.TestCase):
+    """HeyReach answers its reads with POST, and the guard refused them all.
+
+    The guard's own argument for a host-based scope listed every POST that is
+    really a read - the model lanes, the enrichment providers, Slack - and
+    concluded none of them belonged to a guarded host. HeyReach does.
+    `/campaign/GetAll`, `/campaign/GetLeadsFromCampaign`,
+    `/stats/GetOverallStats` and `/inbox/GetConversationsV2` are POSTs that
+    read, they are what the LIVE 605732 watcher calls, and from 17:04 on
+    2026-09-20 every one of them raised `ProviderWriteRefused`.
+
+    It was invisible for a day because nothing already running had to
+    re-import: the watcher started at 14:23 and holds the pre-guard module in
+    memory. `provider_truth.py`, started fresh, crashed on the first call.
+
+    These pin the exemption AND its edges. The exemption is the narrow thing
+    that makes the guard survivable; the edges are why it is not a hole.
+    """
+
+    def setUp(self):
+        self._env = os.environ.get(providers.WRITES_ENV)
+        self.addCleanup(self._restore)
+        os.environ.pop(providers.WRITES_ENV, None)
+        providers._write_scopes.set(())
+        self.addCleanup(providers._write_scopes.set, ())
+        self.opened = []
+        self._urlopen = providers.urllib.request.urlopen
+        providers.urllib.request.urlopen = self._booby_trap
+        self.addCleanup(setattr, providers.urllib.request, "urlopen",
+                        self._urlopen)
+
+    def _restore(self):
+        if self._env is None:
+            os.environ.pop(providers.WRITES_ENV, None)
+        else:
+            os.environ[providers.WRITES_ENV] = self._env
+
+    def _booby_trap(self, *a, **k):
+        self.opened.append(a[0].get_method() if a else "?")
+        raise AssertionError("the wire was reached")
+
+    def wire(self, method, url):
+        return providers._urllib_transport(method, url, {}, None, 5)
+
+    def assertReachedWire(self):
+        return self.assertRaisesRegex(providers.HttpTransportError,
+                                      "the wire was reached")
+
+    # ------------------------------------------------ the exemption itself
+
+    def test_every_declared_read_route_is_postable_without_authorization(self):
+        """The regression. A diagnostic must not have to claim write
+        authority it does not want in order to read a live campaign."""
+        for route in heyreach.READ_ROUTES_ALL:
+            with self.subTest(route=route):
+                with self.assertReachedWire():
+                    self.wire("POST", heyreach.BASE + route)
+
+    def test_the_watcher_reads_that_a_restart_would_have_broken(self):
+        """Named individually because these three are the live monitor's
+        actual calls, and that monitor is the only thing watching 605732."""
+        for route in ("/campaign/GetAll", "/campaign/GetLeadsFromCampaign",
+                      "/stats/GetOverallStats"):
+            with self.subTest(route=route):
+                self.assertIn(route, heyreach.READ_ROUTES_ALL)
+                with self.assertReachedWire():
+                    self.wire("POST", heyreach.BASE + route)
+
+    def test_a_query_string_does_not_defeat_the_match(self):
+        with self.assertReachedWire():
+            self.wire("POST", heyreach.BASE + "/campaign/GetAll?offset=0")
+
+    # ------------------------------------------------------------ the edges
+
+    def test_a_write_route_on_the_same_host_is_still_refused(self):
+        """The exemption is per PATH. Being on a host that has declared some
+        reads must buy a write route nothing at all."""
+        for route in heyreach.WRITE_ROUTES:
+            with self.subTest(route=route):
+                with self.assertRaises(providers.ProviderWriteRefused):
+                    self.wire("POST", heyreach.BASE + route)
+        self.assertEqual([], self.opened)
+
+    def test_only_post_is_exempt_on_a_declared_read_path(self):
+        """A provider that overloads POST is the reason for the exemption. A
+        PATCH to the same path is not that, and is refused."""
+        url = heyreach.BASE + "/campaign/GetAll"
+        for method in ("PUT", "PATCH", "DELETE", b"patch"):
+            with self.subTest(method=method):
+                with self.assertRaises(providers.ProviderWriteRefused):
+                    self.wire(method, url)
+        self.assertEqual([], self.opened)
+
+    def test_a_traversal_or_a_suffix_matches_nothing(self):
+        """Exact match on the parsed path, fail-closed. Each of these reads
+        as a declared route to a careless eye and none of them is one."""
+        for path in ("/campaign/GetAllPause",
+                     "/campaign/GetAll/Pause",
+                     "/x/campaign/GetAll",
+                     "/campaign/%47etAll"):
+            with self.subTest(path=path):
+                with self.assertRaises(providers.ProviderWriteRefused):
+                    self.wire("POST", heyreach.BASE + path)
+        self.assertEqual([], self.opened)
+
+    def test_the_exemption_is_scoped_to_the_host_that_declared_it(self):
+        """The same path on the OTHER guarded provider is not a read."""
+        with self.assertRaises(providers.ProviderWriteRefused):
+            self.wire("POST",
+                      "https://send.resonategroup.co/api/public/campaign/GetAll")
+
+    def test_the_incident_verb_is_still_refused(self):
+        """The guard exists for this exact call. Kept here so a future
+        widening of the read exemption has to walk past it."""
+        with self.assertRaises(providers.ProviderWriteRefused):
+            self.wire("PATCH",
+                      "https://send.resonategroup.co/api/campaigns/487/pause")
+
+    # -------------------------------------------------- declaration hygiene
+
+    def test_declared_reads_and_write_routes_are_disjoint(self):
+        """The day these overlap, the exemption IS a mutation. Compared as
+        full paths, through the same joining the guard uses, because a
+        module-relative comparison would miss a base-prefixed collision."""
+        declared = providers.declared_reads(heyreach.BASE)
+        writes = {providers.path_of(heyreach.BASE + r)
+                  for r in heyreach.WRITE_ROUTES}
+        self.assertEqual(set(), declared & writes)
+
+    def test_the_declaration_covers_exactly_the_modules_read_allowlist(self):
+        """`_read` enforces `READ_ROUTES_ALL` and the guard enforces what was
+        declared. Two allowlists for one question drift; this pins them."""
+        self.assertEqual(
+            {providers.path_of(heyreach.BASE + r)
+             for r in heyreach.READ_ROUTES_ALL},
+            providers.declared_reads(heyreach.BASE))
+
+    def test_the_get_only_routes_are_not_declared_as_postable(self):
+        """`READ_GET_ROUTES` take their argument in the query string. A GET
+        is never refused anyway, so declaring them would only assert that
+        POST is allowed on them - which the module does not believe."""
+        declared = providers.declared_reads(heyreach.BASE)
+        for route in heyreach.READ_GET_ROUTES:
+            with self.subTest(route=route):
+                self.assertNotIn(providers.path_of(heyreach.BASE + route),
+                                 declared)
+
+    def test_the_other_guarded_provider_declares_no_post_reads(self):
+        """EmailBison reads with GET throughout. If that changes, this test
+        is where the change gets argued rather than assumed."""
+        self.assertEqual(set(), providers.declared_reads(bison.base()))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -307,6 +307,44 @@ WRITES_ENV = "RESONATE_PROVIDER_WRITES"
 # modules themselves; see `guard_prospect_facing`.
 _prospect_facing_hosts = set()
 
+# ## AND ONE OF THE TWO GUARDED PROVIDERS READS WITH POST
+#
+# The scoping above is host-based, and the argument for it was that the POSTs
+# which are really reads all belong to OTHER hosts - the model lanes, the
+# enrichment providers, Slack. That was wrong about HeyReach, and the error
+# was invisible for the same reason the original one was: nothing that was
+# already running had to re-import.
+#
+# HeyReach's public API answers `/campaign/GetAll`, `/campaign/GetLeadsFrom-
+# Campaign`, `/stats/GetOverallStats` and `/inbox/GetConversationsV2` as
+# POSTs. They are reads - the module has posted to them for weeks, behind its
+# own `READ_ROUTES_ALL` allowlist in `heyreach._read` - and the guard refused
+# every one of them from the moment it landed. `provider_truth.py` crashed on
+# `/campaign/GetAll`; the 605732 watcher survived only because its process
+# started at 14:23 and the guard landed at 17:04, so it holds the pre-guard
+# module in memory and would have died on restart. A monitor that cannot be
+# restarted is not a monitor, and reading the live campaign is P0.
+#
+# So a prospect-facing module may also declare the paths on which POST is a
+# READ. Three things keep that from becoming a hole:
+#
+#   1. ONLY POST. A PUT, PATCH or DELETE to a declared read path is still
+#      refused. The exemption is for a provider that overloads POST, not for
+#      a path that is trusted in general.
+#   2. EXACT PATH MATCH, on the parsed path with the query discarded. A
+#      traversal or a suffix spells a different string, matches nothing, and
+#      is refused - the fail-closed direction.
+#   3. THE MODULE DECLARES IT, at import, through the same normalisation the
+#      lookup uses - exactly as `guard_prospect_facing` does, and for the
+#      same reason. A test pins that a module's declared reads and its
+#      `WRITE_ROUTES` are disjoint, because the day those overlap the
+#      exemption is a mutation.
+#
+# This does NOT widen the guard against the failure it was built for. Buggie
+# reached a live campaign through `PATCH /api/campaigns/487/pause`, which is
+# neither a POST nor a declared read.
+_prospect_facing_read_paths = {}
+
 
 def normalise_method(method):
     """The HTTP verb as the wire will see it. NEVER trusts `str()`.
@@ -390,6 +428,78 @@ def guard_prospect_facing(url_or_host):
     host = host_of(url_or_host)
     if host and not isinstance(host, _Unparseable):
         _prospect_facing_hosts.add(host)
+
+
+def path_of(url):
+    """The comparable path, or None. NEVER raises.
+
+    Total over garbage for the same reason `host_of` is, and deliberately
+    NOT percent-decoded: decoding would fold `%2e%2e` onto `..` and hand a
+    caller a spelling that matches a registered read while the wire sends
+    something else. An encoded path simply matches nothing and is refused,
+    which is the fail-closed direction.
+    """
+    text = str(url or "").strip()
+    if not text:
+        return None
+    try:
+        path = urllib.parse.urlsplit(
+            text if "//" in text else "//" + text).path
+    except Exception:
+        # Unreadable is not "no path". The caller treats None as "cannot be
+        # a declared read", so this refuses rather than exempts.
+        return None
+    path = (path or "").rstrip("/")
+    return path or None
+
+
+def guard_read_routes(base, routes):
+    """Declare the paths on a guarded host where POST is a READ.
+
+    Called at import by the module that owns them, exactly as
+    `guard_prospect_facing` is, and joined through the SAME normalisation as
+    the lookup - two spellings of one route must not be able to disagree
+    about whether it is a read.
+
+    `routes` are module-relative, as the module writes them, and `base` is
+    the module's base URL. They are joined here rather than at the call site
+    so a route can never be registered under a path the transport will not
+    see.
+    """
+    host = host_of(base)
+    if not host or isinstance(host, _Unparseable):
+        return
+    prefix = path_of(base) or ""
+    known = _prospect_facing_read_paths.setdefault(host, set())
+    for route in routes or ():
+        path = path_of(prefix + str(route or ""))
+        if path:
+            known.add(path)
+
+
+def declared_reads(host=None):
+    """What has been declared, for tests and for an audit line. A copy."""
+    if host is None:
+        return {h: set(p) for h, p in _prospect_facing_read_paths.items()}
+    return set(_prospect_facing_read_paths.get(host_of(host), ()))
+
+
+def is_declared_read(method, url):
+    """True when this exact call is a POST on a declared read path.
+
+    Every other verb answers False even on a declared path: the exemption is
+    for a provider that overloads POST, never for a path that is trusted in
+    general.
+    """
+    if normalise_method(method) != "POST":
+        return False
+    host = host_of(url)
+    if not host or isinstance(host, _Unparseable):
+        return False
+    path = path_of(url)
+    if not path:
+        return False
+    return path in _prospect_facing_read_paths.get(host, ())
 
 
 def is_prospect_facing(url):
@@ -505,6 +615,12 @@ def refuse_unauthorized_write(method, url):
     if normalise_method(method) not in WRITE_METHODS:
         return
     if not is_prospect_facing(url):
+        return
+    # A POST the owning module declared as a READ. Checked AFTER the host
+    # test so an undeclared host can never reach it, and before the
+    # authorization test so a diagnostic does not have to claim write
+    # authority it does not want in order to read.
+    if is_declared_read(method, url):
         return
     allowed, why = writes_allowed()
     if allowed:
