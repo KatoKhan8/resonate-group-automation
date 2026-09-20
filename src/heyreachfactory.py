@@ -1096,6 +1096,25 @@ def _first_linkedin_step(campaign, config):
         f"never message them")
 
 
+def _remember_linkedin_lead(row, lead_id):
+    """Write HeyReach's provider lead id onto the contact, immediately.
+
+    TASK-235: `heyreach_lead_id` was read by two modules and written by none.
+    The id is needed by `leadstop.stop_linkedin_contact` to name the exact
+    person at the provider. Written in its own transaction, same pattern as
+    `bisonfactory._remember_lead`.
+    """
+    with store.transaction() as rows:
+        for rec in rows:
+            if rec.get("id") != row["record_id"]:
+                continue
+            for contact in rec.get("contacts") or []:
+                if contact.get("key") != row["contact_key"]:
+                    continue
+                contact["heyreach_lead_id"] = lead_id
+                return
+
+
 def _mint_authorization(campaign, rec, contact, *, config=None, readback=None,
                         by="system"):
     """One Authorization per contact, from the canonical gate.
@@ -1492,10 +1511,17 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
                 linkedin_account_id)
         return _transport
 
+    # TASK-235: capture the raw readback so the provider lead id can be
+    # persisted. `perform` trims the readback to a string, so the id must be
+    # extracted before that happens.
+    _last_readback = {}
+
     def _readback_for(row):
         def _readback():
-            return heyreach.readback_membership(
+            result = heyreach.readback_membership(
                 provider_id, [_profile_url(row)])
+            _last_readback[row["contact_key"]] = result
+            return result
         return _readback
 
     for row in new_contacts:
@@ -1515,19 +1541,21 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
             authorization=auth,
             step=step,
             campaign=str(campaign_id), tenant=client,
-            # THE PAYLOAD CARRIES THE WORDS, because the guard checks that the
-            # approved copy literally appears in what is transported - and
-            # here it genuinely does. The lead's `custom_fields` are the merge
-            # variables HeyReach fills the sequence from, so these ARE the
-            # sentences this person will receive. A payload naming only the
-            # campaign and the contact key would have made the guard pass on a
-            # summary while the real words travelled somewhere it never looked.
             payload={"campaignId": provider_id,
                      "contact": row["contact_key"],
                      "custom_fields": dict(row.get("custom_fields") or {})},
             transport=_transport_for(row), readback=_readback_for(row),
             expected={"found": {row["linkedin_url"].strip().lower()}},
             provider_campaign_id=provider_id, by=by)
+        # TASK-235: persist the provider lead id so a later stop can name
+        # the exact person at HeyReach. Without this, `heyreach_lead_id` is
+        # read by two modules and written by none.
+        rb = _last_readback.pop(row["contact_key"], None)
+        if rb:
+            for lead_row in (rb.get("per_lead") or []):
+                if lead_row.get("provider_lead_id"):
+                    _remember_linkedin_lead(row, lead_row["provider_lead_id"])
+                    break
         report["did"].append(
             f"pushed {row['contact_key']} to HeyReach campaign "
             f"{provider_id}")

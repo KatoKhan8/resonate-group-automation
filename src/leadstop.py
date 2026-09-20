@@ -25,7 +25,7 @@ import argparse
 import sys
 
 from . import campaigns, events, providerwrites, store
-from .providers import ProviderError, bison
+from .providers import ProviderError, bison, heyreach
 
 
 class StopRefused(Exception):
@@ -120,6 +120,75 @@ def stop_contact(rec, contact, why, *, campaign=None, rows=None, live=False,
     return report
 
 
+def stop_linkedin_contact(rec, contact, why, *, campaign=None, rows=None,
+                          live=False, by="system"):
+    """Prevent the next LinkedIn step to this one person.
+
+    The LinkedIn counterpart of `stop_contact`. Uses `heyreach_lead_id` and
+    `heyreach_campaign_id` rather than the EmailBison equivalents. The
+    transport is `heyreach.stop_lead_in_campaign`, which reads back per lead
+    and refuses when the provider still reports the lead as running.
+
+    Goes through `providerwrites.perform` with `LINKEDIN_STOP_LEAD`. That
+    verb is NOT in `SUPPORTED` - the mechanism exists and the door is shut
+    until Claude enables it. A `WriteRefused` from the door is translated
+    into `StopRefused` so the sweep can report it without learning a second
+    exception type.
+    """
+    lead_id = (contact or {}).get("heyreach_lead_id")
+    if not lead_id:
+        raise StopRefused(
+            f"contact {(contact or {}).get('key')!r} on record "
+            f"{(rec or {}).get('id')!r} carries no `heyreach_lead_id`, so "
+            f"there is nobody at HeyReach to stop")
+    campaign = campaign or _campaign_of(rec, rows)
+    if campaign is None:
+        raise StopRefused(
+            f"record {(rec or {}).get('id')!r} is in no campaign, so there "
+            f"is no provider campaign to stop them in")
+    provider_campaign = campaign.get("heyreach_campaign_id")
+    if not provider_campaign:
+        raise StopRefused(
+            f"campaign {campaign.get('campaign_id')!r} names no HeyReach "
+            f"campaign, so this lead's membership cannot be addressed")
+
+    profile_url = (contact or {}).get("linkedin_url", "")
+
+    report = {"record": rec.get("id"), "contact": contact.get("key"),
+              "lead_id": lead_id, "campaign": campaign.get("campaign_id"),
+              "provider_campaign": provider_campaign, "why": why,
+              "live": bool(live), "already": False, "stopped": False,
+              "channel": "linkedin"}
+
+    if not live:
+        report["note"] = "dry run: the provider was not written to"
+        return report
+
+    try:
+        outcome = providerwrites.perform(
+            providerwrites.LINKEDIN_STOP_LEAD,
+            campaign=str(campaign.get("campaign_id")),
+            tenant=campaign.get("client"),
+            payload={"lead_id": lead_id, "why": why},
+            transport=lambda p: heyreach.stop_lead_in_campaign(
+                provider_campaign, lead_id, profile_url),
+            readback=lambda: heyreach.campaigns_for_lead(
+                profile_url=profile_url)[0],
+            expected={"stopped": True}, by=by)
+    except providerwrites.WriteRefused as e:
+        raise StopRefused(
+            f"the LinkedIn stop for lead {lead_id} was refused by the write "
+            f"layer: {e}") from None
+    except providerwrites.WriteUnverified as e:
+        raise StopUnverified(
+            f"the LinkedIn stop for lead {lead_id} could not be confirmed: "
+            f"{e}") from None
+    report["stopped"] = True
+    report["verdict"] = (outcome or {}).get("class")
+    _record_linkedin(rec, contact, report)
+    return report
+
+
 def sweep(recs=None, rows=None, live=False, by="system"):
     """Stop everybody at the provider who must not be contacted any more.
 
@@ -148,23 +217,65 @@ def sweep(recs=None, rows=None, live=False, by="system"):
     for rec in recs:
         campaign = _campaign_of(rec, rows)
         for contact in rec.get("contacts") or []:
-            if not contact.get("bison_lead_id"):
+            # TASK-235: count every staged contact, not just email-staged
+            # ones. A contact with only heyreach_lead_id was previously
+            # skipped silently, which is why a missing LinkedIn stop looked
+            # like a working sweep.
+            has_email = bool(contact.get("bison_lead_id"))
+            has_linkedin = bool(contact.get("heyreach_lead_id"))
+            if not has_email and not has_linkedin:
                 continue
-            report["checked"] += 1
             why = _must_stop(rec, contact, eligibility, executionguard)
             if not why:
+                # Count even contacts that do not need stopping - they were
+                # examined and found clean.
+                if has_email:
+                    report["checked"] += 1
+                if has_linkedin:
+                    report["checked"] += 1
                 continue
-            try:
-                out = stop_contact(rec, contact, why, campaign=campaign,
-                                   rows=rows, live=live, by=by)
-            except (StopRefused, StopUnverified, ProviderError) as e:
-                report["failed"].append(
-                    {"record": rec.get("id"), "contact": contact.get("key"),
-                     "why": why, "error": f"{type(e).__name__}: {e}"[:200]})
-                continue
-            entry = {"record": rec.get("id"), "contact": contact.get("key"),
-                     "why": why, "status": out.get("status_after")}
-            report["already" if out.get("already") else "stopped"].append(entry)
+            # A contact live on both channels gets stopped on both.
+            if has_email:
+                report["checked"] += 1
+                try:
+                    out = stop_contact(rec, contact, why, campaign=campaign,
+                                       rows=rows, live=live, by=by)
+                except (StopRefused, StopUnverified, ProviderError) as e:
+                    report["failed"].append(
+                        {"record": rec.get("id"),
+                         "contact": contact.get("key"),
+                         "channel": "email",
+                         "why": why,
+                         "error": f"{type(e).__name__}: {e}"[:200]})
+                else:
+                    entry = {"record": rec.get("id"),
+                             "contact": contact.get("key"),
+                             "channel": "email",
+                             "why": why,
+                             "status": out.get("status_after")}
+                    report["already" if out.get("already")
+                           else "stopped"].append(entry)
+            if has_linkedin:
+                report["checked"] += 1
+                try:
+                    out = stop_linkedin_contact(
+                        rec, contact, why, campaign=campaign,
+                        rows=rows, live=live, by=by)
+                except (StopRefused, StopUnverified, ProviderError) as e:
+                    report["failed"].append(
+                        {"record": rec.get("id"),
+                         "contact": contact.get("key"),
+                         "channel": "linkedin",
+                         "why": why,
+                         "error": f"{type(e).__name__}: {e}"[:200]})
+                else:
+                    entry = {"record": rec.get("id"),
+                             "contact": contact.get("key"),
+                             "channel": "linkedin",
+                             "why": why,
+                             "status": out.get("status_after")}
+                    report["already" if out.get("already")
+                           else "stopped"].append(entry)
     return report
 
 
@@ -212,6 +323,25 @@ def _record(rec, contact, report):
                 contact_key=contact.get("key"), channel="email",
                 provider="emailbison",
                 provider_event_id=(f"emailbison:stop:"
+                                   f"{report['provider_campaign']}:"
+                                   f"{report['lead_id']}"),
+                lead_id=report["lead_id"],
+                campaign=report["provider_campaign"],
+                why=report["why"],
+                status=report.get("status_after"))
+
+
+def _record_linkedin(rec, contact, report):
+    """Write the confirmed LinkedIn stop through the canonical writer."""
+    with store.transaction() as rows:
+        for row in rows:
+            if row.get("id") != rec.get("id"):
+                continue
+            events.record(
+                row, events.PROVIDER_STOP_CONFIRMED,
+                contact_key=contact.get("key"), channel="linkedin",
+                provider="heyreach",
+                provider_event_id=(f"heyreach:stop:"
                                    f"{report['provider_campaign']}:"
                                    f"{report['lead_id']}"),
                 lead_id=report["lead_id"],
