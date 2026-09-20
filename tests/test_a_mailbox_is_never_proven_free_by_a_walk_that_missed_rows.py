@@ -354,5 +354,76 @@ class TheSchedulerPlacesTheWholeCohort(unittest.TestCase):
         self.assertIn("16 of 15", reason)
 
 
+class NotSupplyingTheActiveSetIsNotAnEmptyOne(unittest.TestCase):
+    """`active_campaign_ids` defaulted to `()`, so coverage passed vacuously.
+
+    Flagged by Buggie's audit on 2026-09-20, which judged it latent because
+    nothing in `src/` picks senders from this module yet. It was not latent
+    for a reader: the first analysis of 489's schedule that evening obtained
+    ROOM by passing the WALKED campaign list as the active list - the same
+    error in different clothes - when the true answer was REFUSED.
+
+    An empty tuple is an ASSERTION that nothing else can book. Omitting the
+    argument is the ABSENCE of one. Those must not be the same answer on a
+    safety path, and the difference is pinned here.
+    """
+
+    def state(self, finished_at=FRESH):
+        return {"campaigns": {"327": {
+            "complete": True,
+            "finished_at": finished_at,
+            "by_sender_day": {"2736|2026-09-23": 1},
+        }}}
+
+    def test_omitting_the_active_set_refuses_rather_than_reporting_room(self):
+        word, reason, free = senderheadroom.verdict(
+            self.state(), 2736, "2026-09-23", 15, need=1, now=NOW)
+        self.assertEqual(word, senderheadroom.REFUSED, reason)
+        self.assertIsNone(free)
+        self.assertIn("active_campaign_ids", reason)
+
+    def test_an_explicit_empty_tuple_is_still_an_assertion_and_permits_room(self):
+        """Deliberate, and the reason the sentinel is not just `None`: a
+        caller that genuinely knows nothing else can book may say so."""
+        word, reason, free = senderheadroom.verdict(
+            self.state(), 2736, "2026-09-23", 15, (), need=1, now=NOW)
+        self.assertEqual(word, senderheadroom.ROOM, reason)
+        self.assertEqual(14, free)
+
+    def test_full_still_wins_over_the_missing_active_set(self):
+        """The ordering is load-bearing: FULL is sound on evidence too weak
+        for anything else, so it must answer before this refusal."""
+        state = {"campaigns": {"327": {
+            "complete": True, "finished_at": FRESH,
+            "by_sender_day": {"2736|2026-09-23": 15}}}}
+        word, reason, _ = senderheadroom.verdict(
+            state, 2736, "2026-09-23", 15, need=1, now=NOW)
+        self.assertEqual(word, senderheadroom.FULL, reason)
+
+    def test_earliest_day_refuses_every_day_when_the_active_set_is_missing(self):
+        day, reason = senderheadroom.earliest_day(
+            self.state(), 2736, 15, need=1, now=NOW)
+        self.assertIsNone(day)
+        self.assertIn("active_campaign_ids", reason)
+
+    def test_the_sentinel_is_not_equal_to_an_empty_tuple(self):
+        self.assertIsNot(senderheadroom.UNSUPPLIED, ())
+        self.assertNotEqual(senderheadroom.UNSUPPLIED, ())
+
+    def test_every_public_selector_defaults_to_the_sentinel(self):
+        """Behavioural guard: a new selector added with `=()` reintroduces
+        the hole, so the default is asserted rather than assumed."""
+        import inspect
+        for name in ("verdict", "earliest_day", "rank"):
+            with self.subTest(function=name):
+                params = inspect.signature(
+                    getattr(senderheadroom, name)).parameters
+                self.assertIs(
+                    params["active_campaign_ids"].default,
+                    senderheadroom.UNSUPPLIED,
+                    f"{name} must not default active_campaign_ids to a value "
+                    f"that makes coverage() pass vacuously")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -181,6 +181,34 @@ def freshness(state, now=None, max_age_hours=STALE_AFTER_HOURS):
     return (age <= max_age_hours), age, stamp
 
 
+class _Unsupplied:
+    """The caller did not say which campaigns can book this mailbox.
+
+    DISTINCT FROM `()`, and the distinction is the whole point. An empty
+    tuple is an ASSERTION - "nothing can book these mailboxes" - and it makes
+    `coverage` pass. This sentinel is the ABSENCE of an assertion, and it
+    refuses.
+
+    `active_campaign_ids` used to default to `()`, so a caller that simply
+    did not know answered ROOM on a walk covering nothing, with `coverage`
+    passing vacuously. Buggie's audit flagged it on 2026-09-20 and noted the
+    danger was latent because no module in `src/` picks senders yet. It was
+    not latent for a reader: the first analysis of 489's schedule that same
+    evening got ROOM by passing the WALKED campaign list as the active list,
+    which is the same mistake wearing a different hat, and the true answer
+    was REFUSED.
+
+    Fixed now, while the only callers are tests and diagnostics, rather than
+    after something in `src/` starts booking real cohorts from it.
+    """
+
+    def __repr__(self):
+        return "<active_campaign_ids not supplied>"
+
+
+UNSUPPLIED = _Unsupplied()
+
+
 def coverage(state, active_campaign_ids):
     """`(covers, missing)` - did the walk see every campaign that can book rows?
 
@@ -220,7 +248,7 @@ def committed(state, sender_id, day, forward=None):
     return int((forward.get(int(sender_id)) or {}).get(str(day), 0))
 
 
-def verdict(state, sender_id, day, limit, active_campaign_ids=(),
+def verdict(state, sender_id, day, limit, active_campaign_ids=UNSUPPLIED,
             need=1, now=None, forward=None, max_age_hours=STALE_AFTER_HOURS):
     """`(FULL | ROOM | REFUSED, reason, free)` for one mailbox on one day.
 
@@ -255,6 +283,14 @@ def verdict(state, sender_id, day, limit, active_campaign_ids=(),
         return REFUSED, (f"the walk is incomplete ({', '.join(incomplete)}), "
                          f"so {used} is 'not seen yet' rather than 'free'"), None
 
+    # Not supplied is not the same as none, and it refuses. See `_Unsupplied`.
+    if active_campaign_ids is UNSUPPLIED:
+        return REFUSED, ("the caller did not say which campaigns are active, "
+                         "so coverage cannot be established; pass "
+                         "active_campaign_ids explicitly - an empty tuple is "
+                         "an assertion that nothing else can book this "
+                         "mailbox, not a way of saying you do not know"), None
+
     covers, missing = coverage(state, active_campaign_ids)
     if not covers:
         return REFUSED, (f"the walk did not cover active campaign(s) "
@@ -272,7 +308,7 @@ def verdict(state, sender_id, day, limit, active_campaign_ids=(),
         cap - used)
 
 
-def earliest_day(state, sender_id, limit, active_campaign_ids=(), need=1,
+def earliest_day(state, sender_id, limit, active_campaign_ids=UNSUPPLIED, need=1,
                  on_or_after=None, sending_days=WEEKDAYS,
                  horizon_days=DEFAULT_HORIZON_DAYS, now=None,
                  max_age_hours=STALE_AFTER_HOURS):
@@ -325,7 +361,7 @@ def earliest_day(state, sender_id, limit, active_campaign_ids=(), need=1,
                   f"{horizon_days} is booked to this mailbox's limit")
 
 
-def rank(state, senders, active_campaign_ids=(), need=1, on_or_after=None,
+def rank(state, senders, active_campaign_ids=UNSUPPLIED, need=1, on_or_after=None,
          sending_days=WEEKDAYS, horizon_days=DEFAULT_HORIZON_DAYS, now=None,
          max_age_hours=STALE_AFTER_HOURS):
     """Order candidate mailboxes by how soon each can send. Pure.
