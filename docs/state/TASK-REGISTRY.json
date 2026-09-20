@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-09-20T19:09:35+00:00",
+  "generated_at": "2026-09-20T20:06:03+00:00",
   "generated_from": "docs/qwen-tasks/**, git, and work/claims/. Derived, never hand-edited.",
   "branch_blindness": "This registry reads master only. Tasks finished on worker branches but not yet integrated into master appear as QUEUED here but are actually done. Run scripts/task173_scan.py --unintegrated to see the set that this registry cannot see.",
-  "master_head": "28f4766e",
+  "master_head": "1defa30c",
   "counts": {
-    "QUEUED": 15,
+    "QUEUED": 18,
     "RUNNING": 1,
     "AWAITING_REVIEW": 11,
     "REWORK": 1,
     "BLOCKED": 1,
     "DONE": 202
   },
-  "ready_count": 15,
+  "ready_count": 18,
   "workers": 8,
-  "backlog_healthy": false,
+  "backlog_healthy": true,
   "tasks": [
     {
       "task": "TASK-212",
@@ -223,6 +223,48 @@
       "branch": null,
       "result": null,
       "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-235",
+      "file": "docs/qwen-tasks/TODO/TASK-235-a-dnc-cannot-stop-a-linkedin-sequence.md",
+      "status": "QUEUED",
+      "stage_dir": "TODO",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-236",
+      "file": "docs/qwen-tasks/TODO/TASK-236-nothing-reads-what-will-actually-send.md",
+      "status": "QUEUED",
+      "stage_dir": "TODO",
+      "priority": "P0",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": null,
+      "review_status": "NOT_SUBMITTED",
+      "blocked_by": []
+    },
+    {
+      "task": "TASK-237",
+      "file": "docs/qwen-tasks/TODO/TASK-237-the-only-reconciler-settles-nothing.md",
+      "status": "QUEUED",
+      "stage_dir": "TODO",
+      "priority": "P1",
+      "worker": null,
+      "claimed_at": null,
+      "dependencies": [],
+      "branch": null,
+      "result": "REPORTED",
+      "review_status": "PENDING",
       "blocked_by": []
     },
     {

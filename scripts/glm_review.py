@@ -201,7 +201,28 @@ Answer these, and say UNKNOWN rather than guessing:
 6. What regression test would fail today and pass after the fix?
 
 Be concrete and cite the code. A confident wrong answer here is worse than
-UNKNOWN."""
+UNKNOWN.
+
+--- {name} ---
+{source}
+"""
+
+
+def _today():
+    """Today, UTC. NOT a hardcoded date.
+
+    This was the literal `2026-09-17` inside the output filename, so every
+    review run after that day wrote its findings into a file named for the
+    17th - `GLM-REVIEW-REPEATABLE-2026-09-17.md` and
+    `GLM-REVIEW-WRITEGUARD-2026-09-17.md` were both produced on the 20th and
+    are misdated on disk. A stale review silently overwrites a newer one
+    whenever the target repeats, and a reader dates the finding wrong.
+
+    Same class as the census's hardcoded campaign list and the invented
+    credential name: a literal standing in for something the machine knows.
+    """
+    import datetime
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 
 
 def _targets():
@@ -371,7 +392,8 @@ def main(argv=None):
 
     stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
     out = os.path.join(ROOT, "docs",
-                       f"GLM-REVIEW-{args.target.upper()}-2026-09-17.md")
+                       f"GLM-REVIEW-{args.target.upper()}-"
+                       f"{_today()}.md")
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(f"# GLM adversarial review - {args.target}\n\n{stamp}. "
                  f"One call per function.\n\n")
