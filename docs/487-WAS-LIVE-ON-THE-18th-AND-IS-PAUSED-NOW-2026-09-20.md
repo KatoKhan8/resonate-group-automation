@@ -1,6 +1,48 @@
-# 487 regressed. Its leads went first, the campaign followed, and nothing of ours wrote
+# 487 was paused by an audit agent's live provider call
 
 **P0. Campaign 487 will not send on 2026-09-22 in its present state.**
+
+---
+
+## CORRECTED 2026-09-20T15:10Z. THE CAUSE IS KNOWN AND MY CENTRAL CLAIM WAS WRONG.
+
+This document originally argued that 487's LEADS went `sending_paused` first
+and the campaign followed - "the campaign row was wrong and the lead rows
+were right". **That does not survive the cause being known, and it was never
+established.**
+
+An audit agent (the "Buggie" crew, verifying its own finding #1) passed a
+bare dict to `orchestrator.pause`. `campaigns.get()` returned None, the
+repeat guard did not fire, `providerwrites.perform` reached the REAL
+transport, `providers.key()` loaded `config/.env`, and a live
+`PATCH /api/campaigns/487/pause` hit send.resonategroup.co at
+**2026-09-20T12:44:45Z**. Its own report records this.
+
+So the simple explanation holds: **the pause set the campaign AND its ten
+leads together.** No divergence between campaign status and lead status was
+demonstrated.
+
+My error was one of ordering, and it is worth naming precisely. The campaign
+was read `active` at 12:14:28Z. The membership was read separately, some
+minutes later, and I did not stamp that read. It sat close enough to
+12:44:45Z that I cannot place it on either side - so "the leads were paused
+while the campaign was still active" was an inference from two observations
+whose order I never established. The watcher's own log is against me: it read
+`status=active` at 12:23:34Z and saw the transition at 12:47:36Z, with
+nothing in between.
+
+**What survives, and why the instrumentation still earns its place:**
+`resume_campaign` confirms the CAMPAIGN's status and nothing else, so a
+resume that leaves ten leads `sending_paused` would report as success. That
+is a real gap whether or not the two have ever diverged in this estate, and
+it is the acceptance test the recovery now runs on. The `MEMBERSHIP` event
+and `_membership_states` stay for that reason - not because a divergence was
+proved.
+
+The rest of this document is the original, with measured facts intact. Where
+it argues the leads-first sequence, read the correction above.
+
+---
 
 Found 2026-09-20 between 12:14Z and 12:49Z, by asking a question nothing had
 asked: what does the PROVIDER say about each LEAD, as distinct from what it
@@ -15,9 +57,14 @@ says about the campaign.
                              10 leads in_sequence 10"
     2026-09-19T16:04:58Z  campaign touched; the ten queued rows moved from
                            2026-09-23 to 2026-09-22
-    2026-09-20T12:14Z     campaign reads `active`.
-                           ALL TEN LEADS READ `sending_paused`
-    2026-09-20T12:44:45Z  THE CAMPAIGN ITSELF READS `paused`
+    2026-09-20T12:14:28Z  campaign reads `active`
+    2026-09-20T12:23:34Z  watcher reads `active` (its own log)
+    2026-09-20T12:44:45Z  AN AUDIT AGENT'S LIVE `PATCH /campaigns/487/pause`
+                           REACHES THE PROVIDER. Campaign and all ten leads
+                           read `paused` / `sending_paused` from here.
+                           (My own membership read is unstamped and sits near
+                           this line on an order I never established - see
+                           the correction at the top.)
     2026-09-20T12:47:36Z  captured durably by the watcher:
                            STATUS 487 active -> paused
                            TOUCHED 487 updated_at ... (sent=0, queue=10)
@@ -27,10 +74,14 @@ that never started.
 
 ## What it is not
 
-    our writes            ZERO. `work/action-ledger.jsonl` holds nothing
-                          after 2026-09-19, and every provider call in this
-                          session was a GET. No PATCH, POST or PUT was issued
-                          against any campaign.
+    this session's writes ZERO. `work/action-ledger.jsonl` holds nothing
+                          after 2026-09-19, and every provider call in THIS
+                          session was a GET. The write came from a separate
+                          audit process, not from here - which is exactly why
+                          "nothing of ours wrote" was true and useless: the
+                          transport has no guard, so ANY process that imports
+                          `src` and reaches `providers.request` can mutate a
+                          real campaign with the real key.
     the sender            2736 reads `Connected`, daily_limit 15, unchanged
                           across all 704 samples of
                           `bison-mailbox-utilisation.jsonl` including the

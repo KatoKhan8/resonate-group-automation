@@ -15,9 +15,16 @@ import json
 import re
 import urllib.parse
 
-from . import ProviderError, failed, key, mapping, ok, request, result
+from . import (ProviderError, failed, guard_prospect_facing, key, mapping,
+               ok, request, result)
 
 BASE = "https://api.heyreach.io/api/public"
+
+# THIS PROVIDER CAN REACH A PROSPECT, so its mutations are guarded at the
+# transport. Registered at import, for the reason in
+# `providers.guard_prospect_facing`: a module cannot be called without
+# being imported, so a caller cannot skip the registration.
+guard_prospect_facing(BASE)
 
 
 def headers():

@@ -21,8 +21,8 @@ each reached by guessing a URL and reading the failure as absence.
 import argparse
 import os
 
-from . import (ProviderError, key, mapping, ok, query, request, result,
-               failed)
+from . import (ProviderError, guard_prospect_facing, key, mapping, ok,
+               query, request, result, failed)
 
 DEFAULT_BASE = "https://send.resonategroup.co/api"
 
@@ -33,6 +33,15 @@ def base():
 
 def headers():
     return {"Authorization": f"Bearer {key('BISON_KEY')}"}
+
+
+# THIS PROVIDER CAN REACH A PROSPECT, so its mutations are guarded at the
+# transport. Registered at import because a module cannot be called without
+# being imported - which is what makes the guard unskippable by a caller.
+# Both the configured base and the default, so a `BISON_BASE` override set
+# after import cannot quietly move the host out of the guarded set.
+guard_prospect_facing(base())
+guard_prospect_facing(DEFAULT_BASE)
 
 
 # There is no way to scope a read to one workspace, and one way to believe you

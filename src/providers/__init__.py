@@ -206,7 +206,209 @@ def _redact_param(text, param):
 USER_AGENT = "resonate-group-automation/1.0 (+https://resonategroup.co)"
 
 
+# ------------------------------------------------- the provider write guard
+#
+# WHY THIS EXISTS, and it is not hypothetical.
+#
+# On 2026-09-20T12:44:45Z an audit agent's throwaway probe paused LIVE
+# EmailBison campaign 487. It passed a bare dict to `orchestrator.pause`;
+# `campaigns.get()` returned None, the staging-repeat guard did not fire,
+# `providerwrites.perform` called the transport, `key()` read `config/.env`,
+# and a real `PATCH /api/campaigns/487/pause` reached send.resonategroup.co.
+# Ten approved openers stopped being scheduled to send. Nothing was
+# misconfigured and no rule was broken - THERE WAS NO RULE.
+#
+# `store.refuse_production_write` protects STATE. Nothing protected the WIRE.
+# Any process that imported `src` and reached here sent a real mutation with
+# the real key, and the only barrier was a sentence in a prompt asking it not
+# to. A read-only instruction is not a security boundary.
+#
+# ## Where the guard sits, and why here rather than in `request`
+#
+# In the REAL transport, not in `request`. A test that swaps a cassette in
+# with `set_transport` never touches the wire and must stay unaffected -
+# there are thousands of those and they exercise the write paths on purpose.
+# Guarding `request` would refuse them all and force a blanket opt-in across
+# the suite, which is how a guard gets switched off. Guarding the wire refuses
+# exactly the calls that can reach a provider and nothing else.
+#
+# ## Where the opt-in belongs, and why NOT in the library
+#
+# The entry point, never `providerwrites.perform`. Buggie reached the
+# transport THROUGH `perform`, so a library that authorises itself would have
+# authorised the incident. A `--live` operator command opts in; a test, probe,
+# audit agent or subagent does not, because opting in is an act rather than an
+# inheritance.
+#
+# Two ways, both explicit, both narrow:
+#
+#     RESONATE_PROVIDER_WRITES=1        for the whole process
+#     with providers.allow_writes("..."):   for one scoped block
+#
+# GET, HEAD and OPTIONS are never refused. A reader cannot change a prospect's
+# state, and every diagnostic in this repository is a reader.
+#
+# ## AND NOT EVERY POST IS A MUTATION - the scoping that makes this usable
+#
+# The first version of this guard refused every non-GET on the wire. It would
+# have broken the entire system, and the list is worth keeping because it is
+# the argument for the scope:
+#
+#     glm.py       POST  a model completion        adversarial review
+#     xai.py       POST  a model completion        provider research
+#     contactout   POST  a people search           PAID READ
+#     aiark        POST  an enrichment RPC         PAID READ
+#     blitz        POST  an enrichment call        PAID READ
+#     apify        POST  an actor run              PAID READ
+#     slack        POST  a message                 notification
+#
+# Every one of those is a read, a question or an internal notice. NONE of
+# them can change what a prospect experiences. Refusing them would have taken
+# out the whole enrichment waterfall and the whole AI workforce to guard
+# against a risk they do not carry, and a guard that breaks everything is a
+# guard somebody deletes.
+#
+# TWO PROVIDERS CAN REACH A PROSPECT: EmailBison and HeyReach. They are
+# exactly the two modules that declare `WRITE_ROUTES`, and they register
+# themselves here at import. A module cannot be called without being
+# imported, so registration cannot be skipped by the caller.
+#
+# Host-based at the transport, rather than a check inside `bison._patch`, so
+# it also catches a caller that builds the URL itself and calls
+# `providers.request` directly - which a naive probe is quite likely to do.
+
+WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+WRITES_ENV = "RESONATE_PROVIDER_WRITES"
+
+# Hosts whose mutations reach a real person. Populated by the provider
+# modules themselves; see `guard_prospect_facing`.
+_prospect_facing_hosts = set()
+
+
+def guard_prospect_facing(url_or_host):
+    """Declare a host whose mutations reach a prospect. Called at import by
+    the modules that own `WRITE_ROUTES`, and by nothing else.
+
+    Idempotent, and tolerant of being handed a full base URL, because that is
+    what the calling modules have to hand.
+    """
+    text = str(url_or_host or "").strip()
+    if not text:
+        return
+    host = urllib.parse.urlsplit(
+        text if "//" in text else "//" + text).hostname
+    if host:
+        _prospect_facing_hosts.add(host.lower())
+
+
+def is_prospect_facing(url):
+    host = urllib.parse.urlsplit(str(url or "")).hostname
+    return bool(host) and host.lower() in _prospect_facing_hosts
+
+# Set by `allow_writes` only. A list so nesting is a stack rather than a flag
+# that the inner block's exit switches off for the outer one.
+_write_scopes = []
+
+
+class ProviderWriteRefused(RuntimeError):
+    """A mutating provider call was attempted without explicit authorization.
+
+    Raised BEFORE the socket is opened. Nothing reached the provider.
+    """
+
+
+def writes_allowed():
+    """(allowed, why). `why` is quotable in a refusal or an audit line."""
+    if _write_scopes:
+        return True, "allow_writes(%s)" % _write_scopes[-1]
+    if os.environ.get(WRITES_ENV) == "1":
+        return True, "%s=1" % WRITES_ENV
+    return False, "no %s and no allow_writes() scope" % WRITES_ENV
+
+
+class allow_writes:
+    """Authorise mutating provider calls for one block. Explicit, and narrow.
+
+        with providers.allow_writes("resume 487 per OPERATOR-AUTH 2026-09-20"):
+            bison.resume_campaign(487, expect_leads=10)
+
+    The reason is required and is recorded on the refusal log and in
+    `writes_allowed()`, because "who authorised this write and for what" is
+    the question an incident asks first and the one the 487 pause could not
+    answer.
+    """
+
+    def __init__(self, reason):
+        if not str(reason or "").strip():
+            raise ValueError(
+                "allow_writes needs a reason: an unattributable authorization "
+                "is the thing this guard exists to prevent")
+        self.reason = str(reason).strip()
+
+    def __enter__(self):
+        _write_scopes.append(self.reason)
+        return self
+
+    def __exit__(self, *exc):
+        _write_scopes.pop()
+        return False
+
+
+def _log_refusal(method, url, why):
+    """Best effort, and never allowed to affect the refusal.
+
+    A rogue process attempting a mutation is exactly what somebody wants to
+    find afterwards, and reading another agent's report is not a detection
+    mechanism. Dependency-free and wrapped, so a full disk or a read-only
+    volume cannot turn a refusal into a crash - or, worse, into an exception
+    that some caller catches and retries around.
+    """
+    try:
+        import datetime
+        path = os.path.abspath(
+            os.environ.get("PROVIDER_WRITE_REFUSALS")
+            or os.path.join(ROOT, "work", "provider-write-refusals.jsonl"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        row = {
+            "at": datetime.datetime.now(
+                datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "method": method,
+            "url": redact(str(url))[:300],
+            "why": why,
+            "pid": os.getpid(),
+            "argv": [os.path.basename(str(a)) for a in __import__("sys").argv[:4]],
+        }
+        with open(path, "a", encoding="utf-8", newline="\n") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def refuse_unauthorized_write(method, url):
+    """Called before the socket, on every real-transport call."""
+    if str(method).upper() not in WRITE_METHODS:
+        return
+    if not is_prospect_facing(url):
+        return
+    allowed, why = writes_allowed()
+    if allowed:
+        return
+    _log_refusal(method, url, why)
+    raise ProviderWriteRefused(
+        "REFUSED %s %s - a mutating provider call with no explicit "
+        "authorization (%s). This is the guard added after an audit agent "
+        "paused live campaign 487 on 2026-09-20 simply by importing src and "
+        "calling through. NOTHING WAS SENT. If this call is genuinely "
+        "authorized, the entry point - not the library - opts in, with "
+        "`RESONATE_PROVIDER_WRITES=1` or "
+        "`with providers.allow_writes('<reason>'):`."
+        % (str(method).upper(), redact(str(url))[:200], why))
+
+
 def _urllib_transport(method, url, headers, body, timeout):
+    # FIRST LINE, before the request object is even built. The refusal has to
+    # land before any side effect, exactly as `refuse_production_write` does.
+    refuse_unauthorized_write(method, url)
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(url, method=method, data=data, headers=dict(headers))
     if not any(k.lower() == "user-agent" for k in headers):
