@@ -718,7 +718,13 @@ def _certified_copy(step, key, extra=None):
     material = dict(step or {})
     material["subject"] = entry["subject"]
     material["body"] = entry["body"]
-    if approval.fingerprint(material) != recorded:
+    # TASK-219: for a threaded follow-up, the approval fingerprint excludes
+    # the subject. The slot carries `threaded_follow_up: True` when the
+    # approval was granted under the threaded-shape rule. The fingerprint
+    # comparison must match: skip_subject=True excludes the subject from the
+    # hash so the approval covers only the body (what the provider sends).
+    skip_subject = bool((step or {}).get("threaded_follow_up"))
+    if approval.fingerprint(material, skip_subject=skip_subject) != recorded:
         return None
     if extra:
         # `extra` IS METADATA AND MAY NEVER BE COPY.

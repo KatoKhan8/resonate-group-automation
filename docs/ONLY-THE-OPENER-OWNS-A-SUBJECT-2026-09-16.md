@@ -53,10 +53,25 @@ be generated, approved, or accidentally sent.
 
 ### Approval (`src/approve.py`, `src/approval.py`)
 
-No changes to the fingerprint function. The fingerprint still covers the
-subject (because it's part of the step definition). The comparator understands
-that the subject for a threaded step is not independent prospect-facing
-content.
+TASK-219 completion: the fingerprint for a threaded follow-up now EXCLUDES
+the subject. The sendable content for a threaded sequence is ONE opener
+subject plus N bodies - not N subject/body pairs. A follow-up's generated
+subject never reaches a prospect (the provider uses `subject_1` and prepends
+`Re:` itself), so the approval must not cover it.
+
+- `approval.fingerprint` accepts `skip_subject=False` (default). When True,
+  the subject is excluded from the hash.
+- `approve.approve_step` detects threaded follow-ups via the config's
+  `thread_reply_pattern`, blanks the subject on the slot, and computes the
+  fingerprint with `skip_subject=True`. The slot carries `threaded_follow_up:
+  True` so downstream code can reproduce the same fingerprint.
+- `approval.is_approved` accepts `campaign=None`. When the slot carries the
+  `threaded_follow_up` flag, it computes the current step's fingerprint with
+  `skip_subject=True`. When the flag is absent but `campaign` is provided, it
+  falls back to config-based detection via `_is_threaded_follow_up`.
+- `bisonfactory._certified_copy` reads the `threaded_follow_up` flag from the
+  stored step and passes `skip_subject=True` to `fingerprint`, so the staging
+  proof matches the approval.
 
 ## The trap
 

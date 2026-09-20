@@ -56,14 +56,22 @@ def is_accountable_approver(by):
         domain.rsplit(".", 1)[-1].strip())
 
 
-def fingerprint(step):
-    """What was approved. Any edit to the words changes this."""
-    material = " ".join([
-        str((step or {}).get("channel") or ""),
-        str((step or {}).get("subject") or ""),
-        str((step or {}).get("body") or ""),
-        str((step or {}).get("note") or ""),
-    ])
+def fingerprint(step, skip_subject=False):
+    """What was approved. Any edit to the words changes this.
+
+    TASK-219: for a threaded follow-up, the subject is NOT sendable content -
+    the provider continues the original thread and prepends ``Re:`` itself.
+    ``skip_subject=True`` excludes the subject from the hash, so the approval
+    covers only the body (and channel/note). A follow-up whose body changes
+    invalidates the approval; a follow-up whose generated subject changes
+    does not, because that subject never reaches a prospect.
+    """
+    parts = [str((step or {}).get("channel") or "")]
+    if not skip_subject:
+        parts.append(str((step or {}).get("subject") or ""))
+    parts.append(str((step or {}).get("body") or ""))
+    parts.append(str((step or {}).get("note") or ""))
+    material = " ".join(parts)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
 
@@ -75,15 +83,65 @@ def approval_of(rec, contact_key, step_key):
     return stored(rec, contact_key, step_key).get("approval")
 
 
-def is_approved(rec, contact_key, step_key, step=None):
+def is_approved(rec, contact_key, step_key, step=None, campaign=None):
     """True only if this exact text was approved and has not changed since.
 
     A template step is expanded fresh on every read, so if the template, the
     angle or the evidence behind it changes, the fingerprint moves and the
     approval no longer applies. That is the point.
+
+    TASK-219: for a threaded follow-up, the approval fingerprint excludes
+    the subject. If the stored slot carries the ``threaded_follow_up`` flag
+    (set by ``approve.approve_step``), the current step's fingerprint is
+    computed with ``skip_subject=True`` to match. ``campaign`` is needed to
+    determine threading when the flag is absent from an older slot.
     """
     approval = approval_of(rec, contact_key, step_key)
     if not approval:
         return False
-    current = step if step is not None else stored(rec, contact_key, step_key)
-    return approval.get("fingerprint") == fingerprint(current)
+    slot = stored(rec, contact_key, step_key)
+    current = step if step is not None else slot
+    skip = slot.get("threaded_follow_up")
+    if skip is None and campaign is not None:
+        skip = _is_threaded_follow_up(step_key, campaign)
+    return approval.get("fingerprint") == fingerprint(current,
+                                                      skip_subject=bool(skip))
+
+
+def _is_threaded_follow_up(step_key, campaign):
+    """True when this step key is a threaded follow-up in the campaign's
+    email sequence.
+
+    Reads the client config's ``email_sequence.thread_reply_pattern`` and
+    the cadence's email step order to decide whether ``step_key`` sits at
+    a position where ``thread_reply`` is true. Returns False when the
+    question cannot be answered (no campaign, no config, no cadence).
+    """
+    if not campaign or not step_key:
+        return False
+    from . import clients
+
+    client = campaign.get("client")
+    if not client:
+        return False
+    try:
+        config = clients.load(client)
+    except clients.ConfigError:
+        return False
+    seq = (config.get("email_sequence") or {})
+    steps_block = seq.get("steps") or {}
+    if step_key not in steps_block:
+        return False
+    pattern = seq.get("thread_reply_pattern") or []
+    if not pattern:
+        return False
+    email_keys = sorted(
+        steps_block,
+        key=lambda k: (steps_block[k] or {}).get("order", 0))
+    try:
+        idx = email_keys.index(step_key)
+    except ValueError:
+        return False
+    if idx < 1 or idx >= len(pattern):
+        return False
+    return bool(pattern[idx])

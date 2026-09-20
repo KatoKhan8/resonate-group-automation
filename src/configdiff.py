@@ -277,7 +277,8 @@ def approved_heyreach(campaign, recs=None, config=None):
             # template or the angle moves the fingerprint and drops the contact
             # out of the approved set until a human approves the new words.
             if not approval.is_approved(rec, contact["key"],
-                                        LINKEDIN_STEP["key"], step):
+                                        LINKEDIN_STEP["key"], step,
+                                        campaign=campaign):
                 continue
             slug = collision.profile_slug(contact.get("linkedin"))
             if not slug:
@@ -681,7 +682,7 @@ def approved_bison(campaign, recs=None, config=None):
                 if not step:
                     continue
                 if not approval.is_approved(rec, contact["key"], spec["key"],
-                                            step):
+                                            step, campaign=campaign):
                     continue
                 approved_here = True
                 contact_copy.append({"step_key": spec["key"],

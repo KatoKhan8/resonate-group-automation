@@ -38,6 +38,38 @@ REFUSED_STATES = ("dropped", "pushed")
 EMAIL_REFUSED_STATES = ("held",)
 
 
+def _is_threaded_follow_up(step_key, config):
+    """True when ``step_key`` is a threaded follow-up in the email sequence.
+
+    TASK-219: a threaded follow-up's subject is NOT sendable content. The
+    provider continues the original thread and prepends ``Re:`` itself. The
+    approval fingerprint must therefore exclude the subject.
+
+    Reads ``email_sequence.thread_reply_pattern`` and the step ordering from
+    the config. Returns False when the question cannot be answered (no config,
+    no sequence, single-step, or step is the opener).
+    """
+    if not config or not step_key:
+        return False
+    seq = (config.get("email_sequence") or {})
+    steps_block = seq.get("steps") or {}
+    if step_key not in steps_block:
+        return False
+    pattern = seq.get("thread_reply_pattern") or []
+    if not pattern:
+        return False
+    email_keys = sorted(
+        steps_block,
+        key=lambda k: (steps_block[k] or {}).get("order", 0))
+    try:
+        idx = email_keys.index(step_key)
+    except (ValueError, TypeError):
+        return False
+    if idx < 1 or idx >= len(pattern):
+        return False
+    return bool(pattern[idx])
+
+
 class NotApprovable(RuntimeError):
     """This step cannot be approved, and the reason is on the exception."""
 
@@ -100,7 +132,16 @@ def approve_step(rec, contact_key, step_key, by="unknown", config=None,
     if reason:
         raise NotApprovable(f"{rec['id']}:{contact_key}:{step_key}: {reason}")
 
-    stamp = {"by": by, "at": store.now(), "fingerprint": fingerprint(step)}
+    # TASK-219: for a threaded follow-up, the subject is NOT sendable content.
+    # The provider continues the original thread and prepends Re: itself.
+    # The approval fingerprint must therefore exclude the subject: it covers
+    # what reaches a prospect, and a follow-up's own subject does not.
+    threaded = _is_threaded_follow_up(step_key, config)
+    fp_step = dict(step) if threaded else step
+    if threaded:
+        fp_step["subject"] = ""
+    stamp = {"by": by, "at": store.now(),
+             "fingerprint": fingerprint(fp_step, skip_subject=threaded)}
     slot = rec.setdefault("cadence", {}).setdefault(contact_key, {}).setdefault(step_key, {})
     # A template step is expanded at read time, so record what was approved.
     #
@@ -124,6 +165,15 @@ def approve_step(rec, contact_key, step_key, by="unknown", config=None,
             slot[field] = step[field]
         else:
             slot.pop(field, None)
+    # TASK-219: for a threaded follow-up, blank the subject on the slot so
+    # the sender reads "" (matching what the provider stores) and the flag
+    # tells `is_approved` and `_certified_copy` to skip the subject in the
+    # fingerprint.
+    if threaded:
+        slot["subject"] = ""
+        slot["threaded_follow_up"] = True
+    else:
+        slot.pop("threaded_follow_up", None)
     slot["approval"] = stamp
     store.log(rec, "approved", f"{contact_key}:{step_key} by {by}",
               fingerprint=stamp["fingerprint"])
@@ -186,7 +236,7 @@ def fully_approved(rec, config=None, campaign=None):
     pending_steps = approvable_steps(rec, config, campaign)
     if not pending_steps:
         return False
-    return all(approval.is_approved(rec, ck, sk, step)
+    return all(approval.is_approved(rec, ck, sk, step, campaign=campaign)
                for ck, sk, step in pending_steps)
 
 
@@ -270,7 +320,8 @@ def pending(recs, config_cache=None, campaign_rows=None):
                  for c in (rec.get("contacts") or [])}
         for contact_key, steps in timeline["contacts"].items():
             for step_key, step in steps.items():
-                if approval.is_approved(rec, contact_key, step_key, step):
+                if approval.is_approved(rec, contact_key, step_key, step,
+                                        campaign=of_record.get(rec["id"])):
                     continue
                 entry = {"id": rec["id"], "contact": contact_key,
                          "name": names.get(contact_key) or contact_key,
