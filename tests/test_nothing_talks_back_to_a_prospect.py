@@ -83,7 +83,12 @@ class TheVocabularyContainsNoSend(unittest.TestCase):
              # condition reads the list FROM THE PROVIDER at the moment of
              # the write and refuses unless `campaignIds` is empty. A list
              # attached to no campaign reaches nobody, whatever is in it.
-             "heyreach.add_lead_to_list"})
+             "heyreach.add_lead_to_list",
+             # Added 2026-09-20, TASK-235. The LinkedIn counterpart of
+             # bison.stop_lead: stops ONE person's progression through a
+             # HeyReach campaign. NOT in SUPPORTED - the mechanism exists
+             # and the door is shut.
+             "heyreach.stop_lead"})
 
     def test_and_no_send_verb_is_supported(self):
         """No enabled verb TRANSMITS TEXT THIS SYSTEM COMPOSED.
