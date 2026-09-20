@@ -24,6 +24,8 @@ own measurements, and the GLM review docs.
 
 ## OPEN — ordered by production impact
 
+_9 open at creation; ISSUE-006 closed the same day. ISSUE-010 added 2026-09-20 from the sender-utilisation review._
+
 ### ISSUE-001 · Reply ingestion discards the reply it just acted on · CRITICAL
 
 - **Component** `src/leadstop.py::_record` nested inside `src/inbound.py::ingest`
@@ -116,18 +118,50 @@ own measurements, and the GLM review docs.
   an operator decision and a visible edit to the routing table, not a bug.
 - **Status** BLOCKED on operator
 
-### ISSUE-006 · The PII guard is red · HIGH
+### ISSUE-006 · The PII guard was red · HIGH · **FIXED `cecd4223`**
 
-- **Component** `tests/test_fixture_hygiene`
-- **Impact** The control that catches a worker committing a prospect name is
-  failing. It was reported green on 2026-09-16.
-- **Measured** 3 failures: `test_no_real_person_or_client_named`,
-  `test_no_real_client_prospect_or_roster_domain`,
-  `test_every_email_address_is_on_a_reserved_domain`. Pre-existing and in the
-  `work/suite-2026-09-20-failures.txt` baseline — confirmed identical with and
-  without this session's changes.
-- **Status** NEW · unassigned · **not triaged — nobody has looked at what it
-  is actually flagging**
+- Red since ~2026-09-18, reported green on the 16th, never triaged. **A red
+  guard catches nothing**, so every leak after that date was invisible.
+- What it was flagging: two seat-holders' real names and sending addresses
+  across five tracked files, and **five real prospects hardcoded** in
+  `scripts/build_us_cohort_row_and_approvals.py` - the cohort 489 enrolls.
+- Fixed: identifiers redacted in place to placeholders keeping provider ids,
+  and the prospect list moved to a gitignored sidecar the script reads,
+  refusing when absent. **13/13 green.**
+- Git history still holds the identifiers; rewriting a pushed history is the
+  operator's decision, as recorded on the 09-17 redaction.
+
+### ISSUE-010 · Zero senders are eligible, on either provider · HIGH
+
+**Not a capacity problem. Answered, re-measured 2026-09-20T19:40Z.**
+
+- **EmailBison** 225 inboxes, 210 connected, 207 healthy, **2,025 measured
+  headroom slots**, 210 proven free on some day, 0 that could not be proven
+  free. And `HUMAN_IDENTITY_ATTESTED = 0` across all 12 humans, so
+  `SAFE_FOR_PRODUCTIVE = 0`. Every unallocated eligible sender classifies as
+  **HUMAN_IDENTITY_MISMATCH** - no attested owner - not as
+  `NO_COMPATIBLE_CAMPAIGN` or `DAILY_LIMIT`.
+- **A second, independent cap:** `MAX_SENDERS_ONE_CAMPAIGN_MAY_NAME = 1`,
+  enforced by `executionguard._sender_for` - "a guarded action is attributed
+  to exactly one". The usable pool is the MINIMUM of the two, so it is zero
+  twice over. This is DESIGN, not a defect: the replacement is already
+  written as `docs/SENDER-ATTRIBUTION-DESIGN-2026-09-17.md`, status DESIGN
+  ONLY, moving arity from the campaign to the action.
+- **HeyReach** 41 accounts, 34 active, 33 with valid auth, and **0
+  unallocated** - all 33 are already in campaigns, mostly the client's (we
+  own 4 of 86). Classification: **EXISTING_COMMITMENT**. Connection limit is
+  40/day per seat; 605732 has used **0** of its seat's 40.
+- **So adding senders would change nothing on either channel today.** 487
+  waits on an authorized resume, 489 on a stale plan, 605732 on 30 hours of
+  graph delay and a weekend. None is a capacity constraint.
+- **What must NOT be done:** attest a human to a mailbox to gain capacity.
+  Attestation records who genuinely operates an inbox; inventing one
+  fabricates the thing the gate checks. The three empty-book inboxes (3941,
+  3930, 3919) are empty because they have NEVER SENT and are DEGRADED.
+- **The bounded, honest unlock** is one genuine attestation of one human to
+  one healthy uncommitted mailbox - an operator act, not an engineering one.
+- **Status** BLOCKED on operator (attestation) · design exists for the arity
+  half · `docs/THE-LATENCY-IS-ATTESTATION-NOT-CAPACITY-2026-09-19.md`
 
 ### ISSUE-007 · 489 is planned onto a full mailbox-day while Monday has room · MEDIUM
 
