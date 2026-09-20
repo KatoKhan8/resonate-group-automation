@@ -118,7 +118,7 @@ store before you fix it: a fix for a defect nobody reproduced is a guess.
 ## Result
 
     STATUS             DONE
-    COMMIT SHA        8d1a6cf3
+    COMMIT SHA        5662dde6
     TESTS             tests.test_a_benchmark_cannot_overwrite_the_live_queue:
                       10 passed, 0 failed
                       tests.test_scalesim: 17 passed, 0 failed (pre-existing,
