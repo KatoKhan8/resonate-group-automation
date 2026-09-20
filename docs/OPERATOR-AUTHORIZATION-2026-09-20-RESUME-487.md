@@ -80,6 +80,64 @@ sending window**, with the acceptance test below.
     any change to the cohort, copy, sender,        none of these is
       schedule, window or caps                     implicated in the fault
 
+## WHO EXECUTES IT, decided 2026-09-20
+
+**THE OPERATOR RUNS IT.** Asked directly whether to schedule it unattended,
+run it from a live session, or hand it over; the answer was
+**"You run it Monday morning."**
+
+So nothing is scheduled, no cron exists, and no session will fire this on its
+own. It was verified on the 20th that Windows Task Scheduler holds no
+matching task - **if nobody types the command, the recovery does not happen.**
+
+    MONDAY 2026-09-21, ANY TIME FROM 07:00Z (09:00 Europe/Zagreb)
+
+    cd <the repository>
+    py -3 scripts/resume_487.py --preflight     optional, checks everything
+    py -3 scripts/resume_487.py --live          the authorized write
+
+Running it EARLY is safe: outside the window it refuses and prints the exact
+time the window opens. It never waits, sleeps or decides the clock is close
+enough.
+
+### What success looks like, and it is not "active"
+
+    RECOVERED         all ten leads read `in_sequence`. This is the ONLY
+                      success. The campaign reading `active` is not enough
+                      and never was.
+    FAILED RECOVERY   the campaign may read `active` but leads still read
+                      `sending_paused`. THE SAME FAULT SURVIVED THE REMEDY.
+                      Do not retry - condition 5 is ONCE. Report and stop.
+    REFUSED           a gate did not pass. Nothing was written. The message
+                      says which gate and why.
+
+### Why Monday rather than any weekday
+
+From the complete forward-book census of 2026-09-20T14:09Z, sender 2736:
+
+    Mon 2026-09-21   0/15 booked by the client   15 free
+    Tue 2026-09-22   5/15                        10 free  (exactly the cohort)
+    Wed 2026-09-23  15/15                         0 free
+
+487 needs room for its WHOLE COHORT of ten - the rule proven in
+`THE-SCHEDULER-PLACES-THE-WHOLE-COHORT`. Monday is the only day with slack
+in it. And EmailBison's own documentation, via Grok with a source URL, says
+**the scheduler runs every time a campaign is resumed** - so a Monday resume
+replans against Monday's book and the openers may go out that same day.
+
+**The census is from Sunday afternoon and the client's book demonstrably
+grows day to day** (campaign 327 went from 48,759 rows to 49,627 in
+twenty-four hours). Treat those three numbers as the reason for urgency, not
+as Monday's truth. The runner re-reads provider state before it writes.
+
+### Preflight run 2026-09-20 evening - every condition except the window MET
+
+    window      LATER   opens 2026-09-21T07:00Z
+    truth       PASS    campaign 'paused', 10 leads, senders [2736],
+                        Europe/Zagreb
+    membership  PASS    {'sending_paused': 10}
+    copy        PASS    10 of 10 queued rows carry exactly the approved text
+
 ## The runner
 
 `scripts/resume_487.py` implements every condition above and refuses rather
