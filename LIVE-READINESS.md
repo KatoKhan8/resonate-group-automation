@@ -105,7 +105,7 @@ counterpart.
 | provider configuration differ (`configdiff`) | **READ-ONLY VALIDATED** | run live against a real HeyReach campaign; caught a vendor placeholder note that every other check passed. The EmailBison half has never been run against a real campaign and one of its fields cannot pass (see below) |
 | execution guard (`executionguard`) | **FIXTURE ONLY** | 50 tests, every gate proven to stop a provider call entirely. It has authorised exactly one action, in a dry run |
 | action ledger (`actionledger`) | **FIXTURE ONLY** | reserve-before/settle-after, tenant-scoped caps enforced inside the reservation transaction. No row has ever been settled by a real write |
-| guarded write layer (`providerwrites`) | **NOT VALIDATED, SEALED** | `SUPPORTED = ()`. Every operation refuses, and a test asserts the allowlist is empty so enabling one is a visible diff |
+| guarded write layer (`providerwrites`) | **LIVE-VALIDATED, 14 VERBS ENABLED** | **CORRECTED 2026-09-20.** This row read "`SUPPORTED = ()`. Every operation refuses" and that has been false for days. Measured: 14 verbs, three of them prospect-facing - `heyreach.add_lead`, `bison.activate`, `heyreach.activate`. Enabling one is still a visible diff; the claim that none is enabled was the falsehood |
 | approval fingerprint | **READY** | covers senders, provider binding, limits, lead set, tenant and angle; 13 tests, one per material field, plus one proving a volatile counter does NOT invalidate consent |
 | persona spend cap | **READY** | `max_contacts_to_enrich` is now read by the code that spends. Halves verification on the real cohort |
 | budget floor | **READY** | a live run with no `--cap` is refused at both CLIs |
@@ -113,17 +113,38 @@ counterpart.
 | reply provenance | **READY** | every reply event names the estate it was read from |
 | streaming controller | **NOT BUILT** | deliberately. See PRODUCT-GAPS 38k: a 30,000-record queue is a 505 MB whole-file rewrite taking 14.6s against a 10s lock timeout, so a controller on this substrate would be built on sand |
 
-**What still cannot happen, and it is not a flag.** There is no route that adds
-a lead, and none that activates a campaign. `push.run(live=True)` raises,
-`tagsync.send` refuses unconditionally, `heyreach._read` rejects anything off
-its read allowlist, and `killswitch.require` refuses because the global layer
-says this build cannot send. Six independent refusals, and the write layer's
-allowlist is empty behind all of them.
+**CORRECTED 2026-09-20. THIS SECTION ASSERTED A SAFETY PROPERTY THAT NO
+LONGER HOLDS.** It read: "There is no route that adds a lead, and none that
+activates a campaign... the write layer's allowlist is empty behind all of
+them", and closed by calling the brakes "attached to a pedal that is not
+connected to anything."
 
-**The honest summary of the night's work:** the brakes are now real, tested and
-non-optional, and they are attached to a pedal that is not connected to
-anything. That is the correct order to build it in, and it means every one of
-those gates will run for the first time in anger on the day a route opens.
+Every clause of that is now false, and this is the document CLAUDE.md names
+as the one to read before promising anything. Measured against the providers:
+
+    providerwrites.SUPPORTED          14 verbs, 3 prospect-facing
+    heyreach.add_lead                 SUPPORTED
+    bison.activate, heyreach.activate SUPPORTED
+    EmailBison canary 451             ONE REAL EMAIL SENT, 2026-09-14
+    HeyReach 605732                   IN_PROGRESS, 3 leads, senders attached
+    EmailBison 487 / 489              10 and 5 leads enrolled, 0 sent
+
+**This build can send, and has sent.** The pedal is connected. What is true
+is narrower and worth stating precisely: no cohort has gone out yet, 487 is
+paused awaiting an authorized resume, and 489 and 605732 are waiting on
+provider schedules rather than on any gate of ours.
+
+The gates are real and they are running in anger now, not on some future day
+a route opens. `killswitch.require`, the approval fingerprint, the collision
+check, the account gate and `providers.refuse_unauthorized_write` have each
+refused a real action in the last week.
+
+**Why this was allowed to drift:** the row and the paragraph were written
+when they were true and nothing re-read them when `SUPPORTED` was populated
+one verb at a time. A document asserting a safety property needs the same
+treatment as a cached provider snapshot - it is only as good as its last
+verification, and nothing here dated it. Buggie's audit of 2026-09-20 caught
+it; the finding was rated CRITICAL and it was right.
 
 ---
 

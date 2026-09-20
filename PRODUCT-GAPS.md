@@ -11,14 +11,16 @@ a reader to read an absence as a result.
 
 ---
 
-## 1. Nothing sends
+## 1. Sending is live on both channels, and no cohort has completed
 
-The largest gap, and the intended one for this build.
+**CORRECTED 2026-09-20.** This section was headed "Nothing sends" and called
+that "the intended one for this build". Both claims are false and were
+repeated from `LIVE-READINESS.md`, which carried the same error.
 
 | Surface | State |
 | --- | --- |
-| Email (EmailBison) | payloads prepared, never posted |
-| LinkedIn (HeyReach) | payloads prepared, never posted |
+| Email (EmailBison) | **LIVE.** Canary 451 sent one real email 2026-09-14. 487 holds 10 enrolled leads (paused, authorized resume pending), 489 holds 5 (active, scheduled) |
+| LinkedIn (HeyReach) | **LIVE.** 605732 IN_PROGRESS with 3 leads enrolled and a sender attached; 0 connection requests sent so far - the graph spends 30 hours before the first one |
 | Slack (outbound) | alerts recorded and routed, never posted |
 | Slack (inbound) | `/slack/interactions` exists and verifies; no real click has reached it |
 | Paid enrichment (ContactOut, Reoon, Deliverable) | callable, not called |
