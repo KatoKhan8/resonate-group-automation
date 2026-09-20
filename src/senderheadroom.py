@@ -41,6 +41,17 @@ FULL
     The rows already counted reach or exceed the mailbox's daily limit for
     that day. Sound on any walk, complete or not.
 
+    **FULL means the mailbox will not SEND more that day**, which was an
+    assumption when this was written and is now measured: across 225
+    mailboxes and four days, 47 of them sent exactly 15 on 2026-09-17 and
+    not one sent more. `docs/THE-LIMIT-BOOKS-SOFT-AND-SENDS-HARD-2026-09-20.md`.
+
+    The limit is enforced at SENDING and not at BOOKING - client campaign 352
+    books 16 rows on a mailbox whose limit is 15 - so a day CAN hold more
+    rows than it will send, and `committed` above that limit is a real
+    reading rather than a bug. An overbooked day sheds rows and WHICH row
+    sheds is UNKNOWN, so a cohort placed on a full day is not merely late.
+
 ROOM
     The walk is complete, fresh, covers every active campaign, and the limit
     is known - and under all of that the day has free slots.

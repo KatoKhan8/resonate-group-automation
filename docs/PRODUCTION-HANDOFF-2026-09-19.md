@@ -207,8 +207,13 @@ watcher was killed at exit 124 that way on the 18th:
     bison_watch_loop.py --interval 300
     bison_watch_loop.py --campaign 489 --interval 180
     heyreach_watch_loop.py --interval 300
-    bison_mailbox_utilisation.py --interval 300 --samples 200 --quiet
-    bison_watch_loop.py --campaign 487 --interval 180     armed 10:20Z
+    bison_watch_loop.py --campaign 487 --interval 180     armed 09-19T10:20Z
+    bison_mailbox_utilisation.py --interval 300 --samples 2000 --quiet
+        RE-ARMED 09-20T02:40Z. The previous run COMPLETED its 200 samples and
+        exited 0 - that is by design, not a death, but it means this monitor
+        stops on its own. `--samples 2000` is ~7 days. Its per-day counter
+        deltas are the evidence that the send cap is hard, so a gap in it is
+        a gap in that proof.
 
 **THE CENSUS IS COMPLETE**, as of 2026-09-19T11:30Z: all five campaigns,
 184,284 rows, every one `complete: true`. `senderheadroom` now answers FULL
