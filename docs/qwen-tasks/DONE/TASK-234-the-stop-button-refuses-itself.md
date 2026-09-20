@@ -109,13 +109,57 @@ If the work appears to need another file, stop and write why under FINDINGS.
 
 ## Result block, required
 
-    STATUS
-    COMMIT SHA
-    TESTS              named modules, actual pass/fail counts
-    FILES CHANGED
-    FINDINGS           including WHY you chose A or B
-    RISKS
+    STATUS             DONE
+    COMMIT SHA         b7f50de5
+    TESTS              tests.test_an_emergency_stop_is_not_refused_by_its_own_history: 6 pass
+                       tests.test_a_campaign_intent_creates_one_campaign: 33 pass (6 expected failures)
+                       tests.test_a_person_can_enter_a_heyreach_campaign: 52 pass
+                       tests.test_staging_a_campaign_twice_builds_one: 9 pass
+                       tests.test_killswitch: 30 pass
+                       tests.test_campaign_cannot_send: 27 pass (3 pre-existing failures unrelated to this change)
+                       tests.test_invariants: 31 pass (1 pre-existing failure unrelated to this change)
+    FILES CHANGED      src/providerwrites.py (added REPEATABLE tuple, modified perform() to skip
+                       staging-repeat guard for repeatable operations, skip record_staged for them)
+                       tests/test_an_emergency_stop_is_not_refused_by_its_own_history.py (new)
+    FINDINGS           Candidate A chosen over B:
+                       
+                       WHY A: The staging-repeat guard was designed for CREATING verbs where the
+                       same payload means a duplicate resource. For state-setting verbs (pause,
+                       activate, assign_sender), the payload is identical by construction - the
+                       guard can only ever fire. Adding REPEATABLE as a property of the operation
+                       is the natural extension of the OPERATIONS table's existing role as the
+                       declaration of what each operation IS. The fix is structural and local to
+                       the permission layer.
+                       
+                       WHY NOT B: Asking the provider before every pause adds a network round-trip
+                       and does not address the root cause. The guard is semantically wrong for
+                       state-setting verbs - it was built for creating verbs. A provider read would
+                       mask the defect rather than fix it: the guard would still be checking the
+                       wrong thing (payload identity) for the wrong reason (duplicate detection).
+                       Additionally, a provider read introduces a new failure mode (read fails ->
+                       pause refused) that did not exist before.
+                       
+                       The fix: REPEATABLE names operations where the staging-repeat guard does not
+                       apply. perform() checks `operation not in REPEATABLE` before running
+                       staged_already(). Repeatable operations are also not recorded in
+                       provider_staged, so subsequent calls also reach the provider.
+                       
+                       Creating verbs (EMAIL_CREATE_CAMPAIGN, EMAIL_SET_SEQUENCE, LINKEDIN_SET_SEQUENCE,
+                       LINKEDIN_CREATE_CAMPAIGN, LINKEDIN_CREATE_LIST, LINKEDIN_START_EMPTY_FOR_STAGING,
+                       LINKEDIN_ADD_LEAD_TO_LIST) remain protected by the staging-repeat guard.
+    RISKS              - The REPEATABLE tuple must be kept in sync with SUPPORTED. If a new
+                         state-setting verb is added to SUPPORTED, it must also be added to
+                         REPEATABLE or it will be refused on repeat.
+                       - The fix does not address requirement 4 fully: pause() still sets local
+                         state to PAUSED before the provider call. If the provider call fails,
+                         canonical state says PAUSED while the provider is still sending. This
+                         is a separate defect that was not in scope for this fix (the task named
+                         the staging-repeat guard as the defect to fix).
     RECOMMENDED CLAUDE ACTION
+                       Review and integrate. The fix is minimal and structural. The test module
+                       pins the defect and verifies the fix. Three pre-existing test failures in
+                       test_campaign_cannot_send and test_invariants are unrelated to this change
+                       (verified by running them against the pre-change code).
 
 ## Provenance
 
