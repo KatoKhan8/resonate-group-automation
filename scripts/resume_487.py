@@ -179,7 +179,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--live", action="store_true",
                         help="perform the authorized write")
+    parser.add_argument("--preflight", action="store_true",
+                        help="check every condition EXCEPT the window, so the "
+                             "other five can be verified before the window "
+                             "opens. Never writes.")
     args = parser.parse_args(argv)
+    if args.preflight and args.live:
+        parser.error("--preflight never writes; it cannot be combined with "
+                     "--live")
 
     _setup_data_access()
     from src.providers import bison
@@ -190,8 +197,23 @@ def main(argv=None):
     print("=" * 72)
 
     try:
-        window_gate()
-        print("  PASS  window    inside 487's Mon-Fri 07:00-15:00Z window")
+        # THE WINDOW GATE IS FIRST IN THE LIVE PATH AND SKIPPED IN PREFLIGHT.
+        # First, because a resume outside the window is measured to move a
+        # campaign to `failed` and no other check matters if that happens.
+        # Skippable in preflight for the opposite reason: a preparation run
+        # that cannot execute until the window opens tells an operator
+        # nothing on the Sunday evening they are preparing on. The other five
+        # conditions are all checkable now, and knowing they hold is the
+        # whole value of a preflight.
+        if args.preflight:
+            try:
+                window_gate()
+                print("  PASS  window    inside the window now")
+            except Refused as not_yet:
+                print(f"  LATER window    {not_yet}")
+        else:
+            window_gate()
+            print("  PASS  window    inside 487's Mon-Fri 07:00-15:00Z window")
         row, counted, schedule = truth_gate(bison)
         print(f"  PASS  truth     campaign {row.get('status')!r}, "
               f"{EXPECT_LEADS} leads, senders {EXPECT_SENDERS}, "
@@ -205,7 +227,12 @@ def main(argv=None):
 
     if not args.live:
         print()
-        print("  DRY RUN. Every gate passed and NOTHING WAS WRITTEN.")
+        if args.preflight:
+            print("  PREFLIGHT. Every condition except the window is MET, "
+                  "and nothing was written.")
+            print("  The window is the only thing outstanding.")
+        else:
+            print("  DRY RUN. Every gate passed and NOTHING WAS WRITTEN.")
         print("  The authorized write is: py -3 scripts/resume_487.py --live")
         return 0
 
