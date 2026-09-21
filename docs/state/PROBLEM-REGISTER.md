@@ -286,7 +286,7 @@ per-branch check before merging, not a bulk merge.
 
 ### The 51 mailboxes of three identities · operator decision, Zvonimir, 2026-09-21
 
-**Casey Wright, Morgan Ellis and Riley Parker are NOT to be used.** Not added
+**<seat:dcea4084e023>, <seat:a4f632be942d> and <seat:9a5813964024> are NOT to be used.** Not added
 to the roster, not attested, not named as a sender in any campaign. The
 operator has not confirmed they are real people, and an attestation records
 that a real named human operates a mailbox - so attesting them would record
@@ -305,9 +305,9 @@ Their history, recorded because it was asked for separately and because a
 future argument for using them should have to answer it:
 
     identity          mailboxes   lifetime sent   bounces   bounce rate
-    Casey Wright             17           8,947       165         1.84%
-    Morgan Ellis             17           8,911       161         1.81%
-    Riley Parker             17           8,878       200         2.25%
+    <seat:dcea4084e023>             17           8,947       165         1.84%
+    <seat:a4f632be942d>             17           8,911       161         1.81%
+    <seat:9a5813964024>             17           8,878       200         2.25%
     -------------------------------------------------------------------
     EXCLUDED, all three      51          26,736       526         1.97%
     attested nine           174         171,645     1,423         0.83%

@@ -440,7 +440,7 @@ cleared candidates today.
 ## 5c. Create a one-person HeyReach canary campaign
 
 **What** A dedicated Productive campaign in the HeyReach UI: sender 116968
-(Mina Ruzicic), exactly one lead, connection request **with** a note,
+(<seat:ff521dba57b5>), exactly one lead, connection request **with** a note,
 conservative limits.
 
 **Why it cannot be done from here** `src/providers/heyreach.py` exposes read
@@ -456,7 +456,7 @@ and classified against their real sequence graphs:
 | **524026** | DRAFT | yes | bound to `linkedInUserListId 605355` - **the same 50,563-lead list 524002 is running**. Activating it is a mass-send hazard, and it includes two seats outside the attested 33 (129531, 194061) |
 | **567683** | FINISHED | yes | excluded by the operator; and its sequence is `CHECK_IS_CONNECTION -> MESSAGE`, so it messages existing connections and never sends a connection request at all |
 
-**Exact action** HeyReach → new campaign → sender Mina Ruzicic (116968) → a new
+**Exact action** HeyReach → new campaign → sender <seat:ff521dba57b5> (116968) → a new
 list containing one lead → connection request with the approved note → daily
 limit 1. Do not attach list 605355.
 
