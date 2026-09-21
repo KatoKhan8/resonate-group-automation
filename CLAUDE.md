@@ -1,5 +1,8 @@
 # Resonate Group Automation
-docs/PRODUCTION-HANDOFF-2026-09-21.md is the current state: read it first.
+docs/PRODUCTION-HANDOFF-2026-09-21-EVENING.md is the current state: read it
+first. THIS PROJECT SENDS EMAIL NOW - 489 sent two real emails on 2026-09-21,
+at 13:34:48Z and 16:48:18Z, with four independent witnesses on the first. The
+morning handoff below is superseded and its headline is out of date.
 It is written for a session with no conversation context and it supersedes
 every earlier handoff. **487 WAS RESUMED AND RECOVERED on 2026-09-21T09:06Z**
 - all ten leads moved `sending_paused -> in_sequence`, which is the grant's
