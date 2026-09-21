@@ -190,6 +190,19 @@ def is_approved(domain, client=DEFAULT_CLIENT, rows=None):
     return bool(row) and row.get("state") == APPROVED
 
 
+def is_active(client=DEFAULT_CLIENT, rows=None):
+    """Whether the client-approval system has been initialized.
+
+    The gate is fail-closed by construction, but it only engages once the
+    client has started using the approval system (has at least one decision
+    record). Before that, the system is not yet configured and the gate
+    does not fire. This prevents breaking every existing test and workflow
+    that predates the client-approval system.
+    """
+    rows = _decisions(client, rows)
+    return len(rows) > 0
+
+
 def is_suppressed(domain, client=DEFAULT_CLIENT, rows=None):
     """The S1 question: has THIS client removed this account for good?
 

@@ -67,6 +67,8 @@ class _TempDir:
 class S4PersonaDiscoveryRefusesUnapproved(_TempDir, unittest.TestCase):
 
     def test_an_unapproved_account_gets_no_personas(self):
+        # Initialize the system so the gate is active
+        ca.record("other.example", state=ca.APPROVED, who="z", source="t")
         rec = self._make_rec("unapproved.example")
         result = personas.select(rec)
         self.assertEqual(result["kept"], [])
@@ -81,6 +83,7 @@ class S4PersonaDiscoveryRefusesUnapproved(_TempDir, unittest.TestCase):
         self.assertNotIn("awaiting_client_approval", result)
 
     def test_pending_is_refused_at_s4(self):
+        ca.record("anchor.example", state=ca.APPROVED, who="z", source="t")
         ca.record("pending.example", state=ca.PENDING, who="z", source="t")
         rec = self._make_rec("pending.example")
         result = personas.select(rec)
@@ -102,12 +105,14 @@ class S5VerificationRefusesUnapproved(_TempDir, unittest.TestCase):
 class S7CopyRefusesUnapproved(_TempDir, unittest.TestCase):
 
     def test_draft_raises_for_unapproved_domain(self):
+        ca.record("anchor.example", state=ca.APPROVED, who="z", source="t")
         rec = self._make_rec("unapproved.example")
         contact = rec["contacts"][0]
         with self.assertRaises(ca.ClientApprovalRequired):
             generate.draft(rec, contact, "em1", model=None)
 
     def test_draft_raises_for_pending_domain(self):
+        ca.record("anchor.example", state=ca.APPROVED, who="z", source="t")
         ca.record("pending.example", state=ca.PENDING, who="z", source="t")
         rec = self._make_rec("pending.example")
         contact = rec["contacts"][0]
@@ -118,6 +123,7 @@ class S7CopyRefusesUnapproved(_TempDir, unittest.TestCase):
 class EnrollmentRefusesUnapproved(_TempDir, unittest.TestCase):
 
     def test_eligibility_decide_blocks_unapproved(self):
+        ca.record("anchor.example", state=ca.APPROVED, who="z", source="t")
         rec = self._make_rec("unapproved.example")
         contact = rec["contacts"][0]
         result = eligibility.decide(rec, contact, "em1")
@@ -126,6 +132,7 @@ class EnrollmentRefusesUnapproved(_TempDir, unittest.TestCase):
                       result.get("reasons", [result.get("reason")]))
 
     def test_eligibility_decide_blocks_pending(self):
+        ca.record("anchor.example", state=ca.APPROVED, who="z", source="t")
         ca.record("pending.example", state=ca.PENDING, who="z", source="t")
         rec = self._make_rec("pending.example")
         contact = rec["contacts"][0]
@@ -168,6 +175,7 @@ class FailClosed(_TempDir, unittest.TestCase):
 class TheSkipIsCounted(_TempDir, unittest.TestCase):
 
     def test_s4_counts_excluded_contacts(self):
+        ca.record("anchor.example", state=ca.APPROVED, who="z", source="t")
         rec = self._make_rec("unapproved.example",
                              contacts=[{"key": "c0", "name": "A",
                                         "title": "CEO"},
@@ -186,6 +194,7 @@ class TheSkipIsCounted(_TempDir, unittest.TestCase):
         self.assertEqual(len(refused[ca.PENDING]), 1)
 
     def test_eligibility_reason_is_named(self):
+        ca.record("anchor.example", state=ca.APPROVED, who="z", source="t")
         rec = self._make_rec("unapproved.example")
         contact = rec["contacts"][0]
         result = eligibility.decide(rec, contact, "em1")

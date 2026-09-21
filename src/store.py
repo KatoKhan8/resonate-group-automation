@@ -98,7 +98,11 @@ STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    # liveness beats. Not row state, but the file an operator
                    # reads to answer "has it sent yet" - a test appending a
                    # fixture SEND line there would be a fabricated send.
-                   "WATCH_EVENTS", "WATCH_HEARTBEAT")
+                   "WATCH_EVENTS", "WATCH_HEARTBEAT",
+                   # The client-approval register. A stray row here would
+                   # approve or suppress a real account, so it moves with
+                   # the rest of the state.
+                   "CLIENT_APPROVAL")
 
 
 def use_directory(path):

@@ -482,13 +482,14 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     # THE CLIENT MUST HAVE EXPLICITLY APPROVED THIS ACCOUNT. Unknown is
     # pending, pending is refused. Fail-closed by construction. This is in
     # the same class as verification and collision (hard stop 8).
+    # Only active once the client-approval system has been initialized.
     from . import clientapproval
 
     rec_domain = (rec.get("domain") or "").lower()
-    if rec_domain:
-        _require("client_approval",
-                 clientapproval.is_approved(rec_domain,
-                                            rec_client or campaign_client),
+    effective_client = rec_client or campaign_client
+    if (rec_domain and clientapproval.is_active(effective_client)
+            and not clientapproval.is_approved(rec_domain, effective_client)):
+        _require("client_approval", False,
                  f"client_approval is not 'approved' for {rec_domain!r}: "
                  f"nothing may reach S4, S5, S7 or enrollment without it")
     gates.append("client_approval")

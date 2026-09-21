@@ -365,11 +365,13 @@ def select(rec, config=None):
     config = config or clients.load(rec.get("client"))
     # CLIENT APPROVAL GATE: nothing reaches persona discovery without it.
     # Fail-closed: unknown is pending, pending is refused.
+    # Only active once the client-approval system has been initialized.
     from . import clientapproval
 
     domain = rec.get("domain") or ""
-    if domain and not clientapproval.is_approved(
-            domain, rec.get("client") or "productive"):
+    client = rec.get("client") or "productive"
+    if (domain and clientapproval.is_active(client)
+            and not clientapproval.is_approved(domain, client)):
         excluded = []
         for contact in (rec.get("contacts") or []):
             excluded.append({

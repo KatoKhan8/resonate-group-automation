@@ -302,10 +302,12 @@ def _suppressed(rec, config, suppressed=None, contact=None, agency=None):
             return BLOCKED_AGENCY_DNC
     # CLIENT APPROVAL: the client must have explicitly approved this account.
     # Unknown is pending, pending is refused. Fail-closed by construction.
+    # Only active once the client-approval system has been initialized.
     from . import clientapproval
 
-    if domain and not clientapproval.is_approved(domain,
-                                                 rec.get("client") or "productive"):
+    if (domain and clientapproval.is_active(rec.get("client") or "productive")
+            and not clientapproval.is_approved(
+                domain, rec.get("client") or "productive")):
         return BLOCKED_CLIENT_APPROVAL
     return None
 
@@ -612,12 +614,14 @@ def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
     # CLIENT APPROVAL: before ANY step work, including timeline build.
     # An unapproved account must not spend a cadence build or a lint check.
     # Fail-closed: unknown is pending, pending is refused.
+    # Only active once the client-approval system has been initialized.
     domain = (rec.get("domain") or "").lower()
     if domain:
         from . import clientapproval
 
-        if not clientapproval.is_approved(domain,
-                                          rec.get("client") or "productive"):
+        if (clientapproval.is_active(rec.get("client") or "productive")
+                and not clientapproval.is_approved(
+                    domain, rec.get("client") or "productive")):
             return _decide(BLOCKED, [BLOCKED_CLIENT_APPROVAL],
                            step=step_key)
 

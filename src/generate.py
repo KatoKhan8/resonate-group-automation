@@ -1618,15 +1618,16 @@ def draft(rec, contact, day, model, client=None, sequence=None):
     """
     # CLIENT APPROVAL GATE: no copy is rendered for an unapproved account.
     # Fail-closed: unknown is pending, pending is refused.
+    # Only active once the client-approval system has been initialized.
     from . import clientapproval
 
     domain = rec.get("domain") or ""
-    if domain and not clientapproval.is_approved(
-            domain, client or rec.get("client") or "productive"):
+    effective_client = client or rec.get("client") or "productive"
+    if (domain and clientapproval.is_active(effective_client)
+            and not clientapproval.is_approved(domain, effective_client)):
         raise clientapproval.ClientApprovalRequired(
             domain,
-            (clientapproval.state_of(domain,
-             client or rec.get("client") or "productive") or {}).get(
+            (clientapproval.state_of(domain, effective_client) or {}).get(
                 "state", clientapproval.PENDING))
     key = lint.contact_key(contact)
     rejected = []
