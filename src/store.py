@@ -106,8 +106,11 @@ STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    # whose own addition to this tuple made the invariant test
                    # report mine as missing - which is the test doing exactly
                    # what its docstring says it is for.
-                   "CLIENT_APPROVAL")
-
+                   "CLIENT_APPROVAL",
+                   # The nightly sourcing candidate list. Not queue state,
+                   # but written beside the queue and must move with it in
+                   # tests or a fixture would append to the real list.
+                   "CANDIDATES")
 
 def use_directory(path):
     """Point every state file at one directory. Demo mode and tests only.
