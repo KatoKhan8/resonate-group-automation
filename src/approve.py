@@ -19,7 +19,7 @@ Refused outright:
 """
 import argparse
 
-from . import approval, cadence, clients, events, lint, store
+from . import approval, cadence, clients, events, lint, store, verification
 from .approval import approval_of, fingerprint, is_approved, stored
 
 # A record in one of these states has nothing approvable on any channel.
@@ -68,7 +68,28 @@ def why_not(rec, contact_key, step_key, step=None, config=None,
         return f"record is {rec['state']}"
 
     if step.get("channel") == "email":
-        if not lint.sendable(contact):
+        # THE CLIENT'S OWN VERIFICATION POLICY DECIDES THIS, not the default.
+        #
+        # `lint.sendable` asks `verification.is_sendable` with no policy, so
+        # it answered under `DEFAULT_POLICY` - ContactOut primary - while the
+        # Productive workspace had moved primary to Deliverable the same day
+        # and removed ContactOut from verification entirely. Measured on
+        # batch 1: 168 contacts carrying (contactout, reoon) were APPROVED by
+        # a policy their client no longer uses, and 189 carrying
+        # (deliverable, reoon) - the pair the client now requires - were
+        # refused as "recipient is not sendable".
+        #
+        # Backwards in both directions, and exactly the shape CLAUDE.md
+        # warns about: a value computed correctly that nothing downstream
+        # reads. `push.py` and `campaigns.py` already pass `policy_for`; this
+        # gate did not, so the approval and the push disagreed about what
+        # verified means.
+        #
+        # `policy_for` overlays the client's config over the defaults, so a
+        # client with no verification block is unaffected.
+        policy = verification.policy_for(
+            config or clients.load(rec.get("client")))
+        if not verification.is_sendable(contact, policy):
             return "recipient is not sendable"
         failures = lint.check(rec, contact_key, step)
         if failures:

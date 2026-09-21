@@ -64,8 +64,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import (approve, campaigns, clients, clientapproval as ca,  # noqa: E402
-                 identity, store)
+from src import (approval, approve, campaigns, clients,  # noqa: E402
+                 clientapproval as ca, identity, store)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STAGE = os.path.join(ROOT, "work", "stage")
@@ -73,6 +73,8 @@ SOURCE_CSV = os.path.join(ROOT, "work", "Productive",
                           "productive_ICP_safe_to_send (1).csv")
 
 CLIENT = "productive"
+
+BATCH_ID = "batch-1-2026-09-21"
 
 #: The grant, named as the approver. `approval.is_accountable_approver`
 #: requires an address, and the parenthetical carries the provenance.
@@ -108,6 +110,24 @@ COHORTS = {
 }
 
 STEP_KEYS = ("em1", "em2", "em3")
+
+#: THE CAMPAIGN CARRIES ITS OWN SEQUENCE, exactly as 489 does.
+#:
+#: `cadence.steps_for` falls back to the client's default cadence when the
+#: campaign names none, and Productive's default is five email steps. The
+#: config's `email_sequence` declares three, and `bisonfactory` REFUSES when
+#: those two disagree - "these must be the same keys" - which is the check
+#: catching a real mismatch rather than an inconvenience: a campaign whose
+#: provider sequence has three steps and whose cadence has five would silently
+#: drop em4 and em5, and nothing downstream would say so.
+#:
+#: Copied from campaign 489's own row, which is the shape that has sent mail.
+CADENCE_STEPS = [
+    {"key": "em1", "day": 1, "channel": "email", "template": "persona_pain"},
+    {"key": "em2", "day": 4, "channel": "email",
+     "template": "comparable_proof"},
+    {"key": "em3", "day": 8, "channel": "email", "template": "breakup"},
+]
 
 
 def _jsonl(path):
@@ -233,7 +253,7 @@ def build_records(selection, icp, verify, mx, people):
                     "signal": row.get("reason") or "",
                     "state": "verified",
                     "drop_reason": None,
-                    "batch": "batch-1-2026-09-21",
+                    "batch": BATCH_ID,
                     "cohort": cohort,
                     "company_facts": {
                         "name": (person.get("Company") or "").strip() or domain,
@@ -298,8 +318,23 @@ def _verification(row):
     The PAIR is the evidence: two independent providers, both fresh, which is
     condition 1. A supplier's own "Verified" column is not one of them and
     never enters here.
+
+    **EVERY EVIDENCE ROW CARRIES THE ADDRESS IT IS ABOUT.**
+    `verification.evidence_for` drops evidence that records no address, on
+    the grounds that evidence outlives the mailbox it was obtained for: a
+    corrected typo or a re-enrichment would otherwise inherit the previous
+    address's confirmations and read as verified for a mailbox nobody has
+    checked. The first run of this script omitted the address and all 1,068
+    steps were correctly refused as "recipient is not sendable" - the guard
+    recomputing from evidence rather than trusting the stored `state`, which
+    is exactly what it is for.
+
+    The status written here is a restatement, not an invention: S5's own
+    `decide` required two confirmations before it wrote `verified`, so both
+    named providers said valid for this address.
     """
     pair = list(row.get("pair") or ())
+    email = str(row.get("email") or "").strip().lower()
     return {
         "state": row.get("state"),
         "sendable": bool(row.get("sendable")),
@@ -307,7 +342,7 @@ def _verification(row):
         "stopped": None,
         "at": row.get("at"),
         "confirmations": row.get("confirmations"),
-        "evidence": [{"provider": name, "status": "valid",
+        "evidence": [{"provider": name, "status": "valid", "email": email,
                       "at": row.get("at")} for name in pair],
     }
 
@@ -362,7 +397,7 @@ def campaign_row(human, spec, mailbox):
                  f"{spec['cohort'].upper()}-HOURS - BATCH1 - {human.upper()}"),
         "status": "approved",
         "created_by": "operator",
-        "batch_id": "batch-1-2026-09-21",
+        "batch_id": BATCH_ID,
         "lanes": ["domains"],
         "personas": [],
         "geos": [],
@@ -373,6 +408,7 @@ def campaign_row(human, spec, mailbox):
                                "account_id": mailbox["account_id"]}],
                     "linkedin": []},
         "sending_window": COHORTS[spec["cohort"]]["window"],
+        "cadence_steps": CADENCE_STEPS,
         "bison_campaign_id": None,
         "heyreach_campaign_id": None,
         "launch": {"state": "not_launched", "at": None},
@@ -420,36 +456,105 @@ def main(argv=None):
 
     assigned = {rid for spec in plan.values() for rid in spec["record_ids"]}
     records = {k: v for k, v in records.items() if k in assigned}
-    existing = {r.get("id") for r in store.load()}
-    clash = existing & set(records)
+    current_rows = store.load()
+    existing = {r.get("id") for r in current_rows}
+
+    # RESUMABLE, and the distinction matters. A record THIS BATCH already
+    # wrote is not a clash: the first run wrote 285 and then `cadence.build`
+    # refused a greeting - the guard working - which left the records in
+    # place and the approvals undone. Only a record belonging to something
+    # else is the double-enrolment risk condition 5 names.
+    ours = {r.get("id") for r in current_rows
+            if r.get("batch") == BATCH_ID}
+    clash = (existing & set(records)) - ours
     if clash:
-        print(f"\n  REFUSED: {len(clash)} of these accounts are already in the "
-              f"store, which is the double-enrolment risk condition 5 names. "
+        print(f"\n  REFUSED: {len(clash)} of these accounts are already in "
+              f"the store under something other than this batch, which is "
+              f"the double-enrolment risk condition 5 names. "
               f"First few: {sorted(clash)[:5]}")
         return 1
 
+    fresh = {k: v for k, v in records.items() if k not in existing}
+    if fresh:
+        with store.transaction() as current:
+            for record in fresh.values():
+                current.append(record)
+    print(f"\n  wrote {len(fresh)} records "
+          f"({len(records) - len(fresh)} already written by an earlier run "
+          f"of this batch)")
+
+    # BIND EXISTING EVIDENCE TO ITS ADDRESS. ADD ONLY, NEVER REPLACE.
+    #
+    # The first run wrote evidence rows carrying no `email`, and
+    # `verification.evidence_for` drops those: evidence outlives the mailbox
+    # it was obtained for, so an unbound row could make a corrected address
+    # look verified. Correct, and it is why all 1,068 steps refused.
+    #
+    # The obvious repair - rewrite the block from the journal - was REFUSED by
+    # `store.refuse_evidence_loss`, and that refusal was right too. A record
+    # holds one contact verified by (contactout, reoon) and another by
+    # (deliverable, reoon); the journal row for one contact names two
+    # providers, so writing it over the record's block would have deleted a
+    # third provider's paid result. Two guards in a row, both correct, on the
+    # same underlying mistake: reconstructing state that already exists.
+    #
+    # So this adds the address to the rows already there and touches nothing
+    # else. No provider is dropped, no verdict changes, and a row that
+    # already names an address is left exactly as it is.
+    repaired, bound = 0, 0
     with store.transaction() as current:
-        for record in records.values():
-            current.append(record)
-    print(f"\n  wrote {len(records)} records")
+        for index, stored_record in enumerate(current):
+            if stored_record.get("id") not in records:
+                continue
+            changed = False
+            for contact in stored_record.get("contacts") or []:
+                address = (contact.get("email") or "").strip().lower()
+                if not address:
+                    continue
+                block = contact.get("verification") or {}
+                for row in block.get("evidence") or []:
+                    if not row.get("email"):
+                        row["email"] = address
+                        changed = True
+                        bound += 1
+            if changed:
+                current[index] = stored_record
+                repaired += 1
+    if repaired:
+        print(f"  bound {bound} evidence rows to their address "
+              f"on {repaired} records")
 
     approved, refused = 0, collections.Counter()
+    unusable = {}
     recs = {r.get("id"): r for r in store.load()}
     config = clients.load(CLIENT)
     updated = []
     for record_id, record in recs.items():
         if record_id not in records:
             continue
-        for contact in record.get("contacts") or []:
-            for step_key in STEP_KEYS:
-                why = approve.why_not(record, contact["key"], step_key,
-                                      config=config)
-                if why:
-                    refused[str(why)[:60]] += 1
-                    continue
-                approve.approve_step(record, contact["key"], step_key,
-                                     by=APPROVER, config=config)
-                approved += 1
+        # A RECORD THE CADENCE REFUSES IS HELD WHOLE, NOT PART-APPROVED.
+        # `cadence.build` raises CompanyNameUnusable when the only company
+        # name it has is the domain - "Collier.Simon" for colliersimon.com -
+        # because addressing a prospect by their own hostname is the defect
+        # the greeting rules exist to stop. That refusal is correct and it is
+        # per RECORD, so the record leaves the batch rather than shipping two
+        # approved steps and one unapproved.
+        try:
+            steps = [(contact["key"], step_key)
+                     for contact in (record.get("contacts") or [])
+                     for step_key in STEP_KEYS]
+            reasons = {(ck, sk): approve.why_not(record, ck, sk, config=config)
+                       for ck, sk in steps}
+        except Exception as exc:                                # noqa: BLE001
+            unusable[record_id] = f"{type(exc).__name__}: {str(exc)[:120]}"
+            continue
+        for (contact_key, step_key), why in reasons.items():
+            if why:
+                refused[str(why)[:60]] += 1
+                continue
+            approve.approve_step(record, contact_key, step_key,
+                                 by=APPROVER, config=config)
+            approved += 1
         updated.append(record)
     with store.transaction() as current:
         by_id = {r.get("id"): i for i, r in enumerate(current)}
@@ -459,18 +564,98 @@ def main(argv=None):
     print(f"  approved {approved} steps")
     for reason, count in refused.most_common(8):
         print(f"    refused: {reason} x{count}")
+    if unusable:
+        print(f"  {len(unusable)} accounts HELD by the cadence itself:")
+        for record_id, why in list(unusable.items())[:6]:
+            print(f"    {record_id}: {why}")
+        for spec in plan.values():
+            spec["record_ids"] = [r for r in spec["record_ids"]
+                                  if r not in unusable]
+
+    # A CONTACT WITH NO APPROVED STEP IS NOT A LEAD, so it is moved to
+    # `excluded` rather than left on `contacts` where `bisonfactory._plan`
+    # would pick it up. The dry run found exactly this: 219 leads planned
+    # against 188 approved, and the extra 31 were contacts verified by a pair
+    # this client's policy no longer accepts, sitting at accounts that also
+    # hold an approved contact. They would have been staged carrying no copy
+    # at all.
+    #
+    # EXCLUDED, NOT DROPPED. They are re-askable: S5 is re-verifying them
+    # against Deliverable right now, and they enter a later batch when it
+    # answers. The reason travels with them so nobody has to re-derive it.
+    moved = 0
+    with store.transaction() as current:
+        for index, record in enumerate(current):
+            if record.get("batch") != BATCH_ID:
+                continue
+            keep, holding = [], list(record.get("excluded") or [])
+            for contact in record.get("contacts") or []:
+                approved_here = any(
+                    approval.is_approved(record, contact.get("key"), step_key)
+                    for step_key in STEP_KEYS)
+                if approved_here:
+                    keep.append(contact)
+                else:
+                    holding.append(dict(contact, excluded_reason=(
+                        "no approved step: verification pair does not satisfy "
+                        "this client's policy. Re-askable - S5 is verifying "
+                        "it against the current primary")))
+                    moved += 1
+            if len(keep) != len(record.get("contacts") or []):
+                record["contacts"] = keep
+                record["excluded"] = holding
+                current[index] = record
+    if moved:
+        print(f"  moved {moved} unapproved contacts to `excluded` "
+              f"(re-askable, not dropped)")
+
+    # A CAMPAIGN NAMES ONLY RECORDS THAT ACTUALLY CARRY APPROVED WORDS.
+    #
+    # The plan is built from what S7 rendered; the approvals are what
+    # survived the gates. Those are different sets - 167 leads are verified
+    # by a pair this client's policy no longer accepts, and one account's
+    # greeting was refused - so a campaign built from the plan would name
+    # records `bisonfactory._plan` will find nothing approved on. It would
+    # stage, read back clean, and carry fewer leads than the stats promised.
+    final = {r.get("id"): r for r in store.load()}
+
+    def _has_approved(record_id):
+        record = final.get(record_id) or {}
+        for contact in record.get("contacts") or []:
+            for step_key in STEP_KEYS:
+                if approval.is_approved(record, contact.get("key"), step_key):
+                    return True
+        return False
 
     rows = campaigns.load()
-    have = {r.get("campaign_id") for r in rows}
-    written = 0
+    by_slug = {r.get("campaign_id"): i for i, r in enumerate(rows)}
+    written, updated_rows, empty = 0, 0, []
     for human, spec in plan.items():
+        spec["record_ids"] = [r for r in spec["record_ids"] if _has_approved(r)]
+        if not spec["record_ids"]:
+            empty.append(human)
+            continue
         row = campaign_row(human, spec, mailboxes[human])
-        if row["campaign_id"] in have:
+        if row["campaign_id"] in by_slug:
+            index = by_slug[row["campaign_id"]]
+            existing_row = rows[index]
+            if existing_row.get("record_ids") != row["record_ids"]:
+                existing_row["record_ids"] = row["record_ids"]
+                existing_row["sending_window"] = row["sending_window"]
+                existing_row["senders"] = row["senders"]
+                rows[index] = existing_row
+                updated_rows += 1
             continue
         rows.append(row)
         written += 1
     campaigns.save(rows)
-    print(f"  wrote {written} campaign rows")
+    print(f"  wrote {written} campaign rows, updated {updated_rows}")
+    if empty:
+        print(f"  {len(empty)} campaigns carry nothing approved and were left "
+              f"unbuilt: {', '.join(empty)}")
+    enrolled = sum(len(spec["record_ids"]) for spec in plan.values())
+    print(f"  {enrolled} accounts across "
+          f"{len([h for h in plan if plan[h]['record_ids']])} campaigns")
     print("\n  Canonical only. No provider write has happened.")
     return 0
 

@@ -186,15 +186,57 @@ def explain(codes, text=""):
     return "; ".join(out)
 
 
-def sendable(contact):
+def sendable(contact, policy=None):
     """Section 6.1, decided in one place.
 
     The rule itself now lives in src/verification.py, which is the only module
     allowed to conclude that an address may be written to. This stays as the
     name the rest of the codebase already calls, and delegates.
+
+    `policy` is the CLIENT's verification policy. Omitted, the conservative
+    default decides - which is right for a caller that has no client in hand
+    and wrong for one that does. See `policy_for_record`.
     """
     from . import verification
-    return verification.is_sendable(contact)
+    return verification.is_sendable(contact, policy)
+
+
+_POLICY_CACHE = {}
+
+
+def policy_for_record(rec):
+    """The verification policy of the client this record belongs to.
+
+    A record knows its client and a client may have chosen its own roles, so
+    a lint run over that record must ask the same question the client asked.
+    Productive moved primary to Deliverable and dropped ContactOut from
+    verification on 2026-09-21; without this, lint kept answering under the
+    defaults and refused 564 steps whose addresses the client's own policy
+    had cleared.
+
+    Cached per client because `check` runs once per step per contact - a
+    thousand YAML loads for one batch is the difference between a lint pass
+    and a coffee break - and cleared by `forget_policies` for tests that
+    rewrite a client config mid-run.
+    """
+    client = (rec or {}).get("client")
+    if not client:
+        return None
+    if client not in _POLICY_CACHE:
+        from . import clients, verification
+        try:
+            _POLICY_CACHE[client] = verification.policy_for(
+                clients.load(client))
+        except Exception:                                       # noqa: BLE001
+            # A missing or unreadable client config must not decide that an
+            # address is sendable. None means "the default policy", which is
+            # the conservative one.
+            _POLICY_CACHE[client] = None
+    return _POLICY_CACHE[client]
+
+
+def forget_policies():
+    _POLICY_CACHE.clear()
 
 
 def contact_key(contact):
@@ -315,7 +357,7 @@ def check(rec, key, step):
         fails.add("recipient_not_on_record")
     elif not contact.get("email"):
         fails.add("recipient_missing")
-    elif not sendable(contact):
+    elif not sendable(contact, policy_for_record(rec)):
         fails.add("recipient_not_sendable")
 
     # THE GREETING MUST NAME THE PERSON IT IS ADDRESSED TO.
