@@ -51,8 +51,17 @@ def contact(angle="operations", **over):
            # Sendable, or lint refuses the step before it reads a word of
            # it. `is_sendable` recomputes from the evidence and ignores the
            # stored state, so the evidence is what the fixture has to carry.
+           #
+           # THE PRIMARY IS DELIVERABLE, not ContactOut. This record names
+           # client `productive`, and Productive moved its verification roles
+           # on 2026-09-21 - primary Deliverable, secondary Reoon, ContactOut
+           # removed from verification entirely. Since lint now asks the
+           # CLIENT's policy rather than the default one, a (contactout,
+           # reoon) fixture on a Productive record is no longer a verified
+           # address, and this test was refusing at `recipient_not_sendable`
+           # before it reached the opener it exists to check.
            "verification": {"evidence": [
-               {"provider": "contactout", "status": "valid",
+               {"provider": "deliverable", "status": "valid",
                 "email": "ada@acmestudio.example", "catch_all": False,
                 "disposable": False, "at": "2026-09-09T00:00:00+00:00"},
                {"provider": "reoon", "status": "valid",
