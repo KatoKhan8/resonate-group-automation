@@ -96,3 +96,54 @@ not ask for standing permission to repeat it.
 487 blocks nothing else. 489 holds 8 scheduled rows and the provider reports
 3 emails today, first at 13:34Z. HeyReach 605732 advanced `lastActionTime` to
 09:26:26Z today, which retires the stall hypothesis in REFUTED-004.
+
+---
+
+# RESOLVED 2026-09-21T17:17Z — the request below is now LIVE
+
+The falsifier ran and returned the outcome nobody had seen. **And the evidence
+is stronger than the absence of rows**, which is the part worth reading:
+
+    487 updated_at  2026-09-21T09:06:10Z -> 2026-09-21T15:05:15Z
+                    with sent=0 and queue=0
+
+487's window closes at 15:00Z. The provider touched the campaign at 15:05:15Z
+- five minutes after close, exactly where 489's own end-of-day rebuild landed
+relative to its window. **So the end-of-day scheduler DID run on 487, and it
+produced zero rows.** This is not "the rebuild has not happened yet". It is
+the rebuild happening and choosing to schedule nothing.
+
+Re-read live at 17:17Z, two hours past the deadline:
+
+    status               active
+    emails_sent          0
+    scheduled_emails     0 rows
+    sending_schedule     SendingScheduleEmpty for today, tomorrow AND the
+                         day after
+
+Both documented scheduler triggers have now fired on this campaign - the
+resume at 09:06Z and the end-of-day cycle at 15:05Z - and neither produced a
+row. Grok's research established there is no third documented trigger and no
+supported knob that rebuilds a queue on demand.
+
+**489 is the control and it rules out the estate, the credential and the
+sequence.** Same workspace, same day, same code path: it sent at 13:34:48Z and
+again at 16:48:18Z, two rows sent of eight, its own end-of-day rebuild having
+worked at 22:01Z last night. Whatever is wrong with 487 is specific to 487.
+
+## THE REQUEST, unchanged from the draft above
+
+One pause/resume pair on 487, once, no other call. Every field in the draft
+stands: the current state is as re-read above, the duplicate-send risk is LOW
+because emails_sent is 0 so there is no sent row for a rebuild to duplicate,
+sender capacity is unchanged, approvals are unchanged, and there is no
+rollback that restores rows.
+
+The one thing the two hours since the draft have added: the pause/resume is
+now the ONLY remaining documented trigger, because the other one has been
+observed firing and failing. That strengthens the case for the write and it
+does not change its risk.
+
+**Not performed. Awaiting the operator's grant, which must be new - the
+2026-09-21 grant was ONCE, spent at 09:06Z, and its condition 5 forbids a
+second resume.**
