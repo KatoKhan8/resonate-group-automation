@@ -58,6 +58,7 @@ import datetime
 import json
 import os
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -191,6 +192,34 @@ def ask(name, live, model=None, timeout=180):
             "refusal": answer.get("refusal")}
 
 
+def _detach(argv):
+    """Re-run this script detached, and say where the output went.
+
+    The child must survive this process AND the shell that started it, so it
+    gets its own process group and its stdio goes to a file rather than to a
+    pipe nobody will read.
+    """
+    import subprocess
+    argv = [a for a in (argv or sys.argv[1:]) if a != "--background"]
+    log = os.path.join(ROOT, "work",
+                       f"grok-{os.getpid()}-{int(time.time())}.out")
+    os.makedirs(os.path.dirname(log), exist_ok=True)
+    kwargs = {}
+    if os.name == "nt":
+        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+        kwargs["creationflags"] = 0x00000008 | 0x00000200
+    else:
+        kwargs["start_new_session"] = True
+    with open(log, "wb") as handle:
+        child = subprocess.Popen([sys.executable, os.path.abspath(__file__)]
+                                 + argv, stdout=handle, stderr=handle,
+                                 stdin=subprocess.DEVNULL, **kwargs)
+    print(f"detached pid {child.pid}, output -> {log}")
+    print("This process is NOT waiting. Check the log and the artifact size "
+          "before calling the run COMPLETED.")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--question", action="append", dest="questions")
@@ -199,7 +228,23 @@ def main(argv=None):
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--out", default=os.path.join(
         ROOT, "docs", "GROK-PROVIDER-RESEARCH-2026-09-17.md"))
+    # FOREGROUND IS THE DEFAULT, AND DETACHING IS AN EXPLICIT REQUEST.
+    #
+    # Two silent child deaths in two days, both the same shape: the caller
+    # wrote `nohup py -3 ... &` from a shell that then exited, the child died
+    # with it, and the run reported exit 0 having produced only a banner. The
+    # artifact check below now catches the empty result, but the better fix is
+    # that a long research call is not backgrounded by accident in the first
+    # place. So `--background` is opt-in and it detaches PROPERLY - a new
+    # process group on POSIX, DETACHED_PROCESS on Windows - rather than
+    # relying on a shell to outlive it.
+    parser.add_argument("--background", action="store_true",
+                        help="detach and return immediately; without it this "
+                             "runs in the foreground and you wait for it")
     args = parser.parse_args(argv)
+
+    if args.background:
+        return _detach(argv)
 
     if args.list:
         for name in QUESTIONS:
