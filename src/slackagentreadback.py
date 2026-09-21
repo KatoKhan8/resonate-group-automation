@@ -248,8 +248,17 @@ def batch_state():
             for r in rows for rid in r.get("record_ids") or [])
         out["bound_to_provider"] = [r.get("bison_campaign_id") for r in rows
                                     if r.get("bison_campaign_id")]
-        out["first_step_capacity_per_day"] = 15 * len(rows)
-        out["pacing_cap_per_campaign"] = 45
+        # CAPACITY IS PER MAILBOX, NOT PER CAMPAIGN. This read 15 x 8 = 120
+        # and kept saying 120 after wave 2 bound 154 attested mailboxes
+        # across the same eight campaigns, when the real number is 2,310. A
+        # capacity figure that does not move when capacity moves is the
+        # stale-cached-value defect the register's closing section is about,
+        # and this one was being read in Slack by the whole team.
+        mailboxes = sum(len((r.get("senders") or {}).get("email") or [])
+                        for r in rows)
+        out["mailboxes_named"] = mailboxes
+        out["first_step_capacity_per_day"] = 15 * max(mailboxes, len(rows))
+        out["pacing_cap_per_campaign"] = "15 x that campaign's mailboxes x 3 days"
     except Exception as exc:                                    # noqa: BLE001
         out["_error"] = f"{type(exc).__name__}"
     try:
