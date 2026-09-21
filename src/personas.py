@@ -363,6 +363,28 @@ def apply_icp(rec, config):
 def select(rec, config=None):
     """Persona and contact selection for one record. Lane aware."""
     config = config or clients.load(rec.get("client"))
+    # CLIENT APPROVAL GATE: nothing reaches persona discovery without it.
+    # Fail-closed: unknown is pending, pending is refused.
+    from . import clientapproval
+
+    domain = rec.get("domain") or ""
+    if domain and not clientapproval.is_approved(
+            domain, rec.get("client") or "productive"):
+        excluded = []
+        for contact in (rec.get("contacts") or []):
+            excluded.append({
+                "contact": contact,
+                "reason": "awaiting_client_approval",
+            })
+        rec["contacts"] = []
+        for entry in excluded:
+            if entry not in (rec.get("excluded") or []):
+                rec.setdefault("excluded", []).append(entry)
+        store.log(rec, "personas",
+                  f"0 kept, {len(excluded)} excluded: awaiting client approval",
+                  personas=[])
+        return {"kept": [], "excluded": excluded,
+                "awaiting_client_approval": len(excluded)}
     identity.assign_keys(rec.get("contacts") or [])
     apply_icp(rec, config)
 

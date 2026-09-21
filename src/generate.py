@@ -1616,6 +1616,18 @@ def draft(rec, contact, day, model, client=None, sequence=None):
     the ladder fingerprint is computed and stored on the step, so a future
     ladder change can be detected (TASK-083).
     """
+    # CLIENT APPROVAL GATE: no copy is rendered for an unapproved account.
+    # Fail-closed: unknown is pending, pending is refused.
+    from . import clientapproval
+
+    domain = rec.get("domain") or ""
+    if domain and not clientapproval.is_approved(
+            domain, client or rec.get("client") or "productive"):
+        raise clientapproval.ClientApprovalRequired(
+            domain,
+            (clientapproval.state_of(domain,
+             client or rec.get("client") or "productive") or {}).get(
+                "state", clientapproval.PENDING))
     key = lint.contact_key(contact)
     rejected = []
     for attempt in range(1, MAX_DRAFT_ATTEMPTS + 1):

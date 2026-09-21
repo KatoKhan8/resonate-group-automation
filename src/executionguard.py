@@ -478,6 +478,21 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
              f"prospect from another client's estate and record it there")
     gates.append("tenancy")
 
+    # 1b. CLIENT APPROVAL ----------------------------------------------------
+    # THE CLIENT MUST HAVE EXPLICITLY APPROVED THIS ACCOUNT. Unknown is
+    # pending, pending is refused. Fail-closed by construction. This is in
+    # the same class as verification and collision (hard stop 8).
+    from . import clientapproval
+
+    rec_domain = (rec.get("domain") or "").lower()
+    if rec_domain:
+        _require("client_approval",
+                 clientapproval.is_approved(rec_domain,
+                                            rec_client or campaign_client),
+                 f"client_approval is not 'approved' for {rec_domain!r}: "
+                 f"nothing may reach S4, S5, S7 or enrollment without it")
+    gates.append("client_approval")
+
     # 2. APPROVAL ------------------------------------------------------------
     fingerprint = approval.fingerprint(step)
     _require("approval",

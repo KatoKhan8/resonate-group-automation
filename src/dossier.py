@@ -22,7 +22,7 @@ has already been turned into structured evidence with a URL and a date by
 import argparse
 import json
 
-from . import clients, evidence, personalization, store
+from . import clientapproval, clients, evidence, personalization, store
 
 # What we can say about a person from role data alone, before any web research.
 # Named because it is the honest floor: knowing somebody is Head of Delivery at
@@ -145,6 +145,17 @@ def personalization_evidence(rec, contact, config=None, limit=3):
     }
 
 
+def _client_approval(rec):
+    """The client-approval state for this account, with who, when, source."""
+    domain = rec.get("domain") or ""
+    client = rec.get("client") or "productive"
+    row = clientapproval.state_of(domain, client)
+    if not row:
+        return {"state": "pending", "who": None, "at": None, "source": None}
+    return {"state": row.get("state"), "who": row.get("who"),
+            "at": row.get("at"), "source": row.get("source")}
+
+
 def build(rec, contact, config=None, limit=3):
     """The whole dossier for one contact. Calls nothing; reads stored state."""
     if config is None:
@@ -155,6 +166,7 @@ def build(rec, contact, config=None, limit=3):
     return {
         "record_id": rec.get("id"),
         "contact_key": contact.get("key"),
+        "client_approval": _client_approval(rec),
         "company_research": company_research(rec),
         "person_research": person_research(rec, contact),
         "personalization_evidence": personalization_evidence(rec, contact,

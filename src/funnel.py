@@ -37,7 +37,7 @@ import argparse
 import collections
 import json
 
-from src import store
+from src import clientapproval, store
 
 MISSING = "MISSING"
 
@@ -61,6 +61,9 @@ STAGES = (
      "verdict.positive_signals + negative_signals"),
     ("confidence_medium_or_high", "scoreable", RECORDS,
      "evidence good enough to act on", "verdict.icp_confidence"),
+    ("client_approved", "scoreable", RECORDS,
+     "the client has explicitly approved this account",
+     "clientapproval.is_approved"),
     ("qualified", "scoreable", RECORDS, "an ICP verdict of qualified",
      "verdict.icp_status"),
     ("people_found", "qualified", PEOPLE,
@@ -196,6 +199,10 @@ def counts(recs):
         "confidence_medium_or_high": sum(
             1 for r in recs
             if _verdict(r).get("icp_confidence") in ("medium", "high")),
+        "client_approved": sum(
+            1 for r in recs if r.get("domain")
+            and clientapproval.is_approved(
+                r["domain"], r.get("client") or "productive")),
         "qualified": len(qualified),
         "people_found": sum(len(_contacts(r)) for r in qualified),
         "emails_found": sum(1 for r in qualified for c in _contacts(r)

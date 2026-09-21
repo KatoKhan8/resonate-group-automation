@@ -42,7 +42,7 @@ import collections
 import datetime
 import json
 
-from . import account, clients, notify, store, tasks
+from . import account, clientapproval, clients, notify, store, tasks
 
 WINDOW_HOURS = 24
 
@@ -154,6 +154,10 @@ def build(workspace, recs=None, config=None, since=None, until=None,
     happened = activity(recs, period) if period else None
     outstanding = tasks.collect(workspace, recs=recs, config=config,
                                 today=today)
+    # CLIENT APPROVAL SUPPLY CONSTRAINT: how many accounts are waiting for
+    # the client to approve them. This is the bucket that makes the supply
+    # constraint visible in the daily digest.
+    approval_counts = clientapproval.counts(workspace or "productive")
     return {
         "workspace": workspace,
         "window": period,
@@ -161,6 +165,8 @@ def build(workspace, recs=None, config=None, since=None, until=None,
         "outstanding": tasks.summarise(outstanding),
         "outstanding_total": sum(row["count"] for row in outstanding),
         "counts": tasks.counts(outstanding),
+        "awaiting_client_approval": approval_counts.get("pending", 0),
+        "client_approval": approval_counts,
     }
 
 
@@ -206,6 +212,14 @@ def lines(digest):
             out.append(f"  {row['label']}: {row['count']}")
     else:
         out.append("Waiting for somebody: nothing")
+
+    awaiting = digest.get("awaiting_client_approval", 0)
+    approval = digest.get("client_approval") or {}
+    out.append("")
+    out.append(f"Awaiting client approval: {awaiting}"
+               f"  (approved {approval.get('approved', 0)}"
+               f"  suppressed {approval.get('suppressed', 0)}"
+               f"  rejected {approval.get('rejected', 0)})")
     return out
 
 

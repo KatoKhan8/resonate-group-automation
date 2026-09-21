@@ -79,6 +79,7 @@ BLOCKED_CAMPAIGN_LAUNCHED = "blocked:campaign_already_launched"
 BLOCKED_CAMPAIGN_FROZEN = "blocked:campaign_frozen"
 BLOCKED_RECORD_IN_TWO_CAMPAIGNS = "blocked:record_in_two_campaigns"
 BLOCKED_CAMPAIGN_STOPPED = "blocked:campaign_stopped"
+BLOCKED_CLIENT_APPROVAL = "blocked:client_approval"
 
 HELD_VERIFICATION_UNKNOWN = "held:verification_unknown"
 # Distinct from `verification_unknown` on purpose. "Nobody could tell us" and
@@ -172,6 +173,9 @@ HUMAN = {
     BLOCKED_CAMPAIGN_STOPPED:
         "the campaign is not running: it has been paused, or it has "
         "finished",
+    BLOCKED_CLIENT_APPROVAL:
+        "the client has not approved this account: nothing may reach S4, "
+        "S5, S7 or enrollment without an explicit approval",
 
     HELD_VERIFICATION_UNKNOWN:
         "nobody could tell us whether the address is real: it needs a better "
@@ -296,6 +300,13 @@ def _suppressed(rec, config, suppressed=None, contact=None, agency=None):
 
         if agencydnc.lookup(contact, index=agency):
             return BLOCKED_AGENCY_DNC
+    # CLIENT APPROVAL: the client must have explicitly approved this account.
+    # Unknown is pending, pending is refused. Fail-closed by construction.
+    from . import clientapproval
+
+    if domain and not clientapproval.is_approved(domain,
+                                                 rec.get("client") or "productive"):
+        return BLOCKED_CLIENT_APPROVAL
     return None
 
 
@@ -597,6 +608,18 @@ def decide(rec, contact, step_key, channel=None, campaign=None, recs=None,
     # supplied no record set gets None there, which means "load them".
     given_recs = recs
     recs = [rec] if recs is None else recs
+
+    # CLIENT APPROVAL: before ANY step work, including timeline build.
+    # An unapproved account must not spend a cadence build or a lint check.
+    # Fail-closed: unknown is pending, pending is refused.
+    domain = (rec.get("domain") or "").lower()
+    if domain:
+        from . import clientapproval
+
+        if not clientapproval.is_approved(domain,
+                                          rec.get("client") or "productive"):
+            return _decide(BLOCKED, [BLOCKED_CLIENT_APPROVAL],
+                           step=step_key)
 
     if timeline is None:
         timeline = cadence.build(rec, config, recs=recs,

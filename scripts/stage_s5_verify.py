@@ -35,7 +35,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import clients, verification                           # noqa: E402
+from src import clientapproval, clients, verification            # noqa: E402
 from src.providers import load_env                              # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -173,10 +173,18 @@ def main(argv=None):
           f"confirmations={policy['required_confirmations']}", flush=True)
 
     domains = eligible_domains()
+    # CLIENT APPROVAL GATE: filter out unapproved domains before any credit
+    # is spent. Fail-closed: unknown is pending, pending is refused.
+    approved_domains = {d for d in domains
+                        if clientapproval.is_approved(d, "productive")}
+    refused_domains = {d for d in domains
+                       if not clientapproval.is_approved(d, "productive")}
+    domains = {d: v for d, v in domains.items() if d in approved_domains}
     already = done_keys()
     people = [c for c in contacts_for(domains) if c["email"] not in already]
     print(f"S5  eligible domains {len(domains)}  contacts to verify "
-          f"{len(people)}  already done {len(already)}", flush=True)
+          f"{len(people)}  already done {len(already)}  "
+          f"awaiting_client_approval {len(refused_domains)}", flush=True)
     if args.limit:
         people = people[:args.limit]
 
