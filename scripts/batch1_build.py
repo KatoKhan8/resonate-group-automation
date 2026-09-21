@@ -208,7 +208,7 @@ def attested_mailboxes():
     return chosen
 
 
-def select(copy, icp, people):
+def select(copy, icp, people, apply_cohort_cap=True):
     """The leads batch 1 will carry, per cohort, under the pacing rule."""
     by_cohort = collections.defaultdict(list)
     held = collections.Counter()
@@ -225,6 +225,13 @@ def select(copy, icp, people):
         by_cohort[cohort].append((email, variables, country))
     plan, spill = {}, collections.Counter()
     for cohort, entries in by_cohort.items():
+        if not apply_cohort_cap:
+            # FILL MODE: the room on the standing campaigns is the cap, and
+            # it is read from the provider per campaign. A second cap here -
+            # five campaigns times forty-five, from when each named one
+            # mailbox - would hold back 112 US leads against 2,835 of room.
+            plan[cohort] = entries
+            continue
         cap = COHORTS[cohort]["campaigns"] * PER_CAMPAIGN
         plan[cohort] = entries[:cap]
         if len(entries) > cap:
@@ -388,6 +395,90 @@ def assign(selection, records, mailboxes):
     return plan, spilled
 
 
+
+def standing_campaigns():
+    """The campaigns that already exist, with their cohort and their room.
+
+    ROOM IS READ FROM THE PROVIDER, and it is `cap - (enrolled - sent)`.
+    Enrolled minus sent, because a campaign that has enrolled 45 and sent 30
+    carries a 15-lead backlog, not a 45-lead one, and idling a mailbox that
+    has room is the opposite of what the pacing rule is for.
+
+    The cap moves with the mailboxes the campaign names: wave 2 bound 154
+    attested inboxes across the eight, so `cap` is 15 x named x 3 days rather
+    than the 45 that applied when each named one.
+    """
+    from src.providers import bison as _bison
+    out = {}
+    for row in campaigns.load():
+        slug = str(row.get("campaign_id") or "")
+        if not slug.startswith("productive-email-batch1-"):
+            continue
+        human = slug.rsplit("-", 1)[-1]
+        named = len((row.get("senders") or {}).get("email") or [])
+        cap = max(named, 1) * PER_MAILBOX_DAY * 3
+        enrolled = sent = 0
+        provider_id = row.get("bison_campaign_id")
+        if provider_id:
+            try:
+                campaign = _bison.campaign(provider_id) or {}
+                enrolled = int(campaign.get("total_leads") or 0)
+                sent = int(campaign.get("emails_sent") or 0)
+            except Exception as exc:                            # noqa: BLE001
+                # A campaign whose room cannot be read gets NO room. The
+                # alternative is enrolling against a number we guessed.
+                print(f"    {human}: provider unreadable ({type(exc).__name__}"
+                      f"), treated as full")
+                cap = 0
+        cohort = None
+        timezone = (row.get("sending_window") or {}).get("timezone")
+        for name, spec in COHORTS.items():
+            if spec["window"]["timezone"] == timezone:
+                cohort = name
+        out[human] = {"slug": slug, "cohort": cohort, "cap": cap,
+                      "room": max(cap - max(enrolled - sent, 0), 0),
+                      "enrolled": enrolled, "sent": sent,
+                      "mailboxes": named}
+    return out
+
+
+def assign_to_existing(selection):
+    """Fill the standing campaigns to their room. Accounts stay whole."""
+    standing = standing_campaigns()
+    plan = collections.OrderedDict()
+    for human, spec in standing.items():
+        plan[human] = {"cohort": spec["cohort"], "record_ids": [], "leads": 0,
+                       "room": spec["room"], "slug": spec["slug"],
+                       "mailboxes": spec["mailboxes"]}
+        print(f"    {human:10s} mailboxes {spec['mailboxes']:>3}  "
+              f"cap {spec['cap']:>5}  enrolled {spec['enrolled']:>3}  "
+              f"sent {spec['sent']:>3}  room {spec['room']:>5}")
+    by_account = collections.OrderedDict()
+    for cohort, entries in selection.items():
+        for email, _variables, _country in entries:
+            record_id = email.split("@")[-1].lower().replace(".", "-")
+            by_account.setdefault((cohort, record_id), []).append(email)
+    spilled = collections.Counter()
+    for (cohort, record_id), emails in by_account.items():
+        targets = [h for h in plan if plan[h]["cohort"] == cohort]
+        room = [h for h in targets
+                if plan[h]["leads"] + len(emails) <= plan[h]["room"]]
+        if not room:
+            spilled[cohort] += len(emails)
+            continue
+        # LEAST-FILLED WINS, by fraction rather than by absolute room.
+        # Picking the largest remaining room put all 225 US leads on the one
+        # human with 63 mailboxes and left four campaigns empty. Filling by
+        # fraction spreads a cohort across its campaigns in proportion to the
+        # capacity each actually has, which is also what "round-robin across
+        # seats" means on the LinkedIn side.
+        human = min(room, key=lambda h: (plan[h]["leads"] /
+                                         max(plan[h]["room"], 1)))
+        plan[human]["record_ids"].append(record_id)
+        plan[human]["leads"] += len(emails)
+    return plan, spilled
+
+
 def campaign_row(human, spec, mailbox):
     slug = f"productive-email-batch1-{human}"
     return {
@@ -419,16 +510,62 @@ def campaign_row(human, spec, mailbox):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--batch", default="batch-1-2026-09-21")
+    parser.add_argument("--fill-existing", action="store_true",
+                        help="add to the standing campaigns up to "
+                             "their room, rather than creating any")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--stats", action="store_true")
     args = parser.parse_args(argv)
 
+    global BATCH_ID
+    BATCH_ID = args.batch
+
     icp, verify, mx, copy, people = load_inputs()
     mailboxes = attested_mailboxes()
-    selection, held, spill = select(copy, icp, people)
+    if args.fill_existing:
+        # A LEAD ENTERS ONE BATCH, EVER. `excluded` counts as known: a
+        # contact held for a live collision is not free to be picked up by
+        # the next batch as though it were new - it is waiting on the thing
+        # that excluded it.
+        known, held_accounts = set(), set()
+        for record in store.load():
+            held_accounts.add(str(record.get("domain") or "").lower())
+            for group in ("contacts", "excluded"):
+                for contact in record.get(group) or []:
+                    if contact.get("email"):
+                        known.add(str(contact["email"]).strip().lower())
+        before = len(copy)
+        copy = {e: v for e, v in copy.items() if e not in known}
+        same_person = before - len(copy)
+
+        # AN ACCOUNT ALREADY IN A BATCH IS NOT FREE SUPPLY.
+        #
+        # 103 of batch 2's accounts are accounts batch 1 already holds, with
+        # a DIFFERENT person at each. Enrolling them would put two of our
+        # senders in front of one company in the same week, which is the
+        # thing the account-level assignment in this same file exists to
+        # prevent - and the client's own config caps contacts per domain for
+        # the same reason.
+        #
+        # So they are DEFERRED, not dropped: once batch 1's first steps have
+        # gone and we know how that account responded, a second person there
+        # is a decision with evidence behind it instead of a coincidence of
+        # two batches.
+        before = len(copy)
+        copy = {e: v for e, v in copy.items()
+                if e.split("@")[-1].lower() not in held_accounts}
+        print(f"  same person, already enrolled {same_person}")
+        print(f"  deferred - account already in a batch  {before - len(copy)}")
+        print(f"  available to enrol            {len(copy)}")
+    selection, held, spill = select(copy, icp, people,
+                                    apply_cohort_cap=not args.fill_existing)
     records = build_records(selection, icp, verify, mx, people)
-    plan, spilled = assign(selection, records, mailboxes)
+    if args.fill_existing:
+        plan, spilled = assign_to_existing(selection)
+    else:
+        plan, spilled = assign(selection, records, mailboxes)
 
     total = sum(len(v) for v in selection.values())
     print(f"\nBATCH 1  client={CLIENT}\n")
@@ -635,17 +772,21 @@ def main(argv=None):
         if not spec["record_ids"]:
             empty.append(human)
             continue
-        row = campaign_row(human, spec, mailboxes[human])
-        if row["campaign_id"] in by_slug:
-            index = by_slug[row["campaign_id"]]
+        slug = spec.get("slug") or f"productive-email-batch1-{human}"
+        if slug in by_slug:
+            index = by_slug[slug]
             existing_row = rows[index]
-            if existing_row.get("record_ids") != row["record_ids"]:
-                existing_row["record_ids"] = row["record_ids"]
-                existing_row["sending_window"] = row["sending_window"]
-                existing_row["senders"] = row["senders"]
+            # APPEND. Wave 2 bound this campaign's mailboxes and batch 1 put
+            # accounts on it; a later batch adds to both rather than
+            # replacing either.
+            have = list(existing_row.get("record_ids") or [])
+            added = [r for r in spec["record_ids"] if r not in have]
+            if added:
+                existing_row["record_ids"] = have + added
                 rows[index] = existing_row
                 updated_rows += 1
             continue
+        row = campaign_row(human, spec, mailboxes[human])
         rows.append(row)
         written += 1
     campaigns.save(rows)
