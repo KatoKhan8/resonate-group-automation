@@ -282,6 +282,43 @@ per-branch check before merging, not a bulk merge.
 | F-008 | `senderheadroom.walked_at` took the NEWEST stamp, so a walk resumed today read as fresh while carrying days-old rows | now takes `min()`, with the reasoning in the docstring. Verified 2026-09-20 |
 | F-009 | The geo resolver matched country NAMES while the evidence is a two-letter CODE | `27bcdb67`, 2026-09-17 |
 
+## EXCLUDED — named, decided, and not capacity
+
+### The 51 mailboxes of three identities · operator decision, Zvonimir, 2026-09-21
+
+**Casey Wright, Morgan Ellis and Riley Parker are NOT to be used.** Not added
+to the roster, not attested, not named as a sender in any campaign. The
+operator has not confirmed they are real people, and an attestation records
+that a real named human operates a mailbox - so attesting them would record
+the one thing this module exists to prevent.
+
+They were never added: verified 2026-09-21, 0 of their 51 mailboxes carry an
+attestation and no roster entry exists for any of the three.
+
+**THIS ROW EXISTS SO NOBODY READS THEM AS CAPACITY WAITING FOR A NAME.** They
+are 51 Connected mailboxes with 15/day limits each, they will keep appearing
+at the top of any headroom ranking, and a future session that sees
+`SAFE_FOR_PRODUCTIVE = 159` against 210 connected inboxes will find exactly
+this gap and be tempted to close it. It is closed deliberately.
+
+Their history, recorded because it was asked for separately and because a
+future argument for using them should have to answer it:
+
+    identity          mailboxes   lifetime sent   bounces   bounce rate
+    Casey Wright             17           8,947       165         1.84%
+    Morgan Ellis             17           8,911       161         1.81%
+    Riley Parker             17           8,878       200         2.25%
+    -------------------------------------------------------------------
+    EXCLUDED, all three      51          26,736       526         1.97%
+    attested nine           174         171,645     1,423         0.83%
+
+**Their bounce rate is 2.4x the attested estate's.** That is not why they are
+excluded - identity is - but it means nothing is being given up. Reversing
+this needs a named operator confirmation that these are real people, not an
+engineering judgement that the mailboxes look healthy.
+
+---
+
 ## REFUTED — kept so they are not resurrected
 
 | ID | Claim | Why it is wrong |

@@ -225,6 +225,23 @@ def _today():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 
 
+ATTRIBUTION_QUESTION = (
+    "TASK-238 suppresses an operational alert. `inbound.handle` raises "
+    "UNMATCHED_REPLY for every event it cannot attribute; ~80/day were the "
+    "CLIENT's traffic, because the HeyReach key is workspace-wide. The fix "
+    "drops an event ONLY when `_positively_not_ours` proves it sits on a seat "
+    "or campaign we do not operate. THE RULE IS FAIL-CLOSED: no field, an "
+    "unparseable field, our seat, or any doubt MUST keep the notification. "
+    "Attack it. (1) Find any input where a real reply on OUR seat is DROPPED "
+    "- that is a silently discarded reply and the worst outcome. (2) Find any "
+    "type, coercion or unicode case where int(seat) misjudges membership. "
+    "(3) Does the hold still run on every path, including the dropped one? "
+    "(4) Is it idempotent - same event twice, same outcome, no double hold? "
+    "(5) Can a crafted event suppress an alert it should raise? Say UNKNOWN "
+    "rather than guessing; a confident wrong answer here loses a reply."
+)
+
+
 def _targets():
     """Built lazily so a broken import in one area cannot block the others."""
     from src import (store, actionledger, collision, bisonevents,
@@ -329,6 +346,10 @@ def _targets():
         # REPLY_RECEIVED event, its classification and the account pause -
         # leaving `eligibility._replied` answering clean for a poll interval
         # on somebody who has just replied.
+        "attribution": (ATTRIBUTION_QUESTION, [
+            ("inbound._positively_not_ours", inbound._positively_not_ours),
+            ("inbound.handle", inbound.handle),
+        ]),
         "suppression": (SUPPRESSION_QUESTION, [
             ("inbound.ingest", inbound.ingest),
             ("leadstop._record", leadstop._record),
