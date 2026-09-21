@@ -106,3 +106,79 @@ and says why.
 `negative_reply`, `unsubscribe` and `neutral_reply` all route `('nowhere',
 'info')` in `notify.ROUTES`. Verified today, unchanged, and left alone —
 whether those should reach Slack is a separate operator decision.
+
+---
+
+# Addendum — the two follow-up questions, 2026-09-21T10:3xZ
+
+## A. The adapter does NOT resolve names. Use ids.
+
+`slack.post` builds `{"channel": channel, "text": ...}` and passes it straight
+to `chat.postMessage`. There is no `conversations.list` call anywhere in
+`src/providers/slack.py`, so whatever string it is given is what Slack
+receives. Slack still accepts a `#name` for a PUBLIC channel, but it is
+deprecated, it does not work for a private channel, and it breaks silently the
+day somebody renames the channel. **An id never moves, so both policies should
+carry ids.**
+
+**I still have not mapped them, because the mapping is derivable and a guess
+is unsafe.** `scripts/slack_map_channels.py` resolves it properly: it calls
+`conversations.info` on `C0ADUMGQX8S` and `C0BFUF4JRK9`, reads each channel's
+real name, and pairs it against the name already in each workspace's policy
+(`#client-productive-replies`, `#client-contactout-replies`). If the two names
+do not pair one-to-one it refuses and writes nothing.
+
+    py -3 scripts/slack_map_channels.py            # show the mapping
+    py -3 scripts/slack_map_channels.py --apply    # write both policies
+
+It needs only `SLACK_BOT_TOKEN` and no posting scope — it reads. So the
+mapping resolves itself the moment the token from §2 exists, and nobody has to
+remember which id was which.
+
+## B. The 15 are NOT from 327/328/352. They are HeyReach, and they are the
+## client's — but the routing question is real anyway.
+
+Every one of the 15 carries `provider: heyreach`, `status: unmatched`, `why:
+"no record for this event"`. None carries a campaign id, a workspace or a
+lead; the only identifier is a `provider_event_id` of the form
+`heyreach:2-<base64 conversation id>:<timestamp>`. So they are not EmailBison
+and 327/328/352 are not involved.
+
+**They cannot be ours, and that is provable rather than likely.** Our only
+live HeyReach campaign is 605732, and it has `sent = 0` on every read today —
+zero messages, zero connection requests. A reply event cannot originate from a
+campaign that has never sent anything. We own 4 of 86 HeyReach campaigns, the
+API key is workspace-wide, and the reply watcher reports
+`events_inspected: 21, ambiguous_identities: 21, new_replies_ingested: 0`. We
+are being shown the client's inbox traffic and correctly failing to attribute
+it.
+
+Rate: 15 between 05:15Z and 09:37Z, about 3.4/hour, so roughly 80/day if it
+holds. That is an ops channel nobody will read by Wednesday.
+
+**PROPOSED, NOT APPLIED. Nothing is sent until you decide.** Neither option
+touches the NOWHERE routes for `negative_reply` / `unsubscribe` /
+`neutral_reply`.
+
+**Option 1 — fix the attribution, which is the real defect.** An event whose
+conversation belongs to a LinkedIn seat we do not operate is not ours to
+review, and raising `action_required` for it is a false positive rather than a
+volume problem. The check is cheap: 605732's seat is known, and an event from
+any other seat is the client's. This makes the 15 disappear because they
+should never have been raised, and a genuine unmatched event on OUR seat still
+pages immediately. Costs one bounded engineering task.
+
+**Option 2 — batch them, if you want the visibility kept.** `src/digest.py`
+already exists and already records a digest as a notification, so the change
+is to route `unmatched_reply_needs_review` into it rather than to post one
+message each: one summary, a count and the seats involved, on whatever
+interval you want. Cheaper to build, but it keeps paging about somebody else's
+inbox, just more quietly.
+
+**My recommendation is Option 1, with Option 2 on top only if you want a
+daily count of client traffic.** Option 2 alone treats a correctness bug as a
+noise problem, and the 80/day is a symptom of the attribution gap rather than
+the thing to manage.
+
+Until you decide: `scripts/slack_replay_today.py` still reports 15 and still
+sends nothing without `--live`.
