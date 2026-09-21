@@ -71,6 +71,7 @@ a transport this build does not have.
 import argparse
 import hashlib
 import json
+import re
 import os
 
 from . import store, workspaces as ws
@@ -80,8 +81,18 @@ from .providers import slack
 
 GLOBAL = "global"
 WORKSPACE = "workspace"
+#: The team-facing status feed. OPERATOR DECISION, 2026-09-21: a THIRD
+#: destination rather than a second use of the ops channel. Ops is where
+#: something needs doing; status is where the team reads what the machine is
+#: doing. Mixing them makes the loud one unreadable and the quiet one ignored,
+#: which is the same argument that separated GLOBAL from WORKSPACE.
+#:
+#: NOTHING HERE CARRIES A PROSPECT. Names, addresses and client-internal
+#: detail beyond counts are refused by `_status_payload`, not by convention -
+#: this channel has the widest human audience in the product.
+STATUS = "status"
 NOWHERE = "nowhere"
-DESTINATIONS = (GLOBAL, WORKSPACE, NOWHERE)
+DESTINATIONS = (GLOBAL, WORKSPACE, STATUS, NOWHERE)
 
 # --------------------------------------------------------------- severity
 
@@ -146,6 +157,17 @@ REPORT_AVAILABLE = "report_available"
 # summarised rather than lost.
 OPERATIONS_DIGEST = "operations_digest"
 
+# Status feed. Human-readable, counts only, no raw ids.
+STATUS_NOW_RUNNING = "status_now_running"
+STATUS_CHECKPOINT = "status_checkpoint"
+STATUS_BATCH_STATS = "status_batch_stats"
+STATUS_MILESTONE = "status_milestone"
+#: A hard stop goes to ops AND here, which is the one deliberate double
+#: route in this table. It is raised as its own type rather than by routing
+#: one event twice, so each has its own id and neither can suppress the
+#: other.
+STATUS_HARD_STOP = "status_hard_stop"
+
 # (destination, severity). An event type not in here routes NOWHERE.
 #
 # The workspace side is deliberately three lines long. Every extra kind that
@@ -176,7 +198,14 @@ ROUTES = {
     REPORT_GENERATION_FAILED: (GLOBAL, WARNING),
     # INFO by construction: anything urgent has its own kind and has
     # already been sent by the time this is built.
-    OPERATIONS_DIGEST: (GLOBAL, INFO),
+    STATUS_NOW_RUNNING: (STATUS, INFO),
+    STATUS_CHECKPOINT: (STATUS, INFO),
+    STATUS_BATCH_STATS: (STATUS, ACTION_REQUIRED),
+    STATUS_MILESTONE: (STATUS, INFO),
+    STATUS_HARD_STOP: (STATUS, CRITICAL),
+    # The 07:00 digest is a status message, and the operator moved it here on
+    # 2026-09-21. Ops keeps everything that needs doing.
+    OPERATIONS_DIGEST: (STATUS, INFO),
 
     POSITIVE_REPLY: (WORKSPACE, INFO),
     CAMPAIGN_MILESTONE: (WORKSPACE, INFO),
@@ -210,6 +239,11 @@ WORKSPACE_TOGGLES = {
 # one would make it look like a client's channel and invite exactly the
 # mistake this module is about.
 OPS_CHANNEL_VAR = "SLACK_OPS_CHANNEL"
+
+#: The team status channel, and the switch that silences it. Same shape as
+#: the ops channel and for the same reason: it belongs to no client.
+STATUS_CHANNEL_VAR = "SLACK_STATUS_CHANNEL"
+STATUS_ENABLED_VAR = "SLACK_STATUS"
 
 WORKSPACE_CHANNEL_KEY = "slack.workspace_channel"
 
@@ -254,6 +288,25 @@ def route(event_type):
 def ops_channel():
     """The global operations channel, or None if nobody configured one."""
     return (os.environ.get(OPS_CHANNEL_VAR) or "").strip() or None
+
+
+def status_channel():
+    """The team status channel, or None if nobody configured one."""
+    return (os.environ.get(STATUS_CHANNEL_VAR) or "").strip() or None
+
+
+def status_enabled():
+    """The status feed is ON unless it is explicitly switched off.
+
+    Default-on, unlike every per-workspace toggle here, because this channel
+    carries no prospect and no client detail - the cost of an unwanted
+    message in it is noise, and the cost of a missing one is a team that
+    does not know a wave changed.
+    """
+    value = (os.environ.get(STATUS_ENABLED_VAR) or "").strip().lower()
+    if value in ("off", "false", "no", "0"):
+        return False
+    return True
 
 
 def workspace_channel(slug, rows=None):
@@ -319,6 +372,21 @@ def destination_for(event_type, workspace=None, rows=None):
                 "status": SUPPRESSED,
                 "why": (f"{event_type} is not routed to Slack; it is recorded "
                         "and visible in the web app")}
+
+    if where == STATUS:
+        if not status_enabled():
+            return {"destination": STATUS, "severity": severity,
+                    "channel": None, "status": SUPPRESSED,
+                    "why": f"the status feed is switched off ({STATUS_ENABLED_VAR})"}
+        channel = status_channel()
+        if not channel:
+            return {"destination": STATUS, "severity": severity,
+                    "channel": None, "status": UNCONFIGURED,
+                    "why": (f"no team status channel is configured; set "
+                            f"{STATUS_CHANNEL_VAR}")}
+        return {"destination": STATUS, "severity": severity,
+                "channel": channel, "status": PLANNED,
+                "why": "routed to the team status channel"}
 
     if where == GLOBAL:
         channel = ops_channel()
@@ -477,6 +545,49 @@ def _global_payload(fields):
             if v not in (None, "", [], {})}
 
 
+#: Field names that carry a person or a client's private detail. Refused in
+#: the status feed by NAME, before any value is looked at, because the
+#: audience is the whole team and the cheapest guarantee is the one that does
+#: not depend on what a caller happened to put in the string.
+STATUS_FORBIDDEN_FIELDS = (
+    "email", "address", "recipient", "prospect", "contact_name", "first_name",
+    "last_name", "full_name", "person", "lead_email", "reply_excerpt",
+    "subject", "body", "copy", "linkedin_url", "profile_url", "phone",
+)
+
+_EMAIL_SHAPE = re.compile(r"[^@\s]+@[^@\s]+\.[A-Za-z]{2,}")
+
+
+def _status_payload(fields):
+    """Counts and words about the machine. Never a person.
+
+    OPERATOR, 2026-09-21: "Nothing in this channel contains prospect names,
+    emails or client-internal data beyond counts."
+
+    RAISES rather than stripping, on both the name check and the value check.
+    A silently dropped prospect name means the caller believes it sent
+    something it did not, and the next person to add a field learns nothing.
+    The value check catches the case the name check cannot: an address
+    embedded in an otherwise innocent summary string.
+    """
+    _scrub(fields)
+    clean = {}
+    for key, value in (fields or {}).items():
+        if value in (None, "", [], {}):
+            continue
+        lowered = str(key).strip().lower()
+        if any(bad in lowered for bad in STATUS_FORBIDDEN_FIELDS):
+            raise NotifyError(
+                f"{key!r} may not appear in the status feed: it names a "
+                f"person or a prospect, and that channel carries counts only")
+        if isinstance(value, str) and _EMAIL_SHAPE.search(value):
+            raise NotifyError(
+                f"{key!r} carries something shaped like an email address; "
+                f"the status feed carries counts, not prospects")
+        clean[key] = value
+    return clean
+
+
 # ------------------------------------------------------------------ planning
 
 def plan(event_type, workspace=None, fields=None, ids=None, actions=(),
@@ -497,9 +608,12 @@ def plan(event_type, workspace=None, fields=None, ids=None, actions=(),
     # A second check up here would be free to write but impossible to test:
     # either one alone keeps the behaviour identical, so neither can be
     # removed by a mutation and caught by a test.
-    payload = (_workspace_payload(fields)
-               if decision["destination"] == WORKSPACE
-               else _global_payload(fields))
+    if decision["destination"] == WORKSPACE:
+        payload = _workspace_payload(fields)
+    elif decision["destination"] == STATUS:
+        payload = _status_payload(fields)
+    else:
+        payload = _global_payload(fields)
 
     row = {
         "id": identifier,

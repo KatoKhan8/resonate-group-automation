@@ -11,6 +11,7 @@ derived from a plan - a prepared payload is not a send. A window is stated
 rather than implied. And nothing is posted: building a digest records a
 notification, and whether anything reaches Slack is `SLACK_LIVE`'s business.
 """
+import os
 import unittest
 
 from tests.webbase import WebTest
@@ -149,18 +150,38 @@ class Announcing(WebTest):
 
     def setUp(self):
         super().setUp()
+        # The digest moved to the team status channel by operator decision on
+        # 2026-09-21, so these tests have to configure one. Before that it
+        # rode the ops channel this class's fixture already sets.
+        self._status_channel = os.environ.get(notify.STATUS_CHANNEL_VAR)
+        os.environ[notify.STATUS_CHANNEL_VAR] = "C0STATUSTEST"
+        self.addCleanup(self._restore_status_channel)
         notify.save([n for n in notify.load()
                      if n.get("type") != notify.OPERATIONS_DIGEST])
+
+    def _restore_status_channel(self):
+        if self._status_channel is None:
+            os.environ.pop(notify.STATUS_CHANNEL_VAR, None)
+        else:
+            os.environ[notify.STATUS_CHANNEL_VAR] = self._status_channel
 
     def rows(self):
         return [n for n in notify.load()
                 if n.get("type") == notify.OPERATIONS_DIGEST]
 
-    def test_it_goes_to_the_operations_channel_at_info(self):
+    def test_it_goes_to_the_team_status_channel_at_info(self):
         """By construction never urgent: anything urgent has its own kind
-        and was sent when it happened."""
+        and was sent when it happened.
+
+        MOVED 2026-09-21 by operator decision, from the ops channel to the
+        team status feed: "Route to #resonate-os ... the 07:00 daily digest."
+        Ops keeps everything that needs doing; the digest is something to
+        read. A route change is a visible edit to this table and an operator
+        decision, never a quiet one - which is why this test changed rather
+        than went away.
+        """
         destination, severity = notify.ROUTES[notify.OPERATIONS_DIGEST]
-        self.assertEqual(destination, notify.GLOBAL)
+        self.assertEqual(destination, notify.STATUS)
         self.assertEqual(severity, notify.INFO)
 
     def test_recording_one_does_not_post_it(self):
