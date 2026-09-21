@@ -1,6 +1,13 @@
 # Resonate Group Automation
-docs/PRODUCTION-HANDOFF-2026-09-21-EVENING.md is the current state: read it
-first. THIS PROJECT SENDS EMAIL NOW - 489 sent two real emails on 2026-09-21,
+docs/PRODUCTION-HANDOFF-2026-09-21-NIGHT.md is the current state: read it
+first. Batches 1 and 2 are PUSHED - EmailBison campaigns 491-498 hold 151
+enrolled leads - and every one of those campaigns is PAUSED because
+`providerwrites.CONDITIONAL["bison.activate"]` names 487 and 489 only.
+Widening it is an operator decision its own docstring calls out; nothing
+sends until it happens. Capacity is 2,310 first steps a day since TASK-241
+merged. The evening handoff below is superseded but still true about 489.
+
+docs/PRODUCTION-HANDOFF-2026-09-21-EVENING.md was the previous state. THIS PROJECT SENDS EMAIL NOW - 489 sent two real emails on 2026-09-21,
 at 13:34:48Z and 16:48:18Z, with four independent witnesses on the first. The
 morning handoff below is superseded and its headline is out of date.
 It is written for a session with no conversation context and it supersedes
