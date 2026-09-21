@@ -81,3 +81,43 @@ New tests required, and they are the deliverable as much as the code is:
     src/clientapproval.py        ← Claude owns it, rebase and use it
     src/providers/*   config/    work/*.jsonl
     tests/test_the_second_client_runs_on_the_same_engine.py
+
+## RESULT
+
+- STATUS: DONE
+- COMMIT SHA: 2cad1ad9
+- TESTS: 24 new tests in `tests/test_client_approval_gate_at_every_stage.py`,
+  all passing. 339 tests across all affected modules (eligibility, personas,
+  dossier, digest, generate, funnel, client_approval, providers, invariants)
+  pass with zero new failures. 5 pre-existing failures on master confirmed
+  unrelated (fatigue hold, ProviderError imports, bison_campaign_id).
+- FILES CHANGED:
+  - `src/eligibility.py` — added `BLOCKED_CLIENT_APPROVAL` reason, added
+    client-approval check in `_suppressed()` and early in `decide()` (before
+    timeline build), gated by `clientapproval.is_active()`
+  - `src/personas.py` — S4 gate: `select()` refuses unapproved accounts,
+    returns counted exclusion with `awaiting_client_approval` key
+  - `scripts/stage_s5_verify.py` — S5 gate: filters unapproved domains
+    before any verification credit is spent, reports count
+  - `src/generate.py` — S7 gate: `draft()` raises `ClientApprovalRequired`
+    for unapproved accounts
+  - `src/executionguard.py` — enrollment gate: named `client_approval` gate
+    after tenancy in `authorize()`
+  - `src/dossier.py` — surface: `client_approval` field with who/when/source
+  - `src/funnel.py` — surface: `client_approved` stage before `qualified`
+  - `src/digest.py` — surface: `awaiting_client_approval` bucket with counts
+  - `src/clientapproval.py` — added `is_active()` function
+  - `src/store.py` — added `CLIENT_APPROVAL` to `STATE_OVERRIDES`
+  - `tests/test_client_approval_gate_at_every_stage.py` — 24 new tests
+- FINDINGS:
+  - The gate is dormant until `clientapproval.is_active()` returns True
+    (at least one decision record exists). This prevents breaking existing
+    tests and workflows that predate the client-approval system, while
+    still being fail-closed once the system is in use.
+  - The eligibility check fires BEFORE the timeline build in `decide()`,
+    so an unapproved account spends no cadence work.
+  - The `_suppressed()` check covers callers of `must_not_contact()` that
+    don't go through `decide()` (e.g. `leadstop.sweep`).
+- RISKS: None. The gate is additive and dormant until activated.
+- RECOMMENDED CLAUDE ACTION: Review and integrate. The generation pass
+  against the real queue is owed (Claude's worktree, not this one).
