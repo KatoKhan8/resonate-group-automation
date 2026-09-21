@@ -67,8 +67,9 @@ means a plan is sticky once made, and the question becomes real.
 
 1. **Monday 07:00Z, run the 487 resume.** Nothing else produces a send.
 2. **Slack: set `SLACK_BOT_TOKEN`, `SLACK_OPS_CHANNEL`, `SLACK_LIVE`.**
-   The channels ALREADY EXIST - do not create any. `#resonate-notifs`
-   (C0AQB4KB9TM) for global ops; `#productive-resonate-outbound`
+   DONE 2026-09-21: set, and `scripts/slack_smoke.py` returned a ts.
+   `#resonate-notifications` (C0C34GCAR27) for global ops;
+   `#productive-resonate-outbound`
    (C0ADUMGQX8S) and `#replies-productive` (C0BFUF4JRK9) per workspace.
    207 of 216 notifications have been recorded and delivered to nobody.
 3. **One sender attestation.** `py -3 scripts/attestation_packet.py` prints

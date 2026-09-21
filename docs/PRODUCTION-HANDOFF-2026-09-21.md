@@ -268,8 +268,8 @@ triaged in the problem register.
                                   SLACK_LIVE all unset. The adapter works and
                                   207 notifications are recorded and
                                   undelivered. Channels already exist -
-                                  #resonate-notifs is C0AQB4KB9TM. Do not
-                                  create any.
+                                  #resonate-notifications is C0C34GCAR27.
+                                  SET 2026-09-21, smoke test SENT.
     0 eligible senders            attestation, an operator act. §7
     READY cohort is 0 on both     enrichment, not approval or capacity. §7
     89 stale branches             they hide ready work from the dispatcher

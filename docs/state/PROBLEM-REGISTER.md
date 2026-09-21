@@ -135,14 +135,45 @@ per-branch check before merging, not a bulk merge.
   The adapter and the routing table work correctly and refuse without a
   destination, exactly as SLACK-NOTIFICATIONS.md specifies.
 - **Blocked on** operator. Channels already exist and must not be created:
-  `#resonate-notifs` (C0AQB4KB9TM) for the global ops channel,
+  `#resonate-notifications` (C0C34GCAR27) for the global ops channel,
   `#productive-resonate-outbound` (C0ADUMGQX8S) and `#replies-productive`
   (C0BFUF4JRK9) for the per-workspace one.
 - **Note a policy conflict before wiring** the standing contract routes
   `negative_reply`, `unsubscribe` and `neutral_reply` to NOWHERE deliberately.
   A recent instruction asks for NEGATIVE_REPLY and UNSUBSCRIBE alerts. That is
   an operator decision and a visible edit to the routing table, not a bug.
-- **Status** BLOCKED on operator
+  STILL OPEN as of 2026-09-21 and deliberately untouched by the wiring below.
+- **UNBLOCKED 2026-09-21T11:3xZ.** The operator set `SLACK_BOT_TOKEN`,
+  `SLACK_OPS_CHANNEL` and `SLACK_LIVE` in `config/.env`, on a NEW ops channel
+  `#resonate-notifications` (C0C34GCAR27) rather than the `#resonate-notifs`
+  this row named. `scripts/slack_smoke.py` posted one message and Slack
+  returned `ts 1789990679.422989` - a receipt is only issued for a message
+  Slack accepted, so the transport, token, channel and membership are all
+  proven together.
+- **The backlog is NOT replayed and that is deliberate.** 236 rows now, 15 of
+  them today; `scripts/slack_replay_today.py` delivers only rows at or after
+  today 00:00Z and stays UNRUN pending an operator decision. All 15 are
+  `unmatched_reply_needs_review` from HeyReach carrying no campaign, workspace
+  or lead, and they cannot be ours: 605732 has `sent = 0`, so no reply event
+  can originate from it. They are the client's inbox traffic arriving on a
+  workspace-wide key. See the addendum in `docs/SLACK-ACTIVATION-2026-09-21.md`
+  for the two routing options, neither applied.
+- **The two per-workspace ids are BOTH Productive, which answers a question
+  that was open this morning.** This row already records them:
+  `#productive-resonate-outbound` (C0ADUMGQX8S) and `#replies-productive`
+  (C0BFUF4JRK9). A session had been trying to pair them against the two
+  workspaces carrying a `slack.workspace_channel` policy, `productive` and
+  `contactout`, and refused to guess. It was right to: NEITHER belongs to
+  contactout. `productive` has two channels serving different purposes, so
+  which one is `slack.workspace_channel` and which is `slack.approvals_channel`
+  is an operator decision, and `contactout` still has no id at all.
+  Both policies still hold channel NAMES, and `slack.post` resolves no names -
+  it passes the string to `chat.postMessage` - so they should become ids.
+  NOT WRITTEN: `scripts/slack_map_channels.py` reads `conversations.info` and
+  refuses unless the names pair one-to-one, which they do not.
+- **Status** OPEN, narrowed: the ops channel is LIVE and proven; what remains
+  is the per-workspace ids and the NOWHERE-routes decision, both operator
+  calls. Global-destination notifications now have somewhere to go.
 
 ### ISSUE-006 · The PII guard was red · HIGH · **FIXED `cecd4223`**
 

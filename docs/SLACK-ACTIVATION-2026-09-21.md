@@ -1,5 +1,11 @@
 # Slack activation — exactly where each value goes
 
+**STATUS 2026-09-21T11:3xZ: LIVE.** The operator set all three variables and
+`scripts/slack_smoke.py` posted to `#resonate-notifications` (C0C34GCAR27),
+Slack returning `ts 1789990679.422989`. The ops channel below is the NEW one;
+the earlier `#resonate-notifs` / C0AQB4KB9TM is superseded everywhere.
+`scripts/slack_replay_today.py` remains UNRUN by instruction.
+
 Nothing here contains a secret. The operator sets the values; everything else
 is prepared and tested.
 
@@ -19,7 +25,7 @@ Append to `config/.env`, replacing only the token:
 
     SLACK_BOT_TOKEN=xoxb-REPLACE-WITH-THE-BOT-TOKEN
     SLACK_LIVE=1
-    SLACK_OPS_CHANNEL=C0AQB4KB9TM
+    SLACK_OPS_CHANNEL=C0C34GCAR27
 
 `SLACK_LIVE` is a second switch on purpose: a token alone never enables
 posting, so a token that leaks into an environment cannot start sending
@@ -57,11 +63,22 @@ values are channel NAMES, and both need replacing with the ids:
     workspace `productive`   slack.workspace_channel = '#client-productive-replies'
     workspace `contactout`   slack.workspace_channel = '#client-contactout-replies'
 
-**WHICH ID BELONGS TO WHICH WORKSPACE IS NOT RECORDED ANYWHERE AND I AM NOT
-GUESSING IT.** `C0ADUMGQX8S` and `C0BFUF4JRK9` were given without a mapping,
-and a wrong guess posts one client's reply traffic into the other client's
-channel — the precise failure this module is built to make impossible. Tell me
-which is which, or set them yourself:
+**ANSWERED 2026-09-21, and the refusal to guess was correct.** ISSUE-005 in
+`docs/state/PROBLEM-REGISTER.md` already recorded both ids, and **BOTH ARE
+PRODUCTIVE**: `#productive-resonate-outbound` (C0ADUMGQX8S) and
+`#replies-productive` (C0BFUF4JRK9). Neither belongs to `contactout`. Pairing
+them one-to-one against the two workspaces that carry a
+`slack.workspace_channel` would therefore have put Productive's outbound
+channel into ContactOut's policy — the exact cross-client leak this module is
+built to prevent.
+
+So the remaining decision is an operator's, not a lookup: `productive` has two
+channels for two purposes, and which is `slack.workspace_channel` (replies)
+versus `slack.approvals_channel` is a choice. `#replies-productive` is the
+obvious reading for the reply channel, but it is not written until you say so.
+`contactout` still has no id at all and keeps its name.
+
+Set them with:
 
     py -3 -c "import sys;sys.path.insert(0,'.');from src import workspaces as ws;ws.set_policy('productive', {'slack.workspace_channel': 'C0XXXXXXXXX'}, actor='operator')"
     py -3 -c "import sys;sys.path.insert(0,'.');from src import workspaces as ws;ws.set_policy('contactout', {'slack.workspace_channel': 'C0XXXXXXXXX'}, actor='operator')"
