@@ -37,7 +37,7 @@ class StopUnverified(Exception):
 
 
 def stop_contact(rec, contact, why, *, campaign=None, rows=None, live=False,
-                 by="system"):
+                 by="system", persist=True):
     """Prevent the next email to this one person. Returns what is now true.
 
     Refuses rather than guesses at every point where it cannot name exactly
@@ -116,12 +116,12 @@ def stop_contact(rec, contact, why, *, campaign=None, rows=None, live=False,
 
     # Written where the rest of this person's history is, so a later audit can
     # answer "when did they stop hearing from us, and on whose say-so".
-    _record(rec, contact, report)
+    _record(rec, contact, report, persist=persist)
     return report
 
 
 def stop_linkedin_contact(rec, contact, why, *, campaign=None, rows=None,
-                          live=False, by="system"):
+                          live=False, by="system", persist=True):
     """Prevent the next LinkedIn step to this one person.
 
     The LinkedIn counterpart of `stop_contact`. Uses `heyreach_lead_id` and
@@ -185,7 +185,7 @@ def stop_linkedin_contact(rec, contact, why, *, campaign=None, rows=None,
             f"{e}") from None
     report["stopped"] = True
     report["verdict"] = (outcome or {}).get("class")
-    _record_linkedin(rec, contact, report)
+    _record_linkedin(rec, contact, report, persist=persist)
     return report
 
 
@@ -299,8 +299,57 @@ def _campaign_of(rec, rows=None):
     return None
 
 
-def _record(rec, contact, report):
+def _stop_event(target, contact, report, *, channel, provider, prefix):
+    """Append the PROVIDER_STOP_CONFIRMED event to one record.
+
+    One writer for both channels so the email and LinkedIn stop paths cannot
+    drift in what they record or in how they key idempotency.
+
+    `target` is whichever record object is about to be persisted - the
+    in-memory `rec` when the caller owns the save, or the canonical row
+    inside a transaction when it does not. `events.record` does not care
+    which; the difference is entirely about who writes the file.
+    """
+    events.record(
+        target, events.PROVIDER_STOP_CONFIRMED,
+        contact_key=contact.get("key"), channel=channel,
+        provider=provider,
+        provider_event_id=(f"{prefix}:stop:"
+                           f"{report['provider_campaign']}:"
+                           f"{report['lead_id']}"),
+        lead_id=report["lead_id"],
+        campaign=report["provider_campaign"],
+        why=report["why"],
+        status=report.get("status_after"))
+
+
+def _record(rec, contact, report, persist=True):
     """Write the confirmed stop through the canonical writer.
+
+    ## `persist=False` MEANS THE CALLER OWNS THE SAVE, and it is not a tidying
+
+    PROBLEM-REGISTER ISSUE-001. `inbound.ingest` reads
+    `base = store.digest()`, builds its records, then calls
+    `store.save(recs, expect_digest=base)` which REFUSES if the queue changed
+    in between. This function is reached from inside that window, and opening
+    its own transaction here changes the file - `store.digest()` is a content
+    hash - so the outer save raises `QueueChanged` and ingest's own work is
+    discarded: the REPLY_RECEIVED event, its classification, and the account
+    pause.
+
+    The stop itself survived, because this transaction committed. That is why
+    the defect was narrower than first reported and also why it could not be
+    fixed by simply removing the transaction: **two of the three callers have
+    no save of their own.** `sweep` and the CLI reach here outside any ingest
+    window, and there this commit is the only write that happens. GLM raised
+    exactly that in review of the proposed fix.
+
+    So the caller declares it. `persist=True` keeps the independent commit for
+    callers that own no save. `persist=False` writes onto the in-memory record
+    the caller is holding and lets their single save persist it - which is
+    what ingest already does for everything else it touches.
+
+    ## Why this goes through `events.record` rather than writing the list
 
     This appended to `rec["events"]` directly, and the bypass hid a bug in
     itself: `PROVIDER_STOP_CONFIRMED` was in neither `INTERNAL` nor
@@ -314,40 +363,35 @@ def _record(rec, contact, report):
     could collapse. `provider_event_id` keys this one to the exact provider
     lead and campaign, which is what makes a repeat a no-op.
     """
+    if not persist:
+        _stop_event(rec, contact, report, channel="email",
+                    provider="emailbison", prefix="emailbison")
+        return
     with store.transaction() as rows:
         for row in rows:
             if row.get("id") != rec.get("id"):
                 continue
-            events.record(
-                row, events.PROVIDER_STOP_CONFIRMED,
-                contact_key=contact.get("key"), channel="email",
-                provider="emailbison",
-                provider_event_id=(f"emailbison:stop:"
-                                   f"{report['provider_campaign']}:"
-                                   f"{report['lead_id']}"),
-                lead_id=report["lead_id"],
-                campaign=report["provider_campaign"],
-                why=report["why"],
-                status=report.get("status_after"))
+            _stop_event(row, contact, report, channel="email",
+                        provider="emailbison", prefix="emailbison")
 
 
-def _record_linkedin(rec, contact, report):
-    """Write the confirmed LinkedIn stop through the canonical writer."""
+def _record_linkedin(rec, contact, report, persist=True):
+    """Write the confirmed LinkedIn stop through the canonical writer.
+
+    `persist=False` means the caller owns the save - see `_record`, which
+    carries the full argument. Kept identical to the email path on purpose:
+    two stop recorders with different persistence rules is how the two drift.
+    """
+    if not persist:
+        _stop_event(rec, contact, report, channel="linkedin",
+                    provider="heyreach", prefix="heyreach")
+        return
     with store.transaction() as rows:
         for row in rows:
             if row.get("id") != rec.get("id"):
                 continue
-            events.record(
-                row, events.PROVIDER_STOP_CONFIRMED,
-                contact_key=contact.get("key"), channel="linkedin",
-                provider="heyreach",
-                provider_event_id=(f"heyreach:stop:"
-                                   f"{report['provider_campaign']}:"
-                                   f"{report['lead_id']}"),
-                lead_id=report["lead_id"],
-                campaign=report["provider_campaign"],
-                why=report["why"],
-                status=report.get("status_after"))
+            _stop_event(row, contact, report, channel="linkedin",
+                        provider="heyreach", prefix="heyreach")
 
 
 def main(argv=None):

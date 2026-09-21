@@ -51,8 +51,16 @@ def _stop_at_provider(rec, contact, rows=None):
     if not contact or not (contact or {}).get("bison_lead_id"):
         return None
     try:
+        # `persist=False`: INGEST OWNS THE SAVE. See PROBLEM-REGISTER
+        # ISSUE-001 and `leadstop._record`. This call sits between
+        # `base = store.digest()` and `store.save(recs, expect_digest=base)`,
+        # so a nested transaction in the stop recorder changes the file, the
+        # outer save refuses with QueueChanged, and THIS ingest's own work -
+        # the REPLY_RECEIVED event, its classification, the account pause -
+        # is discarded. The stop event is written onto the in-memory record
+        # instead and rides ingest's single save, like everything else here.
         return leadstop.stop_contact(rec, contact, events.REPLY_RECEIVED,
-                                     rows=rows, live=True)
+                                     rows=rows, live=True, persist=False)
     except Exception as e:
         # Explicitly classified, never swallowed: an unstopped person is the
         # thing somebody has to go and look at.
