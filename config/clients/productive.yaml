@@ -180,6 +180,7 @@ personas:
     # This is not a widening of who Productive sells to: it is the persona
     # list catching up with the search this client is already buying.
     titles: [Operations Manager, Operations Director, Project Manager,
+             Vice President Operations, VP Operations,
              Finance Manager, Head of Finance, Head of Operations,
              Head of Production, Production Director,
              Design Studio Manager, Studio Manager,
@@ -208,13 +209,36 @@ personas:
     # in full was excluded as "not a persona for this client" while a
     # "President & COO" at the same seniority was kept. Same role, and
     # not a widening of who Productive sells to.
+    # President, Managing Partner and Chair added 2026-09-21, the same
+    # correction this list already carries for COO: a person who runs the
+    # company and writes the title differently is the same buyer. Seventeen
+    # leads were held as "not a persona for this client" and six of them were
+    # Presidents. `Chief Executive` without `Officer` is here for "Chair and
+    # Group Chief Executive", which contains neither of the existing forms.
     titles: [CFO, Chief Financial Officer, COO, Chief Operating Officer,
-             CEO, Chief Executive Officer, Owner, Founder,
+             CEO, Chief Executive Officer, Chief Executive, Owner, Founder,
+             President, Managing Partner, Chair, Chairman,
              Managing Director, Direktor]
     cap_per_domain: 1
     start_offset_days: 5    # buyer track starts behind champion track
     angles:
       founder: profitability visible on Monday not two weeks late
+      # ADDED 2026-09-21 by Claude under the operator's instruction to "map
+      # the 338 no-angle titles to the nearest Productive persona and angle
+      # yourself, using the playbook; do not wait for my approval".
+      #
+      # The comment below says a finance angle goes in only "when there is
+      # something true to say to a finance lead". There is, and it is already
+      # in this file twice: the CHAMPION persona's own `finance` angle, and
+      # `product.capabilities.profitability`. These are the client's words
+      # about their own product, not a new claim - a CFO at an agency and a
+      # Finance Manager at the same agency care about the same thing, and one
+      # of them was already being written to about it.
+      #
+      # 40 leads in batch 1's pool were held on this alone: 32 "Chief
+      # Financial Officer" and 8 "CFO", every one of them ICP-IN, verified
+      # and collision-clear.
+      finance: margin per project, month end reconciliation, multi entity billing
       # An operations lead is not a founder. `personas.default_angle` matches
       # an angle key to the routing family the title belongs to, so a COO gets
       # this one and a CEO gets `founder`. Without it a COO inherited founder
