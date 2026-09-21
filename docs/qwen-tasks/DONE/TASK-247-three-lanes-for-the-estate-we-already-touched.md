@@ -81,3 +81,42 @@ the same lead is never posted twice; UNKNOWN holds and is counted.
 ## FILES FORBIDDEN
 
     src/clientapproval.py    src/providers/*    config/    work/*.jsonl
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** 1b6f873c
+- **TESTS:** 36/36 pass in `tests.test_the_three_lanes_have_no_overlap`.
+  `test_invariants` has 3 pre-existing failures on master (CLIENT_APPROVAL
+  override, bison route binding, ProviderError import) - none introduced by
+  this change, verified by stashing and re-running.
+- **FILES CHANGED:**
+  - `src/reengagement.py` (new) — classifier + revive queue
+  - `tests/test_the_three_lanes_have_no_overlap.py` (new) — 36 tests
+- **FINDINGS:**
+  - The classifier is TOTAL: every lead gets exactly one of NEVER, REENGAGE,
+    REVIVE, ACTIVE, UNKNOWN. No lead falls through.
+  - Precedence is enforced by check order: NEVER first, then ACTIVE, then
+    REVIVE, then REENGAGE, then UNKNOWN as the catch-all.
+  - `has_reply` excludes regardless of recency — a lead that replied two
+    years ago is REVIVE, not REENGAGE. Re-engagement copy that pretends a
+    reply did not happen would be a lie.
+  - `we_stopped_it` is NOT a NEVER reason — it is our own action, not a
+    prospect signal. Without other signals, it falls to UNKNOWN.
+  - The 90-day boundary is strict: exactly 90 days is UNKNOWN, 91 is REENGAGE.
+  - UNKNOWN holds and is counted loudly via `lane_counts()`.
+  - The ReviveQueue caps at 20/day, orders oldest-reply-first, and never
+    posts the same lead twice. Overflow is queued for tomorrow, not dropped.
+  - `prompts/reply_handling.md` does not exist yet — the revive queue's
+    `draft` field is a placeholder for the three variants Claude is drafting.
+- **RISKS:**
+  - The module is not yet consumed by any caller in `src/`. It is a library
+    awaiting integration with Claude's last-touch index and provider reads.
+    `grep -rn "reengagement" src/` returns only the definition.
+  - The Slack channel destination (C0BFUF4JRK9) is not wired — the queue
+    produces batches but does not post. Posting is a separate integration
+    task.
+- **RECOMMENDED CLAUDE ACTION:**
+  1. Wire the classifier to the last-touch index when the provider reads land.
+  2. Integrate ReviveQueue with `notify.py` for Slack posting to #replies-productive.
+  3. Draft `prompts/reply_handling.md` for the three reply variants.
