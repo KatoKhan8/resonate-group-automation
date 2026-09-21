@@ -24,60 +24,31 @@ own measurements, and the GLM review docs.
 
 ## OPEN — ordered by production impact
 
-_9 open at creation; ISSUE-002, ISSUE-003 and ISSUE-006 closed the same day._
+_9 open at creation. ISSUE-001, 002, 003 and 006 are now closed._
 
 _ ISSUE-010 added 2026-09-20 from the sender-utilisation review._
 
-### ISSUE-001 · Reply ingestion discards the reply event · CRITICAL (latent)
+### ISSUE-001 · Reply ingestion discarded the reply event · CRITICAL · **FIXED `0379958d`**
 
-**Mechanism CONFIRMED by code reading 2026-09-20. Consequence NARROWER than
-first stated, and it has never fired.** GLM reviewed it adversarially and
-returned UNCONFIRMED, correctly refusing to accept the harm chain without
-the store semantics; that refusal is what forced the check below, and it
-changed the answer.
-
-- **Component** `src/leadstop.py::_record` reached from `src/inbound.py::ingest`
-- **The chain, every link verified**
-  1. `ingest` takes `base = store.digest()` (`inbound.py:260`), then
-     `recs = store.load()`, then runs `handle()` per event, then
-     `store.save(recs, expect_digest=base)` (`inbound.py:276`).
-  2. `store.digest()` is a **content hash** - sha256 over the queue file
-     bytes plus the journal. So GLM's open fork resolves: it is not a commit
-     counter, and only a real write moves it.
-  3. `handle` -> `leadstop.stop_contact` -> `_record` (`leadstop.py:119`).
-  4. `_record` opens `store.transaction()` and calls `events.record(...)` on
-     the matching row - **a real mutation, committed** (`leadstop.py:206`).
-  5. That commit changes the file, so the digest no longer matches `base`,
-     and the outer `save` refuses.
-- **WHAT IS ACTUALLY LOST, and it is not what was claimed.** `_record`'s own
-  transaction commits, so `PROVIDER_STOP_CONFIRMED` **survives**. What is
-  discarded is the outer in-memory `recs`: the REPLY_RECEIVED event, its
-  classification, and the account pause. The original claim said the stop
-  was discarded too; it is not.
-- **AND IT IS LOUD, NOT SILENT.** There is no `try/except` around
-  `store.save`, so `ingest` RAISES `QueueChanged` to its caller. This is a
-  visible failure, not a quiet one - which lowers it below the "silently
-  authorises a message to somebody who replied" framing.
-- **PRECONDITION, and it is why this has never fired.** `_record` is reached
-  only *after a real provider stop write has succeeded* -
-  `report["stopped"] = True` is set immediately above the call. It needs a
-  reply, matched to a record, that triggers a provider stop, that succeeds.
-  **Zero replies have arrived on any of our live campaigns**, so this has
-  never executed in production. `work/heartbeat/replies.json` shows
-  `errors: {emailbison: 0, heyreach: 0}`.
-- **Severity** CRITICAL by construction, LATENT in fact. It fires on the
-  first reply that triggers a stop - which is the single most valuable event
-  this system can receive.
-- **Fix** record onto the in-memory `rec` and let ingest's single save
-  persist it. GLM's caution applies: check first whether any caller relies
-  on `_record` persisting independently, since `sweep` also calls
-  `stop_contact` OUTSIDE an ingest window and there the commit is the only
-  write that happens.
-- **Acceptance** a reply that triggers a successful provider stop leaves,
-  after one `ingest`, both the stop event AND the REPLY_RECEIVED event and
-  the pause in canonical state, with no exception raised.
-- **Status** CONFIRMED · unassigned · no test covers it · **the `sweep`
-  caller must be checked before the fix, not after**
+- **Mechanism confirmed by reading, consequence narrower than first claimed,
+  and it never fired.** `store.digest()` is a content hash, `_record` did
+  commit a real mutation inside ingest's window, so the outer
+  `save(expect_digest=base)` refused. But `_record`'s own transaction
+  committed, so **PROVIDER_STOP_CONFIRMED survived** - what was discarded was
+  the REPLY_RECEIVED event, its classification and the account pause. And it
+  raised rather than failing quietly.
+- **Never fired in production:** `_record` is reached only after a provider
+  stop has SUCCEEDED, and no reply has arrived on any live campaign.
+- **The fix could not be "delete the transaction".** GLM's review caught it:
+  `sweep` and the CLI reach `_record` outside any ingest window, where that
+  commit is the only write. So the caller declares ownership -
+  `persist=True` by default keeps the commit; `inbound._stop_at_provider`
+  passes `persist=False` and rides ingest's single save.
+- **Both call sites covered**, including the LinkedIn recorder TASK-235 added
+  hours earlier, which had inherited the same shape. Both now go through one
+  `_stop_event` writer so they cannot drift.
+- 8 tests, including one that REPRODUCES the defect and asserts the exact
+  asymmetry. 125 green across every inbound-touching suite.
 
 ### ISSUE-002 · A DNC could not stop a HeyReach sequence · HIGH · **FIXED `abfc844a`**
 

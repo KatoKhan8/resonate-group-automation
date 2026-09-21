@@ -205,11 +205,13 @@ def main(argv=None):
         # nothing on the Sunday evening they are preparing on. The other five
         # conditions are all checkable now, and knowing they hold is the
         # whole value of a preflight.
+        window_open = True
         if args.preflight:
             try:
                 window_gate()
                 print("  PASS  window    inside the window now")
             except Refused as not_yet:
+                window_open = False
                 print(f"  LATER window    {not_yet}")
         else:
             window_gate()
@@ -227,10 +229,20 @@ def main(argv=None):
 
     if not args.live:
         print()
-        if args.preflight:
+        if args.preflight and not window_open:
             print("  PREFLIGHT. Every condition except the window is MET, "
                   "and nothing was written.")
             print("  The window is the only thing outstanding.")
+        elif args.preflight:
+            # THE WINDOW OPENS, AND THIS LINE USED TO KEEP SAYING IT HADN'T.
+            # It was hardcoded to the Sunday-evening case it was written in,
+            # so at 07:00Z on the Monday - the exact minute an operator reads
+            # it to decide whether to run the write - it reported the window
+            # as outstanding while the line above it said PASS. A summary
+            # that contradicts its own checklist is worse than no summary.
+            print("  PREFLIGHT. EVERY CONDITION IS MET, including the window, "
+                  "and nothing was written.")
+            print("  Nothing is outstanding. The write is ready to run.")
         else:
             print("  DRY RUN. Every gate passed and NOTHING WAS WRITTEN.")
         print("  The authorized write is: py -3 scripts/resume_487.py --live")
