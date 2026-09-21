@@ -113,3 +113,27 @@ must be recorded on the ledger step so the audit can say why.
 Do not pay Grok to rediscover structured information ContactOut already
 returned, and do not crawl the same company once per contact. Provider routing
 reflects capability and evidence provenance, not raw API price.
+
+---
+
+## CROSS-CHANNEL SENDER IDENTITY — operator decision, Zvonimir, 2026-09-21
+
+**The email sender and the LinkedIn seat for one prospect need NOT be the
+same human.** They are different estates with different identities: the email
+estate is 225 mailboxes across 9 attested humans, the LinkedIn estate is 41
+seats where the SEAT IS THE IDENTITY, and requiring one person to hold both
+would collapse the usable pool to the intersection for no safety gain.
+
+**Within one channel the same human stays on the thread for the whole
+cadence.** This is the invariant that does not move. EmailBison already
+enforces its half at the provider: once a lead has been sent one campaign
+email, the same sender email sends the remaining steps and any follow-up
+campaign's mail to that lead. The rule above is that contract stated as
+policy, extended to LinkedIn, and it is what `MAX_SENDERS_ONE_CAMPAIGN_MAY_NAME`
+protects today by the blunt method of allowing exactly one.
+
+What this does NOT license: changing sender mid-cadence on either channel,
+attributing a reply to a human who did not send the message, or treating the
+two channels' identities as interchangeable in copy. A message signed by one
+human and sent from another's mailbox is the failure this whole module exists
+to prevent.
