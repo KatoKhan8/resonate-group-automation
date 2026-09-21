@@ -683,3 +683,19 @@ linkedin_standard_source: 565765
 linkedin_standard_file: config/linkedin/productive-standard.json
 linkedin_standard_chosen: 2026-09-21
 linkedin_connection_requests_per_seat_day: 10
+# THE CLIENT-APPROVAL EXPORT.  What columns the snapshot CSV carries and how
+# often it is produced.  The cadence is weekly, Monday 07:00 Zagreb local
+# time - which moves with DST because `geo.zone` resolves the IANA name, not
+# a fixed UTC offset.  On 2026-10-25 Europe/Zagreb shifts from CEST (UTC+2)
+# to CET (UTC+1), so 07:00 local becomes 06:00 UTC rather than 05:00 UTC.
+# A hardcoded hour would land the export an hour early for half the year.
+#
+# A second client is onboardable by adding this block to their config file.
+# No `if client == "productive"` anywhere in the engine.
+client_approval_export:
+  columns: [domain, company, headcount, industry, country, website]
+  cadence:
+    frequency: weekly
+    day_of_week: monday
+    local_time: "07:00"
+    timezone: Europe/Zagreb
