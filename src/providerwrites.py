@@ -1210,10 +1210,20 @@ def _is_the_authorized_email_campaign(provider_campaign_id, campaign_id=None):
 
     # THE CANONICAL ROW IS CHECKED FIRST, AND THAT ORDER IS LOAD-BEARING.
     #
-    # Each entry's provider slot is None, so the ROW supplies the expected
-    # provider id. The row therefore has to be identified before it can supply
-    # anything - otherwise a write naming an unknown row but a valid provider
-    # campaign would be compared against nothing.
+    # A write naming an unknown row but a valid provider campaign must be
+    # compared against something, so the row is identified before anything
+    # else happens.
+    #
+    # THIS COMMENT USED TO SAY THE PROVIDER SLOT IS ALWAYS `None` AND THAT THE
+    # ROW SUPPLIES THE EXPECTED ID. That stopped being true when 487 and 489
+    # were pinned above, and the stale wording is not harmless: a GLM review on
+    # 2026-09-21 read it, concluded `if want_provider is not None` was dead
+    # code and the pin inert, and reported a CRITICAL that the pinned tuple,
+    # the mismatch refusal below and the 54 tests in
+    # `test_no_activation_without_an_exact_match` all refute. A comment that
+    # contradicts its code costs a review, and it would mislead a human on the
+    # same path. A NEW entry may still be added with `None` while its campaign
+    # is being created - that is the only case the `is not None` guard is for.
     entry = next((e for e in _AUTHORIZED_EMAIL_CAMPAIGNS if e[1] == offered),
                  None)
     if entry is None:
