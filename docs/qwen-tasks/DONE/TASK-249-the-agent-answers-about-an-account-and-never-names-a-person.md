@@ -86,3 +86,39 @@ call in any test.
 
     src/clientapproval.py   src/providerwrites.py   config/.env
     work/*.jsonl            src/providers/*
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** f1044c2c
+- **TESTS:** 20 new tests in `tests/test_slack_agent_privacy.py`, all pass.
+  10 existing slack-agent tests that were passing on master still pass
+  (import graph x3, readback x4, failed-readback x3). 9 pre-existing
+  failures in `test_slack_agent_readback` (missing `prompts/slack_agent.md`,
+  missing `AnsweredTracker`, different error message) are unchanged.
+  3 pre-existing failures in `test_invariants` are unchanged.
+- **FILES CHANGED:**
+  - `src/slackagentreadback.py` — added `account_by_domain`,
+    `lead_by_identifier`, `why_held`, `what_sent_to`, `when_sends_next`,
+    `replies_today`, `credits_spent_today` and helpers
+  - `scripts/slack_agent_loop.py` — extended `route()` with 7 new patterns,
+    `gather()` with 7 new branches, `plain_answer()` with 7 new formatters,
+    `answer_for()` with DM-only lead enforcement, `handle()` with
+    channel_type passthrough and enriched logging
+  - `tests/test_slack_agent_privacy.py` — new test file
+- **FINDINGS:**
+  - Lead lookup in a channel returns a one-line refusal that names neither
+    the address nor the domain. The refusal is `LEAD_DM_ONLY`.
+  - The answer for a lead in a DM carries the domain but never the email
+    address or person name. `scrub()` remains as the last line of defence.
+  - Account answers carry domain, state, client-approval, campaign ids,
+    last touch, reply/bounce/sent counts. No contact fields.
+  - Every log row records `user`, `channel_type`, `query`, `argument` and
+    `text`.
+  - `when_sends_next` treats `SendingScheduleEmpty` as "nothing scheduled",
+    not as an error and not as zero.
+  - `bison` is imported lazily inside `when_sends_next` to preserve the
+    import graph guarantee (asserted by three existing tests).
+- **RISKS:** None identified. The import graph test passes with the new
+  imports (`account`, `clientapproval`, `notify`).
+- **RECOMMENDED CLAUDE ACTION:** Review and integrate.
