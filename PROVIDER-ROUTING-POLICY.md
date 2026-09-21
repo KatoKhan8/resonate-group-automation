@@ -235,3 +235,31 @@ enrichment:
 The batch 1 grant in `docs/OPERATOR-AUTHORIZATION-2026-09-21-BATCH-1.md`
 stands exactly as recorded, including its fifteen-minute veto window and its
 floor of 500 READY. Enrichment being ungated is not permission to push.
+
+---
+
+## The stated order and the configured roles are the same thing
+
+Operator decision, Zvonimir, 2026-09-21. The order recorded above -
+**ContactOut, Reoon, Deliverable** - is SATISFIED by `verification.py`'s
+existing configuration, which is not edited:
+
+    primary                 contactout
+    secondary               deliverable
+    catch_all               reoon
+    required_confirmations  2
+    disagreement            hold
+    accept_all_clears_on    reoon
+
+**Reoon's catch-all role stays.** It is not merely third in a list: it is the
+provider designated to clear an accept-all domain, which is a job rather than
+a position. Demoting it to a plain second would change which provider settles
+a catch-all, and that is a verification-rule change - one of the standing hard
+stops.
+
+Confirmed in practice rather than argued: the first verified addresses of the
+S5 run record `pair: ['contactout', 'reoon']` with two confirmations, which is
+the stated order exactly. Deliverable is reached only when those two have not
+settled it.
+
+No edit was made to `verification.py`, its policy, or the confirmation count.
