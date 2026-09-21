@@ -72,12 +72,66 @@ REINSTALLED after they are added or the token keeps its old grant.
 and cite where each came from. A wrong scope list costs the operator a
 reinstall cycle to discover.
 
+## THE TRANSPORT IS SOCKET MODE, NOT POLLING — OPERATOR, 2026-09-21
+
+This SUPERSEDES the 20-30s poll in the quoted decision above:
+
+> New env: SLACK_APP_TOKEN (Socket Mode). Build scripts/slack_agent_loop.py:
+> a bare monitor that connects via Socket Mode (stdlib websocket client, no
+> third-party deps), listens for app_mention in any channel the bot is in and
+> for DMs, and answers in thread. Log every question and answer to
+> work/slack-agent.jsonl. Register the loop in the monitor list, heartbeat
+> like the others, never under timeout. Answer in #resonate-os
+> (C0C3C6MDN9L) too.
+
+**`SLACK_APP_TOKEN` is set in `config/.env` and you may not read or print
+it.** Read it through the same `load_env` path every other credential uses.
+
+**A FLAG RAISED FOR THE OPERATOR, ALREADY SENT, DO NOT ACT ON IT YOURSELF:**
+the value supplied begins `xoxb-`, which is a BOT token. Socket Mode's
+`apps.connections.open` requires an APP-LEVEL token beginning `xapp-` with
+the `connections:write` scope, created under Basic Information → App-Level
+Tokens. So the connect call will return `not_allowed_token_type` until the
+operator supplies the `xapp-` value. **Build against the correct contract,
+handle that specific error by name with a message saying exactly which token
+is needed, and do not fall back to polling to work around it.** A fallback
+here would hide the configuration problem behind a working-looking loop.
+
+"no third-party deps" means the websocket handshake and frame parsing are
+yours, over `socket`/`ssl` from the standard library. Keep it small: text
+frames, ping/pong, close, and reconnect with backoff. Slack sends a
+`disconnect` before it rotates a connection - reconnect on it rather than
+treating it as an error.
+
+## WHAT IT ANSWERS FROM — the operator's list, verbatim
+
+> PROBLEM-REGISTER, PRODUCTION-HANDOFF, the staging journals, monitor
+> heartbeats, notify store, and read-only provider readbacks (campaign
+> status, sent counts, queue rows, HeyReach leads). Use the existing llm
+> adapter to turn a question into one of a FIXED SET of read-only queries and
+> to phrase the answer; never free-form tool use.
+
+The model picks a query from a closed list and phrases the result. It does
+not choose what to read and it never receives a tool it could call. Typical
+questions to cover: what is running, what was sent today, why is X held, when
+is the next batch, what did Qwen finish.
+
+> answer "I cannot do that from Slack, ask in Claude Code" for anything that
+> would change state.
+
 ## THE LOOP ITSELF
 
 `scripts/slack_agent_loop.py`, bare, flushed, one line per event, restarted
-bare and NEVER under `timeout`. 20-30s poll. One answer per mention, ever -
-idempotent by message ts, so a restart does not re-answer the backlog. It
-answers in a THREAD, never in the channel.
+bare and NEVER under `timeout`. One answer per mention, ever - idempotent by
+message ts, so a reconnect does not re-answer the backlog. It answers in a
+THREAD, never in the channel. It heartbeats to `work/heartbeat/` like every
+other monitor, and every question and answer is appended to
+`work/slack-agent.jsonl` - the only file it writes, and it is under `work/`.
+
+No prospect names and no email addresses in any answer: counts and domains
+only. `notify._status_payload` already enforces exactly this rule for the
+status channel and it raises rather than strips - reuse that guarantee rather
+than writing a second, weaker one.
 
 The LLM goes through the same adapter as the rest of the system, with a fixed
 system prompt held in `prompts/`. The readback data is assembled by code and
