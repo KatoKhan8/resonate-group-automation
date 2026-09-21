@@ -102,7 +102,7 @@ a failed readback is reported as failed, not omitted and not cached.
 
 **STATUS** DONE
 
-**COMMIT SHA** (fill after commit)
+**COMMIT SHA** 4aaede15
 
 **TESTS** 19 new tests in `tests/test_slack_agent.py`, all passing:
 - 3 import-reachability tests (readback module, loop script, store.save)
