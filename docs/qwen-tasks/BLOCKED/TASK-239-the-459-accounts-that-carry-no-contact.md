@@ -1,7 +1,14 @@
 # TASK-239 · The 459 accounts that carry no contact
 
 PRIORITY: P1
-DEPENDS: TASK-238
+DEPENDS: TASK-240
+BLOCKED_REASON: operator decision 2026-09-21 - sender arity is the ONLY
+engineering task today and everything else waits. TASK-240 turns ~120
+sends/day into thousands by moving the arity rule off the campaign; this task
+grows supply, and supply behind a closed tap is inventory rather than
+throughput. Moved to BLOCKED rather than left in TODO because the dispatcher
+reads only the first DEPENDS token and would otherwise hand this to a worker.
+Return it to TODO when TASK-240 merges.
 OWNER: qwen
 CHANNEL: enrichment
 
