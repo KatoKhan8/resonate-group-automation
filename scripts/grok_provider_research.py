@@ -126,6 +126,24 @@ Cite documentation URLs.""",
 4. Does mailbox warmup consume a sender's daily limit?
 Cite documentation URLs.""",
 
+    "empty_queue": """EmailBison cold email platform API.
+A campaign is `status: active` with leads `in_sequence`, but has ZERO
+scheduled emails and its sending-schedule endpoint reports nothing for today,
+tomorrow or the day after. It was resumed once; the resume CLEARED ten
+existing scheduled rows and none were rebuilt.
+1. Is it documented that resuming a campaign CLEARS existing scheduled
+   emails? Does pause/resume invalidate already-scheduled messages?
+2. What documented operations trigger queue regeneration, other than resume
+   and the end-of-sending-day cycle?
+3. Can an ACTIVE campaign legitimately hold an empty queue indefinitely, and
+   what documented conditions cause the scheduler to produce nothing?
+4. How does a sender's FORWARD COMMITMENT to other campaigns affect whether
+   a rebuild can place rows - is a fully-booked mailbox documented to yield
+   an empty queue rather than a later date?
+5. Which READ-ONLY endpoints expose scheduling state and sender capacity, so
+   this can be diagnosed without any mutating call?
+Cite documentation URLs.""",
+
     "heyreach_sender": """HeyReach LinkedIn automation platform API.
 1. When a campaign has multiple LinkedIn sender accounts, how is the sender
    chosen per lead? Is `accountLeadPairs` on AddLeadsToCampaignV2 the
