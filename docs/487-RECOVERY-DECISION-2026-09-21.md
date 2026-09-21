@@ -147,3 +147,42 @@ does not change its risk.
 **Not performed. Awaiting the operator's grant, which must be new - the
 2026-09-21 grant was ONCE, spent at 09:06Z, and its condition 5 forbids a
 second resume.**
+
+---
+
+# PERFORMED 2026-09-21T17:24Z — and the queue is still empty
+
+Authorized by the operator. One pause/resume pair, once, no other call.
+
+    before   active   sent 0  rows 0  updated 2026-09-21T15:05:15Z
+    PAUSE    -> {'campaign_id': 487, 'status': 'paused'}   updated 17:24:36Z
+    RESUME   -> {'campaign_id': 487, 'status': 'active'}   updated 17:24:43Z
+
+Readback at 17:27:45Z, three minutes after the resume and inside the fifteen
+the grant allows:
+
+    status               active
+    emails_sent          0
+    scheduled_emails     0 rows
+    sending_schedule     SendingScheduleEmpty today, tomorrow, day after
+
+**THE ONLY DOCUMENTED ON-DEMAND TRIGGER HAS NOW BEEN PULLED AND PRODUCED
+NOTHING.** Three scheduler runs on this campaign in one day - the resume at
+09:06Z, the end-of-day cycle at 15:05Z, and this pause/resume at 17:24Z -
+and all three left the queue at zero. `updated_at` moved on every one, so the
+provider is acting on the campaign each time and choosing to schedule no mail.
+
+489 remains the control: same workspace, same credential, same code path, two
+emails sent today at 13:34:48Z and 16:48:18Z.
+
+## Not yet parked - one readback outstanding
+
+The grant's condition is BOTH readbacks zero. The first is zero. The second
+is after the next end-of-day cycle, which for a Mon-Fri 07:00-15:00Z campaign
+is ~15:05Z on 2026-09-22. `scripts/bison_watch_loop.py --campaign 487` is
+running at 180s and will emit `QUEUED` the moment a row appears.
+
+If that readback is also zero, 487 is PARKED and its ten leads are released
+for re-enrollment into batch campaigns, subject to the collision rule.
+
+**The grant is now SPENT. No further pause/resume of 487 without a new one.**
