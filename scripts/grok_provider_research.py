@@ -245,6 +245,52 @@ def main(argv=None):
                     handle.write(f"- {url}\n")
                 handle.write("\n")
     print(f"\nwrote {args.out}")
+
+    # A HEADER IS NOT AN ANSWER, AND EXIT 0 SAID IT WAS.
+    #
+    # 2026-09-21: the first `empty_queue` run printed its banner, wrote
+    # nothing else, and exited 0. The dispatcher recorded COMPLETED, and the
+    # only reason it was caught is that a human opened the file. Same class
+    # as the r51 dispatch issue: a wrapper that reports success because the
+    # process ended rather than because it produced something.
+    #
+    # Two checks, because they fail differently. Per-question content catches
+    # a model that answered nothing; artifact size catches a write that
+    # produced only the preamble. MIN_ANSWER_CHARS is deliberately low - a
+    # floor under "empty", not a judgement about quality, and a genuine
+    # NOT DOCUMENTED answer clears it easily.
+    MIN_ANSWER_CHARS = 200
+    MIN_ARTIFACT_BYTES = 900          # the preamble alone is ~700 bytes
+    answered, empty, failed = [], [], []
+    for result in results:
+        if result.get("error"):
+            failed.append(result["question"])
+        elif len((result.get("content") or "").strip()) < MIN_ANSWER_CHARS:
+            empty.append(result["question"])
+        else:
+            answered.append(result["question"])
+    try:
+        written = os.path.getsize(args.out)
+    except OSError:
+        written = 0
+
+    if failed or empty or written <= MIN_ARTIFACT_BYTES:
+        print()
+        print("FAILED: this run produced no usable research.")
+        if failed:
+            print(f"  call failed      {', '.join(failed)}")
+        if empty:
+            print(f"  answered nothing {', '.join(empty)} "
+                  f"(under {MIN_ANSWER_CHARS} chars)")
+        if written <= MIN_ARTIFACT_BYTES:
+            print(f"  artifact         {written} bytes, at or under the "
+                  f"{MIN_ARTIFACT_BYTES}-byte preamble")
+        if answered:
+            print(f"  answered         {', '.join(answered)}")
+        print("  Exit 1 so a dispatcher records FAILED, not COMPLETED.")
+        return 1
+
+    print(f"answered {len(answered)}/{len(results)}, {written} bytes")
     return 0
 
 

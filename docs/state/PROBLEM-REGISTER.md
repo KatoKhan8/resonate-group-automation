@@ -182,8 +182,24 @@ per-branch check before merging, not a bulk merge.
   graph delay and a weekend. None is a capacity constraint.
 - **What must NOT be done:** attest a human to a mailbox to gain capacity.
   Attestation records who genuinely operates an inbox; inventing one
-  fabricates the thing the gate checks. The three empty-book inboxes (3941,
-  3930, 3919) are empty because they have NEVER SENT and are DEGRADED.
+  fabricates the thing the gate checks.
+- **3941 / 3930 / 3919 — reconciled 2026-09-21T10:2xZ, read-only, one
+  readback each.** This line previously called them DEGRADED and a session
+  report the same day called them contention-free capacity. NEITHER IS WHAT
+  THE PROVIDER SAYS. All three read identically off `bison.sender_emails()`:
+
+      status Connected · daily_limit 15 · warmup_enabled True
+      emails_sent_count 0 · bounced_count 0
+
+  `Connected` is the provider's own status field, so DEGRADED was an
+  inference from a zero lifetime count rather than a reading - corrected.
+  But they are equally not available capacity: never sent, still in warmup,
+  and therefore NOT PROVEN DELIVERABLE, which is exactly how
+  `scripts/email_sender_estate.py` labels its own UNCOMMITTED section.
+  **Either way they change nothing here**, because this issue's binding
+  constraints are `HUMAN_IDENTITY_ATTESTED = 0` and
+  `MAX_SENDERS_ONE_CAMPAIGN_MAY_NAME = 1`, and a connected mailbox satisfies
+  neither. Not attached anywhere.
 - **The bounded, honest unlock** is one genuine attestation of one human to
   one healthy uncommitted mailbox - an operator act, not an engineering one.
 - **Status** BLOCKED on operator (attestation) · design exists for the arity
@@ -243,7 +259,7 @@ per-branch check before merging, not a bulk merge.
 | REFUTED-002 | The 215 ICP_REVIEW records are a backlog awaiting a human verdict | Zero of the 215 have any criterion at `fail`, none carries a contact, all are still `queued`, and 184 hold no company evidence at all. It is an enrichment task. Carried as an operator action in three consecutive handoffs |
 | REFUTED-003 | Cohort expansion is blocked on an unauthenticated ContactOut | Four credential names were invented. Real names verified, ~36,700 credits remain. `docs/THE-CREDENTIAL-WAS-THERE-ALL-ALONG-2026-09-20.md` |
 | REFUTED-004 | HeyReach 605732 has stalled — no connection request in two days | The graph spends 3h + 3h + 1 day before `CONNECTION_REQUEST`, and 09-19/09-20 were the weekend on a Mon-Fri campaign. `error_code` is null on all three leads and every one reads `InSequence`. The falsifier can only run on Monday |
-| REFUTED-005 | 487 was paused by the provider, or by a decision about the campaign | An audit agent's throwaway probe paused it at 2026-09-20T12:44:45Z by passing a bare dict to `orchestrator.pause`. Nobody decided anything about 487, which is why resuming it overrides no judgement |
+| REFUTED-005 | 487 was paused by the provider, or by a decision about the campaign | An audit agent's throwaway probe paused it at 2026-09-20T12:44:45Z by passing a bare dict to `orchestrator.pause`. Nobody decided anything about 487, which is why resuming it overrides no judgement. **12:44:45Z is correct and stands** - it is the campaign's own `updated_at` at the provider. A 2026-09-21 forensic note gave 12:47:36Z; that is the WATCHER's observation time, the moment `bison_watch_loop` next polled and printed `STATUS 487 active -> paused`, and it is 171 seconds later because the loop runs at `--interval 180`. Provider time and observation time are different clocks and the provider's is the one this row records |
 
 ---
 

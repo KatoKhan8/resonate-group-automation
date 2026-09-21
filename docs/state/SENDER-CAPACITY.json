@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-15T06:44:59+00:00",
+  "generated_at": "2026-09-21T09:51:26+00:00",
   "source": "HeyReach li_account/GetAll, read-only. Credential env var: HEYREACH_KEY.",
   "seats_total": 41,
   "seats_by_state": {
@@ -113,7 +113,7 @@
     {
       "sender_id": 125748,
       "provider": "heyreach",
-      "identity_hash": "f1bcbd4d80f2",
+      "identity_hash": "f6699432cb1b",
       "state": "HEALTHY",
       "is_active": true,
       "auth_is_valid": true,
@@ -218,7 +218,7 @@
       "daily_profile_views": 40,
       "sales_navigator": false,
       "cooldowns": {
-        "connection_request": true,
+        "connection_request": false,
         "connection_note": false,
         "inmail": false,
         "search": false
@@ -459,7 +459,7 @@
       "state": "HEALTHY",
       "is_active": true,
       "auth_is_valid": true,
-      "active_campaigns": 12,
+      "active_campaigns": 13,
       "daily_connection_requests": 40,
       "daily_messages": 40,
       "daily_profile_views": 40,
