@@ -29,6 +29,44 @@ from . import (accountpolicy, adapters, campaigns, clients, events, leadstop,
                observability, orchestrator, replies, store)
 
 
+# TASK-238: The only LinkedIn seat we operate and the campaigns on it.
+# An event on a seat NOT in this set is provably not ours and the unmatched
+# notification is suppressed. An event on THIS seat with no record match is
+# kept - it might be ours and absence of evidence is never proof.
+# Source: docs/state/PROVIDER-CAMPAIGNS.json (2026-09-20 readback).
+OWNED_SEATS = {174892}
+OWNED_CAMPAIGNS = {605732, 605487, 604869, 599020}
+
+
+def _positively_not_ours(event):
+    """Can we PROVE this event belongs to another operator?
+
+    TASK-238. The HeyReach API key is workspace-wide and the inbox watcher
+    sees the CLIENT'S traffic too. An event on a seat we do not operate is
+    provably not ours. An event with no seat field, or on our seat, is kept
+    regardless - absence of evidence is never a drop.
+
+    Returns True ONLY when at least one field positively places this event
+    on a seat or campaign that is not ours. Returns False for every other
+    case: no field, our seat, our campaign, or an unknown value.
+    """
+    seat = event.get("linkedin_account_id")
+    if seat is not None:
+        try:
+            if int(seat) not in OWNED_SEATS:
+                return True
+        except (TypeError, ValueError):
+            pass
+    cid = event.get("external_campaign_id")
+    if cid is not None:
+        try:
+            if int(cid) not in OWNED_CAMPAIGNS:
+                return True
+        except (TypeError, ValueError):
+            pass
+    return False
+
+
 def _contact_of(rec, contact_key):
     """`events.apply` reports the contact KEY. The stop needs the contact."""
     for contact in (rec or {}).get("contacts") or []:
@@ -144,16 +182,31 @@ def handle(event, recs, rows=None, config=None, post=None, model=None):
                         candidate, contact, at=event.get("at")):
                     held.append((candidate.get("id"), contact.get("key")))
         outcome["held_unattributed"] = held
-        # Operational, and global. `notify.notify` cannot raise, so an alert
-        # that cannot route leaves this path exactly as it found it.
-        outcome["notification"] = notify.notify(
-            notify.UNMATCHED_REPLY, None,
-            fields={"provider": event.get("provider"),
-                    "status": applied["status"],
-                    "why": applied.get("why"),
-                    "held": len(held),
-                    "action": "a person decides; nothing is auto-attributed"},
-            ids={"provider_event_id": event.get("provider_event_id")})
+        # TASK-238: An event on a seat or campaign that is NOT ours is
+        # dropped - no notification raised. The hold above is NOT skipped:
+        # an unattributable reply still stops the cadence to that person
+        # even when the event is the client's, because correspondents finds
+        # no records of ours and the hold is a no-op by itself.
+        #
+        # An event with no seat/campaign field, or on OUR seat, keeps the
+        # notification. Absence of evidence is never a drop.
+        if _positively_not_ours(event):
+            outcome["notification"] = {
+                "dropped": True,
+                "reason": "positively_not_ours",
+                "provider": event.get("provider"),
+                "seat": event.get("linkedin_account_id"),
+                "campaign": event.get("external_campaign_id"),
+            }
+        else:
+            outcome["notification"] = notify.notify(
+                notify.UNMATCHED_REPLY, None,
+                fields={"provider": event.get("provider"),
+                        "status": applied["status"],
+                        "why": applied.get("why"),
+                        "held": len(held),
+                        "action": "a person decides; nothing is auto-attributed"},
+                ids={"provider_event_id": event.get("provider_event_id")})
     if applied["status"] != "applied":
         return outcome                      # duplicate, unmatched or unknown
 
