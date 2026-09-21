@@ -122,3 +122,73 @@ The predicate, the two changed tests with their new names, proof that
 :970-989 are still green, and a statement of what the allocator's maximum
 safe pool becomes for a campaign drawing on 159 attested mailboxes across
 8 humans. State plainly what EmailBison still cannot do, per §3.2 and §4.7.
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: 3b2c06cb
+TESTS: 164 pass across 7 related modules (gate tests, TASK-240 tests, invariants,
+  attestation, provider-write, stop-beats-auth, confirmed-action). 11 new
+  direct tests for `_owner_for`. All 78 gate tests green including the two
+  changed tests and the four unaffected ones at :970-989.
+
+FILES CHANGED:
+  src/executionguard.py
+    - `_sender_for` deprecated, no longer enforces arity-1, returns raw id list
+    - `_owner_for` added: resolves each campaign seat to its human owner via
+      `senderownership.resolve_owner`, refuses when any seat is unowned,
+      uninventoried, deactivated, unhealthy, or belongs to another client,
+      and when seats resolve to more than one human
+    - `authorize` caller updated: replaces the 40-line inline seat-check block
+      with a 3-line call to `_owner_for`
+
+  tests/test_no_write_happens_without_every_gate.py
+    - setUp: seat now carries `sender_id="mina"` with a human sender row
+    - `test_two_senders_are_refused_even_when_both_were_approved` →
+      `test_two_senders_are_refused_when_they_are_two_people`
+    - New sibling: `test_two_seats_same_human_pass`
+    - `test_a_seat_with_no_human_owner_still_passes` → INVERTED to
+      `test_a_seat_with_no_human_owner_is_refused`
+    - `seat()` helper default changed from `sender_id=None` to `sender_id="mina"`
+
+  tests/test_task240_arity_rule_moves_to_action.py (new)
+    11 direct tests for `_owner_for`: one-seat, two-seats-same-human,
+    two-seats-two-humans, no-senders, unowned, uninventoried, deactivated,
+    unhealthy, another-client, plus two tests for deprecated `_sender_for`.
+
+FINDINGS:
+  1. The allocator's maximum safe pool for a campaign drawing on 159 attested
+     mailboxes across 8 humans: the predicate permits all 159 mailboxes in one
+     campaign as long as they belong to the same human. With 8 humans, a
+     campaign drawing mailboxes from all 8 would be refused ("8 distinct
+     humans; a guarded action is attributed to exactly one"). A campaign
+     drawing on one human's ~20 mailboxes passes with pool size ~20. The
+     allocator's single-sender bottleneck is broken for the per-human case;
+     the cross-human case is refused by design (one action, one human).
+
+  2. EmailBison still cannot do per-lead sender binding. Per §3.2 and §4.7:
+     no write route pins a lead's inbox (the only sender verb is campaign-level
+     `attach-sender-emails`), no field on the lead payload carries a sender,
+     and the only route that names an inbox per lead (`/scheduled-emails`) is
+     empty until the campaign has run. The honest fallback applies: a guarded
+     email campaign may bind any number of inboxes but must bind exactly one
+     attested human. Per-lead attribution is satisfied by construction:
+     whichever inbox the provider rotates to, the human is the same.
+
+  3. `providerwrites.SUPPORTED` is unchanged (14 verbs). No verb added, removed,
+     or reordered. `LINKEDIN_STOP_LEAD` remains on `WRITE_ROUTES` and
+     deliberately NOT in `SUPPORTED`.
+
+RISKS:
+  - The ledger's `sender_id` field now receives the human sender_id (e.g.
+    "anna") instead of the provider_account_id (e.g. "116968"). The ledger
+    is currently empty, so no existing rows are affected. The design doc
+    states the ledger was always meant to be per-human.
+  - `_sender_for` is deprecated but kept for backward compatibility. It has
+    no callers in `src/` but is referenced in docstrings in `senders.py` and
+    `senderownership.py`, and in scripts. Those references are informational.
+
+RECOMMENDED CLAUDE ACTION:
+  Review and integrate. The predicate is the guard change only; the full
+  design (§4.1-§4.7) requires attestation backfill, `adopt_from_provider`,
+  and allocation changes that are separate tasks.
