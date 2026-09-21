@@ -84,17 +84,44 @@ _ ISSUE-010 added 2026-09-20 from the sender-utilisation review._
   attempted**, which is what Buggie said. The dry run now leaves 13 for a
   person.
 
-### ISSUE-004 · The Qwen backlog is starved and 10 results are stranded · HIGH (throughput)
+### ISSUE-004 · The dispatcher is starved, and the "stranded" count was wrong · HIGH
 
-- **Impact** Eight workers, zero claims, no dispatch since 2026-09-16 15:42.
-- **Root cause** two compounding: `claim_task.py --status` reports **2 ready
-  tasks for 8 workers** against a healthy threshold of 16; and **89 stale
-  branches** hide finished work from the dispatcher.
-- **Stranded, finished, unintegrated** TASK-067, 212, 213, 214, 225, 229, 230,
-  231, 232, 234. (TASK-227's ISO half is already on master as `27bcdb67`; its
-  cohort-send-window half is not, and its branch conflicts on
-  `scripts/task_geo_iso_coverage.py`, which master already carries.)
-- **Status** NEW · integrating these is itself the fix for the stale-branch half
+**The count this register carried was wrong, and merging on it would have
+caused a regression.** Corrected 2026-09-21.
+
+`scripts/task173_scan.py --unintegrated` compares the TASK FILE'S STAGE on
+each branch against its stage on master. It does not look at the code. So a
+task whose work is already integrated - in a BETTER form - still reports as
+"finished on a branch, available on master", and the obvious response to
+that report is to merge the branch.
+
+Caught on TASK-232. Its branch carries a `stoppedcause.py` that classifies
+from the events feed. Master already carries a NEWER one with a
+`NEVER_CONTACTED` outcome the branch lacks, and
+`docs/THE-THIRTY-THREE-ANSWERED-2026-09-18.md` says explicitly that the
+events feed **could not** have answered the question - it replays ten days
+and the memberships are months old. **Merging the branch would have deleted
+the classification that actually works and reverted to the approach that
+does not.**
+
+Verified integrated and moved to DONE, so the scan stops reporting them:
+
+    TASK-212, TASK-224   no code at all - a finding, already recorded
+    TASK-227             the geo ISO fix is on master as 27bcdb67
+    TASK-232             master's stoppedcause.py is strictly newer
+    TASK-234             integrated as 98b05550
+    TASK-237             integrated today as ac6f7996
+
+So the real figure is **6 branches carrying code that is genuinely not on
+master** - 067, 213, 214, 225, 229, 230, 231 - and each needs the same
+per-branch check before merging, not a bulk merge.
+
+- **Still true:** the backlog empties fast. 0 ready, 0 claims after five
+  workers consumed the three briefs written on the 20th.
+- **Still true:** 89 stale branches. That noise is what makes the scan's
+  output hard to trust in the first place.
+- **NEXT:** TASK-229 (READY reservoir) is the highest-value of the six by
+  the current mission - it serves cohort expansion directly.
 
 ### ISSUE-005 · No notification is delivered anywhere · HIGH
 
