@@ -376,6 +376,12 @@ def post(payload, config=None):
             "back on")
 
     body = {"channel": channel, "text": render(payload)}
+    # A REPLY BELONGS UNDER THE QUESTION. `thread_ts` is passed through when
+    # the caller supplies one, so the Slack agent answers in the thread it was
+    # asked in rather than in the channel. Absent, the message posts at top
+    # level exactly as before - no caller acquires a thread by accident.
+    if payload.get("thread_ts"):
+        body["thread_ts"] = str(payload["thread_ts"])
     status, data = request("POST", f"{BASE}{POST_MESSAGE}",
                            {"Authorization": f"Bearer {key(KEY_VAR)}",
                             "Content-Type": "application/json; charset=utf-8"},
