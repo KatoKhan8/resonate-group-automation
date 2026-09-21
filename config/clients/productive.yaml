@@ -605,3 +605,32 @@ fatigue:
     # The operator's day-2/3 stagger, as a number, so testing it is an edit
     # to this line.
     min_hours_between_first_touches: 72
+
+# VERIFICATION ROLES — operator decision, Zvonimir, 2026-09-21.
+#
+# ContactOut is REMOVED from verification. It stays FIRST for ENRICHMENT,
+# where the standing provider order is unchanged; this block is verification
+# only and the two are different questions about the same address.
+#
+# Scoped to this client rather than edited into `verification.DEFAULT_POLICY`,
+# because `policy_for` exists precisely so one workspace's roles are not
+# every workspace's. The defaults are untouched and still read
+# contactout/deliverable/reoon for anybody else.
+#
+# WHAT DOES NOT CHANGE, and each is load-bearing:
+#   required_confirmations stays 2  - two INDEPENDENT providers, because one
+#     verifier is a single point of failure with a commercial interest in
+#     saying yes
+#   disagreement stays `hold`       - a negative blocks whatever else agrees
+#   unknown is never PASS
+#   accept_all_clears_on stays reoon - clearing a catch-all is Reoon's job
+#     through is_safe_to_send, and Deliverable alone does not clear one
+#
+# CONSEQUENCE WORTH STATING: with two roles filled by two distinct providers
+# and two confirmations required, there is no third opinion left. Both must
+# answer and both must agree. That is stricter than the previous arrangement,
+# not looser.
+verification:
+  primary: deliverable
+  secondary: reoon
+  catch_all: reoon

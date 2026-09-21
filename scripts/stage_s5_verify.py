@@ -156,7 +156,19 @@ def main(argv=None):
     load_env()
     os.makedirs(STAGE, exist_ok=True)
     config = clients.load("productive")
-    policy = verification.DEFAULT_POLICY
+    # THE CLIENT'S POLICY, NOT THE MODULE DEFAULT.
+    #
+    # This read DEFAULT_POLICY, which was harmless only while the two agreed.
+    # On 2026-09-21 the operator removed ContactOut from Productive's
+    # VERIFICATION roles - primary deliverable, secondary reoon, reoon keeps
+    # the catch-all - and left the defaults alone for every other workspace.
+    # `policy_for` is the mechanism built for exactly that, and a runner that
+    # ignores it would have kept verifying with a provider the operator
+    # removed while the config said otherwise.
+    policy = verification.policy_for(config)
+    print(f"  policy: primary={policy['primary']} "
+          f"secondary={policy['secondary']} catch_all={policy['catch_all']} "
+          f"confirmations={policy['required_confirmations']}", flush=True)
 
     domains = eligible_domains()
     already = done_keys()
