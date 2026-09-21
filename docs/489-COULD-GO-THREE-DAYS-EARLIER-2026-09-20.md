@@ -1,5 +1,31 @@
 # 489 is planned onto a mailbox-day that is full, and Monday has room
 
+> **RESOLVED 2026-09-21T06:54Z. THE FALSIFIER FIRED IN THE PREDICTED
+> DIRECTION AND NO WRITE WAS EVER NEEDED.**
+>
+>     first_scheduled   2026-09-24T13:27Z  ->  2026-09-21T13:34Z
+>     scheduled rows    5 (ids 223361xx)   ->  8 (ids 223411xx, all new)
+>     provider says     today 3 emails, tomorrow 2, day after none
+>
+> The end-of-day scheduler run re-planned 489 **three days earlier, on its
+> own**, exactly as the update below predicted. The row ids are entirely new,
+> so the old plan was discarded and rebuilt rather than amended.
+>
+> **The pause/resume this document describes was correctly refused and was
+> genuinely unnecessary.** Had it been performed on Sunday it would have been
+> an unauthorized write that took credit for something the provider did by
+> itself - and `resume_campaign` fails a campaign whose window is days away,
+> so it could have left 489 worse than slow.
+>
+> It was surfaced by `bison.sending_schedule`, integrated from TASK-236
+> minutes earlier. Nothing in this repository could previously ask the
+> provider what it would actually send; the first time it did, the answer had
+> already changed.
+>
+> 489's first real emails are due **today, 13:34Z (09:34 America/New_York)**,
+> inside its own window. That is a provider statement, not an inference, and
+> it is not a send until the provider confirms one.
+
 2026-09-20, Sunday evening. Read from the providers and from a census that
 covers every campaign that can book a mailbox - which, until this afternoon,
 no census had done since the 19th.
