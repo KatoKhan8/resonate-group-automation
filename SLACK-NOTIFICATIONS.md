@@ -227,3 +227,44 @@ Not in this build. When it is authorised:
 Step 2 before step 3, always. A live build with an unmapped workspace posts
 nothing for that client, which is safe but silent, and silence is what this
 architecture is worst at making visible on its own.
+
+---
+
+## 7. The Slack agent — scopes for the read-only monitor
+
+`scripts/slack_agent_loop.py` polls #resonate-os and DMs to the bot for
+@mentions and answers in a thread. Phase 1 is read-only: it gathers system
+state from local canonical files and heartbeat data, formats an answer
+through the LLM, and posts it. It imports nothing that can write to a
+provider or store.
+
+### Scopes required (bot token)
+
+| Scope | What it is for | Already held? |
+| --- | --- | --- |
+| `channels:history` | Read messages in public channels (#resonate-os) | No — add |
+| `channels:read` | Read public channel metadata (list channels) | No — add |
+| `groups:history` | Read messages in private channels (if any) | No — add |
+| `groups:read` | Read private channel metadata | No — add |
+| `im:history` | Read DMs to the bot | No — add |
+| `im:read` | Read DM channel metadata (list DMs) | No — add |
+| `app_mentions:read` | Receive app_mention events | No — add |
+| `chat:write` | Post reply threads | **Yes** — proven by smoke test (ts 1789990679.422989) |
+
+Source: [Slack OAuth scopes reference](https://docs.slack.dev/reference/scopes).
+Each scope name is the exact identifier Slack's API uses.
+
+### Reinstall after adding scopes
+
+After adding the seven new scopes to the Slack app configuration, the app
+**must be reinstalled** to the workspace. The existing bot token carries only
+the scopes it was granted at install time; adding scopes to the app manifest
+does not retroactively grant them to installed tokens. Reinstalling generates
+a new token with the full scope set.
+
+### What the agent does NOT have
+
+No `channels:manage`, `chat:write.public`, `groups:write`, `im:write`,
+`reactions:write`, `pins:write`, or any admin scope. It cannot create
+channels, post outside threads, modify messages, or change workspace
+settings.
