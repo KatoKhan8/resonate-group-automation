@@ -142,10 +142,61 @@ def answered_already():
 # matches nothing gets the overview. Adding a query here is a code change,
 # which is the point.
 
+_DOMAIN_RE = re.compile(r"\b([a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
+                        r"(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*"
+                        r"\.[a-z]{2,})\b")
+_EMAIL_RE = re.compile(r"([^\s]+@[^\s]+\.[a-z]{2,})", re.IGNORECASE)
+_LINKEDIN_RE = re.compile(
+    r"(https?://(?:www\.)?linkedin\.com/in/[^\s]+)", re.IGNORECASE)
+
+
 def route(text):
     """(query name, argument) for a question. Never raises."""
     lowered = (text or "").lower()
+    original = text or ""
+
+    email_match = _EMAIL_RE.search(original)
+    linkedin_match = _LINKEDIN_RE.search(original)
+    domain_match = _DOMAIN_RE.search(lowered)
+
     campaign = re.search(r"\b(?:campaign\s*)?(\d{3,6})\b", lowered)
+
+    # "when does <campaign> send next" - before the generic campaign route
+    if ("send" in lowered or "schedule" in lowered or "next" in lowered) \
+            and campaign:
+        return "send_next", campaign.group(1)
+
+    # "status of <email>" or "status of <linkedin url>" - lead lookup
+    if any(w in lowered for w in ("status of", "status ", "lead ",
+                                  "who is ", "look up")):
+        if email_match:
+            return "lead", email_match.group(1)
+        if linkedin_match:
+            return "lead", linkedin_match.group(1)
+
+    # "why is <domain> held" - before the generic "held"/"blocked" route
+    if ("why" in lowered or "held" in lowered) and domain_match:
+        return "held", domain_match.group(1)
+
+    # "what did we send to <domain>" - before the generic "sent" route
+    if any(w in lowered for w in ("send to", "sent to", "send for",
+                                  "sent for")) and domain_match:
+        return "sent_to", domain_match.group(1)
+
+    # "is <domain> in a campaign" - account lookup
+    if ("in a campaign" in lowered or "in campaign" in lowered
+            or "is " in lowered) and domain_match:
+        return "account", domain_match.group(1)
+
+    # "how many replies today" - before the generic "sent_today"
+    if any(w in lowered for w in ("repl", "reply")) and "today" in lowered:
+        return "replies_today", None
+
+    # "credits spent today" - before the generic "credits"
+    if ("spent" in lowered or "spend" in lowered) and "today" in lowered:
+        return "credits_today", None
+
+    # Generic routes (existing)
     if "campaign" in lowered and campaign:
         return "campaign", campaign.group(1)
     if any(w in lowered for w in ("what is running", "what's running",
@@ -156,7 +207,7 @@ def route(text):
     if any(w in lowered for w in ("ready", "pipeline", "enrolled", "batch",
                                  "verified", "stage")):
         return "pipeline", None
-    if any(w in lowered for w in ("blocked", "held", "why is", "problem",
+    if any(w in lowered for w in ("blocked", "held", "problem",
                                  "register", "open issue")):
         return "blocked", None
     if any(w in lowered for w in ("decision", "waiting on", "operator",
@@ -206,6 +257,20 @@ def gather(query, argument=None):
         return {"credits": readback.credits()}
     if query == "qwen":
         return {"qwen": readback.qwen_task()}
+    if query == "account":
+        return {"account": readback.account_by_domain(argument)}
+    if query == "lead":
+        return {"lead": readback.lead_by_identifier(argument)}
+    if query == "held":
+        return {"held": readback.why_held(argument)}
+    if query == "sent_to":
+        return {"sent_to": readback.what_sent_to(argument)}
+    if query == "send_next":
+        return {"send_next": readback.when_sends_next(argument)}
+    if query == "replies_today":
+        return {"replies_today": readback.replies_today()}
+    if query == "credits_today":
+        return {"credits_today": readback.credits_spent_today()}
     return {"monitors": readback.monitors()}
 
 
@@ -255,6 +320,86 @@ def plain_answer(query, data):
                      f"{json.dumps(data['decisions'], default=str)[:600]}")
     if data.get("credits"):
         lines.append(f"Credits: {json.dumps(data['credits'], default=str)[:400]}")
+    if data.get("account"):
+        acct = data["account"]
+        if acct.get("_error"):
+            lines.append(f"Account: {acct['_error']}")
+        else:
+            lines.append(
+                f"Account {acct.get('domain')}: "
+                f"state {acct.get('state')}, "
+                f"client approval {acct.get('client_approval')}, "
+                f"campaigns {acct.get('campaign_ids')}, "
+                f"last touch {acct.get('last_touch_at')}, "
+                f"replies {acct.get('replies')}, "
+                f"bounces {acct.get('bounces')}, "
+                f"sent {acct.get('emails_sent')}, "
+                f"contacts {acct.get('contacts_count')}")
+    if data.get("lead"):
+        lead = data["lead"]
+        if lead.get("_error"):
+            lines.append(f"Lead: {lead['_error']}")
+        else:
+            lines.append(
+                f"Lead on {lead.get('domain')}: "
+                f"state {lead.get('state')}, "
+                f"client approval {lead.get('client_approval')}, "
+                f"campaigns {lead.get('campaign_ids')}, "
+                f"last touch {lead.get('last_touch_at')}, "
+                f"replies {lead.get('replies')}, "
+                f"bounces {lead.get('bounces')}, "
+                f"sent {lead.get('emails_sent')}")
+    if data.get("held"):
+        h = data["held"]
+        if h.get("_error"):
+            lines.append(f"Held: {h['_error']}")
+        else:
+            lines.append(
+                f"Why held ({h.get('domain')}): "
+                f"state {h.get('state')}, "
+                f"drop_reason {h.get('drop_reason')}, "
+                f"hold_reason {h.get('hold_reason')}, "
+                f"ICP {h.get('icp_status')}, "
+                f"MX {h.get('mx_decision')}, "
+                f"client approval {h.get('client_approval')}")
+    if data.get("sent_to"):
+        st = data["sent_to"]
+        if st.get("_error"):
+            lines.append(f"Sent to: {st['_error']}")
+        else:
+            lines.append(
+                f"Sent to {st.get('domain')}: "
+                f"{len(st.get('sent', []))} sends, "
+                f"{len(st.get('bounced', []))} bounces")
+            for s in st.get("sent", [])[:5]:
+                lines.append(
+                    f"  {s.get('type')} step {s.get('step')} "
+                    f"on {s.get('at')}")
+    if data.get("send_next"):
+        sn = data["send_next"]
+        if sn.get("_error"):
+            lines.append(f"Schedule: {sn['_error']}")
+        else:
+            lines.append(f"Campaign {sn.get('campaign_id')} schedule:")
+            for day, info in sn.get("days", {}).items():
+                if info.get("_error"):
+                    lines.append(f"  {day}: {info['_error']}")
+                elif info.get("empty"):
+                    lines.append(f"  {day}: nothing scheduled")
+                else:
+                    lines.append(
+                        f"  {day}: {info.get('emails_being_sent')} emails")
+    if data.get("replies_today"):
+        rt = data["replies_today"]
+        lines.append(
+            f"Replies today: {rt.get('replies_today', 0)} "
+            f"(watch: {rt.get('watch_status', 'unknown')})")
+    if data.get("credits_today"):
+        ct = data["credits_today"]
+        if ct.get("_error"):
+            lines.append(f"Credits today: {ct['_error']}")
+        else:
+            lines.append(f"Credits spent today: {ct.get('spent_today', 0)}")
     lines.append(f"Read at {_now()}.")
     return "\n".join(lines) if lines else f"Nothing to report. Read at {_now()}."
 
@@ -297,11 +442,23 @@ def scrub(text):
     return notify._EMAIL_SHAPE.sub("[address withheld]", text or "")
 
 
-def answer_for(text, model=None):
-    """The whole decision for one message. Returns (reply, how, query)."""
+LEAD_DM_ONLY = ("Lead lookups are DM-only. A channel has an audience; "
+                "a lead's status is about one identifiable person. "
+                "Ask me in a direct message.")
+
+
+def answer_for(text, model=None, channel_type=None):
+    """The whole decision for one message. Returns (reply, how, query).
+
+    ``channel_type`` is ``"im"`` for DMs and something else (or None) for
+    channels.  Lead lookups are refused in channels without echoing the
+    identifier - a refusal that names the address is already a leak.
+    """
     if wants_an_action(text):
         return REFUSAL, "refused", "action"
     query, argument = route(text)
+    if query == "lead" and channel_type != "im":
+        return LEAD_DM_ONLY, "refused (lead is DM-only)", query
     data = gather(query, argument)
     reply, how = phrase(text, data, model)
     return scrub(reply), how, query
@@ -319,14 +476,16 @@ def handle(event, seen, channel_filter=None, dry_run=False):
     if kind == "message" and event.get("channel_type") != "im":
         return False
     channel = event.get("channel")
+    channel_type = event.get("channel_type")
     ts = event.get("ts")
     message_id = f"{channel}:{ts}"
     if message_id in seen:
         return False
     text = event.get("text") or ""
+    user = event.get("user")
     log({"kind": "question", "message_id": message_id, "channel": channel,
-         "user": event.get("user"), "text": text[:500]})
-    reply, how, query = answer_for(text)
+         "channel_type": channel_type, "user": user, "text": text[:500]})
+    reply, how, query = answer_for(text, channel_type=channel_type)
     thread = event.get("thread_ts") or ts
     if dry_run:
         emit(f"DRY-RUN would answer {message_id} ({query}, {how}):\n{reply}")
@@ -335,7 +494,10 @@ def handle(event, seen, channel_filter=None, dry_run=False):
                 "text": reply, "thread_ts": thread})
     seen.add(message_id)
     log({"kind": "answered", "message_id": message_id, "channel": channel,
-         "query": query, "how": how, "reply": reply[:2000]})
+         "channel_type": channel_type, "user": user,
+         "query": query, "argument": (route(text)[1] if query != "action"
+                                      else None),
+         "how": how, "reply": reply[:2000]})
     emit(f"ANSWERED {message_id} query={query} via={how}")
     return True
 

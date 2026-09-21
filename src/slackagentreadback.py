@@ -16,8 +16,11 @@ import os
 import datetime as _dt
 import time
 
+from . import account as _account
 from . import campaigns as _campaigns
+from . import clientapproval as _clientapproval
 from . import events as _events
+from . import notify as _notify
 from . import report as _report
 from . import store as _store
 from . import watchsink as _watchesink
@@ -292,6 +295,263 @@ def credits():
         "note": "credit balances require a provider read; "
                 "phase 1 reports from canonical state only",
     }
+
+
+# --------------------------------------------------------- account by domain
+
+def _find_record_by_domain(domain):
+    """Find the queue record whose domain matches, or None."""
+    key = _clientapproval.account_of(domain)
+    if not key:
+        return None
+    for rec in _store.load():
+        rec_domain = _clientapproval.account_of(rec.get("domain") or "")
+        if rec_domain == key:
+            return rec
+    return None
+
+
+def _find_record_by_email(address):
+    """Find the queue record that carries this contact email, or None."""
+    target = (address or "").strip().lower()
+    if not target:
+        return None
+    for rec in _store.load():
+        for contact in rec.get("contacts") or []:
+            if (contact.get("email") or "").strip().lower() == target:
+                return rec
+    return None
+
+
+def _find_record_by_linkedin(url):
+    """Find the queue record whose contact matches this LinkedIn URL."""
+    target = (url or "").strip().lower().rstrip("/")
+    if not target:
+        return None
+    for rec in _store.load():
+        for contact in rec.get("contacts") or []:
+            prof = (contact.get("linkedin_url") or "").strip().lower().rstrip("/")
+            if prof and prof == target:
+                return rec
+    return None
+
+
+def _account_facts(rec):
+    """The facts about one account, with no person-level detail.
+
+    Returns domain, state, client-approval state, campaign membership,
+    last touch, reply/bounce/unsubscribe counts.  No contact name and
+    no email address.
+    """
+    domain = rec.get("domain") or ""
+    approval = _clientapproval.state_of(domain)
+    approval_state = (approval or {}).get("state", "unknown")
+
+    touches = _account.touches(rec, confirmed_only=True)
+    last_touch_at = touches[-1]["at"] if touches else None
+
+    reply_events = _events.of(rec, _events.REPLY_RECEIVED)
+    bounce_events = _events.of(rec, _events.EMAIL_BOUNCED)
+    sent_events = _events.of(rec, _events.PUSH_MARKED)
+
+    campaign_ids = []
+    for entry in rec.get("events") or []:
+        cid = entry.get("campaign_id")
+        if cid and str(cid) not in campaign_ids:
+            campaign_ids.append(str(cid))
+
+    return {
+        "read_at": _now_iso(),
+        "domain": domain,
+        "state": rec.get("state"),
+        "client_approval": approval_state,
+        "campaign_ids": campaign_ids,
+        "last_touch_at": last_touch_at,
+        "replies": len(reply_events),
+        "bounces": len(bounce_events),
+        "emails_sent": len(sent_events),
+        "contacts_count": len(rec.get("contacts") or []),
+    }
+
+
+def account_by_domain(domain):
+    """One account by domain.  No person-level detail.
+
+    Returns the domain, client-approval state, campaign membership, step,
+    last touch, reply/bounce/unsubscribe flags.  Domains only.
+    """
+    rec = _find_record_by_domain(domain)
+    if rec is None:
+        return {"read_at": _now_iso(), "_error": f"no record for {domain!r}"}
+    return _account_facts(rec)
+
+
+# ----------------------------------------------------------- lead lookup
+
+def lead_by_identifier(identifier):
+    """One lead by email or LinkedIn URL.
+
+    Returns the same fields as ``account_by_domain`` but for the person's
+    record.  The identifier is NOT echoed back - the caller must not see
+    it in the answer.
+    """
+    identifier = (identifier or "").strip()
+    if not identifier:
+        return {"read_at": _now_iso(), "_error": "no identifier supplied"}
+
+    if "@" in identifier:
+        rec = _find_record_by_email(identifier)
+    else:
+        rec = _find_record_by_linkedin(identifier)
+
+    if rec is None:
+        return {"read_at": _now_iso(), "_error": "not found"}
+    return _account_facts(rec)
+
+
+# ----------------------------------------------------------- why held
+
+def why_held(domain):
+    """Why is this domain held?  Read the reasons already written down.
+
+    Reads the record state, the verdict's ICP status, MX events, the
+    drop/hold reason, and the client-approval state.  Does not re-derive.
+    """
+    rec = _find_record_by_domain(domain)
+    if rec is None:
+        return {"read_at": _now_iso(), "_error": f"no record for {domain!r}"}
+
+    verdict = rec.get("verdict") or {}
+    mx_events = _events.of(rec, *_events.MX_EVENTS)
+    mx_decision = "no MX events"
+    for ev in mx_events:
+        if ev.get("type") == _events.EMAIL_CHANNEL_BLOCKED_MX:
+            mx_decision = "blocked by MX"
+        elif ev.get("type") == _events.MX_LOOKUP_COMPLETED:
+            mx_decision = "MX OK"
+        elif ev.get("type") == _events.MX_LOOKUP_FAILED:
+            mx_decision = "MX lookup failed"
+
+    approval = _clientapproval.state_of(domain)
+
+    return {
+        "read_at": _now_iso(),
+        "domain": rec.get("domain"),
+        "state": rec.get("state"),
+        "drop_reason": rec.get("drop_reason"),
+        "hold_reason": rec.get("hold_reason"),
+        "icp_status": verdict.get("icp_status"),
+        "icp_confidence": verdict.get("icp_confidence"),
+        "mx_decision": mx_decision,
+        "client_approval": (approval or {}).get("state", "unknown"),
+    }
+
+
+# --------------------------------------------------------- what was sent
+
+def what_sent_to(domain):
+    """What did we send to this domain?  Events and provider rows.
+
+    SENT means a provider-confirmed send, never ``scheduled``.
+    """
+    rec = _find_record_by_domain(domain)
+    if rec is None:
+        return {"read_at": _now_iso(), "_error": f"no record for {domain!r}"}
+
+    sent = []
+    for entry in _events.of(rec, _events.PUSH_MARKED, _events.EMAIL_DELIVERED):
+        sent.append({
+            "type": entry.get("type"),
+            "contact": entry.get("contact"),
+            "channel": entry.get("channel"),
+            "at": entry.get("at"),
+            "day": entry.get("day"),
+            "step": entry.get("step"),
+        })
+
+    bounced = []
+    for entry in _events.of(rec, _events.EMAIL_BOUNCED):
+        bounced.append({
+            "contact": entry.get("contact"),
+            "at": entry.get("at"),
+        })
+
+    return {
+        "read_at": _now_iso(),
+        "domain": rec.get("domain"),
+        "sent": sent,
+        "bounced": bounced,
+    }
+
+
+# --------------------------------------------------------- send schedule
+
+def when_sends_next(campaign_id):
+    """What does the provider say it will send on the next three days?
+
+    Reads ``bison.sending_schedule`` for today, tomorrow and the day after.
+    ``SendingScheduleEmpty`` is the provider saying NOTHING IS PLANNED -
+    it is not zero and not an error.
+    """
+    from .providers import bison
+    out = {"read_at": _now_iso(), "campaign_id": str(campaign_id),
+           "days": {}}
+    for day in ("today", "tomorrow", "day_after_tomorrow"):
+        try:
+            result = bison.sending_schedule(campaign_id, day)
+            out["days"][day] = {"emails_being_sent": result.get("emails_being_sent")}
+        except bison.SendingScheduleEmpty:
+            out["days"][day] = {"emails_being_sent": 0, "empty": True}
+        except Exception as exc:                                  # noqa: BLE001
+            out["days"][day] = {"_error": f"{type(exc).__name__}"}
+    return out
+
+
+# --------------------------------------------------------- replies today
+
+def replies_today():
+    """How many reply events were recorded today across all records."""
+    today = _dt.date.today().isoformat()
+    count = 0
+    for rec in _store.load():
+        for entry in _events.of(rec, _events.REPLY_RECEIVED):
+            at = str(entry.get("at") or "")
+            if at.startswith(today):
+                count += 1
+    watch = _try(lambda: _watchesink.heartbeats(), "reply-watch")
+    return {"read_at": _now_iso(), "replies_today": count,
+            "watch_status": "available" if not _is_error(watch) else "unavailable"}
+
+
+# --------------------------------------------------------- credits today
+
+def credits_spent_today():
+    """Credits spent today.  Reported, never gated."""
+    today = _dt.date.today().isoformat()
+    spend_path = os.path.abspath(
+        os.environ.get("SPEND_LEDGER")
+        or os.path.join(os.path.dirname(_store.queue_path()),
+                        "spend-ledger.jsonl"))
+    if not os.path.exists(spend_path):
+        return {"read_at": _now_iso(), "spent_today": 0,
+                "note": "no spend ledger found"}
+    total = 0
+    try:
+        with open(spend_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                at = str(row.get("at") or "")
+                if at.startswith(today):
+                    total += row.get("credits", 0) or 0
+    except OSError:
+        return {"read_at": _now_iso(), "_error": "could not read spend ledger"}
+    return {"read_at": _now_iso(), "spent_today": total}
 
 
 # -------------------------------------------------------------- aggregate
