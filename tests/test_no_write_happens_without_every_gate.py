@@ -126,10 +126,15 @@ class GuardTest(QueueTest):
         # the sender gate checks the provider seat is in the client's canonical
         # roster and is active and healthy, and a mocked roster proves none of
         # that.
+        # TASK-240: the seat now carries a human owner. The old predicate
+        # accepted sender_id=None (arity-1 was enough); the new predicate
+        # requires an attested human, so the canary has one.
         from src import senderidentity
         with senderidentity.transaction() as rows:
+            rows.append(senderidentity.new_sender(
+                "productive", "mina", "Mina Ruzicic"))
             rows.append(senderidentity.new_linkedin_account(
-                "productive", "li-116968", None,
+                "productive", "li-116968", "mina",
                 "https://www.linkedin.com/in/mina-ruzicic-b4422438a",
                 provider="heyreach", provider_account_id="116968",
                 active=True, daily_limit=40, health="ok"))
@@ -621,11 +626,42 @@ class EachGateStopsTheProviderCallEntirely(GuardTest):
         self.campaign["senders"]["linkedin"].append({"id": 129531})
         self.refused_at("campaign_approval")
 
-    def test_two_senders_are_refused_even_when_both_were_approved(self):
-        """The sender gate itself, isolated by approving the change."""
-        self.campaign["senders"]["linkedin"].append({"id": 129531})
+    def test_two_senders_are_refused_when_they_are_two_people(self):
+        """TASK-240: the arity rule moves from campaign to action. Two seats
+        belonging to two different humans are refused - one action, one human.
+        Both seats must be inventoried and owned for the refusal to be at the
+        attribution gate rather than the roster gate."""
+        from src import senderidentity
+        with senderidentity.transaction() as rows:
+            rows.append(senderidentity.new_sender(
+                "productive", "other-human", "Other Human"))
+            rows.append(senderidentity.new_linkedin_account(
+                "productive", "li-129531", "other-human",
+                "https://www.linkedin.com/in/other-human",
+                provider="heyreach", provider_account_id="129531",
+                active=True, daily_limit=40, health="ok"))
+        self.campaign["senders"]["linkedin"].append(
+            {"provider_account_id": "129531"})
         self.approve_campaign()
         self.refused_at("sender")
+
+    def test_two_seats_same_human_pass(self):
+        """TASK-240 sibling: two seats attested to the SAME human, with the
+        campaign naming both, must PASS the attribution gate. One human, many
+        seats - that is the shape the new predicate permits."""
+        from src import senderidentity
+        with senderidentity.transaction() as rows:
+            rows.append(senderidentity.new_linkedin_account(
+                "productive", "li-129531", "mina",
+                "https://www.linkedin.com/in/mina-second-seat",
+                provider="heyreach", provider_account_id="129531",
+                active=True, daily_limit=40, health="ok"))
+        self.campaign["senders"]["linkedin"].append(
+            {"provider_account_id": "129531"})
+        self.approve_campaign()
+        with self.allow_collision(), self.allow_killswitch():
+            auth = self.attempt()
+            self.assertIn("sender", auth.gates)
 
     def test_no_sender_on_the_campaign_prevents_the_call(self):
         self.campaign["senders"]["linkedin"] = []
@@ -951,8 +987,13 @@ class TheSenderGateChecksTheProviderSeat(GuardTest):
 
     def seat(self, **over):
         from src import senderidentity
+        # TASK-240: the default seat now carries an owner. The old predicate
+        # accepted sender_id=None; the new one refuses it. Tests that target
+        # other clauses (roster, active, health, tenancy) still reach their
+        # clause because the owner check runs after those.
         row = dict(kind=senderidentity.LINKEDIN_ACCOUNT, workspace="productive",
-                   account_id="li-116968", sender_id=None, provider="heyreach",
+                   account_id="li-116968", sender_id="mina",
+                   provider="heyreach",
                    provider_account_id="116968",
                    profile_url="https://www.linkedin.com/in/mina-ruzicic",
                    active=True, daily_limit=40, health="ok")
@@ -962,12 +1003,14 @@ class TheSenderGateChecksTheProviderSeat(GuardTest):
                        if r.get("kind") != senderidentity.LINKEDIN_ACCOUNT]
             rows.append(row)
 
-    def test_a_seat_with_no_human_owner_still_passes(self):
-        # The canary's exact shape. `sender_id: None` is canonical, not missing
-        # data, so it must not be read as an unattributable sender.
+    def test_a_seat_with_no_human_owner_is_refused(self):
+        # TASK-240 inversion: under the old predicate sender_id=None was
+        # canonical and passed; under the new predicate an unowned seat is
+        # precisely what must refuse. This is the single clearest measure
+        # that the change is a strengthening.
         self.seat(sender_id=None)
-        with self.allow_collision(), self.allow_killswitch():
-            self.assertIn("sender", self.attempt().gates)
+        self.assertIn("no attested human owner",
+                      self.refused_at("sender").why)
 
     def test_a_seat_nobody_inventoried_is_refused(self):
         self.seat(provider_account_id="999999")

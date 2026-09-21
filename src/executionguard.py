@@ -644,47 +644,21 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     gates.extend(["collision", "account_collision"])
 
     # 5. CAP, against the durable ledger ------------------------------------
-    sender_id = _sender_for(campaign, channel)
-    _require("sender", sender_id not in (None, ""),
-             f"the canonical campaign names no {channel} sender")
-    # SENDER OWNERSHIP AND HEALTH. The docstring above has always listed
-    # "sender health" as part of gate 4 and the code never checked it: this
-    # module imported no sender module at all, so `_sender_for` asserting that
-    # exactly one id was named was the whole of it. An id typo, or a seat
-    # belonging to another client's estate, passed - and provider agreement is
-    # no defence, because the read-back compares the sender set against what
-    # the PROVIDER campaign holds, so a wrongly-assigned seat that was also
-    # assigned by hand in the vendor UI matches perfectly.
+    # TASK-241: the arity rule moves from the campaign to the action.
+    # `_owner_for` replaces `_sender_for`: the campaign may name any number of
+    # seats, but every one must resolve to the SAME attested human. The old
+    # rule proved one thing (set size 1); the new rule proves which human,
+    # that the seat belongs to them, and that the seat is fit to send.
     #
-    # `senderidentity.require_sender` already raises `CrossWorkspaceSender`,
-    # and `senderinventory` already derives readiness from provider truth.
-    # Both simply had no caller here.
-    # THE PROVIDER SEAT, NOT AN INTERNAL HUMAN ID. The first version of this
-    # called `senderidentity.require_sender(client, sender_id)`, which looks up
-    # a HUMAN sender - and the id a campaign carries is a `provider_account_id`.
-    # Every inventoried seat has `sender_id: None` on purpose, because neither
-    # provider knows who owns an inbox, so that lookup could never succeed and
-    # the gate refused a correctly-configured canary.
-    #
-    # What ownership means here is: this provider seat is in THIS client's
-    # canonical roster, rebuilt from provider truth, and it is active and
-    # healthy. `senderinventory` derives the health; `senderidentity` scopes the
-    # roster to one workspace and has no unscoped variant, which is what makes
-    # this a tenancy check as well as a health one.
-    from . import senderidentity
-    roster = [r for r in senderidentity.accounts_for(campaign.get("client"),
-                                                     channel)
-              if str(r.get("provider_account_id")) == str(sender_id)]
-    _require("sender", roster,
-             f"{channel} seat {sender_id!r} is not in {campaign.get('client')!r}"
-             f"'s canonical sender roster, so its ownership cannot be "
-             f"established. A seat nobody inventoried is a seat nobody can "
-             f"attribute a message to")
-    seat = roster[0]
-    _require("sender", seat.get("active"),
-             f"{channel} seat {sender_id!r} is inventoried but not active")
-    _require("sender", seat.get("health") in (None, "ok"),
-             f"{channel} seat {sender_id!r} health is {seat.get('health')!r}")
+    # ORDER MATTERS: this runs AFTER collision (gate 4) so that a cross-tenant
+    # refusal carries `collision` in `why.passed`, proving the sender boundary
+    # caught it rather than an earlier gate. `_owner_for` raises NotAuthorized
+    # directly, so we wrap it to attach the gates trace.
+    try:
+        owner_id, _seats = _owner_for(campaign, channel)
+    except NotAuthorized as e:
+        raise NotAuthorized(e.gate, e.why, gates) from None
+    sender_id = owner_id
     gates.append("sender")
     # THE LEDGER'S TENANT IS THE CLIENT, NOT THE PROVIDER'S WORKSPACE NUMBER.
     #
@@ -1132,19 +1106,9 @@ def _spec_for(step_key, campaign=None, config=None, rec=None, contact=None):
 
 
 def _sender_for(campaign, channel):
-    """The one seat a guarded action is attributed to.
-
-    IT READ THE WRONG KEY, the same one `configdiff._ids` read. A canonical
-    campaign stores its senders as `{"provider_account_id": 174892}` -
-    `senderidentity` writes that key for both providers and
-    `heyreachfactory._seat_for` reads it - and this asked for `id`.
-
-    So a campaign with exactly one correctly-assigned seat produced an empty
-    list and refused with "names 0 linkedin senders". The refusal is
-    fail-closed, which is why this was an obstacle rather than an incident:
-    the wrong key could only ever make this reject a good campaign, never
-    accept a bad one.
-    """
+    """DEPRECATED by TASK-241. Kept only for callers that still need the
+    campaign's raw sender ids without ownership resolution. The guard itself
+    now uses `_owner_for` below."""
     rows = (campaign.get("senders") or {}).get(channel) or []
     ids = [(r.get("provider_account_id")
             if isinstance(r, dict) and r.get("provider_account_id")
@@ -1152,12 +1116,84 @@ def _sender_for(campaign, channel):
             else (r.get("id") if isinstance(r, dict) else r))
            for r in rows]
     ids = [i for i in ids if i not in (None, "")]
-    if len(ids) != 1:
+    return ids
+
+
+def _owner_for(campaign, channel):
+    """The one human a guarded action is attributed to, and the seats.
+
+    TASK-241: the arity rule moves from the campaign to the action. A campaign
+    may name any number of seats, but every one of them must resolve to the
+    SAME attested human. This is strictly stronger than the old `len(ids) != 1`
+    check: it proves which human, not merely that the set has size 1.
+
+    Returns (human_sender_id, seats) where seats is the list of inventoried
+    account rows. Refuses with a named clause when any of these hold:
+      - the campaign names no senders on this channel
+      - a seat is not in this client's canonical roster (tenancy)
+      - a seat is not active
+      - a seat is unhealthy
+      - a seat has no attested human owner
+      - the seats resolve to more than one human
+
+    Design: docs/SENDER-ATTRIBUTION-DESIGN-2026-09-17.md §4.3.
+    """
+    from . import senderidentity, senderownership
+
+    rows = (campaign.get("senders") or {}).get(channel) or []
+    ids = []
+    for r in rows:
+        if isinstance(r, dict):
+            v = r.get("provider_account_id")
+            if v in (None, ""):
+                v = r.get("id")
+        else:
+            v = r
+        if v not in (None, ""):
+            ids.append(v)
+    if not ids:
         raise NotAuthorized(
             "sender",
-            f"the canonical campaign names {len(ids)} {channel} senders; a "
-            f"guarded action is attributed to exactly one")
-    return ids[0]
+            f"the canonical campaign names no {channel} senders")
+
+    tenant = campaign.get("client")
+    seats = []
+    owners = set()
+    for pid in ids:
+        roster = [r for r in senderidentity.accounts_for(tenant, channel)
+                  if str(r.get("provider_account_id")) == str(pid)]
+        if not roster:
+            raise NotAuthorized(
+                "sender",
+                f"{channel} seat {pid!r} is not in {tenant!r}'s canonical "
+                f"sender roster, so its ownership cannot be established. "
+                f"A seat nobody inventoried is a seat nobody can attribute "
+                f"a message to")
+        seat = roster[0]
+        if not seat.get("active"):
+            raise NotAuthorized(
+                "sender",
+                f"{channel} seat {pid!r} is inventoried but not active")
+        if seat.get("health") not in (None, "ok"):
+            raise NotAuthorized(
+                "sender",
+                f"{channel} seat {pid!r} health is {seat.get('health')!r}")
+        owner = senderownership.resolve_owner(seat)
+        if owner is None:
+            raise NotAuthorized(
+                "sender",
+                f"{channel} seat {pid!r} has no attested human owner; "
+                f"an unowned seat cannot attribute a message to anybody")
+        owners.add(owner)
+        seats.append(seat)
+
+    if len(owners) != 1:
+        raise NotAuthorized(
+            "sender",
+            f"the canonical campaign names {len(owners)} distinct {channel} "
+            f"humans ({sorted(owners)}); a guarded action is attributed to "
+            f"exactly one")
+    return owners.pop(), seats
 
 
 def _key(rec, contact, step_key, channel):
