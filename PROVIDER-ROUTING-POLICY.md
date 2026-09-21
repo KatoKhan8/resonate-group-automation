@@ -194,3 +194,44 @@ every existing gate: a provider-confirmed send on 489, and operator approval
 per batch of 100 READY. This is an enrichment, scraping and verification
 grant and nothing else. `providerwrites.SUPPORTED` and the write guard are
 untouched by it.
+
+---
+
+## AMENDMENT — credit spend is reported, never gated
+
+Operator decision, Zvonimir, 2026-09-21, effective immediately. This amends
+the cost-control clause of the standing order recorded above on the same day.
+
+**Removed, for ContactOut, Reoon, Deliverable and the free scrapers:**
+
+    the 4,000-credit cap
+    the "pause below 20% of start-of-day balance" rule
+    the "pause if cost per READY exceeds 3x the measurement batch" rule
+
+There is **no credit-based stop of any kind** on those providers. Blitz and AI
+Ark remain where the order puts them - fallbacks, called only for what the
+earlier providers did not return - and their spend is reported rather than
+gated too.
+
+**No approval and no pause of any kind** for enrichment, scraping,
+verification, collision, MX or copy rendering. S5 through S7 run to completion
+without stopping to ask. **A provider rate limit is a reason to back off and
+continue, never a reason to halt the run.**
+
+Spend is still measured and still reported every fifteen minutes. It is
+information, not a gate.
+
+### What this amendment does NOT touch
+
+The deliverability hard stops are unchanged and they halt **PUSH**, never
+enrichment:
+
+    bounce > 2% on any mailbox over 7 days
+    any spam complaint
+    a reply not stopping the other channel within 15 minutes
+    an unsubscribe not propagated
+    a verification rule weakened
+
+The batch 1 grant in `docs/OPERATOR-AUTHORIZATION-2026-09-21-BATCH-1.md`
+stands exactly as recorded, including its fifteen-minute veto window and its
+floor of 500 READY. Enrichment being ungated is not permission to push.

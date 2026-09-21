@@ -78,6 +78,38 @@ def emit(line):
     print(line, flush=True)
 
 
+def milestone(campaign_id, kind, **fields):
+    """Raise a campaign_milestone, and never let it break the watcher.
+
+    A WATCHER FIRING WAS NOT A NOTIFICATION until 2026-09-21. This loop wrote
+    to its own log and heartbeat and called `notify` for nothing, so the first
+    provider-confirmed send on 489 - the milestone this whole project had been
+    working toward - reached no channel at all. `notify.notify()` plans the
+    row and `scripts/notify_deliver_loop.py` delivers it.
+
+    IDEMPOTENT BY CONSTRUCTION. `notify.notification_id` builds the id from
+    the identifiers below, so the same occurrence lands on the same row and a
+    second write does nothing. That matters here because this loop re-polls
+    every 180s and a restart re-reads from a fresh baseline: `first_send` on
+    campaign 489 is one occurrence however many times it is noticed.
+
+    WRAPPED, because a notification is not worth an outage. If Slack, the
+    store or the routing table fails, the watcher must keep watching - the log
+    and the heartbeat are the record of last resort and they do not depend on
+    this succeeding.
+    """
+    try:
+        from src import notify as _notify
+        _notify.notify("campaign_milestone", "productive",
+                       fields=dict(fields, campaign=campaign_id,
+                                   milestone=kind),
+                       ids={"campaign_id": str(campaign_id),
+                            "milestone": kind})
+    except Exception as exc:                                    # noqa: BLE001
+        emit(f"MILESTONE-FAILED {campaign_id} {kind}: "
+             f"{type(exc).__name__}: {str(exc)[:100]}")
+
+
 def snapshot(provider_id=None):
     provider_id = PROVIDER_ID if provider_id is None else provider_id
     row = bison.campaign(provider_id) or {}
@@ -262,20 +294,43 @@ def main(argv=None):
 
         if current["status"] != previous["status"]:
             emit(f"STATUS {watched} {previous['status']} -> {current['status']}")
+            # The provider's words for a finished sequence. Checked as a set
+            # rather than one spelling, because which one it uses is not
+            # documented and a missed milestone is silent.
+            if str(current["status"]).lower() in ("finished", "completed",
+                                                  "complete", "done"):
+                milestone(PROVIDER_ID, "sequence_finished",
+                          status=current["status"],
+                          emails_sent=current["emails_sent"])
         if current["leads"] != previous["leads"]:
             emit(f"COHORT {watched} leads {previous['leads']} -> {current['leads']}")
         if current["emails_sent"] > previous["emails_sent"]:
             emit(f"SEND {watched} emails_sent {previous['emails_sent']} -> "
                  f"{current['emails_sent']}")
+            # FIRST only - the 0 -> N transition. Every later send is
+            # ordinary and a channel told about each one is a channel nobody
+            # reads. Today's 489 send is deliberately NOT back-filled: it is
+            # in the register at 13:34:48Z with four witnesses.
+            if previous["emails_sent"] == 0:
+                milestone(PROVIDER_ID, "first_send",
+                          emails_sent=current["emails_sent"],
+                          queue_rows=current["queue_rows"])
         if current["sent_rows"] > previous["sent_rows"]:
             emit(f"SEND {watched} queue rows sent {previous['sent_rows']} -> "
                  f"{current['sent_rows']} of {current['queue_rows']}")
         if current["replied"] > previous["replied"]:
             emit(f"REPLY {watched} replied {previous['replied']} -> "
                  f"{current['replied']}")
+            if previous["replied"] == 0:
+                milestone(PROVIDER_ID, "first_reply",
+                          replied=current["replied"])
         if current["bounced"] > previous["bounced"]:
             emit(f"BOUNCE {watched} bounced {previous['bounced']} -> "
                  f"{current['bounced']}")
+            if previous["bounced"] == 0:
+                milestone(PROVIDER_ID, "first_bounce",
+                          bounced=current["bounced"],
+                          emails_sent=current["emails_sent"])
         if current["unsubscribed"] > previous["unsubscribed"]:
             emit(f"UNSUB {watched} unsubscribed {previous['unsubscribed']} -> "
                  f"{current['unsubscribed']}")

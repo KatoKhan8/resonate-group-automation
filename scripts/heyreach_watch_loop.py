@@ -49,6 +49,25 @@ SENT_MESSAGE = {"MessageSent", "MessageReply"}
 SENT_CONNECTION = {"ConnectionSent", "ConnectionAccepted"}
 
 
+
+def milestone(kind, **fields):
+    """Raise a campaign_milestone for the LinkedIn campaign. Never fatal.
+
+    Same reason as the EmailBison watcher: a watcher firing was not a
+    notification until 2026-09-21. Idempotent through
+    `notify.notification_id`, which builds the id from the identifiers, so a
+    180s re-poll or a restart cannot raise the same milestone twice.
+    """
+    try:
+        from src import notify as _notify
+        _notify.notify("campaign_milestone", "productive",
+                       fields=dict(fields, campaign=PROVIDER_ID,
+                                   channel="linkedin", milestone=kind),
+                       ids={"campaign_id": str(PROVIDER_ID),
+                            "milestone": kind})
+    except Exception as exc:                                    # noqa: BLE001
+        emit(f"MILESTONE-FAILED {PROVIDER_ID} {kind}: "
+             f"{type(exc).__name__}: {str(exc)[:100]}")
 def h12(value):
     return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
 
@@ -96,6 +115,10 @@ def main(argv=None):
 
     previous = None
     consecutive_errors = 0
+    # Milestones already raised by THIS process. The notification id
+    # dedups across restarts; this avoids even building the row twice
+    # when several leads cross the same threshold in one sweep.
+    fired = set()
     while True:
         try:
             current = snapshot()
@@ -139,6 +162,14 @@ def main(argv=None):
                 if now["message"] in SENT_MESSAGE:
                     label = "REPLY" if now["message"] == "MessageReply" else "SEND"
                     emit(f"{label} 605732 {phash} message={now['message']}")
+                    # FIRST on this campaign only. `fired` is per-process and
+                    # the id dedups across restarts, so a re-poll cannot
+                    # repeat it and neither can tomorrow's process.
+                    kind = ("first_reply" if label == "REPLY"
+                            else "first_send")
+                    if kind not in fired:
+                        fired.add(kind)
+                        milestone(kind, message=now["message"])
                 else:
                     emit(f"LEAD-CHANGE 605732 {phash} "
                          f"message={was.get('message')} -> {now['message']}")
@@ -150,6 +181,11 @@ def main(argv=None):
                 emit(f"LEAD-ERROR 605732 {phash} error={now['error']}")
             if now["campaign"] == "Failed" and was.get("campaign") != "Failed":
                 emit(f"LEAD-ERROR 605732 {phash} campaignStatus=Failed")
+            if (now["campaign"] in ("Finished", "Completed")
+                    and was.get("campaign") not in ("Finished", "Completed")
+                    and "sequence_finished" not in fired):
+                fired.add("sequence_finished")
+                milestone("sequence_finished", campaignStatus=now["campaign"])
             # LAST, and only when nothing above fired: the lifecycle lines
             # already say more than this one can. On its own it says the
             # provider did something to this lead that connection and message
