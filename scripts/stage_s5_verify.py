@@ -70,7 +70,23 @@ def eligible_domains():
     return out
 
 
+# A HOLD CAUSED BY A RATE-LIMITED PRIMARY IS NOT A VERDICT.
+#
+# Measured 2026-09-21: 980 of 1,052 holds read "reoon says valid but the
+# primary is missing". ContactOut was answering 429 and billing nothing - the
+# addresses were fine, the concurrency was not. Recording those as settled
+# would bake a throttling artifact into batch 1 and they would never be
+# re-asked, because `done_keys` skips anything already in the journal.
+#
+# So they are re-askable. The policy itself is untouched: a genuine
+# "primary is missing" after a real answer still holds, it just gets asked
+# again rather than being final on the first throttled try.
+RETRYABLE = ("primary is missing", "primary is unknown",
+             "every verifier failed")
+
+
 def done_keys():
+    """Addresses whose verdict is SETTLED. A throttled hold is not settled."""
     out = set()
     if not os.path.exists(JOURNAL):
         return out
@@ -80,9 +96,15 @@ def done_keys():
             if not line:
                 continue
             try:
-                out.add(json.loads(line)["email"])
-            except (ValueError, KeyError):
+                row = json.loads(line)
+            except ValueError:
                 continue
+            reason = str(row.get("reason") or "")
+            if any(flag in reason for flag in RETRYABLE):
+                out.discard(row.get("email"))
+                continue
+            if row.get("email"):
+                out.add(row["email"])
     return out
 
 
@@ -161,6 +183,14 @@ def main(argv=None):
     # limit with headroom. K=12 would sit at ~4.1/sec, over it. The same K=8
     # the measured ContactOut work settled on, for the same reason: the last
     # few threads buy little and cost latency.
+    # K=3, AND THE BINDING LIMIT IS CONTACTOUT RATHER THAN REOON.
+    #
+    # K=8 was sized against Reoon's 4/sec and never checked the primary.
+    # ContactOut's documented limit on this family of routes is 60/min, and
+    # eight workers at ~2.9s each made ~168 calls/min - nearly three times it.
+    # The adapter retried each 429 twice and still lost, so the primary went
+    # missing on 93% of addresses while billing zero credits. Three workers is
+    # ~62/min, at the limit rather than over it.
     lock = threading.Lock()
 
     def one(contact):
@@ -173,7 +203,7 @@ def main(argv=None):
             return contact, None, None, exc
 
     with open(JOURNAL, "a", encoding="utf-8") as journal:
-        with cf.ThreadPoolExecutor(max_workers=8) as pool:
+        with cf.ThreadPoolExecutor(max_workers=3) as pool:
             for contact, state, reason, exc in pool.map(one, people):
                 if exc is not None:
                     # A provider failure is not a verdict. The address is left

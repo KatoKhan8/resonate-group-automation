@@ -52,7 +52,7 @@ There is also **no** documented filter on the list endpoint for `conversationId`
     "campaignIds": [456],
     "searchString": "…",
     "leadLinkedInId": "…",
-    "leadProfileUrl": "https://www.linkedin.com/in/username/",
+    "leadProfileUrl": "<a LinkedIn profile URL>",   # redacted: see note
     "tags": ["…"],
     "seen": false
   }
@@ -132,3 +132,17 @@ Sources the model searched:
 - https://ncnodes.com/package/n8n-nodes-heyreach/heyReach/Inbox:Send%20Message
 - https://www.heyreach.io/blog/campaign-api
 
+
+
+---
+
+## Note on the redacted field
+
+`leadProfileUrl` above carried the vendor's own literal placeholder from the
+API schema. `test_fixture_hygiene.test_no_linkedin_url_with_real_vanity_name`
+flagged it, and the flag was CORRECT even though the value was not a real
+person: the guard matches the `linkedin.com/in/<vanity>` shape and cannot
+distinguish a schema placeholder from a prospect, which is exactly the
+property that makes it useful. Widening the guard to allow the literal
+`username` would trade a real protection for a cosmetic convenience in a
+document, so the document changed instead.
