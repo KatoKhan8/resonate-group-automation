@@ -14,6 +14,8 @@ is asserted by ``tests.test_slack_agent``.
 import json
 import os
 import datetime as _dt
+import json as _json
+import os as _os
 import time
 
 from . import campaigns as _campaigns
@@ -134,6 +136,133 @@ def pipeline():
         "drafts_generated": event_counts.get(_events.DRAFT_GENERATED, 0),
         "drafts_approved": event_counts.get(_events.DRAFT_APPROVED, 0),
     }
+
+
+# -------------------------------------------------------------- stages
+
+_STAGE_DIR = _os.path.join(
+    _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+    "work", "stage")
+
+
+def _stage_journal(name):
+    """Latest row per key from a staging journal, or None if it is absent."""
+    path = _os.path.join(_STAGE_DIR, name)
+    if not _os.path.exists(path):
+        return None
+    latest = {}
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = _json.loads(line)
+            except ValueError:
+                continue
+            key = row.get("email") or row.get("domain") or len(latest)
+            latest[key] = row
+    return latest
+
+
+def stages():
+    """The 24k track, stage by stage, from the journals the stages wrote.
+
+    OPERATOR, 2026-09-21: "how many leads are being processed" must answer
+    from these, never from campaign queue rows.
+
+    **THREE WORDS THAT ARE NOT SYNONYMS**, and every answer built from this
+    has to keep them apart:
+
+        queue rows   PROVIDER rows - one per message the provider intends
+                     to send. Campaign 352 has 96,045 of them.
+        leads        PEOPLE. One per contact.
+        READY        leads that cleared EVERY gate: client approval, ICP,
+                     MX, two independent verifications, collision, and copy.
+
+    A number that mixes them is worse than no number, because it will be
+    quoted back later as though it meant something.
+    """
+    out = {"read_at": _now_iso()}
+
+    icp = _stage_journal("s3-icp.jsonl")
+    if icp is not None:
+        verdicts = {}
+        for row in icp.values():
+            verdicts[row.get("verdict") or "unknown"] = verdicts.get(
+                row.get("verdict") or "unknown", 0) + 1
+        out["s3_icp_domains"] = {"total": len(icp), "by_verdict": verdicts}
+
+    verify = _stage_journal("s5-verify.jsonl")
+    if verify is not None:
+        states = {}
+        for row in verify.values():
+            states[row.get("state") or "unknown"] = states.get(
+                row.get("state") or "unknown", 0) + 1
+        out["s5_verification_leads"] = {"decided": len(verify),
+                                        "by_state": states}
+
+    copy = _stage_journal("s7-copy.jsonl")
+    if copy is not None:
+        states = {}
+        reasons = {}
+        for row in copy.values():
+            state = row.get("state") or "unknown"
+            states[state] = states.get(state, 0) + 1
+            if state == "held":
+                reason = str(row.get("reason") or "").split(":")[0]
+                reasons[reason] = reasons.get(reason, 0) + 1
+        out["s7_copy_leads"] = {"by_state": states, "held_by_reason": reasons}
+
+    ready = _os.path.join(_STAGE_DIR, "ready.json")
+    if _os.path.exists(ready):
+        try:
+            with open(ready, encoding="utf-8") as handle:
+                rows = _json.load(handle)
+            out["ready_leads"] = len(rows)
+            out["ready_accounts"] = len({str(e).split("@")[-1].lower()
+                                         for e in rows})
+        except Exception as exc:                                # noqa: BLE001
+            out["ready_leads"] = f"READ-ERROR {type(exc).__name__}"
+
+    try:
+        from . import clientapproval as _ca
+        out["client_approval_accounts"] = _ca.counts("productive")
+    except Exception as exc:                                    # noqa: BLE001
+        out["client_approval_accounts"] = f"READ-ERROR {type(exc).__name__}"
+    return out
+
+
+def batch_state():
+    """Where batch 1 stands: staged, stats posted, veto, pushed, enrolled."""
+    out = {"read_at": _now_iso()}
+    try:
+        from . import campaigns as _campaigns, store as _store
+        rows = [r for r in _campaigns.load()
+                if r.get("batch_id") == "batch-1-2026-09-21"]
+        recs = {r.get("id"): r for r in _store.load()}
+        out["campaigns"] = len(rows)
+        out["accounts"] = sum(len(r.get("record_ids") or []) for r in rows)
+        out["leads_enrolled_locally"] = sum(
+            len((recs.get(rid) or {}).get("contacts") or [])
+            for r in rows for rid in r.get("record_ids") or [])
+        out["bound_to_provider"] = [r.get("bison_campaign_id") for r in rows
+                                    if r.get("bison_campaign_id")]
+        out["first_step_capacity_per_day"] = 15 * len(rows)
+        out["pacing_cap_per_campaign"] = 45
+    except Exception as exc:                                    # noqa: BLE001
+        out["_error"] = f"{type(exc).__name__}"
+    try:
+        report = _os.path.join(_os.path.dirname(_STAGE_DIR),
+                               "batch1-push-report.json")
+        if _os.path.exists(report):
+            with open(report, encoding="utf-8") as handle:
+                out["push_report"] = _json.load(handle)
+        else:
+            out["pushed"] = False
+    except Exception as exc:                                    # noqa: BLE001
+        out["push_report"] = f"READ-ERROR {type(exc).__name__}"
+    return out
 
 
 # -------------------------------------------------------------- campaign
