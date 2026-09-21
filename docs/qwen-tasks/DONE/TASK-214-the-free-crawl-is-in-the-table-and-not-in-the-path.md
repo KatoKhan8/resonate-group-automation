@@ -141,3 +141,48 @@ make the leg produce the row, then the test passes on its own terms.
 
 Do not re-derive which of (a)/(b)/(c) it is until you have read
 `FREE-CRAWL-NEVER-RAN-2026-09-16.md` off that branch.
+
+## RESULT BLOCK
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 6b488f9f
+
+**TESTS:** 
+- 8 new tests in tests/test_webfetch_leg.py, all green
+- 64 existing research tests green (test_research_audit, test_research_spend, test_research_ttl)
+- 85 waterfall and enrich tests green
+- Total: 157 tests, all passing
+
+**FILES CHANGED:**
+- `src/research.py` — moved free leg before `if not live` gate, added waterfall recording in _from_the_site_itself()
+- `tests/test_webfetch_leg.py` — new test file, 8 tests
+- `docs/FREE-CRAWL-NEVER-RAN-2026-09-16.md` — analysis document recovered from r45
+- `scripts/task214_free_crawl_proof.py` — proof harness recovered from r45
+
+**FINDINGS:**
+
+1. **Root cause is option (a):** The free leg was gated behind `if not live: return []` in `research.run()`, and `live` was `live and apify.settings(config)["enabled"]`. Since `apify.settings({})["enabled"]` is False by default, `live` was always False for clients without Apify, and the function returned before reaching the free crawl. The free webfetch leg never ran.
+
+2. **Secondary issue is option (c):** Even if the free leg had run, `_from_the_site_itself()` wrote evidence to `rec["research"]` but never called `waterfall.record_step()`. So the ledger had zero webfetch rows, making every cost measurement that read the ledger wrong about the free leg.
+
+3. **The fix:** 
+   - Moved the free leg (call to `_from_the_site_itself`) BEFORE `if not live: return []` in `research.run()`. The free leg now runs whenever there is a stated `reason`, regardless of whether Apify is enabled.
+   - Added `waterfall.record_step()` in `_from_the_site_itself()` when the crawl succeeds, with `stage=company_information`, `provider=webfetch`, `call=webfetch-crawl`, `expected_cost=0`.
+   - The `live` gate now stops only the PAID leg, not the free one.
+
+4. **Test fix:** The recovered tests were failing because `setUp` only cleared the in-memory crawl cache but not the persisted cache, which was leaking state between tests. Added `research._reset_persisted_cache()` to both test class setUp methods. All 8 tests now pass.
+
+5. **Chain from crawl to consumer:** The chain is complete and correct. `webfetch.research(domain, config)` returns pages with `source_url`, `field`, `fact`, `provider: local_http`, `content_hash`, `http_status`, `chars`. `_from_the_site_itself()` transforms this into evidence rows with `record_id`, `retrieved_at` added. Evidence is appended to `rec["research"]`. Downstream consumers read `rec["research"]`: `segments.text_of(rec)`, `research.for_prompt(rec)`, `evidence.select()`, and `icpstructural`. The shape is correct.
+
+6. **Cost conclusions affected:** Every cost measurement that read the waterfall ledger to say what evidence cost was wrong about the free leg. The ledger said "webfetch: 0 rows, 0 cost" and concluded the free crawl was not being used. The truth is the free crawl was not even being attempted (option a), and even if it had been, it would have written no ledger row (option c). Affected documents: any document that read the waterfall ledger to measure free vs paid evidence costs. `docs/FREE-CRAWL-NEVER-RAN-2026-09-16.md` names them but does not change them, per the task instructions.
+
+**RISKS:**
+- The free crawl makes real HTTP requests to real prospect websites. All existing bounds (pages, bytes, redirects, timeout) are respected and were not changed.
+- The free crawl adds prose evidence (company website, about pages, team pages) but not structured evidence (industry, offices, employees). Records missing structured data still need ContactOut company-info (1 credit) to reach an ICP verdict.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Review the fix in `src/research.py`
+2. Run the free-leg pipeline from Claude's worktree: `py -3 -m src.generate --cap 0`
+3. The free crawl will now run and write waterfall rows, improving copy quality for all records
+4. Records missing structured data (industry/offices/employees) still need ContactOut company-info to reach ICP verdicts

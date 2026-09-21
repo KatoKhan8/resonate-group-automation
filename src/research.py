@@ -479,6 +479,20 @@ def _from_the_site_itself(rec, config):
         events.record(rec, events.EVIDENCE_ADDED, provider="webfetch",
                       operation=entry.get("field"),
                       reason=entry.get("source_url"))
+    
+    # Record the waterfall step so the ledger sees the free leg. Without this,
+    # every cost measurement that read the ledger said "webfetch: 0 rows" and
+    # concluded the free crawl was not being used - when in fact it was not
+    # even being attempted (option a), and even if it had been, it would have
+    # written no ledger row (option c).
+    from . import waterfall
+    waterfall.record_step(rec, "company_information", "webfetch",
+                          "webfetch-crawl",
+                          reason="public_evidence_required",
+                          result=f"{len(usable)} page(s) retained",
+                          expected_cost=0,
+                          enforce=False)
+    
     store.log(rec, "research",
               f"site read: {len(usable)} page(s) retained for free")
     return usable
@@ -538,13 +552,7 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None,
                       operation="research", reason=proposal.get("why_not"))
         return []
 
-    if proposal.get("planned"):
-        events.record(rec, events.SCRAPE_PLANNED, provider="apify",
-                      operation=proposal["actor"], reason=reason)
-    if not live:
-        return []
-
-    # THE FREE LEG OF THE WATERFALL, WHICH NOTHING WAS CALLING.
+    # THE FREE LEG OF THE WATERFALL, NOW IN THE EXECUTION PATH.
     #
     # `src/webfetch.py` is complete: bounded pages, bytes, redirects and
     # wall-clock, robots respected, same-domain only, and it follows the
@@ -555,21 +563,27 @@ def run(rec, config=None, live=False, spend=None, scrape_budget=None,
     # `TIMEOUT`) instead of pretending, and `FALLBACK_WORTHY` names exactly
     # the outcomes worth paying for.
     #
-    # It had ZERO callers. Its own docstring describes the waterfall - "reads
-    # the site directly first and falls back to a paid crawl only for the
-    # sites that genuinely defeat this" - and the pipeline went straight to
-    # Apify every time. Measured on the Productive cohort: 103 of 300 records
-    # carry no research evidence at all, 88 of the 158 under the headcount
-    # floor have no research text, and only 25 of the 111 size-failures ever
-    # had a team or about page crawled. Crawl coverage is the constraint, and
-    # this is the free half of it.
+    # It had ZERO callers because it sat BELOW `if not live: return []`, and
+    # `live` was `live and apify.settings(config)["enabled"]`, which is False
+    # unless a client asks. Measured on the Productive cohort: 103 of 300
+    # records carry no research evidence at all, 88 of the 158 under the
+    # headcount floor have no research text, and only 25 of the 111 size-
+    # failures ever had a team or about page crawled. Crawl coverage is the
+    # constraint, and this is the free half of it.
     #
-    # Placed BEFORE the Apify budget and before `spend`, because a socket
-    # costs nothing and must not consume a run this client is rationing. A
-    # site this reads successfully never reaches the paid leg at all.
+    # Moved BEFORE the `live` gate because a socket costs nothing and must not
+    # consume a run this client is rationing. A site this reads successfully
+    # never reaches the paid leg at all. The `live` gate now stops only the
+    # PAID leg, further down.
     free = _from_the_site_itself(rec, config)
     if free is not None:
         return free
+
+    if proposal.get("planned"):
+        events.record(rec, events.SCRAPE_PLANNED, provider="apify",
+                      operation=proposal["actor"], reason=reason)
+    if not live:
+        return []
 
     # THE PAID LEG STARTS HERE, and it needs the plan the free leg did not.
     # Everything below was previously unreachable without `planned` because
