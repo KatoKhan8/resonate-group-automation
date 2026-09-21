@@ -1,63 +1,294 @@
 # Productive's LinkedIn cadences, read from HeyReach
 
-Read 2026-09-21T19:54:59Z. READ-ONLY survey; nothing was cloned or created.
+Read 2026-09-21T21:33:17Z. READ-ONLY survey; nothing was cloned or created.
 
 ## The campaigns
 
     id       status       seats  steps  name
 
-    605732   IN_PROGRESS      1      3  RESONATE - PRODUCTIVE LINKEDIN COHORT V2 - CONTROL
-    605487   DRAFT            1      3  RESONATE - PRODUCTIVE LINKEDIN COHORT V1 - CONTROL
-    604869   DRAFT            1      3  RESONATE - PRODUCTIVE LINKEDIN CANARY - CONTROL
-    599020   FINISHED         1      3  RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1
-    594061   PAUSED           1      2  PRODUCTIVE - CANARY - 2026-09-09
+    613761   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 174845
+    613757   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 212356
+    613756   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 208253
+    613755   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 208242
+    613754   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 201978
+    613753   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 201959
+    613752   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 191848
+    613751   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 181658
+    613750   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 181653
+    613749   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 179527
+    613748   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 177751
+    613747   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 175552
+    613746   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 175455
+    613744   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 174892
+    613742   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 174822
+    613741   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 174810
+    613740   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 174803
+    613739   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 174797
+    613738   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 174748
+    613737   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 174742
+    613736   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 174332
+    613735   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 169600
+    613734   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 159259
+    613733   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 143105
+    613732   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 139699
+    613731   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 129082
+    613730   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 125775
+    613729   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 125748
+    613728   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 119588
+    613727   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 116989
+    613726   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 116988
+    613725   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 116973
+    613724   DRAFT            1      ?  RESONATE PRODUCTIVE LI B1 SEAT 116968
+    605732   IN_PROGRESS      1     24  RESONATE - PRODUCTIVE LINKEDIN COHORT V2 - CONTROL
+    605487   DRAFT            1     24  RESONATE - PRODUCTIVE LINKEDIN COHORT V1 - CONTROL
+    604869   DRAFT            1     24  RESONATE - PRODUCTIVE LINKEDIN CANARY - CONTROL
+    599020   FINISHED         1     24  RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1
+    594061   PAUSED           1      3  PRODUCTIVE - CANARY - 2026-09-09
     594060   DRAFT            0      ?  PRODUCTIVE - CANARY - 2026-09-09
     594057   DRAFT            0      ?  PRODUCTIVE - CANARY - 2026-09-09
-    583549   DRAFT           10      3  INTERESTED - Bison - Jelena - September 3
-    583536   DRAFT           10      3  INTERESTED - Heyreach - Jelena - September 3
-    583490   DRAFT           10      3  MAYBE - Heyreach - Jelena - September 3
-    567758   FINISHED         1      3  PRODUCTIVE - ANA L CONNECTIONS - MARKETING AGENCIES 
-    567754   FINISHED         1      3  PRODUCTIVE - ANITA S CONNECTIONS - MARKETING AGENCIE
-    567752   FINISHED         1      3  PRODUCTIVE - BOJAN S CONNECTIONS - MARKETING AGENCIE
-    567750   FINISHED         1      3  PRODUCTIVE - DEAN B CONNECTIONS - MARKETING AGENCIES
-    567747   FINISHED         1      3  PRODUCTIVE - DJORDJE J CONNECTIONS - MARKETING AGENC
-    567745   FINISHED         1      3  PRODUCTIVE - DOROTA P CONNECTIONS - MARKETING AGENCI
-    567743   FINISHED         1      3  PRODUCTIVE - IVAN M CONNECTIONS - MARKETING AGENCIES
-    567738   FINISHED         1      3  PRODUCTIVE - JELENA I CONNECTIONS - MARKETING AGENCI
-    567736   FINISHED         1      3  PRODUCTIVE - JELENA M CONNECTIONS - MARKETING AGENCI
-    567733   FINISHED         1      3  PRODUCTIVE - JOVANA K CONNECTIONS - MARKETING AGENCI
-    567730   FINISHED         1      3  PRODUCTIVE - KATARINA K CONNECTIONS - MARKETING AGEN
-    567727   FINISHED         1      3  PRODUCTIVE - LAZAR L CONNECTIONS - MARKETING AGENCIE
-    567721   FINISHED         1      3  PRODUCTIVE - LUCIJA BILIC CONNECTIONS - MARKETING AG
-    567715   FINISHED         1      3  PRODUCTIVE - LUCIJA BAKIC CONNECTIONS - MARKETING AG
-    567708   FINISHED         1      3  PRODUCTIVE - LUKA N CONNECTIONS - MARKETING AGENCIES
-    567703   FINISHED         1      3  PRODUCTIVE - MARINA I CONNECTIONS - MARKETING AGENCI
-    567701   FINISHED         1      3  PRODUCTIVE - MARKO D CONNECTIONS - MARKETING AGENCIE
-    567698   FINISHED         1      3  PRODUCTIVE - MIHOVIL CONNECTIONS - MARKETING AGENCIE
-    567693   FINISHED         1      3  PRODUCTIVE - MILAN B CONNECTIONS - MARKETING AGENCIE
-    567689   FINISHED         1      3  PRODUCTIVE - MARTINA H CONNECTIONS - MARKETING AGENC
-    567683   FINISHED         1      3  PRODUCTIVE - MINA R CONNECTIONS - MARKETING AGENCIES
-    567681   FINISHED         1      3  PRODUCTIVE - SNJEZANA M CONNECTIONS - MARKETING AGEN
-    567677   FINISHED         1      3  PRODUCTIVE - VLADIMIR H CONNECTIONS - MARKETING AGEN
-    565765   IN_PROGRESS     33      3  PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 
-    565223   FINISHED         1      3  PRODUCTIVE - MARKO CONNECTIONS - MARKETING AGENCIES 
-    565211   FINISHED         1      3  PRODUCTIVE - LUKA CONNECTIONS - MARKETING AGENCIES -
-    565198   FINISHED         1      3  PRODUCTIVE - KRESIMIR CONNECTIONS - MARKETING AGENCI
-    565196   FINISHED         1      3  PRODUCTIVE - JAKOV CONNECTIONS - MARKETING AGENCIES 
-    565195   FINISHED         1      3  PRODUCTIVE - FRAN CONNECTIONS - MARKETING AGENCIES -
-    565193   FINISHED         1      3  PRODUCTIVE - BRUNO CONNECTIONS - MARKETING AGENCIES 
-    565187   FINISHED         1      3  PRODUCTIVE - BOJAN R CONNECTIONS - MARKETING AGENCIE
-    562830   FINISHED         1      3  PRODUCTIVE - BERNARDA CONNECTIONS - MARKETING AGENCI
-    524026   DRAFT           33      1  FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST
-    524013   IN_PROGRESS     10      3  FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - 
-    524002   IN_PROGRESS     33      1  FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - 
-    524000   IN_PROGRESS     10      1  FIXED - PRODUCTIVE - MARKETING AGENCIES INMAIL- EU -
-    523997   IN_PROGRESS     33      3  FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS 
-    523993   IN_PROGRESS     33      3  FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS 
-    523987   IN_PROGRESS     34      3  FIXED - OMEGA 
-    523983   IN_PROGRESS     33      1  FIXED - OMEGA 2
+    583549   DRAFT           10     20  INTERESTED - Bison - Jelena - September 3
+    583536   DRAFT           10     20  INTERESTED - Heyreach - Jelena - September 3
+    583490   DRAFT           10     20  MAYBE - Heyreach - Jelena - September 3
+    567758   FINISHED         1      9  PRODUCTIVE - ANA L CONNECTIONS - MARKETING AGENCIES 
+    567754   FINISHED         1      9  PRODUCTIVE - ANITA S CONNECTIONS - MARKETING AGENCIE
+    567752   FINISHED         1      9  PRODUCTIVE - BOJAN S CONNECTIONS - MARKETING AGENCIE
+    567750   FINISHED         1      9  PRODUCTIVE - DEAN B CONNECTIONS - MARKETING AGENCIES
+    567747   FINISHED         1      9  PRODUCTIVE - DJORDJE J CONNECTIONS - MARKETING AGENC
+    567745   FINISHED         1      9  PRODUCTIVE - DOROTA P CONNECTIONS - MARKETING AGENCI
+    567743   FINISHED         1      9  PRODUCTIVE - IVAN M CONNECTIONS - MARKETING AGENCIES
 
 ## Per campaign
+
+### 613761 - RESONATE PRODUCTIVE LI B1 SEAT 174845
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613757 - RESONATE PRODUCTIVE LI B1 SEAT 212356
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613756 - RESONATE PRODUCTIVE LI B1 SEAT 208253
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613755 - RESONATE PRODUCTIVE LI B1 SEAT 208242
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613754 - RESONATE PRODUCTIVE LI B1 SEAT 201978
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613753 - RESONATE PRODUCTIVE LI B1 SEAT 201959
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613752 - RESONATE PRODUCTIVE LI B1 SEAT 191848
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613751 - RESONATE PRODUCTIVE LI B1 SEAT 181658
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613750 - RESONATE PRODUCTIVE LI B1 SEAT 181653
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613749 - RESONATE PRODUCTIVE LI B1 SEAT 179527
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613748 - RESONATE PRODUCTIVE LI B1 SEAT 177751
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613747 - RESONATE PRODUCTIVE LI B1 SEAT 175552
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613746 - RESONATE PRODUCTIVE LI B1 SEAT 175455
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613744 - RESONATE PRODUCTIVE LI B1 SEAT 174892
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613742 - RESONATE PRODUCTIVE LI B1 SEAT 174822
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613741 - RESONATE PRODUCTIVE LI B1 SEAT 174810
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613740 - RESONATE PRODUCTIVE LI B1 SEAT 174803
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613739 - RESONATE PRODUCTIVE LI B1 SEAT 174797
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613738 - RESONATE PRODUCTIVE LI B1 SEAT 174748
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613737 - RESONATE PRODUCTIVE LI B1 SEAT 174742
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613736 - RESONATE PRODUCTIVE LI B1 SEAT 174332
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613735 - RESONATE PRODUCTIVE LI B1 SEAT 169600
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613734 - RESONATE PRODUCTIVE LI B1 SEAT 159259
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613733 - RESONATE PRODUCTIVE LI B1 SEAT 143105
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613732 - RESONATE PRODUCTIVE LI B1 SEAT 139699
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613731 - RESONATE PRODUCTIVE LI B1 SEAT 129082
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613730 - RESONATE PRODUCTIVE LI B1 SEAT 125775
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613729 - RESONATE PRODUCTIVE LI B1 SEAT 125748
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613728 - RESONATE PRODUCTIVE LI B1 SEAT 119588
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613727 - RESONATE PRODUCTIVE LI B1 SEAT 116989
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613726 - RESONATE PRODUCTIVE LI B1 SEAT 116988
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613725 - RESONATE PRODUCTIVE LI B1 SEAT 116973
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
+
+### 613724 - RESONATE PRODUCTIVE LI B1 SEAT 116968
+
+- status `DRAFT`, 1 seat(s)
+- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
+- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
+- sequence: ProviderError: heyreach /campaign/GetCampaignSequence: unexpected response shape
 
 ### 605732 - RESONATE - PRODUCTIVE LINKEDIN COHORT V2 - CONTROL
 
@@ -65,13 +296,49 @@ Read 2026-09-21T19:54:59Z. READ-ONLY survey; nothing was cloned or created.
 - requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
 
-Graph: 3 node(s)
+Graph: 24 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
          variant 1:
            | {connected_1}
         3. END   delay 0 HOUR   [if the previous step's condition is met]
+      4. MESSAGE   delay 3 DAY   [otherwise]
+         variant 1:
+           | {connected_2}
+        5. END   delay 0 HOUR   [if the previous step's condition is met]
+      6. VIEW_PROFILE   delay 2 DAY   [otherwise]
+      7. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | {connected_3}
+        8. END   delay 0 HOUR   [if the previous step's condition is met]
+      9. MESSAGE   delay 7 DAY   [otherwise]
+         variant 1:
+           | {connected_4}
+        10. END   delay 0 HOUR   [if the previous step's condition is met]
+      11. END   delay 3 HOUR   [otherwise]
+    12. VIEW_PROFILE   delay 3 HOUR   [otherwise]
+    13. FOLLOW   delay 3 HOUR   [otherwise]
+    14. CONNECTION_REQUEST   delay 1 DAY   [otherwise]
+       variant 1:
+         | {connection_note}
+       withdraw after 21 days
+      15. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
+         variant 1:
+           | {message_2}
+        16. END   delay 0 HOUR   [if the previous step's condition is met]
+      17. VIEW_PROFILE   delay 3 DAY   [otherwise]
+      18. MESSAGE   delay 2 DAY   [otherwise]
+         variant 1:
+           | {message_3}
+        19. END   delay 0 HOUR   [if the previous step's condition is met]
+      20. MESSAGE   delay 7 DAY   [otherwise]
+         variant 1:
+           | {message_4}
+        21. END   delay 0 HOUR   [if the previous step's condition is met]
+      22. END   delay 3 HOUR   [otherwise]
+    23. VIEW_PROFILE   delay 5 DAY   [otherwise]
+    24. END   delay 3 HOUR   [otherwise]
 
 ### 605487 - RESONATE - PRODUCTIVE LINKEDIN COHORT V1 - CONTROL
 
@@ -79,13 +346,49 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
 
-Graph: 3 node(s)
+Graph: 24 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
          variant 1:
            | {connected_1}
         3. END   delay 0 HOUR   [if the previous step's condition is met]
+      4. MESSAGE   delay 3 DAY   [otherwise]
+         variant 1:
+           | {connected_2}
+        5. END   delay 0 HOUR   [if the previous step's condition is met]
+      6. VIEW_PROFILE   delay 2 DAY   [otherwise]
+      7. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | {connected_3}
+        8. END   delay 0 HOUR   [if the previous step's condition is met]
+      9. MESSAGE   delay 7 DAY   [otherwise]
+         variant 1:
+           | {connected_4}
+        10. END   delay 0 HOUR   [if the previous step's condition is met]
+      11. END   delay 3 HOUR   [otherwise]
+    12. VIEW_PROFILE   delay 3 HOUR   [otherwise]
+    13. FOLLOW   delay 3 HOUR   [otherwise]
+    14. CONNECTION_REQUEST   delay 1 DAY   [otherwise]
+       variant 1:
+         | {connection_note}
+       withdraw after 21 days
+      15. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
+         variant 1:
+           | {message_2}
+        16. END   delay 0 HOUR   [if the previous step's condition is met]
+      17. VIEW_PROFILE   delay 3 DAY   [otherwise]
+      18. MESSAGE   delay 2 DAY   [otherwise]
+         variant 1:
+           | {message_3}
+        19. END   delay 0 HOUR   [if the previous step's condition is met]
+      20. MESSAGE   delay 7 DAY   [otherwise]
+         variant 1:
+           | {message_4}
+        21. END   delay 0 HOUR   [if the previous step's condition is met]
+      22. END   delay 3 HOUR   [otherwise]
+    23. VIEW_PROFILE   delay 5 DAY   [otherwise]
+    24. END   delay 3 HOUR   [otherwise]
 
 ### 604869 - RESONATE - PRODUCTIVE LINKEDIN CANARY - CONTROL
 
@@ -93,13 +396,49 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
 
-Graph: 3 node(s)
+Graph: 24 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
          variant 1:
            | {connected_1}
         3. END   delay 0 HOUR   [if the previous step's condition is met]
+      4. MESSAGE   delay 3 DAY   [otherwise]
+         variant 1:
+           | {connected_2}
+        5. END   delay 0 HOUR   [if the previous step's condition is met]
+      6. VIEW_PROFILE   delay 2 DAY   [otherwise]
+      7. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | {connected_3}
+        8. END   delay 0 HOUR   [if the previous step's condition is met]
+      9. MESSAGE   delay 7 DAY   [otherwise]
+         variant 1:
+           | {connected_4}
+        10. END   delay 0 HOUR   [if the previous step's condition is met]
+      11. END   delay 3 HOUR   [otherwise]
+    12. VIEW_PROFILE   delay 3 HOUR   [otherwise]
+    13. FOLLOW   delay 3 HOUR   [otherwise]
+    14. CONNECTION_REQUEST   delay 1 DAY   [otherwise]
+       variant 1:
+         | {connection_note}
+       withdraw after 21 days
+      15. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
+         variant 1:
+           | {message_2}
+        16. END   delay 0 HOUR   [if the previous step's condition is met]
+      17. VIEW_PROFILE   delay 3 DAY   [otherwise]
+      18. MESSAGE   delay 2 DAY   [otherwise]
+         variant 1:
+           | {message_3}
+        19. END   delay 0 HOUR   [if the previous step's condition is met]
+      20. MESSAGE   delay 7 DAY   [otherwise]
+         variant 1:
+           | {message_4}
+        21. END   delay 0 HOUR   [if the previous step's condition is met]
+      22. END   delay 3 HOUR   [otherwise]
+    23. VIEW_PROFILE   delay 5 DAY   [otherwise]
+    24. END   delay 3 HOUR   [otherwise]
 
 ### 599020 - RESONATE - PRODUCTIVE LINKEDIN PRODUCTION V1
 
@@ -107,13 +446,49 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
 
-Graph: 3 node(s)
+Graph: 24 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
          variant 1:
            | {connected_1}
         3. END   delay 0 HOUR   [if the previous step's condition is met]
+      4. MESSAGE   delay 3 DAY   [otherwise]
+         variant 1:
+           | {connected_2}
+        5. END   delay 0 HOUR   [if the previous step's condition is met]
+      6. VIEW_PROFILE   delay 2 DAY   [otherwise]
+      7. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | {connected_3}
+        8. END   delay 0 HOUR   [if the previous step's condition is met]
+      9. MESSAGE   delay 7 DAY   [otherwise]
+         variant 1:
+           | {connected_4}
+        10. END   delay 0 HOUR   [if the previous step's condition is met]
+      11. END   delay 3 HOUR   [otherwise]
+    12. VIEW_PROFILE   delay 3 HOUR   [otherwise]
+    13. FOLLOW   delay 3 HOUR   [otherwise]
+    14. CONNECTION_REQUEST   delay 1 DAY   [otherwise]
+       variant 1:
+         | {connection_note}
+       withdraw after 21 days
+      15. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
+         variant 1:
+           | {message_2}
+        16. END   delay 0 HOUR   [if the previous step's condition is met]
+      17. VIEW_PROFILE   delay 3 DAY   [otherwise]
+      18. MESSAGE   delay 2 DAY   [otherwise]
+         variant 1:
+           | {message_3}
+        19. END   delay 0 HOUR   [if the previous step's condition is met]
+      20. MESSAGE   delay 7 DAY   [otherwise]
+         variant 1:
+           | {message_4}
+        21. END   delay 0 HOUR   [if the previous step's condition is met]
+      22. END   delay 3 HOUR   [otherwise]
+    23. VIEW_PROFILE   delay 5 DAY   [otherwise]
+    24. END   delay 3 HOUR   [otherwise]
 
 ### 594061 - PRODUCTIVE - CANARY - 2026-09-09
 
@@ -121,13 +496,14 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
 
-Graph: 2 node(s)
+Graph: 3 node(s)
 
     1. CONNECTION_REQUEST   delay 0 HOUR
        variant 1:
          | hi Brooke, i work with Design Services teams on utilisation. curious how Nineyards handles it at your size. ha
        withdraw after 21 days
       2. END   delay 1 DAY   [if the previous step's condition is met]
+    3. END   delay 5 DAY   [otherwise]
 
 ### 594060 - PRODUCTIVE - CANARY - 2026-09-09
 
@@ -149,13 +525,45 @@ Graph: 2 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
 
-Graph: 3 node(s)
+Graph: 20 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
          variant 1:
            | Hi {FIRST_NAME}, a colleague of mine was in touch with you over email a while back about Productive, and then 
         3. END   delay 1 DAY   [if the previous step's condition is met]
+      4. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Would you like me to show you around, or would it be easier if I sent a few materials over first so you can ta
+           | 
+           | Or let me know if you'd like for me to stop here.
+         variant 2:
+           | for context in case it's useful, Productive's basically a way to stop juggling separate tools for projects, ti
+        5. END   delay 1 DAY   [if the previous step's condition is met]
+      6. SEND_LEAD_TO_BISON   delay 5 DAY   [otherwise]
+      7. END   delay 0 HOUR   [otherwise]
+    8. FOLLOW   delay 3 HOUR   [otherwise]
+    9. CONNECTION_REQUEST   delay 3 HOUR   [otherwise]
+       withdraw after 21 days
+      10. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
+         variant 1:
+           | Hi {FIRST_NAME}, a colleague of mine was in touch with you over email a while back about Productive, and then 
+        11. END   delay 1 DAY   [if the previous step's condition is met]
+      12. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Would you like me to show you around, or would it be easier if I sent a few materials over first so you can ta
+           | 
+           | Or let me know if you'd like for me to stop here.
+        13. END   delay 1 DAY   [if the previous step's condition is met]
+      14. SEND_LEAD_TO_BISON   delay 5 DAY   [otherwise]
+      15. END   delay 0 HOUR   [otherwise]
+    16. VIEW_PROFILE   delay 5 DAY   [otherwise]
+    17. INMAIL   delay 2 DAY   [otherwise]
+       variant 1:
+         | {'subject': 'worth revisiting?', 'message': "Hi {FIRST_NAME}, a colleague of mine was in touch with you over e
+      18. END   delay 5 DAY   [if the previous step's condition is met]
+    19. SEND_LEAD_TO_BISON   delay 5 DAY   [otherwise]
+    20. END   delay 0 HOUR   [otherwise]
 
 ### 583536 - INTERESTED - Heyreach - Jelena - September 3
 
@@ -163,13 +571,45 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
 
-Graph: 3 node(s)
+Graph: 20 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
          variant 1:
            | Hi {FIRST_NAME}, a colleague of mine was talking with you a while back about Productive, and then it went quie
         3. END   delay 1 DAY   [if the previous step's condition is met]
+      4. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Would you like me to show you around, or would it be easier if I sent a few materials over first so you can ta
+           | 
+           | Or let me know if you'd like for me to stop here.
+         variant 2:
+           | for context in case it's useful, Productive's basically a way to stop juggling separate tools for projects, ti
+        5. END   delay 1 DAY   [if the previous step's condition is met]
+      6. SEND_LEAD_TO_BISON   delay 5 DAY   [otherwise]
+      7. END   delay 0 HOUR   [otherwise]
+    8. FOLLOW   delay 3 HOUR   [otherwise]
+    9. CONNECTION_REQUEST   delay 3 HOUR   [otherwise]
+       withdraw after 21 days
+      10. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
+         variant 1:
+           | Hi {FIRST_NAME}, a colleague of mine was talking with you a while back about Productive, and then it went quie
+        11. END   delay 1 DAY   [if the previous step's condition is met]
+      12. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Would you like me to show you around, or would it be easier if I sent a few materials over first so you can ta
+           | 
+           | Or let me know if you'd like for me to stop here.
+        13. END   delay 1 DAY   [if the previous step's condition is met]
+      14. SEND_LEAD_TO_BISON   delay 5 DAY   [otherwise]
+      15. END   delay 0 HOUR   [otherwise]
+    16. VIEW_PROFILE   delay 5 DAY   [otherwise]
+    17. INMAIL   delay 2 DAY   [otherwise]
+       variant 1:
+         | {'subject': 'worth revisiting?', 'message': 'Hi {FIRST_NAME}, a colleague of mine was talking with you a while
+      18. END   delay 5 DAY   [if the previous step's condition is met]
+    19. SEND_LEAD_TO_BISON   delay 5 DAY   [otherwise]
+    20. END   delay 0 HOUR   [otherwise]
 
 ### 583490 - MAYBE - Heyreach - Jelena - September 3
 
@@ -177,7 +617,7 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
 
-Graph: 3 node(s)
+Graph: 20 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
@@ -186,6 +626,38 @@ Graph: 3 node(s)
          variant 2:
            | Hi {FIRST_NAME}, a colleague reached out to you a while ago about Productive. I wanted to check back in myself
         3. END   delay 1 DAY   [if the previous step's condition is met]
+      4. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | figured I'd give a bit more context in case you can't remember what it was about. Productive brings project ma
+         variant 2:
+           | for context in case it's useful, Productive's basically a way to stop juggling separate tools for projects, ti
+        5. END   delay 1 DAY   [if the previous step's condition is met]
+      6. SEND_LEAD_TO_BISON   delay 5 DAY   [otherwise]
+      7. END   delay 0 HOUR   [otherwise]
+    8. FOLLOW   delay 3 HOUR   [otherwise]
+    9. CONNECTION_REQUEST   delay 3 HOUR   [otherwise]
+       withdraw after 21 days
+      10. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
+         variant 1:
+           | hey {FIRST_NAME}, a colleague of mine reached out a while back about Productive, might not have been the right
+         variant 2:
+           | Hi {FIRST_NAME}, a colleague reached out to you a while ago about Productive. I wanted to check back in myself
+        11. END   delay 1 DAY   [if the previous step's condition is met]
+      12. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | figured I'd give a bit more context in case you can't remember what it was about. Productive brings project ma
+         variant 2:
+           | for context in case it's useful, Productive's basically a way to stop juggling separate tools for projects, ti
+        13. END   delay 1 DAY   [if the previous step's condition is met]
+      14. SEND_LEAD_TO_BISON   delay 5 DAY   [otherwise]
+      15. END   delay 0 HOUR   [otherwise]
+    16. VIEW_PROFILE   delay 5 DAY   [otherwise]
+    17. INMAIL   delay 2 DAY   [otherwise]
+       variant 1:
+         | {'subject': 'worth revisiting?', 'message': "Hi {FIRST_NAME}, a colleague of mine reached out a while back abo
+      18. END   delay 5 DAY   [if the previous step's condition is met]
+    19. SEND_LEAD_TO_BISON   delay 5 DAY   [otherwise]
+    20. END   delay 0 HOUR   [otherwise]
 
 ### 567758 - PRODUCTIVE - ANA L CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
 
@@ -193,7 +665,7 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 2 (n/a of ACCEPTED, 8.3% of contacted), contacted 24
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 2, "uniqueLeadsContacted": 24}`
 
-Graph: 3 node(s)
+Graph: 9 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
@@ -212,6 +684,28 @@ Graph: 3 node(s)
          variant 4:
            | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
         3. END   delay 1 DAY   [if the previous step's condition is met]
+      4. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Here's the actual reason I think it's worth your time, {FIRST_NAME}. Some agencies are still stitching togethe
+         variant 2:
+           | {FIRST_NAME}, not sure my last message actually landed, so trying again. No pressure either way on the 20 minu
+           | 
+           | Would you like me to share more?
+         variant 3:
+           | Hi {FIRST_NAME}, one thing I keep hearing from {POSITION} roles in your industry is that profitability visibil
+           | 
+           | Want to take a look?
+        5. END   delay 1 DAY   [if the previous step's condition is met]
+      6. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Should I take this as a no for now, {FIRST_NAME}, or keep it on your radar?
+         variant 2:
+           | Yes to 20 minutes at some point, {FIRST_NAME}, or should I stop reaching out?
+         variant 3:
+           | Still worth 20 minutes, {FIRST_NAME}, or should I leave it for now?
+        7. END   delay 1 DAY   [if the previous step's condition is met]
+      8. END   delay 1 DAY   [otherwise]
+    9. END   delay 1 DAY   [otherwise]
 
 ### 567754 - PRODUCTIVE - ANITA S CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
 
@@ -219,7 +713,7 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 1 (n/a of ACCEPTED, 3.8% of contacted), contacted 26
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 1, "uniqueLeadsContacted": 26}`
 
-Graph: 3 node(s)
+Graph: 9 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
@@ -238,6 +732,28 @@ Graph: 3 node(s)
          variant 4:
            | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
         3. END   delay 1 DAY   [if the previous step's condition is met]
+      4. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Here's the actual reason I think it's worth your time, {FIRST_NAME}. Some agencies are still stitching togethe
+         variant 2:
+           | {FIRST_NAME}, not sure my last message actually landed, so trying again. No pressure either way on the 20 minu
+           | 
+           | Would you like me to share more?
+         variant 3:
+           | Hi {FIRST_NAME}, one thing I keep hearing from {POSITION} roles in your industry is that profitability visibil
+           | 
+           | Want to take a look?
+        5. END   delay 1 DAY   [if the previous step's condition is met]
+      6. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Should I take this as a no for now, {FIRST_NAME}, or keep it on your radar?
+         variant 2:
+           | Yes to 20 minutes at some point, {FIRST_NAME}, or should I stop reaching out?
+         variant 3:
+           | Still worth 20 minutes, {FIRST_NAME}, or should I leave it for now?
+        7. END   delay 1 DAY   [if the previous step's condition is met]
+      8. END   delay 1 DAY   [otherwise]
+    9. END   delay 1 DAY   [otherwise]
 
 ### 567752 - PRODUCTIVE - BOJAN S CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
 
@@ -245,7 +761,7 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 1 (n/a of ACCEPTED, 4.0% of contacted), contacted 25
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 1, "uniqueLeadsContacted": 25}`
 
-Graph: 3 node(s)
+Graph: 9 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
@@ -264,6 +780,28 @@ Graph: 3 node(s)
          variant 4:
            | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
         3. END   delay 1 DAY   [if the previous step's condition is met]
+      4. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Here's the actual reason I think it's worth your time, {FIRST_NAME}. Some agencies are still stitching togethe
+         variant 2:
+           | {FIRST_NAME}, not sure my last message actually landed, so trying again. No pressure either way on the 20 minu
+           | 
+           | Would you like me to share more?
+         variant 3:
+           | Hi {FIRST_NAME}, one thing I keep hearing from {POSITION} roles in your industry is that profitability visibil
+           | 
+           | Want to take a look?
+        5. END   delay 1 DAY   [if the previous step's condition is met]
+      6. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Should I take this as a no for now, {FIRST_NAME}, or keep it on your radar?
+         variant 2:
+           | Yes to 20 minutes at some point, {FIRST_NAME}, or should I stop reaching out?
+         variant 3:
+           | Still worth 20 minutes, {FIRST_NAME}, or should I leave it for now?
+        7. END   delay 1 DAY   [if the previous step's condition is met]
+      8. END   delay 1 DAY   [otherwise]
+    9. END   delay 1 DAY   [otherwise]
 
 ### 567750 - PRODUCTIVE - DEAN B CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
 
@@ -271,7 +809,7 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 2 (n/a of ACCEPTED, 14.3% of contacted), contacted 14
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 2, "uniqueLeadsContacted": 14}`
 
-Graph: 3 node(s)
+Graph: 9 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
@@ -290,6 +828,28 @@ Graph: 3 node(s)
          variant 4:
            | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
         3. END   delay 1 DAY   [if the previous step's condition is met]
+      4. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Here's the actual reason I think it's worth your time, {FIRST_NAME}. Some agencies are still stitching togethe
+         variant 2:
+           | {FIRST_NAME}, not sure my last message actually landed, so trying again. No pressure either way on the 20 minu
+           | 
+           | Would you like me to share more?
+         variant 3:
+           | Hi {FIRST_NAME}, one thing I keep hearing from {POSITION} roles in your industry is that profitability visibil
+           | 
+           | Want to take a look?
+        5. END   delay 1 DAY   [if the previous step's condition is met]
+      6. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Should I take this as a no for now, {FIRST_NAME}, or keep it on your radar?
+         variant 2:
+           | Yes to 20 minutes at some point, {FIRST_NAME}, or should I stop reaching out?
+         variant 3:
+           | Still worth 20 minutes, {FIRST_NAME}, or should I leave it for now?
+        7. END   delay 1 DAY   [if the previous step's condition is met]
+      8. END   delay 1 DAY   [otherwise]
+    9. END   delay 1 DAY   [otherwise]
 
 ### 567747 - PRODUCTIVE - DJORDJE J CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
 
@@ -297,7 +857,7 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 1 (n/a of ACCEPTED, 4.3% of contacted), contacted 23
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 1, "uniqueLeadsContacted": 23}`
 
-Graph: 3 node(s)
+Graph: 9 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
@@ -316,6 +876,28 @@ Graph: 3 node(s)
          variant 4:
            | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
         3. END   delay 1 DAY   [if the previous step's condition is met]
+      4. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Here's the actual reason I think it's worth your time, {FIRST_NAME}. Some agencies are still stitching togethe
+         variant 2:
+           | {FIRST_NAME}, not sure my last message actually landed, so trying again. No pressure either way on the 20 minu
+           | 
+           | Would you like me to share more?
+         variant 3:
+           | Hi {FIRST_NAME}, one thing I keep hearing from {POSITION} roles in your industry is that profitability visibil
+           | 
+           | Want to take a look?
+        5. END   delay 1 DAY   [if the previous step's condition is met]
+      6. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Should I take this as a no for now, {FIRST_NAME}, or keep it on your radar?
+         variant 2:
+           | Yes to 20 minutes at some point, {FIRST_NAME}, or should I stop reaching out?
+         variant 3:
+           | Still worth 20 minutes, {FIRST_NAME}, or should I leave it for now?
+        7. END   delay 1 DAY   [if the previous step's condition is met]
+      8. END   delay 1 DAY   [otherwise]
+    9. END   delay 1 DAY   [otherwise]
 
 ### 567745 - PRODUCTIVE - DOROTA P CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
 
@@ -323,7 +905,7 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, 0.0% of contacted), contacted 15
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 15}`
 
-Graph: 3 node(s)
+Graph: 9 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
@@ -342,6 +924,28 @@ Graph: 3 node(s)
          variant 4:
            | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
         3. END   delay 1 DAY   [if the previous step's condition is met]
+      4. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Here's the actual reason I think it's worth your time, {FIRST_NAME}. Some agencies are still stitching togethe
+         variant 2:
+           | {FIRST_NAME}, not sure my last message actually landed, so trying again. No pressure either way on the 20 minu
+           | 
+           | Would you like me to share more?
+         variant 3:
+           | Hi {FIRST_NAME}, one thing I keep hearing from {POSITION} roles in your industry is that profitability visibil
+           | 
+           | Want to take a look?
+        5. END   delay 1 DAY   [if the previous step's condition is met]
+      6. MESSAGE   delay 5 DAY   [otherwise]
+         variant 1:
+           | Should I take this as a no for now, {FIRST_NAME}, or keep it on your radar?
+         variant 2:
+           | Yes to 20 minutes at some point, {FIRST_NAME}, or should I stop reaching out?
+         variant 3:
+           | Still worth 20 minutes, {FIRST_NAME}, or should I leave it for now?
+        7. END   delay 1 DAY   [if the previous step's condition is met]
+      8. END   delay 1 DAY   [otherwise]
+    9. END   delay 1 DAY   [otherwise]
 
 ### 567743 - PRODUCTIVE - IVAN M CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
 
@@ -349,7 +953,7 @@ Graph: 3 node(s)
 - requests 0, accepted 0 (n/a of requests), replies 3 (n/a of ACCEPTED, 7.7% of contacted), contacted 39
 - raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 3, "uniqueLeadsContacted": 39}`
 
-Graph: 3 node(s)
+Graph: 9 node(s)
 
     1. CHECK_IS_CONNECTION   delay 0 HOUR
       2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
@@ -368,937 +972,71 @@ Graph: 3 node(s)
          variant 4:
            | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
         3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567738 - PRODUCTIVE - JELENA I CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 1 (n/a of ACCEPTED, 3.7% of contacted), contacted 27
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 1, "uniqueLeadsContacted": 27}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
+      4. MESSAGE   delay 5 DAY   [otherwise]
          variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
+           | Here's the actual reason I think it's worth your time, {FIRST_NAME}. Some agencies are still stitching togethe
          variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
+           | {FIRST_NAME}, not sure my last message actually landed, so trying again. No pressure either way on the 20 minu
            | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
+           | Would you like me to share more?
          variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
+           | Hi {FIRST_NAME}, one thing I keep hearing from {POSITION} roles in your industry is that profitability visibil
            | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567736 - PRODUCTIVE - JELENA M CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 3 (n/a of ACCEPTED, 21.4% of contacted), contacted 14
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 3, "uniqueLeadsContacted": 14}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
+           | Want to take a look?
+        5. END   delay 1 DAY   [if the previous step's condition is met]
+      6. MESSAGE   delay 5 DAY   [otherwise]
          variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
+           | Should I take this as a no for now, {FIRST_NAME}, or keep it on your radar?
          variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
+           | Yes to 20 minutes at some point, {FIRST_NAME}, or should I stop reaching out?
          variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567733 - PRODUCTIVE - JOVANA K CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 2 (n/a of ACCEPTED, 18.2% of contacted), contacted 11
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 2, "uniqueLeadsContacted": 11}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567730 - PRODUCTIVE - KATARINA K CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 2 (n/a of ACCEPTED, 9.1% of contacted), contacted 22
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 2, "uniqueLeadsContacted": 22}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567727 - PRODUCTIVE - LAZAR L CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, 0.0% of contacted), contacted 11
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 11}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567721 - PRODUCTIVE - LUCIJA BILIC CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, 0.0% of contacted), contacted 16
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 16}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567715 - PRODUCTIVE - LUCIJA BAKIC CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 4 (n/a of ACCEPTED, 17.4% of contacted), contacted 23
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 4, "uniqueLeadsContacted": 23}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567708 - PRODUCTIVE - LUKA N CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 3 (n/a of ACCEPTED, 13.6% of contacted), contacted 22
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 3, "uniqueLeadsContacted": 22}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567703 - PRODUCTIVE - MARINA I CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, 0.0% of contacted), contacted 19
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 19}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567701 - PRODUCTIVE - MARKO D CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 1 (n/a of ACCEPTED, 4.8% of contacted), contacted 21
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 1, "uniqueLeadsContacted": 21}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567698 - PRODUCTIVE - MIHOVIL CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 2 (n/a of ACCEPTED, 16.7% of contacted), contacted 12
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 2, "uniqueLeadsContacted": 12}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567693 - PRODUCTIVE - MILAN B CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, 0.0% of contacted), contacted 7
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 7}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567689 - PRODUCTIVE - MARTINA H CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 3 (n/a of ACCEPTED, 11.1% of contacted), contacted 27
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 3, "uniqueLeadsContacted": 27}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567683 - PRODUCTIVE - MINA R CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 1 (n/a of ACCEPTED, 6.2% of contacted), contacted 16
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 1, "uniqueLeadsContacted": 16}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567681 - PRODUCTIVE - SNJEZANA M CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, 0.0% of contacted), contacted 2
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 2}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 567677 - PRODUCTIVE - VLADIMIR H CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, 0.0% of contacted), contacted 13
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 13}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 565765 - PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24
-
-- status `IN_PROGRESS`, 33 seat(s)
-- requests 951, accepted 129 (13.6% of requests), replies 23 (17.8% of ACCEPTED, 2.4% of contacted), contacted 950
-- raw stats: `{"connectionsSent": 951, "connectionsAccepted": 129, "totalMessageReplies": 23, "uniqueLeadsContacted": 950}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hey {FIRST_NAME},
-           | 
-           | {Icebreaker}
-           |  
-           | We built Productive so budgets, time tracking and resourcing actually talk to each other, so you can see if a 
-           |  
-           | Can show you what that looks like if you're interested.
-         variant 2:
-           | Hi {FIRST_NAME}, {Icebreaker}
-           |  
-           | It's a common one. Productive ties budgets, time and resourcing together so that question has a live answer in
-         variant 3:
-           | Hey {FIRST_NAME},
-           |  
-           | {Icebreaker}
-           |  
-           | That's basically why we built Productive, so budgets, time tracking and resourcing stop living in separate pla
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 565223 - PRODUCTIVE - MARKO CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 15 (n/a of ACCEPTED, 11.8% of contacted), contacted 127
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 15, "uniqueLeadsContacted": 127}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 565211 - PRODUCTIVE - LUKA CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 14 (n/a of ACCEPTED, 9.3% of contacted), contacted 151
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 14, "uniqueLeadsContacted": 151}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 565198 - PRODUCTIVE - KRESIMIR CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 5 (n/a of ACCEPTED, 3.6% of contacted), contacted 140
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 5, "uniqueLeadsContacted": 140}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 565196 - PRODUCTIVE - JAKOV CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 5 (n/a of ACCEPTED, 5.8% of contacted), contacted 86
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 5, "uniqueLeadsContacted": 86}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 565195 - PRODUCTIVE - FRAN CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 10 (n/a of ACCEPTED, 11.2% of contacted), contacted 89
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 10, "uniqueLeadsContacted": 89}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 565193 - PRODUCTIVE - BRUNO CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 13 (n/a of ACCEPTED, 8.7% of contacted), contacted 149
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 13, "uniqueLeadsContacted": 149}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 565187 - PRODUCTIVE - BOJAN R CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 12 (n/a of ACCEPTED, 7.5% of contacted), contacted 161
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 12, "uniqueLeadsContacted": 161}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 562830 - PRODUCTIVE - BERNARDA CONNECTIONS - MARKETING AGENCIES - JELENA - AUGUST 21
-
-- status `FINISHED`, 1 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 12 (n/a of ACCEPTED, 11.8% of contacted), contacted 102
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 12, "uniqueLeadsContacted": 102}`
-
-Graph: 3 node(s)
-
-    1. CHECK_IS_CONNECTION   delay 0 HOUR
-      2. MESSAGE   delay 0 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, we've been connected a while but never actually talked. I'll be direct about why I'm reaching
-         variant 2:
-           | Hi {FIRST_NAME}, we've been connected a while but I don't think we've ever actually talked. 
-           | 
-           | I'm on the team at Productive, a platform agencies use to see project profitability live instead of finding ou
-           | 
-           | Happy to show you in 20 minutes. Interested?
-         variant 3:
-           | Hey {FIRST_NAME}, we're connected but never got to talk. Reaching out because I think Productive could be rele
-           | 
-           | Up for it?
-         variant 4:
-           | Hi {FIRST_NAME}, we've been connected but never actually chatted. I'll be direct about why I'm reaching out. P
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 524026 - FIXED - PRODUCTIVE - MARKETING AGENCIES RT - USA 1ST - CLEANED - ZVONIMIR V3
-
-- status `DRAFT`, 33 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, n/a of contacted), contacted 0
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 0}`
-
-Graph: 1 node(s)
-
-    1. FOLLOW   delay 3 HOUR
-
-### 524013 - FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIMIR
-
-- status `IN_PROGRESS`, 10 seat(s)
-- requests 446, accepted 30 (6.7% of requests), replies 3 (10.0% of ACCEPTED, 0.7% of contacted), contacted 446
-- raw stats: `{"connectionsSent": 446, "connectionsAccepted": 30, "totalMessageReplies": 3, "uniqueLeadsContacted": 446}`
-
-Graph: 3 node(s)
-
-    1. CONNECTION_REQUEST   delay 0 HOUR
-       withdraw after 45 days
-      2. MESSAGE   delay 3 DAY   [if the previous step's condition is met]
-         variant 1:
-           | Hi {FIRST_NAME}, appreciate the add.
-           | 
-           | I help {INDUSTRY} agencies in {LOCATION} replace the usual pile of disconnected tools with one platform that t
-           | 
-           | Thought {COMPANY} might be worth a conversation at some point. No pressure on that though, good to be connecte
-           | 
-           | {MY_FIRST_NAME}
-         variant 2:
-           | Hey {FIRST_NAME}, thanks for connecting.
-           | 
-           | I work with {INDUSTRY} agencies on the ops side, specifically helping teams get a real time view of project pr
-           | 
-           | Happy to share more whenever it makes sense.
-           | 
-           | {MY_FIRST_NAME}
-         variant 3:
-           | Hi {FIRST_NAME}, good to be connected.
-           | 
-           | I spend most of my time working with {INDUSTRY} agencies on the gap between time logged and money made. Most {
-           | 
-           | Thought {COMPANY} might find it useful to see how other teams are solving that. No rush on anything.
-           | 
-           | {MY_FIRST_NAME}
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 524002 - FIXED - PRODUCTIVE - MARKETING AGENCIES - USA 2ND - CLEANED - ZVONIMIR V3
-
-- status `IN_PROGRESS`, 33 seat(s)
-- requests 22896, accepted 1165 (5.1% of requests), replies 153 (13.1% of ACCEPTED, 0.7% of contacted), contacted 22974
-- raw stats: `{"connectionsSent": 22896, "connectionsAccepted": 1165, "totalMessageReplies": 153, "uniqueLeadsContacted": 22974}`
-
-Graph: 1 node(s)
-
-    1. FOLLOW   delay 3 HOUR
-
-### 524000 - FIXED - PRODUCTIVE - MARKETING AGENCIES INMAIL- EU - CLEANED ZVONIIMR - AFTER EMAIL APPROACH INMAILS - 23/04
-
-- status `IN_PROGRESS`, 10 seat(s)
-- requests 0, accepted 0 (n/a of requests), replies 0 (n/a of ACCEPTED, 0.0% of contacted), contacted 2034
-- raw stats: `{"connectionsSent": 0, "connectionsAccepted": 0, "totalMessageReplies": 0, "uniqueLeadsContacted": 2034}`
-
-Graph: 1 node(s)
-
-    1. FOLLOW   delay 1 DAY
-
-### 523997 - FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW APPRAOCH - 05/13 v2
-
-- status `IN_PROGRESS`, 33 seat(s)
-- requests 864, accepted 59 (6.8% of requests), replies 6 (10.2% of ACCEPTED, 0.7% of contacted), contacted 864
-- raw stats: `{"connectionsSent": 864, "connectionsAccepted": 59, "totalMessageReplies": 6, "uniqueLeadsContacted": 864}`
-
-Graph: 3 node(s)
-
-    1. CONNECTION_REQUEST   delay 0 HOUR
-      2. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | hey {FIRST_NAME}! saw you're {POSITION} at {COMPANY}, curious how you handle billing and invoicing across proj
-         variant 2:
-           | hey {FIRST_NAME}, do you guys have visibility on which projects are actually profitable at {COMPANY} or is tha
-         variant 3:
-           | {FIRST_NAME} hi, how are you guys managing agency ops at {COMPANY} right now, got a solid system or still stit
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 523993 - FIXED - PRODUCTIVE - MARKETING AGENCIES - ALL LEADS - ZVONIMIR NEW APPRAOCH - 05/13 v4
-
-- status `IN_PROGRESS`, 33 seat(s)
-- requests 432, accepted 19 (4.4% of requests), replies 2 (10.5% of ACCEPTED, 0.5% of contacted), contacted 432
-- raw stats: `{"connectionsSent": 432, "connectionsAccepted": 19, "totalMessageReplies": 2, "uniqueLeadsContacted": 432}`
-
-Graph: 3 node(s)
-
-    1. CONNECTION_REQUEST   delay 15 DAY
-      2. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | hey {FIRST_NAME}, how does {COMPANY} currently track project profitability, is it all spreadsheets or do you h
-         variant 2:
-           | {FIRST_NAME} quick one, do you guys have resource planning sorted out at {COMPANY} or is that still a bit of a
-         variant 3:
-           | hey {FIRST_NAME}! saw you're {POSITION} at {COMPANY}, curious how you handle billing and invoicing across proj
-         variant 4:
-           | {FIRST_NAME}, random question but how many tools is {COMPANY} using to manage projects, resources and finances
-         variant 5:
-           | hey {FIRST_NAME}, do you guys have visibility on which projects are actually profitable at {COMPANY} or is tha
-         variant 6:
-           | {FIRST_NAME} hi, is resource planning something {COMPANY} has figured out or still a work in progress? we work
-         variant 7:
-           | hey {FIRST_NAME}! as {POSITION} at {COMPANY} curious if you have a single place where projects, budgets and re
-         variant 8:
-           | {FIRST_NAME}, how do you guys handle project budgets at {COMPANY}, got that sorted or still piecing it togethe
-         variant 9:
-           | hey {FIRST_NAME}, do you have a good handle on utilization across the team at {COMPANY} or is that one of thos
-         variant 10:
-           | {FIRST_NAME} quick question, how does {COMPANY} track whether projects are staying on budget, is that somethin
-         variant 11:
-           | hey {FIRST_NAME}! saw {COMPANY} and was curious, whats the biggest operational headache for you guys right now
-         variant 12:
-           | {FIRST_NAME}, is invoicing and billing something {COMPANY} has nailed down or still one of those things that t
-         variant 13:
-           | hey {FIRST_NAME}, how do you guys forecast revenue at {COMPANY}, got a solid process or still kinda winging it
-         variant 14:
-           | {FIRST_NAME} hi! as {POSITION} at a {INDUSTRY} agency curious if you have clear visibility on team capacity at
-         variant 15:
-           | hey {FIRST_NAME}, do you guys have project management, resourcing and finances in one place at {COMPANY} or is
-         variant 16:
-           | {FIRST_NAME}, quick one, how does {COMPANY} know if a project is going to hit budget before it's to late to do
-         variant 17:
-           | hey {FIRST_NAME}! {MY_FIRST_NAME} here, i work with {INDUSTRY} agencies on operational stuff. curious if {COMP
-         variant 18:
-           | {FIRST_NAME} is time tracking something the team at {COMPANY} actually does consistently or is that one of tho
-         variant 19:
-           | hey {FIRST_NAME}, saw you're {POSITION} at {COMPANY}. do you have one place where you can see project status, 
-         variant 20:
-           | {FIRST_NAME} hi, how are you guys managing agency ops at {COMPANY} right now, got a solid system or still stit
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 523987 - FIXED - OMEGA 
-
-- status `IN_PROGRESS`, 34 seat(s)
-- requests 957, accepted 19 (2.0% of requests), replies 0 (0.0% of ACCEPTED, 0.0% of contacted), contacted 957
-- raw stats: `{"connectionsSent": 957, "connectionsAccepted": 19, "totalMessageReplies": 0, "uniqueLeadsContacted": 957}`
-
-Graph: 3 node(s)
-
-    1. CONNECTION_REQUEST   delay 0 HOUR
-      2. MESSAGE   delay 3 HOUR   [if the previous step's condition is met]
-         variant 1:
-           | hey {FIRST_NAME}, how does {COMPANY} currently track project profitability, is it all spreadsheets or do you h
-         variant 2:
-           | {FIRST_NAME} quick one, do you guys have resource planning sorted out at {COMPANY} or is that still a bit of a
-         variant 3:
-           | hey {FIRST_NAME}! saw you're {POSITION} at {COMPANY}, curious how you handle billing and invoicing across proj
-         variant 4:
-           | Hi {FIRST_NAME}, thanks for connecting. I'm a sales rep at Productive, where we help agencies run projects, re
-           | 
-           | If at {COMPANY} you're losing billable hours to manual timesheets, can't see project profitability in real tim
-           | 
-           | How are you handling that side of things right now? {MY_FIRST_NAME}
-         variant 5:
-           | Hi {FIRST_NAME}, good to connect. Quick context, I'm a sales rep at Productive. 
-           | 
-           | How are you managing agency ops at {COMPANY} right now, solid system or still stitching things together? 
-           | 
-           | I ask because if you're stuck with gut feel forecasting, no live view of margin per project, or three to five 
-           | 
-           | {MY_FIRST_NAME}
-         variant 6:
-           | Hi {FIRST_NAME}, thanks for the add. I'm a sales rep at Productive. If at {COMPANY} you're battling lost billa
-           | 
-           | How's your current setup holding up? 
-           | 
-           | {MY_FIRST_NAME}
-         variant 7:
-           | Hi {FIRST_NAME}, glad to be connected. I work in sales at Productive, helping agencies pull ops into one place
-           | 
-           | A lot of teams I speak to are stitching together separate tools, can't tell if a project is profitable until a
-           | 
-           | If any of that sounds like {COMPANY}, I'd love to help. 
-           | 
-           | How are things running for you at the moment? {MY_FIRST_NAME}
-         variant 8:
-           | Hi {FIRST_NAME}, thanks for connecting. I'm a sales rep at Productive. 
-           | 
-           | We help agency leaders who can't see margin while a project is still live, who lose billable time to manual ti
-           | 
-           | How are you tracking project profitability today? 
-           | 
-           | {MY_FIRST_NAME}
-         variant 9:
-           | Hi {FIRST_NAME}, good to connect. I'm in sales at Productive. If at {COMPANY} you can't see team availability 
-           | 
-           | Curious how you're managing resourcing right now? 
-           | 
-           | {MY_FIRST_NAME}
-         variant 10:
-           | Hi {FIRST_NAME}, thanks for the connection. I'm a sales rep at Productive. 
-           | 
-           | Most agencies we work with were running four or five tools for PM, time, budgets and invoicing, couldn't get a
-           | 
-           | We pull all of it into one platform. Is that close to how {COMPANY} operates today? 
-           | 
-           | {MY_FIRST_NAME}
-         variant 11:
-           | Hi {FIRST_NAME}, appreciate the connect. I'm a sales rep at Productive and spend most of my time with agency o
-           | 
-           | The recurring pattern I hear is no live view of margin, billable hours slipping through manual timesheets, and
-           | 
-           | If that rings true for {COMPANY}, happy to share what's worked for similar teams. How are you set up at the mo
-           | 
-           | {MY_FIRST_NAME}
-         variant 12:
-           | Hi {FIRST_NAME}, thanks for the add. Sales rep at Productive here. 
-           | 
-           | Disconnected tools, no real time profitability, billable hours going missing, if any of those are live issues 
-           | 
-           | How are you managing it all right now? {MY_FIRST_NAME}
-         variant 13:
-           | Hi {FIRST_NAME}, thanks for connecting.
-           | 
-           | I'm a sales rep at Productive, the platform that brings project management, resourcing, time tracking, budgets
-           | 
-           | We mostly help agency and consultancy teams who lose billable hours to manual timesheets, can't see project pr
-           | 
-           | If any of that sounds like {COMPANY}, one brief call and we'll set your whole team up with a free premium tria
-           | 
-           | How are you managing ops over there right now? {MY_FIRST_NAME}
-         variant 14:
-           | Hi {FIRST_NAME}, good to connect.
-           | 
-           | Quick context, I'm a sales rep at Productive. We pull projects, resourcing and finances into a single platform
-           | 
-           | The teams we help usually have the same three headaches: gut feel forecasting, no live view of margin per proj
-           | 
-           | If that rings true for {COMPANY}, give me one short call and I'll get your whole team a free premium trial.
-           | 
-           | How are you handling all that today, solid system or still stitching things together? {MY_FIRST_NAME}
-         variant 15:
-           | Hi {FIRST_NAME}, glad to be connected.
-           | 
-           | I work in sales at Productive and spend most of my time with agency ops people. We bring PM, time tracking, bu
-           | 
-           | The pattern I keep hearing is billable hours slipping through manual timesheets, profitability you only see af
-           | 
-           | If that's the picture at {COMPANY}, one brief call and your team gets a free premium trial, no strings.
-           | 
-           | How's your current setup holding up? {MY_FIRST_NAME}
-         variant 16:
-           | Hi {FIRST_NAME}, thanks for the add.
-           | 
-           | I'm a sales rep at Productive, where we help agencies see project profitability while work is still live, not 
-           | 
-           | Most leaders we speak to are stuck with no real time margin view, billable hours lost to manual tracking, and 
-           | 
-           | If that's true for {COMPANY}, a quick call gets your whole team a free premium trial.
-           | 
-           | How are you tracking profitability right now? {MY_FIRST_NAME}
-         variant 17:
-           | Hi {FIRST_NAME}, appreciate the connection.
-           | 
-           | I'm in sales at Productive. We replace the usual pile of agency tools with one platform that ties projects, re
-           | 
-           | Teams come to us when they're running four or five tools that don't sync, can't get a clean profitability numb
-           | 
-           | If that sounds familiar at {COMPANY}, one short call and I'll set the whole team up on a free premium trial.
-           | 
-           | Is that close to how you operate today? {MY_FIRST_NAME}
-        3. END   delay 1 DAY   [if the previous step's condition is met]
-
-### 523983 - FIXED - OMEGA 2
-
-- status `IN_PROGRESS`, 33 seat(s)
-- requests 15770, accepted 1694 (10.7% of requests), replies 228 (13.5% of ACCEPTED, 1.4% of contacted), contacted 15796
-- raw stats: `{"connectionsSent": 15770, "connectionsAccepted": 1694, "totalMessageReplies": 228, "uniqueLeadsContacted": 15796}`
-
-Graph: 1 node(s)
-
-    1. FOLLOW   delay 10 DAY
-
+           | Still worth 20 minutes, {FIRST_NAME}, or should I leave it for now?
+        7. END   delay 1 DAY   [if the previous step's condition is met]
+      8. END   delay 1 DAY   [otherwise]
+    9. END   delay 1 DAY   [otherwise]
+
+
+---
+
+## THE STANDARD GRAPH IS 23 NODES, NOT 3, AND ONE OF THEM NEEDS A DECISION
+
+The first version of this survey followed `conditionalNode` and not
+`unconditionalNode`, so every campaign read as three nodes. The
+unconditional branch is the MAIN LINE. Campaign 565765 in full:
+
+    CHECK_IS_CONNECTION
+      connected      -> MESSAGE x3, five days apart, 3/2/4 variants
+                     -> SEND_LEAD_TO_BISON -> END
+      not connected  -> FOLLOW -> CONNECTION_REQUEST (3h)
+                          accepted -> the same three-message ladder
+                                   -> SEND_LEAD_TO_BISON -> END
+                          not       -> VIEW_PROFILE x2, five days apart
+                                   -> SEND_LEAD_TO_BISON -> END
+
+**Productive's own best cadence already hands non-responders to EmailBison.**
+`SEND_LEAD_TO_BISON` appears on all three terminal branches. The dual-channel
+model the operator asked for on 2026-09-21 is, on the LinkedIn side, partly
+what this client already runs — and cloning the graph step for step brings it
+with us rather than reinventing it.
+
+### The decision: `CONNECTION_REQUEST` carries no note
+
+Its payload has zero message variants. That is a note-less connection
+request — what LinkedIn sends when somebody clicks Connect without writing
+anything — and it is what the best-performing campaign in this estate does,
+at 13.6% acceptance over 951 requests.
+
+`heyreach.validate_sequence_for_write` refuses it:
+
+    a MESSAGE/INMAIL/CONNECTION_REQUEST payload with no non-empty `messages`
+    entry is a step that sends a blank
+
+**The guard conflates two different facts.** An empty MESSAGE sends a blank
+message to a person. An empty CONNECTION_REQUEST sends no note, which is
+normal, deliberate, and measured here as the better-performing choice.
+
+**NOT CHANGED.** A safety guard is not weakened to make a clone pass, and
+nothing is lost by waiting: the 33 campaigns are DRAFT and `heyreach.activate`
+names 604869 only, so they cannot send either way. The operator decides
+whether a note-less connection request is allowed, and if it is, the fix is
+to narrow the rule to MESSAGE and INMAIL rather than to skip the check.
