@@ -49,7 +49,45 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #: Where the built pack is cached. In `work/`, the only directory the agent
 #: may write.
+#:
+#: KEPT AS A MODULE CONSTANT for the tests that point it at a temporary
+#: file, and resolved through `cache_path()` everywhere else - see below.
 CACHE = os.path.join(ROOT, "work", "knowledge-pack.json")
+
+#: Set this to pin the cache; otherwise it follows the state directory.
+CACHE_VAR = "KNOWLEDGE_PACK"
+
+
+def cache_path():
+    """Where the pack is cached, resolved PER CALL beside the queue.
+
+    A fixed path was wrong and the fake-client harness found it. Pointing
+    `QUEUE` at a throwaway tree moves every other state file with it -
+    that is what `store.STATE_OVERRIDES` is for - but the pack stayed on
+    `work/knowledge-pack.json`, so a run against a synthetic client read the
+    REAL pack, with real workspaces in it, and would have answered as one
+    client out of another's material. The bug was in the test harness this
+    time. It would not have stayed there.
+
+    So the pack follows the queue, the way `campaigns_path` and
+    `notify.path` already do, and `store.queue_path`'s own docstring says
+    why it is resolved per call rather than captured at import.
+    """
+    override = (os.environ.get(CACHE_VAR) or "").strip()
+    if override:
+        return os.path.abspath(override)
+    if CACHE != _DEFAULT_CACHE:
+        # A test pinned it. Honour that over the queue.
+        return CACHE
+    try:
+        from . import store
+        return os.path.join(os.path.dirname(store.queue_path()),
+                            "knowledge-pack.json")
+    except Exception:                                           # noqa: BLE001
+        return CACHE
+
+
+_DEFAULT_CACHE = CACHE
 
 #: Rebuilt hourly. A pack older than this is stale and is rebuilt on the
 #: next question rather than served with a disclaimer - an answer that says
@@ -62,7 +100,6 @@ MAX_AGE_SECONDS = 3600
 SOURCE_FILES = (
     ("product_goal", "PRODUCT-GOAL.md"),
     ("product_inventory", "PRODUCT-INVENTORY.md"),
-    ("handoff", "docs/PRODUCTION-HANDOFF-2026-09-21-EVENING.md"),
     ("register", "docs/state/PROBLEM-REGISTER.md"),
     ("routing_policy", "PROVIDER-ROUTING-POLICY.md"),
     ("routing_order", "docs/ROUTING-ORDER-2026-09-16.md"),
@@ -96,6 +133,84 @@ def _mtime(relative):
                          time.gmtime(os.path.getmtime(path)))
 
 
+#: Where the handoffs live. NOT a filename.
+#:
+#: The first version of this named `PRODUCTION-HANDOFF-2026-09-21-EVENING.md`
+#: directly. Within hours a NIGHT handoff superseded it - "151 leads are
+#: enrolled and none of them can be sent to" - and the pack went on serving
+#: the evening's picture as current. That is the register's own recurring
+#: defect, committed by the module written to avoid it.
+#:
+#: So the handoffs are DISCOVERED and sorted, newest first, and a section
+#: that needs one scans them in that order and records WHICH it used. A new
+#: handoff is picked up by existing, not by somebody remembering to edit a
+#: tuple.
+HANDOFF_GLOB = "PRODUCTION-HANDOFF-*.md"
+HANDOFF_DIR = "docs"
+
+#: Handoffs are named `...-YYYY-MM-DD[-PART].md`, and the parts of one day
+#: run in this order.
+#:
+#: TWO CASES THAT ARE NOT THE SAME, and conflating them put the superseded
+#: morning document at the top of the list:
+#:
+#:   NO part suffix       the day's BASE handoff, written first. Every named
+#:                        part of that day supersedes it, so it sorts FIRST
+#:                        (oldest) within the day, not last.
+#:   an UNKNOWN part      a name this tuple has not seen. It sorts last,
+#:                        because a part somebody invented is far more
+#:                        likely to be a late addition than an early one.
+HANDOFF_PARTS = ("MORNING", "MIDDAY", "AFTERNOON", "EVENING", "NIGHT")
+
+_NO_PART_RANK = -1
+_UNKNOWN_PART_RANK = len(HANDOFF_PARTS)
+
+
+def handoffs():
+    """Every production handoff, newest first, as repo-relative paths."""
+    import glob
+    directory = os.path.join(ROOT, HANDOFF_DIR)
+    if not os.path.isdir(directory):
+        return []
+    found = []
+    for path in glob.glob(os.path.join(directory, HANDOFF_GLOB)):
+        name = os.path.basename(path)
+        date = re.search(r"(\d{4}-\d{2}-\d{2})", name)
+        part = re.search(r"\d{4}-\d{2}-\d{2}-([A-Z]+)\.md$", name)
+        if not part:
+            rank = _NO_PART_RANK
+        elif part.group(1) in HANDOFF_PARTS:
+            rank = HANDOFF_PARTS.index(part.group(1))
+        else:
+            rank = _UNKNOWN_PART_RANK
+        found.append(((date.group(1) if date else "", rank, name),
+                      "%s/%s" % (HANDOFF_DIR, name)))
+    found.sort(reverse=True)
+    return [relative for _key, relative in found]
+
+
+def latest_handoff():
+    rows = handoffs()
+    return rows[0] if rows else None
+
+
+def find_in_handoffs(pattern, flags=re.M):
+    """`(relative path, match)` for the newest handoff that matches.
+
+    Newest first and the first hit wins, so a section that only the evening
+    handoff carries is still found after a night one lands - and the pack
+    records which document it came from rather than implying the newest.
+    """
+    for relative in handoffs():
+        text = _read(relative)
+        if not text:
+            continue
+        match = re.search(pattern, text, flags)
+        if match:
+            return relative, match
+    return None, None
+
+
 def sources():
     """Every source file with its modification time, present or missing."""
     out = {}
@@ -104,6 +219,10 @@ def sources():
         out[label] = {"path": relative,
                       "modified": stamp,
                       "present": stamp is not None}
+    for index, relative in enumerate(handoffs()):
+        out["handoff" if index == 0 else "handoff_%d" % index] = {
+            "path": relative, "modified": _mtime(relative), "present": True,
+            "current": index == 0}
     return out
 
 
@@ -185,20 +304,31 @@ def _git(*args):
 #: Dated facts the pack lifts out of prose. Each names the file it comes
 #: from and a pattern that must match; an unmatched pattern produces NO
 #: milestone rather than a remembered one.
+#: `HANDOFF` as the file means "the newest handoff that carries this
+#: sentence", searched newest first. Any other string is a literal path.
+HANDOFF = "<handoff>"
+
 MILESTONE_PATTERNS = (
     ("first-send", "docs/state/PROBLEM-REGISTER.md",
      r"EmailBison (\d+) sent a real email at (\d{4}-\d{2}-\d{2}T[\d:]+Z)",
      "First provider-confirmed send: campaign {0} at {1}."),
-    ("second-send", "docs/PRODUCTION-HANDOFF-2026-09-21-EVENING.md",
+    ("second-send", HANDOFF,
      r"First at (\d{2}:\d{2}:\d{2}Z), second at (\d{2}:\d{2}:\d{2}Z)",
      "Two sends on 2026-09-21: {0} and {1}."),
-    ("estate-attested", "docs/PRODUCTION-HANDOFF-2026-09-21-EVENING.md",
+    ("estate-attested", HANDOFF,
      r"HUMAN_IDENTITY_ATTESTED\s+0 -> (\d+) mailboxes across (\d+) humans",
      "Sender estate attested: {0} mailboxes across {1} humans, 2026-09-21."),
     ("slack-live", "docs/state/PROBLEM-REGISTER.md",
      r"`scripts/slack_smoke\.py` posted one message and Slack\s+returned "
      r"`ts (\d+\.\d+)`",
      "Slack transport proven live, receipt ts {0}, 2026-09-21."),
+    ("batches-pushed", HANDOFF,
+     r"campaigns exist, \*\*(\d+)\s+through (\d+)\*\*, one per attested "
+     r"human, holding (\d+) leads",
+     "Batches pushed: campaigns {0}-{1} hold {2} enrolled leads."),
+    ("capacity", HANDOFF,
+     r"CAPACITY WENT ([\d,]+) -> ([\d,]+) FIRST STEPS A DAY",
+     "First-step capacity went {0} to {1} a day."),
 )
 
 
@@ -227,13 +357,15 @@ def timeline():
 
     milestones = []
     for key, relative, pattern, template in MILESTONE_PATTERNS:
-        text = _read(relative)
-        if not text:
-            continue
-        match = re.search(pattern, text)
+        if relative == HANDOFF:
+            found, match = find_in_handoffs(pattern)
+        else:
+            text = _read(relative)
+            match = re.search(pattern, text, re.M) if text else None
+            found = relative
         if not match:
             continue
-        milestones.append({"id": key, "source": relative,
+        milestones.append({"id": key, "source": found,
                            "fact": template.format(*match.groups())})
     out["milestones"] = milestones
     return out
@@ -408,14 +540,14 @@ def policies():
     rebuild. A decision this parser cannot find is absent rather than
     remembered.
     """
-    text = _read("docs/PRODUCTION-HANDOFF-2026-09-21-EVENING.md") or ""
+    source, block = find_in_handoffs(
+        r"^##\s*\d*\.?\s*STANDING POLICY DECISIONS([\s\S]*?)^## ")
     rows = []
-    block = re.search(r"^## 5\. STANDING POLICY DECISIONS([\s\S]*?)^## ",
-                      text, re.M)
     body = block.group(1) if block else ""
+    text = _read(source) if source else ""
     decided_on = "2026-09-21"
     decided_by = "Zvonimir (operator)"
-    heading = re.search(r"all operator, all (\d{4}-\d{2}-\d{2})", text)
+    heading = re.search(r"all operator, all (\d{4}-\d{2}-\d{2})", text or "")
     if heading:
         decided_on = heading.group(1)
 
@@ -446,7 +578,7 @@ def policies():
             "rule": " ".join(buckets[key]).strip(),
             "decided_on": decided_on,
             "decided_by": decided_by,
-            "source": "docs/PRODUCTION-HANDOFF-2026-09-21-EVENING.md",
+            "source": source,
             "why": POLICY_WHY.get(key, ""),
         })
 
@@ -485,6 +617,67 @@ def policies():
                      "why": POLICY_WHY.get(ident, "")})
 
     return rows
+
+
+# --------------------------------------------------------- current state
+
+#: Headings that mean "what is waiting on a person". Handoffs do not use one
+#: name for this - the evening's was "TOMORROW'S FIRST THREE ACTIONS", the
+#: night's is "WHAT IS WAITING ON THE OPERATOR" - so the pack looks for any
+#: of them, newest handoff first, and records which it found.
+WAITING_HEADINGS = (
+    r"WHAT IS WAITING ON THE OPERATOR",
+    r"TOMORROW'S FIRST THREE ACTIONS",
+    r"WHAT NEEDS THE OPERATOR",
+    r"NEXT ACTIONS",
+)
+
+#: Same idea for the headline. A handoff's section 1 is always what somebody
+#: thought was the most important thing at the time it was written, which is
+#: exactly what a morning briefing's first sentence needs.
+HEADLINE_PATTERN = r"^##\s*1\.\s*(?:THE HEADLINE:\s*)?(.+?)\s*$"
+
+
+def current_state():
+    """What the NEWEST handoff says is true now, and what waits on a person.
+
+    Separate from `timeline` deliberately. The timeline is what happened;
+    this is what is happening, and it is the section a morning briefing and
+    an internal "where are we" both read. It always names the document it
+    came from, because "current" is a claim with a date on it.
+    """
+    out = {"read_at": _now(), "source": latest_handoff()}
+    text = _read(out["source"]) if out["source"] else None
+    if not text:
+        out["_error"] = "no production handoff is present"
+        return out
+
+    headline = re.search(HEADLINE_PATTERN, text, re.M)
+    if headline:
+        out["headline"] = headline.group(1).strip()
+
+    for heading in WAITING_HEADINGS:
+        source, block = find_in_handoffs(
+            r"^##\s*\d*\.?\s*" + heading + r"([\s\S]*?)(?:^## |\Z)")
+        if not block:
+            continue
+        items = []
+        for match in re.finditer(r"^\d+\.\s+(.+?)(?=^\d+\.|\Z)",
+                                 block.group(1).strip(), re.M | re.S):
+            items.append(re.sub(r"\*\*", "",
+                                " ".join(match.group(1).split()))[:300])
+        if items:
+            out["waiting_on_operator"] = items
+            out["waiting_source"] = source
+            out["waiting_heading"] = heading
+            break
+
+    monitors = re.search(r"^##\s*\d*\.?\s*MONITORS([\s\S]*?)(?:^## |\Z)",
+                         text, re.M)
+    if monitors:
+        names = re.findall(r"^\s{2,}\S+\s+(\S+)", monitors.group(1), re.M)
+        out["monitors_expected"] = sorted(set(names))
+    return out
 
 
 # ------------------------------------------------------------ workspaces
@@ -691,6 +884,7 @@ def build():
         "sources": sources(),
         "identity": identity(),
         "timeline": timeline(),
+        "current_state": current_state(),
         "workers": workers(),
         "policies": policies(),
         "workspaces": workspaces_section(),
@@ -699,21 +893,23 @@ def build():
 
 
 def write(pack=None):
-    """Cache the pack in `work/`. The only file this module writes."""
+    """Cache the pack beside the queue. The only file this module writes."""
     pack = pack or build()
-    os.makedirs(os.path.dirname(CACHE), exist_ok=True)
-    tmp = CACHE + ".tmp"
+    path = cache_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(pack, handle, default=str, indent=1)
-    os.replace(tmp, CACHE)
+    os.replace(tmp, path)
     return pack
 
 
 def cached():
-    if not os.path.isfile(CACHE):
+    path = cache_path()
+    if not os.path.isfile(path):
         return None
     try:
-        with open(CACHE, encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             return json.load(handle)
     except Exception:                                           # noqa: BLE001
         return None

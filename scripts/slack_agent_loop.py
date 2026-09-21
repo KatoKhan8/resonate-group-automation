@@ -57,7 +57,9 @@ import traceback
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import (llm, slackconversation as conversation,                # noqa: E402
-                 slackknowledge as knowledge, slackscope, socketmode)
+                 slackknowledge as knowledge, slackrequests as requests,
+                 slackscope, socketmode)
+from src import notify                                                  # noqa: E402
 from src.providers import load_env, slack                               # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -135,6 +137,18 @@ def answer_for(text, channel=None, user=None, channel_type=None,
                                 thread_ts=thread_ts, model=model)
 
 
+def _is_operator_decision(event):
+    """A decision typed in an internal channel, without a mention.
+
+    Both halves are required. A `approve <id>` in a CLIENT channel is not a
+    decision and is answered with a sentence saying where approvals happen;
+    an ordinary sentence in an internal channel is not a decision either.
+    """
+    if not requests.parse_decision(event.get("text") or ""):
+        return False
+    return (event.get("channel") or "") in slackscope.internal_channels()
+
+
 def handle(event, seen, dry_run=False, model=None):
     """One Slack event. Returns True if it was answered."""
     if event.get("bot_id") or event.get("subtype"):
@@ -146,7 +160,14 @@ def handle(event, seen, dry_run=False, model=None):
         # In a channel the agent answers a MENTION, not everything said. A
         # bot that replies to every message in a client channel is a bot
         # nobody keeps in a client channel.
-        return False
+        #
+        # ONE EXCEPTION, and it is narrow: `approve <id>` / `reject <id>` in
+        # an INTERNAL channel. The operator should not have to @-mention a
+        # bot to approve something, and the pattern is specific enough that
+        # nothing else can match it - a well-formed ticket id or nothing.
+        # A client channel gets no exception at all.
+        if not _is_operator_decision(event):
+            return False
     channel = event.get("channel")
     ts = event.get("ts")
     message_id = "%s:%s" % (channel, ts)
@@ -175,6 +196,12 @@ def handle(event, seen, dry_run=False, model=None):
                 "text": reply, "thread_ts": thread})
     seen.add(message_id)
 
+    # A change request has TWO more destinations, and the loop is the only
+    # thing that posts to either. `slackconversation` builds the text and
+    # returns it; nothing below the loop reaches `slack.post`, which is what
+    # keeps that property one line to state and one test to assert.
+    _post_extras(result)
+
     conversation.remember(channel, thread, "them", text, user=user)
     conversation.remember(channel, thread, "me", reply, how=result.get("how"))
 
@@ -184,11 +211,60 @@ def handle(event, seen, dry_run=False, model=None):
          "scope_source": result.get("scope_source"),
          "planned": result.get("planned"),
          "tools": result.get("tools"), "how": result.get("how"),
-         "guard": result.get("guard"), "reply": reply[:2000]})
+         "guard": result.get("guard"), "ticket": result.get("ticket"),
+         "reply": reply[:2000]})
     emit("ANSWERED %s scope=%s via=%s tools=%s"
          % (message_id, result.get("scope"), result.get("how"),
             [t["name"] for t in result.get("tools") or []]))
     return True
+
+
+def _post_extras(result):
+    """The ACTION REQUIRED post and the decision note. Failures are LOUD.
+
+    A ticket that was written but whose ACTION REQUIRED never reached the
+    operator is the worst state this feature has: the requester has been
+    told it is raised, and nobody is looking at it. So a failure here is
+    logged as its own row and printed, never swallowed.
+    """
+    announcement = result.get("post_to_internal")
+    if announcement:
+        destination = (notify.ops_channel()
+                       or sorted(slackscope.internal_channels() or [None])[0])
+        if not destination:
+            emit("ACTION-REQUIRED-UNDELIVERED: no internal channel is "
+                 "configured. Ticket %s is raised and nobody has been told."
+                 % result.get("ticket"))
+            log({"kind": "action_required_undelivered",
+                 "ticket": result.get("ticket"),
+                 "why": "no internal channel configured"})
+        else:
+            try:
+                slack.post({"kind": "slack_agent_action_required",
+                            "channel": destination, "text": announcement})
+                log({"kind": "action_required_posted",
+                     "ticket": result.get("ticket"), "channel": destination})
+            except Exception as exc:                            # noqa: BLE001
+                emit("ACTION-REQUIRED-FAILED %s: %s"
+                     % (type(exc).__name__, str(exc)[:200]))
+                log({"kind": "action_required_failed",
+                     "ticket": result.get("ticket"),
+                     "error": type(exc).__name__})
+
+    note = result.get("post_to_thread")
+    if note and note.get("channel"):
+        try:
+            slack.post({"kind": "slack_agent_decision",
+                        "channel": note["channel"], "text": note["text"],
+                        "thread_ts": note.get("thread_ts")})
+            log({"kind": "decision_reported", "ticket": result.get("ticket"),
+                 "channel": note["channel"]})
+        except Exception as exc:                                # noqa: BLE001
+            emit("DECISION-REPORT-FAILED %s: %s"
+                 % (type(exc).__name__, str(exc)[:200]))
+            log({"kind": "decision_report_failed",
+                 "ticket": result.get("ticket"),
+                 "error": type(exc).__name__})
 
 
 # -------------------------------------------------------------------- loop

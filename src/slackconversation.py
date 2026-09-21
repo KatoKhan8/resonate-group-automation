@@ -48,12 +48,26 @@ import re
 import time
 
 from . import llm, slackagenttools as tools, slackknowledge as knowledge
-from . import slackscope
+from . import slackrequests as requests, slackscope
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-#: Thread memory. In `work/`, like every other file the agent writes.
+#: Thread memory. Beside the queue, like every other file the agent writes,
+#: and resolved per call for the same reason the knowledge pack is: a run
+#: pointed at a throwaway state tree must not read a real thread's history.
 THREADS = os.path.join(ROOT, "work", "slack-threads.jsonl")
+_DEFAULT_THREADS = THREADS
+
+
+def threads_path():
+    if THREADS != _DEFAULT_THREADS:
+        return THREADS
+    try:
+        from . import store
+        return os.path.join(os.path.dirname(store.queue_path()),
+                            "slack-threads.jsonl")
+    except Exception:                                           # noqa: BLE001
+        return THREADS
 
 #: How much of a thread the agent remembers. The operator asked for 20.
 MEMORY_TURNS = 20
@@ -94,22 +108,24 @@ def _thread_key(channel, thread_ts):
 
 def remember(channel, thread_ts, role, text, **extra):
     """Append one turn. The file is append-only and read tail-first."""
-    os.makedirs(os.path.dirname(THREADS), exist_ok=True)
+    path = threads_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     row = dict(extra, at=_now(), thread=_thread_key(channel, thread_ts),
                role=role, text=str(text or "")[:2000])
-    with open(THREADS, "a", encoding="utf-8") as handle:
+    with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(row, default=str) + "\n")
     return row
 
 
 def history(channel, thread_ts, limit=MEMORY_TURNS):
     """The last `limit` turns of this thread, oldest first."""
-    if not os.path.isfile(THREADS):
+    path = threads_path()
+    if not os.path.isfile(path):
         return []
     key = _thread_key(channel, thread_ts)
     rows = []
     try:
-        with open(THREADS, encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
                 if not line or key not in line:
@@ -129,7 +145,53 @@ def render_history(rows):
     if not rows:
         return "(this is the first message in the thread)"
     return "\n".join("%s: %s" % (r.get("role"), r.get("text", "")[:600])
-                     for r in rows)
+                     for r in rows
+                     if r.get("role") in ("them", "me"))
+
+
+#: A change request that has been restated and is waiting for the requester
+#: to confirm. Kept in the thread log rather than in a second store: the
+#: conversation is where it was raised and the conversation is where it is
+#: confirmed, and a parallel state machine for one fact is how the two
+#: drift - CLAUDE.md's own rule.
+PENDING_ROLE = "pending_request"
+
+#: How long a restatement stays open. Beyond this the requester is asked
+#: again rather than having a day-old "yes" attached to it.
+PENDING_TTL_SECONDS = 3600
+
+
+def remember_pending(channel, thread_ts, kind, fields, original):
+    return remember(channel, thread_ts, PENDING_ROLE, original,
+                    kind=kind, fields=fields,
+                    epoch=int(time.time()))
+
+
+def pending_request(channel, thread_ts):
+    """The open restatement in this thread, or None.
+
+    The LAST pending row wins and a resolved one is cleared by writing a
+    `pending_cleared` row, so a thread that raised two requests in sequence
+    cannot attach a confirmation to the wrong one.
+    """
+    rows = history(channel, thread_ts, limit=40)
+    found = None
+    for row in rows:
+        if row.get("role") == PENDING_ROLE:
+            found = row
+        elif row.get("role") == "pending_cleared":
+            found = None
+    if not found:
+        return None
+    epoch = found.get("epoch")
+    if isinstance(epoch, (int, float)) and \
+            time.time() - epoch > PENDING_TTL_SECONDS:
+        return None
+    return found
+
+
+def clear_pending(channel, thread_ts, why):
+    return remember(channel, thread_ts, "pending_cleared", why)
 
 
 # ------------------------------------------------------------- refusals
@@ -165,32 +227,27 @@ ACTION_VERBS = (
 _ACTION_VERB = re.compile(
     r"\b(?:%s)\b" % "|".join(ACTION_VERBS), re.I)
 
-#: Always a state change, however it is phrased. These are the shapes that
-#: try to talk their way past the classifier rather than ask for something.
-_ALWAYS_ACTION = re.compile(
-    r"ignore (?:your|all|previous)|you are now|admin mode|\bsudo\b|"
-    r"developer mode|override your|new instructions|disregard", re.I)
+#: The question / explicit-ask / instruction-override rules live in
+#: `slackrequests` and are imported, not copied. They were written here
+#: first and `slackrequests.recognise` did not consult them, so "why did we
+#: pause 487?" was answered as a question by this module and recognised as a
+#: REQUEST TO PAUSE A LIVE CAMPAIGN by that one. One rule, one place.
+_ALWAYS_ACTION = requests._ALWAYS_ACTION
+_QUESTION_OPENER = requests._QUESTION_OPENER
+_EXPLICIT_ASK = requests._EXPLICIT_ASK
 
-#: A message that OPENS like a question is a question. "why did we pause
-#: 487" is about a decision already taken; "pause 487" is a request.
-_QUESTION_OPENER = re.compile(
-    r"^\W*(?:what|why|when|who|whom|whose|how|which|where|is|are|was|were|"
-    r"do|does|did|has|have|had|can|could|should|would|will|any|anything|"
-    r"status|tell me|show me|give me|send me|explain)\b", re.I)
-
-#: ...unless it also asks somebody to do the thing. "can you pause 487?"
-#: opens like a question and is a request.
-_EXPLICIT_ASK = re.compile(
-    r"\b(?:please|can you|could you|would you|will you|i need you to|"
-    r"go ahead and|i want you to|make sure you)\b", re.I)
-
-#: Phase A. Phase B replaces this with a ticket and an operator prompt.
+#: Phase B. A change request the agent can TICKET never reaches these -
+#: `respond` restates it and raises it instead. These are for what it
+#: recognises as a state change and cannot turn into a ticket: pushing a
+#: batch, merging a branch, widening an activation grant.
 REFUSAL_INTERNAL = (
     "I can't change anything from Slack - I read, I don't write. Ask in "
     "Claude Code and it goes through the usual gates. What I can do is show "
     "you the state behind it: campaigns and what they have actually sent, "
     "the batch, what is held and why, what is waiting on you, the standing "
-    "decisions, and who is working on what.")
+    "decisions, and who is working on what. For a lead, an account, a "
+    "cadence step, a campaign pause or a sending window, say so plainly and "
+    "I will raise it as a change request for you to approve.")
 
 REFUSAL_CLIENT = (
     "I can't make that change myself - I can read and report, not act. I'll "
@@ -214,10 +271,7 @@ def wants_an_action(text):
     3. An imperative verb inside a question is a question - unless the
        message also explicitly asks somebody to do it.
     """
-    body = str(text or "").strip()
-    # A Slack mention arrives as "<@U123> pause 487"; the mention is not
-    # part of the sentence and would otherwise sit where the opener goes.
-    body = re.sub(r"<@[^>]+>", " ", body).strip()
+    body = requests.strip_mentions(text)
     if _ALWAYS_ACTION.search(body):
         return True
     if not _ACTION_VERB.search(body):
@@ -509,6 +563,96 @@ def guard(text, material, scope, allow_addresses=False):
     return body, None
 
 
+# ------------------------------------------------------- change requests
+#
+# NOTHING HERE POSTS. `respond` returns the text to post and the loop posts
+# it, which is what keeps "only the loop reaches `slack.post`" true and
+# testable while the agent gains a second destination for one message.
+
+REFUSAL_APPROVAL_ELSEWHERE = (
+    "Approvals are made by the Resonate operator in their own channel, not "
+    "here - so that one person, and only that person, decides what changes. "
+    "If you have raised something with me I will report back in this thread "
+    "as soon as it is decided.")
+
+
+def is_confirmation_of(text, open_request):
+    """Is this message a yes to THAT restatement?
+
+    A bare "yes" is only a confirmation because there is an open
+    restatement in the same thread that it can be a yes TO. Without one it
+    is somebody agreeing with a sentence, which is why this is never asked
+    in isolation.
+    """
+    return bool(open_request) and requests.is_confirmation(text)
+
+
+def _open_request(kind, fields, question, channel, scope, thread_ts):
+    """Restate the request, or ask for what is missing. Writes no ticket."""
+    gaps = requests.missing(kind, fields)
+    if gaps:
+        return {"reply": requests.question_for(kind, fields),
+                "how": "request_needs_detail", "tools": [],
+                "request_kind": kind, "request_missing": gaps}
+    try:
+        requests.check_ownership(kind, fields, scope)
+    except requests.NotYours as exc:
+        return {"reply": str(exc), "how": "request_not_yours", "tools": [],
+                "request_kind": kind}
+    workspace = scope.workspace or "the internal workspace"
+    remember_pending(channel, thread_ts, kind, fields, question)
+    return {"reply": requests.restate(kind, fields, workspace),
+            "how": "request_restated", "tools": [], "request_kind": kind}
+
+
+def _raise_ticket(open_request, user, channel, scope, thread_ts):
+    """Write the ticket and hand the loop the ACTION REQUIRED text."""
+    ticket = requests.build(
+        open_request.get("kind"), open_request.get("fields") or {},
+        requester=user, channel=channel, scope=scope,
+        thread_ts=thread_ts, original=open_request.get("text") or "")
+    try:
+        path = requests.write(ticket)
+    except Exception as exc:                                    # noqa: BLE001
+        return {"reply": "I could not write that request down (%s), so I "
+                         "have not raised it. Nothing was recorded."
+                         % type(exc).__name__,
+                "how": "request_write_failed", "tools": []}
+    clear_pending(channel, thread_ts, "raised as %s" % ticket["id"])
+    reply = ("Raised as `%s`. It is with Zvonimir to approve or reject, and "
+             "I will report the outcome back in this thread. Nothing changes "
+             "until then." % ticket["id"])
+    return {"reply": reply, "how": "request_raised", "tools": [],
+            "ticket": ticket["id"], "ticket_path": path,
+            "post_to_internal": requests.action_required(ticket)}
+
+
+def _decide(decision, user, channel, thread_ts):
+    """Apply an `approve <id>` / `reject <id>` from the internal channel."""
+    verb, ticket_id, note = decision
+    try:
+        ticket = requests.decide(ticket_id, verb, user, note)
+    except KeyError:
+        return {"reply": "I have no change request `%s`." % ticket_id,
+                "how": "decision_unknown", "tools": []}
+    except requests.NotTheOperator as exc:
+        return {"reply": "%s The attempt is recorded on the ticket." % exc,
+                "how": "decision_refused", "tools": []}
+    except ValueError as exc:
+        return {"reply": str(exc), "how": "decision_stale", "tools": []}
+    reply = "`%s` is %s." % (ticket_id, ticket["status"])
+    if ticket["status"] == requests.APPROVED:
+        reply += (" Queued for Claude Code to execute through the gates. "
+                  "I will report the outcome in the original thread.")
+    return {"reply": reply, "how": "decided", "tools": [],
+            "ticket": ticket_id,
+            # The loop posts this into the thread the request came from.
+            "post_to_thread": {
+                "channel": ticket.get("channel"),
+                "thread_ts": ticket.get("thread_ts"),
+                "text": requests.decision_note_for(ticket)}}
+
+
 def safe_fallback(results, scope):
     """The deterministic answer, itself checked before it is posted.
 
@@ -543,6 +687,37 @@ def respond(question, channel=None, user=None, channel_type=None,
     past = history(channel, thread_ts)
     out = {"at": _now(), "scope": scope.kind, "workspace": scope.workspace,
            "scope_source": scope.source, "user": user, "channel": channel}
+
+    # ---- 2a. A DECISION on an existing request. Internal channels only.
+    decision = requests.parse_decision(question)
+    if decision and scope.is_internal:
+        out.update(_decide(decision, user, channel, thread_ts))
+        return out
+    if decision and not scope.is_internal:
+        # Somebody in a client channel typing "approve <id>". Say no plainly
+        # rather than ignoring it: a silent no reads as a yes that failed.
+        out.update({"reply": REFUSAL_APPROVAL_ELSEWHERE, "how": "refused",
+                    "tools": []})
+        return out
+
+    # ---- 2b. A CONFIRMATION of a restatement made earlier in this thread.
+    open_request = pending_request(channel, thread_ts)
+    if open_request and is_confirmation_of(question, open_request):
+        out.update(_raise_ticket(open_request, user, channel, scope,
+                                 thread_ts))
+        return out
+    if open_request and requests.is_decline(question):
+        clear_pending(channel, thread_ts, "the requester declined")
+        out.update({"reply": "Dropped - nothing was raised.",
+                    "how": "request_withdrawn", "tools": []})
+        return out
+
+    # ---- 2c. A NEW change request: restate it, or ask what is missing.
+    kind, fields = requests.recognise(question)
+    if kind and not scope.is_unbound:
+        out.update(_open_request(kind, fields, question, channel, scope,
+                                 thread_ts))
+        return out
 
     if wants_an_action(question):
         out.update({"reply": refusal_for(scope), "how": "refused",
