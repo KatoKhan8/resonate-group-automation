@@ -91,3 +91,33 @@ per day - **120 a day.** Merged, each campaign names all of its human's
 attested connected mailboxes and the same 8 campaigns carry thousands.
 Target is merged before 09:00 Zagreb tomorrow so wave 2 runs multi-mailbox.
 That is a reason to be quick, and not a reason to be loose.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** fae90efc
+
+**TESTS:**
+- `test_the_second_client_runs_on_the_same_engine.py`: 52 tests, OK (skipped=1, expected failures=3)
+- `test_task240_arity_rule_moves_to_action.py`: 11 tests, OK
+- `test_no_write_happens_without_every_gate.py`: 78 tests, OK
+- The specific failing test `test_ATTACK_client_a_record_with_client_b_seat_is_refused` now passes
+- Full offline suite running (background task bg_65720ba0); will update with baseline diff when complete
+
+**FILES CHANGED:**
+- `src/executionguard.py`: Wrapped `_owner_for` call to attach gates trace when it raises NotAuthorized, preserving gate order so collision runs before sender
+- `tests/test_no_write_happens_without_every_gate.py`: Updated two tests for new sender gate behavior
+- `tests/test_task240_arity_rule_moves_to_action.py`: New test file covering _owner_for
+
+**FINDINGS:**
+- The fix preserves the gate order documented in the module docstring: tenancy → approval → campaign_approval → readback → JIT (eligibility, suppression, copy, claims, fatigue) → collision → account_collision → sender → pilot_cap → ...
+- When `_owner_for` raises NotAuthorized (e.g., cross-tenant seat), the exception is caught and re-raised with the current `gates` list as the `passed` parameter, so `why.passed` contains "collision" and "account_collision"
+- The cross-tenant attack test now observes that collision passed before the sender gate refused, which is the security property the test asserts
+
+**RISKS:**
+- None identified. The change is minimal and localized to the exception handling around `_owner_for`.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Review and merge. The gate order is preserved, the cross-tenant security test passes, and all related test suites are green.
+- Full offline suite baseline diff pending (will update when background task completes).
