@@ -98,7 +98,11 @@ STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    # liveness beats. Not row state, but the file an operator
                    # reads to answer "has it sent yet" - a test appending a
                    # fixture SEND line there would be a fabricated send.
-                   "WATCH_EVENTS", "WATCH_HEARTBEAT")
+                   "WATCH_EVENTS", "WATCH_HEARTBEAT",
+                   # The nightly sourcing candidate list. Not queue state,
+                   # but written beside the queue and must move with it in
+                   # tests or a fixture would append to the real list.
+                   "CANDIDATES")
 
 
 def use_directory(path):

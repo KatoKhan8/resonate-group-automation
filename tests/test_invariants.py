@@ -658,7 +658,8 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
     # Modules that resolve a path from `store.queue_path()` and then write it
     # themselves. Membership is asserted below, so this is a checklist that
     # cannot silently fall behind the code.
-    SELF_WRITERS = ("agencydnc", "clientreview", "discovery", "gtm",
+    SELF_WRITERS = ("agencydnc", "clientreview", "candidatelist", "discovery",
+                    "gtm",
                     "observability", "poller", "replywatch", "research",
                     "signals", "spendledger", "tagsync", "mx",
                     # The watchers' durable events and liveness beats. Added
