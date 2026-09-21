@@ -1,14 +1,37 @@
 # Resonate Group Automation
-docs/PRODUCTION-HANDOFF-2026-09-19.md is the current state: read it first.
+docs/PRODUCTION-HANDOFF-2026-09-21.md is the current state: read it first.
 It is written for a session with no conversation context and it supersedes
-every earlier handoff and context reset. THREE campaigns are LIVE - EmailBison
-487 and 489 and HeyReach 605732 - and none of the three has sent yet. 487's
-ten openers are scheduled for 2026-09-23 and 489's five for 2026-09-24, both
-correctly inside their own windows. "Nothing has EVER sent" is false: canary
-451 sent one real email on 2026-09-14, so the end-to-end path is proven
-against a real prospect. Recompute provider truth before acting on any number
-in it, and READ THE CLOCK FIRST - both campaigns are Mon-Fri, so a zero at a
-weekend is the calendar rather than a fault.
+every earlier handoff. **487 WAS RESUMED AND RECOVERED on 2026-09-21T09:06Z**
+- all ten leads moved `sending_paused -> in_sequence`, which is the grant's
+only definition of success. That grant is now SPENT: do not resume 487 again
+under any outcome. **489 re-planned itself three days earlier with no write
+from us**, from 09-24 to 09-21T13:34Z, because EmailBison's scheduler runs at
+the end of every sending day - the pause/resume that was proposed and
+correctly refused turned out to be unnecessary.
+
+**STILL ZERO PROVIDER-CONFIRMED SENDS ON EITHER CHANNEL.** Recovered is not
+sent, scheduled is not sent, and active is not sent. The two live questions
+are 487's empty queue (the resume cleared its rows and the scheduler has not
+rebuilt them - WAIT, do not re-resume) and 489's 13:34Z window.
+
+Recompute provider truth before acting on any number, and READ THE CLOCK -
+487 is Mon-Fri 07:00-15:00Z and 489 is Mon-Fri 13:00-21:00Z, so a zero at a
+weekend or before a window opens is the calendar rather than a fault.
+
+`docs/state/PROBLEM-REGISTER.md` is the canonical list of confirmed problems,
+and it exists because this project kept rediscovering the same ones. Read it
+before investigating anything: it carries what is open, what is fixed with
+the commit that fixed it, and - the part that saves the most time - what has
+been REFUTED and must not be resurrected. Two rules it enforces on itself:
+code written is not FIXED, and FIXED is not PRODUCTION_VERIFIED.
+
+**A DERIVED REPORT IS ONLY AS GOOD AS ITS LAST VERIFICATION.** On 2026-09-21
+`task173_scan.py --unintegrated` reported twelve stranded tasks and six were
+already integrated, because it compared task-file STAGE and never looked at
+the code. TASK-229's files were byte-identical to master's and merging would
+have deleted 12,487 lines; TASK-232's branch would have deleted the
+classification that answers the 33 ambiguous holds. It now compares blob
+hashes - but check any branch against master before merging it.
 
 Read `docs/THE-SEND-DATE-IS-THE-MAILBOX-2026-09-19.md` before trying to make
 anything send sooner. The day a cohort goes out is a property of the MAILBOX,
