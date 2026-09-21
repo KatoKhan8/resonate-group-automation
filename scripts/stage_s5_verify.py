@@ -149,6 +149,8 @@ def pair_of(contact):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--workers", type=int, default=3,
+                        help="concurrency; size against the TIGHTER provider")
     parser.add_argument("--report-every", type=int, default=900,
                         help="seconds between progress lines; default 15 min")
     args = parser.parse_args(argv)
@@ -215,7 +217,7 @@ def main(argv=None):
             return contact, None, None, exc
 
     with open(JOURNAL, "a", encoding="utf-8") as journal:
-        with cf.ThreadPoolExecutor(max_workers=3) as pool:
+        with cf.ThreadPoolExecutor(max_workers=args.workers) as pool:
             for contact, state, reason, exc in pool.map(one, people):
                 if exc is not None:
                     # A provider failure is not a verdict. The address is left
