@@ -144,6 +144,24 @@ existing scheduled rows and none were rebuilt.
    this can be diagnosed without any mutating call?
 Cite documentation URLs.""",
 
+    "conversation_attribution": """HeyReach LinkedIn automation platform API.
+We receive inbox events whose only identifier is a conversation id, in the
+form `2-<base64>` where the decoded value looks like
+`<uuid>_100`. They carry no campaign, no lead and no sender.
+1. Which PUBLIC endpoint resolves a CONVERSATION id to the CAMPAIGN it
+   belongs to, and to the LinkedIn SENDER SEAT (account id) that owns it?
+   Name the exact endpoint, method, request fields and response fields.
+2. Is there an inbox or conversation LIST endpoint that returns campaignId
+   and linkedInAccountId per conversation? What are its filter parameters
+   and its pagination shape?
+3. What does the `2-` prefix on a conversation id denote, and is the format
+   documented anywhere?
+4. What are the documented RATE LIMITS on those endpoints, and the payload
+   shape of a single conversation object?
+5. Is there a webhook that delivers a message/reply event WITH its campaign
+   and sender already attached, so no lookup is needed?
+Cite documentation URLs. Where the docs do not say, answer NOT DOCUMENTED.""",
+
     "heyreach_sender": """HeyReach LinkedIn automation platform API.
 1. When a campaign has multiple LinkedIn sender accounts, how is the sender
    chosen per lead? Is `accountLeadPairs` on AddLeadsToCampaignV2 the
