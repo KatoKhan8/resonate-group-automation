@@ -463,3 +463,36 @@ def linkedin_note_mode(config):
             f"linkedin_connection_note.mode must be one of {', '.join(NOTE_MODES)}, "
             f"not {mode!r}")
     return mode
+
+
+EXPORT_CADENCE_DEFAULT = {
+    "frequency": "weekly",
+    "day_of_week": "monday",
+    "local_time": "07:00",
+    "timezone": "Europe/Zagreb",
+}
+
+
+def export_settings(config):
+    """The client-approval export columns and cadence.
+
+    Returns `{"columns": [...], "cadence": {...}}`.  The columns are what the
+    CSV header carries; the cadence is when the export runs, in local time
+    with an IANA timezone so it moves with DST rather than drifting.
+
+    A client with no `client_approval_export` block gets the engine defaults:
+    the six standard columns and a weekly Monday 07:00 Zagreb schedule.  A
+    second client is onboardable by adding the block to their config file;
+    no caller branches on the client name.
+    """
+    block = (config or {}).get("client_approval_export") or {}
+    from . import clientexport
+    columns = block.get("columns") or list(clientexport.EXPORT_COLUMNS)
+    if not isinstance(columns, list) or not columns:
+        columns = list(clientexport.EXPORT_COLUMNS)
+    cadence_block = block.get("cadence") or {}
+    cadence = dict(EXPORT_CADENCE_DEFAULT)
+    for key in ("frequency", "day_of_week", "local_time", "timezone"):
+        if key in cadence_block and cadence_block[key]:
+            cadence[key] = str(cadence_block[key]).strip()
+    return {"columns": [str(c).strip() for c in columns], "cadence": cadence}
