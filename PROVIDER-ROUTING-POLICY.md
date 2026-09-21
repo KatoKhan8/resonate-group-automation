@@ -137,3 +137,60 @@ attributing a reply to a human who did not send the message, or treating the
 two channels' identities as interchangeable in copy. A message signed by one
 human and sent from another's mailbox is the failure this whole module exists
 to prevent.
+
+---
+
+## THE STANDING ORDER — operator decision, Zvonimir, 2026-09-21
+
+**This supersedes every earlier provider order in this file**, including the
+2026-09-16 order it replaces. Recorded here so no session re-derives it.
+
+### Enrichment order, every field, every stage, no exceptions
+
+    1. existing fresh evidence already held
+    2. ContactOut, for everything it can return
+    3. free scrapers and free endpoints
+       (ContactOut /domain/enrich, /people/count, configured Apify
+        actors, any other no-credit source)
+    4. Blitz API
+    5. AI Ark
+    6. any other configured paid provider
+
+Each provider is called ONLY for what the previous ones did not return.
+**Never skip ContactOut to go straight to a paid fallback.** A field already
+held fresh is never re-bought.
+
+### Work email verification order
+
+    1. ContactOut  (email status off the enrich readback)
+    2. Reoon       (4/sec, power mode)
+    3. Deliverable
+
+**TWO INDEPENDENT EXPLICIT APPROVALS per normalized email, fresh, FROM TWO
+DIFFERENT PROVIDERS in that list.** Catch-all is HELD. Unknown is never PASS.
+A negative from any provider blocks regardless of what the others say. Every
+lead records WHICH PAIR passed it, because "verified" without the pair is the
+vendor's word rather than ours.
+
+### No per-call approval for reads
+
+Read-only, enrichment, scraping and verification calls to these providers -
+search, count, enrich, verify, domain data - need **no approval per call, per
+batch or per stage.** Run them under bounded concurrency and each provider's
+published rate limit.
+
+### Cost control replaces approval
+
+    report combined spend every 500 credits to #resonate-notifications
+    PAUSE and report if any provider balance drops below 20% of its
+      start-of-day value
+    PAUSE and report if cost per READY lead exceeds 3x the measurement batch
+    otherwise continue without asking
+
+### What this grant does NOT cover
+
+Prospect-facing writes - enroll, push, campaign create, pause, resume - keep
+every existing gate: a provider-confirmed send on 489, and operator approval
+per batch of 100 READY. This is an enrichment, scraping and verification
+grant and nothing else. `providerwrites.SUPPORTED` and the write guard are
+untouched by it.
