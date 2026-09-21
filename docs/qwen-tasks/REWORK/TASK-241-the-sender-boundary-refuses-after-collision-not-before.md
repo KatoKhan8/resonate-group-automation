@@ -91,3 +91,70 @@ per day - **120 a day.** Merged, each campaign names all of its human's
 attested connected mailboxes and the same 8 campaigns carry thousands.
 Target is merged before 09:00 Zagreb tomorrow so wave 2 runs multi-mailbox.
 That is a reason to be quick, and not a reason to be loose.
+
+---
+
+## RESULT OF RUN r56 — READ BY CLAUDE 2026-09-21T17:45Z — REWORK, NOT MERGED
+
+Qwen's commit `fae90efc` on `qwen-worker`. Suite `work/suite-r56.err`,
+started 17:18:59Z, finished ~17:44Z, 1514.5s.
+
+    baseline r53   10,671 tests   50 failures   33 errors
+    r56            10,707 tests   51 failures   35 errors
+
+**THE FEATURE'S OWN ACCEPTANCE TEST PASSED.**
+`test_ATTACK_client_a_record_with_client_b_seat_is_refused` failed in r55 and
+is GREEN in r56. The spec file is untouched. That is the thing this task was
+sent back for and Qwen got it right.
+
+Diffed by test name, both directions. Nothing that passed in r53 fails in r56.
+Three names are new, and **none of the three is attributable to this branch**:
+
+    ERROR test_xai_has_no_caller_in_src
+          test_waterfall_order.TestXaiOffByDefault
+          CAUSE: environmental. The test shells out to `grep` via
+          subprocess and CreateProcess failed - grep was not on PATH for
+          the shell that launched r56. Carved out by this brief already.
+
+    FAIL  test_no_linkedin_url_with_real_vanity_name
+          test_fixture_hygiene.TestNoRealDataAnywhereInGit
+          hit: docs/GROK-CONVERSATION-ATTRIBUTION-2026-09-21.md
+          CAUSE: worktree staleness, not a leak. Master redacted that
+          placeholder and wrote the reasoning into the doc itself; the
+          worktree still holds the 13:47 copy. A rebase clears it.
+          Carved out by this brief already.
+
+    ERROR test_the_demo_form_cannot_consume_an_invitation
+          test_production_auth.AnInvitationBecomesAccessOnlyThroughGoogle
+          NEW in r56, not present in r55. urllib transport error against
+          the test's own loopback server.
+          CAUSE: order-dependent, not a regression. Claude re-ran the
+          whole class in the same worktree at 17:5xZ: **7 tests, OK,
+          2.326s.** A `python -m src.web --demo` server (pid 108672) is
+          live on this machine and the suite runs the web tests against
+          real ephemeral ports.
+
+**SO WHY IS THIS NOT MERGED.** The acceptance is a number and the number is
+not zero. The rule in the handoff is mechanical on purpose - this register
+records six separate occasions where a value that "obviously" did not matter
+did. A diagnosis is not a green suite, and the merge is worth twenty-five
+minutes.
+
+## REWORK — one action, no code changes expected
+
+1. `git fetch origin && git rebase origin/master` on `qwen-worker`. That
+   picks up the redacted doc.
+2. Re-run from a shell where `grep` resolves (Git Bash on PATH, or run the
+   suite from `C:\Program Files\Git\bin` prepended), so the xai test can
+   shell out.
+3. `py -3 -m tests.offline`, read the exit code off the process.
+4. Report the diff by test name, both directions, against 10,671 / 50 / 33.
+
+**DO NOT EDIT ANY TEST TO GO GREEN**, including the three above, and do not
+touch `src/executionguard.py` again unless the rebase conflicts. If a name
+still appears after the rebase, say so and stop - it is then a real finding
+and Claude will triage it.
+
+Batch 1 runs tonight on the single-mailbox branch - 8 campaigns, one mailbox
+each, 120 first-step sends a day - because this did not merge in time.
+Wave 2 re-points to all attested mailboxes the moment it does.
