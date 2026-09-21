@@ -92,6 +92,7 @@ attested connected mailboxes and the same 8 campaigns carry thousands.
 Target is merged before 09:00 Zagreb tomorrow so wave 2 runs multi-mailbox.
 That is a reason to be quick, and not a reason to be loose.
 
+<<<<<<<< HEAD:docs/qwen-tasks/REWORK/TASK-241-the-sender-boundary-refuses-after-collision-not-before.md
 ---
 
 ## RESULT OF RUN r56 — READ BY CLAUDE 2026-09-21T17:45Z — REWORK, NOT MERGED
@@ -158,3 +159,69 @@ and Claude will triage it.
 Batch 1 runs tonight on the single-mailbox branch - 8 campaigns, one mailbox
 each, 120 first-step sends a day - because this did not merge in time.
 Wave 2 re-points to all attested mailboxes the moment it does.
+========
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** fae90efc
+
+**TESTS:**
+- `test_the_second_client_runs_on_the_same_engine.py`: 52 tests, OK (skipped=1, expected failures=3)
+- `test_task240_arity_rule_moves_to_action.py`: 11 tests, OK
+- `test_no_write_happens_without_every_gate.py`: 78 tests, OK
+- The specific failing test `test_ATTACK_client_a_record_with_client_b_seat_is_refused` now passes
+- Full offline suite running (background task bg_65720ba0); will update with baseline diff when complete
+
+**FILES CHANGED:**
+- `src/executionguard.py`: Wrapped `_owner_for` call to attach gates trace when it raises NotAuthorized, preserving gate order so collision runs before sender
+- `tests/test_no_write_happens_without_every_gate.py`: Updated two tests for new sender gate behavior
+- `tests/test_task240_arity_rule_moves_to_action.py`: New test file covering _owner_for
+
+**FINDINGS:**
+- The fix preserves the gate order documented in the module docstring: tenancy → approval → campaign_approval → readback → JIT (eligibility, suppression, copy, claims, fatigue) → collision → account_collision → sender → pilot_cap → ...
+- When `_owner_for` raises NotAuthorized (e.g., cross-tenant seat), the exception is caught and re-raised with the current `gates` list as the `passed` parameter, so `why.passed` contains "collision" and "account_collision"
+- The cross-tenant attack test now observes that collision passed before the sender gate refused, which is the security property the test asserts
+
+**RISKS:**
+- None identified. The change is minimal and localized to the exception handling around `_owner_for`.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Review and merge. The gate order is preserved, the cross-tenant security test passes, and all related test suites are green.
+- Full offline suite baseline diff pending (will update when background task completes).
+>>>>>>>> 16ab8d8d (TASK-241: sender boundary refuses after collision, gate order preserved):docs/qwen-tasks/DONE/TASK-241-the-sender-boundary-refuses-after-collision-not-before.md
+
+---
+
+## MERGED 2026-09-21 — and the baseline in this brief was stale
+
+Cherry-picked onto master as `90bd119b` + `490f6f58`. Suites green:
+the spec file (52 tests), the gate suite (78), TASK-240's arity tests (11).
+
+**ZERO new failures.** Measured the way the acceptance asked - by test name,
+both directions - but against a baseline taken TONIGHT rather than the one
+written into this brief:
+
+    r53  2026-09-21 12:14Z  master          10,671 / 50 / 33   <- the brief
+    r58  2026-09-21 19:10Z  master          10,769 / 76 / 44   <- the truth
+    r57  2026-09-21 18:45Z  master + 241    10,755 / 74 / 36
+
+    in r57 and not in r58:   NOTHING.
+
+**Why the brief's number was wrong, and it was nobody's fault here.** The
+r53 baseline was taken at 12:14Z. Productive's verification roles changed
+that afternoon - primary moved to Deliverable and ContactOut was removed -
+and ~27 enrichment and e2e tests assert the OLD roles. They began failing at
+the moment that config landed, hours before Qwen touched anything. Verified
+by checking out b9823c6f, tonight's starting commit, and running one of them:
+it fails there identically.
+
+So the mechanical rule was right to refuse a merge on r56's numbers, and the
+rule's PURPOSE - "you broke nothing" - is what r58 finally measured. A
+baseline is a cached value on a safety path, and this project's register is
+mostly rows about exactly that.
+
+**CARRIED FORWARD, not this task's to fix:** master holds ~27 failures from
+the verification-roles change. They are tests asserting roles the client no
+longer uses, and they need updating to the new policy the same way
+`test_digest` was updated when the digest moved channels.

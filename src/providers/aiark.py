@@ -254,6 +254,39 @@ def find_email(attempts=POLL_ATTEMPTS, interval=POLL_INTERVAL, sleep=time.sleep,
     return {"track_id": track, "state": "timeout", "people": []}
 
 
+def _company(raw):
+    """A company row from AI Ark into the neutral shape the pipeline reads."""
+    raw = raw if isinstance(raw, dict) else {}
+    return {
+        "domain": raw.get("domain") or raw.get("website") or "",
+        "company": (raw.get("companyName") or raw.get("name")
+                    or raw.get("organization") or ""),
+        "headcount": raw.get("employeeCount") or raw.get("headcount")
+                     or raw.get("employees") or raw.get("size"),
+        "industry": raw.get("industry") or "",
+        "country": raw.get("country") or raw.get("location") or "",
+        "website": raw.get("website") or raw.get("url") or "",
+        "description": raw.get("description") or "",
+    }
+
+
+def company_search(companyIndustry=None, companyLocation=None,
+                   companyTechnology=None, keyword=None, size=None,
+                   keyword_sources=KEYWORD_SOURCES, page=None, **extra):
+    """Company-level search. Enum guard enforced, same as people_search.
+
+    Returns trimmed company dicts via _company. Pagination via page argument;
+    the caller walks to last=true.
+    """
+    filters = {"companyIndustry": companyIndustry,
+               "companyLocation": companyLocation,
+               "companyTechnology": companyTechnology,
+               "keyword": keyword, "size": size, "page": page}
+    filters.update(extra)
+    data = call_tool("company_search", _search_args(filters, keyword_sources))
+    return [_company(r) for r in _rows(data)]
+
+
 def check():
     """Free: list the tools the endpoint exposes. No search, no credit."""
     try:

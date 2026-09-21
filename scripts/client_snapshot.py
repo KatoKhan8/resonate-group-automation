@@ -176,6 +176,32 @@ def do_counts(args):
     return 0
 
 
+def do_build(args):
+    """Build the real export from records: select, CSV, snapshot."""
+    from src import clientexport, clients, store as store_mod
+
+    config = clients.load(args.client)
+    recs = store_mod.load()
+
+    rows, supply_note = clientexport.build_candidate_list(
+        recs, config, args.client)
+
+    snap = ca.record_snapshot(args.id, [r["domain"] for r in rows],
+                              client=args.client, note=args.note)
+
+    if args.output:
+        clientexport.write_csv(rows, args.output)
+
+    _report(f"EXPORT {snap['snapshot']} built for {args.client}",
+            [("domains", snap["count"]),
+             ("digest", snap["digest"][:16]),
+             ("at", snap["at"])])
+    print(f"\n{supply_note}")
+    if args.output:
+        print(f"\nCSV written to {args.output}")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--client", default=ca.DEFAULT_CLIENT)
@@ -204,6 +230,13 @@ def main(argv=None):
 
     counts = sub.add_parser("counts", help="what stands right now")
     counts.set_defaults(func=do_counts)
+
+    build = sub.add_parser("build",
+                           help="build the real export from records")
+    build.add_argument("--id", required=True)
+    build.add_argument("--output", help="path for the CSV file")
+    build.add_argument("--note")
+    build.set_defaults(func=do_build)
 
     args = parser.parse_args(argv)
     return args.func(args)

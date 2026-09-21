@@ -334,17 +334,40 @@ def _from_account(entry, config, exclude=()):
     return FRESH, "no history at this company"
 
 
-def check(candidate, history, config=None, agency=None):
+def check(candidate, history, config=None, agency=None, client=None):
     """One row's hygiene verdict, with the evidence behind it.
 
     `candidate` is a dict with any of `email`, `linkedin`, `domain`,
     `company`, `name`. Only the first two are identity; `domain` matches the
     account and says so.
 
+    `client` names the workspace whose client-approval register to consult.
+    When given, a domain the client has suppressed or rejected is refused at
+    S1 before any contact-level check runs - the client's "no" is permanent
+    and per-workspace, and a re-sourced domain must never reappear.
+
     Returns the verdict, the action an operator takes, a sentence a person
     can read, and the machine-readable evidence behind it. Never mutates.
     """
     reasons, verdicts, matched = [], [], []
+
+    # 0. The client's own suppression register, before anything else.
+    #    A domain the client removed from a snapshot is gone for good, per
+    #    workspace, and no amount of re-sourcing brings it back.  This is
+    #    the failure the task prevents: 600 domains deleted by the client,
+    #    re-sourced the next night because they still match ICP, and
+    #    appearing in the next export.  The client deletes them again and
+    #    concludes we do not listen.
+    if client is not None:
+        from . import clientapproval as _ca
+        domain_for_approval = dedupe.normalise_domain(
+            candidate.get("domain"))
+        if domain_for_approval and _ca.is_suppressed(
+                domain_for_approval, client):
+            verdicts.append(SUPPRESSED_ACCOUNT)
+            reasons.append(
+                f"{domain_for_approval} is suppressed by the client "
+                f"({client}): permanent, per workspace")
 
     # 1. The agency-wide index, first and most final. It answers only
     #    "is this person suppressed", never by whom or why - see

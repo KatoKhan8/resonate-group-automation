@@ -180,6 +180,7 @@ personas:
     # This is not a widening of who Productive sells to: it is the persona
     # list catching up with the search this client is already buying.
     titles: [Operations Manager, Operations Director, Project Manager,
+             Vice President Operations, VP Operations,
              Finance Manager, Head of Finance, Head of Operations,
              Head of Production, Production Director,
              Design Studio Manager, Studio Manager,
@@ -208,13 +209,36 @@ personas:
     # in full was excluded as "not a persona for this client" while a
     # "President & COO" at the same seniority was kept. Same role, and
     # not a widening of who Productive sells to.
+    # President, Managing Partner and Chair added 2026-09-21, the same
+    # correction this list already carries for COO: a person who runs the
+    # company and writes the title differently is the same buyer. Seventeen
+    # leads were held as "not a persona for this client" and six of them were
+    # Presidents. `Chief Executive` without `Officer` is here for "Chair and
+    # Group Chief Executive", which contains neither of the existing forms.
     titles: [CFO, Chief Financial Officer, COO, Chief Operating Officer,
-             CEO, Chief Executive Officer, Owner, Founder,
+             CEO, Chief Executive Officer, Chief Executive, Owner, Founder,
+             President, Managing Partner, Chair, Chairman,
              Managing Director, Direktor]
     cap_per_domain: 1
     start_offset_days: 5    # buyer track starts behind champion track
     angles:
       founder: profitability visible on Monday not two weeks late
+      # ADDED 2026-09-21 by Claude under the operator's instruction to "map
+      # the 338 no-angle titles to the nearest Productive persona and angle
+      # yourself, using the playbook; do not wait for my approval".
+      #
+      # The comment below says a finance angle goes in only "when there is
+      # something true to say to a finance lead". There is, and it is already
+      # in this file twice: the CHAMPION persona's own `finance` angle, and
+      # `product.capabilities.profitability`. These are the client's words
+      # about their own product, not a new claim - a CFO at an agency and a
+      # Finance Manager at the same agency care about the same thing, and one
+      # of them was already being written to about it.
+      #
+      # 40 leads in batch 1's pool were held on this alone: 32 "Chief
+      # Financial Officer" and 8 "CFO", every one of them ICP-IN, verified
+      # and collision-clear.
+      finance: margin per project, month end reconciliation, multi entity billing
       # An operations lead is not a founder. `personas.default_angle` matches
       # an angle key to the routing family the title belongs to, so a COO gets
       # this one and a CEO gets `founder`. Without it a COO inherited founder
@@ -634,3 +658,44 @@ verification:
   primary: deliverable
   secondary: reoon
   catch_all: reoon
+
+# THE PRODUCTIVE LINKEDIN STANDARD, chosen 2026-09-21 under the operator's
+# instruction to "clone the best-performing graph as the standard LinkedIn
+# cadence for every Resonate-run campaign, step for step, with the same delays
+# and branching... Record the chosen graph as the Productive LinkedIn standard
+# in the workspace config, with the source campaign id and date".
+#
+# Chosen on both halves of the funnel rather than on volume:
+#
+#     565765  requests   951  accepted 129 (13.6%)  replies 23 (17.8% of accepted)
+#     523983  requests 15770  accepted 1694 (10.7%) replies 228 (13.5% of accepted)
+#     524002  requests 22896  accepted 1165 (5.1%)  replies 153 (13.1% of accepted)
+#
+# OMEGA 2 has sixteen times the volume and converts worse at both steps. The
+# graph itself is CHECK_IS_CONNECTION -> MESSAGE, with three message variants
+# carrying {FIRST_NAME} and an {Icebreaker} filled per lead.
+#
+# The graph CANNOT live in this file - `clients.parse` reads scalars and inline
+# scalar lists, and a HeyReach node is a nested mapping. It is stored verbatim
+# beside it, as read from the provider, so a clone is a copy rather than a
+# re-typing.
+linkedin_standard_source: 565765
+linkedin_standard_file: config/linkedin/productive-standard.json
+linkedin_standard_chosen: 2026-09-21
+linkedin_connection_requests_per_seat_day: 10
+# THE CLIENT-APPROVAL EXPORT.  What columns the snapshot CSV carries and how
+# often it is produced.  The cadence is weekly, Monday 07:00 Zagreb local
+# time - which moves with DST because `geo.zone` resolves the IANA name, not
+# a fixed UTC offset.  On 2026-10-25 Europe/Zagreb shifts from CEST (UTC+2)
+# to CET (UTC+1), so 07:00 local becomes 06:00 UTC rather than 05:00 UTC.
+# A hardcoded hour would land the export an hour early for half the year.
+#
+# A second client is onboardable by adding this block to their config file.
+# No `if client == "productive"` anywhere in the engine.
+client_approval_export:
+  columns: [domain, company, headcount, industry, country, website]
+  cadence:
+    frequency: weekly
+    day_of_week: monday
+    local_time: "07:00"
+    timezone: Europe/Zagreb

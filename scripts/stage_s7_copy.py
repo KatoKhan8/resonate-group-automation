@@ -110,42 +110,104 @@ def first_name(value):
     return text.split()[0]
 
 
+#: TITLE -> ROUTING FAMILY. Recorded 2026-09-21 under the operator's
+#: instruction to map the held titles to the nearest Productive persona and
+#: angle "using the playbook".
+#:
+#: `personas.default_angle` matches an angle KEY against the routing FAMILY a
+#: title belongs to, and returns None rather than picking the first of
+#: several - which is right, and which held 338 leads whose titles named no
+#: family at all. Every family below is one the client's own config already
+#: defines, and every mapping is the job the title actually does:
+#:
+#:     Project Manager        the person who watches budget burn, scope creep
+#:                            and who is free. 298 of the 338.
+#:     Resource / Traffic     literally the resourcing question
+#:     CFO / Finance          month-end margin and reconciliation. 40 of them.
+#:     COO / Operations       utilisation and capacity
+#:     CEO / Founder / Owner  the founder angle 489 already sends
+#:
+#: Ordered longest-first inside each family so "Senior Digital Project
+#: Manager" matches before a bare word could.
+TITLE_FAMILIES = (
+    ("founder", ("chief executive", "ceo", "founder", "co-founder", "owner",
+                 "managing director", "direktor", "president", "principal",
+                 "partner")),
+    ("finance", ("chief financial", "cfo", "finance director",
+                 "head of finance", "finance manager", "financial controller",
+                 "controller", "vp finance", "finance lead")),
+    ("resource_management", ("resource manager", "resourcing manager",
+                             "head of resource", "head of resourcing",
+                             "resource", "resourcing", "traffic manager",
+                             "studio manager", "design studio manager",
+                             "head of production", "production director",
+                             "production manager")),
+    ("delivery", ("project manager", "project director", "delivery manager",
+                  "delivery director", "head of delivery", "producer",
+                  "programme manager", "program manager", "account director",
+                  "client services director", "project lead", "pmo")),
+    ("operations", ("chief operating", "coo", "operations director",
+                    "operations manager", "head of operations", "operations",
+                    "general manager")),
+)
+
+
+def family_of(title):
+    """The routing family this title belongs to, or None. Longest match wins."""
+    lowered = (title or "").strip().lower()
+    if not lowered:
+        return None
+    best, best_len = None, 0
+    for family, needles in TITLE_FAMILIES:
+        for needle in needles:
+            if needle in lowered and len(needle) > best_len:
+                best, best_len = family, len(needle)
+    return best
+
+
 def angle_for(title, config):
     """The client's own angle for this title, or None.
 
     `personas.classify` matches the title against the client's persona
-    titles; `default_angle` picks the angle whose key matches the routing
-    family, and returns None rather than the first of several. Both are the
-    production functions - this script defines no matching rule of its own.
+    titles; the family comes from `TITLE_FAMILIES` above; `default_angle`
+    picks the angle whose key matches that family and returns None rather
+    than the first of several. The production functions still decide - this
+    adds the title-to-family step that nothing else supplied.
     """
     contact = {"title": title}
-    persona, score = personas.classify(contact, config)
+    persona, _score = personas.classify(contact, config)
     if not persona:
         return None, None
     angles = clients.angles_for(config, persona)
-    family = None
-    lowered = (title or "").lower()
-    for key in angles:
-        if key in lowered:
-            family = key
-            break
-    if family is None:
-        # `founder` is the angle written for the people who run the company:
-        # a CEO, an owner, a managing director, a founder. The config's own
-        # comment says a COO gets `operations` and a CEO gets `founder`.
-        if any(word in lowered for word in
-               ("ceo", "chief executive", "founder", "owner",
-                "managing director", "direktor", "president")):
-            family = "founder"
-        elif any(word in lowered for word in
-                 ("coo", "chief operating", "operations", "delivery")):
-            family = "operations"
-    angle_key = family if family in angles else None
-    if angle_key is None:
-        angle_key = list(angles)[0] if len(angles) == 1 else None
+    family = family_of(title)
+    angle_key = personas.default_angle(config, persona, family)
+    if angle_key is None and family in angles:
+        angle_key = family
     if angle_key is None:
         return persona, None
-    return persona, angles[angle_key]
+    return persona, angles.get(angle_key, angle_key)
+
+
+def subject_for(angle, config):
+    """The subject line: the angle, or its short label when it will not fit.
+
+    `angle_labels` exists because "angles above is the argument a message
+    makes and is too long for a subject: lint fails at 60 characters". The
+    two angles added tonight are 61 and 66 characters, so they use the
+    label; the founder angle 489 already sends is 49 and is untouched, which
+    matters because changing it would change approved live copy.
+    """
+    if len(angle) <= MAX_SUBJECT:
+        return angle
+    labels = config.get("angle_labels") or {}
+    for key, value in (clients.angles_for(config, "champion") or {}).items():
+        if value == angle and labels.get(key):
+            return labels[key]
+    for persona in ("economic_buyer", "champion"):
+        for key, value in (clients.angles_for(config, persona) or {}).items():
+            if value == angle and labels.get(key):
+                return labels[key]
+    return angle[:MAX_SUBJECT].rsplit(" ", 1)[0]
 
 
 def merge_index(ready):
@@ -180,11 +242,13 @@ def render(row, config):
                       f"{title!r}. Held, not guessed")
     fields = {"FIRST": first, "COMPANY": company, "INDUSTRY": industry,
               "ANGLE": angle}
+    subject_fields = dict(fields, ANGLE=subject_for(angle, config))
     out = {}
     for name, template in (("subject_1", SUBJECT_1), ("body_1", BODY_1),
                            ("body_2", BODY_2), ("body_3", BODY_3)):
         text = template
-        for key, value in fields.items():
+        for key, value in (subject_fields if name == "subject_1"
+                           else fields).items():
             text = text.replace("{" + key + "}", value)
         left = PLACEHOLDER.search(text)
         if left:

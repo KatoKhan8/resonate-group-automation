@@ -1,0 +1,200 @@
+{
+ "source_campaign_id": 565765,
+ "source_campaign_name": "PRODUCTIVE - SOFTWARE DEVELOPMENT - JELENA - AUGUST 24",
+ "read_at": "2026-09-21T19:55:48Z",
+ "chosen_because": "best of the Productive estate on both halves of the funnel: 13.6% of requests accepted (129 of 951) and 17.8% of accepted replied (23 of 129). OMEGA 2 has more volume - 15,770 requests - and converts worse on both: 10.7% accepted, 13.5% of accepted replied.",
+ "stats_at_read": {
+  "connectionsSent": 951,
+  "connectionsAccepted": 129,
+  "totalMessageReplies": 23,
+  "uniqueLeadsContacted": 950
+ },
+ "graph": {
+  "nodeType": "CHECK_IS_CONNECTION",
+  "actionDelay": 0,
+  "actionDelayUnit": "HOUR",
+  "conditionalNode": {
+   "nodeType": "MESSAGE",
+   "actionDelay": 0,
+   "actionDelayUnit": "HOUR",
+   "payload": {
+    "messages": [
+     "Hey {FIRST_NAME},\n\n{Icebreaker}\n \nWe built Productive so budgets, time tracking and resourcing actually talk to each other, so you can see if a project's making money while it's still running, not just after it gets invoiced.\n \nCan show you what that looks like if you're interested.",
+     "Hi {FIRST_NAME}, {Icebreaker}\n \nIt's a common one. Productive ties budgets, time and resourcing together so that question has a live answer instead of one you get after the invoice goes out. Can walk you through it if you're curious.",
+     "Hey {FIRST_NAME},\n \n{Icebreaker}\n \nThat's basically why we built Productive, so budgets, time tracking and resourcing stop living in separate places and you can see project profitability while it's still happening. Happy to show you."
+    ],
+    "fallbackMessage": "Hey, we built Productive so budgets, time tracking and resourcing actually talk to each other, so you can see if a project's making money while it's still running, not just after it gets invoiced.\n \nCan show you what that looks like if you're interested.\n\n"
+   },
+   "conditionalNode": {
+    "nodeType": "END",
+    "actionDelay": 1,
+    "actionDelayUnit": "DAY"
+   },
+   "unconditionalNode": {
+    "nodeType": "MESSAGE",
+    "actionDelay": 5,
+    "actionDelayUnit": "DAY",
+    "payload": {
+     "messages": [
+      "{FIRST_NAME}, random one, but Infinum (software agency, 370+ people) uses Productive to plan resourcing across the whole team without losing sight of which projects are actually profitable.\n \nWould something like this make sense for {COMPANY} as well?",
+      "{FIRST_NAME}, Akcelo (190 people, works with McDonald's and Netflix) uses Productive to stay on top of budgets and reporting across every project. PIABO runs basically the same setup across five offices in Europe. Could it be worth a look for {COMPANY}?"
+     ],
+     "fallbackMessage": "Random one, but Infinum (software agency, 370+ people) uses Productive to plan resourcing across the whole team without losing sight of which projects are actually profitable.\n \nWould something like this make sense for your team as well?"
+    },
+    "conditionalNode": {
+     "nodeType": "END",
+     "actionDelay": 1,
+     "actionDelayUnit": "DAY"
+    },
+    "unconditionalNode": {
+     "nodeType": "MESSAGE",
+     "actionDelay": 5,
+     "actionDelayUnit": "DAY",
+     "payload": {
+      "messages": [
+       "{FIRST_NAME}, worth a yes or no on this one so I know whether to stop reaching out?",
+       "{FIRST_NAME}, should I drop this or send you an overview if you want to take a look?",
+       "Worth a look, {FIRST_NAME}? I can send an overview.",
+       "Is this worth pursuing or should I stop here, {FIRST_NAME}?"
+      ],
+      "fallbackMessage": "Worth a yes or no on this one so I know whether to stop reaching out?"
+     },
+     "conditionalNode": {
+      "nodeType": "END",
+      "actionDelay": 1,
+      "actionDelayUnit": "DAY"
+     },
+     "unconditionalNode": {
+      "nodeType": "SEND_LEAD_TO_BISON",
+      "actionDelay": 3,
+      "actionDelayUnit": "DAY",
+      "payload": {
+       "bisonCampaignId": 417,
+       "stopExternalLead": true
+      },
+      "unconditionalNode": {
+       "nodeType": "END",
+       "actionDelay": 0,
+       "actionDelayUnit": "HOUR"
+      }
+     },
+     "externalReference": ""
+    },
+    "externalReference": ""
+   },
+   "externalReference": ""
+  },
+  "unconditionalNode": {
+   "nodeType": "FOLLOW",
+   "actionDelay": 0,
+   "actionDelayUnit": "HOUR",
+   "unconditionalNode": {
+    "nodeType": "CONNECTION_REQUEST",
+    "actionDelay": 3,
+    "actionDelayUnit": "HOUR",
+    "payload": {
+     "messages": [
+      ""
+     ],
+     "fallbackMessage": "",
+     "toBeWithdrawnAfterDays": 21
+    },
+    "conditionalNode": {
+     "nodeType": "MESSAGE",
+     "actionDelay": 3,
+     "actionDelayUnit": "HOUR",
+     "payload": {
+      "messages": [
+       "Hey {FIRST_NAME},\n\n{Icebreaker}\n \nWe built Productive so budgets, time tracking and resourcing actually talk to each other, so you can see if a project's making money while it's still running, not just after it gets invoiced.\n \nCan show you what that looks like if you're interested.",
+       "Hi {FIRST_NAME}, {Icebreaker}\n \nIt's a common one. Productive ties budgets, time and resourcing together so that question has a live answer instead of one you get after the invoice goes out. Can walk you through it if you're curious.",
+       "Hey {FIRST_NAME},\n \n{Icebreaker}\n \nThat's basically why we built Productive, so budgets, time tracking and resourcing stop living in separate places and you can see project profitability while it's still happening. Happy to show you."
+      ],
+      "fallbackMessage": "Hey, we built Productive so budgets, time tracking and resourcing actually talk to each other, so you can see if a project's making money while it's still running, not just after it gets invoiced.\n \nCan show you what that looks like if you're interested."
+     },
+     "conditionalNode": {
+      "nodeType": "END",
+      "actionDelay": 1,
+      "actionDelayUnit": "DAY"
+     },
+     "unconditionalNode": {
+      "nodeType": "MESSAGE",
+      "actionDelay": 5,
+      "actionDelayUnit": "DAY",
+      "payload": {
+       "messages": [
+        "{FIRST_NAME}, random one, but Infinum (software agency, 370+ people) uses Productive to plan resourcing across the whole team without losing sight of which projects are actually profitable.\n \nWould something like this make sense for {COMPANY} as well?",
+        "{FIRST_NAME}, Akcelo (190 people, works with McDonald's and Netflix) uses Productive to stay on top of budgets and reporting across every project. PIABO runs basically the same setup across five offices in Europe. Could it be worth a look for {COMPANY}?"
+       ],
+       "fallbackMessage": "Wandom one, but Infinum (software agency, 370+ people) uses Productive to plan resourcing across the whole team without losing sight of which projects are actually profitable.\n \nWould something like this make sense for your team as well?"
+      },
+      "conditionalNode": {
+       "nodeType": "END",
+       "actionDelay": 1,
+       "actionDelayUnit": "DAY"
+      },
+      "unconditionalNode": {
+       "nodeType": "MESSAGE",
+       "actionDelay": 5,
+       "actionDelayUnit": "DAY",
+       "payload": {
+        "messages": [
+         "{FIRST_NAME}, worth a yes or no on this one so I know whether to stop reaching out?",
+         "{FIRST_NAME}, should I drop this or send you an overview if you want to take a look?",
+         "Worth a look, {FIRST_NAME}? I can send an overview.",
+         "Is this worth pursuing or should I stop here, {FIRST_NAME}?"
+        ],
+        "fallbackMessage": "Worth a yes or no on this one so I know whether to stop reaching out?\n"
+       },
+       "conditionalNode": {
+        "nodeType": "END",
+        "actionDelay": 1,
+        "actionDelayUnit": "DAY"
+       },
+       "unconditionalNode": {
+        "nodeType": "SEND_LEAD_TO_BISON",
+        "actionDelay": 3,
+        "actionDelayUnit": "DAY",
+        "payload": {
+         "bisonCampaignId": 417,
+         "stopExternalLead": true
+        },
+        "unconditionalNode": {
+         "nodeType": "END",
+         "actionDelay": 0,
+         "actionDelayUnit": "HOUR"
+        }
+       },
+       "externalReference": ""
+      },
+      "externalReference": ""
+     },
+     "externalReference": ""
+    },
+    "unconditionalNode": {
+     "nodeType": "VIEW_PROFILE",
+     "actionDelay": 5,
+     "actionDelayUnit": "DAY",
+     "unconditionalNode": {
+      "nodeType": "VIEW_PROFILE",
+      "actionDelay": 5,
+      "actionDelayUnit": "DAY",
+      "unconditionalNode": {
+       "nodeType": "SEND_LEAD_TO_BISON",
+       "actionDelay": 5,
+       "actionDelayUnit": "DAY",
+       "payload": {
+        "bisonCampaignId": 418,
+        "stopExternalLead": true
+       },
+       "unconditionalNode": {
+        "nodeType": "END",
+        "actionDelay": 0,
+        "actionDelayUnit": "HOUR"
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}
