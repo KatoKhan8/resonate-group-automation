@@ -107,3 +107,37 @@ Which of (a), (b) or (c) it is with the code path proven; the affected cost
 conclusions named if (c); the full chain from crawl to consumer; the
 smallest fix with a ten-record run reporting per record; and how many of
 TASK-211's 53 reach a verdict for zero credits.
+
+## PRIOR WORK RECOVERED — 2026-09-21, read this before starting
+
+An earlier round already did the ANALYSIS half of this task and it was never
+integrated. Do not repeat it. It is on `origin/qwen-worker-r45` (commit
+`23200fbb` touched these paths), and none of these files exist on master:
+
+    docs/FREE-CRAWL-NEVER-RAN-2026-09-16.md   the written finding
+    docs/TASK-214-FINAL-REPORT.md
+    scripts/task214_free_crawl_proof.py       the proof harness
+    scripts/task214_find_success.py
+    scripts/task214_analyze_53.py             TASK-211's 53 records
+    scripts/task214_verify_sample.py
+    tests/test_webfetch_leg.py                8 tests, 4 of which FAIL on master
+
+Recover them with `git show origin/qwen-worker-r45:<path>` rather than
+rewriting them.
+
+**THE FIX HALF WAS NEVER DONE, AND THAT IS WHY THIS TASK IS STILL OPEN.**
+`src/research.py` on master carries a 27-line change from that branch's
+lineage, but the free leg still produces nothing. Verified on master at
+2026-09-21T09:5xZ by running the branch's own test file: four failures, the
+load-bearing one being
+
+    test_the_row_has_the_right_stage_and_provider
+    AssertionError: 0 != 1        # zero webfetch rows in the waterfall
+
+That assertion IS the deliverable restated: the crawl is in the table and not
+in the path. The test is a correct statement of intended behaviour that master
+does not implement, so it must NOT be merged as-is to make the suite green -
+make the leg produce the row, then the test passes on its own terms.
+
+Do not re-derive which of (a)/(b)/(c) it is until you have read
+`FREE-CRAWL-NEVER-RAN-2026-09-16.md` off that branch.
