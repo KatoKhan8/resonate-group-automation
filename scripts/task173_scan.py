@@ -139,6 +139,56 @@ def full_scan():
     return master_map, branch_maps, sorted(all_tids)
 
 
+CODE_DIRS = ("src/", "scripts/", "tests/")
+
+
+def code_already_on_master(ref):
+    """Does this branch carry any CODE that master does not already have?
+
+    ## WHY THIS EXISTS, AND IT IS THE DIFFERENCE BETWEEN A REPORT AND A
+    ## REGRESSION
+
+    Everything above compares the TASK FILE'S STAGE - TODO on master, DONE on
+    a branch - and never looks at the code. A task whose work is already
+    integrated therefore still reports UNINTEGRATED, and the obvious response
+    to that report is to merge the branch.
+
+    Measured 2026-09-21: SIX of twelve reported tasks were already
+    integrated. TASK-229's three files are byte-identical on master and on
+    its branch, and merging it would have deleted 12,487 lines of later work.
+    TASK-232 was worse than that - its branch carries an older
+    `stoppedcause.py` that classifies from the events feed, while master
+    carries a newer one with the `NEVER_CONTACTED` outcome that actually
+    answers the question. Merging on this report's word would have deleted
+    the classification that works and restored the one that provably cannot.
+
+    So a branch whose every code blob already matches master is INTEGRATED,
+    whatever its task file says. Compared by blob hash rather than by diff:
+    two files are the same file when git says they are the same object, and
+    a diff against a merge base answers a different question.
+
+    A branch that cannot be read answers False - unknown is not integrated,
+    and the fail-closed direction here is to keep reporting it.
+    """
+    try:
+        out = git("diff", "--name-only", "master...%s" % ref)
+    except Exception:
+        return False
+    paths = [f.strip() for f in out.splitlines()
+             if f.strip() and f.strip().startswith(CODE_DIRS)]
+    if not paths:
+        return True                      # task file only: nothing to integrate
+    for path in paths:
+        try:
+            on_master = git("rev-parse", "master:%s" % path)
+            on_branch = git("rev-parse", "%s:%s" % (ref, path))
+        except Exception:
+            return False
+        if not on_master or on_master != on_branch:
+            return False
+    return True
+
+
 def check_result_blocks(master_map, branch_maps, unintegrated_tids):
     """For unintegrated tasks only, read the file content on the relevant
     branches to check result blocks. Minimises git show calls."""
@@ -169,11 +219,17 @@ def full_report(unintegrated_only=False):
 
     # Determine unintegrated set
     unintegrated_tids = set()
+    integrated_anyway = {}
     for tid in all_tids:
         master_stage = master_map.get(tid, (None,))[0]
         if master_stage in ("TODO", "RUNNING", None):
             for ref, stage in task_branches.get(tid, {}).items():
                 if stage in ("REVIEW", "DONE"):
+                    # THE CODE DECIDES, NOT THE TASK FILE. See
+                    # `code_already_on_master`.
+                    if code_already_on_master(ref):
+                        integrated_anyway.setdefault(tid, ref)
+                        continue
                     unintegrated_tids.add(tid)
                     break
 
@@ -190,6 +246,14 @@ def full_report(unintegrated_only=False):
     master_todo = sum(1 for s, _ in master_map.values() if s == "TODO")
     print("Tasks in master TODO: %d" % master_todo)
     print("UNINTEGRATED tasks: %d" % len(unintegrated_tids))
+    if integrated_anyway:
+        print("ALREADY INTEGRATED despite the task file saying otherwise: %d"
+              % len(integrated_anyway))
+        for tid, ref in sorted(integrated_anyway.items()):
+            print("  %s  every code blob matches master (%s)"
+                  % (tid, ref.replace("origin/", "")))
+        print("  Move the task file to DONE. DO NOT MERGE these - the branch "
+              "is older than master.")
     print()
 
     if unintegrated_only:
