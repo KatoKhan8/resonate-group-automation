@@ -109,7 +109,8 @@ time.
                 engineering, every workspace.
     client      exactly one workspace. That client's own campaigns, accounts,
                 leads, cadence and sends — and nothing else that exists.
-    unbound     a channel nobody bound. Generic answers, no client data.
+    unbound     a channel nobody bound. The identity section of the pack,
+                no tool at all, no client data.
 
 **Unbound is the default and that is the point.** A channel id that appears
 in no policy is not "probably internal"; it is a channel this module has
@@ -155,6 +156,31 @@ Scoping happens three times, and the first one is the one that matters:
 
 Step 3 is a backstop. A system whose only defence is a backstop has none,
 which is why `tests/test_slack_agent_scope.py` asserts the *material*.
+
+### The material may not contain a word the answer is checked for
+
+This one was learnt the hard way. Asked "what is Resonate OS" in an unbound
+channel, the model wrote a good paragraph ending *"...which is what keeps
+one client's data, senders and spend from ever touching another's"* —
+paraphrasing PRODUCT-GOAL's own cross-client list, which says "one client's
+spend reaching another's ledger". The backstop then refused the answer for
+containing "spend", **a word the material had supplied**. Nothing had
+leaked; the reader got a fallback sentence instead of a correct paragraph.
+
+A check that fires on its own input is not a safety property, it is a bug
+with a good reputation. So `_identity_for_scope` filters the identity
+section for every non-internal scope — any line naming a workspace it may
+not see, and any line carrying a term the answer will be checked against —
+and what survives is safe to repeat in full. The invariant is asserted by
+`test_the_material_never_contains_a_word_the_answer_is_checked_for`.
+
+The same lesson killed the unbound term list. An earlier version added
+"lead", "prospect", "cadence" and "account" to it, which meant the agent
+could not say **"lead generation engine"** — the product's own name for
+itself and the one sentence an unbound channel exists to be able to say. A
+term list that blocks that is not cautious, it is broken. Unbound is safe
+because it is handed no tool and no workspace material, so there is no
+client datum in the prompt for a word list to have to catch.
 
 A tool argument is the obvious injection surface — "summarise workspace
 beta" — and in a client channel the argument is **ignored**, not validated
@@ -226,11 +252,17 @@ argument; it does not choose a query, a table, a file or a verb.
 
 | Tool | Scopes |
 | --- | --- |
-| `timeline` | internal · client · unbound |
 | `workspace_summary` `cadence_detail` `campaign_detail` | internal · client |
-| `batch_state` `sends_today` `held_by_reason` | internal · client |
+| `batch_state` `sends_today` `held_by_reason` `timeline` | internal · client |
 | `lead_lookup` `account_lookup` `decisions_log` | internal · client |
 | `who_does_what` `credits` `monitors` `next_actions` | internal |
+
+**An unbound channel calls none of them.** There is deliberately no tuple
+that includes it: every tool reads either Resonate's own state or a
+client's, and an unbound channel is entitled to neither. It still *answers*
+— the identity section is in its material — it just takes no readback. The
+timeline is on the client list rather than open to everybody because its
+milestones name campaign ids, send times and the size of the sender estate.
 
 `MAX_CALLS_PER_TURN = 5`. Not a performance limit: an agent that can call
 tools in a loop can be driven into one by a message, and a fixed budget
@@ -284,19 +316,24 @@ internal automatically.
 ## 9. TESTS
 
     tests/test_slack_agent_cannot_act.py      10   structural, four ways
-    tests/test_slack_agent_scope.py           39   isolation
+    tests/test_slack_agent_scope.py           41   isolation
     tests/test_slack_agent_numbers.py         16   the number guard
-    tests/test_slack_agent_conversation.py    24   memory, refusals, fallback
+    tests/test_slack_agent_conversation.py    25   memory, refusals, fallback
     tests/test_slack_knowledge.py             20   the pack
-    tests/test_slack_agent_readback.py        19   REPAIRED, see below
+    tests/test_slack_agent_readback.py        19   REPAIRED, see the merge doc
+                                             ---
+                                             131
 
-**Every guard was mutation-tested.** Each was deliberately broken and the
-suite re-run, and one mutation was **not caught**: deleting the scope check
-from `slackconversation.guard` broke nothing, because every test asserted
+**Every guard was mutation-tested**: eighteen mutations, each deliberately
+applied, the suite re-run, the file restored. Three were **not caught** on
+the first pass, and each one was a real hole rather than a missing
+assertion.
+
+**1. A guard nothing calls.** Deleting the scope check from
+`slackconversation.guard` broke nothing, because every test asserted
 `check_outbound` in isolation and none asserted that a real turn reaches it.
-A guard nothing calls is a guard that does not exist.
-`TheTurnACTUALLYAppliesTheBackstop` was added for it, and fixing it exposed
-a second defect worth recording:
+`TheTurnACTUALLYAppliesTheBackstop` was added for it — and fixing it exposed
+a defect of F-003's exact shape:
 
 > `check_outbound` re-read the workspace store to learn which slugs exist.
 > If that read failed or came back empty, the slug check passed **vacuously**
@@ -304,6 +341,17 @@ a second defect worth recording:
 > defaulted to `()` and `coverage()` passed by covering nothing. A `Scope`
 > now captures the slug set it was resolved against, so the set that decided
 > the binding is the set that polices the answer.
+
+**2. A client fallback that was only ever safe by accident.** Deleting the
+client branch from `deterministic_answer` broke nothing, because the one
+test of it used a readback containing "Qwen" — which the *backstop* caught.
+It was testing the second guard, not the first. A readback with nothing
+forbidden in it would have gone to a client as raw key-value text.
+
+**3. The same trick a second time.** The replacement test for the unbound
+fallback used `commits_total`, which contains the word "commit" and so was
+also caught by the backstop. A test that can only fail when a second guard
+is also broken is not testing the first one. It now uses a bland readback.
 
 ---
 

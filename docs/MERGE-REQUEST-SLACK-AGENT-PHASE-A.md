@@ -24,9 +24,9 @@ main session needs to decide.
     docs/requests/README.md        the Phase B ticket contract, reserved
 
     tests/test_slack_agent_cannot_act.py      10 tests
-    tests/test_slack_agent_scope.py           39
+    tests/test_slack_agent_scope.py           41
     tests/test_slack_agent_numbers.py         16
-    tests/test_slack_agent_conversation.py    24
+    tests/test_slack_agent_conversation.py    25
     tests/test_slack_knowledge.py             20
 
 **Three existing files modified.** These are the merge risk:
@@ -168,8 +168,10 @@ other callers.
         tests.test_slack_agent_readback tests.test_slack \
         tests.test_slack_route tests.test_web_slack
 
-225 tests, green on this branch. Then the workspace suites named in
-section 3: 158 tests, green.
+234 tests, green on this branch. Then the workspace suites named in
+section 3 — `test_workspaces`, `test_client_settings`, `test_web_settings`,
+`test_workspace_isolation_attacks`, `test_personas_settings`,
+`test_icp_settings` — 158 tests, green.
 
 Then, without posting anything:
 
@@ -178,10 +180,13 @@ Then, without posting anything:
         and has anything actually sent?" --as-channel C0C34GCAR27
 
 **Every guard on this branch was mutation-tested** — broken deliberately,
-suite re-run, restored. Seven mutations, six caught on the first pass. The
-one that was not is written up in section 9 of the phase doc; it found a
-vacuous-pass bug of the same shape as F-003, and both the bug and the
-missing test are fixed.
+suite re-run, restored. Eighteen mutations; three were not caught on the
+first pass, and all three were real holes rather than missing assertions.
+Section 9 of the phase doc has them. The first found a vacuous-pass bug of
+F-003's exact shape; the other two were tests that passed only because a
+*second* guard caught what the first one had stopped catching, which is the
+failure mode that makes a suite look complete while covering one layer
+twice and another not at all.
 
 ---
 

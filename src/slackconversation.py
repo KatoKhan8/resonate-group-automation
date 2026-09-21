@@ -559,11 +559,11 @@ def respond(question, channel=None, user=None, channel_type=None,
     results = tools.run_all(scope, calls)
     out["tools"] = [{"name": n, "argument": a} for n, a, _ in results]
 
-    if not results and scope.is_unbound:
-        # Nothing this channel may read matched the question. Say WHY -
-        # "I have no readback" reads as a fault, and this is a binding.
-        out.update({"reply": REFUSAL_UNBOUND, "how": "unbound"})
-        return out
+    # An unbound channel gets no tool and no workspace material, and that is
+    # deliberate - but it still ANSWERS. "What is Resonate OS" is the one
+    # question it exists to be able to answer, and returning the binding
+    # notice to it would make the scope a wall rather than a narrower room.
+    # The identity section is in the material either way.
 
     material = material_for(scope, question, results)
     plain = safe_fallback(results, scope)

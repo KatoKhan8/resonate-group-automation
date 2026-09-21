@@ -229,11 +229,47 @@ class WhenThereIsNoModel(unittest.TestCase):
         """Handing a client the dump because the prose failed a check would
         be a worse disclosure than the answer that was rejected."""
         scope = slackscope.Scope(slackscope.CLIENT, workspace="alpha",
-                                 source="test")
+                                 source="test", slugs=("alpha",))
         text = conversation.safe_fallback(
             [("who_does_what", None, {"roles": [{"name": "Qwen"}]})], scope)
         self.assertNotIn("Qwen", text)
         self.assertEqual(text, conversation.CLIENT_FALLBACK)
+
+    def test_a_client_gets_a_sentence_even_when_the_dump_is_innocuous(self):
+        """The fallback is an ANSWER, not a debug view.
+
+        Added after a mutation run: deleting the client branch from
+        `deterministic_answer` broke nothing, because the only test of it
+        used a readback that the outbound check would have caught anyway.
+        So it was testing the backstop, not the behaviour. A readback with
+        nothing forbidden in it would have gone to the client as raw
+        key-value text, which is not an answer and not something a client
+        should have to parse.
+        """
+        scope = slackscope.Scope(slackscope.CLIENT, workspace="alpha",
+                                 source="test", slugs=("alpha",))
+        readback = [("workspace_summary", None,
+                     {"campaigns": 23, "approved": 14})]
+        text = conversation.safe_fallback(readback, scope)
+        self.assertEqual(text, conversation.CLIENT_FALLBACK)
+        self.assertNotIn("23", text)
+        self.assertNotIn("workspace_summary", text)
+
+    def test_an_unbound_fallback_is_a_sentence_too(self):
+        """The readback here is deliberately bland.
+
+        An earlier version of this used `commits_total`, which contains the
+        word "commit" - so the outbound check caught it and the test passed
+        for the wrong reason, proving the backstop rather than the
+        scope-aware fallback. A test that can only fail when a second guard
+        is also broken is not testing the first one.
+        """
+        scope = slackscope.Scope(slackscope.UNBOUND, source="test",
+                                 slugs=())
+        text = conversation.safe_fallback(
+            [("timeline", None, {"days_worked": 913})], scope)
+        self.assertEqual(text, conversation.UNBOUND_FALLBACK)
+        self.assertNotIn("913", text)
 
     def test_an_internal_fallback_carries_the_readback(self):
         scope = slackscope.Scope(slackscope.INTERNAL, source="test")

@@ -219,9 +219,19 @@ class ToolsAreFilteredBeforeTheyRun(ScopeEnvironment):
             with self.assertRaises(tools.ToolRefused):
                 tools.run(self.alpha(), name)
 
-    def test_an_unbound_channel_can_call_almost_nothing(self):
+    def test_an_unbound_channel_can_call_nothing_at_all(self):
+        """No readback, not even the timeline.
+
+        The timeline's milestones name campaign ids, send times and the
+        size of the sender estate. That is Resonate's operational detail -
+        correct in a client's own channel, and not in a room nobody has
+        identified. An unbound channel gets the identity section of the
+        pack and no tool, which is precisely what lets its forbidden-term
+        list be empty: there is no client datum in the prompt for a word
+        list to have to catch.
+        """
         scope = slackscope.resolve(channel="C_NOBODY", rows=ROWS)
-        self.assertEqual(sorted(tools.for_scope(scope)), ["timeline"])
+        self.assertEqual(sorted(tools.for_scope(scope)), [])
 
     def test_a_tool_that_does_not_exist_is_refused(self):
         with self.assertRaises(tools.ToolRefused):
@@ -308,12 +318,54 @@ class TheOutboundCheckIsABackstopAndItWorks(ScopeEnvironment):
         text = "Qwen is on TASK-241; EmailBison 489 sent 2. Beta is idle."
         self.assertEqual(internal.check_outbound(text, rows=ROWS), text)
 
-    def test_an_unbound_channel_may_not_discuss_prospects_at_all(self):
-        for text in ("That lead replied.", "The account is approved.",
-                     "The cadence has five steps."):
+    def test_an_unbound_channel_may_still_say_what_the_product_is(self):
+        """The one sentence it exists to be able to say.
+
+        An earlier version added "lead", "cadence" and "account" to the
+        unbound term list, which meant the agent could not say "lead
+        generation engine" - the product's own name for itself, out of
+        PRODUCT-GOAL's first line. A term list that blocks that is not
+        cautious, it is broken. Unbound is safe because it is handed no
+        tool and no workspace material, not because of a word list.
+        """
+        scope = slackscope.resolve(channel="C_NOBODY", rows=ROWS)
+        text = ("Resonate OS is an internal, multi-client lead generation "
+                "engine. Clients receive reporting rather than operating it.")
+        self.assertEqual(scope.check_outbound(text, rows=ROWS), text)
+
+    def test_an_unbound_channel_still_may_not_name_a_client_or_a_worker(self):
+        scope = slackscope.resolve(channel="C_NOBODY", rows=ROWS)
+        for text in ("Alpha is running eight campaigns.",
+                     "Qwen is reworking it.",
+                     "EmailBison carries the sending."):
             with self.assertRaises(slackscope.ScopeViolation):
-                slackscope.resolve(channel="C_NOBODY", rows=ROWS
-                                   ).check_outbound(text, rows=ROWS)
+                scope.check_outbound(text, rows=ROWS)
+
+    def test_the_material_never_contains_a_word_the_answer_is_checked_for(
+            self):
+        """A check that fires on its own input is a bug with a reputation.
+
+        Asked "what is Resonate OS" in an unbound channel, the model wrote
+        a correct paragraph ending "...keeps one client's data, senders and
+        spend from ever touching another's" - paraphrasing PRODUCT-GOAL's
+        own cross-client list, which says "one client's spend reaching
+        another's ledger". The backstop then discarded the answer for
+        containing "spend", a word the material had handed it. Nothing had
+        leaked and the reader got a fallback sentence.
+        """
+        import json
+        from src import slackknowledge
+
+        pack = dict(PACK, identity=slackknowledge.identity())
+        for scope in (slackscope.resolve(channel="C_NOBODY", rows=ROWS),
+                      self.alpha()):
+            body = json.dumps(scope.filter_pack(pack), default=str).lower()
+            leaked = [term for term in scope.forbidden_terms()
+                      if term in body]
+            self.assertFalse(
+                leaked,
+                "the material handed to a %s channel contains %s, which the "
+                "answer is then checked for" % (scope.kind, leaked))
 
 
 class TheTurnACTUALLYAppliesTheBackstop(ScopeEnvironment):

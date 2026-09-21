@@ -319,7 +319,9 @@ def monitors(scope, argument=None):
 #: name -> (callable, one-line description, scopes that may call it)
 _INTERNAL = (slackscope.INTERNAL,)
 _INTERNAL_CLIENT = (slackscope.INTERNAL, slackscope.CLIENT)
-_ANY = (slackscope.INTERNAL, slackscope.CLIENT, slackscope.UNBOUND)
+# There is deliberately no ANY tuple. Every tool reads either Resonate's
+# own state or a client's, and an unbound channel is entitled to neither -
+# it gets the identity section of the pack and no readback at all.
 
 REGISTRY = {
     "workspace_summary": (
@@ -358,10 +360,15 @@ REGISTRY = {
         who_does_what,
         "who works on this and what each is doing right now",
         _INTERNAL, None),
+    # INTERNAL AND CLIENT ONLY. The milestones name campaign ids, send
+    # times and the size of the sender estate - Resonate's operational
+    # detail, correct in a client's own channel and not in a room nobody
+    # has identified. An unbound channel gets the identity section and no
+    # tool at all, which is what makes its term list able to be empty.
     "timeline": (
         timeline,
         "when the project started and the milestones since",
-        _ANY, None),
+        _INTERNAL_CLIENT, None),
     "sends_today": (
         sends_today,
         "what actually went out, from the provider's own counters",

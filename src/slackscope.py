@@ -192,10 +192,21 @@ INTERNAL_PROVIDER_TERMS = (
 CLIENT_FORBIDDEN_TERMS = (INTERNAL_WORKER_TERMS + INTERNAL_ENGINEERING_TERMS
                           + INTERNAL_COMMERCIAL_TERMS + INTERNAL_PROVIDER_TERMS)
 
-#: The same list for an UNBOUND channel, plus anything client-specific. An
-#: unbound channel may have anybody in it, so it hears nothing about anyone's
-#: prospects at all.
-UNBOUND_EXTRA_TERMS = ("lead", "prospect", "cadence", "account")
+#: An UNBOUND channel adds nothing to that list, and the reason is worth
+#: writing down because the first version of this added four words and broke
+#: the scope's whole purpose.
+#:
+#: "lead" was one of them - so the agent could not say "lead generation
+#: engine", which is the ONE sentence an unbound channel exists to be able
+#: to say. A term list that blocks the product's own name for itself is not
+#: cautious, it is broken.
+#:
+#: An unbound channel is safe for a different reason: it is handed NO tools
+#: and NO workspace material at all - `filter_pack` gives it the identity
+#: section and nothing else - so there is no client datum in the prompt for
+#: a word list to have to catch. Blocking the vocabulary as well would be
+#: guarding the empty room and locking the door on the way out.
+UNBOUND_EXTRA_TERMS = ()
 
 
 class ScopeViolation(RuntimeError):
@@ -300,13 +311,64 @@ class Scope:
             return pack
         out = {"built_at": pack.get("built_at"),
                "scope": self.kind,
-               "identity": pack.get("identity")}
+               "identity": self._identity_for_scope(
+                   pack.get("identity"))}
         if self.kind == UNBOUND:
             return out
         out["policies"] = client_safe_policies(pack.get("policies") or [])
         everything = pack.get("workspaces") or {}
         mine = everything.get(self.workspace)
         out["workspaces"] = {self.workspace: mine} if mine else {}
+        return out
+
+    def _identity_for_scope(self, identity):
+        """The product description as this scope may be handed it.
+
+        THE MATERIAL MAY NOT CONTAIN A WORD THE ANSWER IS CHECKED FOR. That
+        is the rule this implements, and it was learnt the hard way: asked
+        "what is Resonate OS" in an unbound channel, the model wrote a good
+        paragraph ending "...which is what keeps one client's data, senders
+        and spend from ever touching another's" - paraphrasing
+        PRODUCT-GOAL's own cross-client list, which says "one client's spend
+        reaching another's ledger". The backstop then refused the answer for
+        containing "spend", **a word the material had supplied**. The reader
+        got a fallback sentence instead of a correct paragraph, and nothing
+        had leaked.
+
+        A check that fires on its own input is not a safety property, it is
+        a bug with a good reputation. So the identity section is filtered
+        here - any line naming a workspace this scope may not see, and any
+        line carrying a term the answer will be checked against - and what
+        survives is safe to repeat in full.
+
+        The same reasoning covers "Not a Productive-specific automation",
+        which is correct in the document and a disclosure in another
+        client's channel.
+        """
+        if not isinstance(identity, dict):
+            return identity
+        allowed = set(self.workspaces_visible())
+        banned = [slug for slug in self.known_slugs()
+                  if slug and slug not in allowed]
+        banned += list(self.forbidden_terms())
+        if not banned:
+            return identity
+
+        def carries(value):
+            lowered = str(value).lower()
+            return any(term in lowered for term in banned)
+
+        out = {}
+        for key, value in identity.items():
+            if isinstance(value, list):
+                kept = [row for row in value if not carries(row)]
+                if kept:
+                    out[key] = kept
+            elif isinstance(value, str):
+                if not carries(value):
+                    out[key] = value
+            else:
+                out[key] = value
         return out
 
     def check_outbound(self, text, rows=None):
