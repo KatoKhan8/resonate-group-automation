@@ -108,10 +108,28 @@ def _parse(stamp):
         tzinfo=datetime.timezone.utc)
 
 
-def lane_for(row, now=None):
-    """(lane, why). Total, single-valued, precedence as written."""
+def lane_for(row, now=None, campaign_status=None):
+    """(lane, why). Total, single-valued, precedence as written.
+
+    `campaign_status` matters and the first version of this ignored it, which
+    put 1,351 of 1,415 leads in NEVER. A lead reads `stopped` when ITS OWN
+    sequence was stopped and also when the whole CAMPAIGN was paused or
+    finished - and this estate is mostly finished campaigns, so nearly every
+    lead in it reads stopped.
+
+    The operator's rule says "unknown stop reason" is a NEVER, and it means a
+    lead we stopped for a reason nobody recorded. A campaign somebody paused
+    in April is not that: 487 was paused by an audit probe passing a bare
+    dict, and every one of its ten leads would have been written off as
+    permanently excluded by a rule about the word `stopped`.
+
+    So the stop only counts against the LEAD when its campaign is still
+    running. Otherwise the lead is read on its age like any other.
+    """
     now = now or _now()
     state = str(row.get("state") or "").lower()
+    campaign_live = str(campaign_status or "").lower() in (
+        "active", "in_progress", "running", "sending")
     if row.get("unsubscribed") or row.get("bounced") or row.get("complained"):
         return NEVER, "unsubscribe, bounce or complaint on the record"
     if state in NEVER_STATES:
@@ -120,11 +138,23 @@ def lane_for(row, now=None):
         return NEVER, "negative reply"
     if state in ACTIVE_STATES:
         return ACTIVE, f"still in an active sequence ({state})"
-    if row.get("replied"):
+    if row.get("replied") or state == "replied":
         return REVIVE, "replied, then silence - a human sends the next one"
     if state in STOPPED_STATES:
-        return NEVER, (f"stopped with no reason the provider will name "
-                       f"({state}); an unknown stop is a NEVER by the rule")
+        if campaign_live:
+            return NEVER, (f"stopped ({state}) inside a campaign that is "
+                           f"still running - an unknown stop is a NEVER by "
+                           f"the rule")
+        touched_here = _parse(row.get("last_touch"))
+        age = (now - touched_here).days if touched_here else None
+        if age is not None and age > REENGAGE_AFTER_DAYS:
+            return REENGAGE, (f"campaign {campaign_status}, no reply, last "
+                              f"touch {age}d ago - the stop is the campaign's, "
+                              f"not this lead's")
+        if age is not None:
+            return UNKNOWN, (f"campaign {campaign_status} and last touch "
+                             f"{age}d ago - inside the 90-day rule")
+        return UNKNOWN, f"campaign {campaign_status} and no last-touch date"
     touched = _parse(row.get("last_touch"))
     if state in FINISHED_STATES and touched:
         age = (now - touched).days
@@ -261,6 +291,17 @@ def report():
     if not os.path.exists(INVENTORY):
         print("no inventory yet - run --walk")
         return 1
+    load_env()
+    statuses = {}
+    try:
+        rows, _total = bison._paged(
+            "campaigns", lambda page: bison.query(
+                f"{bison.base()}/campaigns", {"page": page}))
+        statuses = {str(r.get("id")): r.get("status") for r in rows}
+    except Exception as exc:                                    # noqa: BLE001
+        print(f"  campaign statuses unreadable ({type(exc).__name__}); "
+              f"every stop will be read as the lead's own, which OVER-counts "
+              f"NEVER")
     lanes = collections.Counter()
     reasons = collections.Counter()
     per_campaign = collections.Counter()
@@ -270,8 +311,10 @@ def report():
             if not line:
                 continue
             row = json.loads(line)
-            lanes[row.get("lane")] += 1
-            reasons[str(row.get("why"))[:60]] += 1
+            lane, why = lane_for(
+                row, campaign_status=statuses.get(str(row.get("campaign_id"))))
+            lanes[lane] += 1
+            reasons[str(why)[:60]] += 1
             per_campaign[row.get("campaign_id")] += 1
     print("\nRE-ENGAGEMENT BUCKETS\n")
     for lane in (NEVER, ACTIVE, REVIVE, REENGAGE, UNKNOWN):
