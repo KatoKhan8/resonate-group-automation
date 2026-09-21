@@ -337,47 +337,61 @@ def qwen_task():
 # -------------------------------------------------------------- blocked
 
 def blocked():
-    """OPEN and BLOCKED rows from the problem register.
+    """The problem register's ROWS - open, fixed, and by severity.
 
-    Read from the markdown file because no structured store exists for it.
-    A parse failure is reported, not swallowed.
+    **COUNTS ROWS, NOT BULLETS.** This walked the OPEN section counting every
+    line beginning with `- ` and reported 47 where the register carries ten
+    `### ISSUE-nnn` rows, six of them open. A count wrong by a factor of five
+    is worse than no count, because it reads as a number and gets quoted -
+    and this one was being quoted into a Slack channel.
+
+    The rows are the headings. A heading carrying FIXED is fixed, which is
+    the register's own convention and the only one that survives a row being
+    edited in place - which is what the register asks you to do.
+
+    Folded in from `slackagenttools.open_issues` on 2026-09-21 at the
+    operator's instruction, so there is ONE register reader rather than a
+    correct one and a wrong one. `open_items` is kept, now carrying the row
+    titles, because callers render it.
     """
+    import re
     path = os.path.abspath(os.path.join(
         os.path.dirname(__file__), "..", "docs", "state",
         "PROBLEM-REGISTER.md"))
     if not os.path.isfile(path):
         return {"read_at": _now_iso(), "_error": "problem register not found"}
     try:
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
-    except Exception as exc:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    except Exception as exc:                                    # noqa: BLE001
         return {"read_at": _now_iso(),
                 "_error": f"could not read problem register: {exc}"}
 
-    open_items = []
-    blocked_items = []
-    current_section = None
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("## OPEN"):
-            current_section = "open"
-            continue
-        if stripped.startswith("## BLOCKED"):
-            current_section = "blocked"
-            continue
-        if stripped.startswith("## ") and current_section:
-            current_section = None
-            continue
-        if current_section == "open" and stripped.startswith("- "):
-            open_items.append(stripped[2:120])
-        elif current_section == "blocked" and stripped.startswith("- "):
-            blocked_items.append(stripped[2:120])
-
+    rows = []
+    for match in re.finditer(r"^### (ISSUE-\d+)\s*[·-]\s*(.+?)$", text, re.M):
+        heading = match.group(2)
+        severity = None
+        for word in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+            if word in heading:
+                severity = word
+                break
+        rows.append({"id": match.group(1),
+                     "title": heading.split("·")[0].strip()[:110],
+                     "severity": severity,
+                     "fixed": "FIXED" in heading})
+    open_rows = [r for r in rows if not r["fixed"]]
+    blocked_rows = [r for r in open_rows
+                    if "BLOCKED" in text.split(r["id"], 1)[-1][:900].upper()]
     return {"read_at": _now_iso(),
-            "open_count": len(open_items),
-            "open_items": open_items[:20],
-            "blocked_count": len(blocked_items),
-            "blocked_items": blocked_items[:20]}
+            "issue_rows": len(rows),
+            "open_count": len(open_rows),
+            "fixed_count": len(rows) - len(open_rows),
+            "open_items": [f"{r['id']} {r['title']}" for r in open_rows],
+            "by_severity": {word: sum(1 for r in open_rows
+                                      if r["severity"] == word)
+                            for word in ("CRITICAL", "HIGH", "MEDIUM", "LOW")},
+            "blocked_count": len(blocked_rows),
+            "blocked_items": [f"{r['id']} {r['title']}" for r in blocked_rows]}
 
 
 # -------------------------------------------------------------- decisions

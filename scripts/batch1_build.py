@@ -260,7 +260,11 @@ def build_records(selection, icp, verify, mx, people):
                     "signal": row.get("reason") or "",
                     "state": "verified",
                     "drop_reason": None,
-                    "batch": BATCH_ID,
+                    # A MAPPING, because that is what `report.batch_of`
+                    # reads and what the intake path has always written. The
+                    # first version wrote a bare string and took out
+                    # `report.rows` for the whole queue.
+                    "batch": {"id": BATCH_ID, "source": "24k staging track"},
                     "cohort": cohort,
                     "company_facts": {
                         "name": (person.get("Company") or "").strip() or domain,

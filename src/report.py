@@ -19,7 +19,22 @@ DIMENSIONS = ("client", "batch", "persona", "angle", "channel")
 
 
 def batch_of(rec):
-    return (rec.get("batch") or {}).get("id") or "unbatched"
+    """The batch a record belongs to, whatever shape the field is in.
+
+    `batch` is a mapping with an `id` on records the intake wrote, and a
+    BARE STRING on 527 records in the live store - 50 from older runs and
+    477 written by tonight's batch builder. This function raised
+    AttributeError on every one of them, which took out `report.rows` and
+    with it anything that walks the queue: the digest, the funnel and the
+    Slack agent's pipeline readback all died on the same line.
+
+    Read, do not convert. A reader that repairs the rows it reads writes
+    while somebody is looking at them.
+    """
+    batch = rec.get("batch")
+    if isinstance(batch, str):
+        return batch.strip() or "unbatched"
+    return (batch or {}).get("id") or "unbatched"
 
 
 def contact_index(rec):
