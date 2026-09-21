@@ -98,7 +98,15 @@ STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    # liveness beats. Not row state, but the file an operator
                    # reads to answer "has it sent yet" - a test appending a
                    # fixture SEND line there would be a fabricated send.
-                   "WATCH_EVENTS", "WATCH_HEARTBEAT")
+                   "WATCH_EVENTS", "WATCH_HEARTBEAT",
+                   # The client-approval store. Not row state, but it decides
+                   # whether an account may be spent on at all, and a test
+                   # fixture that wrote the REAL file could approve a domain
+                   # the client never cleared. Found by TASK-245's worker,
+                   # whose own addition to this tuple made the invariant test
+                   # report mine as missing - which is the test doing exactly
+                   # what its docstring says it is for.
+                   "CLIENT_APPROVAL")
 
 
 def use_directory(path):
