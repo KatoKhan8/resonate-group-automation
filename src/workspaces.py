@@ -489,6 +489,39 @@ POLICY_KEYS = {
         "why": "where this workspace's positive replies are announced. Blank "
                "means none, and none never means somebody else's",
     },
+    # ---- The Slack AGENT's binding for this workspace.
+    #
+    # DELIBERATELY NOT `slack.workspace_channel`. That key says where this
+    # workspace's notifications are POSTED; this one says where a
+    # conversational agent may ANSWER about this workspace, and they are two
+    # different decisions. A channel can be a good place to receive a
+    # positive-reply alert without being a room where somebody may ask the
+    # agent anything they like about the client and get an answer.
+    #
+    # No default and no inference, for the same reason as the channel above:
+    # an unbound channel gets generic answers and no client data at all, and
+    # "unbound" must never resolve to somebody else's workspace.
+    "slack.agent_channel": {
+        "label": "Agent channel",
+        "kind": "text", "max_length": 80,
+        "why": "the channel where the Slack agent answers AS this client. "
+               "Blank means the agent answers nothing about this workspace "
+               "in any channel, which is the safe default",
+    },
+    "slack.workspace_users": {
+        "label": "Client Slack users",
+        "kind": "list", "max_items": 100, "max_length": 20,
+        "why": "Slack user ids that are this CLIENT's people. A DM from one "
+               "of them is scoped to this workspace. A user listed under two "
+               "workspaces is scoped to neither",
+    },
+    "slack.internal_users": {
+        "label": "Resonate Slack users",
+        "kind": "list", "max_items": 100, "max_length": 20,
+        "why": "Slack user ids on the Resonate team. A DM from one of them "
+               "gets internal detail. Everybody else gets client scope or "
+               "nothing",
+    },
     "slack.notify_positive_replies": {
         "label": "Announce positive replies",
         "kind": "choice", "choices": ("on", "off"),

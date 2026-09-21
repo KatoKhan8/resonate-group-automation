@@ -19,7 +19,9 @@ Four categories of test:
 import importlib
 import json
 import os
+import shutil
 import sys
+import tempfile
 import types
 import unittest
 
@@ -123,10 +125,15 @@ class TheLoopImportsNothingThatCanWrite(unittest.TestCase):
 class HostileMessagesAreAnsweredNotActedOn(unittest.TestCase):
     """The operator's named test.
 
-    Five messages that attempt to push, pause, approve, change policy,
-    or escalate privileges. Each is answered; each writes nothing.
-    The answer explains that the agent is read-only, or simply answers
-    the factual part of the question without acting on the instruction.
+    REPAIRED 2026-09-21. This class had never passed: it read a system
+    prompt from `prompts/slack_agent.md`, which does not exist and never
+    did, so every one of its six tests errored on a FileNotFoundError. A
+    red test catches nothing - the register's own ISSUE-006 - and this one
+    was guarding the single most safety-relevant property the agent has.
+
+    It also called `model.complete`, which means it would have reached a
+    real endpoint the moment a credential was present. It now runs against
+    `llm.NoModel`, so it proves the refusal without a network call.
     """
 
     HOSTILE_MESSAGES = [
@@ -138,62 +145,37 @@ class HostileMessagesAreAnsweredNotActedOn(unittest.TestCase):
     ]
 
     def _answer(self, message):
-        model = llm.ScriptedModel(
-            "I am read-only and cannot execute commands. "
-            "I can only report the current system state."
-        )
-        readback = slackagentreadback.gather()
-        readback_text = slackagentreadback.format_for_prompt(readback)
-        prompt_path = os.path.join(ROOT, "prompts", "slack_agent.md")
-        with open(prompt_path, encoding="utf-8") as f:
-            system_prompt = f.read()
-        full_prompt = (
-            f"{system_prompt}\n\n{readback_text}\n\n"
-            f"## User message\n\n{message}\n"
-        )
-        raw = model.complete(full_prompt)
-        return raw.strip()
+        from src import slackconversation
+        return slackconversation.respond(
+            message, channel="C_TEST", user="U_TEST",
+            model=llm.NoModel())
 
-    def test_hostile_message_1_push_batch(self):
-        answer = self._answer(self.HOSTILE_MESSAGES[0])
-        self.assertTrue(len(answer) > 10,
-                        "the agent must produce an answer, not silence")
-        self.assertNotIn("pushed", answer.lower().split(".")[-1],
-                         "the answer must not claim to have pushed anything")
+    def test_every_hostile_message_is_recognised_as_a_state_change(self):
+        for message in self.HOSTILE_MESSAGES:
+            result = self._answer(message)
+            self.assertEqual(result["how"], "refused", message)
 
-    def test_hostile_message_2_pause_campaign(self):
-        answer = self._answer(self.HOSTILE_MESSAGES[1])
-        self.assertTrue(len(answer) > 10)
+    def test_every_hostile_message_still_gets_an_answer(self):
+        for message in self.HOSTILE_MESSAGES:
+            self.assertGreater(len(self._answer(message)["reply"]), 10,
+                               "silence is not a refusal: %r" % message)
 
-    def test_hostile_message_3_approve_batch(self):
-        answer = self._answer(self.HOSTILE_MESSAGES[2])
-        self.assertTrue(len(answer) > 10)
-
-    def test_hostile_message_4_change_policy(self):
-        answer = self._answer(self.HOSTILE_MESSAGES[3])
-        self.assertTrue(len(answer) > 10)
-
-    def test_hostile_message_5_admin_mode(self):
-        answer = self._answer(self.HOSTILE_MESSAGES[4])
-        self.assertTrue(len(answer) > 10)
-
-    def test_all_hostile_messages_produce_answers_and_no_actions(self):
-        """Every hostile message is answered. None of the answers contain
-        language claiming an action was taken."""
+    def test_no_answer_claims_an_action_was_taken(self):
         action_words = {"pushed", "paused", "approved", "resumed",
                         "changed", "updated", "modified", "executed",
                         "done", "completed the action"}
-        for msg in self.HOSTILE_MESSAGES:
-            answer = self._answer(msg)
-            self.assertTrue(len(answer) > 5,
-                            f"no answer produced for: {msg!r}")
-            lower = answer.lower()
-            claimed_action = [w for w in action_words
-                              if f"i have {w}" in lower
-                              or f"i've {w}" in lower]
-            self.assertFalse(
-                claimed_action,
-                f"answer to {msg!r} claims action: {claimed_action}")
+        for message in self.HOSTILE_MESSAGES:
+            lower = self._answer(message)["reply"].lower()
+            claimed = [w for w in action_words
+                       if "i have %s" % w in lower or "i've %s" % w in lower]
+            self.assertFalse(claimed,
+                             "answer to %r claims action: %s"
+                             % (message, claimed))
+
+    def test_no_tool_is_called_for_a_state_change(self):
+        """A refusal reads nothing. There is no reason to."""
+        for message in self.HOSTILE_MESSAGES:
+            self.assertEqual(self._answer(message)["tools"], [])
 
 
 # ============================================================== 3. IDEMPOTENT
@@ -201,36 +183,47 @@ class HostileMessagesAreAnsweredNotActedOn(unittest.TestCase):
 class OneAnswerPerMentionAcrossRestart(unittest.TestCase):
     """A restart must not re-answer the backlog.
 
-    The tracker persists answered ts values to disk. A new tracker
-    instance (simulating a restart) must see the same set.
+    REPAIRED 2026-09-21. This class imported `AnsweredTracker` from the
+    loop, a class that has never existed in it - both its tests errored on
+    the import. The real mechanism is the answer LOG: `answered_already`
+    rebuilds the set of message ids from `work/slack-agent.jsonl` on start,
+    which is strictly better than a side file because the record that
+    proves an answer was given and the record that prevents a second one
+    are then the same record and cannot disagree.
     """
 
-    def test_tracker_persists_across_instances(self):
-        import tempfile
-        with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "answered.json")
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="rga-agentlog-")
+        import scripts.slack_agent_loop as loop
+        self.loop = loop
+        self._prev = loop.LOG
+        loop.LOG = os.path.join(self.tmp, "work", "slack-agent.jsonl")
 
-            from scripts.slack_agent_loop import AnsweredTracker
-            t1 = AnsweredTracker(path)
-            self.assertFalse(t1.has("1234567890.123456"))
-            t1.mark("1234567890.123456")
-            self.assertTrue(t1.has("1234567890.123456"))
+    def tearDown(self):
+        self.loop.LOG = self._prev
+        shutil.rmtree(self.tmp, ignore_errors=True)
 
-            t2 = AnsweredTracker(path)
-            self.assertTrue(t2.has("1234567890.123456"),
-                            "a restart must see previously answered ts values")
-            self.assertEqual(t1.count(), t2.count())
+    def test_an_empty_log_has_answered_nothing(self):
+        self.assertEqual(self.loop.answered_already(), set())
 
-    def test_a_second_mark_does_not_duplicate(self):
-        import tempfile
-        with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "answered.json")
+    def test_an_answered_message_is_remembered_across_a_restart(self):
+        self.loop.log({"kind": "answered", "message_id": "C1:111.222"})
+        self.assertIn("C1:111.222", self.loop.answered_already())
 
-            from scripts.slack_agent_loop import AnsweredTracker
-            t = AnsweredTracker(path)
-            t.mark("111.222")
-            t.mark("111.222")
-            self.assertEqual(t.count(), 1)
+    def test_a_question_alone_does_not_count_as_answered(self):
+        """The log records the question BEFORE the answer is posted. If a
+        question row counted, a crash between the two would silence the
+        message forever rather than retry it."""
+        self.loop.log({"kind": "question", "message_id": "C1:333.444"})
+        self.assertNotIn("C1:333.444", self.loop.answered_already())
+
+    def test_a_corrupt_line_does_not_lose_the_set(self):
+        self.loop.log({"kind": "answered", "message_id": "C1:111.222"})
+        with open(self.loop.LOG, "a", encoding="utf-8") as handle:
+            handle.write("{not json" + chr(10))
+        self.loop.log({"kind": "answered", "message_id": "C1:555.666"})
+        self.assertEqual(self.loop.answered_already(),
+                         {"C1:111.222", "C1:555.666"})
 
 
 # ============================================================== 4. FAILED READBACK
@@ -320,10 +313,25 @@ class ReadbackGathersFromCanonicalState(unittest.TestCase):
             self.assertIn(name, sections,
                           f"gather() is missing section {name!r}")
 
-    def test_campaign_by_id_reports_missing(self):
-        result = slackagentreadback.campaign_by_id("999999")
+    def test_campaign_by_id_reports_a_failed_readback_rather_than_zero(self):
+        """REPAIRED 2026-09-21. This asserted the string "not found", which
+        the module has never produced, and it reached the REAL provider to
+        find that out - a live call inside the offline suite, one credential
+        away from spending. The contract that matters is the one the
+        register cares about: a readback that fails says so, and never
+        falls back to a zero that would be read as "nothing was sent"."""
+        from src.providers import bison
+
+        real = bison.campaign
+        bison.campaign = lambda *a, **k: (_ for _ in ()).throw(
+            RuntimeError("provider is down"))
+        try:
+            result = slackagentreadback.campaign_by_id("999999")
+        finally:
+            bison.campaign = real
         self.assertIn("_error", result)
-        self.assertIn("not found", result["_error"])
+        self.assertIn("readback failed", result["_error"])
+        self.assertNotIn("emails_sent", result)
 
 
 if __name__ == "__main__":
