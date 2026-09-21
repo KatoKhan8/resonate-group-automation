@@ -148,9 +148,28 @@ attempted ones from provider truth and leaves the 14 for a person.
                       recovered and used today rather than re-run.
 
 **The monitors do not survive a restart and neither does the session
-monitor.** Five bare python processes plus a session-scoped watch on 487 and
-489. If the machine reboots, restart them bare - **never wrap a monitor in
-`timeout`**, that killed the 489 watcher at exit 124 on the 18th.
+monitor.** If the machine reboots, restart them bare - **never wrap a monitor
+in `timeout`**, that killed the 489 watcher at exit 124 on the 18th.
+
+    scripts/bison_watch_loop.py --campaign 487 --interval 180
+    scripts/bison_watch_loop.py --campaign 489 --interval 180
+    scripts/heyreach_watch_loop.py --interval 300
+    scripts/reply_watch_loop.py --interval 300
+    scripts/bison_mailbox_utilisation.py --interval 300 --samples 2000 --quiet
+    scripts/notify_deliver_loop.py --interval 60      <- added 2026-09-21
+
+`notify_deliver_loop` is the one that did not exist until 2026-09-21, and its
+absence is why Slack was live and proven by a smoke test while 244
+notifications sat undelivered. `notify.notify()` only PLANS; `notify.deliver()`
+is what reaches Slack, and its only callers were `digestwatch` - which
+delivers a daily DIGEST row and nothing else - and the replay script, which is
+deliberately unrun. It touches PLANNED rows only: `suppressed` stays held,
+`unconfigured` is the replay's business, and `sent` is never re-sent.
+
+**A WATCHER FIRING IS NOT A NOTIFICATION.** `bison_watch_loop` writes to its
+own log and heartbeat and calls `notify` for nothing, so the first confirmed
+send on 489 reached no channel even with the delivery loop running. Wiring the
+watchers to `notify` is open work, not something the loop fixed.
 
 ### Unreviewed worker output
 
