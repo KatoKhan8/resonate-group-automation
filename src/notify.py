@@ -549,11 +549,30 @@ def _global_payload(fields):
 #: the status feed by NAME, before any value is looked at, because the
 #: audience is the whole team and the cheapest guarantee is the one that does
 #: not depend on what a caller happened to put in the string.
+#: Field names that carry a PERSON. Matched as substrings, because
+#: `contact_name`, `prospect_note` and `reply_excerpt_1` are all the same
+#: mistake.
 STATUS_FORBIDDEN_FIELDS = (
-    "email", "address", "recipient", "prospect", "contact_name", "first_name",
-    "last_name", "full_name", "person", "lead_email", "reply_excerpt",
-    "subject", "body", "copy", "linkedin_url", "profile_url", "phone",
+    "recipient", "prospect", "contact_name", "first_name", "last_name",
+    "full_name", "person", "lead_email", "reply_excerpt", "subject", "body",
+    "copy", "linkedin_url", "profile_url", "phone",
 )
+
+#: Names that ARE an address field rather than merely mentioning the channel.
+#:
+#: `email` and `address` were substring-matched here until 2026-09-21, and the
+#: first dual-channel batch report could not be posted: `enrolled_email` is a
+#: CHANNEL COUNT - 80 leads on the email side - and the guard read it as a
+#: mailbox. Now that the operator wants both channels counted separately in
+#: every report, half the legitimate field names in this product mention a
+#: channel.
+#:
+#: So the name rule went back to what it can actually decide - a field that
+#: holds an address - and the VALUE rule below does the real work. That was
+#: always the stronger of the two: it catches an address embedded in an
+#: otherwise innocent summary string, which no name check can.
+STATUS_ADDRESS_FIELDS = ("email", "address", "email_address", "mailbox",
+                         "to", "from")
 
 _EMAIL_SHAPE = re.compile(r"[^@\s]+@[^@\s]+\.[A-Za-z]{2,}")
 
@@ -580,6 +599,11 @@ def _status_payload(fields):
             raise NotifyError(
                 f"{key!r} may not appear in the status feed: it names a "
                 f"person or a prospect, and that channel carries counts only")
+        if lowered in STATUS_ADDRESS_FIELDS:
+            raise NotifyError(
+                f"{key!r} is an address field, not a count. The status feed "
+                f"carries counts and domains; a mailbox belongs nowhere near "
+                f"a channel the whole team reads")
         if isinstance(value, str) and _EMAIL_SHAPE.search(value):
             raise NotifyError(
                 f"{key!r} carries something shaped like an email address; "

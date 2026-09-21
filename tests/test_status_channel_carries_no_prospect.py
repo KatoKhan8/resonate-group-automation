@@ -83,10 +83,23 @@ class TheStatusFeedIsItsOwnDestination(StatusCase):
 class NoProspectReachesTheTeamChannel(StatusCase):
 
     def test_a_field_named_like_a_person_is_refused(self):
-        for field in ("contact_name", "email", "prospect", "reply_excerpt",
+        for field in ("contact_name", "prospect", "reply_excerpt",
                       "linkedin_url", "subject"):
             with self.assertRaises(notify.NotifyError, msg=field):
                 notify._status_payload({field: "anything"})
+
+    def test_an_address_field_is_refused_but_a_channel_count_is_not(self):
+        """`email` as a field name is a mailbox; `enrolled_email` is a count
+        of leads on the email side, and the operator wants both channels
+        counted separately in every report. Substring-matching `email`
+        blocked the first dual-channel batch report from being posted."""
+        for field in ("email", "address", "mailbox"):
+            with self.assertRaises(notify.NotifyError, msg=field):
+                notify._status_payload({field: "anything"})
+        payload = notify._status_payload(
+            {"enrolled_email": 80, "enrolled_linkedin": 0,
+             "email_scheduled_rows": 0})
+        self.assertEqual(payload["enrolled_email"], 80)
 
     def test_an_address_hidden_inside_an_innocent_field_is_refused(self):
         with self.assertRaises(notify.NotifyError):
