@@ -94,11 +94,25 @@ def sweep(force=False, only=None):
         except Exception as exc:                                # noqa: BLE001
             emit(f"BOUNDARY-FAILED {slug}: {type(exc).__name__}: {exc}")
             continue
-        if not force and digestwatch.delivered(slug, until):
-            continue
         if not force and until > now:
             continue
-        built = digest.build(slug)
+        # BUILD FIRST, THEN ASK THE BUILT WINDOW WHETHER IT WAS ANNOUNCED.
+        #
+        # Four digests went to #resonate-os in twenty minutes because the
+        # check and the write were keyed differently, twice over. First
+        # `digest.build(slug)` with no `until` windows on NOW, so every
+        # sweep wrote a new id. Passing the boundary in fixed that and it
+        # STILL repeated, because `boundary()` returns a datetime and the
+        # window carries an ISO STRING - and `notification_id` hashes its
+        # identifiers, so a datetime and the string spelling of the same
+        # instant are two different rows.
+        #
+        # Asking the built window is the only version that cannot drift:
+        # the value checked is the value written.
+        built = digest.build(slug, until=until)
+        window_until = (built.get("window") or {}).get("until")
+        if not force and digestwatch.delivered(slug, window_until):
+            continue
         row = digest.announce(built) or {}
         announced += 1
         emit(f"DIGEST {slug} until={until} -> {row.get('status')} "
