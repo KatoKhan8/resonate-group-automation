@@ -282,6 +282,41 @@ per-branch check before merging, not a bulk merge.
 | F-008 | `senderheadroom.walked_at` took the NEWEST stamp, so a walk resumed today read as fresh while carrying days-old rows | now takes `min()`, with the reasoning in the docstring. Verified 2026-09-20 |
 | F-009 | The geo resolver matched country NAMES while the evidence is a two-letter CODE | `27bcdb67`, 2026-09-17 |
 
+## PRODUCTION_VERIFIED — the first one, and it took the whole project to get here
+
+### EmailBison 489 sent a real email at 2026-09-21T13:34:48Z
+
+**This is the first provider-confirmed send in this project's history.** Every
+prior claim of progress was a campaign reading `active`, a lead reading
+`in_sequence`, or a row reading `scheduled` - and the register's own rule is
+that none of those is a send.
+
+Three independent witnesses, read back before it was believed, because the
+watcher's own alert says to:
+
+    campaign counter      emails_sent 0 -> 1, updated_at 13:34:51Z
+    the scheduled row     id 22341193, status `sent`, sent_at 13:34:48Z,
+                          against scheduled_date 13:34:00Z
+    the watcher           SEND on the counter AND SEND on the queue row,
+                          which are its two deliberately separate witnesses
+
+`bounced 0, replied 0, unsubscribed 0`. Seven rows remain `scheduled` of eight.
+
+**WHAT THIS DOES AND DOES NOT SETTLE.** It settles that the whole chain works
+end to end: approval, staging, activation, the scheduler, a healthy mailbox
+and the provider's own sending window. It does NOT settle deliverability -
+one accepted send is not an inbox placement - and it is one email, not a
+campaign. Do not let `emails_sent 1` be read as a cohort in flight.
+
+It also satisfies the SEND half of the push gate for the 24k track. The other
+half is unchanged: operator approval per batch of 500 READY, before any push.
+
+No write was made to 489 at any point today. It re-planned itself on
+2026-09-20T22:01Z and sent on its own schedule. The pause/resume proposed on
+Sunday and correctly refused would have achieved nothing except risk.
+
+---
+
 ## EXCLUDED — named, decided, and not capacity
 
 ### The 51 mailboxes of three identities · operator decision, Zvonimir, 2026-09-21
