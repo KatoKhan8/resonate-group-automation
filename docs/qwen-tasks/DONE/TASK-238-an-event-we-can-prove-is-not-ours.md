@@ -153,3 +153,88 @@ Tests 5, 6 and 7 are the point of this task. A fix that passes 1-4 and fails
 The measured key set of a real conversation object, pasted verbatim; which
 branch of the fork you took and why; the diff; the test run; and an explicit
 statement of what an operator will now NOT be told about.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** fd82ea2c
+
+**TESTS:** 24 tests in `tests/task238_attribution.py`, all green. 167 related
+tests across 7 modules (inbound, notify wiring, transport, replywatch,
+failure injection, out-of-office, reply-stops) all green. Pre-existing
+failures in `test_invariants` (2) are unrelated to this change.
+
+**FILES CHANGED:**
+
+    src/inbound.py              OWNED_SEATS, OWNED_CAMPAIGNS constants;
+                                _positively_not_ours() predicate; attribution
+                                gate in handle() unmatched branch.
+    tests/task238_attribution.py 24 tests covering all 9 acceptance criteria.
+    scripts/task238_probe.py     Read-only measurement (first probe).
+    scripts/task238_probe2.py    Read-only measurement (linkedInAccount sub-object).
+
+**MEASUREMENT (the key set of a real conversation object):**
+
+    ['blockedByMe', 'blockedByParticipant', 'correspondentProfile',
+     'groupChat', 'id', 'lastMessageAt', 'lastMessageSender',
+     'lastMessageText', 'lastMessageType', 'linkedInAccount',
+     'linkedInAccountId', 'messages', 'read', 'totalMessages']
+
+`linkedInAccountId` IS present (integer, e.g. 181658, 174892, 191848).
+`campaignId` is NOT present. The `linkedInAccount` sub-object is an account
+profile (id, firstName, lastName, emailAddress, profileUrl, authIsValid,
+cooldowns) with no campaign reference.
+
+**BRANCH TAKEN:** Seat-level attribution. The adapter already extracts
+`linkedInAccountId` from conversations into the neutral event as
+`linkedin_account_id`. No new I/O is needed. The predicate
+`_positively_not_ours(event)` checks this field against `OWNED_SEATS` and
+`external_campaign_id` against `OWNED_CAMPAIGNS`. Since `campaignId` is
+absent from conversations, seat-level is the only attribution possible, and
+it is sufficient: all 82 non-resonate campaigns in the workspace run on
+different seats (we operate 1 of 41 available seats).
+
+**WHY THIS BRANCH:** The task specified a fork: if conversation items carry
+campaign/seat ids, build attribution on them; if not, stop and report. Items
+carry `linkedInAccountId` but not `campaignId`, so the "build on what is
+there" branch was taken. No separate lookup call is needed because the data
+is already on the event. This means invariants 3 (must not break ingest) and
+4 (one lookup per event at most) are satisfied by construction: there is no
+lookup to fail or to repeat.
+
+**FAIL-SAFE (tests 5, 6, 7):** The predicate returns False (keep) when:
+- No seat or campaign field is present on the event (tests 5, 6, 7)
+- The seat field is present but unparseable as int
+- The seat is ours (174892) or the campaign is one of our four
+
+An event is dropped ONLY when a field POSITIVELY places it on a seat or
+campaign that is not ours. Absence of evidence is never a drop.
+
+**WHAT AN OPERATOR WILL NOW NOT BE TOLD ABOUT:**
+
+An operator will NOT be told about a reply on a HeyReach conversation that
+is on a LinkedIn seat we do not operate (any seat other than 174892). On
+2026-09-21 that would have suppressed 21 of 21 false `action_required`
+alerts, because every non-resonate conversation in the workspace is on one
+of the other 40 seats. The `#resonate-notifications` channel will no longer
+receive ~80 false positives a day.
+
+An operator WILL still be told about:
+- A reply on our seat (174892) that does not match any record
+- A reply with no seat information at all
+- A reply from EmailBison or any other provider (unchanged)
+
+**CALLER CHAIN:** `_positively_not_ours` is called from `inbound.handle()`
+at line 193, which is the production entry point for every inbound event.
+`grep -rn _positively_not_ours src/` returns two lines: the definition (41)
+and the call site (193). The function is consumed.
+
+**RISKS:**
+- If a new Resonate campaign is added on a different seat, `OWNED_SEATS`
+  must be updated. The constant is sourced from PROVIDER-CAMPAIGNS.json.
+- If HeyReach adds `campaignId` to conversation items in the future, the
+  campaign-level check in `_positively_not_ours` will automatically activate.
+
+**RECOMMENDED CLAUDE ACTION:** Review and integrate. The reply watchers
+should be restarted after this is merged to `master`.
