@@ -470,6 +470,65 @@ exactly one misreading, and got it — mine.
 - **Status** FIXED · `--report` output unchanged before and after, which is
   the point: the canonical answer never moved
 
+### ISSUE-019 · The candidate pipeline passes ICP REVIEW as though it were IN · CRITICAL
+
+**Found 2026-09-22 while producing the first candidate export the operator
+asked to send Productive. The export was stopped. Nothing was sent.**
+
+`_icp_verdict` survives on `QUALIFIED` **or** `REVIEW`:
+
+    if status in (icp.QUALIFIED, icp.REVIEW): survived.append(company)
+
+REVIEW means "not enough evidence to decide", which this register already
+settled in REFUTED-002 - those records carry no criterion at `fail` and are an
+enrichment task rather than a verdict. Passing them writes undecided accounts
+into the candidate list as though they had qualified.
+
+**What 1,508 candidates actually contain:**
+
+    median headcount 16,745 · min 9,620 · max 130,377
+    under 20 staff   0 of 1,508
+    countries        US 416 · India 133 · Brazil 117 · France 86 · UK 77
+    industries       retail 138 · banking 109 · government administration 100
+
+    santander.com      Santander, 130,377 staff, Spain, banking
+                       icp_score 0.0, icp_status "review"
+    education.gouv.fr  the French Ministry of Education
+
+Productive sells to 20+ person marketing and creative agencies in eight named
+markets. A zero-scored bank is in the list.
+
+**IT BREAKS THE PREMISE OF THE 2026-09-22 AMENDMENT.** The operator authorized
+post-filtering explicitly "because S3 re-verifies headcount and country per
+domain for free and only IN domains proceed". S3 does not restrict to IN, and
+with no headcount or geo filter available at the source there is nothing else
+between AI Ark's 72.6m-row index and the candidate list.
+
+`why_matched` reads "scored above threshold" on every row including the 0.0
+ones. That column is the evidence a client reads.
+
+**The harder question underneath.** AI Ark sorts by headcount DESCENDING and
+its headcount filter does not exist, so reaching agencies of 20-200 people
+means walking a very long way down 726,580 pages. 40-50k qualified agency
+domains may not be reachable through `company_search` at all - a provider
+question rather than a tuning one.
+
+- **Status** OPEN · export STOPPED and nothing sent to the client · the fix
+  (QUALIFIED only) is one line but changes what "supply" means, so it is the
+  operator's call
+
+### ISSUE-020 · Successive sourcing runs re-walked page one and added nothing · MEDIUM · **FIXED**
+
+`domains_already_known()` removes what is held, so a run that always starts at
+page 1 re-fetches the same companies, discards every one as already known, and
+adds NOTHING. Measured 2026-09-22: the loop reached 1,508 candidates and then
+ran eleven further rounds adding zero, because AI Ark's order is stable -
+sorted by staff descending - so every round saw the same first pages.
+
+Fixed: the page position is persisted beside the candidate list and each run
+continues from it. Verified - a fresh run resumed at page 17 and sourced 319
+companies none of which were already held.
+
 ### ISSUE-011 · The forward book's COVERING property decays silently as campaigns are created · HIGH
 
 **Found and worked around 2026-09-22. The census is not wrong; its state file

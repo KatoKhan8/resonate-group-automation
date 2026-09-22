@@ -22,6 +22,7 @@ back off and continue, never halt.
 import argparse
 import datetime
 import json
+import os
 import time
 
 from . import (candidatelist, clients, geo, icp, mx, store,
@@ -205,8 +206,21 @@ def _source_companies(search_fn=None, icp_config=None, known_domains=None,
             f"forbids - it is paid-for rows thrown away")
     location_filter = ",".join(resolved) if resolved else None
 
+    # SUCCESSIVE RUNS MUST NOT RE-WALK PAGE ONE.
+    #
+    # `domains_already_known()` removes what we hold, so a run that always
+    # starts at page 1 re-fetches the same companies, discards every one as
+    # already known, and adds NOTHING. Measured 2026-09-22: the loop reached
+    # 1,508 candidates and then ran eleven further rounds adding zero, because
+    # AI Ark returns the same first pages each time - it sorts by staff
+    # descending and the order is stable.
+    #
+    # So the position is persisted beside the candidate list and each run
+    # continues from it. It is a page number rather than a cursor because this
+    # endpoint pages by number; if the underlying order shifts, the cost is a
+    # few repeated or skipped rows, which the known-domain diff absorbs.
     sourced = []
-    page = 1
+    page = _next_page()
     while True:
         if page_limit and page > page_limit:
             break
@@ -256,14 +270,41 @@ def _source_companies(search_fn=None, icp_config=None, known_domains=None,
         # while the endpoint's default page is 25, so every walk ended after
         # page one.
         if len(rows) < PAGE_SIZE:
+            _remember_page(page + 1)
             break
         if max_domains and len(sourced) >= max_domains:
+            _remember_page(page + 1)
             break
         page += 1
     return sourced
 
 
 # --------------------------------------------------------- stage 2: ICP
+
+_PAGE_STATE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "work",
+    "sourcing-page.json")
+
+
+def _next_page():
+    """The page the last run stopped on, or 1."""
+    try:
+        with open(_PAGE_STATE, encoding="utf-8") as handle:
+            return int(json.load(handle).get("next_page") or 1)
+    except Exception:                                           # noqa: BLE001
+        return 1
+
+
+def _remember_page(page):
+    """Where the next run starts. Written even on a failed walk, because a
+    page that errored is not a page worth repeating forever."""
+    path = os.path.abspath(_PAGE_STATE)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump({"next_page": int(page)}, handle)
+    os.replace(tmp, path)
+
 
 def _icp_verdict(companies, config=None):
     """S3 ICP verdict. Only qualified/review survive."""
