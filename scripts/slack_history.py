@@ -40,6 +40,7 @@ asks only for what is newer.
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -308,6 +309,83 @@ def read_channel(channel_id, name, oldest=None, include_threads=True):
     return rows, newest, error
 
 
+#: Rooms this monitor never pulls, by NAME or by PURPOSE/TOPIC. Operator
+#: decision, 2026-09-22. These hold payroll, banking, personnel and credential
+#: material, and none of it is the agent's business: the catalogue exists to
+#: answer questions about outreach, and nothing it could learn in a payroll
+#: channel is worth having that material in `work/` at all.
+#:
+#: MATCHED ON PURPOSE AND TOPIC, NOT ONLY ON NAME. A room called `#leadership`
+#: whose purpose says "comp planning" is exactly the room this is for, and a
+#: name-only rule would read it. Substring matching is deliberate so
+#: `#hr-updates`, `#finance-ops` and `#admin-internal` are all caught.
+#: THE LIST IS BILINGUAL BECAUSE THE ESTATE IS. An English-only rule read
+#: `#racuni` - Croatian for invoices - straight past, in a workspace whose
+#: people write Croatian daily. A safety list in one language is a safety list
+#: with a hole in it, and the hole is exactly where the local team files the
+#: invoices.
+SENSITIVE_TERMS = (
+    # English
+    "finance", "financial", "payroll", "salary", "salaries", "comp-plan",
+    "compensation", "invoice", "invoicing", "billing", "banking",
+    "accounts-payable", "bookkeeping", "tax",
+    "hr", "human-resources", "people-ops", "peopleops", "recruit", "hiring",
+    "personnel", "performance-review",
+    "admin", "credential", "credentials", "secret", "secrets", "password",
+    "passwords", "token", "tokens", "apikey", "api-key", "vault",
+    # Croatian. Folded to ASCII before matching, so `racuni` catches `računi`
+    # and `place` catches `plaće`.
+    "racun", "racuni", "faktura", "fakture", "knjigovodstvo", "knjigovoda",
+    "placa", "place", "placu", "porez", "porezi", "banka", "bankovni",
+    "kadrovska", "kadrovi", "zaposlenici", "ugovori", "lozinka", "lozinke",
+)
+
+#: Diacritics the fold has to remove before a Croatian term can match.
+_FOLD = str.maketrans({
+    "č": "c", "ć": "c", "ž": "z", "š": "s", "đ": "d",
+    "Č": "c", "Ć": "c", "Ž": "z", "Š": "s", "Đ": "d",
+})
+
+
+def _fold(text):
+    """Lowercased and stripped of Croatian diacritics, for matching only."""
+    return (text or "").translate(_FOLD).lower()
+
+
+def _sensitive_hit(channel):
+    """The term that excludes this channel, or None.
+
+    Name is matched on word-ish boundaries for the SHORT terms so `hr` does
+    not swallow `#thread-watch` or `#chruby`; the longer terms are plain
+    substrings because a false positive there costs nothing but a channel we
+    did not need.
+    """
+    name = _fold(channel.get("name"))
+    prose = _fold(" ".join(str((channel.get(k) or {}).get("value", "")
+                               if isinstance(channel.get(k), dict)
+                               else channel.get(k) or "")
+                           for k in ("purpose", "topic")))
+    parts = set(re.split(r"[^a-z0-9]+", name))
+    for term in SENSITIVE_TERMS:
+        if len(term) <= 3:
+            if term in parts:
+                return term
+            continue
+        if term in name or term in prose:
+            return term
+    for term in SENSITIVE_TERMS:
+        if len(term) <= 3 and term in re.split(r"[^a-z0-9]+", prose):
+            return term
+    return None
+
+
+def is_sensitive(channel):
+    """True when this room may never be pulled. Fails CLOSED on a bad shape."""
+    if not isinstance(channel, dict):
+        return True
+    return _sensitive_hit(channel) is not None
+
+
 def read_all(incremental=True):
     """Pull history for every channel the bot is in. Writes only `work/`."""
     load_env()
@@ -338,8 +416,13 @@ def read_all(incremental=True):
     skipped_shared = [_row(c) for c in found["shared"]
                       if c.get("id") not in bound]
 
+    # SENSITIVE ROOMS ARE NEVER PULLED. Operator decision, 2026-09-22.
+    excluded = [_row(c) for c in readable if is_sensitive(c)]
+    readable = [c for c in readable if not is_sensitive(c)]
+
     report = {"channels": [], "messages": 0, "errors": [],
-              "skipped_shared_unbound": skipped_shared}
+              "skipped_shared_unbound": skipped_shared,
+              "skipped_sensitive": excluded}
     for channel in readable:
         if not channel.get("is_member"):
             continue

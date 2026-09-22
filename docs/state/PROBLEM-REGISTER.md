@@ -559,6 +559,39 @@ question rather than a tuning one.
   (QUALIFIED only) is one line but changes what "supply" means, so it is the
   operator's call
 
+### ISSUE-024 · The channel-exclusion list was English-only in a Croatian workspace · HIGH · **FIXED**
+
+Operator decision, 2026-09-22: the Slack history monitor never pulls a
+finance, payroll, HR, admin or credentials channel. Implemented in
+`scripts/slack_history.py` (`SENSITIVE_TERMS`, `is_sensitive`), which matches
+NAME **and** purpose/topic, folds Croatian diacritics before matching, and
+fails CLOSED on a shape it cannot read.
+
+**The first version of the list was English-only, and it read `#računi`
+straight past** - Croatian for invoices, in a workspace whose people write
+Croatian every day. A safety list in one language has a hole in it exactly
+where the local team files the invoices. Croatian terms added and folded, so
+`racuni` catches `računi` and `place` catches `plaće`.
+
+**Excluded today, of 21 member channels:**
+
+    #računi                 matched `racun`   - invoices. The real catch.
+    #finance-weekend-team   matched `finance` - SEE BELOW
+
+**`#finance-weekend-team` is very probably a FALSE POSITIVE.** "Finance
+Weekend" is a Resonate campaign, not a finance function - the estate holds
+`campaign_Finance weekend199_replies_*.csv`. It is left excluded because the
+cost of excluding a campaign channel is some missing catalogue material and
+the cost of the opposite mistake is payroll data on disk, but **it is the
+operator's call** and it should be un-excluded by name if that reading is
+right. Exclusion is by term, so a name-level allowlist is the fix, not a
+weaker term.
+
+The other 19 member channels are pulled as before. Raw history stays in
+`work/`, gitignored. Tests: `tests/test_a_payroll_channel_is_never_pulled.py`,
+10 of them, including the innocuous-name-sensitive-purpose case and
+fail-closed.
+
 ### ISSUE-023 · QUALIFIED is as wrong as REVIEW was, and the export still cannot ship · CRITICAL
 
 **Found 2026-09-22 while implementing the operator's QUALIFIED-only ruling for
