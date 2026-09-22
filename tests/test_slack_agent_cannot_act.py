@@ -57,13 +57,37 @@ AGENT_SOURCES = (
     "src/slackagenttools.py",
     "src/slackconversation.py",
     "src/slackagentreadback.py",
+    # THE THREE THAT ARRIVED WITH PHASE C AND WERE NOT LISTED HERE. Each of
+    # them runs on the path a Slack message takes, and a guarantee that
+    # covers five of eight files is a guarantee somebody will add the sixth
+    # to and not notice.
+    "src/slackclientview.py",
+    "src/slackfollowup.py",
+    "src/slacklanguage.py",
+    # The one module the agent WRITES on somebody's instruction. It belongs
+    # here more than any of the others: it is the place a Slack message
+    # comes closest to changing something.
+    "src/slackmeetings.py",
+    # The promise scan reads Slack history off disk. It writes nothing and
+    # it is internal-only, and both belong under this file's eye.
+    "src/slackpromises.py",
     "scripts/slack_agent_loop.py",
+    # The follow-up deliverer runs on its own interval rather than on a
+    # message, and it reaches the provider and posts. Same rules.
+    "scripts/slack_followup_loop.py",
 )
 
 #: Provider attributes the agent may touch. GETs, every one.
 PROVIDER_READ_VERBS = {
     "campaign", "campaigns", "scheduled_emails", "sender_emails",
     "membership", "campaign_lead_count", "lead", "schedule",
+    # GET /leads?search=<address>. The only real filter on that route, and
+    # the one way to turn an address into a lead id without guessing.
+    "find_lead_by_email",
+    # GET /campaigns/{id}/sending-schedule?day=today|tomorrow|... The
+    # provider's own forward window, and the only forward number here that
+    # is not our inference.
+    "sending_schedule",
     "campaign_senders", "base", "headers", "scope", "bound_workspace",
     "ProviderError",
     # HeyReach reads.
@@ -80,7 +104,12 @@ FORBIDDEN_CALLS = {
 
 #: `slack.post` is the one outward write the agent makes: one reply, in the
 #: thread it was asked in. It is allowed in the LOOP and nowhere else.
-POST_ALLOWED_IN = {"scripts/slack_agent_loop.py"}
+#: The deliverer posts too, which is its entire job: one message into one
+#: thread when a watch the client asked for fires. It is listed so that the
+#: rule stays "these two files and no others" rather than becoming "any
+#: file that wants to".
+POST_ALLOWED_IN = {"scripts/slack_agent_loop.py",
+                   "scripts/slack_followup_loop.py"}
 
 
 def _transitive_imports(module_name):
@@ -224,8 +253,9 @@ class NoStateWriterIsCalled(unittest.TestCase):
 
     def test_the_agent_writes_only_inside_work(self):
         """Every path the agent opens for writing is under `work/`."""
-        from src import slackknowledge
-        for path in (slackknowledge.CACHE, slackconversation.THREADS):
+        from src import slackfollowup, slackknowledge, slackmeetings
+        for path in (slackknowledge.CACHE, slackconversation.THREADS,
+                     slackfollowup.path(), slackmeetings.path()):
             self.assertIn(os.path.join("work", ""), path + os.sep,
                           "%s is outside work/" % path)
 

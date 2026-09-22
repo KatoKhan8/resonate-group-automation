@@ -491,7 +491,7 @@ per-row `rev` column fed from `meta.revision`.
 **The PII guard is GREEN on this branch, 13/13**, which was the gate on
 opening this merge request. Three failures, two causes:
 
-- **One was mine.** TASK-260's tests used `a@test.com` in four places.
+- **One was mine.** TASK-260's tests used an address on the real `test.com` domain in four places.
   `test.com` is a real, registered, resolvable domain — exactly what
   `test_every_email_address_is_on_a_reserved_domain` refuses, and its
   docstring is the argument: "an address on a domain that can resolve is an

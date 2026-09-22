@@ -36,6 +36,7 @@ import os
 import time
 
 from . import slackagentreadback as readback
+from . import slackclientview as clientview
 from . import slackknowledge as knowledge
 from . import slackscope
 
@@ -87,6 +88,193 @@ def cadence_detail(scope, argument=None):
         return {"read_at": _now(),
                 "_error": "no cadence is configured for %s" % slug}
     return dict(cadence, workspace=slug, read_at=_now())
+
+
+#: How many distinct approved messages one step may show before the answer
+#: stops being copy and starts being a dump. Personalised copy is distinct
+#: per recipient, so a step with three hundred recipients has three hundred
+#: texts; the answer shows a few and SAYS how many there are.
+COPY_PER_STEP_CAP = 5
+
+
+def campaign_copy(scope, argument=None):
+    """What a step actually SAYS. The approved set and nothing else.
+
+    `cadence_detail` gives the shape of the sequence, and the catalogue is
+    blunt about that: **nobody has ever asked for the shape.** 110
+    questions about cadence and copy, and what they ask is what the message
+    says.
+
+    OPERATOR, 2026-09-22: "a client may see the currently approved steps of
+    its own cadences in its own channel, email and LinkedIn, as sent. Not
+    variants under test, not history, not other clients. Internal channels
+    see everything including variants."
+
+    ## THE APPROVED SET IS THE FILTER, AND IT EXCLUDES HISTORY FOR FREE
+
+    `approval.is_approved` compares the approval's fingerprint against the
+    step's CURRENT words. So a revoked approval is gone, and an edited step
+    drops out by itself the moment a word changes - which is how "not
+    history" is enforced without anything having to know what history is.
+    There is no code path here that reads a step without asking that
+    question first: the walk is over approvals, not over steps.
+
+    ## A CLIENT SEES A WINNER, AND NOTHING ELSE FROM AN EXPERIMENT
+
+    OPERATOR, 2026-09-22: "Variants carry a status: testing / winner /
+    retired. Clients see winner as part of the cadence, never testing or
+    retired; internal sees all."
+
+    So the signal is the variant's own `client_status`, read off the step
+    where `variants.apply_to_step` wrote it. A winner is copy somebody
+    decided is the copy, and it appears as an ordinary part of the cadence
+    with no experiment vocabulary attached - not labelled a winner, because
+    "winner" implies the losers a client is not being shown.
+
+    `variants.client_status` defaults to `testing` for anything unmarked,
+    so every variant written before that field existed is withheld exactly
+    as it was. A client answer changes only when somebody promotes a
+    variant on purpose.
+
+    Withheld messages are COUNTED. An answer showing four of nine and
+    saying nothing reads as the whole set.
+
+    ## ONE THING THIS DOES SHOW, AND IT IS WORTH NAMING
+
+    The copy is merge-resolved, so a body can carry a recipient's first
+    name and company. "As sent" cannot be satisfied any other way, and a
+    client seeing their own outreach to their own prospect in their own
+    channel is the rule `lead_lookup` already runs on. Addresses are still
+    stripped by the answer guard.
+
+    `argument` narrows to one step key (`day1`, `li2`) or one channel
+    (`email`, `linkedin`).
+    """
+    try:
+        from . import approval
+    except Exception as exc:                                    # noqa: BLE001
+        return {"read_at": _now(),
+                "_error": "the approval module could not be read: %s"
+                          % type(exc).__name__}
+    slug = _workspace_for(scope, None)
+    wanted = str(argument or "").strip().lower()
+
+    steps, withheld, recipients = {}, 0, 0
+    for record in _records(slug):
+        for contact_key, slots in (record.get("cadence") or {}).items():
+            if not isinstance(slots, dict):
+                continue
+            for step_key, step in slots.items():
+                if not isinstance(step, dict):
+                    continue
+                # THE ONE QUESTION ASKED BEFORE ANYTHING IS READ.
+                if not approval.is_approved(record, contact_key, step_key):
+                    continue
+                channel = str(step.get("channel") or "email").lower()
+                if wanted and wanted not in (str(step_key).lower(), channel):
+                    continue
+                recipients += 1
+                if scope.is_client and not _client_may_see(step):
+                    withheld += 1
+                    continue
+                key = (channel, str(step_key))
+                bucket = steps.setdefault(key, {})
+                text = (str(step.get("subject") or ""),
+                        str(step.get("body") or step.get("note") or ""))
+                entry = bucket.setdefault(text, {
+                    "subject": step.get("subject"),
+                    "body": step.get("body") or step.get("note"),
+                    "approved_for_recipients": 0})
+                entry["approved_for_recipients"] += 1
+                if scope.is_internal and step.get("variant_id"):
+                    entry["variant_id"] = step["variant_id"]
+                    entry["variant_style"] = step.get("variant_style")
+                    entry["variant_status"] = _variant_status(step)
+                if scope.is_internal:
+                    stamp = (step.get("approval") or {})
+                    entry["approved_by"] = stamp.get("by")
+                    entry["approved_at"] = stamp.get("at")
+
+    out = {"read_at": _now(), "workspace": slug,
+           "steps": _copy_rows(steps),
+           "approved_messages_total": recipients - withheld,
+           "note": "every message here is currently approved, and the "
+                   "approval is bound to these exact words - a step whose "
+                   "wording changed is not in this answer at all. Copy is "
+                   "personalised, so one step can carry several texts."}
+    if withheld:
+        # NEVER A SILENT OMISSION. An answer that showed four of nine
+        # approved messages and said nothing would read as the whole set.
+        out["withheld_under_test"] = withheld
+        out["withheld_note"] = (
+            "%d approved message(s) for these steps are not shown here."
+            % withheld)
+    if not steps:
+        out["note"] = ("nothing is currently approved for %s%s. That is an "
+                       "empty approved set, not an empty cadence."
+                       % (slug, (" matching %r" % wanted) if wanted else ""))
+    return out
+
+
+def _variant_status(step):
+    """`testing` | `winner` | `retired` for a step, or None if it is not
+    from an experiment at all.
+
+    DELEGATES rather than re-deriving. `variants.client_status` owns the
+    rule, including what an unmarked or typo'd value means, and a second
+    copy of it here is how the two would come to disagree about which
+    message a client may read.
+    """
+    if not (step or {}).get("variant_id"):
+        return None
+    # ONLY THE FIELD `apply_to_step` WROTE. Handing the whole step to
+    # `client_status` would let an unrelated `status` key on a step mean
+    # something about a variant, which is a coincidence waiting to happen.
+    stated = step.get("variant_client_status")
+    try:
+        from . import variants
+        return variants.client_status({"client_status": stated})
+    except Exception:                                           # noqa: BLE001
+        # The module is unreadable, so nothing can be proved a winner.
+        # Withheld is the safe direction and this is the one place it has
+        # to be chosen explicitly.
+        return "testing"
+
+
+def _client_may_see(step):
+    """A step a client may be shown: no experiment, or a settled winner.
+
+    THE WITHHELD SIDE IS THE DEFAULT. Every path that is not a proven
+    winner returns False, so a step whose status cannot be read is not
+    shown - the failure being guarded against is copy still under test
+    quoted to a customer as though it were settled.
+    """
+    status = _variant_status(step)
+    if status is None:
+        return True
+    try:
+        from . import variants
+        return status == variants.VARIANT_WINNER
+    except Exception:                                           # noqa: BLE001
+        return False
+
+
+def _copy_rows(steps):
+    """The grouped copy, capped per step, saying what the cap hid."""
+    rows = []
+    for (channel, step_key), texts in sorted(steps.items()):
+        ordered = sorted(texts.values(),
+                         key=lambda e: -e["approved_for_recipients"])
+        row = {"step": step_key, "channel": channel,
+               "distinct_messages": len(ordered),
+               "messages": ordered[:COPY_PER_STEP_CAP]}
+        if len(ordered) > COPY_PER_STEP_CAP:
+            row["not_shown"] = len(ordered) - COPY_PER_STEP_CAP
+            row["note"] = ("showing the %d most common of %d; the copy is "
+                           "personalised per recipient"
+                           % (COPY_PER_STEP_CAP, len(ordered)))
+        rows.append(row)
+    return rows
 
 
 def lead_lookup(scope, argument=None):
@@ -465,6 +653,214 @@ def sending_domains(scope, argument=None):
     return out
 
 
+def domain_detail(scope, argument=None):
+    """ONE domain: whose mailboxes sit on it, what it carried, how it did.
+
+    The catalogue's third tool, and the shape of the real question:
+
+    > *sending-domain-a.example.test, kakva je ovo domena?*
+
+    That is the message that followed `sending_domains` being answered with
+    a 194KB CSV. The catalogue puts it plainly - *almost never "list the
+    domains". Usually ONE domain, one sender, one campaign* - and a list of
+    sixty-nine answers a question nobody asked while leaving the one they
+    did ask unanswered.
+
+    ## A DOMAIN THAT IS NOT YOURS READS THE SAME AS A DOMAIN THAT IS NOBODY'S
+
+    The same rule as `lead_in_campaign`, for the same reason. An answer that
+    distinguished "not yours" from "another client's" would confirm the
+    other client's estate exists, and that confirmation IS the disclosure.
+    So both produce `ours: false` and one sentence, and the sentence does
+    not vary.
+
+    ## THE ARGUMENT MAY ARRIVE AS AN ADDRESS AND LEAVES AS A DOMAIN
+
+    People paste `tina@sending-domain-a.example.test` when they mean the domain.
+    Taking the domain is right; echoing the local part back would put a
+    mailbox in the answer, which `sending_domains` refuses on purpose in
+    every scope. The local part is dropped before anything is looked up and
+    the answer names only what was resolved.
+    """
+    domain = _as_domain(argument)
+    if not domain:
+        return {"read_at": _now(),
+                "_error": "domain_detail needs a domain, like example.com"}
+    slug = _workspace_for(scope, None)
+    #: The one sentence for "nobody's" and "somebody else's" alike.
+    absent = ("%s is not one of the domains sending for this workspace"
+              % domain)
+
+    try:
+        from . import senderidentity
+        rows = senderidentity.load()
+    except Exception as exc:                                    # noqa: BLE001
+        return {"read_at": _now(), "workspace": slug, "domain": domain,
+                "_error": "sender roster unreadable: %s" % type(exc).__name__}
+
+    attested = set()
+    for attestation in rows:
+        if (attestation.get("kind") == "ownership_attestation"
+                and attestation.get("workspace") == slug
+                and attestation.get("channel") == "email"):
+            attested.add((attestation.get("sender_id"),
+                          attestation.get("account_id")))
+    people = {p.get("sender_id"): p
+              for p in senderidentity.senders(slug, rows=rows)}
+    accounts = {a.get("account_id"): a
+                for a in senderidentity.email_accounts(slug, rows=rows)}
+
+    mine, owners = [], set()
+    for sender_id, account_id in attested:
+        account = accounts.get(account_id)
+        if not account:
+            continue
+        if str(account.get("domain") or "").lower().strip() != domain:
+            continue
+        mine.append(account)
+        owners.add((people.get(sender_id) or {}).get("display_name")
+                   or sender_id)
+
+    out = {"read_at": _now(), "workspace": slug, "domain": domain,
+           "ours": bool(mine)}
+    if not mine:
+        out["note"] = absent
+        return out
+
+    out["mailboxes"] = len(mine)
+    # THE SENDER HUMANS, BY NAME. The operator's decision of 2026-09-22: a
+    # client's own senders are the client's own data, and the people
+    # sending for them are their own staff.
+    out["senders"] = sorted(owners)
+    out["daily_capacity"] = sum(a.get("daily_limit") or 0 for a in mine)
+
+    carried = _campaigns_by_sending_account(slug)
+    out["campaigns_carried"] = sorted(
+        {name for a in mine
+         for name in carried.get(str(a.get("provider_account_id")), ())})
+
+    week = _week_for_domain(slug, domain)
+    if week is None:
+        out["last_7_days_note"] = (
+            "no campaign queue could be read, so nothing is claimed about "
+            "what this domain sent this week")
+    else:
+        emails, persons, unreadable = week
+        out["emails_sent_last_7_days"] = emails
+        out["leads_emailed_last_7_days"] = persons
+        if unreadable:
+            out["campaigns_unreadable"] = unreadable
+            out["last_7_days_note"] = (
+                "%d campaign queue(s) refused, so these are floors"
+                % unreadable)
+
+    if scope.is_internal:
+        # HOW WE JUDGE OUR OWN INFRASTRUCTURE. `sending_domains` keeps
+        # health internal for the same reason: which domains send for a
+        # client is theirs, our assessment of the mailboxes is ours.
+        health = {}
+        for account in mine:
+            state = str(account.get("health")
+                        or account.get("provider_state") or "unknown")
+            health[state] = health.get(state, 0) + 1
+        out["health"] = health
+        bounce = _bounce_by_provider_account(slug, rows)
+        rates = [bounce[str(a.get("provider_account_id"))] for a in mine
+                 if str(a.get("provider_account_id")) in bounce]
+        if rates:
+            sent = sum(r["sent"] for r in rates)
+            bounced = sum(r["bounced"] for r in rates)
+            out["emails_sent_lifetime"] = sent
+            out["bounces_lifetime"] = bounced
+            out["bounce_rate_percent"] = (round(100.0 * bounced / sent, 2)
+                                          if sent else None)
+            if out["bounce_rate_percent"] is not None:
+                out["over_hard_stop"] = (out["bounce_rate_percent"]
+                                         > BOUNCE_HARD_STOP_PERCENT)
+                out["bounce_hard_stop_percent"] = BOUNCE_HARD_STOP_PERCENT
+        else:
+            out["bounce_rate_percent"] = None
+            out["bounce_note"] = ("the provider estate could not be read, "
+                                  "so no bounce rate is claimed")
+
+    out["note"] = ("one domain, with the mailbox addresses on it left out - "
+                   "the count is the answer, the addresses are not.")
+    return out
+
+
+def _as_domain(argument):
+    """`"tina@sending-domain-a.example.test"` -> `"sending-domain-a.example.test"`, or None.
+
+    Takes what a person would actually paste - an address, a bare domain, a
+    URL - and returns the registrable text or nothing. It never guesses: a
+    value with no dot in it is not a domain and gets None rather than being
+    looked up as one.
+    """
+    import re
+    text = str(argument or "").strip().lower()
+    text = re.sub(r"^[a-z]+://", "", text)
+    text = text.split("/")[0].split("?")[0]
+    # THE LOCAL PART IS DROPPED HERE AND NEVER READ AGAIN. `sending_domains`
+    # refuses to put a mailbox in an answer in any scope, and echoing back
+    # the address somebody pasted would do it by the back door.
+    if "@" in text:
+        text = text.rsplit("@", 1)[-1]
+    text = text.strip(" <>,.;:\"'").strip()
+    if "." not in text or " " in text:
+        return None
+    return text
+
+
+def _week_for_domain(slug, domain):
+    """`(emails, people, campaigns that refused)` for one domain this week.
+
+    `None` rather than zeroes when NOTHING could be read, which is the
+    distinction `_recent_send_domains` draws and for the same reason: a
+    silent outage reported as a quiet week is the failure this repository
+    keeps finding.
+    """
+    import datetime
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    ids = entry.get("provider_campaign_ids") or []
+    if not ids:
+        return None
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - \
+        datetime.timedelta(seconds=WEEK_SECONDS)
+    emails, people, unreadable, read_any = 0, set(), 0, False
+    for campaign_id in ids[:12]:
+        try:
+            from .providers import bison
+            queue = bison.scheduled_emails(campaign_id) or []
+        except Exception:                                       # noqa: BLE001
+            unreadable += 1
+            continue
+        read_any = True
+        for row in queue:
+            stamp = row.get("sent_at")
+            address = str(row.get("sender_email") or "")
+            if not stamp or "@" not in address:
+                continue
+            if address.rsplit("@", 1)[-1].lower() != domain:
+                continue
+            try:
+                when = datetime.datetime.fromisoformat(
+                    str(stamp).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=datetime.timezone.utc)
+            if when < cutoff:
+                continue
+            emails += 1
+            lead = row.get("lead")
+            lead_id = lead.get("id") if isinstance(lead, dict) else None
+            people.add(lead_id if lead_id is not None
+                       else ("row:%s" % row.get("id")))
+    if not read_any:
+        return None
+    return emails, len(people), unreadable
+
+
 def _recent_send_domains(slug):
     """`(domains that sent inside the window, campaigns that refused)`.
 
@@ -750,6 +1146,365 @@ def _sent_since(campaign_id, cutoff):
     return count
 
 
+def lead_counts(scope, argument=None):
+    """HOW MANY. Enrolled, emailed, replied - counted, per campaign.
+
+    THE CATALOGUE'S SECOND GAP, and the largest one by volume: 175 of the
+    988 classified questions are about leads and lists, and almost none of
+    them is a lookup. *na koliko leadova smo poslali ovaj tjedan*, *jel
+    bilo dobrih leadova danas*, *imamo 1.5 kontakata po domeni*. What the
+    agent could answer was "is this person in a campaign", which the corpus
+    shows nobody has ever asked.
+
+    ## TWO NUMBERS THAT ARE NOT THE SAME NUMBER
+
+    *Na koliko LEADOVA smo poslali* asks how many PEOPLE. A three-step
+    sequence sends three emails to one of them, so the queue's row count
+    and the number of people it reached differ by the length of the
+    cadence - and the difference grows every day the sequence runs. Both
+    are reported, named apart, and the people figure is counted by distinct
+    provider lead id rather than derived from the other.
+
+    A person in two of the workspace's campaigns is ONE person in the
+    workspace total and appears under both campaigns. Summing the
+    per-campaign figures therefore does not give the total, which the note
+    says out loud so nobody adds them up.
+
+    ## ENROLLED IS THE PROVIDER'S MEMBERSHIP, IN EVERY SCOPE
+
+    `campaign_lead_count` reads `meta.total` and refuses to count a page.
+    The local store's enrolled state answers a different question - what we
+    have ever staged - and reached a client once already. It is available
+    here to an internal channel, under its own name, and to a client not at
+    all.
+
+    ## A CAMPAIGN THAT CANNOT BE READ MAKES EVERY TOTAL A FLOOR
+
+    Never a zero, and never quietly dropped: the count of unreadable
+    campaigns travels with the answer and the note changes shape when it is
+    non-zero, because "we emailed 40 people this week" and "we emailed at
+    least 40 people this week, two campaigns did not answer" are different
+    claims and only one of them is true.
+    """
+    import datetime
+    slug = _workspace_for(scope, None)
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    mine = [str(i) for i in (entry.get("provider_campaign_ids") or [])]
+    asked = str(argument or "").strip()
+    if asked:
+        if asked not in mine:
+            return {"read_at": _now(),
+                    "_error": "campaign %s does not belong to this "
+                              "channel's workspace" % asked}
+        wanted = [asked]
+    else:
+        wanted = mine[:10]
+
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - \
+        datetime.timedelta(seconds=WEEK_SECONDS)
+
+    rows, unreadable, queue_unreadable = [], 0, 0
+    enrolled_total = sent_total = replied_total = emails_week = 0
+    people_week = set()
+
+    for campaign_id in wanted:
+        row = {"campaign_id": campaign_id}
+        detail = readback.campaign_by_id(campaign_id)
+        if detail.get("_error"):
+            unreadable += 1
+            row["_error"] = detail["_error"]
+            rows.append(row)
+            continue
+        row["name"] = detail.get("name")
+        row["status"] = detail.get("status")
+        for key, target in (("emails_sent", "sent_lifetime"),
+                            ("replied", "replied_lifetime"),
+                            ("bounced", "bounced_lifetime")):
+            value = detail.get(key)
+            if isinstance(value, int):
+                row[target] = value
+        sent_total += row.get("sent_lifetime") or 0
+        replied_total += row.get("replied_lifetime") or 0
+
+        enrolled = _provider_membership(campaign_id)
+        if enrolled is None:
+            unreadable += 1
+            row["enrolled_unreadable"] = True
+        else:
+            row["enrolled"] = enrolled
+            enrolled_total += enrolled
+
+        week = _week_activity(campaign_id, cutoff)
+        if week is None:
+            queue_unreadable += 1
+            row["last_7_days_unreadable"] = True
+        else:
+            emails, people = week
+            row["emails_sent_last_7_days"] = emails
+            row["leads_emailed_last_7_days"] = len(people)
+            emails_week += emails
+            people_week |= people
+        rows.append(row)
+
+    out = {"read_at": _now(), "workspace": slug,
+           "campaigns_asked_for": len(wanted),
+           "campaigns_unreadable": unreadable + queue_unreadable,
+           "enrolled_total": enrolled_total,
+           "sent_lifetime_total": sent_total,
+           "replied_lifetime_total": replied_total,
+           "emails_sent_last_7_days": emails_week,
+           "leads_emailed_last_7_days": len(people_week),
+           "per_campaign": rows}
+    out["note"] = (
+        "enrolled is the provider's own membership count per campaign and "
+        "is NOT sent. emails_sent_last_7_days counts QUEUE ROWS; "
+        "leads_emailed_last_7_days counts distinct PEOPLE, which is the "
+        "smaller number whenever a sequence has more than one step. The "
+        "workspace people figure de-duplicates across campaigns, so the "
+        "per-campaign figures do not sum to it. sent_lifetime is the "
+        "provider's lifetime counter and is not a weekly figure.")
+    if unreadable or queue_unreadable:
+        out["warning"] = (
+            "%d campaign read(s) failed, so every total here is a FLOOR and "
+            "not the whole picture" % (unreadable + queue_unreadable))
+
+    if scope.is_internal:
+        # THE LOCAL PIPELINE, UNDER ITS OWN NAME. "how many are ready" is
+        # an internal question about our own staging, and the answer is
+        # ours - it is not a worse version of the provider's enrolled
+        # figure, it is a different one, which is exactly how the 724
+        # reached a client.
+        out["local_pipeline"] = _try_local_pipeline()
+        out["local_pipeline_note"] = (
+            "counted from OUR store, not the provider. These are staging "
+            "states, not campaign membership, and they are internal.")
+    return out
+
+
+def _provider_membership(campaign_id):
+    """The provider's membership count for one campaign, or None.
+
+    None rather than 0, for the reason every other reader here gives: a
+    campaign that could not be read and a campaign holding nobody are
+    different answers, and reporting the second for the first is how an
+    outage becomes a reassuring number.
+    """
+    try:
+        from .providers import bison
+        count = bison.campaign_lead_count(campaign_id)
+    except Exception:                                           # noqa: BLE001
+        return None
+    return count if isinstance(count, int) else None
+
+
+def _week_activity(campaign_id, cutoff):
+    """`(emails, {lead ids})` sent since `cutoff`, or None if unreadable.
+
+    One queue read answering both halves. `_sent_since` reads the same rows
+    for the row count alone; this exists because the PEOPLE figure cannot
+    be derived from it, and reading the queue twice to get two numbers out
+    of the same rows is a second chance for them to disagree.
+    """
+    import datetime
+    try:
+        from .providers import bison
+        queue = bison.scheduled_emails(campaign_id) or []
+    except Exception:                                           # noqa: BLE001
+        return None
+    emails, people = 0, set()
+    for row in queue:
+        stamp = row.get("sent_at")
+        if not stamp:
+            continue
+        try:
+            when = datetime.datetime.fromisoformat(
+                str(stamp).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=datetime.timezone.utc)
+        if when < cutoff:
+            continue
+        emails += 1
+        lead = row.get("lead")
+        lead_id = lead.get("id") if isinstance(lead, dict) else None
+        # A ROW WITH NO LEAD ID IS STILL A PERSON. Counting it as nobody
+        # would make the people figure quietly smaller than the truth, so
+        # it is counted under its own row id - distinct from every other
+        # row, which is the conservative direction and can never make the
+        # people figure exceed the email count.
+        people.add(lead_id if lead_id is not None
+                   else ("row:%s" % row.get("id")))
+    return emails, people
+
+
+def _try_local_pipeline():
+    try:
+        return readback.pipeline()
+    except Exception as exc:                                    # noqa: BLE001
+        return {"_error": "%s: %s" % (type(exc).__name__, str(exc)[:200])}
+
+
+#: How many of a workspace's campaigns one membership question may cost.
+#: One provider read each, and a question about one person should not turn
+#: into thirty.
+MEMBERSHIP_CAMPAIGN_CAP = 12
+
+
+def lead_in_campaign(scope, argument=None):
+    """Is this person in one of THIS workspace's campaigns - ask the provider.
+
+    `lead_lookup` answers this from our own store, where a contact carrying
+    a `bison_lead_id` was STAGED. Staged is not enrolled: the push can have
+    been refused, the lead can have been stopped, the campaign can have
+    been rebuilt around them. The provider is the only witness to
+    membership, and this asks it.
+
+    ## IT NEVER CONFIRMS A PERSON IT CANNOT SHOW
+
+    `find_lead_by_email` searches the whole provider estate, which spans
+    every workspace we run there. A client channel asking about an address
+    that belongs to ANOTHER client's campaign must learn nothing - not the
+    lead's name, not that a lead exists, not that the search found
+    something. So the only thing carried out of that search is the numeric
+    id, it is asked about THIS workspace's campaign ids and no others, and
+    an empty result reads "in none of your campaigns" in both cases. The
+    two situations are indistinguishable in the answer because they have to
+    be.
+
+    ## ONE READ PER CAMPAIGN, AND THAT IS WHY IT IS CAPPED
+
+    `membership(campaign_id, lead_ids=[id])` asks the lead about itself,
+    which is exact whatever page of a twenty-thousand-lead campaign the
+    person is on. There is no route that asks the other direction, so a
+    workspace with twelve campaigns costs twelve reads. Capped at
+    `MEMBERSHIP_CAMPAIGN_CAP`, and the answer says how many it checked
+    rather than implying it checked everything.
+    """
+    address = str(argument or "").strip().lower()
+    if "@" not in address:
+        return {"read_at": _now(),
+                "_error": "lead_in_campaign needs an email address"}
+    slug = _workspace_for(scope, None)
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    mine = [str(i) for i in (entry.get("provider_campaign_ids") or [])][
+        :MEMBERSHIP_CAMPAIGN_CAP]
+    out = {"read_at": _now(), "workspace": slug, "address": address,
+           "campaigns_checked": len(mine), "source": "provider"}
+    #: The one sentence for both "no such lead" and "not one of yours".
+    absent = ("the provider has no lead with that address in any of this "
+              "workspace's campaigns")
+
+    try:
+        from .providers import bison
+        lead = bison.find_lead_by_email(address)
+    except Exception as exc:                                    # noqa: BLE001
+        return dict(out, _error="the provider could not be asked: %s: %s"
+                                % (type(exc).__name__, str(exc)[:200]))
+    lead_id = (lead or {}).get("id")
+    if lead_id is None:
+        return dict(out, in_campaigns=[], found=False, note=absent)
+
+    found, unreadable = [], 0
+    for campaign_id in mine:
+        try:
+            status = bison.membership(campaign_id, lead_ids=[lead_id])
+        except Exception:                                       # noqa: BLE001
+            unreadable += 1
+            continue
+        state = (status or {}).get(int(lead_id))
+        if state is not None:
+            found.append({"campaign_id": campaign_id, "status": state})
+    out["in_campaigns"] = found
+    out["found"] = bool(found)
+    if unreadable:
+        out["campaigns_unreadable"] = unreadable
+        out["warning"] = ("%d campaign(s) could not be read, so an empty or "
+                          "short list here is a floor" % unreadable)
+    if not found:
+        # THE SAME SENTENCE AS THE NO-SUCH-LEAD CASE. Saying "the lead
+        # exists but is in none of your campaigns" tells a client that we
+        # hold that person for somebody else.
+        out["note"] = absent
+    else:
+        out["note"] = ("membership as the provider states it, per campaign. "
+                       "Being in a campaign is not having been emailed - "
+                       "ask lead_counts or campaign_detail for sends.")
+    return out
+
+
+def meetings_booked(scope, argument=None):
+    """How many meetings are booked, per source, and for a client whose.
+
+    THE NUMBER THE COMMERCIAL RELATIONSHIP RUNS ON, and the one the
+    catalogue names first: 93 questions about replies and meetings, and
+    "meetings booked" the single most-asked figure nothing could produce.
+    `src/slackmeetings.py` is the ledger; this reads it.
+
+    ## THE COUNT IS PER SOURCE AND THERE IS NO BARE TOTAL
+
+    The operator: "Add a second source later (a booking tool or CRM) as a separate
+    tag; never merge sources silently." So `by_source` is the answer and
+    `total` is only ever reported beside the list of sources it spans. The
+    day a second source is wired, every reader sees two numbers instead of
+    one number that grew.
+
+    ## DETAIL IS SCOPED, THE COUNT IS NOT
+
+    "Counts appear in the digest, the weekly plan and client answers;
+    per-domain detail only internally or in that client's channel." A
+    client channel is that client's channel, so it gets its own rows -
+    resolved from the SCOPE, never from the argument, so no phrasing
+    reaches another client's.
+
+    `argument` is a window: `week`, `month`, or nothing for everything.
+    """
+    import datetime
+    slug = scope.workspace if scope.is_client else None
+    window = str(argument or "").strip().lower()
+    since = None
+    today = datetime.date.today()
+    if window in ("week", "this week", "tjedan", "ovaj tjedan"):
+        since = (today - datetime.timedelta(days=7)).isoformat()
+    elif window in ("month", "this month", "mjesec", "ovaj mjesec"):
+        since = (today - datetime.timedelta(days=30)).isoformat()
+
+    try:
+        from . import slackmeetings
+        counted = slackmeetings.counts(workspace=slug, since=since)
+        rows = slackmeetings.by_domain(workspace=slug, since=since)
+    except Exception as exc:                                    # noqa: BLE001
+        return {"read_at": _now(),
+                "_error": "the meetings ledger could not be read: %s: %s"
+                          % (type(exc).__name__, str(exc)[:200])}
+
+    out = {"read_at": _now(), "workspace": slug or "all",
+           "since": since or "the beginning",
+           "by_source": counted}
+    out.update(slackmeetings.total_across(counted))
+    out["meetings_note"] = (
+        "this is a ledger people write to by hand. It is as complete as "
+        "what has been recorded, which is not the same as what happened - "
+        "an absent meeting is an unrecorded one, not a meeting that did "
+        "not occur.")
+    if scope.is_client:
+        # THEIR OWN ROWS, IN THEIR OWN CHANNEL. `slug` came from the scope,
+        # so there is no argument that reaches another client's.
+        out["meetings"] = rows
+    else:
+        out["meetings"] = rows
+        out["by_workspace"] = _meetings_by_workspace(rows)
+    return out
+
+
+def _meetings_by_workspace(rows):
+    out = {}
+    for row in rows or []:
+        key = row.get("workspace") or "unattributed"
+        out[key] = out.get(key, 0) + 1
+    return out
+
+
 def replies(scope, argument=None):
     """What has come back: the provider's counters and the reply feed.
 
@@ -803,16 +1558,97 @@ def batch_state(scope, argument=None):
     """Where the current batch stands: campaigns, accounts, enrolled.
 
     DELEGATES to `slackagentreadback.batch_state` when that module carries
-    one. It does not on the commit this branch forked from, and the main
-    session was adding it while this was written - so rather than copy it
-    into a second place that can drift, this asks for the canonical one and
-    falls back to reading the campaign store itself.
+    one, and then REPLACES its enrolled figure for a client.
+
+    OPERATOR, 2026-09-22: "Enrolled counts shown to a client must be
+    provider-confirmed membership per campaign, never the local store's
+    enrolled state."
+
+    The first live client answer said "lokalno je upisano 724 leada na 643
+    računa". That is the local store's enrolled state across everything
+    ever staged for this workspace; the batch the client was asking about
+    holds 151. The local number is not a worse version of the right one, it
+    is a different question - and it reached a client in their own channel.
+
+    So for a client the local figure is REMOVED rather than corrected
+    alongside, because a readback carrying both invites an answer carrying
+    both.
     """
     canonical = getattr(readback, "batch_state", None)
     state = canonical() if callable(canonical) else _batch_state_local(scope)
-    if scope.is_client:
-        state.pop("bound_to_provider", None)
+    if not scope.is_client:
+        return state
+
+    # THE BATCH'S OWN CAMPAIGNS, not every campaign this workspace has
+    # ever had. The first pass summed all twelve provider ids on the
+    # workspace and reported 422 where the batch holds 151 - a number as
+    # wrong as the local one it replaced, arrived at more honestly.
+    batch_ids = [str(i) for i in (state.get("bound_to_provider") or [])]
+    state.pop("bound_to_provider", None)
+    for key in ("leads_enrolled_locally", "accounts", "records",
+                "leads_enrolled", "enrolled"):
+        state.pop(key, None)
+    confirmed = provider_enrolled(scope, batch_ids or None)
+    state["enrolled_confirmed_by_provider"] = confirmed.get("total")
+    state["enrolled_per_campaign"] = confirmed.get("per_campaign")
+    state["sent_from_these_campaigns"] = confirmed.get("sent_total")
+    state["sent_per_campaign"] = confirmed.get("sent_per_campaign")
+    if confirmed.get("unreadable"):
+        state["enrolled_unreadable_campaigns"] = confirmed["unreadable"]
+        state["enrolled_note"] = (
+            "%d campaign(s) could not be read, so the enrolled total is a "
+            "floor" % confirmed["unreadable"])
+    else:
+        state["enrolled_note"] = ("enrolled is the provider's own membership "
+                                  "count per campaign. Enrolled is not sent.")
     return state
+
+
+def provider_enrolled(scope, campaign_ids=None):
+    """How many leads the PROVIDER says each named campaign holds.
+
+    `campaign_lead_count` reads `meta.total` and refuses to count a page,
+    which is what makes this a membership figure rather than a page length.
+    One read per campaign.
+
+    `campaign_ids` is REQUIRED in spirit: with none, this falls back to
+    every campaign the workspace has, which answers a question nobody
+    asked. The caller names the campaigns it means.
+    """
+    slug = _workspace_for(scope, None)
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    wanted = [str(i) for i in (campaign_ids
+                               or entry.get("provider_campaign_ids") or [])]
+    # Only this workspace's own campaigns, whatever the caller passed.
+    mine = {str(i) for i in (entry.get("provider_campaign_ids") or [])}
+    wanted = [i for i in wanted if i in mine][:16]
+    per_campaign, unreadable, total = {}, 0, 0
+    for campaign_id in wanted:
+        try:
+            from .providers import bison
+            count = bison.campaign_lead_count(campaign_id)
+        except Exception:                                       # noqa: BLE001
+            unreadable += 1
+            continue
+        if isinstance(count, int):
+            per_campaign[str(campaign_id)] = count
+            total += count
+    # SENT, BESIDE ENROLLED, FROM THE SAME CAMPAIGNS.
+    #
+    # The first live answer opened "Da, prvi mailovi su prošli" on the
+    # strength of three sends that belonged to a DIFFERENT campaign, while
+    # every campaign in the batch stood at zero. The two numbers travel
+    # together now so the material cannot be read as one.
+    sent, sent_total = {}, 0
+    for campaign_id in wanted:
+        detail = readback.campaign_by_id(campaign_id)
+        value = detail.get("emails_sent")
+        if isinstance(value, int):
+            sent[str(campaign_id)] = value
+            sent_total += value
+    return {"read_at": _now(), "workspace": slug, "total": total,
+            "per_campaign": per_campaign, "unreadable": unreadable,
+            "sent_per_campaign": sent, "sent_total": sent_total}
 
 
 def _batch_state_local(scope):
@@ -921,6 +1757,171 @@ def sends_today(scope, argument=None):
                     "own counter and queue_sent_rows is the queue's"}
 
 
+def weekly_plan(scope, argument=None):
+    """This week, as an ANSWER - what is running, what starts, what waits.
+
+    `docs/SLACK-AGENT-EXPECTATIONS.md`: the weekly update is "a habit with
+    a shape", asked every Monday and Tuesday, and the 07:15 briefing is
+    supposed to already hold it when somebody asks. Until now the agent
+    could answer every piece of it separately and none of it as the
+    question people actually ask, which is *what is happening this week*.
+
+    ## THE FORWARD HALF IS TWO DAYS LONG AND SAYS SO
+
+    The provider answers `today`, `tomorrow` and `day_after_tomorrow` and
+    nothing further - `docs/GROK-SCHEDULING-2026-09-20.md`. So the honest
+    forward answer covers those three days, names them, and states the
+    horizon in the readback. Everything past it would be our inference
+    dressed as the provider's plan, and this project's whole register
+    exists because `scheduled` got read as `sent` once.
+
+    A campaign the provider says nothing about is reported as `no schedule
+    returned`, which is its own state - separate from zero, and separate
+    from a campaign that could not be read at all.
+
+    ## AND THE BACKWARD HALF IS WHAT MAKES IT AN ANSWER
+
+    "Nothing goes out tomorrow" means one thing after a week of sending and
+    another after a week of silence. The last seven days travel with the
+    plan so the reader has both, counted the same way `lead_counts` counts
+    them - people and emails apart.
+
+    ## A PLAN IS NOT A PROMISE
+
+    This is the tool most likely to turn into one. Nothing here commits to
+    a date: it reports what the provider currently intends for three named
+    days and what has already happened. The note says that in the material,
+    so a model summarising it has the disclaimer in front of it rather than
+    having to remember the rule.
+    """
+    import datetime
+    slug = _workspace_for(scope, argument)
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    ids = [str(i) for i in (entry.get("provider_campaign_ids") or [])][:10]
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - \
+        datetime.timedelta(seconds=WEEK_SECONDS)
+
+    running, unreadable = [], 0
+    emails_week, people_week = 0, set()
+    for campaign_id in ids:
+        detail = readback.campaign_by_id(campaign_id)
+        if detail.get("_error"):
+            unreadable += 1
+            continue
+        week = _week_activity(campaign_id, cutoff)
+        row = {"campaign_id": campaign_id, "name": detail.get("name"),
+               "status": detail.get("status")}
+        if week is not None:
+            emails, people = week
+            row["emails_sent_last_7_days"] = emails
+            row["leads_emailed_last_7_days"] = len(people)
+            emails_week += emails
+            people_week |= people
+        else:
+            row["last_7_days_unreadable"] = True
+        running.append(row)
+
+    out = {"read_at": _now(), "workspace": slug,
+           "campaigns": running,
+           "campaigns_unreadable": unreadable,
+           "emails_sent_last_7_days": emails_week,
+           "leads_emailed_last_7_days": len(people_week),
+           "meetings_booked": _meetings_for_plan(scope),
+           "forward": _forward_window(ids),
+           "forward_horizon": "the provider answers today, tomorrow and the "
+                              "day after, and nothing beyond that",
+           "note": "the forward half is what the PROVIDER currently intends "
+                   "for three named days, not a commitment and not a date "
+                   "anyone has promised. The backward half is the last 7 "
+                   "days, with people and emails counted apart."}
+    if unreadable:
+        out["warning"] = ("%d campaign(s) could not be read, so this is a "
+                          "partial picture of the week" % unreadable)
+
+    if scope.is_internal:
+        # WHAT THE WEEK IS WAITING ON. Internal only, and not because it is
+        # secret: an open change request names the operator and the gate,
+        # which is Resonate's machinery, and the client already knows what
+        # they asked for.
+        out["waiting_on_a_decision"] = _open_tickets()
+        out["campaigns_awaiting_decision"] = _awaiting_decision()
+    return out
+
+
+def _meetings_for_plan(scope):
+    """The meeting count for the week, for the plan. Counts only.
+
+    The operator asked for counts in the weekly plan; the rows live in
+    `meetings_booked`, which is one tool call away. A plan carrying every
+    account name would also be a plan nobody reads.
+    """
+    try:
+        from . import slackmeetings
+        import datetime
+        since = (datetime.date.today()
+                 - datetime.timedelta(days=7)).isoformat()
+        slug = scope.workspace if scope.is_client else None
+        counted = slackmeetings.counts(workspace=slug, since=since)
+    except Exception as exc:                                    # noqa: BLE001
+        return {"_error": "%s: %s" % (type(exc).__name__, str(exc)[:120])}
+    out = {"since": since, "by_source": counted}
+    out.update(slackmeetings.total_across(counted))
+    return out
+
+
+#: The three days the provider will answer for. Its own vocabulary, in its
+#: own order, so nothing here has to do calendar arithmetic against a
+#: timezone the provider did not tell us about.
+FORWARD_DAYS = ("today", "tomorrow", "day_after_tomorrow")
+
+
+def _forward_window(campaign_ids):
+    """`{day: {campaign: planned}}` for the three days the provider answers.
+
+    Three states per campaign per day and they are kept apart:
+
+        an integer          the provider plans this many
+        "none scheduled"    the provider's own empty answer - its 400 with
+                            "No emails scheduled for this period", which is
+                            a result and not a failure
+        "unreadable"        the read failed
+
+    Collapsing the middle two into 0 is the mistake this whole codebase is
+    a monument to, so they never meet.
+    """
+    out = {}
+    for day in FORWARD_DAYS:
+        planned = {}
+        for campaign_id in campaign_ids:
+            try:
+                from .providers import bison
+                row = bison.sending_schedule(campaign_id, day)
+            except Exception as exc:                            # noqa: BLE001
+                planned[campaign_id] = (
+                    "none scheduled"
+                    if type(exc).__name__ == "SendingScheduleEmpty"
+                    else "unreadable")
+                continue
+            value = (row or {}).get("emails_being_sent")
+            planned[campaign_id] = value if isinstance(value, int) \
+                else "unreadable"
+        out[day] = planned
+    return out
+
+
+def _open_tickets():
+    """Change requests still with the operator. Ids, kinds and ages only."""
+    try:
+        from . import slackrequests
+        rows = slackrequests.pending()
+    except Exception as exc:                                    # noqa: BLE001
+        return {"_error": "%s: %s" % (type(exc).__name__, str(exc)[:200])}
+    return [{"id": r.get("id"), "kind": r.get("kind"),
+             "workspace": r.get("workspace"), "origin": r.get("origin"),
+             "raised_at": r.get("raised_at"),
+             "authority": r.get("requester_authority")} for r in rows]
+
+
 def held_by_reason(scope, argument=None):
     """Why leads are held, grouped by reason. Counts only.
 
@@ -959,6 +1960,44 @@ def credits(scope, argument=None):
     return readback.credits()
 
 
+def promises(scope, argument=None):
+    """What we said we would do, and whether we did. INTERNAL ONLY.
+
+    `docs/SLACK-AGENT-EXPECTATIONS.md` called this the highest-value thing
+    the history suggests building and the one thing it could not specify:
+    53 promise-shaped messages in ten days and nothing tracking whether any
+    was kept. The missing piece was a definition of delivery, and there is
+    one now - `src/slackpromises.py` carries it and the operator's words.
+
+    THERE IS NO CLIENT SCOPE FOR THIS, and that is the whole of the
+    access control. The operator: "Clients never see the promise scan."
+    Registering it `_INTERNAL` means `run` refuses it in a client channel
+    by name, `for_scope` never lists it, and no phrasing reaches it -
+    rather than an answer that filters itself once it has been built.
+
+    `argument` narrows to one status: `open`, `due`, `delivered`,
+    `undated`. Nothing means the summary and the open list, which is what
+    the briefing wants.
+    """
+    try:
+        from . import slackpromises, slackscope as scope_module
+        rows = slackpromises.messages()
+        found = slackpromises.scan(
+            rows, internal_users=scope_module.internal_users())
+    except Exception as exc:                                    # noqa: BLE001
+        return {"read_at": _now(),
+                "_error": "the promise scan failed: %s: %s"
+                          % (type(exc).__name__, str(exc)[:200])}
+    out = {"read_at": _now()}
+    out.update(slackpromises.summary(found, history_found=bool(rows)))
+    wanted = str(argument or "").strip().lower()
+    if wanted in (slackpromises.OPEN, slackpromises.DUE,
+                  slackpromises.DELIVERED, slackpromises.UNDATED):
+        out["filtered_to"] = wanted
+        out["matching"] = [p for p in found if p["status"] == wanted]
+    return out
+
+
 def monitors(scope, argument=None):
     """Which watchers are beating, and how long ago. INTERNAL ONLY."""
     return readback.monitors()
@@ -986,9 +2025,25 @@ REGISTRY = {
         cadence_detail,
         "the sequence day by day: email steps and the LinkedIn graph",
         _INTERNAL_CLIENT, "workspace slug (optional in a client channel)"),
+    "campaign_copy": (
+        campaign_copy,
+        "what a step actually says: the currently approved email and "
+        "LinkedIn messages for this workspace's own cadences",
+        _INTERNAL_CLIENT, "a step key like day1 or li2, or a channel"),
     "lead_lookup": (
         lead_lookup,
         "one contact's state by address",
+        _INTERNAL_CLIENT, "an email address"),
+    "lead_counts": (
+        lead_counts,
+        "how many leads: enrolled per campaign from the provider, how many "
+        "PEOPLE were emailed in the last 7 days and how many emails that "
+        "was, replies and bounces",
+        _INTERNAL_CLIENT, "a campaign id (optional; default all of them)"),
+    "lead_in_campaign": (
+        lead_in_campaign,
+        "whether one address is in any of this workspace's campaigns, as "
+        "the provider states it, with its status per campaign",
         _INTERNAL_CLIENT, "an email address"),
     "account_lookup": (
         account_lookup,
@@ -1003,6 +2058,11 @@ REGISTRY = {
         "which domains this workspace's mail is sent from, grouped by "
         "sender, with mailboxes per domain and whether it sent this week",
         _INTERNAL_CLIENT, None),
+    "domain_detail": (
+        domain_detail,
+        "one sending domain: how many mailboxes are on it, whose they are, "
+        "which campaigns it carries and what it sent this week",
+        _INTERNAL_CLIENT, "a domain, like example.com"),
     "sender_roster": (
         sender_roster,
         "this client's own authorized senders by name, with their mailboxes, "
@@ -1012,6 +2072,11 @@ REGISTRY = {
         activity_this_week,
         "what actually went out in the last seven days, per campaign",
         _INTERNAL_CLIENT, None),
+    "meetings_booked": (
+        meetings_booked,
+        "how many meetings are booked, counted per source, with the "
+        "accounts and dates for this channel's own workspace",
+        _INTERNAL_CLIENT, "week, month, or nothing for all of them"),
     "replies": (
         replies,
         "what has come back: provider reply counts and the classified feed",
@@ -1045,6 +2110,12 @@ REGISTRY = {
         sends_today,
         "what actually went out, from the provider's own counters",
         _INTERNAL_CLIENT, None),
+    "weekly_plan": (
+        weekly_plan,
+        "this week in one answer: what is running, what the provider plans "
+        "for today / tomorrow / the day after, and what went out in the "
+        "last seven days",
+        _INTERNAL_CLIENT, None),
     "held_by_reason": (
         held_by_reason,
         "why leads are held, grouped by reason",
@@ -1053,6 +2124,11 @@ REGISTRY = {
         credits,
         "the credit position",
         _INTERNAL, None),
+    "promises": (
+        promises,
+        "what we told somebody we would do in the last 10 days, and "
+        "whether anything was posted in that thread afterwards",
+        _INTERNAL, "open, due, delivered, undated, or nothing"),
     "monitors": (
         monitors,
         "which watchers are beating and how long ago",
@@ -1090,7 +2166,7 @@ def run(scope, name, argument=None):
         raise ToolRefused(
             "a %s channel may not call %r" % (scope.kind, name))
     try:
-        return function(scope, argument)
+        return for_client(scope, function(scope, argument))
     except Exception as exc:                                    # noqa: BLE001
         # THE MESSAGE, NOT JUST THE TYPE. A bare "sender_summary failed:
         # NameError" is what this returned when two tools called a helper
@@ -1103,6 +2179,46 @@ def run(scope, name, argument=None):
         return {"read_at": _now(),
                 "_error": "%s failed: %s: %s"
                           % (name, type(exc).__name__, str(exc)[:200])}
+
+
+def for_client(scope, result):
+    """The last pass over a readback before a client can see it.
+
+    Two corrections that a prompt cannot make, applied to the MATERIAL so
+    the model has nothing wrong to repeat:
+
+    1. **Times in the workspace's own zone, named.** Taken from its own
+       `sending_window.timezone` - the zone its mail is already scheduled
+       against - so "13:03 UTC" becomes "15:03 CEST" for a Zagreb client.
+       UTC is what an internal channel gets and what this leaves alone
+       when a workspace has no zone configured.
+    2. **Campaign names without our experiment design.** `RESONATE -
+       PRODUCTIVE - EMAIL - US-HOURS - CONTROL - COHORT B` becomes "email
+       campaign 491". The channel and the id survive; how we run the test
+       does not.
+    """
+    if not scope.is_client or not isinstance(result, dict):
+        return result
+    entry = (knowledge.pack().get("workspaces") or {}).get(
+        scope.workspace) or {}
+    result = _plain_labels(result)
+    return clientview.localise(result, clientview.zone_for(entry))
+
+
+def _plain_labels(value):
+    """Replace every campaign `name` with one a client should hear."""
+    if isinstance(value, list):
+        return [_plain_labels(v) for v in value]
+    if not isinstance(value, dict):
+        return value
+    out = {}
+    for key, item in value.items():
+        if key == "name" and clientview.carries_internal_label(item):
+            out[key] = clientview.plain_campaign_label(
+                item, value.get("campaign_id") or value.get("id"))
+            continue
+        out[key] = _plain_labels(item)
+    return out
 
 
 def run_all(scope, calls):
@@ -1266,6 +2382,13 @@ def _find_contacts(slug, needle, limit=5):
                 # up rather than read off the contact - a contact carrying a
                 # `bison_lead_id` was STAGED, which is not the same thing.
                 "in_campaigns": campaigns_of_record(slug, record.get("id")),
+                # AND WHERE THAT CAME FROM. Our campaign rows record what we
+                # STAGED; the provider records what it holds. They agree
+                # until a push is refused or a lead is stopped, and the one
+                # moment somebody asks is the moment they disagree.
+                "in_campaigns_source": "our store, not the provider - ask "
+                                       "lead_in_campaign for the provider's "
+                                       "own membership",
                 "contact": address,
                 "name": contact.get("name"),
             })

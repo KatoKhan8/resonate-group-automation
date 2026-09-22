@@ -120,6 +120,8 @@ STATE_OVERRIDES = (
                    # caught all three writing beside the queue without
                    # asking the barrier.
                    "KNOWLEDGE_PACK", "SLACK_THREADS", "SLACK_REQUESTS",
+                   # The client follow-up watches.
+                   "SLACK_FOLLOWUPS",
                    # The prospect-facing action ledger. Of everything in this
                    # tuple it is the one a test must never write into the real
                    # `work/`: a stray reservation there would count against a
