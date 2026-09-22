@@ -39,6 +39,57 @@ def read(path):
         return f.read()
 
 
+def _ast_contains_queue_path(node):
+    """True if the AST node contains a call to queue_path() anywhere.
+
+    Catches both bare `queue_path()` and `store.queue_path()`, and finds them
+    at any depth inside the expression - so `os.path.getsize(queue_path())`
+    and `path_for(store.queue_path())` both match.
+    """
+    for child in ast.walk(node):
+        if isinstance(child, ast.Call):
+            func = child.func
+            if isinstance(func, ast.Name) and func.id == "queue_path":
+                return True
+            if isinstance(func, ast.Attribute) and func.attr == "queue_path":
+                return True
+    return False
+
+
+def _find_direct_queue_readers():
+    """AST walk: every src/ module that open()s or read_jsonl()s the queue.
+
+    Walks the AST rather than grepping source, because a comment mentioning
+    `open(queue_path())` would trip a text search and this repository has
+    been bitten by that exact class of false positive.
+    """
+    readers = {}
+    for path in source_files():
+        name = os.path.splitext(os.path.basename(path))[0]
+        tree = ast.parse(read(path))
+        hits = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            is_open = isinstance(func, ast.Name) and func.id == "open"
+            is_read_jsonl = (
+                (isinstance(func, ast.Name) and func.id == "read_jsonl")
+                or (isinstance(func, ast.Attribute)
+                    and func.attr == "read_jsonl")
+            )
+            if not (is_open or is_read_jsonl):
+                continue
+            if not node.args:
+                continue
+            if _ast_contains_queue_path(node.args[0]):
+                hits.append(
+                    (node.lineno, "open" if is_open else "read_jsonl"))
+        if hits:
+            readers[name] = hits
+    return readers
+
+
 class TestTheQueueIsTheOnlyState(unittest.TestCase):
     @staticmethod
     def code_strings(path):
@@ -176,6 +227,48 @@ class TestTheQueueIsTheOnlyState(unittest.TestCase):
             text = read(path)
             for banned in ("recs.remove(", "del recs[", ".pop(rec"):
                 self.assertNotIn(banned, text, os.path.relpath(path, ROOT))
+
+    # Modules allowed to call queue_path() and then open()/read_jsonl() the
+    # result. Only `store` itself does this. `queuejournal` receives the path
+    # as a parameter from store - it never resolves queue_path() itself, so
+    # the AST walk does not match it and it does not need an exemption.
+    # The SQLite migration rests on no other src/ module doing this.
+    QUEUE_DIRECT_READERS_EXEMPT = ("store",)
+
+    def test_no_src_module_reads_the_queue_file_directly(self):
+        """Only store and queuejournal may open the queue by path.
+
+        The SQLite migration is feasible only because no module under src/
+        parses work/queue.jsonl itself. A module added next week that reads
+        the file directly breaks the migration silently, and the first
+        symptom is a wrong number in a report. Asserted via AST walk rather
+        than source grep, because a comment mentioning open(queue_path())
+        would trip a text search.
+        """
+        readers = _find_direct_queue_readers()
+        offenders = {name: hits for name, hits in readers.items()
+                     if name not in self.QUEUE_DIRECT_READERS_EXEMPT}
+        self.assertEqual(
+            offenders, {},
+            f"src/ modules reading the queue file directly: {offenders}")
+
+    def test_the_direct_reader_exemption_list_has_not_fallen_behind(self):
+        """Both halves: nothing unlisted reads the queue, and nothing listed
+        has stopped. The SELF_WRITERS pattern proved its value when it caught
+        watchesink and three Slack modules the same hour they landed."""
+        readers = _find_direct_queue_readers()
+        actual = set(readers.keys())
+        exempt = set(self.QUEUE_DIRECT_READERS_EXEMPT)
+        unlisted = actual - exempt
+        self.assertEqual(
+            unlisted, set(),
+            f"modules reading the queue directly but not on the exemption "
+            f"list: {sorted(unlisted)}")
+        phantom = exempt - actual
+        self.assertEqual(
+            phantom, set(),
+            f"exempted modules that no longer read the queue directly "
+            f"(remove them): {sorted(phantom)}")
 
 
 class TestNothingCanSend(unittest.TestCase):

@@ -123,6 +123,10 @@ def profile_refuse_history_loss(size, recs, tmp):
     store.save(recs)
 
     def do_check():
+        # EXEMPT: profiles the raw read_jsonl primitive that refuse_history_loss
+        # takes in production (store.save passes it the un-replayed base file).
+        # Switching to store.load() would measure a Snapshot with journal replay,
+        # which is a different operation and would invalidate the measurement.
         on_disk = store.read_jsonl(store.queue_path())
         store.refuse_history_loss(on_disk, recs)
 
@@ -175,6 +179,10 @@ def profile_snapshot_merge(size, recs, tmp):
     snap = store.load()
 
     def do_merge():
+        # EXEMPT: profiles the raw merge_onto primitive against the on-disk
+        # base file, which is what store.save passes it. Switching to
+        # store.load() would feed it an already-merged Snapshot and the
+        # measurement would no longer reflect the checkpoint cost.
         on_disk = store.read_jsonl(store.queue_path())
         snap.merge_onto(on_disk)
 
