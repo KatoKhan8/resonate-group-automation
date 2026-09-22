@@ -658,7 +658,7 @@ def domain_detail(scope, argument=None):
 
     The catalogue's third tool, and the shape of the real question:
 
-    > *dontgoproductive.com, kakva je ovo domena?*
+    > *sending-domain-a.example.test, kakva je ovo domena?*
 
     That is the message that followed `sending_domains` being answered with
     a 194KB CSV. The catalogue puts it plainly - *almost never "list the
@@ -676,7 +676,7 @@ def domain_detail(scope, argument=None):
 
     ## THE ARGUMENT MAY ARRIVE AS AN ADDRESS AND LEAVES AS A DOMAIN
 
-    People paste `tina@dontgoproductive.com` when they mean the domain.
+    People paste `tina@sending-domain-a.example.test` when they mean the domain.
     Taking the domain is right; echoing the local part back would put a
     mailbox in the answer, which `sending_domains` refuses on purpose in
     every scope. The local part is dropped before anything is looked up and
@@ -789,7 +789,7 @@ def domain_detail(scope, argument=None):
 
 
 def _as_domain(argument):
-    """`"tina@dontgoproductive.com"` -> `"dontgoproductive.com"`, or None.
+    """`"tina@sending-domain-a.example.test"` -> `"sending-domain-a.example.test"`, or None.
 
     Takes what a person would actually paste - an address, a bare domain, a
     URL - and returns the registrable text or nothing. It never guesses: a
@@ -1443,7 +1443,7 @@ def meetings_booked(scope, argument=None):
 
     ## THE COUNT IS PER SOURCE AND THERE IS NO BARE TOTAL
 
-    The operator: "Add a second source later (Calendly/CRM) as a separate
+    The operator: "Add a second source later (a booking tool or CRM) as a separate
     tag; never merge sources silently." So `by_source` is the answer and
     `total` is only ever reported beside the list of sources it spans. The
     day a second source is wired, every reader sees two numbers instead of

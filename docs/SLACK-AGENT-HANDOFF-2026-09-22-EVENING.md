@@ -140,7 +140,7 @@ All three of the previous next-three are built. What is left:
    reporting is 11 questions, all client. Pointing at a report is a
    smaller and more honest thing than composing one.
 2. **A second meetings source.** The ledger is shaped for it - a new tag,
-   never a bigger number under the old one - and Calendly or the CRM would
+   never a bigger number under the old one - and the booking tool or the CRM would
    halve the hand-feeding.
 3. **Refresh the Slack history on a schedule.** The promise scan is
    correct and empty until something pulls history; `slack_history.py

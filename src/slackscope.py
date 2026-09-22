@@ -251,6 +251,52 @@ CLIENT_FORBIDDEN_TERMS = (INTERNAL_WORKER_TERMS + INTERNAL_ENGINEERING_TERMS
 UNBOUND_EXTRA_TERMS = ()
 
 
+#: Per-stage maps whose KEYS are internal diagnostics rather than numbers. The
+#: counts beside them are the client's own business and stay; the reasons are
+#: ours and do not.
+_INTERNAL_REASON_KEYS = ("held_by_reason", "dropped_by_reason",
+                         "refused_by_reason")
+
+
+def _client_safe_workspace(workspace):
+    """A workspace's own figures, with our internal reason strings removed.
+
+    **THE LEAK WAS IN THE KEYS, NOT THE VALUES.** `s5_verification` carries
+    `held_by_reason`, and its keys read "catch-all cleared by <verifier>, but
+    only 1 of 2 required independent confirmations" - which names a provider
+    to the client, in client-facing material, which the routing policy forbids
+    and which every other client-facing guard already refuses. A scan that
+    walks values and not keys sees nothing, and that is how this survived
+    until Phase C3's live-pack test asserted against the real pack rather
+    than a fixture.
+
+    The COUNTS stay. A client may know how many addresses were held; which
+    verifier held them, and how our confirmation policy is shaped, is ours.
+    """
+    if not isinstance(workspace, dict):
+        return workspace
+    stages = workspace.get("stages")
+    if not isinstance(stages, dict):
+        return workspace
+    safe_stages = {}
+    for name, stage in stages.items():
+        if not isinstance(stage, dict):
+            safe_stages[name] = stage
+            continue
+        cleaned = {k: v for k, v in stage.items()
+                   if k not in _INTERNAL_REASON_KEYS}
+        for key in _INTERNAL_REASON_KEYS:
+            if isinstance(stage.get(key), dict):
+                # The shape is kept so a reader sees the figure exists and is
+                # withheld, rather than silently seeing no holds at all.
+                cleaned[f"{key}_count"] = sum(
+                    v for v in stage[key].values() if isinstance(v, int))
+        safe_stages[name] = cleaned
+    out = dict(workspace)
+    out["stages"] = safe_stages
+    return out
+
+
 class ScopeViolation(RuntimeError):
     """The answer carried something this channel may not hear.
 
@@ -373,7 +419,8 @@ class Scope:
         out["policies"] = client_safe_policies(pack.get("policies") or [])
         everything = pack.get("workspaces") or {}
         mine = everything.get(self.workspace)
-        out["workspaces"] = {self.workspace: mine} if mine else {}
+        out["workspaces"] = ({self.workspace: _client_safe_workspace(mine)}
+                             if mine else {})
         return out
 
     def _identity_for_scope(self, identity):

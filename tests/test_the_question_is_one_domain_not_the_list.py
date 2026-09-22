@@ -10,7 +10,7 @@ questions, the third-largest intent:
 The message that proved it is the one immediately after a CSV of every
 sender was attached in a client channel:
 
-    dontgoproductive.com, kakva je ovo domena?
+    sending-domain-a.example.test, kakva je ovo domena?
 
 `domain_detail` answers that one. Three properties are asserted here:
 
@@ -57,10 +57,10 @@ PEOPLE = [{"sender_id": "s-jelena", "display_name": "Jelena"},
           {"sender_id": "s-tina", "display_name": "Tina"}]
 ACCOUNTS = [
     {"account_id": "eb-1", "provider_account_id": "1",
-     "domain": "dontgoproductive.com", "daily_limit": 15,
+     "domain": "sending-domain-a.example.test", "daily_limit": 15,
      "health": "good"},
     {"account_id": "eb-2", "provider_account_id": "2",
-     "domain": "dontgoproductive.com", "daily_limit": 15,
+     "domain": "sending-domain-a.example.test", "daily_limit": 15,
      "health": "warming"},
     {"account_id": "eb-3", "provider_account_id": "3",
      "domain": "other.example", "daily_limit": 15, "health": "good"},
@@ -125,30 +125,30 @@ class OneDomain(unittest.TestCase):
 class TheRealQuestionIsAnswered(OneDomain):
 
     def test_it_says_whose_it_is_and_how_many_mailboxes(self):
-        out = self.ask(client(), "dontgoproductive.com")
+        out = self.ask(client(), "sending-domain-a.example.test")
         self.assertTrue(out["ours"])
         self.assertEqual(out["mailboxes"], 2)
         self.assertEqual(out["senders"], ["Jelena"])
         self.assertEqual(out["daily_capacity"], 30)
 
     def test_it_names_the_campaigns_the_domain_carries(self):
-        out = self.ask(client(), "dontgoproductive.com",
+        out = self.ask(client(), "sending-domain-a.example.test",
                        carried={"1": ["campaign 491"], "2": ["campaign 492"]})
         self.assertEqual(out["campaigns_carried"],
                          ["campaign 491", "campaign 492"])
 
     def test_the_week_carries_people_and_emails_apart(self):
-        out = self.ask(client(), "dontgoproductive.com", week=(9, 3, 0))
+        out = self.ask(client(), "sending-domain-a.example.test", week=(9, 3, 0))
         self.assertEqual(out["emails_sent_last_7_days"], 9)
         self.assertEqual(out["leads_emailed_last_7_days"], 3)
 
     def test_an_unreadable_queue_claims_nothing_about_the_week(self):
-        out = self.ask(client(), "dontgoproductive.com", week=None)
+        out = self.ask(client(), "sending-domain-a.example.test", week=None)
         self.assertNotIn("emails_sent_last_7_days", out)
         self.assertIn("nothing is claimed", out["last_7_days_note"])
 
     def test_a_partly_readable_queue_says_the_figures_are_floors(self):
-        out = self.ask(client(), "dontgoproductive.com", week=(4, 2, 1))
+        out = self.ask(client(), "sending-domain-a.example.test", week=(4, 2, 1))
         self.assertEqual(out["campaigns_unreadable"], 1)
         self.assertIn("floors", out["last_7_days_note"])
 
@@ -184,15 +184,15 @@ class ADomainThatIsNotYoursReadsTheSameAsOneThatIsNobodys(OneDomain):
 class APastedAddressNeverComesBack(OneDomain):
 
     def test_the_local_part_is_dropped_before_anything_is_looked_up(self):
-        out = self.ask(client(), "tina@dontgoproductive.com")
-        self.assertEqual(out["domain"], "dontgoproductive.com")
+        out = self.ask(client(), "tina@sending-domain-a.example.test")
+        self.assertEqual(out["domain"], "sending-domain-a.example.test")
         self.assertNotIn("tina@", json.dumps(out))
         self.assertTrue(out["ours"])
 
     def test_no_at_sign_survives_anywhere_in_the_answer(self):
-        for argument in ("tina@dontgoproductive.com",
-                         "dontgoproductive.com",
-                         "https://dontgoproductive.com/pricing"):
+        for argument in ("tina@sending-domain-a.example.test",
+                         "sending-domain-a.example.test",
+                         "https://sending-domain-a.example.test/pricing"):
             self.assertNotIn("@", json.dumps(self.ask(client(), argument)),
                              argument)
 
@@ -207,14 +207,14 @@ class APastedAddressNeverComesBack(OneDomain):
 class OurReadingOfOurOwnInfrastructureIsInternal(OneDomain):
 
     def test_a_client_is_shown_no_health_and_no_bounce(self):
-        out = self.ask(client(), "dontgoproductive.com",
+        out = self.ask(client(), "sending-domain-a.example.test",
                        bounce={"1": {"sent": 100, "bounced": 4}})
         for key in ("health", "bounce_rate_percent", "over_hard_stop",
                     "emails_sent_lifetime"):
             self.assertNotIn(key, out, key)
 
     def test_an_internal_channel_is(self):
-        out = self.ask(internal(), "dontgoproductive.com",
+        out = self.ask(internal(), "sending-domain-a.example.test",
                        bounce={"1": {"sent": 100, "bounced": 4},
                                "2": {"sent": 100, "bounced": 0}})
         self.assertEqual(out["health"], {"good": 1, "warming": 1})
@@ -222,7 +222,7 @@ class OurReadingOfOurOwnInfrastructureIsInternal(OneDomain):
         self.assertEqual(out["over_hard_stop"], False)
 
     def test_an_unreadable_estate_claims_no_rate(self):
-        out = self.ask(internal(), "dontgoproductive.com", bounce={})
+        out = self.ask(internal(), "sending-domain-a.example.test", bounce={})
         self.assertIsNone(out["bounce_rate_percent"])
         self.assertIn("no bounce rate is claimed", out["bounce_note"])
 

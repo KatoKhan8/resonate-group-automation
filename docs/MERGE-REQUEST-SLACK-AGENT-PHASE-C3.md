@@ -54,7 +54,7 @@ questions, and the single most-asked number nothing could produce.
 
 `counts()` returns `{source: n}`. **There is no function in the module that
 hands back a bare number.** `total_across()` reports a sum only alongside
-the list of sources it spans, with a note saying so. The day Calendly is
+the list of sources it spans, with a note saying so. The day the booking tool is
 wired it becomes a second key and every reader sees two numbers — rather
 than one number that grew overnight and nobody can now reconstruct.
 

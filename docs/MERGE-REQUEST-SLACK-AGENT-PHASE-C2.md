@@ -285,7 +285,7 @@ Added at `57c882a6`. `domain_detail` — the catalogue's third tool.
 > granularity.
 
 The proof is the message immediately after the 194KB CSV went into the
-client channel: *dontgoproductive.com, kakva je ovo domena?* Sixty-nine
+client channel: *sending-domain-a.example.test, kakva je ovo domena?* Sixty-nine
 domains answer a question nobody asked while leaving the one they did ask
 open.
 
@@ -298,7 +298,7 @@ apart, as `lead_counts` does. Health and bounce stay internal, on the line
   `lead_in_campaign`: distinguishing them confirms the other client's
   estate exists.
 - **A pasted address leaves as a domain.** People paste
-  `tina@dontgoproductive.com` when they mean the domain. The local part is
+  `tina@sending-domain-a.example.test` when they mean the domain. The local part is
   dropped before anything is looked up, so the answer cannot echo a mailbox
   back — which `sending_domains` refuses on purpose in every scope. A test
   asserts no `@` survives anywhere in the answer.

@@ -226,16 +226,16 @@ class TheReturnTypeIsTheRule(Ledger):
     def test_the_count_is_per_source_and_there_is_no_bare_number(self):
         self.add(domain="a.test")
         self.add(domain="b.test")
-        self.add(domain="c.test", source="calendly")
+        self.add(domain="c.test", source="booking_tool")
         self.assertEqual(meetings.counts(),
-                         {meetings.MANUAL: 2, "calendly": 1})
+                         {meetings.MANUAL: 2, "booking_tool": 1})
 
     def test_a_total_always_says_which_sources_it_spans(self):
         self.add(domain="a.test")
-        self.add(domain="c.test", source="calendly")
+        self.add(domain="c.test", source="booking_tool")
         total = meetings.total_across(meetings.counts())
         self.assertEqual(total["meetings"], 2)
-        self.assertEqual(total["sources"], ["calendly", meetings.MANUAL])
+        self.assertEqual(total["sources"], ["booking_tool", meetings.MANUAL])
         self.assertIn("not one system's number", total["note"])
 
     def test_an_empty_ledger_says_it_is_empty_rather_than_zero_meetings(self):

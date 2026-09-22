@@ -6,7 +6,7 @@ thread, `@Resonate OS meeting booked <domain> <date>` (optionally
 `with <role>`) records one row: workspace, domain, date, who recorded it,
 source=manual. Internal users only. Counts appear in the digest, the weekly
 plan and client answers; per-domain detail only internally or in that
-client's channel. Add a second source later (Calendly/CRM) as a separate
+client's channel. Add a second source later (a booking tool or CRM) as a separate
 tag; never merge sources silently."
 
 `docs/SLACK-AGENT-QUESTION-CATALOGUE.md` puts it first on the build list:
@@ -19,7 +19,7 @@ no system anywhere holds it.
 "Never merge sources silently" is not a rule somebody has to remember: the
 count is per source and there is no function that returns a bare number.
 `counts()` returns `{source: n}`, and the only total it will produce says
-which sources it spans. When Calendly arrives it is a new key, a reader
+which sources it spans. When the booking tool arrives it is a new key, a reader
 sees two numbers, and nobody has to be told that one of them is new.
 
 The alternative - a `total` that quietly grew when a second source was
@@ -160,7 +160,7 @@ def counts(workspace=None, since=None, until=None):
 
     THE OPERATOR'S RULE IS THE RETURN TYPE. "Never merge sources silently"
     cannot be forgotten by a caller that has no single number to reach for,
-    and the day Calendly is wired a reader sees a second key rather than a
+    and the day the booking tool is wired a reader sees a second key rather than a
     total that grew.
     """
     out = {}

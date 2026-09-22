@@ -192,7 +192,7 @@ underlying discrepancy.
    is 11 questions, all client. Pointing at a report is smaller and more
    honest than composing one.
 2. **A second meetings source.** The ledger is shaped for it — a new tag,
-   never a bigger number under the old one — and Calendly or the CRM would
+   never a bigger number under the old one — and the booking tool or the CRM would
    halve the hand-feeding.
 3. **Watch the promise scan's false opens.** Delivery is judged in the
    promise's own thread, exactly as specified, so a promise answered by a
