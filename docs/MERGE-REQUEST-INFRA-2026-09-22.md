@@ -562,6 +562,43 @@ consumer of a shared fixture *before* editing it.
 
 ---
 
+## 4g. WHAT IS QUEUED AND RUNNING, AND THE TWO DOCS TO REVIEW WITH IT
+
+    docs/BENCHMARK-PASS-WALL-CLOCK-2026-09-22.md    the measurement
+    TASK-261  qwen-2  RUNNING   Snapshot stops re-serialising everything
+    TASK-262  qwen-3  RUNNING   verification roles, attempt 2
+    TASK-250          SUPERSEDED by 262
+
+**`docs/BENCHMARK-PASS-WALL-CLOCK-2026-09-22.md` is the document to read
+before anything else in this merge request.** It is the only measurement here
+that says no.
+
+**TASK-261** carries an unusual acceptance criterion, set by the operator, and
+it is worth knowing why: *the benchmark is the acceptance, not the test
+suite.* TASK-260 shipped 18 green tests and moved the ratio by nothing. So 261
+passes only if 5k/1k comes down near 5x from 25.2x, and its brief says that if
+tracking cannot be done without weakening `Snapshot`'s merge contract, the
+worker must **report a failed acceptance with the measurement rather than a
+success with a nice-looking speedup**.
+
+Its brief also names the trap, because the obvious implementation is dangerous
+rather than merely incomplete: callers mutate record dicts **in place**, and
+two of the three shapes are nested — `rec["contacts"].append(...)` and
+`rec["cadence"]["day1"]["body"] = ...`. A tracker catching only top-level
+assignment passes a casual test, produces a beautiful benchmark, and silently
+stops detecting the edits that carry contacts, events and cadence — which is
+to say it silently starves both loss guards of the records that matter most,
+invisibly, until somebody loses a reply.
+
+**TASK-262** is TASK-250 with the rule that makes it survivable: never mutate
+a shared fixture. Requirement 2 is the first thing to check at review —
+`git diff` must show **zero** changes to `phase2/5/6/7.jsonl`. Attempt 1's
+`126dcfa1` is preserved unmerged and 262 is told to recover it rather than
+reinvent it; its 302-line deliverable cassette is not shared state and should
+be taken as-is.
+
+---
+
 ## 5. WHAT I DID NOT DO
 
 - **Did not fix the PII guard** — §2, your files.
