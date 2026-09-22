@@ -381,6 +381,62 @@ is safe, but "safe to re-run" is not the same as "reported correctly".
   already uses, and only then raise.
 - **Status** OPEN · worked around by reading the provider after every push
 
+### ISSUE-017 · The re-engagement inventory stores a lane that goes stale with campaign status · HIGH
+
+**Found 2026-09-22 while acting on the operator's approval of the
+re-engagement copy. I reported the supply as missing, and it was not - the
+stored value was.**
+
+`work/stage/reengagement-inventory.jsonl` carries a `lane` per lead, written
+at walk time. Read today it says:
+
+    NEVER 1360 · UNKNOWN 38 · ACTIVE 17 · REENGAGE 0 · REVIVE 0
+
+The morning handoff recorded 973 REENGAGE / 37 REVIVE / 379 UNKNOWN / 17
+ACTIVE / 9 NEVER, and the file has not been rewritten since 09-21 21:53, so
+one of the two had to be wrong.
+
+**Neither was. The lane is DERIVED FROM CAMPAIGN STATUS and was cached.**
+`lane_for` reads:
+
+    if state in STOPPED_STATES:
+        if campaign_live:
+            return NEVER, "... an unknown stop is a NEVER by the rule"
+        ... else classify on age -> REENGAGE
+
+So the same lead is NEVER while its campaign is running and REENGAGE once that
+campaign is archived. Recomputed against the campaigns' CURRENT statuses -
+3 archived, 1 draft, 1 completed, 1 paused, 10 active:
+
+    NEVER 89 · ACTIVE 17 · REENGAGE 985 · UNKNOWN 287 · REVIVE 37
+
+which matches the handoff's shape and its REVIVE count exactly. The supply is
+real; the stored lane is a cached value on a decision path, which is the
+recurring defect this register's closing section already names.
+
+**What it nearly cost.** I told the operator the 973 REENGAGE leads did not
+exist and that there was nothing to enroll against copy they had just
+approved. That was wrong, and it was wrong in the direction of inaction rather
+than of sending - but a session that believed it would have idled the largest
+untouched supply in the estate.
+
+**The geography is the real constraint, and it is not what anybody assumed:**
+
+    262  480  PRODUCTIVE - MARKETING AGENCY - AUSTRALIA   archived
+    263  214  v2 PRODUCTIVE - MARKETING AGENCY - AUSTRALIA archived
+    264  289  PRODUCTIVE - MARKETING AGENCY - USA          archived
+    481    2  RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS paused
+
+**694 of the 985 are Australian**, and Australia has no campaign window - the
+same constraint that held 46 Australians out of batch 3. The actionable
+US-first supply is **289**, not 973.
+
+- **Fix** the lane is recomputed at read time from the current campaign
+  status, or the row records the status it was derived from and refuses when
+  that has moved. `senderheadroom` is the model: complete, covering, fresh, or
+  REFUSED.
+- **Status** OPEN · the supply is usable today by recomputing · reported
+
 ### ISSUE-011 · The forward book's COVERING property decays silently as campaigns are created · HIGH
 
 **Found and worked around 2026-09-22. The census is not wrong; its state file
