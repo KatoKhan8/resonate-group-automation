@@ -483,7 +483,12 @@ class TheMaterialMayNotCarryAWordTheAnswerIsCheckedFor(unittest.TestCase):
         fixture - which is the only version of it that can catch a policy
         somebody edits next month."""
         from src import slackknowledge
-        pack = slackknowledge.pack()
+        # `build()`, NOT `pack()`. `pack()` writes the cache when it is
+        # stale, which the production-write barrier refuses - so this test
+        # passed alone, when the cache happened to be fresh, and errored in
+        # a full run once something else had aged it. `build()` is the same
+        # live material without the write.
+        pack = slackknowledge.build()
         for slug in (pack.get("workspaces") or {}):
             scope = slackscope.Scope(slackscope.CLIENT, workspace=slug,
                                      source="test")

@@ -119,18 +119,25 @@ def campaign_copy(scope, argument=None):
     There is no code path here that reads a step without asking that
     question first: the walk is over approvals, not over steps.
 
-    ## VARIANTS UNDER TEST ARE WITHHELD FROM A CLIENT, AND COUNTED
+    ## A CLIENT SEES A WINNER, AND NOTHING ELSE FROM AN EXPERIMENT
 
-    A step carrying a `variant_id` came out of an experiment. A client is
-    not shown it and is not left to think they have seen everything: the
-    number withheld is in the answer. Internal scope sees the copy, the
-    variant id and the style.
+    OPERATOR, 2026-09-22: "Variants carry a status: testing / winner /
+    retired. Clients see winner as part of the cadence, never testing or
+    retired; internal sees all."
 
-    Presence of a `variant_id` is the signal, which is conservative - it
-    withholds a variant that has already settled as well as one still
-    being trialled. If a settled winner should reach a client, the signal
-    to use is the variant's own status, and that is an operator's call
-    rather than a guess made here.
+    So the signal is the variant's own `client_status`, read off the step
+    where `variants.apply_to_step` wrote it. A winner is copy somebody
+    decided is the copy, and it appears as an ordinary part of the cadence
+    with no experiment vocabulary attached - not labelled a winner, because
+    "winner" implies the losers a client is not being shown.
+
+    `variants.client_status` defaults to `testing` for anything unmarked,
+    so every variant written before that field existed is withheld exactly
+    as it was. A client answer changes only when somebody promotes a
+    variant on purpose.
+
+    Withheld messages are COUNTED. An answer showing four of nine and
+    saying nothing reads as the whole set.
 
     ## ONE THING THIS DOES SHOW, AND IT IS WORTH NAMING
 
@@ -167,7 +174,7 @@ def campaign_copy(scope, argument=None):
                 if wanted and wanted not in (str(step_key).lower(), channel):
                     continue
                 recipients += 1
-                if scope.is_client and step.get("variant_id"):
+                if scope.is_client and not _client_may_see(step):
                     withheld += 1
                     continue
                 key = (channel, str(step_key))
@@ -182,6 +189,7 @@ def campaign_copy(scope, argument=None):
                 if scope.is_internal and step.get("variant_id"):
                     entry["variant_id"] = step["variant_id"]
                     entry["variant_style"] = step.get("variant_style")
+                    entry["variant_status"] = _variant_status(step)
                 if scope.is_internal:
                     stamp = (step.get("approval") or {})
                     entry["approved_by"] = stamp.get("by")
@@ -206,6 +214,49 @@ def campaign_copy(scope, argument=None):
                        "empty approved set, not an empty cadence."
                        % (slug, (" matching %r" % wanted) if wanted else ""))
     return out
+
+
+def _variant_status(step):
+    """`testing` | `winner` | `retired` for a step, or None if it is not
+    from an experiment at all.
+
+    DELEGATES rather than re-deriving. `variants.client_status` owns the
+    rule, including what an unmarked or typo'd value means, and a second
+    copy of it here is how the two would come to disagree about which
+    message a client may read.
+    """
+    if not (step or {}).get("variant_id"):
+        return None
+    # ONLY THE FIELD `apply_to_step` WROTE. Handing the whole step to
+    # `client_status` would let an unrelated `status` key on a step mean
+    # something about a variant, which is a coincidence waiting to happen.
+    stated = step.get("variant_client_status")
+    try:
+        from . import variants
+        return variants.client_status({"client_status": stated})
+    except Exception:                                           # noqa: BLE001
+        # The module is unreadable, so nothing can be proved a winner.
+        # Withheld is the safe direction and this is the one place it has
+        # to be chosen explicitly.
+        return "testing"
+
+
+def _client_may_see(step):
+    """A step a client may be shown: no experiment, or a settled winner.
+
+    THE WITHHELD SIDE IS THE DEFAULT. Every path that is not a proven
+    winner returns False, so a step whose status cannot be read is not
+    shown - the failure being guarded against is copy still under test
+    quoted to a customer as though it were settled.
+    """
+    status = _variant_status(step)
+    if status is None:
+        return True
+    try:
+        from . import variants
+        return status == variants.VARIANT_WINNER
+    except Exception:                                           # noqa: BLE001
+        return False
 
 
 def _copy_rows(steps):

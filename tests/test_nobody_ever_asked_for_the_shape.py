@@ -15,6 +15,10 @@ channels see everything including variants. Test: client A cannot see
 client B's copy; the response never includes a step that is not in the
 approved set.*
 
+OPERATOR, later the same day, on the reading the first build had to take:
+*Variants carry a status: testing / winner / retired. Clients see winner as
+part of the cadence, never testing or retired; internal sees all.*
+
 Both of the operator's named tests are here, and each is asserted more than
 one way, because "the response never includes an unapproved step" is the
 kind of property that passes by accident when the fixture happens to have
@@ -32,7 +36,7 @@ if ROOT not in sys.path:
 
 from src import approval                                        # noqa: E402
 from src import slackagenttools as tools                        # noqa: E402
-from src import slackscope                                      # noqa: E402
+from src import slackscope, variants                            # noqa: E402
 
 
 def approved(step):
@@ -224,6 +228,14 @@ class WhatIsUnderTestIsNotShownAndIsNotHidden(Copy):
         out = tools.campaign_copy(client("alpha"))
         self.assertNotIn("VARIANT SUBJECT", json.dumps(out))
 
+    def test_an_unmarked_variant_reads_as_testing_and_is_withheld(self):
+        """The migration case, and it is the common one: every variant
+        written before `client_status` existed carries no value, and must
+        behave exactly as it did before the field was added."""
+        step = {"variant_id": "v-2"}
+        self.assertEqual(tools._variant_status(step), variants.TESTING)
+        self.assertFalse(tools._client_may_see(step))
+
     def test_and_is_not_left_thinking_it_has_seen_everything(self):
         """An answer showing one of two and saying nothing reads as the
         whole set."""
@@ -249,6 +261,133 @@ class WhatIsUnderTestIsNotShownAndIsNotHidden(Copy):
         body = json.dumps(tools.campaign_copy(client("alpha")))
         self.assertNotIn("approved_by", body)
         self.assertNotIn("zb", body)
+
+
+# ================================ 4b. TESTING / WINNER / RETIRED
+
+def with_status(subject, status):
+    """One approved step carrying a variant at the given visibility.
+
+    The body deliberately does NOT contain the status word: the test below
+    asserts that no experiment vocabulary reaches a client answer, and a
+    fixture that put the word in the copy would fail it for the wrong
+    reason and pass it for no reason once the copy changed.
+    """
+    entry = variants.variant("v-%s" % status, "direct", subject=subject,
+                             body="%s - one line about margins." % subject,
+                             client_status=status)
+    return approved(variants.apply_to_step({"channel": "email"}, entry))
+
+
+class AClientSeesAWinnerAndNothingElseFromAnExperiment(Copy):
+    """The operator's second decision. `winner` is copy somebody decided
+    is THE copy; `testing` is not settled and `retired` is not in use."""
+
+    def estate(self):
+        return [
+            record("alpha", "c1", {
+                "day1": with_status("WINNING SUBJECT",
+                                    variants.VARIANT_WINNER)}),
+            record("alpha", "c2", {
+                "day1": with_status("TESTING SUBJECT", variants.TESTING)}),
+            record("alpha", "c3", {
+                "day1": with_status("RETIRED SUBJECT", variants.RETIRED)}),
+        ]
+
+    def test_a_client_sees_the_winner(self):
+        body = json.dumps(tools.campaign_copy(client("alpha")))
+        self.assertIn("WINNING SUBJECT", body)
+
+    def test_and_never_the_other_two(self):
+        body = json.dumps(tools.campaign_copy(client("alpha")))
+        self.assertNotIn("TESTING SUBJECT", body)
+        self.assertNotIn("RETIRED SUBJECT", body)
+
+    def test_the_two_withheld_are_counted(self):
+        out = tools.campaign_copy(client("alpha"))
+        self.assertEqual(out["withheld_under_test"], 2)
+
+    def test_the_winner_arrives_as_ordinary_cadence_copy(self):
+        """Not labelled a winner: "winner" implies the losers the client is
+        not being shown."""
+        body = json.dumps(tools.campaign_copy(client("alpha")))
+        for word in ("winner", "variant", "testing", "retired", "bold"):
+            self.assertNotIn(word, body.lower(), word)
+
+    def test_an_internal_channel_sees_all_three_with_their_status(self):
+        out = tools.campaign_copy(internal())
+        body = json.dumps(out)
+        for subject in ("WINNING SUBJECT", "TESTING SUBJECT",
+                        "RETIRED SUBJECT"):
+            self.assertIn(subject, body)
+        statuses = {m.get("variant_status")
+                    for row in out["steps"] for m in row["messages"]}
+        self.assertEqual(statuses, {variants.TESTING,
+                                    variants.VARIANT_WINNER,
+                                    variants.RETIRED})
+        self.assertNotIn("withheld_under_test", out)
+
+    def test_a_typo_is_withheld_rather_than_shown(self):
+        """An unrecognised value must not be the one that reaches a client.
+        `variants.validate` blocks it so the decision is not silently
+        dropped, and this is the behaviour until somebody fixes it."""
+        step = {"variant_id": "v-x", "variant_client_status": "winnner"}
+        self.assertEqual(tools._variant_status(step), variants.TESTING)
+        self.assertFalse(tools._client_may_see(step))
+
+    def test_a_step_from_no_experiment_at_all_is_shown(self):
+        self.assertIsNone(tools._variant_status({"channel": "email"}))
+        self.assertTrue(tools._client_may_see({"channel": "email"}))
+
+
+class TheVisibilityAxisIsNotTheAllocationAxis(unittest.TestCase):
+    """`status` decides who RECEIVES which arm; `client_status` decides who
+    may READ it. Rewriting the first to express the second would let a
+    visibility decision change which message a real person gets."""
+
+    def test_a_variant_is_active_for_sending_and_testing_for_showing(self):
+        entry = variants.variant("v1", "direct", subject="s", body="b")
+        self.assertEqual(entry["status"], variants.ACTIVE)
+        self.assertEqual(entry["client_status"], variants.TESTING)
+
+    def test_promoting_one_does_not_change_its_allocation_status(self):
+        entry = variants.variant("v1", "direct", subject="s", body="b",
+                                 client_status=variants.VARIANT_WINNER)
+        self.assertEqual(entry["status"], variants.ACTIVE)
+        self.assertTrue(variants.client_may_see(entry))
+
+    def test_a_retired_arm_is_retired_on_both_axes(self):
+        """Saying otherwise would be two truths about one thing."""
+        self.assertEqual(
+            variants.client_status({"status": variants.RETIRED}),
+            variants.RETIRED)
+
+    def test_an_unmarked_variant_reads_as_testing(self):
+        """The migration: nothing needs backfilling, because the default is
+        the value that behaves as before."""
+        self.assertEqual(variants.client_status({}), variants.TESTING)
+        self.assertEqual(variants.client_status({"status": "active"}),
+                         variants.TESTING)
+        self.assertEqual(variants.client_status({"status": "paused"}),
+                         variants.TESTING)
+
+    def test_apply_to_step_carries_it_onto_the_step(self):
+        entry = variants.variant("v1", "direct", subject="s", body="b",
+                                 client_status=variants.VARIANT_WINNER)
+        step = variants.apply_to_step({"channel": "email"}, entry)
+        self.assertEqual(step["variant_client_status"],
+                         variants.VARIANT_WINNER)
+
+    def test_an_unknown_client_status_is_blocked_by_validate(self):
+        node = {"type": "email", "variants": [
+            variants.variant("v1", "direct", subject="s", body="b"),
+            variants.variant("v2", "direct", subject="s2", body="b2"),
+        ]}
+        node["variants"][0]["client_status"] = "winnner"
+        blocking = [f for f in variants.validate(node)
+                    if f["level"] == "block"]
+        self.assertTrue(any("client_status" in f["why"] for f in blocking),
+                        blocking)
 
 
 # ================================ 5. PERSONALISED COPY IS MANY TEXTS
