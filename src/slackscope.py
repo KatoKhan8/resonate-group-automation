@@ -202,8 +202,37 @@ INTERNAL_PROVIDER_TERMS = (
     "warmup", "attested", "attestation",
 )
 
+#: HOW WE RUN THE EXPERIMENT, which is ours and not the client's.
+#:
+#: `slackclientview.plain_campaign_label` already takes these words out of
+#: campaign NAMES before the material is built, and that closed half of the
+#: fault: the first live client answer said "US-hours kontrolne kampanje"
+#: because the campaign was called that. The other half is the model
+#: writing the framing itself - out of the thread above it, or out of its
+#: own sense of what it is describing - and a readback fix cannot reach
+#: that. So the vocabulary is enforced on the finished answer too.
+#:
+#: DELIBERATELY NARROWER THAN THE LABEL LIST. `test`, `arm`, `batch`,
+#: `variant` and `pilot` are on the label list and are NOT here: they are
+#: ordinary words, a false positive discards a whole correct answer, and
+#: `UNBOUND_EXTRA_TERMS` below records what happened last time this list
+#: reached for a word that had innocent uses. Only phrases with no innocent
+#: reading in a client channel are here.
+#:
+#: `kontroln` is the one stem rather than a phrase, and it is here because
+#: it is the exact word that went out. The Croatian adjective
+#: kontrolna/kontrolni/kontrolne in an outbound conversation is about our
+#: control campaign; "kontrola" and "kontrolirati" do not match it.
+INTERNAL_EXPERIMENT_TERMS = (
+    "control campaign", "control arm", "control cohort", "kontroln",
+    "canary", "holdout", "cohort", "kohort",
+    "us-hours", "eu-hours", "zagreb-hours", "li-heavy", "liheavy",
+)
+
 CLIENT_FORBIDDEN_TERMS = (INTERNAL_WORKER_TERMS + INTERNAL_ENGINEERING_TERMS
-                          + INTERNAL_COMMERCIAL_TERMS + INTERNAL_PROVIDER_TERMS)
+                          + INTERNAL_COMMERCIAL_TERMS
+                          + INTERNAL_PROVIDER_TERMS
+                          + INTERNAL_EXPERIMENT_TERMS)
 
 #: An UNBOUND channel adds nothing to that list, and the reason is worth
 #: writing down because the first version of this added four words and broke
@@ -305,7 +334,20 @@ class Scope:
         if self.kind == INTERNAL:
             return ()
         if self.kind == CLIENT:
-            return CLIENT_FORBIDDEN_TERMS
+            # A CLIENT'S OWN NAME IS NEVER A FORBIDDEN WORD IN THEIR OWN
+            # CHANNEL. One of the workspaces here is called `contactout`,
+            # which is also a provider on the commercial list - so every
+            # answer naming that client by name was being discarded in that
+            # client's own channel.
+            #
+            # A word list cannot tell "ContactOut the vendor we buy from"
+            # from "ContactOut the client we work for", and refusing to say
+            # a customer's name is unmistakably the worse of the two errors
+            # - the same judgement `UNBOUND_EXTRA_TERMS` records about
+            # blocking the word "lead".
+            mine = str(self.workspace or "").strip().lower()
+            return tuple(t for t in CLIENT_FORBIDDEN_TERMS
+                         if not (mine and t == mine))
         return CLIENT_FORBIDDEN_TERMS + UNBOUND_EXTRA_TERMS
 
     # ------------------------------------------------------------ filters
@@ -417,11 +459,53 @@ CLIENT_SAFE_POLICY_IDS = (
 )
 
 
+#: Fields a client never sees on a policy, whatever the policy is.
+#: `internal_note` is self-describing. `source` is a path into our
+#: repository: it is where WE keep the decision, tells a client nothing
+#: they can act on, and is the same class of thing as a commit id.
+POLICY_FIELDS_WITHHELD = ("internal_note", "source")
+
+
 def client_safe_policies(rows):
+    """The policies a client may hear, with their internal text removed.
+
+    TWO SEPARATE QUESTIONS, AND ONLY ONE OF THEM USED TO BE ASKED.
+    `CLIENT_SAFE_POLICY_IDS` says a policy's SUBJECT is the client's
+    business. It says nothing about the words the rule happens to be
+    written in, and the rules here are written for the operator.
+
+    `client-approval-cycle` is the row that proved it: an allow-listed
+    policy whose rule text names both providers, the attestation control
+    and what we spend - "one EmailBison campaign per attested human, 8
+    max... credits spent. Then wait 15 minutes. If I do not veto...". That
+    is the operating procedure, and it was going into every client prompt.
+
+    This matters more than a leak that the outbound guard would catch,
+    because `Scope._identity_for_scope` states the property the rest of the
+    module depends on: THE MATERIAL MAY NOT CONTAIN A WORD THE ANSWER IS
+    CHECKED FOR. When it does, an honest answer that quotes the policy is
+    discarded by the guard and the reader gets a hedge - a correct system
+    reading as an evasive one, which is the failure `slackagenttools.run`
+    documents at length.
+
+    So the rule text is checked against the same term list the answer is,
+    and a rule that fails is withheld with a line saying so. The title and
+    the why survive, because THAT a policy exists is a fact about how the
+    client's outreach is run and is theirs.
+    """
     out = []
     for row in rows or []:
-        if row.get("id") in CLIENT_SAFE_POLICY_IDS:
-            out.append({k: v for k, v in row.items() if k != "internal_note"})
+        if row.get("id") not in CLIENT_SAFE_POLICY_IDS:
+            continue
+        clean = {k: v for k, v in row.items()
+                 if k not in POLICY_FIELDS_WITHHELD}
+        rule = str(clean.get("rule") or "").lower()
+        if any(term in rule for term in CLIENT_FORBIDDEN_TERMS):
+            clean["rule"] = ("the wording of this rule is Resonate's own "
+                             "operating detail and is not shown here. What "
+                             "it governs is in `why`.")
+            clean["rule_withheld"] = True
+        out.append(clean)
     return out
 
 

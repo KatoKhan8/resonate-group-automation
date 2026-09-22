@@ -366,6 +366,162 @@ class TheWatchFiresOnTheCounterMoving(unittest.TestCase):
         self.assertNotIn("slack", imported)
 
 
+class TheFRAMINGIsBlockedAndNotOnlyTheNAME(unittest.TestCase):
+    """`plain_campaign_label` takes the experiment out of the campaign's
+    name. It cannot reach the model writing the framing itself - out of the
+    thread above it, or out of its own sense of what it is describing - so
+    the finished answer is checked for the vocabulary as well."""
+
+    def client(self):
+        return slackscope.Scope(slackscope.CLIENT, workspace="alpha",
+                                source="test")
+
+    def test_the_sentence_that_actually_went_out_is_refused(self):
+        with self.assertRaises(slackscope.ScopeViolation):
+            self.client().check_outbound(
+                "3 poslana maila iz US-hours kontrolne kampanje")
+
+    def test_each_experiment_word_is_refused_on_its_own(self):
+        for phrase in ("this is the control campaign",
+                       "the canary went out first",
+                       "cohort B starts tomorrow",
+                       "we kept a holdout",
+                       "the EU-hours campaign"):
+            with self.assertRaises(slackscope.ScopeViolation, msg=phrase):
+                self.client().check_outbound(phrase)
+
+    def test_an_internal_channel_may_say_all_of_it(self):
+        internal = slackscope.Scope(slackscope.INTERNAL, source="test")
+        internal.check_outbound(
+            "the US-hours control cohort is the holdout")
+
+    def test_ordinary_words_are_deliberately_not_on_the_list(self):
+        """A false positive discards a whole correct answer, so `test`,
+        `arm`, `batch`, `variant` and `pilot` stay off it even though
+        `plain_campaign_label` strips them from a NAME."""
+        for innocent in ("we sent a test email to ourselves first",
+                         "the first batch is running",
+                         "there are three variants of the opener",
+                         "imate punu kontrolu nad time",
+                         "možete to kontrolirati sami"):
+            self.assertEqual(self.client().check_outbound(innocent),
+                             innocent, innocent)
+
+    def test_the_label_list_and_the_term_list_are_not_the_same_list(self):
+        """Deliberately. If somebody later makes them one, this says why
+        they were two."""
+        self.assertIn("test", clientview.INTERNAL_LABEL_WORDS)
+        self.assertNotIn("test", slackscope.INTERNAL_EXPERIMENT_TERMS)
+
+
+class TheMaterialMayNotCarryAWordTheAnswerIsCheckedFor(unittest.TestCase):
+    """`Scope._identity_for_scope` states this property and the policy
+    filter was breaking it.
+
+    `CLIENT_SAFE_POLICY_IDS` says a policy's SUBJECT is the client's
+    business. It said nothing about the words the rule is written in, and
+    the rules are written for the operator - so `client-approval-cycle`
+    put "one EmailBison campaign per attested human ... credits spent"
+    into every client prompt.
+
+    The cost is not only the leak, which the outbound guard would catch.
+    It is that an honest answer quoting the policy gets DISCARDED, and the
+    reader sees a hedge from a system that was working correctly.
+    """
+
+    def rows(self):
+        return [
+            {"id": "pacing", "title": "Pacing",
+             "why": "so nobody is flooded",
+             "rule": "at most two touches a week per person.",
+             "source": "docs/PLAYBOOK.md", "internal_note": "ours"},
+            {"id": "client-approval-cycle", "title": "Client approval cycle",
+             "why": "a client approves accounts before anybody is contacted",
+             "rule": "one EmailBison campaign per attested human, 8 max, "
+                     "and report credits spent.",
+             "source": "docs/OPERATOR-AUTHORIZATION.md"},
+            {"id": "provider-order", "title": "Provider order",
+             "rule": "ContactOut first.", "why": "cost"},
+        ]
+
+    def test_a_rule_written_in_our_vocabulary_is_withheld(self):
+        out = {r["id"]: r for r in slackscope.client_safe_policies(
+            self.rows())}
+        row = out["client-approval-cycle"]
+        self.assertTrue(row["rule_withheld"])
+        self.assertNotIn("EmailBison", row["rule"])
+        self.assertNotIn("attested", row["rule"])
+        self.assertNotIn("credits", row["rule"])
+
+    def test_the_fact_that_the_policy_exists_survives(self):
+        """THAT a policy governs their outreach is theirs. The operating
+        procedure is not."""
+        out = {r["id"]: r for r in slackscope.client_safe_policies(
+            self.rows())}
+        row = out["client-approval-cycle"]
+        self.assertEqual(row["title"], "Client approval cycle")
+        self.assertIn("approves accounts", row["why"])
+
+    def test_a_clean_rule_is_left_alone(self):
+        out = {r["id"]: r for r in slackscope.client_safe_policies(
+            self.rows())}
+        self.assertEqual(out["pacing"]["rule"],
+                         "at most two touches a week per person.")
+        self.assertNotIn("rule_withheld", out["pacing"])
+
+    def test_our_own_file_paths_are_not_a_clients_business(self):
+        for row in slackscope.client_safe_policies(self.rows()):
+            self.assertNotIn("source", row)
+            self.assertNotIn("internal_note", row)
+
+    def test_a_policy_that_is_not_allow_listed_is_still_absent(self):
+        ids = {r["id"] for r in slackscope.client_safe_policies(self.rows())}
+        self.assertNotIn("provider-order", ids)
+
+    def test_the_live_pack_carries_none_of_the_checked_words(self):
+        """The property, asserted against the real pack rather than a
+        fixture - which is the only version of it that can catch a policy
+        somebody edits next month."""
+        from src import slackknowledge
+        pack = slackknowledge.pack()
+        for slug in (pack.get("workspaces") or {}):
+            scope = slackscope.Scope(slackscope.CLIENT, workspace=slug,
+                                     source="test")
+            body = json.dumps(scope.filter_pack(pack), default=str).lower()
+            hits = sorted({t for t in scope.forbidden_terms() if t in body})
+            self.assertEqual(hits, [], "%s: %s" % (slug, hits))
+
+
+class AClientsOwnNameIsNeverAForbiddenWord(unittest.TestCase):
+    """One of the workspaces here is called `contactout`, which is also a
+    provider on the commercial term list. Every answer naming that client
+    by name was being discarded in that client's own channel."""
+
+    def scope(self, slug):
+        return slackscope.Scope(slackscope.CLIENT, workspace=slug,
+                                source="test")
+
+    def test_the_client_named_after_a_provider_may_be_named(self):
+        self.assertNotIn("contactout",
+                         self.scope("contactout").forbidden_terms())
+
+    def test_and_nothing_else_comes_off_the_list_with_it(self):
+        terms = self.scope("contactout").forbidden_terms()
+        for still in ("heyreach", "emailbison", "qwen", "credit"):
+            self.assertIn(still, terms, still)
+
+    def test_another_client_still_may_not_say_it(self):
+        """The exemption is the scope's OWN slug and nobody else's."""
+        self.assertIn("contactout",
+                      self.scope("productive").forbidden_terms())
+        with self.assertRaises(slackscope.ScopeViolation):
+            self.scope("productive").check_outbound("we use ContactOut")
+
+    def test_an_unbound_channel_gets_no_exemption(self):
+        unbound = slackscope.Scope(slackscope.UNBOUND, source="test")
+        self.assertIn("contactout", unbound.forbidden_terms())
+
+
 # ==================================================== 5. BANTER
 
 class BanterGetsOneLightSentence(unittest.TestCase):
