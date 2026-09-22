@@ -299,6 +299,89 @@ reproduced within the hour.
 
 ---
 
+## 4c. QWEN POOL — DISPATCHED, REVIEWED, INTEGRATED
+
+Operator asked for 252-257 queued to the pool. Dispatched on branches off
+`infra` (252/255 depend on TASK-251, which is only here). **TASK-253 and
+TASK-256 were deliberately NOT dispatched** — 253 depends on 252 and 256 on
+258, and both touch the same files as their dependency. qwen-7 and qwen-8 are
+held for them. `resonate-qwen-worker` was left alone; it is mid-TASK-250.
+
+    TASK-254  qwen-3  INTEGRATED   the caller survey is an AST test
+    TASK-252  qwen-2  INTEGRATED   one-shot migration + verifier
+    TASK-257  qwen-5  INTEGRATED   LinkedIn seat ledger
+    TASK-255  qwen-4  running
+    TASK-258  qwen-6  running
+
+158 of 160 green across the merged suites. The 2 failures are the known
+pre-existing `test_invariants` pair, unchanged.
+
+### Every one was attacked before it was accepted
+
+    TASK-254   3 synthetic violations (bare, dotted, nested in os.path.join)
+               -> all caught; a COMMENT mentioning the pattern does not fire
+    TASK-252   verifier stubbed to pass -> 1 failure; records reversed
+               -> 2 failures; base file read instead of _current_records
+               -> 1 failure
+    TASK-257   swept ours=0..59 on a shared seat -> no ROOM, no numeric
+               remaining, no client of 0, at any count
+
+My first attack on TASK-252 was the flawed one: patching `_verify` in-process
+caught nothing because those tests drive the script as a subprocess. Re-run
+against the script file itself, it catches everything. Worth recording because
+the same mistake would have passed a broken verifier.
+
+### Three review fixes I made on integration
+
+1. **`task191_funnel.py` called `store.use_directory()`** — documented "Demo
+   mode and tests only", and it `makedirs` its target and CLEARS every
+   `STATE_OVERRIDE`. The script's default target is the production `work/`
+   directory and it is a read-only report. Now sets `QUEUE` alone. It is also
+   the same helper behind the env leak that caused the five order-dependent
+   failures fixed earlier today.
+
+2. **The migration had an environment-named code path.** `migrate` read
+   `_MIGRATE_CORRUPT_HOOK` and ran whatever file it named as a subprocess,
+   unguarded, on the path that migrates the only file holding real client
+   state. Not a privilege escalation — but this repo has a convention for
+   test-only escape hatches (`allow_history_loss` is a keyword argument
+   `test_invariants` forbids `src/` from passing) and an environment variable
+   is not it. Now an `_after_insert` parameter, matching
+   `sqlitestore._fail_after`. A test asserts no `os.environ` read and no
+   run/Popen/exec/eval in the module.
+
+3. **`seatledger` called `int()` on a seat id.** It raised on a non-numeric
+   provider id — and in a module whose job is classifying FULL/ROOM/REFUSED,
+   a traceback is not one of the three. Where it did not raise it collapsed
+   distinct seats: `int(True)` is 1, `int("1_0")` is 10, `int("٧")` is 7.
+   Two seats becoming one is one seat handed another's usage, and on the ROOM
+   branch that is the confident wrong number the module exists to prevent.
+   **None of it was covered**, because every fixture built ids with `int(s)`.
+   Four tests added; verified by restoring `int()` — 1 error, 5 failures.
+
+   This is the coercion class the GLM attribution review raised against
+   `int(seat)` in `inbound` — the review that turned out to have been run with
+   no code in the prompt. The finding was right anyway, and it has now turned
+   up in a second module. **Worth checking `inbound` for it directly.**
+
+### One design call I want to endorse rather than flag
+
+`seatledger._is_exclusive` is ACCOUNT-WIDE, not per-seat, and that looks wrong
+until you read its reasoning: we cannot enumerate the client's campaigns'
+sender lists, so we cannot prove any INDIVIDUAL seat is absent from them.
+Exclusivity is establishable for the whole account or not at all. In
+production — 86 campaigns against our 4 — every seat comes back REFUSED, which
+is exactly what ISSUE-010 says is true.
+
+### A pool note that cost three workers
+
+**`qwen.cmd` truncates a multi-line prompt.** Three of five workers replied
+"the instruction is incomplete" and exited 0 having done nothing — the
+README's "a worker that has done nothing" failure, from a cause it does not
+name. Single-line prompts work. Worth adding to `docs/qwen-tasks/README.md`.
+
+---
+
 ## 5. WHAT I DID NOT DO
 
 - **Did not fix the PII guard** — §2, your files.
