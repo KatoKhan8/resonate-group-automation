@@ -486,6 +486,82 @@ per-row `rev` column fed from `meta.revision`.
 
 ---
 
+## 4f. FINAL STATE — 251-260, PII guard green, and what is NOT met
+
+**The PII guard is GREEN on this branch, 13/13**, which was the gate on
+opening this merge request. Three failures, two causes:
+
+- **One was mine.** TASK-260's tests used `a@test.com` in four places.
+  `test.com` is a real, registered, resolvable domain — exactly what
+  `test_every_email_address_is_on_a_reserved_domain` refuses, and its
+  docstring is the argument: "an address on a domain that can resolve is an
+  address somebody could actually be mailed at." No real identifier was
+  involved. Moved to `.test`.
+- **Two were inherited.** This branch forked at `c75b4b60`, when the guard was
+  already red, and you fixed it in `9a77028e` after this session flagged it.
+  **I merged master and took your redaction rather than writing a second,
+  different one** — two placeholder choices for the same identifiers would
+  conflict at merge time, and yours is the one master carries. Zero files were
+  touched on both sides, so it was conflict-free by construction.
+
+Merging master in also makes this branch reviewable: `git diff master..infra`
+now shows what infra adds, rather than that plus the reversal of 30 commits of
+your work.
+
+### PROMOTION CONDITION 2 IS NOT MET, AND THE NUMBERS SAY SO
+
+`docs/BENCHMARK-PASS-WALL-CLOCK-2026-09-22.md`. Run detached, no timeout
+wrapper:
+
+    size    backend   seconds   ratio
+    1,000   sqlite      60.53   -
+    5,000   sqlite   1,522.58   25.2x
+    1,000   jsonl       88.36   -
+
+**5² = 25; the measured ratio is 25.2.** Quadratic to two significant figures,
+*with* TASK-260's incremental read in place. I stopped the 20,000 arm rather
+than run it — ~6.8 hours at this shape, and it would add nothing the ratio has
+not settled.
+
+**The cause is not the storage backend.** `Snapshot` re-serialises every
+record **twice per checkpoint** — `store.py:470` in `merge_onto`, `store.py:604`
+in `_incremental_guard_input` — to re-derive which rows the caller edited. At
+5,000 records that is ~198 GB of in-memory JSON to change 5,000 records, and it
+happens on **every** arm. It retrospectively explains TASK-255: three backends
+with wildly different I/O had identical shape because the quadratic was never
+in the I/O. **TASK-261** owns it.
+
+What SQLite has actually bought is **write volume** — 1.59 TB projected against
+188 KB, four orders of magnitude of write endurance, and the reason
+`queue.jsonl` will not survive 20k whatever else is true. It has not yet bought
+wall clock. `QUEUE_BACKEND=sqlite` stays blocked, as recorded in §11.
+
+### TASK-250: I tried it, it regressed, I reverted it
+
+It was **claimed and stalled** on `qwen-worker-r57` — two commits, still in
+`RUNNING/`, no result block. I merged it to preserve your work rather than
+duplicate it, measured, and reverted:
+
+    before   11,226 tests    82 distinct failures
+    after    11,346 tests   123 distinct failures     +41
+
+**The phase fixtures are shared, and neither the brief nor I knew it.**
+`phase7.jsonl` alone is read by `test_approve`, `test_cadence`,
+`test_double_verification` and `test_events`, so moving its evidence from
+contactout to deliverable fixed `test_e2e` — the target — and broke 47 tests
+across 8 modules with `'blocked' != 'eligible'`. That is why the work was
+abandoned mid-flight.
+
+Merging it was my call and my mistake; the set-difference diff caught it,
+which is the third time today that artifact has paid for itself. `126dcfa1` is
+preserved unmerged — the approach was right — and the diagnosis is written
+into TASK-250 for attempt 2, including the instruction to enumerate every
+consumer of a shared fixture *before* editing it.
+
+**Baseline stands at 82.**
+
+---
+
 ## 5. WHAT I DID NOT DO
 
 - **Did not fix the PII guard** — §2, your files.
