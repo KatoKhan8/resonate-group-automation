@@ -211,6 +211,59 @@ def bind_client(slug, channel, dry_run=True, actor="operator"):
     return 0
 
 
+def set_people(slug, workspace_users=(), internal_users=(), dry_run=True,
+               actor="operator"):
+    """Who in a channel is the CLIENT and who is Resonate.
+
+    Both lists are written together and read back, because the split is the
+    thing that decides what each person is told. A Slack id in neither list
+    is scoped to nothing: an unknown DM is `unbound`, which is the safe
+    failure, and in the bound channel the CHANNEL decides rather than the
+    person - so a missing id costs a narrower DM and never a wider one.
+
+    A bot is in neither list on purpose. `handle` already drops anything
+    carrying `bot_id`, so a bot cannot ask a question; listing one would
+    only make a reader think it could.
+    """
+    load_env()
+    rows = ws.load()
+    if ws.workspace(slug, rows) is None:
+        _emit("REFUSED: no workspace %r" % slug)
+        return 1
+    bad = [u for u in tuple(workspace_users) + tuple(internal_users)
+           if not looks_like_user_id(u)]
+    if bad:
+        _emit("REFUSED: not Slack user ids: %s" % ", ".join(bad))
+        return 1
+    both = sorted(set(workspace_users) & set(internal_users))
+    if both:
+        _emit("REFUSED: %s appear in BOTH lists. A person is a client's or "
+              "Resonate's, and somebody in both would be scoped by whichever "
+              "check ran first." % ", ".join(both))
+        return 1
+
+    updates = {}
+    if workspace_users:
+        updates[slackscope.WORKSPACE_USERS_KEY] = ",".join(workspace_users)
+    if internal_users:
+        updates[slackscope.INTERNAL_USERS_KEY] = ",".join(internal_users)
+    _emit("WOULD WRITE" if dry_run else "WRITING")
+    for key, value in updates.items():
+        _emit("  %-26s %d id(s)" % (key, len(value.split(","))))
+        for user in value.split(","):
+            _emit("      %s" % user)
+    if dry_run:
+        _emit("\nNothing was written.")
+        return 0
+    ws.set_policy(slug, updates, actor=actor)
+    policy = ws.policy(slug)
+    _emit("\nWRITTEN. Readback from workspace policy:")
+    for key in (slackscope.WORKSPACE_USERS_KEY,
+                slackscope.INTERNAL_USERS_KEY):
+        _emit("  %-26s %s" % (key, policy.get(key)))
+    return 0
+
+
 def unbind_client(slug, actor="operator"):
     load_env()
     if ws.workspace(slug) is None:
@@ -255,6 +308,10 @@ def main(argv=None):
                         help="bind a channel to this client workspace")
     parser.add_argument("--channel", metavar="CHANNEL_ID",
                         help="the channel id to bind (with --client)")
+    parser.add_argument("--workspace-users", nargs="+", metavar="USER_ID",
+                        help="Slack ids that are this CLIENT's own people")
+    parser.add_argument("--internal-users", nargs="+", metavar="USER_ID",
+                        help="Slack ids on the Resonate team")
     parser.add_argument("--unbind", metavar="SLUG",
                         help="remove a client workspace's agent channel")
     parser.add_argument("--dry-run", action="store_true",
@@ -268,8 +325,17 @@ def main(argv=None):
     if args.unbind:
         return unbind_client(args.unbind)
     if args.client:
+        if args.workspace_users or args.internal_users:
+            code = set_people(args.client,
+                              args.workspace_users or (),
+                              args.internal_users or (),
+                              dry_run=args.dry_run)
+            if code or not args.channel:
+                return code
+            _emit("")
         if not args.channel:
-            _emit("REFUSED: --client needs --channel")
+            _emit("REFUSED: --client needs --channel, "
+                  "--workspace-users or --internal-users")
             return 1
         return bind_client(args.client, args.channel, dry_run=args.dry_run)
     return show()

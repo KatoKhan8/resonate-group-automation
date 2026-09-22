@@ -21,6 +21,7 @@ is what a client hears whether the target belongs to another client or to
 nobody at all, because an answer that told the two apart would confirm the
 other client's record exists - and that confirmation IS the disclosure.
 """
+import json
 import os
 import shutil
 import sys
@@ -121,11 +122,63 @@ class TwoClients(unittest.TestCase):
         campaigns.save([
             {"kind": "campaign", "campaign_id": "alpha-c1", "client": "alpha",
              "name": "Alpha cohort", "status": "approved",
-             "bison_campaign_id": 1111, "record_ids": ["alpha-1"]},
+             "bison_campaign_id": 1111, "record_ids": ["alpha-1"],
+             "senders": {"email": [{"provider_account_id": "5001",
+                                    "account_id": "eb-5001"}]}},
             {"kind": "campaign", "campaign_id": "beta-c1", "client": "beta",
              "name": "Beta cohort", "status": "approved",
-             "bison_campaign_id": 2222, "record_ids": ["beta-1"]},
+             "bison_campaign_id": 2222, "record_ids": ["beta-1"],
+             "senders": {"email": [{"provider_account_id": "6001",
+                                    "account_id": "eb-6001"}]}},
         ])
+        self._senders()
+
+    def _senders(self):
+        """Two sending estates, one per tenant, in the one roster file.
+
+        Alpha's sender is named `kresimir` after the real one, because the
+        operator's instruction is about exactly that person: Productive's
+        channel may discuss his mailboxes and a second client's channel may
+        not see him at all.
+        """
+        from src import senderidentity as si
+
+        rows = [
+            si.new_sender("alpha", "kresimir", "Kresimir Simicic",
+                          title="Account Executive"),
+            si.new_email_account("alpha", "eb-5001", "kresimir",
+                                 "k1@alpha-co.test", provider_account_id="5001",
+                                 daily_limit=15),
+            si.new_email_account("alpha", "eb-5002", "kresimir",
+                                 "k2@alpha-co.test", provider_account_id="5002",
+                                 daily_limit=15),
+            # Authorized on paper for nothing: no attestation below, so this
+            # one must not appear however the question is asked. It stands
+            # in for the excluded identities in the real register.
+            si.new_sender("alpha", "excluded_person", "Casey Excluded"),
+            si.new_email_account("alpha", "eb-5099", "excluded_person",
+                                 "x@alpha-co.test", provider_account_id="5099",
+                                 daily_limit=15),
+            si.new_sender("beta", "mole", "Mole Person"),
+            si.new_email_account("beta", "eb-6001", "mole",
+                                 "m@beta-co.test", provider_account_id="6001",
+                                 daily_limit=15),
+        ]
+        rows += [
+            {"kind": "ownership_attestation", "workspace": "alpha",
+             "channel": "email", "account_id": "eb-5001",
+             "sender_id": "kresimir", "by": "operator, in a test",
+             "at": "2026-09-22T00:00:00+00:00"},
+            {"kind": "ownership_attestation", "workspace": "alpha",
+             "channel": "email", "account_id": "eb-5002",
+             "sender_id": "kresimir", "by": "operator, in a test",
+             "at": "2026-09-22T00:00:00+00:00"},
+            {"kind": "ownership_attestation", "workspace": "beta",
+             "channel": "email", "account_id": "eb-6001",
+             "sender_id": "mole", "by": "operator, in a test",
+             "at": "2026-09-22T00:00:00+00:00"},
+        ]
+        si.save(rows)
 
     # ---------------------------------------------------------- helpers
 
@@ -184,6 +237,107 @@ class AlphaCannotSeeBeta(TwoClients):
         result = tools.run(self.alpha(), "cadence_detail", "beta")
         self.assertEqual(result.get("workspace"), "alpha")
         self.assertNotIn("beta", str(result).lower())
+
+
+class AClientsOwnSendersAreTheirOwnData(TwoClients):
+    """OPERATOR, 2026-09-22.
+
+    "A client's OWN senders are the client's own data. In
+    #productive-resonate-outbound the agent may name Productive's authorized
+    sender humans, say how many mailboxes and LinkedIn seats each has, their
+    daily capacity, which campaigns they carry, and their health."
+
+    The people sending for Productive are Productive's own staff and half of
+    them are in that channel. What must still hold is that this is THEIR
+    estate and nobody else's.
+    """
+
+    def beta(self):
+        return slackscope.resolve(channel=BETA_CHANNEL)
+
+    # ---- what alpha MAY see
+
+    def test_alpha_can_see_its_own_sender_by_name(self):
+        result = tools.run(self.alpha(), "sender_roster")
+        names = [row["name"] for row in result["senders"]]
+        self.assertIn("Kresimir Simicic", names)
+
+    def test_alpha_is_told_the_mailboxes_capacity_and_campaigns(self):
+        row = [r for r in tools.run(self.alpha(), "sender_roster")["senders"]
+               if r["name"] == "Kresimir Simicic"][0]
+        self.assertEqual(row["mailboxes"], 2)
+        self.assertEqual(row["daily_email_capacity"], 30)
+        self.assertEqual(row["campaigns_carried"], ["Alpha cohort"])
+
+    def test_the_hard_stop_is_reported_beside_the_rate(self):
+        """A bounce rate means nothing without the line it is measured
+        against."""
+        result = tools.run(self.alpha(), "sender_roster")
+        self.assertEqual(result["bounce_hard_stop_percent"], 2.0)
+
+    def test_an_unattested_person_is_not_on_the_roster(self):
+        """The excluded identities are excluded by having no attestation,
+        so a filter on attestation cannot list them however it is asked."""
+        result = tools.run(self.alpha(), "sender_roster")
+        self.assertNotIn("Casey Excluded",
+                         [row["name"] for row in result["senders"]])
+        self.assertNotIn("Casey", json.dumps(result))
+
+    def test_the_attestation_prose_never_reaches_the_answer(self):
+        """`by` records who signed it and how attestation works. Neither is
+        a fact about the client's estate."""
+        result = json.dumps(tools.run(self.alpha(), "sender_roster"))
+        self.assertNotIn("operator, in a test", result)
+        self.assertNotIn("attestation", result.lower())
+
+    def test_a_client_may_say_mailbox_and_seat(self):
+        """Refusing to say "mailbox" to the person whose mailbox it is was
+        the module being cautious about the wrong thing."""
+        text = ("Kresimir has two mailboxes and one LinkedIn seat, "
+                "30 emails a day.")
+        self.assertEqual(self.alpha().check_outbound(text), text)
+
+    def test_a_client_still_may_not_say_attested(self):
+        """The operator asked for "authorized senders"."""
+        for text in ("Kresimir is attested on both.",
+                     "That is an attestation from the operator.",
+                     "The mailbox is still in warmup."):
+            with self.assertRaises(slackscope.ScopeViolation):
+                self.alpha().check_outbound(text)
+
+    # ---- what beta may NOT see
+
+    def test_beta_cannot_see_alphas_sender_at_all(self):
+        result = tools.run(self.beta(), "sender_roster")
+        self.assertNotIn("Kresimir Simicic",
+                         [row["name"] for row in result["senders"]])
+        self.assertNotIn("kresimir", json.dumps(result).lower())
+        self.assertNotIn("alpha", json.dumps(result).lower())
+
+    def test_beta_sees_only_its_own(self):
+        result = tools.run(self.beta(), "sender_roster")
+        self.assertEqual([row["name"] for row in result["senders"]],
+                         ["Mole Person"])
+        self.assertEqual(result["workspace"], "beta")
+
+    def test_a_workspace_argument_cannot_fetch_the_other_roster(self):
+        result = tools.run(self.beta(), "sender_roster", "alpha")
+        self.assertEqual(result["workspace"], "beta")
+        self.assertNotIn("Kresimir", json.dumps(result))
+
+    def test_naming_alphas_sender_in_betas_channel_is_refused(self):
+        """The backstop, for the one thing a word list can still catch."""
+        with self.assertRaises(slackscope.ScopeViolation):
+            self.beta().check_outbound(
+                "Alpha's senders carry that campaign.", rows=None)
+
+    def test_an_unresolved_authorization_is_not_reported_as_zero(self):
+        """Measured on the live roster: LinkedIn authorizations carry `hr-`
+        ids and the seats carry `li-`, so none of them resolves. "0 seats"
+        would read as "you have no LinkedIn sending", which is false."""
+        result = tools.run(self.alpha(), "sender_roster")
+        self.assertEqual(result["linkedin_seats"], 0)
+        self.assertNotIn("linkedin_authorizations_unresolved", result)
 
 
 # ============================================================== TRIGGER
