@@ -1,17 +1,18 @@
-# Merge request — Phase C, increments 3 and 4
+# Merge request — Phase C, increments 3, 4 and 5
 
-**For the production session.** Branch `slack-agent` at `c4120b45`, pushed.
+**For the production session.** Branch `slack-agent` at `1af0b5b9`, pushed.
 Not merged, not pushed to master.
 
 Increments 1 and 2 are already on master as `cd143eda`. The branch carries
-three commits master does not have:
+four commits master does not have:
 
     5ad2f7f7  the six client-channel fixes (client view, the offer)
     f3ecba4c  increment 3 — the offer's missing process, and counting
     c4120b45  increment 4 — per-user roles, and the week as an answer
+    1af0b5b9  increment 5 — the material the client prompt was built from
 
 `docs/MERGE-REQUEST-SLACK-AGENT-PHASE-C1.md` covers what is already merged.
-This covers the three above.
+This covers the four above.
 
 ---
 
@@ -223,16 +224,67 @@ ticket names the operator and the gate, which is our machinery.
 
 ---
 
+## 5a. THE MATERIAL CARRIED THE WORDS THE ANSWER WAS CHECKED FOR
+
+Added at `1af0b5b9`. Found by auditing the client-filtered knowledge pack
+against the term list the finished answer is checked against — a check that
+had never been run, and which takes four lines.
+
+`Scope._identity_for_scope` states the property the whole module rests on:
+**the material may not contain a word the answer is checked for.** Three
+things were breaking it.
+
+**1. Client-safe policies carried our operating procedure.**
+`CLIENT_SAFE_POLICY_IDS` says a policy's SUBJECT is the client's business.
+It says nothing about the words the rule is written in, and the rules are
+written for you. So `client-approval-cycle` was putting this into every
+client prompt:
+
+> one EmailBison campaign per attested human, 8 max … credits spent. Then
+> wait 15 minutes. If I do not veto…
+
+Both providers, the attestation control and what we spend. The rule text is
+now checked the same way the answer is, and withheld when it fails — title
+and `why` survive, because THAT a policy governs their outreach is theirs
+and the procedure is not. Our own `docs/` paths are withheld with it.
+
+The cost of this was never only the leak, which the outbound guard catches.
+It is that an honest answer quoting the policy is **discarded**, and the
+reader gets a hedge from a system that was working perfectly — the failure
+`slackagenttools.run` documents at length, arriving by a different door.
+
+**2. A client named after a provider could not be named.** One workspace
+here is `contactout`, which is also on the commercial term list, so every
+answer naming that client by name was being thrown away in that client's
+own channel. A word list cannot tell the vendor from the customer, and
+refusing to say a customer's name is unmistakably the worse error. The
+exemption is the scope's own slug and nobody else's — `productive` still
+may not say it, and `contactout` still may not say `heyreach`.
+
+**3. The experiment vocabulary was stripped from campaign NAMES and not
+from prose.** `plain_campaign_label` cannot reach the model writing "the
+US-hours control campaign" itself, out of the thread above it or out of its
+own sense of what it is describing — and that is what actually went out.
+`INTERNAL_EXPERIMENT_TERMS` blocks the phrases with no innocent reading. It
+is deliberately narrower than the label list: `test`, `arm`, `batch`,
+`variant` and `pilot` stay off it, because a false positive discards a
+whole correct answer and `UNBOUND_EXTRA_TERMS` already records what
+happened the last time this list reached for an ordinary word.
+
+All three client packs now audit clean. There is a test that asserts it
+against the **live** pack rather than a fixture, which is the only version
+of it that can catch a policy somebody edits next month.
+
 ## 6. TESTS
 
     tests/test_counting_is_a_different_question_from_lookup.py   25  NEW
     tests/test_the_offer_has_a_process_behind_it.py              15  NEW
     tests/test_a_role_records_and_never_refuses.py               18  NEW
     tests/test_the_week_is_an_answer_not_a_promise.py            14  NEW
-    tests/test_what_a_client_is_shown.py                         35  (+2)
+    tests/test_what_a_client_is_shown.py                         50  (+17)
     tests/test_slack_agent_cannot_act.py                         10
 
-**473 slack tests, green**, run together and each file alone.
+**488 slack tests, green**, run together and each file alone.
 
 `tests/test_invariants.py` still has its one pre-existing failure — two
 modules importing `ProviderError` by name — which is not from this branch
