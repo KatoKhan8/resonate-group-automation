@@ -279,18 +279,60 @@ def find_email(attempts=POLL_ATTEMPTS, interval=POLL_INTERVAL, sleep=time.sleep,
 
 
 def _company(raw):
-    """A company row from AI Ark into the neutral shape the pipeline reads."""
+    """A company row from AI Ark into the neutral shape the pipeline reads.
+
+    THE ROW IS NESTED AND THIS READ IT FLAT. Every key below was looked for at
+    the top level - `domain`, `name`, `employeeCount`, `industry`, `country` -
+    and the live row carries none of them there. Read from the provider
+    2026-09-22, one row is:
+
+        summary   name, legal_name, industry, description, overview, type,
+                  founded_year, staff {total, range {start}}
+        link      website, domain, domain_ltd, linkedin, facebook
+        location  headquarter {country, city, state, ...}, locations []
+        contact   email, phone
+        industries[]
+
+    So every trimmed row came back with an empty domain, and a company with no
+    domain is skipped by the caller. That is the last reason a nightly
+    sourcing run reports zero rows after reaching the provider successfully.
+
+    The flat names are kept as fallbacks: they cost nothing, and a fixture or
+    a future shape that supplies them still works.
+    """
     raw = raw if isinstance(raw, dict) else {}
+    summary = raw.get("summary") if isinstance(raw.get("summary"), dict) else {}
+    link = raw.get("link") if isinstance(raw.get("link"), dict) else {}
+    location = raw.get("location") if isinstance(raw.get("location"), dict) else {}
+    hq = location.get("headquarter") if isinstance(
+        location.get("headquarter"), dict) else {}
+    staff = summary.get("staff") if isinstance(summary.get("staff"), dict) else {}
+    industries = raw.get("industries") if isinstance(
+        raw.get("industries"), list) else []
+
+    # `staff.total` is the count; `staff.range.start` is the lower bound of the
+    # band. Prefer the count and fall back to the bound, because a band with no
+    # count is still enough to answer "at least twenty".
+    band = staff.get("range") if isinstance(staff.get("range"), dict) else {}
+    headcount = staff.get("total") or band.get("start")
+
     return {
-        "domain": raw.get("domain") or raw.get("website") or "",
-        "company": (raw.get("companyName") or raw.get("name")
+        "domain": (link.get("domain") or link.get("domain_ltd")
+                   or raw.get("domain") or raw.get("website") or ""),
+        "company": (summary.get("name") or summary.get("legal_name")
+                    or raw.get("companyName") or raw.get("name")
                     or raw.get("organization") or ""),
-        "headcount": raw.get("employeeCount") or raw.get("headcount")
-                     or raw.get("employees") or raw.get("size"),
-        "industry": raw.get("industry") or "",
-        "country": raw.get("country") or raw.get("location") or "",
-        "website": raw.get("website") or raw.get("url") or "",
-        "description": raw.get("description") or "",
+        "headcount": (headcount or raw.get("employeeCount")
+                      or raw.get("headcount") or raw.get("employees")),
+        "industry": (summary.get("industry")
+                     or (industries[0] if industries else "")
+                     or raw.get("industry") or ""),
+        "country": (hq.get("country") or raw.get("country") or ""),
+        "website": (link.get("website") or raw.get("website")
+                    or raw.get("url") or ""),
+        "description": (summary.get("description") or summary.get("overview")
+                        or raw.get("description") or ""),
+        "linkedin": link.get("linkedin") or "",
     }
 
 
