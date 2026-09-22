@@ -370,7 +370,18 @@ passing test suite. Until every one holds, JSONL stays live.**
                          proven on JSONL only.
 
     2. TASK-260 green    the checkpoint read is O(changed).
-                         **NOT MET as of 2026-09-22, and 260 is merged.**
+                         **MET 2026-09-22 after TASK-261 + the index fix.**
+                         1,000 -> 3.74s, 5,000 -> 20.77s, ratio 5.55x
+                         against a target of ~5x. 20,000 records now takes
+                         126.91s - 2m07s, measured, against ~6.8 HOURS
+                         projected the same morning.
+                         Two causes were found and both are fixed: Snapshot
+                         re-serialising every record twice per checkpoint
+                         (TASK-261), and `ORDER BY seq` defeating the
+                         records_rev index so `read_changed_since` did a full
+                         table SCAN even when nothing matched.
+                         `docs/BENCHMARK-PASS-WALL-CLOCK-2026-09-22.md`.
+                         SUPERSEDED, kept for the record:
                          Measured after it landed: 1,000 records 60.53s,
                          5,000 records 1,522.58s - a ratio of 25.2x for 5x
                          the records, where 5 squared is 25. A pass is still

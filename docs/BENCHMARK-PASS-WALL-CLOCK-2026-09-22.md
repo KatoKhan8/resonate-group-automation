@@ -158,3 +158,63 @@ If the answer is "not yet", the next lever is the residual per-pass O(N) work
 rather than anything in the storage layer — and it should be found by
 profiling a pass rather than by guessing, because two guesses about this have
 already been wrong.
+
+
+---
+
+# THE HOTSPOT, PROFILED AND FIXED — 2026-09-22, third measurement
+
+The operator's rule was: above 10x, **name the next hotspot from a profile, do
+not guess.** Profiled a pass at 1,000 and 3,000 records, two sizes so that a
+function which GROWS with N is distinguishable from one that is merely
+expensive.
+
+    cumulative seconds        1,000     3,000    scaling (3x records)
+    save                       4.375    27.675     6.3x
+      _incremental_guard_input 2.270    17.335     7.6x
+        read_changed_since     1.506    12.388     8.2x   <-- HOTSPOT
+      _write_sqlite            1.266     7.744     6.1x
+      merge_onto               0.205     0.622     3.0x   <-- exactly linear
+
+`merge_onto` scaling 3.0x for 3x records is TASK-261's dirty tracking working
+perfectly. `read_changed_since` at 8.2x, and 45% of the whole pass, is what
+was left.
+
+## The cause, from EXPLAIN QUERY PLAN rather than from reasoning
+
+    SELECT doc FROM records WHERE rev > ? ORDER BY seq  ->  SCAN records
+    SELECT doc FROM records WHERE rev > ?               ->  SEARCH records
+                                                            USING INDEX
+                                                            records_rev (rev>?)
+
+**`ORDER BY seq` defeated the `records_rev` index.** `seq` is the primary key,
+so ordering by it is free IF the table is walked in primary-key order — and
+SQLite took that trade, walking all N rows and filtering, rather than seeking
+the index and sorting a handful.
+
+It did this **even when nothing matched**. 50 calls against 5,000 rows with
+zero matching rows: 0.009s ordered, 0.000s unordered.
+
+O(N) per checkpoint x N/5 checkpoints = O(N²), sitting inside the function
+written to remove exactly that.
+
+**Fix:** drop the `ORDER BY` from the SQL and sort the result in Python. The
+result set is O(changed) and therefore small; the order is still preserved,
+just not by making the database prove it over every row it did not select.
+
+## THE ACCEPTANCE CRITERION IS NOW MET
+
+    size     backend   this morning   after 261    after the index fix
+    1,000    sqlite         60.53 s      5.04 s              3.74 s
+    5,000    sqlite      1,522.58 s     55.24 s             20.77 s
+    20,000   sqlite     ~6.8 h proj    707.73 s            126.91 s
+
+    5k/1k ratio    25.2x    ->    11.0x    ->    5.55x     TARGET ~5x  PASS
+    20k/5k ratio                                 6.11x
+
+**5.55x for 5x the records.** The operator's criterion was "near 5x, not 25x".
+
+**A 20,000-record pass now takes 2 minutes 7 seconds**, measured, against a
+projection of nearly seven hours this morning — about 193x.
+
+Per the operator's instruction, this goes into the promotion evidence.

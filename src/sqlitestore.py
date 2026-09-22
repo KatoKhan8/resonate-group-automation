@@ -290,9 +290,33 @@ def read_changed_since(conn, rev):
     for the loss guards: everything the caller changed, plus everything
     that changed on disk since the caller's baseline.
     """
-    return [json.loads(row[0]) for row in
-            conn.execute(
-                "SELECT doc FROM records WHERE rev > ? ORDER BY seq", (rev,))]
+    # NO `ORDER BY seq` IN THE SQL, AND THE REASON IS MEASURED.
+    #
+    # `... WHERE rev > ? ORDER BY seq` makes SQLite choose a FULL TABLE SCAN.
+    # Proven with EXPLAIN QUERY PLAN on a 5,000-row table:
+    #
+    #     WHERE rev > ? ORDER BY seq   ->  SCAN records
+    #     WHERE rev > ?                ->  SEARCH records USING INDEX
+    #                                      records_rev (rev>?)
+    #
+    # `seq` is the primary key, so ordering by it is free IF the table is
+    # walked in primary-key order - and SQLite takes that trade, walking all N
+    # rows and filtering, rather than seeking the index and sorting a handful.
+    # It does this EVEN WHEN NOTHING MATCHES: 50 calls against 5,000 rows with
+    # zero matching rows cost 0.009s ordered and 0.000s unordered.
+    #
+    # That is O(N) per checkpoint and N/5 checkpoints per pass, so O(N-squared)
+    # - and it was 45% of a 3,000-record pass, scaling 8.2x for 3x the
+    # records while `merge_onto` scaled exactly 3.0x beside it.
+    #
+    # The result set is O(changed) and therefore small, so the ordering is done
+    # here instead. Order is still load-bearing - `Snapshot.merge_onto` writes
+    # rows in the order every other reader sees - so it is preserved, just not
+    # by making the database prove it over every row it did not select.
+    rows = conn.execute(
+        "SELECT seq, doc FROM records WHERE rev > ?", (rev,)).fetchall()
+    rows.sort(key=lambda row: row[0])
+    return [json.loads(row[1]) for row in rows]
 
 
 def incremental_read_or_full(conn, snapshot, baseline_rev=None,
