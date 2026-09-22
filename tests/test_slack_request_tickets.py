@@ -158,11 +158,44 @@ class NothingIsWrittenBeforeItIsConfirmed(TicketEnvironment):
         self.assertFalse(os.path.isdir(requests.requests_dir())
                          and os.listdir(requests.requests_dir()))
 
-    def test_the_restatement_says_what_would_happen(self):
-        result = self.say("remove lead ada@acme.test")
-        self.assertIn("suppression", result["reply"].lower())
-        self.assertIn("both channels", result["reply"].lower())
-        self.assertIn("approve", result["reply"].lower())
+    def test_the_restatement_to_a_client_says_the_effect_in_plain_words(
+            self):
+        """A client is owed the effect on THEIR outreach, not our mechanics.
+
+        "the existing stop verbs with their fail-closed readbacks" is a
+        sentence about our machinery. It is correct, it is what the ticket
+        records, and it is not what somebody at the client asked.
+        """
+        reply = self.say("remove lead ada@acme.test")["reply"].lower()
+        self.assertIn("suppression list", reply)
+        self.assertIn("email and linkedin", reply)
+        self.assertNotIn("fail-closed", reply)
+        self.assertNotIn("readback", reply)
+
+    def test_the_restatement_to_a_client_names_nobody_at_resonate(self):
+        """Who decides inside Resonate is not a client's business."""
+        reply = self.say("remove lead ada@acme.test")["reply"]
+        self.assertNotIn("Zvonimir", reply)
+        self.assertIn("Resonate team", reply)
+
+    def test_the_restatement_internally_says_what_would_be_executed(self):
+        result = conversation.respond(
+            "remove lead ada@acme.test", channel=INTERNAL_CHANNEL,
+            user=OPERATOR, thread_ts="TI", model=llm.NoModel())
+        reply = result["reply"].lower()
+        self.assertIn("both channels", reply)
+        self.assertIn("fail-closed", reply)
+        self.assertIn("zvonimir", reply)
+
+    def test_no_restatement_promises_a_time(self):
+        """OPERATOR, 2026-09-22: "without promising a time"."""
+        for text in (self.say("remove lead ada@acme.test")["reply"],
+                     self.say("yes")["reply"]):
+            lowered = text.lower()
+            for promise in ("shortly", "today", "within", "by the end of",
+                            "in a few", "soon", "asap", "hours", "minutes",
+                            "tomorrow"):
+                self.assertNotIn(promise, lowered, text)
 
     def test_confirming_writes_the_ticket(self):
         self.say("remove lead ada@acme.test")
@@ -387,6 +420,53 @@ class TheOutcomeGoesBackToTheThreadItCameFrom(TicketEnvironment):
         text = result["post_to_thread"]["text"]
         self.assertIn("not approved", text)
         self.assertIn("we still want them", text)
+
+    def test_a_client_request_is_marked_client_originated(self):
+        """OPERATOR, 2026-09-22, first week of a live client channel.
+
+        A request from outside Resonate is decided on different grounds
+        from one raised internally, and that has to be the first thing the
+        operator sees rather than a scope field further down.
+        """
+        self.say("remove lead ada@acme.test")
+        result = self.say("yes")
+        ticket = requests.get(result["ticket"])
+        self.assertEqual(ticket["origin"], "client")
+        announcement = result["post_to_internal"]
+        self.assertIn("client-originated", announcement)
+        self.assertIn("EXTERNAL", announcement)
+        self.assertIn("no timescale", announcement)
+
+    def test_an_internally_raised_request_is_not_marked_client_originated(
+            self):
+        conversation.respond("remove lead ada@acme.test",
+                             channel=INTERNAL_CHANNEL, user=OPERATOR,
+                             thread_ts="TI2", model=llm.NoModel())
+        result = conversation.respond("yes", channel=INTERNAL_CHANNEL,
+                                      user=OPERATOR, thread_ts="TI2",
+                                      model=llm.NoModel())
+        ticket = requests.get(result["ticket"])
+        self.assertEqual(ticket["origin"], "internal")
+        self.assertNotIn("client-originated", result["post_to_internal"])
+
+    def test_the_client_is_told_it_was_passed_on_and_nothing_more(self):
+        self.say("remove lead ada@acme.test")
+        reply = self.say("yes")["reply"]
+        self.assertIn("passed this to the Resonate team", reply)
+        self.assertIn("Nothing has changed", reply)
+        # No ticket id leaks into a client channel: it is an internal
+        # handle, and the only thing a client could do with it is type
+        # `approve <id>`, which is refused and recorded as an attempt.
+        self.assertNotIn(requests.get(
+            [r["id"] for r in requests.load()][0])["id"], reply)
+
+    def test_a_client_decision_note_carries_no_ticket_id(self):
+        self.say("remove lead ada@acme.test")
+        ticket_id = self.say("yes")["ticket"]
+        requests.decide(ticket_id, "approve", OPERATOR)
+        note = requests.decision_note_for(requests.get(ticket_id))
+        self.assertNotIn(ticket_id, note)
+        self.assertIn("Resonate team have approved", note)
 
     def test_the_action_required_post_carries_the_id_and_both_verbs(self):
         self.say("remove lead ada@acme.test")

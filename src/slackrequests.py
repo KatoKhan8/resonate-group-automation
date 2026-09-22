@@ -110,6 +110,7 @@ DOMAIN = r"[a-z0-9][a-z0-9.-]*\.[a-z]{2,}"
 KINDS = {
     "remove_lead": {
         "label": "Remove a lead from outreach",
+        "client_effect": ("they are added to your suppression list and stopped on both email and LinkedIn, so nothing further reaches them."),
         "needs": ("lead",),
         "executes": ("Add the contact to this workspace's suppression list, "
                      "then stop the lead at the provider on BOTH channels - "
@@ -125,6 +126,7 @@ KINDS = {
     },
     "stop_account": {
         "label": "Stop contacting an account",
+        "client_effect": ("the whole company is marked do-not-contact for you: everyone at it is stopped on both channels and it is excluded from future sourcing."),
         "needs": ("account",),
         "executes": ("Mark the account do-not-contact for this workspace, "
                      "suppress every contact at it, and stop each of them at "
@@ -139,6 +141,7 @@ KINDS = {
     },
     "change_copy": {
         "label": "Change approved copy",
+        "client_effect": ("nothing changes yet. The wording is recorded for review, because live copy has already been approved and new words need approving again before they go out."),
         "needs": ("cadence_or_campaign", "step", "new_text"),
         "executes": ("NOTHING is applied. The proposed wording is recorded "
                      "for review. Changing approved live copy is "
@@ -154,6 +157,7 @@ KINDS = {
     },
     "pause_campaign": {
         "label": "Pause a campaign",
+        "client_effect": ("the campaign stops sending. Everyone already in it stays in it, and it can be resumed."),
         "needs": ("campaign",),
         "executes": ("Pause the campaign at the provider through the guarded "
                      "pause verb, with a readback confirming the provider "
@@ -166,6 +170,7 @@ KINDS = {
     },
     "add_lead": {
         "label": "Add a lead",
+        "client_effect": ("they enter the pipeline at the start and have to clear every check - fit, deliverability, two verifications and a look at whether we or you have contacted them recently - before any message is drafted for them."),
         "needs": ("lead",),
         "executes": ("Nothing is enrolled directly. The contact enters the "
                      "pipeline at qualification and must clear every gate - "
@@ -178,6 +183,7 @@ KINDS = {
     },
     "change_window": {
         "label": "Change a sending window",
+        "client_effect": ("new sends follow the new hours. Anything already scheduled keeps the slot it was given."),
         "needs": ("window",),
         "executes": ("Update the workspace's sending window, then re-read it "
                      "from the provider for every affected campaign. A "
@@ -409,8 +415,16 @@ def question_for(kind, fields):
     return lead + "I still need %s." % _join(wants)
 
 
-def restate(kind, fields, workspace):
-    """The exact intent, in one paragraph, for the requester to confirm."""
+def restate(kind, fields, workspace, client_facing=False):
+    """The exact intent, in one paragraph, for the requester to confirm.
+
+    `client_facing` changes two things and neither is cosmetic. It does not
+    name the operator - who decides inside Resonate is not a client's
+    business - and it does not describe the provider mechanics of what
+    executing it would do. A client is owed a plain statement of the effect
+    on THEIR outreach; "the existing stop verbs with their fail-closed
+    readbacks" is a sentence about our machinery.
+    """
     spec = KINDS[kind]
     parts = ["**%s** for %s." % (spec["label"], workspace)]
     for name in ("lead", "account", "campaign", "cadence_or_campaign",
@@ -420,9 +434,15 @@ def restate(kind, fields, workspace):
                                       fields[name]))
     if fields.get("new_text"):
         parts.append("Proposed wording: “%s”" % fields["new_text"])
-    parts.append("If approved, this is what happens: %s" % spec["executes"])
-    parts.append("Nothing is done until Zvonimir approves it. "
-                 "Confirm and I will raise it.")
+    if client_facing:
+        parts.append("If it goes ahead: %s" % spec["client_effect"])
+        parts.append("Nothing happens until the Resonate team has reviewed "
+                     "it. Confirm and I will pass it on.")
+    else:
+        parts.append("If approved, this is what happens: %s"
+                     % spec["executes"])
+        parts.append("Nothing is done until Zvonimir approves it. "
+                     "Confirm and I will raise it.")
     return " ".join(parts)
 
 
@@ -465,6 +485,11 @@ def build(kind, fields, requester, channel, scope, thread_ts=None,
     return {
         "id": new_id(),
         "kind": kind,
+        # WHO THIS CAME FROM, kept as its own field rather than inferred
+        # from `requester_scope` at read time. An operator triaging a queue
+        # needs "a client asked for this" to be the first thing they see,
+        # and a derived value is one refactor away from not being there.
+        "origin": "client" if scope.is_client else "internal",
         "label": KINDS[kind]["label"],
         "raised_at": _now(),
         "requester": requester,
@@ -688,11 +713,22 @@ def action_required(ticket):
     detail = "; ".join("%s %s" % (k.replace("_", " "), v)
                        for k, v in sorted(fields.items())
                        if k != "new_text")
-    lines = ["*ACTION REQUIRED* — change request `%s`" % ticket["id"],
-             "",
-             "*%s* for *%s*, raised by <@%s> in <#%s>."
-             % (ticket["label"], ticket["workspace"], ticket["requester"],
-                ticket["channel"])]
+    client = ticket.get("origin") == "client"
+    lines = ["*ACTION REQUIRED* — change request `%s`%s"
+             % (ticket["id"], "  ·  *client-originated*" if client else ""),
+             ""]
+    if client:
+        # THE FIRST THING THE OPERATOR SEES. A request from outside
+        # Resonate is decided on different grounds from one raised
+        # internally, and burying that in a scope field further down would
+        # make the two look alike in the one place they must not.
+        lines.append(":inbox_tray: Raised by an EXTERNAL person in the "
+                     "client's own channel. They have been told it is with "
+                     "the Resonate team, and given no timescale.")
+        lines.append("")
+    lines.append("*%s* for *%s*, raised by <@%s> in <#%s>."
+                 % (ticket["label"], ticket["workspace"],
+                    ticket["requester"], ticket["channel"]))
     if detail:
         lines.append(detail)
     if fields.get("new_text"):
@@ -708,12 +744,19 @@ def action_required(ticket):
 
 def decision_note_for(ticket):
     """What gets posted back into the original thread."""
+    client = ticket.get("origin") == "client"
     if ticket["status"] == APPROVED:
-        text = ("Approved. It is queued for Claude Code to execute through "
+        text = ("The Resonate team have approved this. It is queued to be "
+                "carried out and I will post here when it is done."
+                if client else
+                "Approved. It is queued for Claude Code to execute through "
                 "the usual gates, and I will report back here when it is "
                 "done.")
     elif ticket["status"] == REJECTED:
-        text = "This was not approved, so nothing has changed."
+        text = ("The Resonate team have not approved this, so nothing has "
+                "changed. They will follow up with you directly."
+                if client else
+                "This was not approved, so nothing has changed.")
     elif ticket["status"] == EXECUTED:
         text = "Done. %s" % (ticket.get("outcome") or "")
     elif ticket["status"] == FAILED:
@@ -724,4 +767,7 @@ def decision_note_for(ticket):
     if ticket.get("decision_note"):
         text += " Note from the operator: “%s”" % \
             ticket["decision_note"]
+    if ticket.get("origin") == "client":
+        return "About your request (%s) — %s" % (
+            ticket.get("label", "change request").lower(), text)
     return "Change request `%s` — %s" % (ticket["id"], text)
