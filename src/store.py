@@ -535,7 +535,100 @@ def _current_records():
 
 def load():
     """The queue, with any journalled deltas replayed over the base file."""
-    return Snapshot(_current_records())
+    recs = Snapshot(_current_records())
+    mode = backend()
+    if mode == "sqlite":
+        from . import sqlitestore
+        import sqlite3
+        path = db_path()
+        if os.path.exists(path):
+            conn = sqlite3.connect(path)
+            try:
+                recs._baseline_rev = sqlitestore.revision(conn)
+            finally:
+                conn.close()
+    return recs
+
+
+def _incremental_guard_input(snapshot, full_read_fn):
+    """For sqlite backend: return (guard_old, guard_new, on_disk_for_merge).
+
+    TASK-260. If the snapshot has a valid baseline and the backend is sqlite,
+    use the rev cursor to read only the records the guards need: caller-touched
+    records plus records that changed on disk since the baseline.
+
+    The key insight: we do NOT need a full read. The caller-touched records
+    are in the Snapshot (in memory). The disk-changed records come from
+    read_changed_since. The merge and guards only need these records.
+
+    Falls back to full read if:
+    - Not a Snapshot (no baseline)
+    - Backend is not sqlite
+    - Cursor is missing/stale/backwards
+
+    Returns (guard_old, guard_new, on_disk_for_merge, path, rows_read).
+    """
+    mode = backend()
+    if mode != "sqlite":
+        on_disk = full_read_fn()
+        return on_disk, on_disk, on_disk, "full", len(on_disk)
+
+    if not isinstance(snapshot, Snapshot) or not hasattr(snapshot, "baseline"):
+        on_disk = full_read_fn()
+        return on_disk, on_disk, on_disk, "full", len(on_disk)
+
+    from . import sqlitestore
+    import sqlite3
+    path = db_path()
+    if not os.path.exists(path):
+        on_disk = full_read_fn()
+        return on_disk, on_disk, on_disk, "full", len(on_disk)
+
+    conn = sqlite3.connect(path)
+    try:
+        current_rev = sqlitestore.revision(conn)
+        baseline_rev = getattr(snapshot, "_baseline_rev", None)
+
+        if baseline_rev is None or baseline_rev > current_rev or baseline_rev < 0:
+            on_disk = full_read_fn()
+            return on_disk, on_disk, on_disk, "full", len(on_disk)
+
+        changed = sqlitestore.read_changed_since(conn, baseline_rev)
+        changed_by_id = {r.get("id"): r for r in changed}
+
+        caller_touched = {}
+        for rec in snapshot:
+            if isinstance(rec, dict) and "id" in rec:
+                rid = rec["id"]
+                if snapshot.baseline.get(rid) != _frozen(rec):
+                    caller_touched[rid] = rec
+
+        needed_ids = set(caller_touched) | set(changed_by_id)
+        if not needed_ids:
+            return [], [], [], "incremental", 0
+
+        guard_old = []
+        guard_new = []
+        for rid in needed_ids:
+            old_rec = changed_by_id.get(rid)
+            if old_rec is None:
+                for r in snapshot:
+                    if isinstance(r, dict) and r.get("id") == rid:
+                        old_rec = json.loads(snapshot.baseline.get(rid, "null"))
+                        break
+            if old_rec is not None:
+                guard_old.append(old_rec)
+
+            new_rec = caller_touched.get(rid)
+            if new_rec is None:
+                new_rec = changed_by_id.get(rid)
+            if new_rec is not None:
+                guard_new.append(new_rec)
+
+        on_disk_narrowed = guard_old
+        return guard_old, guard_new, on_disk_narrowed, "incremental", len(changed)
+    finally:
+        conn.close()
 
 
 # ------------------------------------------------- the second barrier
@@ -1104,18 +1197,26 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         # caught exactly that: EvidenceLost stopped being raised, silently,
         # because the evidence it was protecting lived in the journal.
         #
-        # This read stays O(N). Narrowing it needs an index and is a larger
-        # change; only the WRITE narrows here.
-        on_disk = _current_records()
+        # TASK-260: on sqlite backend with a valid Snapshot baseline, the
+        # merge AND the guards run on a narrowed input (caller-touched ∪
+        # disk-changed). Records outside this set have old == new, so the
+        # merge and guards are vacuous for them.
+        snapshot = recs if isinstance(recs, Snapshot) else None
+        mode = backend()
+        if mode == "sqlite" and snapshot is not None:
+            guard_old, guard_new, on_disk, _path, _rows = \
+                _incremental_guard_input(snapshot, _current_records)
+        else:
+            on_disk = _current_records()
+            guard_old, guard_new = on_disk, recs if snapshot is None else list(snapshot)
         if expect_digest is not None and digest() != expect_digest:
             raise QueueChanged(
                 "the queue changed while this work was in progress, so writing "
                 "it back would discard whatever changed. Nothing was written; "
                 "reload and re-apply.")
-        snapshot = recs if isinstance(recs, Snapshot) else None
         if snapshot is not None:
             recs = snapshot.merge_onto(on_disk)
-        refuse_evidence_loss(on_disk, recs)
+        refuse_evidence_loss(guard_old, guard_new)
         # `allow_history_loss` IS FOR TEST CLEANUP AND NOTHING ELSE. A test
         # that adds an event to a shared estate has to take it back out again,
         # and that is a legitimate rewrite of history by a caller who knows it
@@ -1124,12 +1225,11 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         # escape hatch nobody is allowed to reach for in production is a
         # different thing from a guard with a hole in it.
         if not allow_history_loss:
-            refuse_history_loss(on_disk, recs)
+            refuse_history_loss(guard_old, guard_new)
         # THE ONLY THING THE BACKEND CHANGES IS WHICH BYTES GET WRITTEN.
         # Everything above this line - the read, the digest check, the
         # three-way merge, and both loss guards - has already run over the
         # FULL merged set, exactly as it does on the whole-file path.
-        mode = backend()
         if mode == "sqlite":
             _write_sqlite(recs)
         elif mode == "shadow":
@@ -1150,6 +1250,16 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         # one would treat them as already on disk and stop re-asserting them.
         if snapshot is not None:
             snapshot.rebase()
+            if mode == "sqlite":
+                from . import sqlitestore
+                import sqlite3
+                path = db_path()
+                if os.path.exists(path):
+                    conn = sqlite3.connect(path)
+                    try:
+                        snapshot._baseline_rev = sqlitestore.revision(conn)
+                    finally:
+                        conn.close()
 
 
 def new_record(id, lane, client, company, domain, context="", signal=""):
