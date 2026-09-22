@@ -75,3 +75,48 @@ reappear as new.
 ## FILES FORBIDDEN
 
     src/clientapproval.py    src/providers/*    config/    work/*.jsonl
+
+---
+
+## AMENDMENT — 2026-09-22 — Zvonimir — post-filtering is authorized
+
+Recorded verbatim. This amends the "applied AT THE SOURCE, not filtered after"
+requirement of the task above.
+
+    SOURCING UNBLOCKED: post-filtering after the AI-ARK fetch is allowed,
+    because S3 re-verifies headcount and country per domain for free and only
+    IN domains proceed.
+
+### Why this resolves the block, rather than waiving it
+
+The original rule exists because "filtering after is paid-for rows thrown
+away" — a COST argument, not a safety one. Two measurements taken on
+2026-09-22 change what it costs:
+
+- **The headcount filter does not exist at the source.** `size` is
+  `company_search`'s PAGE SIZE, and ten candidate parameter names —
+  companySize, companyStaff, staff, staffRange, employeeCount,
+  companyEmployees, headcount, companyHeadcount, minStaff, staffCount — were
+  probed live and every one is SILENTLY IGNORED, returning identical
+  `totalElements` (72,657,969) and byte-identical rows. There is nothing to
+  apply at the source.
+- **The geo filter is accepted but not reliably honoured.** On a 25-row
+  sample filtered to United Kingdom and United States, 7 rows carried an HQ
+  outside the filter and 4 of those had no office inside it either.
+
+So "at the source" was not achievable with this endpoint at all, and the
+choice was never between source-filtering and post-filtering — it was between
+post-filtering and no sourcing.
+
+**And the post-filter is free.** S3 re-derives headcount and country per
+domain from evidence already held, spends no credit doing it, and only an ICP
+verdict of `in` proceeds to anything that does. The rows discarded cost one
+search page each, not one enrichment each, and the gate that matters — no paid
+person-level call before an explicit ICP verdict — is untouched.
+
+### What this does NOT widen
+
+The pipeline still STOPS AT CANDIDATES. No S4 persona discovery, no S5
+verification, no contact credit is spent on a candidate before Productive has
+approved its account in the weekly export. That is the point of the task and
+this amendment does not touch it.

@@ -45,9 +45,36 @@ EXPORT_MINUTE = 0
 EXPORT_WEEKDAY = 1          # Monday, ISO
 TIMEZONE = "Europe/Zagreb"
 
-# Minimum headcount for sourcing. Applied AT THE SOURCE, not filtered after:
-# filtering after is paid-for rows thrown away.
+# Minimum headcount for sourcing. Enforced by S3 per domain rather than at the
+# source - see POST_FILTER_AUTHORIZED for why, and for what was measured.
 MIN_HEADCOUNT = 20
+
+#: OPERATOR AMENDMENT, Zvonimir, 2026-09-22: post-filtering after the AI Ark
+#: fetch is authorized, "because S3 re-verifies headcount and country per
+#: domain for free and only IN domains proceed."
+#:
+#: The original rule - geos and headcount applied AT THE SOURCE - rested on a
+#: COST argument: filtering after is paid-for rows thrown away. It was not
+#: achievable here at all. `size` is the page size rather than a headcount
+#: filter, ten candidate parameter names were probed live and every one is
+#: silently ignored, and `companyLocation` is accepted but not reliably
+#: honoured. The choice was never source-filtering versus post-filtering; it
+#: was post-filtering versus no sourcing.
+#:
+#: Recorded in full in the task file. The pipeline still STOPS AT CANDIDATES.
+POST_FILTER_AUTHORIZED = True
+
+#: Rows per company_search page. 100 is the MAXIMUM this endpoint serves:
+#: measured 2026-09-22, size=25/50/100 return exactly that many and size=200
+#: and 500 return ZERO rows with no error - an over-large page is dropped, not
+#: clamped, which is the same "silently ignored" behaviour every unknown
+#: filter name showed.
+#:
+#: This is also what fixes paging. The walk used to stop on `len(rows) < 30`
+#: while the endpoint's default page is 25, so EVERY run ended after one page
+#: no matter how much was available - 24 companies out of a stated
+#: totalElements of 72,657,969.
+PAGE_SIZE = 100
 
 
 def nightly_utc_moment(on_date=None):
@@ -83,43 +110,46 @@ def is_export_day(on_date=None):
 # --------------------------------------------------------- stage 1: source
 
 def _source_companies(search_fn=None, icp_config=None, known_domains=None,
-                      page_limit=None, allow_unfiltered_headcount=False,
+                      page_limit=None, max_domains=None,
+                      allow_unfiltered_headcount=POST_FILTER_AUTHORIZED,
                       problems=None):
     """AI-ARK company search on the Productive ICP.
 
-    Geos applied AT THE SOURCE via companyLocation, after resolving each one
-    through location_search - it is a strict enum. Headcount is NOT applied:
-    see the refusal below, which is deliberate rather than a gap.
+    Geos are passed via companyLocation, after resolving each one through
+    location_search - it is a strict enum - but the provider does not honour
+    them reliably, and headcount cannot be filtered at the source at all. Both
+    are re-derived per domain by S3, for free, under the operator's 2026-09-22
+    amendment. See POST_FILTER_AUTHORIZED.
     Walk to last=true (page_limit caps for tests). DIFF against known domains;
     NEVER delete from the known set.
 
     search_fn is injectable for tests. Defaults to aiark.company_search.
     """
-    # THE HEADCOUNT FILTER IS NOT APPLIED, AND THAT IS A REFUSAL.
+    # THE HEADCOUNT FILTER IS NOT APPLIED AT THE SOURCE, AND THAT IS NOW
+    # AUTHORIZED RATHER THAN REFUSED.
     #
-    # The task requires headcount >= 20 APPLIED AT THE SOURCE. This used to
-    # pass `size=">=20"`, and `size` is company_search's PAGE SIZE - ">=20"
-    # was rejected outright and the call returned zero rows, which is a large
-    # part of why this pipeline has never produced a candidate.
-    #
-    # The parameter that really filters headcount has not been established.
-    # Probed live on 2026-09-22 against the tool: companySize, companyStaff,
+    # `size` is company_search's PAGE SIZE, not a headcount filter - `">=20"`
+    # was rejected outright and returned zero rows, which is a large part of
+    # why this pipeline never produced a candidate. The parameter that really
+    # filters headcount does not appear to exist: companySize, companyStaff,
     # staff, staffRange, employeeCount, companyEmployees, headcount,
-    # companyHeadcount, minStaff and staffCount are ALL SILENTLY IGNORED -
-    # identical totalElements (72,657,969) and byte-identical rows with and
-    # without each one. An unknown filter name is dropped, not rejected.
+    # companyHeadcount, minStaff and staffCount were all probed live on
+    # 2026-09-22 and every one is SILENTLY IGNORED - identical totalElements
+    # (72,657,969) and byte-identical rows with and without each. An unknown
+    # filter name is dropped, not rejected.
     #
-    # So sourcing now REFUSES rather than returning an unfiltered world.
-    # Filtering after the fact is what the task forbids - it is paid-for rows
-    # thrown away - and quietly dropping the client's own ICP minimum is
-    # worse than not running. The headcount IS readable per row at
-    # `summary.staff.total`, so the filter can be applied the moment somebody
-    # establishes the parameter from AI Ark rather than guessing it.
-    # ONLY WHEN THE REAL PROVIDER IS BEING CALLED. This is a statement about
-    # AI Ark's API, not about the shape of the pipeline: an injected
-    # `search_fn` - every test, and any future adapter - may filter perfectly
-    # well, and refusing there would assert something about a provider this
-    # function never reaches.
+    # `POST_FILTER_AUTHORIZED` is the operator's answer to that, recorded
+    # above and in the task file: S3 re-derives headcount and country per
+    # domain for free, and only an ICP verdict of `in` proceeds to anything
+    # that spends. So the rows this discards cost one search page each rather
+    # than one enrichment each.
+    #
+    # The refusal is KEPT, not deleted, because the reasoning behind it is
+    # still true and the authorization is a decision that can be revisited. It
+    # fires only when the real provider is being called AND the amendment is
+    # switched off - an injected `search_fn` never reaches AI Ark, and
+    # asserting something about a provider this function does not call would
+    # be wrong.
     if search_fn is None and not allow_unfiltered_headcount:
         raise ProviderError(
             f"nightly sourcing: no AI Ark parameter is known that filters "
@@ -183,6 +213,7 @@ def _source_companies(search_fn=None, icp_config=None, known_domains=None,
         try:
             rows = search_fn(
                 companyLocation=location_filter,
+                size=PAGE_SIZE,
                 page=page,
             )
         except ProviderError as exc:
@@ -220,8 +251,13 @@ def _source_companies(search_fn=None, icp_config=None, known_domains=None,
                 if field not in row:
                     row[field] = []
             sourced.append(row)
-        # AI Ark pagination: if fewer rows returned than a page, we are done.
-        if len(rows) < 30:
+        # A SHORT PAGE IS THE END OF THE WALK, and the length it is compared
+        # against has to be the length we ASKED for. It was hardcoded to 30
+        # while the endpoint's default page is 25, so every walk ended after
+        # page one.
+        if len(rows) < PAGE_SIZE:
+            break
+        if max_domains and len(sourced) >= max_domains:
             break
         page += 1
     return sourced
@@ -412,7 +448,8 @@ def _to_candidate(companies):
 # --------------------------------------------------------- the pipeline
 
 def run(config=None, search_fn=None, resolve_fn=None, live=False,
-        page_limit=None, allow_unfiltered_headcount=False):
+        page_limit=None, max_domains=None,
+        allow_unfiltered_headcount=POST_FILTER_AUTHORIZED):
     """The full nightly pipeline. Returns a report dict.
 
     search_fn and resolve_fn are injectable for tests.
@@ -432,7 +469,7 @@ def run(config=None, search_fn=None, resolve_fn=None, live=False,
     source_problems = []
     sourced = _source_companies(
         search_fn=search_fn, icp_config=config, known_domains=known,
-        page_limit=page_limit,
+        page_limit=page_limit, max_domains=max_domains,
         allow_unfiltered_headcount=allow_unfiltered_headcount,
         problems=source_problems)
     report["stages"][STAGE_SOURCE] = {"input": 0, "output": len(sourced),
@@ -511,10 +548,21 @@ def main(argv=None):
     p.add_argument("--client", default="productive",
                    help="client config name")
     p.add_argument("--json", action="store_true")
-    p.add_argument("--allow-unfiltered-headcount", action="store_true",
-                   help="source without the headcount filter. For a "
-                        "deliberate measurement run only - the task requires "
-                        "headcount >= 20 applied AT THE SOURCE")
+    p.add_argument("--max-domains", type=int, default=None,
+                   help="stop sourcing once this many companies are held")
+    # DEFAULTS TO THE OPERATOR'S AMENDMENT, and the opposite flag is the one
+    # that has to be typed. Post-filtering is authorized as of 2026-09-22, so
+    # a plain run sources; `--refuse-unfiltered-headcount` restores the older
+    # behaviour for anybody re-testing the decision.
+    p.add_argument("--allow-unfiltered-headcount",
+                   dest="allow_unfiltered_headcount", action="store_true",
+                   default=POST_FILTER_AUTHORIZED,
+                   help="source and let S3 re-derive headcount per domain "
+                        "(the default, per the 2026-09-22 amendment)")
+    p.add_argument("--refuse-unfiltered-headcount",
+                   dest="allow_unfiltered_headcount", action="store_false",
+                   help="refuse unless headcount can be filtered AT THE "
+                        "SOURCE, which is the pre-amendment behaviour")
     a = p.parse_args(argv)
 
     config = None
@@ -528,6 +576,7 @@ def main(argv=None):
     # bug in us rather than as the finding it is.
     try:
         report = run(config=config, live=a.live,
+                     max_domains=a.max_domains,
                      allow_unfiltered_headcount=a.allow_unfiltered_headcount)
     except ProviderError as exc:
         print("")
