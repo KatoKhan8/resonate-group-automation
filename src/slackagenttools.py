@@ -382,35 +382,25 @@ def next_actions(scope, argument=None):
 
 
 def open_issues():
-    """The problem register's own rows: open, fixed, and by severity.
+    """The problem register's rows. DELEGATES to the one reader.
 
-    NOT `slackagentreadback.blocked`, which counts every `- ` bullet inside
-    the OPEN section and so reported 47 where the register carries 10 rows
-    of which 6 are open. A count that is wrong by a factor of five is worse
-    than no count: it reads as a number and gets quoted. The register's rows
-    are `### ISSUE-nnn`, and a row whose heading carries FIXED is fixed.
+    This used to parse the register itself, because `slackagentreadback.
+    blocked` counted bullets and reported 47 where there are ten rows. That
+    was the right call at the time and the wrong thing to keep: two readers
+    of one file drift, and the operator asked for them folded into one.
+
+    `blocked()` now counts rows, so this hands off to it and reshapes the
+    answer for callers that expect this module's keys.
     """
-    import re
-    text = knowledge._read("docs/state/PROBLEM-REGISTER.md") or ""
-    rows = []
-    for match in re.finditer(r"^### (ISSUE-\d+)\s+·\s+(.+?)$", text, re.M):
-        heading = match.group(2)
-        severity = None
-        for word in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
-            if word in heading:
-                severity = word
-                break
-        rows.append({"id": match.group(1),
-                     "title": heading.split("·")[0].strip(),
-                     "severity": severity,
-                     "fixed": "FIXED" in heading})
-    return {"read_at": _now(),
-            "source": "docs/state/PROBLEM-REGISTER.md",
-            "rows": len(rows),
-            "open": [r for r in rows if not r["fixed"]],
-            "open_count": len([r for r in rows if not r["fixed"]]),
-            "fixed_count": len([r for r in rows if r["fixed"]])}
-
+    data = readback.blocked() or {}
+    if data.get("_error"):
+        return data
+    return {"read_at": data.get("read_at"),
+            "total": data.get("issue_rows"),
+            "open": data.get("open_count"),
+            "fixed": data.get("fixed_count"),
+            "by_severity": data.get("by_severity"),
+            "rows": data.get("open_items")}
 
 def _awaiting_decision():
     try:

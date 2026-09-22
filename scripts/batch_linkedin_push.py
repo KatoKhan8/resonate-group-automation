@@ -206,23 +206,69 @@ def main(argv=None):
         return 1
 
     graph = standard_graph()
+
+    existing_lists = {}
+    try:
+        rows_now = heyreach.lists()
+        rows_now = rows_now[0] if isinstance(rows_now, tuple) else rows_now
+        existing_lists = {str(r.get("name")): r.get("id") for r in rows_now}
+    except Exception as exc:                                    # noqa: BLE001
+        print(f"  could not read existing lists ({type(exc).__name__}); "
+              f"a name that already exists would be created twice, so "
+              f"refusing")
+        return 1
+
+    # FIFTEEN REQUESTS PER TWO SECONDS is HeyReach's limit, and this loop
+    # makes three or four calls per seat back to back. One seat tripped a 429
+    # on the first run. The standing rule is that a rate limit means back off
+    # and continue, never halt - so it paces itself rather than discovering
+    # the limit again.
+    import time as _time
+    PACE = 0.4
     reason = ("batch LinkedIn side - dual-channel decision 2026-09-21; "
               "lists and campaigns in DRAFT, no activation")
     built = []
     with providers.allow_writes(reason):
         for seat_id, rows in plan.items():
-            name = f"RESONATE - PRODUCTIVE - LINKEDIN - BATCH1 - SEAT {seat_id}"
+            # FIFTY CHARACTERS. HeyReach answers 400 with "The field Name
+            # must be a string or array type with a maximum length of '50'"
+            # and the first version's name was 54 - so every one of the
+            # sixteen seats refused at its first call and nothing was
+            # created, which is the right way to fail but a whole run lost
+            # to a length nobody had read.
+            name = f"RESONATE PRODUCTIVE LI B1 SEAT {seat_id}"[:50]
             try:
-                created_list = heyreach.create_list(name)
-                list_id = created_list.get("id")
+                _time.sleep(PACE)
+                # REUSE. A HeyReach list is permanent, and the run that
+                # discovered the 50-character name limit and the row-shape
+                # contract had already created one per seat before refusing
+                # further along. Creating a second would leave the client's
+                # estate carrying two lists per seat forever, and the second
+                # would be the one nobody could explain.
+                list_id = existing_lists.get(name)
+                if list_id:
+                    print(f"  seat {seat_id}: reusing list {list_id}")
+                else:
+                    list_id = heyreach.create_list(name).get("id")
                 for start in range(0, len(rows), 100):
+                    _time.sleep(PACE)
+                    # INTERNAL rows, not provider shape. The adapter builds
+                    # the provider body itself and REFUSES a row that already
+                    # carries `profileUrl` - which is the right way round: one
+                    # module owns the vendor's field names, and a caller that
+                    # pre-formats them is a second place for that contract to
+                    # drift.
                     heyreach.add_leads_to_list(
                         list_id,
-                        [{"profileUrl": r["profileUrl"],
-                          "firstName": r["firstName"],
-                          "lastName": r["lastName"]} for r in rows[start:start + 100]])
-                campaign = heyreach.create_campaign(name, list_id, [int(seat_id)])
+                        [{"linkedin_url": r["profileUrl"],
+                          "first_name": r["firstName"],
+                          "last_name": r["lastName"]}
+                         for r in rows[start:start + 100]])
+                _time.sleep(PACE)
+                campaign = heyreach.create_campaign(name, list_id,
+                                                    [int(seat_id)])
                 campaign_id = campaign.get("id")
+                _time.sleep(PACE)
                 heyreach.set_sequence(campaign_id, graph)
             except Exception as exc:                            # noqa: BLE001
                 print(f"  seat {seat_id}: REFUSED {type(exc).__name__}: "

@@ -71,6 +71,15 @@ def walk_graph(node, depth=0, branch="", out=None):
     if child:
         walk_graph(child, depth + 1, "if the previous step's condition is met",
                    out)
+    # `unconditionalNode` IS THE MAIN LINE and the first version of this did
+    # not follow it. Every campaign in the survey read as three nodes when
+    # the real graph continues past the branch - and the node it hid was a
+    # CONNECTION_REQUEST, which is the whole cadence. A walker that follows
+    # only the conditional branch describes the exception and calls it the
+    # rule.
+    if node.get("unconditionalNode"):
+        walk_graph(node["unconditionalNode"], depth,
+                   "otherwise", out)
     for key in ("elseNode", "negativeNode", "fallbackNode"):
         if node.get(key):
             walk_graph(node[key], depth + 1, f"{key}", out)
