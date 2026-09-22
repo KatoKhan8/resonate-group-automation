@@ -571,6 +571,40 @@ Fixed: the page position is persisted beside the candidate list and each run
 continues from it. Verified - a fresh run resumed at page 17 and sourced 319
 companies none of which were already held.
 
+### ISSUE-022 · The store's atomic write loses to a concurrent reader on Windows · HIGH
+
+**Found 2026-09-22 pushing batch 3, and it is not a batch-3 quirk.**
+
+    productive-email-batch1-tomislav  REFUSED PermissionError: [WinError 5]
+    Access is denied: 'work/queue.jsonl.122688.tmp' -> 'work/queue.jsonl'
+
+The 23MB temp file wrote perfectly. The `os.replace` that makes it live was
+denied. On Windows a rename over an open file fails, and this estate runs
+ELEVEN python processes that read `work/` continuously - six bison watchers,
+the heyreach watcher, reply watch, notify-deliver, digest and the Slack agent.
+
+So the store's atomic-write contract holds on POSIX and is probabilistic here,
+and the moment it is most likely to lose is a batch push: the one write that
+matters, taken while every watcher is polling.
+
+**The failure direction is the good one and that is why it needs recording.**
+The replace failing means the OLD file survives intact - no partial write, no
+corruption. What is lost is the WRITE, and the caller reported REFUSED, so
+nothing believed it had succeeded. A retry a minute later succeeded and
+campaign 495 went 26 -> 60 leads. But "retry until the readers blink" is not a
+durability model, and a write that silently needed three attempts would look
+identical to one that needed none.
+
+**It also leaves litter that looks like state.** Three abandoned temp files sit
+in `work/` right now - 23MB from today, 9MB from 2026-09-14, and one from
+09-15. A future session reading the directory sees files named like the queue.
+
+- **Fix** retry the replace with a short backoff and raise only after, the same
+  shape `attach_leads` now uses for its readback (ISSUE-016); and sweep stale
+  `*.tmp` on startup. The stronger answer is the SQLite store infra landed
+  today, which is inert by design and takes a lock rather than a rename.
+- **Status** OPEN · worked around by retrying · no data was lost
+
 ### ISSUE-011 · The forward book's COVERING property decays silently as campaigns are created · HIGH
 
 **Found and worked around 2026-09-22. The census is not wrong; its state file
