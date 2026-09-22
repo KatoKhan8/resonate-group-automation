@@ -122,12 +122,16 @@ to catch exactly this and it is the requirement to write first.
 truth, which CLAUDE.md warns produces drift, and it puts correctness in the
 hands of every caller rather than in one place.
 
-**Cheaper identity is the promising direction**: hash each row once at read
-time and compare a cheap digest rather than re-serialising. It is still O(N)
-walks but with a much smaller constant — and if that is all that is achievable
-without weakening the contract, **say so with the measurement rather than
-forcing a design**. A 10x constant-factor win on a quadratic is still
-quadratic, and the result block should be honest about which was achieved.
+**Cheaper identity is the FALLBACK, not the goal**: hash each row once at read
+time and compare a cheap digest rather than re-serialising. It is still an O(N)
+walk with a smaller constant, so it would **not** pass the acceptance
+criterion above — a 10x constant on a quadratic is still quadratic and the
+ratio stays near 25x.
+
+Reach for it only if tracking turns out to be unachievable without weakening
+the merge contract, and then **report it as a FAILED acceptance with the
+measurement**, not as a success with a nice-looking speedup. Weakening the
+contract to hit the number is the one outcome worse than missing it.
 
 ## Falsifiable requirements
 
