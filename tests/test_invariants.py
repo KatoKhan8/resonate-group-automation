@@ -610,7 +610,51 @@ class TestEventsAreIdempotentAndHonest(unittest.TestCase):
             self.assertTrue(why)
 
 
-class TestValidationCannotSpendByAccident(unittest.TestCase):
+class PinsTheRealStatePaths:
+    """Clear every state override for the duration, and put them back.
+
+    FOR TESTS THAT ASSERT SOMETHING ABOUT THE *REAL* `work/` DIRECTORY. Those
+    tests are only meaningful when the environment actually points there, and
+    nothing was making that true: `store.use_directory` sets `QUEUE` and 50
+    test modules call it, so whether these passed depended on what had run
+    before them.
+
+    Measured 2026-09-22. `test_invariants` was the ONLY module of the 33
+    failing ones whose count changed with run order - 7 failures inside the
+    suite, 2 run alone. Reproduced directly on both classes below:
+    `QUEUE=<tmp> python -m unittest ...` fails, a clean environment passes.
+    The modules at fault resolve their own path beside `store.queue_path()`
+    (`spendledger`, `observability`, `validate.output_dir`), so with `QUEUE`
+    elsewhere they write elsewhere, the guard correctly does not fire, and the
+    test fails while the guard is in perfect health.
+
+    CLEARED RATHER THAN ASSERTED-CLEAN, deliberately: a test that skips or
+    errors on a dirty environment tests nothing on a dirty environment, and
+    one of these is the barrier that stops a test writing real client state.
+    It must run, and it must run against the real paths.
+
+    A mixin rather than two copies: these two classes need identical
+    behaviour, and a second copy is a second thing that can drift.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._saved = {name: os.environ.get(name)
+                       for name in ("QUEUE",) + store.STATE_OVERRIDES}
+        for name in self._saved:
+            os.environ.pop(name, None)
+
+    def tearDown(self):
+        for name, value in self._saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        super().tearDown()
+
+
+class TestValidationCannotSpendByAccident(PinsTheRealStatePaths,
+                                          unittest.TestCase):
     def test_live_validation_is_off_by_default(self):
         self.assertIs(inspect.signature(validate.run).parameters["live"].default, False)
         self.assertIsNone(inspect.signature(validate.run).parameters["domain"].default)
@@ -637,7 +681,8 @@ class TestTheLockCoversEveryWriter(unittest.TestCase):
         self.assertGreater(store.LOCK_TIMEOUT, 0)
 
 
-class TestTheBarrierCoversEveryWriter(unittest.TestCase):
+class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
+                                      unittest.TestCase):
     """Every module that writes beside the queue must ask before it writes.
 
     `store.refuse_production_write` is the second barrier: the first is a

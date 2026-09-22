@@ -14,7 +14,8 @@ invites a re-run and reports zero enrolled for a campaign that has just taken
 import unittest
 from unittest import mock
 
-from src.providers import bison, ProviderError
+from src import providers
+from src.providers import bison
 
 
 class AbsenceIsConfirmedNotAssumed(unittest.TestCase):
@@ -38,7 +39,7 @@ class AbsenceIsConfirmedNotAssumed(unittest.TestCase):
              mock.patch.object(bison, "_post", return_value=(200, {})), \
              mock.patch.object(bison, "campaign_lead_count", return_value=0), \
              mock.patch("time.sleep", return_value=None):
-            with self.assertRaises(ProviderError) as caught:
+            with self.assertRaises(providers.ProviderError) as caught:
                 bison.attach_leads(7, self.WANTED)
         self.assertIn("are not in campaign 7", str(caught.exception))
         self.assertIn("readbacks", str(caught.exception))

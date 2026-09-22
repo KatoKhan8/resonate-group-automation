@@ -1,5 +1,34 @@
 # GLM adversarial review - attribution
 
+> ## VOID — THIS REVIEW WAS RUN WITHOUT THE CODE IN THE PROMPT
+>
+> **Marked 2026-09-22 (branch `infra`). Do not cite anything below as a review
+> finding.** `ATTRIBUTION_QUESTION` carried no `{source}` placeholder, and
+> `str.format` ignores a keyword the template never mentions, so both calls
+> shipped the question text alone. The model was asked about
+> `inbound._positively_not_ours` and `inbound.handle` and shown neither.
+>
+> The receipt is in this file. Both calls report `'prompt_tokens': 312` —
+> **identical, for two different functions**, because the prompt did not depend
+> on which function was under review. Every other target in this directory
+> varies with its function: 400, 752, 1078, 1823, 2172.
+>
+> The model reported it too, and was ignored: *"assertable without your
+> code"*, *"I cannot construct a concrete drop without the body of
+> `_positively_not_ours`"*, *"If you already do positive client-list matching,
+> this finding is void — tell me which comparison you use."*
+>
+> So this is not a weak review, it is not a review. What survives is what any
+> competent reader could write from the question text alone, and the two
+> coercion probes in (2), which are language facts and need no source. The
+> ISSUE-001 attribution path has NOT had a second opinion and still needs one.
+>
+> Fixed in `scripts/glm_review.py`: `build_prompt` refuses a prompt that does
+> not contain its function's source, on the dry-run path before `--live` is
+> consulted. Regression test:
+> `tests/test_a_review_call_carries_its_source.py`. Re-run
+> `--target attribution --live` to get the review this file was supposed to be.
+
 2026-09-21T12:15:27.880548+00:00. One call per function.
 
 A SECOND OPINION, NOT A VERDICT. Every line below is a lead to check against the code and the tests by hand.

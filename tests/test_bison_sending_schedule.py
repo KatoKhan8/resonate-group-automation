@@ -23,7 +23,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src.providers import bison, ProviderError, set_transport, reset_transport
+from src import providers
+from src.providers import bison, set_transport, reset_transport
 from tests.fakebison import FakeBison
 
 
@@ -68,7 +69,7 @@ class TestSendingScheduleRead(_Base):
     def test_validates_day_parameter(self):
         """An invalid day raises before the call, not after."""
         cid = self.fb.add_campaign("TEST")
-        with self.assertRaises(ProviderError) as ctx:
+        with self.assertRaises(providers.ProviderError) as ctx:
             bison.sending_schedule(cid, "next_week")
         self.assertIn("not one of", str(ctx.exception))
         # No call was made - the validation happens before transport.
@@ -110,7 +111,7 @@ class TestThreeShapesApart(_Base):
     """
 
     def test_empty_is_distinct_from_transport_failure(self):
-        """SendingScheduleEmpty is not a ProviderError transport failure."""
+        """SendingScheduleEmpty is not a providers.ProviderError transport failure."""
         cid = self.fb.add_campaign("TEST")
         # No schedule set -> FakeBison returns 400 with the empty message.
         with self.assertRaises(bison.SendingScheduleEmpty):
@@ -127,17 +128,17 @@ class TestThreeShapesApart(_Base):
         # Empty would be the 400, which raises.
 
     def test_transport_failure_raises_provider_error(self):
-        """A non-400 error raises ProviderError, not SendingScheduleEmpty."""
+        """A non-400 error raises providers.ProviderError, not SendingScheduleEmpty."""
         cid = self.fb.add_campaign("TEST")
         # Simulate a 500 by making the campaign not exist.
-        with self.assertRaises(ProviderError) as ctx:
+        with self.assertRaises(providers.ProviderError) as ctx:
             bison.sending_schedule(99999, "tomorrow")
-        # It's a ProviderError but NOT a SendingScheduleEmpty.
+        # It's a providers.ProviderError but NOT a SendingScheduleEmpty.
         self.assertNotIsInstance(ctx.exception, bison.SendingScheduleEmpty)
 
     def test_empty_is_subclass_of_provider_error(self):
-        """SendingScheduleEmpty is a ProviderError for handler compatibility."""
-        self.assertTrue(issubclass(bison.SendingScheduleEmpty, ProviderError))
+        """SendingScheduleEmpty is a providers.ProviderError for handler compatibility."""
+        self.assertTrue(issubclass(bison.SendingScheduleEmpty, providers.ProviderError))
 
 
 # ------------------------------------------------ requirement 3: watch emissions
