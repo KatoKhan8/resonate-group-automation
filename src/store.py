@@ -78,7 +78,21 @@ def campaigns_path():
 #
 # `tests/test_invariants.py` walks `src/` for `os.environ.get("...")` state
 # lookups and fails if one is missing from this tuple.
-STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
+STATE_OVERRIDES = (
+                   # The SQLite record store. Added 2026-09-22 with TASK-253,
+                   # and `test_every_state_override_is_in_the_move_together_set`
+                   # caught its absence within the hour - which is the half of
+                   # that pair doing exactly what it is for.
+                   #
+                   # It defaults beside `queue_path()`, so it already moves
+                   # when QUEUE moves. The hazard is the other direction: a
+                   # stale `QUEUE_DB` pointing at the real `work/queue.db`
+                   # would SURVIVE `use_directory()`, because that function
+                   # works by clearing this tuple. The queue would move to the
+                   # temp directory and the database would not, which is the
+                   # failure this comment's own paragraph above describes.
+                   "QUEUE_DB",
+                   "CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    "NOTIFICATIONS", "REPORTS", "REPORT_DRAFTS",
                    # Not row state, but written beside the queue and just as
                    # able to be left pointing at a real directory by a stale
