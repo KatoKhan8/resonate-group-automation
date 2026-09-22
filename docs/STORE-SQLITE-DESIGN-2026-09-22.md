@@ -288,11 +288,29 @@ through shadow and stays on disk as a readable artifact afterwards.
 
 ## 9. What this design does NOT settle
 
-- **It does not make `load()` cheap.** `load()` still materialises every
-  record, because `Snapshot` and both guards need the full set. What SQLite
-  buys first is the WRITE: a checkpoint updates the rows it changed.
-  A narrowed read needs the guards to work against a subset, which is a
-  safety change and is deliberately not in this design.
+- **It does not make `load()` cheap — NOW MEASURED, not predicted.**
+  TASK-255 ran the three arms at production record size
+  (`docs/LOAD-TEST-20K-2026-09-22.md`):
+
+        ARM              RECORDS  CHECKPOINTS  TIME_S  MB_WRITTEN  AMPLIFICATION
+        jsonl              1,000          200    65.4     3,981.8       1108.1x
+        jsonl+journal      1,000          200   123.9         3.6          1.0x
+        sqlite             1,000          200    43.3         0.2          0.1x
+
+  On write volume it is a rout, and O(changed) is demonstrated across three
+  sizes rather than asserted at one: sqlite writes a constant ~180-188 KB from
+  500 to 1,000 records while the payload doubles.
+
+  **But all three arms are O(N²) in wall clock.** 2x the records costs 4x the
+  time on every arm, because the read per checkpoint is O(N) and there are N/5
+  checkpoints. Narrowing the write does not change the shape. Projected at
+  20,000: jsonl ~7 hours, journal ~52 minutes, sqlite ~23 minutes.
+
+  So this design is a very large win and NOT the finish line — 7 hours to 23
+  minutes, and 1.59 TB of writes to 188 KB. The read half stays open, it needs
+  the guards to work against a subset, and that is a safety change deliberately
+  not in this design. **Do not let "SQLite fixes the storage problem" be the
+  sentence that survives from this document.**
 - **It does not touch `work/campaigns.jsonl`.** 58 KB, 1 file, no pressure.
   Migrating it would be scope nobody asked for.
 - **It is not proven at 20k.** Every figure above is measured at 1,027 records
