@@ -1462,6 +1462,55 @@ def _is_a_draft_campaign_this_deployment_staged(provider_campaign_id,
 # audited 599020.
 _AUTHORIZED_LINKEDIN_CANARY = "605732"
 
+#: WIDENED 2026-09-22 by written operator authorization, recorded verbatim in
+#: docs/OPERATOR-AUTHORIZATION-2026-09-22-ACTIVATE-AND-NOTELESS.md: "widen
+#: HeyReach activation to the 33 batch campaigns created last night".
+#:
+#: Every id is listed rather than matched by name prefix. A prefix is a rule
+#: about what somebody will call a campaign in future; a list is a statement
+#: about which campaigns an operator looked at. The account holds 41
+#: campaigns, twelve of them the client's own and in progress, and a
+#: name-matching rule would admit the next campaign anybody names the same
+#: way - including one created by mistake.
+#:
+#: Each holds one seat and four or five leads, carries the cloned Productive
+#: standard graph, and was DRAFT when the grant was recorded.
+_AUTHORIZED_LINKEDIN_BATCH = frozenset({
+    "613724",
+    "613725",
+    "613726",
+    "613727",
+    "613728",
+    "613729",
+    "613730",
+    "613731",
+    "613732",
+    "613733",
+    "613734",
+    "613735",
+    "613736",
+    "613737",
+    "613738",
+    "613739",
+    "613740",
+    "613741",
+    "613742",
+    "613744",
+    "613746",
+    "613747",
+    "613748",
+    "613749",
+    "613750",
+    "613751",
+    "613752",
+    "613753",
+    "613754",
+    "613755",
+    "613756",
+    "613757",
+    "613761",
+})
+
 
 def _is_the_authorized_linkedin_canary(provider_campaign_id, campaign_id=None):
     """True only for HeyReach campaign 604869, the DRAFT canary.
@@ -1484,13 +1533,17 @@ def _is_the_authorized_linkedin_canary(provider_campaign_id, campaign_id=None):
     half: it refuses when the provider disagrees with the number the caller
     believes.
     """
-    if str(provider_campaign_id or "").strip() != _AUTHORIZED_LINKEDIN_CANARY:
+    offered = str(provider_campaign_id or "").strip()
+    if offered != _AUTHORIZED_LINKEDIN_CANARY and (
+            offered not in _AUTHORIZED_LINKEDIN_BATCH):
         raise WriteRefused(
             f"LinkedIn activation is scoped to campaign "
-            f"{_AUTHORIZED_LINKEDIN_CANARY} and this write names "
-            f"{provider_campaign_id!r}. The account holds 83 campaigns, 12 of "
-            f"them the client's own and in progress; an activation that can "
-            f"name any of them is not a canary. The transport was not reached")
+            f"{_AUTHORIZED_LINKEDIN_CANARY} and the {len(_AUTHORIZED_LINKEDIN_BATCH)} "
+            f"batch campaigns named in the 2026-09-22 authorization, and this "
+            f"write names {provider_campaign_id!r}. The account holds 41 "
+            f"campaigns, twelve of them the client's own and in progress; an "
+            f"activation that can name any of them is not scoped at all. The "
+            f"transport was not reached")
     return True
 
 

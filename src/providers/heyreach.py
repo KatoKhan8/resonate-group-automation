@@ -1640,7 +1640,22 @@ _NOT_STARTED_STATUSES = ("DRAFT",)
 # Statuses that mean the provider gave up.
 _FAILED_STATUSES = ()
 # Transitional states the provider may pass through.
-_STARTING_STATUSES = ()
+#
+# POPULATED 2026-09-22, MEASURED. This tuple existed from the start and was
+# empty, so the one status HeyReach actually returns mid-transition had
+# nowhere to go: all 33 batch campaigns answered `STARTING` and every one was
+# reported as unclassifiable, while the provider had them IN_PROGRESS
+# moments later.
+#
+# That failure mode is worse than it looks. The function's own refusal text
+# tells the caller to read provider truth before starting again - good advice
+# that a less careful caller turns into a blind retry of a verb that starts
+# sending to real people. A status the provider returns on the happy path is
+# not an anomaly; it is a state the classifier has to carry.
+#
+# It does NOT relax the contract: `STARTING` means KEEP POLLING, and success
+# is still only ever reported on IN_PROGRESS.
+_STARTING_STATUSES = ("STARTING",)
 
 
 def activate_campaign(campaign_id, expect_leads=None, attempts=6,

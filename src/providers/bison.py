@@ -1706,7 +1706,13 @@ STARTED_STATES = ("active", "running", "completed")
 # Accepted and NOT started yet. `PATCH .../resume` answers 200 and the row
 # reads `queued` for a second or two while the provider decides - so `queued`
 # is an unfinished answer, never a started one.
-STARTING_STATES = ("queued", "starting")
+# `launching` ADDED 2026-09-22, MEASURED. Activating 491-498, three of the
+# eight answered `launching` and were reported as unclassifiable while the
+# provider had them `active` moments later. Same class as `queued`, which
+# this tuple already carried for the same reason: a status the provider
+# returns on the happy path is a state to keep polling, not an anomaly.
+# Success is still only reported on `active`.
+STARTING_STATES = ("queued", "starting", "launching")
 NOT_STARTED_STATES = ("draft", "paused")
 # The provider tried to start it and gave up. Measured twice on 2026-09-13: a
 # campaign with a sequence, a schedule, a sender and a lead went queued ->
