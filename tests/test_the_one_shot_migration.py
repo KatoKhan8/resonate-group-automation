@@ -13,6 +13,8 @@ compaction, so a migration that looks clean has lost a day of work. The test
 builds a fixture where `_current_records()` and `read_jsonl(queue_path())`
 genuinely differ, then asserts the difference is what was migrated.
 """
+import ast
+import inspect
 import json
 import os
 import subprocess
@@ -22,6 +24,9 @@ import textwrap
 import unittest
 
 from src import store, sqlitestore
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from scripts import migrate_store_sqlite
 
 
 def record(rid, **extra):
@@ -162,37 +167,67 @@ class TheVerifierRefusesAndRollsBack(AnIsolatedStore):
     REFUSE and roll back, leaving no database behind."""
 
     def test_corrupted_readback_leaves_no_database(self):
-        _write_queue([record(f"r{n}") for n in range(5)])
+        """Driven IN PROCESS through `migrate`'s `_after_insert` seam.
 
+        This used to write a corruptor script to disk and pass its path in
+        `_MIGRATE_CORRUPT_HOOK`, which made the production migration script
+        able to execute an arbitrary file named by the environment, on the
+        path that migrates the only file holding real client state. The test
+        never needed that: it needs the database corrupted in the window
+        between insert and verify, and a parameter reaches that window without
+        being reachable from outside the process at all.
+        """
+        _write_queue([record(f"r{n}") for n in range(5)])
         db_path = os.path.join(self.dir, "queue.db")
 
-        corruptor = textwrap.dedent("""\
-            import sqlite3, sys
-            conn = sqlite3.connect(sys.argv[1])
+        def corrupt(conn, _path):
             conn.execute("UPDATE records SET doc='{}' WHERE id='r2'")
-            conn.commit()
-            conn.close()
-        """)
 
-        script = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                              "scripts", "migrate_store_sqlite.py")
-        env = os.environ.copy()
-        env["QUEUE"] = store.queue_path()
-        env.pop("QUEUE_JOURNAL", None)
+        code, message = migrate_store_sqlite.migrate(
+            db_path, _after_insert=corrupt)
 
-        hook = os.path.join(self.dir, "corrupt_after.py")
-        with open(hook, "w") as f:
-            f.write(corruptor)
-
-        env["_MIGRATE_CORRUPT_HOOK"] = hook
-        result = subprocess.run(
-            [sys.executable, script, db_path],
-            env=env, capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0,
-                            "migration should have refused")
-        self.assertIn("verif", result.stderr.lower() + result.stdout.lower())
+        self.assertNotEqual(code, 0, "migration should have refused")
+        self.assertIn("verif", message.lower())
         self.assertFalse(os.path.exists(db_path),
                          "a refused migration left a database behind")
+
+    def test_the_seam_is_not_reachable_from_the_environment(self):
+        """The property the rewrite above exists to create.
+
+        A migration run with nothing passed must not consult the environment
+        for anything it would then execute. Asserted on the source rather than
+        by trying to trip it, because the failure being prevented is an
+        env-named code path existing at all.
+
+        NO STRING MATCH HERE, and the first version of this test had one. It
+        asserted `_MIGRATE_CORRUPT_HOOK` did not appear in the source, and
+        failed on the COMMENT in `migrate` that explains why the hook was
+        removed. That is the false-positive class CLAUDE.md names - "searching
+        source for words produces a test that fails when somebody writes a
+        comment" - and it is the second time it has been reproduced on this
+        branch in a day. Explaining the defect is exactly what the code should
+        do; the test walks the AST so the explanation is free.
+        """
+        source = inspect.getsource(migrate_store_sqlite)
+        tree = ast.parse(source)
+
+        # Nothing in this module may read the environment at all. The hook was
+        # `os.environ.get(...)` feeding a subprocess; forbidding the lookup is
+        # narrower to state than tracing where its value goes.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "environ":
+                self.fail("migrate_store_sqlite reads os.environ; the queue "
+                          "location comes from store.queue_path()")
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = getattr(func, "attr", None) or getattr(func, "id", None)
+            if name in ("run", "Popen", "call", "check_call", "check_output",
+                        "system", "exec", "eval"):
+                self.fail(f"migrate_store_sqlite reaches {name}(), which is "
+                          f"how an environment-named hook comes back")
 
 
 class IdempotentOnUnchangedSource(AnIsolatedStore):

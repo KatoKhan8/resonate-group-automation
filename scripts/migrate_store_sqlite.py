@@ -59,8 +59,15 @@ def _remove_database(path):
             pass
 
 
-def migrate(db_path):
-    """Run the migration. Returns (exit_code, message)."""
+def migrate(db_path, _after_insert=None):
+    """Run the migration. Returns (exit_code, message).
+
+    `_after_insert` is a test seam and nothing else: a callable invoked with
+    `(conn, db_path)` after the rows are inserted and BEFORE `_verify` runs, so
+    a test can corrupt the database in the one window the verifier exists to
+    police. It is a parameter rather than an environment variable so it cannot
+    be reached from outside this process. Nothing in production passes it.
+    """
     db_path = os.path.abspath(db_path)
 
     store.refuse_production_write(db_path)
@@ -120,10 +127,23 @@ def migrate(db_path):
                     "VALUES ('schema_version', ?)",
                     (sqlitestore.SCHEMA_VERSION,))
 
-            hook = os.environ.get("_MIGRATE_CORRUPT_HOOK")
-            if hook:
-                import subprocess
-                subprocess.run([sys.executable, hook, db_path], check=True)
+            # A SEAM, NOT AN ENVIRONMENT HOOK. This was
+            # `_MIGRATE_CORRUPT_HOOK`: an arbitrary file named by an
+            # environment variable, run as a subprocess with `check=True`,
+            # unguarded, on the path that migrates the only file holding real
+            # client state. The test needs the database corrupted between
+            # insert and verify; it does not need this script to be able to
+            # execute anything the environment points it at.
+            #
+            # A parameter cannot be reached from outside the process at all,
+            # which is the property that matters. It follows
+            # `sqlitestore.write_changed`'s `_fail_after`, and it is why
+            # `store.save`'s `allow_history_loss` is a keyword argument that
+            # `test_invariants` forbids `src/` from passing rather than a flag
+            # in the environment: an escape hatch nobody can reach for in
+            # production is a different thing from a guard with a hole in it.
+            if _after_insert is not None:
+                _after_insert(conn, db_path)
 
             if not _verify(conn, source_records):
                 conn.close()
