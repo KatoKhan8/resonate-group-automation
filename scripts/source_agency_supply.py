@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+"""Source agency-shaped supply from ContactOut, sliced, counted before bought.
+
+    py scripts/source_agency_supply.py --plan     # slices and free counts only
+    py scripts/source_agency_supply.py --run      # walk, buy pages, write rows
+    py scripts/source_agency_supply.py --report   # what the last run did
+
+Operator decision, 2026-09-22. This replaces the AI Ark company-search route,
+which cannot slice: `companyIndustry` and `companyLocation` are accepted and
+INERT there - identical `totalElements` (72,657,969) and byte-identical row
+hashes across every filter combination. ContactOut honours industry, size and
+location, measured the same day by varying each one at a time.
+
+THE SHAPE, and every part of it is a rule rather than a preference:
+
+  COUNT BEFORE YOU BUY.  `people-count` is free and `company-search` bills one
+  credit per company RETURNED - a page of 25 costs 25. Every slice is counted
+  first and an empty slice is skipped without spending anything. This is the
+  progressive shape the routing policy already requires; here it is free to
+  obey, so there is no excuse not to.
+
+  THE BUCKET IS NOT THE HEADCOUNT.  `size` is LinkedIn's self-reported band
+  and `employees` is a different estimate - a row in the `51_200` bucket came
+  back reading `employees: 392`. `11_50` straddles the client's 20 floor, so
+  the floor is applied to `employees` on every row and never inferred from
+  the bucket.
+
+  DEDUPE AGAINST EVERYTHING WE ALREADY HOLD.  The estate, the candidate list
+  and the client suppression roster, plus the rows collected earlier in this
+  run. A domain we already have is not new supply, and buying it again is
+  paying twice for the same fact.
+
+  ONE WALKER, RESUMABLE.  A lock, and per-slice page cursors on disk. Two
+  walkers on one cursor is how the reply walk put 32,025 rows in a
+  16,650-row file.
+
+  CREDITS ARE REPORTED, NEVER GATED.  Per the 2026-09-21 amendment. The run
+  stops on the DOMAIN target or on slice exhaustion - never on spend - and
+  says what each slice cost.
+
+Output is `work/agency-sourcing.jsonl`, which S3 reads next. Nothing here
+writes to the store, enrolls anybody, or touches a provider that sends.
+"""
+import argparse
+import json
+import os
+import sys
+import time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, ROOT)
+
+from src import candidatelist, ingest, singlewalker, store       # noqa: E402
+from src.providers import contactout, load_env                   # noqa: E402
+
+OUT = os.path.join(ROOT, "work", "agency-sourcing.jsonl")
+STATE = os.path.join(ROOT, "work", "agency-sourcing.state.json")
+LOCK = os.path.join(ROOT, "work", "agency-sourcing.lock")
+
+#: The five agency shapes the operator named. Every label was confirmed live
+#: on 2026-09-22 to resolve to a real population - a mistyped industry returns
+#: zero, which is indistinguishable from an empty market and would have this
+#: script report a whole segment as exhausted when it was never asked for.
+INDUSTRIES = (
+    "Advertising Services",
+    "Design Services",
+    "Marketing Services",
+    "Public Relations and Communications Services",
+    "Software Development",
+)
+
+#: 20-50 / 51-200 / 201-500 / 501-1000, in ContactOut's bucket codes. There is
+#: no `20_50`: the provider's band is `11_50`, so it STRADDLES the 20 floor and
+#: the floor is enforced on `employees` per row instead.
+BUCKETS = ("11_50", "51_200", "201_500", "501_1000")
+
+#: The client's own include list, minus `Nordics` - which is a region in the
+#: ICP config, not a country ContactOut can filter on. Its four members are
+#: named individually and are already here.
+GEOS = (
+    "United Kingdom", "Ireland", "Netherlands", "Germany", "France",
+    "Sweden", "Norway", "Denmark", "Finland", "Belgium", "Austria",
+    "Switzerland", "Spain", "Italy", "Portugal", "Poland", "Australia",
+    "New Zealand", "United States", "Canada",
+)
+
+MIN_EMPLOYEES = 20
+TARGET_NEW_DOMAINS = 50000
+PAGE_SIZE = 25
+#: A slice the provider says is enormous is still walked, but the provider
+#: stops paging somewhere; this bounds a runaway rather than the spend.
+MAX_PAGES_PER_SLICE = 400
+
+
+def slice_key(industry, bucket, geo):
+    return f"{industry}|{bucket}|{geo}"
+
+
+def slices():
+    for industry in INDUSTRIES:
+        for bucket in BUCKETS:
+            for geo in GEOS:
+                yield industry, bucket, geo
+
+
+def load_state():
+    if os.path.exists(STATE):
+        with open(STATE, encoding="utf-8") as handle:
+            return json.load(handle)
+    return {"slices": {}, "new_domains": 0, "credits": 0,
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+
+def save_state(state):
+    tmp = f"{STATE}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as handle:
+        json.dump(state, handle, indent=1)
+    os.replace(tmp, STATE)
+
+
+def already_held():
+    """Every domain that is not new supply.
+
+    THREE SOURCES, AND MISSING ONE IS A DOUBLE-BUY. The estate's own records,
+    the candidate list from earlier sourcing, and the client's suppression
+    roster - a suppressed domain is not merely uninteresting, it is one we
+    have been told not to contact, and sourcing it again would walk it back
+    into the funnel from the top.
+    """
+    held = set()
+    try:
+        for rec in store.load():
+            domain = str(rec.get("domain") or "").strip().lower()
+            if domain:
+                held.add(domain)
+    except Exception as exc:                      # noqa: BLE001
+        print(f"  WARNING: store unreadable ({exc}); dedupe is weaker",
+              flush=True)
+    held |= candidatelist.domains_already_known()
+    try:
+        held |= {str(d).strip().lower() for d in ingest.load_suppress()}
+    except Exception as exc:                      # noqa: BLE001
+        print(f"  WARNING: suppression unreadable ({exc}); REFUSING to run - "
+              "a run that cannot read suppression can source a domain the "
+              "client told us to leave alone", flush=True)
+        raise
+    return {d for d in held if d}
+
+
+def collected_domains():
+    """Domains this run has already written, so a resume does not duplicate."""
+    out = set()
+    if not os.path.exists(OUT):
+        return out
+    with open(OUT, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.add(json.loads(line)["domain"])
+            except (ValueError, KeyError):
+                continue
+    return out
+
+
+def count_slice(industry, bucket, geo):
+    """Free probe. `location`, never `current_work_location`.
+
+    BUILD-SPEC section 9 trap 7: the latter returned 86 where the former
+    returned 230,222 for the same query, and the adapter refuses it outright.
+    """
+    result = contactout.people_count(location=geo, industry=[industry],
+                                     company_size=[bucket])
+    return int(result.get("profiles") or 0)
+
+
+def plan():
+    load_env()
+    total = 0
+    rows = []
+    for industry, bucket, geo in slices():
+        n = count_slice(industry, bucket, geo)
+        total += n
+        rows.append((n, industry, bucket, geo))
+        print(f"  {n:>9,}  {industry} | {bucket} | {geo}", flush=True)
+    empty = sum(1 for n, *_ in rows if n == 0)
+    print(f"\n  {len(rows)} slices, {empty} empty and skipped, "
+          f"{total:,} people behind the non-empty ones")
+    return rows
+
+
+def run():
+    load_env()
+    state = load_state()
+    held = already_held()
+    seen = collected_domains()
+    print(f"  {len(held):,} domains already held; {len(seen):,} already "
+          f"collected by this run", flush=True)
+
+    handle = open(OUT, "a", encoding="utf-8", newline="\n")
+    try:
+        for industry, bucket, geo in slices():
+            key = slice_key(industry, bucket, geo)
+            record = state["slices"].setdefault(
+                key, {"count": None, "page": 1, "done": False,
+                      "credits": 0, "new": 0})
+            if record["done"]:
+                continue
+            if state["new_domains"] >= TARGET_NEW_DOMAINS:
+                print(f"  TARGET REACHED: {state['new_domains']:,} new "
+                      "domains. Stopping; the rest is resumable.", flush=True)
+                break
+
+            if record["count"] is None:
+                record["count"] = count_slice(industry, bucket, geo)
+                save_state(state)
+            if record["count"] == 0:
+                record["done"] = True
+                save_state(state)
+                continue
+
+            while record["page"] <= MAX_PAGES_PER_SLICE:
+                if state["new_domains"] >= TARGET_NEW_DOMAINS:
+                    break
+                try:
+                    page = contactout.company_search(
+                        industry=industry, size=bucket, location=geo,
+                        page=record["page"])
+                except Exception as exc:          # noqa: BLE001
+                    # A provider failure ends THIS slice, never the run. The
+                    # cursor stays where it is so a resume retries the page.
+                    print(f"    {key} page {record['page']}: {exc}",
+                          flush=True)
+                    break
+                companies = page["companies"]
+                record["credits"] += len(companies)
+                state["credits"] += len(companies)
+                if not companies:
+                    record["done"] = True
+                    break
+                for row in companies:
+                    domain = row["domain"]
+                    if domain in held or domain in seen:
+                        continue
+                    employees = row.get("employees")
+                    if not isinstance(employees, int) or employees < MIN_EMPLOYEES:
+                        # The 20 floor, on `employees` and never on the band.
+                        continue
+                    seen.add(domain)
+                    row["_slice"] = key
+                    row["_sourced_at"] = time.strftime(
+                        "%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                    handle.write(json.dumps(row) + "\n")
+                    record["new"] += 1
+                    state["new_domains"] += 1
+                handle.flush()
+                if record["page"] * PAGE_SIZE >= (page["total"] or 0):
+                    record["done"] = True
+                    break
+                record["page"] += 1
+                save_state(state)
+            save_state(state)
+            if record["new"]:
+                print(f"    {key}: +{record['new']} new, "
+                      f"{record['credits']} credits, total "
+                      f"{state['new_domains']:,}", flush=True)
+    finally:
+        handle.close()
+        save_state(state)
+    report(state)
+    return 0
+
+
+def report(state=None):
+    state = state or load_state()
+    done = sum(1 for s in state["slices"].values() if s["done"])
+    empty = sum(1 for s in state["slices"].values() if s.get("count") == 0)
+    print(f"\n  new domains  {state['new_domains']:,}")
+    print(f"  credits      {state['credits']:,}  (reported, never gated)")
+    print(f"  slices       {done} done of {len(state['slices'])} touched, "
+          f"{empty} empty")
+    top = sorted(state["slices"].items(), key=lambda kv: -kv[1]["new"])[:12]
+    print("\n  best slices:")
+    for key, s in top:
+        if s["new"]:
+            print(f"    {s['new']:>6} new  {s['credits']:>6} cr  {key}")
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--plan", action="store_true")
+    parser.add_argument("--run", action="store_true")
+    parser.add_argument("--report", action="store_true")
+    args = parser.parse_args(argv)
+    if args.report:
+        return report()
+    if args.plan:
+        plan()
+        return 0
+    if not args.run:
+        parser.error("one of --plan, --run or --report")
+    with singlewalker.held(LOCK):
+        return run()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

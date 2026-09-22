@@ -75,6 +75,10 @@ ROUTES = {
     # did - "The route v1/email-verifier/verify could not be found".
     "email-verifier": ("GET", "/email/verify"),
     "company-information-from-domain": ("POST", "/domain/enrich"),
+    # Added 2026-09-22 for agency sourcing. BILLED: one search credit per
+    # COMPANY RETURNED, so a page of 25 costs 25. Every caller counts first
+    # with the free `people-count` and only then decides to buy a page.
+    "company-search": ("POST", "/company/search"),
 }
 
 
@@ -248,6 +252,54 @@ def people_count(job_title=None, location=None, domain=None, **extra):
         "profiles": first(data, "total_results", "profiles", "total", "count"),
         "mobiles": first(data, "estimated_phones", "mobiles", "mobile_phones"),
     }
+
+
+#: Fields kept off a sourced company row. The rest is noise for the ICP
+#: verdict and would bloat `work/` by an order of magnitude.
+COMPANY_FIELDS = ("domain", "name", "employees", "size", "industry",
+                  "country", "headquarter", "revenue", "specialties",
+                  "overview", "url", "founded_at", "type")
+
+
+def company_search(industry=None, size=None, location=None, page=1,
+                   hq_only=True):
+    """Companies matching the filters. **BILLED PER COMPANY RETURNED.**
+
+    Measured 2026-09-22 and this is why the sourcing route is ContactOut
+    rather than AI Ark: industry, size and location are all HONOURED here.
+    Varying one at a time moved the count every time, and a page asked for
+    UK / Advertising Services / 51-200 came back with all twenty-five rows on
+    that industry, that bucket and a GB headquarters. AI Ark's company
+    filters are accepted and INERT - identical `totalElements` and
+    byte-identical row hashes across every filter combination.
+
+    **`size` IS A SELF-REPORTED BAND AND `employees` IS A DIFFERENT NUMBER.**
+    A row in the `51_200` bucket came back reading `employees: 392`. The
+    bucket narrows the page; it does not establish headcount. Any floor or
+    ceiling has to be applied to `employees`, which is what the caller does.
+
+    Returns `{"companies": [...], "total": n, "page": p, "page_size": k}` so a
+    caller can walk to exhaustion without guessing when it has finished.
+    """
+    params = {"industry": listed(industry), "size": listed(size),
+              "location": listed(location), "page": int(page)}
+    if hq_only:
+        params["hq_only"] = True
+    data = call("company-search", params)
+    meta = data.get("metadata") if isinstance(data, dict) else None
+    meta = meta if isinstance(meta, dict) else {}
+    rows = []
+    for raw in (data.get("companies") or []):
+        if not isinstance(raw, dict):
+            continue
+        row = {k: raw.get(k) for k in COMPANY_FIELDS}
+        if row.get("domain"):
+            row["domain"] = str(row["domain"]).strip().lower()
+            rows.append(row)
+    return {"companies": rows,
+            "total": first(meta, "total_results", "total") or 0,
+            "page": meta.get("page") or int(page),
+            "page_size": meta.get("page_size") or len(rows)}
 
 
 def _reject_work_location(params):
