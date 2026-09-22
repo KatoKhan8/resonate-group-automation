@@ -266,11 +266,29 @@ def sender_roster(scope, argument=None):
             if a.get("account_id") in channels.get("email", ())]
         linkedin = [a for a in senderidentity.linkedin_accounts(
             slug, rows=rows, active_only=True)
-            if a.get("account_id") in channels.get("linkedin", ())]
+            if _same_seat(a, channels.get("linkedin", ()))]
         if not email and not linkedin:
             # Authorized, but every account of theirs is inactive. Absent
             # rather than listed as zero: a row of zeroes is still a name,
             # and this person is not currently part of the sending estate.
+            continue
+        if scope.is_client and not email:
+            # A LINKEDIN SEAT DOES NOT ESTABLISH WHOSE PERSON THIS IS.
+            #
+            # Resolving the `hr-`/`li-` schemes made 32 seats resolve, and
+            # the roster they resolve to mixes two organisations: alongside
+            # the client's own staff it carries Resonate's - the register
+            # already records "we own 4 of 86" seats in this estate. Nothing
+            # in the data says which seat belongs to whom.
+            #
+            # The operator's rule is that a client channel never names
+            # "Resonate's own accounts". The eight EMAIL senders are known
+            # to be the client's: they are the attested mailbox estate and
+            # they match the humans in the handoff. A seat-only person is
+            # not established either way, so they are counted in the
+            # workspace total below and not named. Internal scope sees
+            # everything.
+            seats += len(linkedin)
             continue
         mailboxes += len(email)
         seats += len(linkedin)
@@ -327,6 +345,14 @@ def sender_roster(scope, argument=None):
     # Not joined by stripping the prefix. That would be this module
     # inventing an identity mapping between two id spaces, which is exactly
     # what an attestation exists to prevent somebody doing.
+    if scope.is_client:
+        out_names = {row["name"] for row in out}
+        answer["note"] = (
+            "these are this workspace's own authorized email senders. "
+            "LinkedIn seats are given as a workspace total: the seat "
+            "roster does not record which organisation each seat belongs "
+            "to, so seats are not attributed to named people here.")
+        answer["named_people"] = len(out_names)
     unresolved = len([1 for channels in owned.values()
                       for account in channels.get("linkedin", ())]) - seats
     if unresolved > 0:
@@ -336,6 +362,252 @@ def sender_roster(scope, argument=None):
             "match a seat on the roster, so no seat count is claimed. This "
             "is not a statement that there are none.")
     return answer
+
+
+def sending_domains(scope, argument=None):
+    """Which DOMAINS this workspace's mail goes out from, grouped by sender.
+
+    OPERATOR, 2026-09-22, from a real question: a Productive person asked
+    Jelena and Tina for "popis domena s kojih šaljete mailove u email
+    kampanjama". What they were sent was a 194KB CSV of every sender, and
+    the next message in the thread was "dontgoproductive.com, kakva je ovo
+    domena?" - a question caused by answering with addresses when the
+    question was about domains.
+
+    DOMAINS ONLY. The mailbox address is never in the answer, in any scope.
+    `email_address` is read to derive the domain and is dropped; the queue
+    row's `sender_email` is read the same way. A client asked which domains
+    we send from, and the addresses are neither what they asked for nor
+    theirs to hold in a Slack thread.
+
+    Attested mailboxes only, on the same rule as `sender_roster`: a domain
+    reaches this list because an authorized person's mailbox sits on it.
+    """
+    slug = _workspace_for(scope, argument)
+    try:
+        from . import senderidentity
+        rows = senderidentity.load()
+    except Exception as exc:                                    # noqa: BLE001
+        return {"read_at": _now(), "workspace": slug,
+                "_error": "sender roster unreadable: %s" % type(exc).__name__}
+
+    owned = {}
+    for attestation in rows:
+        if (attestation.get("kind") != "ownership_attestation"
+                or attestation.get("workspace") != slug
+                or attestation.get("channel") != "email"):
+            continue
+        owned.setdefault(attestation.get("sender_id"), set()).add(
+            attestation.get("account_id"))
+    if not owned:
+        return {"read_at": _now(), "workspace": slug, "senders": [],
+                "note": "no authorized email sender is recorded for this "
+                        "workspace"}
+
+    by_id = {p.get("sender_id"): p
+             for p in senderidentity.senders(slug, rows=rows)}
+    accounts = {a.get("account_id"): a
+                for a in senderidentity.email_accounts(slug, rows=rows)}
+    recent, unreadable = _recent_send_domains(slug)
+
+    senders, every_domain, mailboxes = [], set(), 0
+    for sender_id, account_ids in sorted(owned.items()):
+        person = by_id.get(sender_id) or {}
+        grouped = {}
+        for account_id in account_ids:
+            account = accounts.get(account_id)
+            if not account:
+                continue
+            domain = str(account.get("domain") or "").lower().strip()
+            if not domain:
+                continue
+            entry = grouped.setdefault(domain, {"domain": domain,
+                                                "mailboxes": 0})
+            entry["mailboxes"] += 1
+            if scope.is_internal:
+                # Health is Resonate's operational reading of the estate.
+                # A client is told which domains send for them and whether
+                # they are sending; how healthy we judge a mailbox is our
+                # own assessment of our own infrastructure.
+                states = entry.setdefault("health", {})
+                state = str(account.get("health")
+                            or account.get("provider_state") or "unknown")
+                states[state] = states.get(state, 0) + 1
+        if not grouped:
+            continue
+        for domain, entry in grouped.items():
+            entry["sent_last_7_days"] = (domain in recent if recent is not None
+                                         else None)
+            every_domain.add(domain)
+            mailboxes += entry["mailboxes"]
+        senders.append({"sender": person.get("display_name") or sender_id,
+                        "domains": sorted(grouped.values(),
+                                          key=lambda d: d["domain"])})
+
+    out = {"read_at": _now(), "workspace": slug,
+           "domains_total": len(every_domain),
+           "mailboxes_total": mailboxes,
+           "senders": senders,
+           "note": "domains only. The mailbox addresses behind them are not "
+                   "part of this answer."}
+    if unreadable:
+        out["campaigns_unreadable"] = unreadable
+        out["recency_note"] = (
+            "%d campaign queue(s) could not be read, so "
+            "'sent in the last 7 days' is a floor rather than the whole "
+            "picture" % unreadable)
+    if recent is None:
+        out["recency_note"] = ("no campaign queue could be read, so no "
+                               "claim is made about which domains sent "
+                               "recently")
+    out["listing"] = render_domain_listing(out)
+    out["listing_rows"] = len(out["listing"].splitlines())
+    return out
+
+
+def _recent_send_domains(slug):
+    """`(domains that sent inside the window, campaigns that refused)`.
+
+    `None` for the set rather than an empty one when nothing could be read.
+    A queue that refused and a week with no sends are different answers, and
+    returning "no domains sent" for both is how a silent outage gets
+    reported as a quiet week.
+    """
+    import datetime
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    ids = entry.get("provider_campaign_ids") or []
+    if not ids:
+        return None, 0
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - \
+        datetime.timedelta(seconds=WEEK_SECONDS)
+    found, unreadable, read_any = set(), 0, False
+    for campaign_id in ids[:12]:
+        try:
+            from .providers import bison
+            queue = bison.scheduled_emails(campaign_id) or []
+        except Exception:                                       # noqa: BLE001
+            unreadable += 1
+            continue
+        read_any = True
+        for row in queue:
+            stamp = row.get("sent_at")
+            address = str(row.get("sender_email") or "")
+            if not stamp or "@" not in address:
+                continue
+            try:
+                when = datetime.datetime.fromisoformat(
+                    str(stamp).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=datetime.timezone.utc)
+            if when >= cutoff:
+                # The DOMAIN, never the address. This is the one place a
+                # sending address is in memory at all, and it leaves as its
+                # domain or not at all.
+                found.add(address.rsplit("@", 1)[-1].lower())
+    return (found if read_any else None), unreadable
+
+
+#: Above this many lines the listing is a block of its own rather than
+#: prose. The operator: "if the list exceeds ~40 lines".
+LISTING_IS_LONG = 40
+
+
+def render_domain_listing(answer, code=None):
+    """The domains, one per line, grouped by sender. Built in CODE.
+
+    NOT LEFT TO THE MODEL. Sixty-nine domains retyped by a language model
+    is sixty-nine chances to drop a hyphen, and the reader cannot tell a
+    typo from a domain they have not seen before - which is exactly the
+    confusion that produced "dontgoproductive.com, kakva je ovo domena?".
+    The model writes the sentence around this block; the block itself is
+    assembled from the readback and appended verbatim.
+
+    IT CARRIES ITS OWN SUMMARY LINE, and the line says DISTINCT. A domain
+    can sit under more than one sender - `dontgoproductive.com` is under
+    two - so the rows outnumber the domains, and a reader who counts rows
+    and compares them to "69 domains" finds a discrepancy that is not one.
+
+    And it is localised, because it is appended to an answer that may be in
+    Croatian and a block of English inside it reads as a machine bolted on
+    to a person.
+    """
+    words = LISTING_WORDS.get(code or "en") or LISTING_WORDS["en"]
+    lines = [words["summary"] % (answer.get("domains_total") or 0,
+                                 answer.get("mailboxes_total") or 0),
+             words["repeat_note"], ""]
+    for sender in answer.get("senders") or []:
+        lines.append("%s:" % sender.get("sender"))
+        for entry in sender.get("domains") or []:
+            mark = ""
+            if entry.get("sent_last_7_days") is True:
+                mark = "  ·  %s" % words["sent"]
+            elif entry.get("sent_last_7_days") is False:
+                mark = "  ·  %s" % words["quiet"]
+            lines.append("  %s  (%d)%s"
+                         % (entry["domain"], entry["mailboxes"], mark))
+    return chr(10).join(lines)
+
+
+#: The listing's own words, per language. Deliberately few: this block is a
+#: list, and the sentence that frames it is the model's job.
+LISTING_WORDS = {
+    "en": {"summary": "%d distinct sending domains across %d mailboxes.",
+           "repeat_note": "A domain can appear under more than one sender.",
+           "sent": "sent in the last 7 days",
+           "quiet": "no sends in the last 7 days"},
+    "hr": {"summary": "%d različitih domena za slanje, "
+                      "ukupno %d mailboxova.",
+           "repeat_note": "Ista domena može biti kod više "
+                          "pošiljatelja.",
+           "sent": "slano u zadnjih 7 dana",
+           "quiet": "bez slanja u zadnjih 7 dana"},
+}
+
+
+def listing_is_long(answer):
+    listing = (answer or {}).get("listing") or ""
+    return len(listing.splitlines()) > LISTING_IS_LONG
+
+
+def _bare_seat_id(value):
+    """The provider's own seat id, with whichever prefix stripped.
+
+    TWO ID SCHEMES, NEITHER OF THEM `senderownership`'s. That module stores
+    whatever `account_id` its caller hands it and owns no scheme at all.
+    The roster writes `li-116968` (`senderinventory`, in code); the LinkedIn
+    attestations carry `hr-116968`, written ad hoc - nothing in the tree
+    produces that prefix. The numbers are identical and the overlap on the
+    full strings is zero, so every LinkedIn attestation resolved to nothing
+    and no seat was provably authorized.
+
+    This is NOT a mapping invented here. `scripts/batch_linkedin_push.py`
+    already normalises the same way - `str(account_id).replace("hr-", "")`
+    - and pushes live campaigns on the result, so the bare provider id is
+    already the join the production session relies on. The account row
+    carries it outright as `provider_account_id`, which makes this an exact
+    match on a field both sides hold rather than a guess about prefixes.
+
+    Reconciling the two schemes is still the production session's call and
+    is filed as a merge-request note.
+    """
+    text = str(value or "").strip()
+    for prefix in ("li-", "hr-"):
+        if text.startswith(prefix):
+            return text[len(prefix):]
+    return text
+
+
+def _same_seat(account, attested_ids):
+    """Is this seat one of the attested ones, under either scheme?"""
+    if account.get("account_id") in attested_ids:
+        return True
+    bare = str(account.get("provider_account_id") or "").strip() \
+        or _bare_seat_id(account.get("account_id"))
+    if not bare:
+        return False
+    return bare in {_bare_seat_id(i) for i in attested_ids}
 
 
 def _campaigns_by_sending_account(slug):
@@ -725,6 +997,11 @@ REGISTRY = {
     "sender_summary": (
         sender_summary,
         "how many sending accounts are working this client's campaigns",
+        _INTERNAL_CLIENT, None),
+    "sending_domains": (
+        sending_domains,
+        "which domains this workspace's mail is sent from, grouped by "
+        "sender, with mailboxes per domain and whether it sent this week",
         _INTERNAL_CLIENT, None),
     "sender_roster": (
         sender_roster,

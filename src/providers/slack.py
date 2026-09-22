@@ -357,6 +357,39 @@ def render(payload):
     return "\n".join(line for line in lines if line)
 
 
+CONVERSATIONS_REPLIES = "/conversations.replies"
+
+
+def thread_parent(channel, thread_ts):
+    """The first message of a thread, as `{user, text, ts}`, or None.
+
+    A READ, and the only one this module has. It exists for one case the
+    operator named: a client asks a question addressed to two Resonate
+    people, nobody mentions the agent, and later a Resonate person replies
+    "@Resonate OS answer this". The question the agent has to answer is the
+    PARENT, which it never saw - it is not mentioned in it and so was never
+    delivered one.
+
+    Reading the parent rather than asking the person to paste it again is
+    the difference between a relay and a chore. Needs `channels:history`
+    (public) or `groups:history` (private); without the scope Slack answers
+    `missing_scope` and this returns None, which the caller reports rather
+    than papering over.
+    """
+    status, data = request(
+        "GET", "%s%s?channel=%s&ts=%s&limit=1"
+        % (BASE, CONVERSATIONS_REPLIES, channel, thread_ts),
+        {"Authorization": "Bearer %s" % key(KEY_VAR)}, None)
+    if not ok(status) or not isinstance(data, dict) or not data.get("ok"):
+        return None
+    messages = data.get("messages") or []
+    if not messages:
+        return None
+    first = messages[0]
+    return {"user": first.get("user"), "text": first.get("text") or "",
+            "ts": first.get("ts")}
+
+
 def post(payload, config=None):
     """Send one message, or refuse. Never raises a secret.
 
