@@ -142,6 +142,7 @@ def _write_state(mon, state_dir, pid=None, exit_code=None,
                  restart_count=None):
     """Record a monitor's current state. Beside the queue, not under work/."""
     directory = state_dir or _state_dir()
+    store.refuse_production_write(directory)
     os.makedirs(directory, exist_ok=True)
     path = os.path.join(directory, "%s.json" % mon["name"])
     existing = {}
