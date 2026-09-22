@@ -24,6 +24,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from src import slackscope                                       # noqa: E402
+from tests.slackbase import IsolatedState                        # noqa: E402
 from src import slackagenttools as tools                         # noqa: E402
 
 ALPHA_CHANNEL = "C_ALPHA"
@@ -66,10 +67,17 @@ PACK = {
 }
 
 
-class ScopeEnvironment(unittest.TestCase):
-    """Every test here runs against a throwaway workspace store."""
+class ScopeEnvironment(IsolatedState, unittest.TestCase):
+    """Every test here runs against a throwaway workspace store.
+
+    And a throwaway STATE directory, which is not the same thing. A test
+    that drives a whole turn reads the knowledge pack, and a stale pack is
+    rebuilt and written - so without `isolate()` the production-write
+    barrier refuses, correctly, and the test errors.
+    """
 
     def setUp(self):
+        self.isolate()
         self.tmp = tempfile.mkdtemp(prefix="rga-scope-")
         self._prev = {k: os.environ.get(k) for k in
                       ("WORKSPACES", slackscope.INTERNAL_CHANNELS_VAR,
@@ -93,6 +101,7 @@ class ScopeEnvironment(unittest.TestCase):
             else:
                 os.environ[key] = value
         shutil.rmtree(self.tmp, ignore_errors=True)
+        self.restore()
 
     def alpha(self):
         return slackscope.resolve(channel=ALPHA_CHANNEL, rows=ROWS)
