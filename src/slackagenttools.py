@@ -90,6 +90,142 @@ def cadence_detail(scope, argument=None):
     return dict(cadence, workspace=slug, read_at=_now())
 
 
+#: How many distinct approved messages one step may show before the answer
+#: stops being copy and starts being a dump. Personalised copy is distinct
+#: per recipient, so a step with three hundred recipients has three hundred
+#: texts; the answer shows a few and SAYS how many there are.
+COPY_PER_STEP_CAP = 5
+
+
+def campaign_copy(scope, argument=None):
+    """What a step actually SAYS. The approved set and nothing else.
+
+    `cadence_detail` gives the shape of the sequence, and the catalogue is
+    blunt about that: **nobody has ever asked for the shape.** 110
+    questions about cadence and copy, and what they ask is what the message
+    says.
+
+    OPERATOR, 2026-09-22: "a client may see the currently approved steps of
+    its own cadences in its own channel, email and LinkedIn, as sent. Not
+    variants under test, not history, not other clients. Internal channels
+    see everything including variants."
+
+    ## THE APPROVED SET IS THE FILTER, AND IT EXCLUDES HISTORY FOR FREE
+
+    `approval.is_approved` compares the approval's fingerprint against the
+    step's CURRENT words. So a revoked approval is gone, and an edited step
+    drops out by itself the moment a word changes - which is how "not
+    history" is enforced without anything having to know what history is.
+    There is no code path here that reads a step without asking that
+    question first: the walk is over approvals, not over steps.
+
+    ## VARIANTS UNDER TEST ARE WITHHELD FROM A CLIENT, AND COUNTED
+
+    A step carrying a `variant_id` came out of an experiment. A client is
+    not shown it and is not left to think they have seen everything: the
+    number withheld is in the answer. Internal scope sees the copy, the
+    variant id and the style.
+
+    Presence of a `variant_id` is the signal, which is conservative - it
+    withholds a variant that has already settled as well as one still
+    being trialled. If a settled winner should reach a client, the signal
+    to use is the variant's own status, and that is an operator's call
+    rather than a guess made here.
+
+    ## ONE THING THIS DOES SHOW, AND IT IS WORTH NAMING
+
+    The copy is merge-resolved, so a body can carry a recipient's first
+    name and company. "As sent" cannot be satisfied any other way, and a
+    client seeing their own outreach to their own prospect in their own
+    channel is the rule `lead_lookup` already runs on. Addresses are still
+    stripped by the answer guard.
+
+    `argument` narrows to one step key (`day1`, `li2`) or one channel
+    (`email`, `linkedin`).
+    """
+    try:
+        from . import approval
+    except Exception as exc:                                    # noqa: BLE001
+        return {"read_at": _now(),
+                "_error": "the approval module could not be read: %s"
+                          % type(exc).__name__}
+    slug = _workspace_for(scope, None)
+    wanted = str(argument or "").strip().lower()
+
+    steps, withheld, recipients = {}, 0, 0
+    for record in _records(slug):
+        for contact_key, slots in (record.get("cadence") or {}).items():
+            if not isinstance(slots, dict):
+                continue
+            for step_key, step in slots.items():
+                if not isinstance(step, dict):
+                    continue
+                # THE ONE QUESTION ASKED BEFORE ANYTHING IS READ.
+                if not approval.is_approved(record, contact_key, step_key):
+                    continue
+                channel = str(step.get("channel") or "email").lower()
+                if wanted and wanted not in (str(step_key).lower(), channel):
+                    continue
+                recipients += 1
+                if scope.is_client and step.get("variant_id"):
+                    withheld += 1
+                    continue
+                key = (channel, str(step_key))
+                bucket = steps.setdefault(key, {})
+                text = (str(step.get("subject") or ""),
+                        str(step.get("body") or step.get("note") or ""))
+                entry = bucket.setdefault(text, {
+                    "subject": step.get("subject"),
+                    "body": step.get("body") or step.get("note"),
+                    "approved_for_recipients": 0})
+                entry["approved_for_recipients"] += 1
+                if scope.is_internal and step.get("variant_id"):
+                    entry["variant_id"] = step["variant_id"]
+                    entry["variant_style"] = step.get("variant_style")
+                if scope.is_internal:
+                    stamp = (step.get("approval") or {})
+                    entry["approved_by"] = stamp.get("by")
+                    entry["approved_at"] = stamp.get("at")
+
+    out = {"read_at": _now(), "workspace": slug,
+           "steps": _copy_rows(steps),
+           "approved_messages_total": recipients - withheld,
+           "note": "every message here is currently approved, and the "
+                   "approval is bound to these exact words - a step whose "
+                   "wording changed is not in this answer at all. Copy is "
+                   "personalised, so one step can carry several texts."}
+    if withheld:
+        # NEVER A SILENT OMISSION. An answer that showed four of nine
+        # approved messages and said nothing would read as the whole set.
+        out["withheld_under_test"] = withheld
+        out["withheld_note"] = (
+            "%d approved message(s) for these steps are not shown here."
+            % withheld)
+    if not steps:
+        out["note"] = ("nothing is currently approved for %s%s. That is an "
+                       "empty approved set, not an empty cadence."
+                       % (slug, (" matching %r" % wanted) if wanted else ""))
+    return out
+
+
+def _copy_rows(steps):
+    """The grouped copy, capped per step, saying what the cap hid."""
+    rows = []
+    for (channel, step_key), texts in sorted(steps.items()):
+        ordered = sorted(texts.values(),
+                         key=lambda e: -e["approved_for_recipients"])
+        row = {"step": step_key, "channel": channel,
+               "distinct_messages": len(ordered),
+               "messages": ordered[:COPY_PER_STEP_CAP]}
+        if len(ordered) > COPY_PER_STEP_CAP:
+            row["not_shown"] = len(ordered) - COPY_PER_STEP_CAP
+            row["note"] = ("showing the %d most common of %d; the copy is "
+                           "personalised per recipient"
+                           % (COPY_PER_STEP_CAP, len(ordered)))
+        rows.append(row)
+    return rows
+
+
 def lead_lookup(scope, argument=None):
     """One contact's state. A CLIENT channel may name its own people.
 
@@ -1838,6 +1974,11 @@ REGISTRY = {
         cadence_detail,
         "the sequence day by day: email steps and the LinkedIn graph",
         _INTERNAL_CLIENT, "workspace slug (optional in a client channel)"),
+    "campaign_copy": (
+        campaign_copy,
+        "what a step actually says: the currently approved email and "
+        "LinkedIn messages for this workspace's own cadences",
+        _INTERNAL_CLIENT, "a step key like day1 or li2, or a channel"),
     "lead_lookup": (
         lead_lookup,
         "one contact's state by address",
