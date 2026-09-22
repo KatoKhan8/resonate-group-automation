@@ -818,7 +818,11 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
                     # The meetings ledger: the one thing a Slack message
                     # can make the agent write on purpose. Added
                     # 2026-09-22 with the ledger itself.
-                    "slackmeetings")
+                    "slackmeetings",
+                    # The supervisor's per-monitor state files. Written
+                    # beside the queue. Added 2026-09-22 with TASK-263,
+                    # caught by this checklist on the same pass.
+                    "supervisor")
 
     def _real(self, name):
         return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")
