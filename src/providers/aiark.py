@@ -125,8 +125,32 @@ def _lookup(catalogue, term, limit=None):
     if limit:
         args["limit"] = limit
     values = call_tool(tool, args)
-    names = (values.get("results") or values.get("items")
-             or values.get(catalogue) or values.get("data") or [])
+    # THE KEY IS THE PLURAL CATALOGUE NAME, and it was the one name this did
+    # not try. Verified live 2026-09-22: location_search answers
+    # `{"matched": 4, "locations": [...], "total": 5101}`, industry_search
+    # answers `industries`, technology_search answers `technologies`.
+    #
+    # Every lookup therefore returned `[]`, and because `_guard_enums` refuses
+    # a value no lookup returned, EVERY enum-filtered search was unreachable:
+    # `companyLocation` raised EnumNotLookedUp no matter how the caller
+    # prepared it. Nightly sourcing caught that as a ProviderError and broke
+    # out of its paging loop, so the whole stage read as "no rows found".
+    #
+    # An unrecognised shape now RAISES. A lookup that answers 200 with a body
+    # this does not understand is a contract change, not an empty catalogue,
+    # and returning `[]` for it is what made a broken enum path look like a
+    # provider with nothing to say.
+    plural = f"{catalogue}s" if not catalogue.endswith("y") else         f"{catalogue[:-1]}ies"
+    for name in (plural, catalogue, "results", "items", "data"):
+        names = values.get(name)
+        if isinstance(names, list):
+            break
+    else:
+        raise ProviderError(
+            f"aiark {tool}: no list under any of "
+            f"{plural!r}, {catalogue!r}, 'results', 'items', 'data' "
+            f"(got keys {sorted(values)!r}); refusing to read that as an "
+            f"empty catalogue")
     out = [v.get("name") if isinstance(v, dict) else v for v in names]
     out = [v for v in out if v]
     _validated[catalogue].update(out)
