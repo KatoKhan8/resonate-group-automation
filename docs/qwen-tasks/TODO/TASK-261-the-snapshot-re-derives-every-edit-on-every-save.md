@@ -62,12 +62,61 @@ problems, and the record was worked again.
    has no baseline, and inventing one would be a guess.
 4. `merge_onto` refusing a row with no key rather than skipping it.
 
-## Approaches, and the trap in the obvious one
+## THE ACCEPTANCE CRITERION IS THE BENCHMARK, NOT THE TEST SUITE
 
-**The obvious one is mutation tracking** — have `Snapshot` notice writes. It
-cannot, straightforwardly: callers mutate the record dicts in place
-(`store.get(rid, recs)["contacts"].append(...)`), and `Snapshot` is a `list`
-subclass that never sees those. A `__setitem__` hook catches almost nothing.
+Operator, Zvonimir, 2026-09-22:
+
+> *Acceptance is the benchmark itself: re-run 1k and 5k on sqlite after it
+> lands; the ratio must be near 5x, not 25x. Only then run 20k.*
+
+So:
+
+    1,000 sqlite   measured today   60.53 s
+    5,000 sqlite   measured today   1,522.58 s   = 25.2x
+
+    PASS  the 5k/1k ratio is near 5x
+    FAIL  it is still near 25x
+
+**A green test suite is necessary and not sufficient.** TASK-260 shipped 18
+green tests and did not move this ratio at all; that is exactly the outcome
+this criterion exists to prevent. Report the two seconds figures and the
+ratio, and if the ratio has not moved, say so plainly rather than reporting
+the tests.
+
+**Do not run 20,000 until the ratio passes.** At 25x it is ~6.8 hours for one
+pass and it proves nothing the ratio has not already settled. Once the ratio
+is near 5x, run it — that is the number the promotion decision actually wants.
+
+Run it detached, to a file, with no `timeout` wrapper. The 5,000 arm takes
+~25 minutes at today's shape.
+
+## The direction, and the trap in the obvious version of it
+
+Operator's direction: **track dirty ids at write time, or diff only the ids
+the caller touched.** Both are right and the second reduces to the first —
+"the ids the caller touched" is not knowable without either tracking them or
+re-deriving them, and re-deriving them is the O(N) this task exists to remove.
+
+So: **track them.** And here is the trap, which is why this is a task and not
+a patch.
+
+`Snapshot` is a `list` subclass, so a `__setitem__` hook on the LIST catches
+almost nothing — callers do not replace rows, they mutate them:
+
+    store.get(rid, recs)["state"] = "enriched"          # dict __setitem__
+    store.get(rid, recs)["contacts"].append(person)     # nested LIST mutation
+    rec["cadence"]["day1"]["body"] = "..."              # nested, two deep
+
+The first is catchable with a tracking dict. **The second and third are not,
+unless the nested containers are tracked too.** A design that catches only
+top-level assignment will pass a casual test, show a beautiful benchmark, and
+**silently stop detecting the edits that carry contacts, events and cadence** —
+which is to say, it will silently stop feeding the loss guards the records
+that matter most. That failure is invisible until somebody loses a reply.
+
+So a tracking container has to propagate: the dict marks its record dirty, and
+so does every list and dict reached through it. Requirement 2 below is written
+to catch exactly this and it is the requirement to write first.
 
 **A dirty-set the callers maintain** is a second representation of the same
 truth, which CLAUDE.md warns produces drift, and it puts correctness in the
