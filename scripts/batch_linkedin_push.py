@@ -128,6 +128,47 @@ def enrolled_leads():
     return out
 
 
+#: OPERATOR DECISION, 2026-09-22: "drop the three SEND_LEAD_TO_BISON nodes
+#: and set the sequences".
+HANDOFF_NODE = "SEND_LEAD_TO_BISON"
+
+
+def drop_bison_handoff(node):
+    """Replace every SEND_LEAD_TO_BISON with an END that keeps its wait.
+
+    THE CLONED GRAPH CARRIES THE CLIENT'S OWN CAMPAIGN IDS. Three
+    SEND_LEAD_TO_BISON nodes are pinned to EmailBison campaigns 417 and 418,
+    and HeyReach validates the reference on write: "EmailBison campaign with
+    ID 417 was not found". So the graph cannot be posted as read, whatever
+    anybody prefers.
+
+    The step exists to hand a LinkedIn non-responder to email. Under the
+    dual-channel decision every lead is ALREADY on the email side the day it
+    is enrolled, so for us the hand-off is either redundant or a second
+    enrolment of somebody already being written to. The operator chose to
+    drop it.
+
+    **DROPPED AS AN END THAT KEEPS THE NODE'S OWN DELAY**, not by splicing
+    the child in. Each hand-off waits three or five days before it fires, and
+    its child END waits zero; splicing would move a terminal three days
+    earlier and also break the validator's rule that a child of an action
+    node waits at least three hours. Keeping the wait means the cadence ends
+    exactly where the hand-off would have happened, which is the honest
+    translation of removing it.
+    """
+    if not isinstance(node, dict):
+        return node
+    if str(node.get("nodeType") or "") == HANDOFF_NODE:
+        return {"nodeType": "END",
+                "actionDelay": node.get("actionDelay", 0),
+                "actionDelayUnit": node.get("actionDelayUnit", "HOUR")}
+    out = {k: v for k, v in node.items()}
+    for key in ("conditionalNode", "unconditionalNode"):
+        if out.get(key) is not None:
+            out[key] = drop_bison_handoff(out[key])
+    return out
+
+
 def standard_graph():
     """The stored standard, made WRITABLE again.
 
@@ -142,7 +183,7 @@ def standard_graph():
     """
     with open(STANDARD, encoding="utf-8") as handle:
         graph = json.load(handle)["graph"]
-    return heyreach.sequence_for_write(graph)
+    return heyreach.sequence_for_write(drop_bison_handoff(graph))
 
 
 def seats_needed(leads, seats, per_seat_day):
