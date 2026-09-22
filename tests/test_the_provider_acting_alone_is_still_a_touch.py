@@ -27,7 +27,7 @@ from unittest import mock
 
 from src import account, eligibility, events, fatigue, leadobserve, store
 from src.providers import heyreach
-from tests.base import QueueTest
+from tests.base import QueueTest, write_as_another_process
 
 PROFILE = "https://www.linkedin.com/in/dana-oyelaran"
 PROVIDER_AT = "2026-09-11T09:15:00+00:00"
@@ -72,7 +72,7 @@ class ProviderTouchTest(QueueTest):
         is fixture construction, not a write the product performs, so it goes
         straight to the file.
         """
-        store._write(list(recs) or [self.record()])
+        write_as_another_process(list(recs) or [self.record()])
 
     def provider(self, *leads):
         return mock.patch.object(heyreach, "campaign_leads",

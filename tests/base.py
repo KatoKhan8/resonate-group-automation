@@ -156,8 +156,7 @@ class QueueTest(unittest.TestCase):
 
     def use_fixture(self, name):
         """Copy a fixture queue into this test's throwaway queue file."""
-        os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, name), self.queue)
+        install_fixture(name, self.queue)
         return store.load()
 
     def out_file(self, name):
@@ -324,6 +323,61 @@ class ProviderTest(unittest.TestCase):
         """
         from src.providers import deliverable
         return deliverable.configure(result_shape="confirmed")
+
+
+def write_as_another_process(recs):
+    """Persist records through the active backend without save()'s merge.
+
+    On jsonl, this is store._write. On sqlite, it's store._write_sqlite.
+    One definition, because two places that know how to write are two places
+    that can disagree, which is the whole hazard _current_records exists to close.
+
+    Used by tests that simulate a second writer or construct fixture state
+    directly. NOT for production writes - those go through save().
+    """
+    mode = store.backend()
+    if mode == "sqlite":
+        store._write_sqlite(recs)
+    else:
+        store._write(recs)
+
+
+def refuse_writes():
+    """Patch both backend writers to raise QueueLocked.
+
+    Returns a callable that restores the originals. The refusal tests need
+    this because patching store._write only fires on jsonl; under sqlite,
+    save() calls _write_sqlite instead. Patching both ensures the refusal
+    fires regardless of which backend is active.
+    """
+    originals = {}
+    def refuse(*a, **kw):
+        raise store.QueueLocked("another process has the queue")
+    for name in ("_write", "_write_sqlite"):
+        originals[name] = getattr(store, name)
+        setattr(store, name, refuse)
+    def restore():
+        for name, fn in originals.items():
+            setattr(store, name, fn)
+    return restore
+
+
+def install_fixture(name, queue_path=None):
+    """Install a JSONL fixture into the active backend.
+
+    Under jsonl, copies the file to queue_path (or the default queue path).
+    Under sqlite, reads the JSONL and writes it to the DB, because store.load()
+    reads from the DB, not the JSONL file.
+    """
+    src = os.path.join(FIXTURES, name)
+    mode = store.backend()
+    if mode == "sqlite":
+        recs = store.read_jsonl(src)
+        write_as_another_process(recs)
+    else:
+        target = queue_path or store.queue_path()
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        shutil.copyfile(src, target)
 
 
 def qualify_everything(status=None):
