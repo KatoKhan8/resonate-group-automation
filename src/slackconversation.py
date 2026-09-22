@@ -553,24 +553,78 @@ def unsupported_numbers(text, material):
     """
     said = knowledge.numeric_tokens(text)
     supported = knowledge.numeric_tokens(material)
+    plain, rates = _supported_values(material, supported)
+
     out = []
     for token in sorted(said):
         if token in supported:
             continue
-        # A RATE IS NEVER SMALL ENOUGH TO BE LANGUAGE. "2%" and "0.83%" are
-        # claims about the estate, and this project has a 2% hard stop - so
-        # a percentage or a decimal the material does not contain is never
-        # waved through, however small it looks.
-        if token.endswith("%") or "." in token:
+        value = _as_float(token)
+        # A FIELD NAMED `..._percent` LICENSES THE PERCENT SIGN.
+        #
+        # The material says `bounce_rate_percent: 1.05` and the model wrote
+        # "1.05%". The first version kept the sign as part of the token, so
+        # those did not match and a correct answer was discarded - live, in
+        # a client channel, where the model then pointed out that the
+        # figures WERE in the readback and it had not derived them. It was
+        # right. The protection that rule exists for survives: a bare count
+        # of 2 still does not license "2%", because only a value stored
+        # under a percent-named key is admitted as one.
+        if token.endswith("%"):
+            if value is not None and _close(value, rates):
+                continue
             out.append(token)
             continue
-        try:
-            if float(token) <= 24:
-                continue
-        except ValueError:
+        # A DECIMAL is still never waved through as language, but 2.0 and 2
+        # are the same number and the material writes whichever it likes.
+        if value is not None and _close(value, plain):
+            continue
+        if "." in token:
+            out.append(token)
+            continue
+        if value is not None and value <= 24:
+            continue
+        if value is None:
             continue
         out.append(token)
     return out
+
+
+#: A value under a key whose name says it is a percentage.
+_PERCENT_FIELD = re.compile(
+    r'"([A-Za-z_]*percent[A-Za-z_]*)"\s*:\s*(-?\d+(?:\.\d+)?)')
+
+
+def _supported_values(material, tokens):
+    """`(every number in the material, every one that is a percentage)`.
+
+    Numeric rather than textual, because "2" and "2.0" are one number and
+    the readback writes whichever the source had.
+    """
+    plain = set()
+    for token in tokens:
+        value = _as_float(token)
+        if value is not None:
+            plain.add(value)
+    rates = set()
+    for match in _PERCENT_FIELD.finditer(str(material or "")):
+        value = _as_float(match.group(2))
+        if value is not None:
+            rates.add(value)
+    return plain, rates
+
+
+def _as_float(token):
+    try:
+        return float(str(token).rstrip("%"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _close(value, known):
+    """Equal to within a rounding step. `0.83` and `0.8300000001` are one
+    number, and a readback that has been through JSON may carry either."""
+    return any(abs(value - other) < 0.005 for other in known)
 
 
 def guard(text, material, scope, allow_addresses=False):

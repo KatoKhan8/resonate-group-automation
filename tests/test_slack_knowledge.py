@@ -27,6 +27,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from src import slackknowledge as knowledge                      # noqa: E402
+from tests.slackbase import IsolatedState                        # noqa: E402
 
 
 class TheSourcesAreNamed(unittest.TestCase):
@@ -191,8 +192,14 @@ class TheCacheIsRebuiltWhenItIsStale(unittest.TestCase):
         self.assertIn("work", knowledge.cache_path())
 
 
-class ThePackCarriesNoAddress(unittest.TestCase):
+class ThePackCarriesNoAddress(IsolatedState, unittest.TestCase):
     """Counts and domains, the rule `notify._status_payload` enforces."""
+
+    def setUp(self):
+        self.isolate()
+
+    def tearDown(self):
+        self.restore()
 
     def test_no_section_of_the_pack_contains_an_email_address(self):
         from src import slackscope
@@ -204,7 +211,13 @@ class ThePackCarriesNoAddress(unittest.TestCase):
             "address. It carries counts and domains only.")
 
 
-class EveryNumberIsIndexed(unittest.TestCase):
+class EveryNumberIsIndexed(IsolatedState, unittest.TestCase):
+
+    def setUp(self):
+        self.isolate()
+
+    def tearDown(self):
+        self.restore()
 
     def test_the_pack_reports_its_own_numbers(self):
         data = knowledge.pack()

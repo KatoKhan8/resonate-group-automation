@@ -23,6 +23,7 @@ if ROOT not in sys.path:
 
 from src import llm, slackconversation as conversation           # noqa: E402
 from src import slackscope                                       # noqa: E402
+from tests.slackbase import IsolatedState                        # noqa: E402
 
 
 class ThreadMemory(unittest.TestCase):
@@ -179,7 +180,7 @@ class RefusalPhrasing(unittest.TestCase):
             self.assertTrue(conversation.wants_an_action(message), message)
 
 
-class ClarifyingQuestions(unittest.TestCase):
+class ClarifyingQuestions(IsolatedState, unittest.TestCase):
 
     class AsksToClarify:
         model = "clarifier"
@@ -188,6 +189,7 @@ class ClarifyingQuestions(unittest.TestCase):
             return '{"tools": [], "clarify": "Which campaign do you mean?"}'
 
     def setUp(self):
+        self.isolate()
         self._prev = os.environ.get(slackscope.INTERNAL_CHANNELS_VAR)
         os.environ[slackscope.INTERNAL_CHANNELS_VAR] = "C_INTERNAL"
 
@@ -196,6 +198,7 @@ class ClarifyingQuestions(unittest.TestCase):
             os.environ.pop(slackscope.INTERNAL_CHANNELS_VAR, None)
         else:
             os.environ[slackscope.INTERNAL_CHANNELS_VAR] = self._prev
+        self.restore()
 
     def test_a_clarifying_question_is_asked_and_nothing_is_read(self):
         result = conversation.respond("how is it going?",
@@ -206,9 +209,10 @@ class ClarifyingQuestions(unittest.TestCase):
         self.assertIn("Which campaign", result["reply"])
 
 
-class WhenThereIsNoModel(unittest.TestCase):
+class WhenThereIsNoModel(IsolatedState, unittest.TestCase):
 
     def setUp(self):
+        self.isolate()
         self._prev = os.environ.get(slackscope.INTERNAL_CHANNELS_VAR)
         os.environ[slackscope.INTERNAL_CHANNELS_VAR] = "C_INTERNAL"
 
@@ -217,6 +221,7 @@ class WhenThereIsNoModel(unittest.TestCase):
             os.environ.pop(slackscope.INTERNAL_CHANNELS_VAR, None)
         else:
             os.environ[slackscope.INTERNAL_CHANNELS_VAR] = self._prev
+        self.restore()
 
     def test_the_answer_is_deterministic_and_says_so(self):
         result = conversation.respond("when did this start?",
@@ -278,7 +283,7 @@ class WhenThereIsNoModel(unittest.TestCase):
         self.assertIn("2026-09-09", text)
 
 
-class AModelThatFailsDoesNotTakeTheAnswerWithIt(unittest.TestCase):
+class AModelThatFailsDoesNotTakeTheAnswerWithIt(IsolatedState, unittest.TestCase):
 
     class Broken:
         model = "broken"
@@ -287,6 +292,7 @@ class AModelThatFailsDoesNotTakeTheAnswerWithIt(unittest.TestCase):
             raise RuntimeError("endpoint exploded")
 
     def setUp(self):
+        self.isolate()
         self._prev = os.environ.get(slackscope.INTERNAL_CHANNELS_VAR)
         os.environ[slackscope.INTERNAL_CHANNELS_VAR] = "C_INTERNAL"
 
@@ -295,6 +301,7 @@ class AModelThatFailsDoesNotTakeTheAnswerWithIt(unittest.TestCase):
             os.environ.pop(slackscope.INTERNAL_CHANNELS_VAR, None)
         else:
             os.environ[slackscope.INTERNAL_CHANNELS_VAR] = self._prev
+        self.restore()
 
     def test_a_dead_model_still_produces_an_answer(self):
         result = conversation.respond("when did this start?",

@@ -25,6 +25,7 @@ if ROOT not in sys.path:
 from src import slackconversation as conversation                # noqa: E402
 from src import slackknowledge as knowledge                      # noqa: E402
 from src import slackscope                                       # noqa: E402
+from tests.slackbase import IsolatedState                        # noqa: E402
 
 MATERIAL = ("878 candidates against a 360 pacing cap. Campaign 489 has "
             "emails_sent 2 of 8 queue rows, read at 2026-09-21T13:34:48Z. "
@@ -94,7 +95,7 @@ class TheGuardCatchesAnInventedNumber(unittest.TestCase):
                 "sent on 2026-09-22 at 07:15", MATERIAL), [])
 
 
-class ALyingModelIsDiscarded(unittest.TestCase):
+class ALyingModelIsDiscarded(IsolatedState, unittest.TestCase):
     """The property end to end: a model that invents is not posted."""
 
     class Liar:
@@ -119,6 +120,7 @@ class ALyingModelIsDiscarded(unittest.TestCase):
             return "The project started on 2026-09-09 and is still running."
 
     def setUp(self):
+        self.isolate()
         self._prev = os.environ.get(slackscope.INTERNAL_CHANNELS_VAR)
         os.environ[slackscope.INTERNAL_CHANNELS_VAR] = "C_INTERNAL"
 
@@ -127,6 +129,7 @@ class ALyingModelIsDiscarded(unittest.TestCase):
             os.environ.pop(slackscope.INTERNAL_CHANNELS_VAR, None)
         else:
             os.environ[slackscope.INTERNAL_CHANNELS_VAR] = self._prev
+        self.restore()
 
     def test_the_invented_figure_is_never_posted(self):
         result = conversation.respond("how are we doing?",
@@ -145,7 +148,7 @@ class ALyingModelIsDiscarded(unittest.TestCase):
         self.assertIn("2026-09-09", result["reply"])
 
 
-class OneRetryForNumbersAndNoneForScope(unittest.TestCase):
+class OneRetryForNumbersAndNoneForScope(IsolatedState, unittest.TestCase):
     """A number is a wording fault. A scope violation is not.
 
     The first live guard trip in an internal channel reported "unsupported
@@ -187,6 +190,7 @@ class OneRetryForNumbersAndNoneForScope(unittest.TestCase):
             return "Qwen is working on it."
 
     def setUp(self):
+        self.isolate()
         self._prev = os.environ.get(slackscope.INTERNAL_CHANNELS_VAR)
         os.environ[slackscope.INTERNAL_CHANNELS_VAR] = "C_INTERNAL"
 
@@ -195,6 +199,7 @@ class OneRetryForNumbersAndNoneForScope(unittest.TestCase):
             os.environ.pop(slackscope.INTERNAL_CHANNELS_VAR, None)
         else:
             os.environ[slackscope.INTERNAL_CHANNELS_VAR] = self._prev
+        self.restore()
 
     def test_an_invented_number_is_retried_once_and_the_retry_is_posted(
             self):
