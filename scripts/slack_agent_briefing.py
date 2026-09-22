@@ -141,6 +141,9 @@ headings, no preamble:
   1. What happened. The most recent real state of the system.
   2. What is next.
   3. What needs the operator, naming the items rather than counting them.
+  4. Anything we PROMISED somebody and have not delivered, from the
+     `promises` readback. Only rows whose status is `open`. `undated` is
+     not late and is never reported as such.
 
 Rules:
   - NEVER state a number that is not in the material below.
@@ -162,6 +165,8 @@ def gather(scope=None):
         {"name": "next_actions"},
         {"name": "sends_today"},
         {"name": "batch_state"},
+        {"name": "meetings_booked", "argument": "week"},
+        {"name": "promises", "argument": "open"},
         {"name": "monitors"},
     ])
     pending = requests.pending()

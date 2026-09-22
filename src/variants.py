@@ -129,6 +129,59 @@ VARIANT_PAUSED = "paused"
 RETIRED = "retired"
 VARIANT_STATUSES = (ACTIVE, VARIANT_PAUSED, RETIRED)
 
+# ------------------------------------------- what a CLIENT may be shown
+#
+# OPERATOR, 2026-09-22: "Variants carry a status: testing / winner /
+# retired. Clients see winner as part of the cadence, never testing or
+# retired; internal sees all."
+#
+# A SECOND AXIS, NOT A RENAMING OF THE FIRST. `status` above decides
+# ALLOCATION - who gets which arm, and `even_allocation`, `experiment_of`,
+# `shifted_allocation` and `validate` all read it. Rewriting its vocabulary
+# would change which message real people receive, which is not what a
+# visibility decision should be able to do.
+#
+# So this is its own field. Allocation is unaffected by it and it is
+# unaffected by allocation: a variant can be `active` for sending and
+# `testing` for showing, which is exactly the normal state of affairs.
+#
+# MIGRATION. Every variant written before today carries no `client_status`
+# and therefore reads as TESTING, which is withheld from clients - the same
+# behaviour as before this field existed. Nothing needs backfilling and no
+# client answer changes until somebody promotes a variant on purpose.
+# Promoting one is a deliberate act and is meant to be.
+TESTING = "testing"
+VARIANT_WINNER = "winner"
+CLIENT_STATUSES = (TESTING, VARIANT_WINNER, RETIRED)
+
+
+def client_status(entry):
+    """`testing` | `winner` | `retired` for one variant. Never None.
+
+    Derived rather than required, so existing data is readable:
+
+        an explicit `client_status`   that, when it is a known one
+        `status` is `retired`         retired - a retired arm is retired
+                                      on both axes and saying otherwise
+                                      would be two truths about one thing
+        anything else                 testing
+
+    TESTING IS THE DEFAULT AND THE DEFAULT IS THE WITHHELD ONE. An unknown
+    or missing value must not be the one that reaches a client, because the
+    failure then is copy under test quoted to the customer as settled.
+    """
+    stated = str((entry or {}).get("client_status") or "").strip().lower()
+    if stated in CLIENT_STATUSES:
+        return stated
+    if str((entry or {}).get("status") or "").strip().lower() == RETIRED:
+        return RETIRED
+    return TESTING
+
+
+def client_may_see(entry):
+    """Only a winner. Written as its own function so the rule has one home."""
+    return client_status(entry) == VARIANT_WINNER
+
 # ------------------------------------------------------- what we optimise
 #
 # Business outcomes, in the order a person would defend them. Opens and
@@ -187,7 +240,8 @@ def settings(config=None):
 # ------------------------------------------------------------ the variant
 
 def variant(variant_id, style, *, subject=None, body=None, note=None,
-            status=ACTIVE, version=1, allocation=None):
+            status=ACTIVE, version=1, allocation=None,
+            client_status=TESTING):
     """One complete message. Not a subject *or* a body - both together.
 
     Complete variants rather than a factorial of parts: five subjects by
@@ -202,6 +256,9 @@ def variant(variant_id, style, *, subject=None, body=None, note=None,
         "body": body,
         "note": note,
         "status": status,
+        # The visibility axis. Defaults to the withheld value, so a variant
+        # written without thinking about clients is not shown to one.
+        "client_status": client_status,
         "version": int(version),
         "allocation": allocation,
     }
@@ -335,6 +392,11 @@ def apply_to_step(step, entry):
     out["variant_id"] = entry["variant_id"]
     out["variant_style"] = entry.get("style")
     out["variant_version"] = entry.get("version")
+    # CARRIED ONTO THE STEP so the one reader of a step - the Slack agent's
+    # `campaign_copy` among them - does not have to find the cadence node
+    # and re-derive it. Two readers of one fact drift, and CLAUDE.md says
+    # so in as many words.
+    out["variant_client_status"] = client_status(entry)
     return out
 
 
@@ -521,6 +583,16 @@ def validate(node):
             findings.append({"level": "block",
                              "why": f"{entry['variant_id']}: unknown status "
                                     f"{entry.get('status')!r}."})
+        stated = entry.get("client_status")
+        if stated is not None and stated not in CLIENT_STATUSES:
+            # BLOCK, NOT WARN. An unrecognised value reads as `testing` and
+            # is therefore withheld, which is safe - but a typo'd `winner`
+            # that silently means `testing` is a decision somebody made and
+            # the system quietly did not carry out.
+            findings.append({"level": "block",
+                             "why": (f"{entry['variant_id']}: unknown "
+                                     f"client_status {stated!r}. One of "
+                                     f"{CLIENT_STATUSES}.")})
         styles = STYLES_FOR.get(node["type"], {})
         if entry.get("style") not in styles:
             findings.append({
