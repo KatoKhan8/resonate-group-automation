@@ -1,11 +1,13 @@
 # Resonate Group Automation
-docs/PRODUCTION-HANDOFF-2026-09-21-NIGHT.md is the current state: read it
-first. Batches 1 and 2 are PUSHED - EmailBison campaigns 491-498 hold 151
-enrolled leads - and every one of those campaigns is PAUSED because
-`providerwrites.CONDITIONAL["bison.activate"]` names 487 and 489 only.
-Widening it is an operator decision its own docstring calls out; nothing
-sends until it happens. Capacity is 2,310 first steps a day since TASK-241
-merged. The evening handoff below is superseded but still true about 489.
+docs/PRODUCTION-HANDOFF-2026-09-22-MORNING.md is the current state: read it
+first. BOTH CHANNELS ARE SENDING. EmailBison 491-498 are ACTIVE with 151
+leads and 243 scheduled rows, first sends 2026-09-22 13:02-14:13Z; 33
+HeyReach campaigns are IN_PROGRESS with connection requests still at 0.
+Enrolled is not sent, and enrolled is not requested.
+
+THE SIZING RULE THAT COST A WRONG NUMBER ONCE: 2,310 a day is a CAP - 154
+attested mailboxes x 15 - and 1,470 is what the forward book says is actually
+free today. **Size batches against the forward book, not the mailbox count.**
 
 docs/PRODUCTION-HANDOFF-2026-09-21-EVENING.md was the previous state. THIS PROJECT SENDS EMAIL NOW - 489 sent two real emails on 2026-09-21,
 at 13:34:48Z and 16:48:18Z, with four independent witnesses on the first. The
