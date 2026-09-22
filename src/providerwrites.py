@@ -1115,6 +1115,31 @@ CONDITIONAL[LINKEDIN_CREATE_CAMPAIGN] = (
 _AUTHORIZED_EMAIL_CAMPAIGNS = (
     (487, "productive-email-control-v3"),
     (489, "productive-email-us-cohort-v1"),
+    # WIDENED 2026-09-22 by written operator authorization, recorded verbatim
+    # in docs/OPERATOR-AUTHORIZATION-2026-09-22-ACTIVATE-AND-NOTELESS.md:
+    # "activate 491-498 and allow the note-less connection request".
+    #
+    # These are the eight batch campaigns, one per attested human, holding
+    # 151 leads between them. Each is PINNED to the provider id its canonical
+    # row is already bound to, so the row and the grant must agree - an
+    # unpinned entry lets a re-bound row move the target, which is the defect
+    # reproduced against the v3 row on 2026-09-18.
+    #
+    # What reaching this line cost, so nobody reads it as a formality: two
+    # independent fresh verifications per lead under the CLIENT's policy, MX
+    # open, collision cleared against the client's own LIVE estate - which
+    # refused 101 contacts the local recency walk had cleared - copy rendered
+    # from 489's approved words and approved under the batch-1 grant, client
+    # approval via snapshot PRODUCTIVE-2026-09-07, and 154 attested mailboxes
+    # bound with five held out by the 2% bounce stop.
+    (491, "productive-email-batch1-kresimir"),
+    (492, "productive-email-batch1-bernarda"),
+    (493, "productive-email-batch1-ivan"),
+    (494, "productive-email-batch1-fran"),
+    (495, "productive-email-batch1-tomislav"),
+    (496, "productive-email-batch1-bojan"),
+    (497, "productive-email-batch1-jakov"),
+    (498, "productive-email-batch1-luka"),
 )
 
 

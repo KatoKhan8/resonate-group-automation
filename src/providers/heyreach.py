@@ -806,6 +806,62 @@ def _words_of(kind, entry):
     return [str(entry or "")]
 
 
+#: The node types where an empty payload really does reach a person as a
+#: blank. CONNECTION_REQUEST is deliberately NOT one of them - see
+#: `_check_optional_note`.
+WORDS_REQUIRED = ("MESSAGE", INMAIL_NODE)
+
+CONNECTION_REQUEST_NODE = "CONNECTION_REQUEST"
+
+
+def _has_words(payload):
+    entries = payload.get("messages")
+    entries = entries if isinstance(entries, list) else []
+    return any(str(entry or "").strip() for entry in entries)
+
+
+def _check_optional_note(where, payload):
+    """A connection request may carry no note. If it carries one, it is real.
+
+    OPERATOR DECISION, 2026-09-22: "allow the note-less connection request".
+
+    THE RULE THIS NARROWS WAS RIGHT ABOUT TWO NODES AND WRONG ABOUT A THIRD.
+    An empty MESSAGE or INMAIL reaches a person as a blank letter. An empty
+    CONNECTION_REQUEST reaches them as a connection request with no note -
+    which is what LinkedIn sends every time somebody clicks Connect without
+    writing anything, and what the best-performing campaign in this client's
+    estate does: 565765, 129 accepted of 951 requests, 13.6%.
+
+    Refusing it meant this system could not clone the graph the client
+    already runs, and the failure was not "your copy is missing" but "that
+    step sends a blank", which is a claim about the platform that is not
+    true.
+
+    EVERYTHING ELSE STILL APPLIES. A request that DOES carry a note must
+    carry a real one - a variant that is whitespace is still a blank note, a
+    non-string entry is still the wrong shape, and if any variant has words
+    then the fallback must too, because the fallback is what HeyReach sends
+    when a personalisation variable cannot be filled. What is permitted is
+    the absence of a note, not a half-written one.
+    """
+    entries = payload.get("messages")
+    entries = entries if isinstance(entries, list) else []
+    if not _has_words(payload):
+        for entry in entries:
+            if entry is not None and not isinstance(entry, str):
+                raise SequenceInvalid(
+                    f"{where}: a CONNECTION_REQUEST message entry is a "
+                    f"{type(entry).__name__}; a note is a string and an "
+                    f"absent note is an empty one")
+        fallback = payload.get("fallbackMessage")
+        if fallback is not None and not isinstance(fallback, str):
+            raise SequenceInvalid(
+                f"{where}: a CONNECTION_REQUEST fallbackMessage is a "
+                f"{type(fallback).__name__}; it is a string")
+        return
+    _check_words(where, CONNECTION_REQUEST_NODE, payload)
+
+
 def _check_words(where, kind, payload):
     """Refuse a step that would send a blank, or the wrong payload shape."""
     entries = payload.get("messages")
@@ -972,9 +1028,13 @@ def validate_sequence_for_write(sequence):
                 raise SequenceInvalid(
                     f"{where}: a {kind} requires a payload and carries "
                     f"{type(payload).__name__}")
-            if kind in ("MESSAGE", "INMAIL", "CONNECTION_REQUEST"):
+            if kind in WORDS_REQUIRED:
                 _check_words(where, kind, payload)
                 messages += 1
+            elif kind == CONNECTION_REQUEST_NODE:
+                _check_optional_note(where, payload)
+                if _has_words(payload):
+                    messages += 1
         elif payload is not None:
             raise SequenceInvalid(
                 f"{where}: {kind} takes no payload and one was supplied")

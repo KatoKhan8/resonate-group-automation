@@ -129,8 +129,20 @@ def enrolled_leads():
 
 
 def standard_graph():
+    """The stored standard, made WRITABLE again.
+
+    A graph read from HeyReach is not a graph you can post back. The provider
+    normalises a UI-built one by hanging `conditionalNode: END` off message
+    nodes, and `validate_sequence_for_write` refuses that because a
+    non-branching node carrying a true-branch is usually a branch that will
+    silently vanish. `sequence_for_write` strips exactly that and nothing
+    else - it was written on 2026-09-16 for this same round trip, against
+    campaign 599020, and it already existed when this script first tried to
+    post a read graph straight back.
+    """
     with open(STANDARD, encoding="utf-8") as handle:
-        return json.load(handle)["graph"]
+        graph = json.load(handle)["graph"]
+    return heyreach.sequence_for_write(graph)
 
 
 def seats_needed(leads, seats, per_seat_day):
