@@ -588,6 +588,23 @@ class Snapshot(list):
             td = _TrackingDict(row, _key=row[self.key])
             td._dirty = self._dirty
             self._by_id[row[self.key]] = td
+            # AN APPENDED ROW IS DIRTY BY DEFINITION, AND SAYING SO IS NOT
+            # OPTIONAL NOW THAT `merge_onto` READS `_dirty` RATHER THAN
+            # RE-DERIVING IT.
+            #
+            # Before this task the edit set was recomputed by serialising
+            # every row and comparing to the baseline, and a row with NO
+            # baseline fell out of that comparison as changed for free. With
+            # an explicit dirty set it does not: the row is wrapped, indexed
+            # and appended, and then never written, because nothing put its
+            # id in `_dirty`.
+            #
+            # `test_a_stop_survives_a_concurrent_run.test_adding_a_record_
+            # passes` caught it - a record added to the snapshot simply did
+            # not reach the disk. That is silent record loss, which is the
+            # exact failure class `Snapshot` exists to prevent, arriving
+            # through the optimisation meant to make it cheaper.
+            self._dirty.add(row[self.key])
             list.append(self, td)
         else:
             list.append(self, row)
