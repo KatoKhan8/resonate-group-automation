@@ -540,15 +540,43 @@ def _refuse_bad_greetings(plan):
                         f"greeting contains literal {bad!r} - "
                         f"{first_line[:50]!r}")
 
-            # Check 3: planted cohort name.
+            # Check 3: planted cohort name, IN A SALUTATION POSITION.
+            #
+            # ISSUE-015. This used to flag any occurrence of another cohort
+            # member's first name anywhere in the body, and that is not the
+            # defect it names. Measured 2026-09-22 across the five campaigns
+            # carrying batch 3: 275 flags, every one a false positive.
+            #
+            #   269 of them on the single name 'Will', which is a first name
+            #     AND an ordinary English auxiliary verb - so one cohort
+            #     member named Will made every body containing the word
+            #     "will" a defect
+            #   the rest were company names carrying a person's name:
+            #     russellherder.com, terrisandy.com, bigstarbranding.com,
+            #     wearerichlifestyle.com, sobepromos.com
+            #
+            # The hi-jacob defect is a MIS-PERSONALISED GREETING - a letter to
+            # Michael that opens by addressing Jacob. Checks 1 and 2 above
+            # already read only the greeting line, for exactly that reason.
+            # So this looks where a greeting puts a name and nowhere else:
+            # after a salutation word, or opening a line as a bare vocative,
+            # which is the form the approved Productive copy actually uses
+            # ("Janie, I work with ...").
+            #
+            # NARROWED TO THE DEFECT, NOT WIDENED PAST IT. A planted name in a
+            # salutation still fails, on any step and anywhere in the body -
+            # the suite asserts that on a second-step follow-up. What no
+            # longer fails is the word "will" inside a sentence.
             for name in cohort_names:
                 if name == own_first:
                     continue
-                if _re.search(r'\b' + _re.escape(name) + r'\b', body,
-                              _re.IGNORECASE):
+                planted = (r'^\s*(?:(?:Hi|Hey|Hello|Dear)\s+)?'
+                           + _re.escape(name) + r'\s*[,.!:]')
+                if _re.search(planted, body,
+                              _re.IGNORECASE | _re.MULTILINE):
                     problems.append(
                         f"{record_id}/{contact_key} step {step_key}: "
-                        f"body contains cohort name {name!r} "
+                        f"body greets cohort name {name!r} "
                         f"(hi-jacob defect class)")
 
     if problems:
