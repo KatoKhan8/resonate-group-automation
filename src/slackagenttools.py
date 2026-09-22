@@ -1290,6 +1290,149 @@ def sends_today(scope, argument=None):
                     "own counter and queue_sent_rows is the queue's"}
 
 
+def weekly_plan(scope, argument=None):
+    """This week, as an ANSWER - what is running, what starts, what waits.
+
+    `docs/SLACK-AGENT-EXPECTATIONS.md`: the weekly update is "a habit with
+    a shape", asked every Monday and Tuesday, and the 07:15 briefing is
+    supposed to already hold it when somebody asks. Until now the agent
+    could answer every piece of it separately and none of it as the
+    question people actually ask, which is *what is happening this week*.
+
+    ## THE FORWARD HALF IS TWO DAYS LONG AND SAYS SO
+
+    The provider answers `today`, `tomorrow` and `day_after_tomorrow` and
+    nothing further - `docs/GROK-SCHEDULING-2026-09-20.md`. So the honest
+    forward answer covers those three days, names them, and states the
+    horizon in the readback. Everything past it would be our inference
+    dressed as the provider's plan, and this project's whole register
+    exists because `scheduled` got read as `sent` once.
+
+    A campaign the provider says nothing about is reported as `no schedule
+    returned`, which is its own state - separate from zero, and separate
+    from a campaign that could not be read at all.
+
+    ## AND THE BACKWARD HALF IS WHAT MAKES IT AN ANSWER
+
+    "Nothing goes out tomorrow" means one thing after a week of sending and
+    another after a week of silence. The last seven days travel with the
+    plan so the reader has both, counted the same way `lead_counts` counts
+    them - people and emails apart.
+
+    ## A PLAN IS NOT A PROMISE
+
+    This is the tool most likely to turn into one. Nothing here commits to
+    a date: it reports what the provider currently intends for three named
+    days and what has already happened. The note says that in the material,
+    so a model summarising it has the disclaimer in front of it rather than
+    having to remember the rule.
+    """
+    import datetime
+    slug = _workspace_for(scope, argument)
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    ids = [str(i) for i in (entry.get("provider_campaign_ids") or [])][:10]
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - \
+        datetime.timedelta(seconds=WEEK_SECONDS)
+
+    running, unreadable = [], 0
+    emails_week, people_week = 0, set()
+    for campaign_id in ids:
+        detail = readback.campaign_by_id(campaign_id)
+        if detail.get("_error"):
+            unreadable += 1
+            continue
+        week = _week_activity(campaign_id, cutoff)
+        row = {"campaign_id": campaign_id, "name": detail.get("name"),
+               "status": detail.get("status")}
+        if week is not None:
+            emails, people = week
+            row["emails_sent_last_7_days"] = emails
+            row["leads_emailed_last_7_days"] = len(people)
+            emails_week += emails
+            people_week |= people
+        else:
+            row["last_7_days_unreadable"] = True
+        running.append(row)
+
+    out = {"read_at": _now(), "workspace": slug,
+           "campaigns": running,
+           "campaigns_unreadable": unreadable,
+           "emails_sent_last_7_days": emails_week,
+           "leads_emailed_last_7_days": len(people_week),
+           "forward": _forward_window(ids),
+           "forward_horizon": "the provider answers today, tomorrow and the "
+                              "day after, and nothing beyond that",
+           "note": "the forward half is what the PROVIDER currently intends "
+                   "for three named days, not a commitment and not a date "
+                   "anyone has promised. The backward half is the last 7 "
+                   "days, with people and emails counted apart."}
+    if unreadable:
+        out["warning"] = ("%d campaign(s) could not be read, so this is a "
+                          "partial picture of the week" % unreadable)
+
+    if scope.is_internal:
+        # WHAT THE WEEK IS WAITING ON. Internal only, and not because it is
+        # secret: an open change request names the operator and the gate,
+        # which is Resonate's machinery, and the client already knows what
+        # they asked for.
+        out["waiting_on_a_decision"] = _open_tickets()
+        out["campaigns_awaiting_decision"] = _awaiting_decision()
+    return out
+
+
+#: The three days the provider will answer for. Its own vocabulary, in its
+#: own order, so nothing here has to do calendar arithmetic against a
+#: timezone the provider did not tell us about.
+FORWARD_DAYS = ("today", "tomorrow", "day_after_tomorrow")
+
+
+def _forward_window(campaign_ids):
+    """`{day: {campaign: planned}}` for the three days the provider answers.
+
+    Three states per campaign per day and they are kept apart:
+
+        an integer          the provider plans this many
+        "none scheduled"    the provider's own empty answer - its 400 with
+                            "No emails scheduled for this period", which is
+                            a result and not a failure
+        "unreadable"        the read failed
+
+    Collapsing the middle two into 0 is the mistake this whole codebase is
+    a monument to, so they never meet.
+    """
+    out = {}
+    for day in FORWARD_DAYS:
+        planned = {}
+        for campaign_id in campaign_ids:
+            try:
+                from .providers import bison
+                row = bison.sending_schedule(campaign_id, day)
+            except Exception as exc:                            # noqa: BLE001
+                planned[campaign_id] = (
+                    "none scheduled"
+                    if type(exc).__name__ == "SendingScheduleEmpty"
+                    else "unreadable")
+                continue
+            value = (row or {}).get("emails_being_sent")
+            planned[campaign_id] = value if isinstance(value, int) \
+                else "unreadable"
+        out[day] = planned
+    return out
+
+
+def _open_tickets():
+    """Change requests still with the operator. Ids, kinds and ages only."""
+    try:
+        from . import slackrequests
+        rows = slackrequests.pending()
+    except Exception as exc:                                    # noqa: BLE001
+        return {"_error": "%s: %s" % (type(exc).__name__, str(exc)[:200])}
+    return [{"id": r.get("id"), "kind": r.get("kind"),
+             "workspace": r.get("workspace"), "origin": r.get("origin"),
+             "raised_at": r.get("raised_at"),
+             "authority": r.get("requester_authority")} for r in rows]
+
+
 def held_by_reason(scope, argument=None):
     """Why leads are held, grouped by reason. Counts only.
 
@@ -1424,6 +1567,12 @@ REGISTRY = {
     "sends_today": (
         sends_today,
         "what actually went out, from the provider's own counters",
+        _INTERNAL_CLIENT, None),
+    "weekly_plan": (
+        weekly_plan,
+        "this week in one answer: what is running, what the provider plans "
+        "for today / tomorrow / the day after, and what went out in the "
+        "last seven days",
         _INTERNAL_CLIENT, None),
     "held_by_reason": (
         held_by_reason,

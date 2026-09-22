@@ -2,7 +2,7 @@
 """The process that makes the agent's one offer real.
 
     py -3 -u scripts/slack_followup_loop.py --interval 60
-    py -3 scripts/slack_followup_loop.py --once --dry-run   # decide, post nothing
+    py -3 scripts/slack_followup_loop.py --once --dry-run   # decide only
 
 OPERATOR, 2026-09-22: "No promises the agent cannot keep. If you want the
 offer, build it: a client can say 'yes' and the agent posts once in that

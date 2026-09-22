@@ -77,6 +77,10 @@ PROVIDER_READ_VERBS = {
     # GET /leads?search=<address>. The only real filter on that route, and
     # the one way to turn an address into a lead id without guessing.
     "find_lead_by_email",
+    # GET /campaigns/{id}/sending-schedule?day=today|tomorrow|... The
+    # provider's own forward window, and the only forward number here that
+    # is not our inference.
+    "sending_schedule",
     "campaign_senders", "base", "headers", "scope", "bound_workspace",
     "ProviderError",
     # HeyReach reads.

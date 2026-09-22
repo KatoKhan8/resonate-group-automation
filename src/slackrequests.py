@@ -46,6 +46,7 @@ import re
 import secrets
 import time
 
+from . import slackroles as roles
 from . import slackscope
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -493,6 +494,7 @@ def new_id():
 
 def build(kind, fields, requester, channel, scope, thread_ts=None,
           original=""):
+    authority, note = _authority(kind, requester, scope)
     return {
         "id": new_id(),
         "kind": kind,
@@ -505,6 +507,12 @@ def build(kind, fields, requester, channel, scope, thread_ts=None,
         "raised_at": _now(),
         "requester": requester,
         "requester_scope": scope.kind,
+        # WHO THEY ARE INSIDE THE CLIENT, for the operator's eyes only.
+        # It never decides whether the ticket is raised - see
+        # `slackroles`, whose first rule is that a request reducing reach
+        # is taken from anybody, always.
+        "requester_authority": authority,
+        "authority_note": note,
         "channel": channel,
         "workspace": scope.workspace or "internal",
         "thread_ts": thread_ts,
@@ -519,6 +527,15 @@ def build(kind, fields, requester, channel, scope, thread_ts=None,
     }
 
 
+def _authority(kind, requester, scope):
+    try:
+        return roles.authority_note(kind, requester, scope)
+    except Exception:                                           # noqa: BLE001
+        # A role register that cannot be read must not stop a ticket being
+        # written. Unknown authority is exactly what the default says.
+        return "not recorded", None
+
+
 def path_for(ticket):
     return os.path.join(requests_dir(), "%s.md" % ticket["id"])
 
@@ -531,6 +548,14 @@ def render(ticket):
         "",
         "    requester   %s (%s scope)" % (ticket["requester"],
                                            ticket["requester_scope"]),
+    ]
+    if ticket.get("requester_authority"):
+        # ABSENT MEANS "RAISED BEFORE ROLES EXISTED", which is not the same
+        # claim as "not recorded" - that one is a statement about an empty
+        # register, and putting it on a ticket from last week would be the
+        # agent asserting something it never checked.
+        lines.append("    authority   %s" % ticket["requester_authority"])
+    lines += [
         "    channel     %s" % ticket["channel"],
         "    workspace   %s" % ticket["workspace"],
         "    raised_at   %s" % ticket["raised_at"],
@@ -749,6 +774,13 @@ def action_required(ticket):
                     ticket["requester"], ticket["channel"]))
     if detail:
         lines.append(detail)
+    note = ticket.get("authority_note")
+    if note:
+        # ON THE TICKET AND IN HERE, NEVER IN THE CLIENT'S CHANNEL. What
+        # the client hears is unchanged: it is with the Resonate team, no
+        # timescale. Telling somebody in front of their colleagues that
+        # they may not ask is not the agent's to do.
+        lines += ["", ":bust_in_silhouette: %s" % note]
     if fields.get("new_text"):
         lines += ["", "Proposed wording (NOT applied):",
                   "> %s" % fields["new_text"][:600]]

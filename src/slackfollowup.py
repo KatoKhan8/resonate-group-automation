@@ -209,7 +209,8 @@ def deliverer_is_running(now=None):
             epoch = datetime.datetime.fromisoformat(stamp).timestamp()
         except Exception:                                       # noqa: BLE001
             return False
-    return (float(now if now is not None else time.time()) - float(epoch))         <= MAX_BEAT_AGE_SECONDS
+    age = float(now if now is not None else time.time()) - float(epoch)
+    return age <= MAX_BEAT_AGE_SECONDS
 
 
 def due(read_counts):
