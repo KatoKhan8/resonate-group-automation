@@ -24,7 +24,7 @@ def _rec(rid, **kw):
     return r
 
 
-def _rec_with_evidence(rid, email="a@test.com", provider="bison", status="valid"):
+def _rec_with_evidence(rid, email="a@example.test", provider="bison", status="valid"):
     r = _rec(rid)
     r["contacts"] = [{
         "contact_id": f"{rid}-c0",
@@ -275,7 +275,7 @@ class TestIncrementalGuardInput(QueueTest):
         records = []
         for i in range(n):
             rid = f"rec{i:04d}"
-            r = _rec_with_evidence(rid, email=f"e{i}@test.com")
+            r = _rec_with_evidence(rid, email=f"e{i}@example.test")
             r["events"] = [{"id": f"evt-{i}-0", "type": "enriched",
                             "at": "2026-09-22T10:00:00+00:00"}]
             if rng.random() < 0.3:
@@ -383,8 +383,8 @@ class TestUntouchedRecordLossCaught(QueueTest):
         conn, _ = self._open()
         try:
             records = [
-                _rec_with_evidence("caller_rec", email="c@test.com"),
-                _rec_with_evidence("untouched_rec", email="u@test.com"),
+                _rec_with_evidence("caller_rec", email="c@example.test"),
+                _rec_with_evidence("untouched_rec", email="u@example.test"),
             ]
             sqlitestore.write_changed(conn, records)
             baseline_rev = sqlitestore.revision(conn)
