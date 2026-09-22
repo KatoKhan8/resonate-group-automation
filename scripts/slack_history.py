@@ -352,6 +352,18 @@ def _fold(text):
     return (text or "").translate(_FOLD).lower()
 
 
+#: Channels excluded by TERM that are not actually sensitive, allow-listed by
+#: exact name. Operator decision, 2026-09-22.
+#:
+#: A NAME-LEVEL ALLOWLIST, NOT A WEAKER TERM. `#finance-weekend-team` is a
+#: campaign channel - "Finance Weekend" is a Resonate campaign, not a finance
+#: function - and it matched `finance`. Dropping or narrowing the `finance`
+#: term to let it through would stop excluding real finance rooms, which is
+#: the whole point of the list. Naming the one exception keeps the term intact
+#: and makes every future exception a decision somebody has to write down.
+ALLOWED_BY_NAME = ("finance-weekend-team",)
+
+
 def _sensitive_hit(channel):
     """The term that excludes this channel, or None.
 
@@ -361,6 +373,8 @@ def _sensitive_hit(channel):
     did not need.
     """
     name = _fold(channel.get("name"))
+    if name in ALLOWED_BY_NAME:
+        return None
     prose = _fold(" ".join(str((channel.get(k) or {}).get("value", "")
                                if isinstance(channel.get(k), dict)
                                else channel.get(k) or "")

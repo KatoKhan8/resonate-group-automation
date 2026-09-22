@@ -104,5 +104,31 @@ class TestTheListIsBilingual(unittest.TestCase):
                 self.assertFalse(slack_history.is_sensitive(channel(name)))
 
 
+class TestTheNameLevelAllowlist(unittest.TestCase):
+    """One named exception, and the term it tripped still works."""
+
+    def test_the_campaign_channel_is_allowed(self):
+        """`Finance Weekend` is a campaign, not a finance function."""
+        self.assertFalse(
+            slack_history.is_sensitive(channel("finance-weekend-team")))
+
+    def test_the_finance_term_still_excludes_real_finance_rooms(self):
+        """The allowlist must not have weakened the term it exempts."""
+        for name in ("finance", "finance-ops", "team-finance"):
+            with self.subTest(name=name):
+                self.assertTrue(slack_history.is_sensitive(channel(name)))
+
+    def test_an_allowlisted_name_with_a_sensitive_purpose_is_still_allowed(self):
+        """The allowlist is by NAME and is deliberately absolute.
+
+        A campaign channel is a campaign channel. If its purpose later says
+        something sensitive, the answer is to remove it from the allowlist -
+        a decision somebody writes down - not to have the rule quietly
+        change its mind.
+        """
+        room = channel("finance-weekend-team", purpose="campaign planning")
+        self.assertFalse(slack_history.is_sensitive(room))
+
+
 if __name__ == "__main__":
     unittest.main()

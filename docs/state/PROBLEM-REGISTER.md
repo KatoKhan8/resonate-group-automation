@@ -559,7 +559,7 @@ question rather than a tuning one.
   (QUALIFIED only) is one line but changes what "supply" means, so it is the
   operator's call
 
-### ISSUE-024 · The channel-exclusion list was English-only in a Croatian workspace · HIGH · **FIXED**
+### ISSUE-024 · The channel-exclusion list was English-only in a Croatian workspace · HIGH · **CLOSED 2026-09-22**
 
 Operator decision, 2026-09-22: the Slack history monitor never pulls a
 finance, payroll, HR, admin or credentials channel. Implemented in
@@ -578,14 +578,20 @@ where the local team files the invoices. Croatian terms added and folded, so
     #računi                 matched `racun`   - invoices. The real catch.
     #finance-weekend-team   matched `finance` - SEE BELOW
 
-**`#finance-weekend-team` is very probably a FALSE POSITIVE.** "Finance
-Weekend" is a Resonate campaign, not a finance function - the estate holds
-`campaign_Finance weekend199_replies_*.csv`. It is left excluded because the
-cost of excluding a campaign channel is some missing catalogue material and
-the cost of the opposite mistake is payroll data on disk, but **it is the
-operator's call** and it should be un-excluded by name if that reading is
-right. Exclusion is by term, so a name-level allowlist is the fix, not a
-weaker term.
+**`#finance-weekend-team` was a FALSE POSITIVE, and is now allow-listed.**
+"Finance Weekend" is a Resonate campaign, not a finance function - the estate
+holds `campaign_Finance weekend199_replies_*.csv`. Operator confirmed
+2026-09-22.
+
+**Fixed with a NAME-LEVEL ALLOWLIST (`ALLOWED_BY_NAME`), not a weaker term.**
+Narrowing or dropping the `finance` term to let this one channel through
+would stop excluding real finance rooms, which is the entire point of the
+list. Naming the single exception keeps the term intact and makes every
+future exception something somebody has to write down. A test asserts both
+halves: the campaign channel passes AND `#finance`, `#finance-ops` and
+`#team-finance` are still refused.
+
+**So one channel is excluded today: `#računi`.** 20 member channels pull.
 
 The other 19 member channels are pulled as before. Raw history stays in
 `work/`, gitignored. Tests: `tests/test_a_payroll_channel_is_never_pulled.py`,
