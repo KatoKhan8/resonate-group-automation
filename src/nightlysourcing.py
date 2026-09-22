@@ -83,19 +83,97 @@ def is_export_day(on_date=None):
 # --------------------------------------------------------- stage 1: source
 
 def _source_companies(search_fn=None, icp_config=None, known_domains=None,
-                      page_limit=None):
+                      page_limit=None, allow_unfiltered_headcount=False,
+                      problems=None):
     """AI-ARK company search on the Productive ICP.
 
-    Geos applied AT THE SOURCE via companyLocation. Headcount >= 20 via size.
+    Geos applied AT THE SOURCE via companyLocation, after resolving each one
+    through location_search - it is a strict enum. Headcount is NOT applied:
+    see the refusal below, which is deliberate rather than a gap.
     Walk to last=true (page_limit caps for tests). DIFF against known domains;
     NEVER delete from the known set.
 
     search_fn is injectable for tests. Defaults to aiark.company_search.
     """
+    # THE HEADCOUNT FILTER IS NOT APPLIED, AND THAT IS A REFUSAL.
+    #
+    # The task requires headcount >= 20 APPLIED AT THE SOURCE. This used to
+    # pass `size=">=20"`, and `size` is company_search's PAGE SIZE - ">=20"
+    # was rejected outright and the call returned zero rows, which is a large
+    # part of why this pipeline has never produced a candidate.
+    #
+    # The parameter that really filters headcount has not been established.
+    # Probed live on 2026-09-22 against the tool: companySize, companyStaff,
+    # staff, staffRange, employeeCount, companyEmployees, headcount,
+    # companyHeadcount, minStaff and staffCount are ALL SILENTLY IGNORED -
+    # identical totalElements (72,657,969) and byte-identical rows with and
+    # without each one. An unknown filter name is dropped, not rejected.
+    #
+    # So sourcing now REFUSES rather than returning an unfiltered world.
+    # Filtering after the fact is what the task forbids - it is paid-for rows
+    # thrown away - and quietly dropping the client's own ICP minimum is
+    # worse than not running. The headcount IS readable per row at
+    # `summary.staff.total`, so the filter can be applied the moment somebody
+    # establishes the parameter from AI Ark rather than guessing it.
+    # ONLY WHEN THE REAL PROVIDER IS BEING CALLED. This is a statement about
+    # AI Ark's API, not about the shape of the pipeline: an injected
+    # `search_fn` - every test, and any future adapter - may filter perfectly
+    # well, and refusing there would assert something about a provider this
+    # function never reaches.
+    if search_fn is None and not allow_unfiltered_headcount:
+        raise ProviderError(
+            f"nightly sourcing: no AI Ark parameter is known that filters "
+            f"headcount >= {MIN_HEADCOUNT} at the source. Ten candidate names "
+            f"were probed live and every one was silently ignored. The task "
+            f"requires the filter AT THE SOURCE, so this refuses rather than "
+            f"sourcing unfiltered and discarding the client's ICP minimum. "
+            f"Pass allow_unfiltered_headcount=True only for a deliberate "
+            f"measurement run")
+
+    problems = [] if problems is None else problems
     search_fn = search_fn or aiark.company_search
     known = known_domains or candidatelist.domains_already_known()
-    markets = (icp_config or {}).get("markets") or []
-    location_filter = ",".join(markets) if markets else None
+
+    # THE GEOS LIVE UNDER `icp`, AND THIS READ THE TOP LEVEL.
+    #
+    # `config["markets"]` does not exist on any client config. The markets are
+    # at `config["icp"]["markets"]` and the same list is at
+    # `config["market"]["geos"]`, so `location_filter` was None on every run
+    # this has ever made and the geo half of the task - "applied AT THE
+    # SOURCE, not filtered after" - was silently not applied at all.
+    config = icp_config or {}
+    markets = (config.get("icp") or {}).get("markets") \
+        or (config.get("market") or {}).get("geos") \
+        or config.get("markets") or []
+
+    # A STRICT ENUM HAS TO BE LOOKED UP BEFORE IT CAN BE USED, and a value the
+    # lookup does not return is refused rather than sent. `location_search`
+    # itself returned nothing for every term until 2026-09-22, because
+    # `_lookup` read the singular catalogue key while the tool answers under
+    # the plural one - so this filter was unusable even when it was passed.
+    # Resolved only when the REAL provider is being called, for the same
+    # reason the headcount refusal is: `location_search` is AI Ark's enum, and
+    # an injected `search_fn` never reaches it. Injected, the markets are
+    # passed through as given.
+    resolved = list(markets) if search_fn is not aiark.company_search else []
+    for market in (markets if search_fn is aiark.company_search else ()):
+        try:
+            found = aiark.location_search(market)
+        except ProviderError as exc:
+            raise ProviderError(
+                f"nightly sourcing: location_search({market!r}) failed "
+                f"({exc}). The geos are applied AT THE SOURCE and a run that "
+                f"cannot resolve them would source the whole world") from exc
+        match = [v for v in found if v.lower() == str(market).lower()]
+        if match:
+            resolved.append(match[0])
+    if markets and not resolved and search_fn is aiark.company_search:
+        raise ProviderError(
+            f"nightly sourcing: none of {markets!r} was returned by "
+            f"location_search, so no geo filter can be applied. Sourcing the "
+            f"whole world and filtering afterwards is what this task "
+            f"forbids - it is paid-for rows thrown away")
+    location_filter = ",".join(resolved) if resolved else None
 
     sourced = []
     page = 1
@@ -105,10 +183,26 @@ def _source_companies(search_fn=None, icp_config=None, known_domains=None,
         try:
             rows = search_fn(
                 companyLocation=location_filter,
-                size=f">={MIN_HEADCOUNT}",
                 page=page,
             )
-        except ProviderError:
+        except ProviderError as exc:
+            # A PROVIDER FAILURE IS NOT AN EMPTY CATALOGUE - BUT IT DOES NOT
+            # HALT THE RUN EITHER.
+            #
+            # This used to `break` and record nothing, so an unusable filter,
+            # an auth failure, a rate limit and a genuinely empty result were
+            # all reported identically: stage `source` with in=0 out=0 drop=0
+            # and a run that says it succeeded. That is how this pipeline
+            # reported success while having sourced nothing since it merged.
+            #
+            # Raising instead would break the other half of the contract: the
+            # standing order says a rate limit is a reason to back off and
+            # continue, never to halt, and TASK-245 says the same. So sourcing
+            # STOPS and the failure is RECORDED on the stage, where `run` puts
+            # it in the report and the caller can see it. Silence is the only
+            # option that is wrong.
+            problems.append({"page": page, "rows_before": len(sourced),
+                             "error": f"{type(exc).__name__}: {exc}"})
             break
         if not rows:
             break
@@ -318,7 +412,7 @@ def _to_candidate(companies):
 # --------------------------------------------------------- the pipeline
 
 def run(config=None, search_fn=None, resolve_fn=None, live=False,
-        page_limit=None):
+        page_limit=None, allow_unfiltered_headcount=False):
     """The full nightly pipeline. Returns a report dict.
 
     search_fn and resolve_fn are injectable for tests.
@@ -335,10 +429,18 @@ def run(config=None, search_fn=None, resolve_fn=None, live=False,
 
     # Stage 1: source
     known = candidatelist.domains_already_known()
-    sourced = _source_companies(search_fn=search_fn, icp_config=config,
-                                known_domains=known, page_limit=page_limit)
+    source_problems = []
+    sourced = _source_companies(
+        search_fn=search_fn, icp_config=config, known_domains=known,
+        page_limit=page_limit,
+        allow_unfiltered_headcount=allow_unfiltered_headcount,
+        problems=source_problems)
     report["stages"][STAGE_SOURCE] = {"input": 0, "output": len(sourced),
                                       "dropped": 0}
+    # A ZERO WITH A REASON IS NOT THE SAME FACT AS A ZERO WITHOUT ONE.
+    if source_problems:
+        report["stages"][STAGE_SOURCE]["problems"] = source_problems
+        report["source_failed"] = True
 
     # Stage 2: ICP
     after_icp = _icp_verdict(sourced, config=config)
@@ -409,6 +511,10 @@ def main(argv=None):
     p.add_argument("--client", default="productive",
                    help="client config name")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--allow-unfiltered-headcount", action="store_true",
+                   help="source without the headcount filter. For a "
+                        "deliberate measurement run only - the task requires "
+                        "headcount >= 20 applied AT THE SOURCE")
     a = p.parse_args(argv)
 
     config = None
@@ -417,13 +523,33 @@ def main(argv=None):
     except Exception:
         pass
 
-    report = run(config=config, live=a.live)
+    # A REFUSAL IS AN ANSWER, NOT A CRASH. This is operator-facing, and a
+    # traceback for "the provider cannot do what the task requires" reads as a
+    # bug in us rather than as the finding it is.
+    try:
+        report = run(config=config, live=a.live,
+                     allow_unfiltered_headcount=a.allow_unfiltered_headcount)
+    except ProviderError as exc:
+        print("")
+        print(f"  REFUSED: {exc}")
+        print("")
+        return 2
     if a.json:
         print(json.dumps(report, indent=2, default=str))
     else:
+        if report.get("source_failed"):
+            print("  SOURCE FAILED - the zero below has a reason:")
+            for problem in report["stages"][STAGE_SOURCE].get("problems") or []:
+                print(f"    page {problem['page']} after "
+                      f"{problem['rows_before']} row(s): {problem['error']}")
         for stage, counts in report["stages"].items():
-            print(f"  {stage:<12} in={counts['input']:<5} "
-                  f"out={counts['output']:<5} drop={counts['dropped']}")
+            # A STAGE REPORT WITH NO `dropped` KEY IS NOT A CRASH.
+            # `candidate` does not drop anything, so it carries no such key,
+            # and printing the report raised KeyError - which is how a run
+            # that had already done nothing also ended in a traceback.
+            print(f"  {stage:<12} in={counts.get('input', 0):<5} "
+                  f"out={counts.get('output', 0):<5} "
+                  f"drop={counts.get('dropped', 0)}")
         print(f"  candidates added: {report['candidates_added']}")
         print(f"  credits spent: {report['credits_spent']}")
     return 0
