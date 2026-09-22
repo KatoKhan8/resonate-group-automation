@@ -89,15 +89,44 @@ TARGETS = [
 ]
 
 
-def build_prompt(name, fn):
-    return QUESTION.format(name=name, source=inspect.getsource(fn))
+# PROBLEM-REGISTER ISSUE-008, and the same value as `glm_review`: the model
+# spends most of its output budget on reasoning rather than on the answer, and
+# 6,000 returned an EMPTY completion with `finish_reason='length'` twice.
+DEFAULT_MAX_TOKENS = 16000
+
+
+class PromptCarriesNoSource(RuntimeError):
+    """A review prompt was built that does not contain the code under review.
+
+    The same guard, the same signature and the same name as `glm_review`'s,
+    deliberately. These two harnesses are near-identical and a guard present in
+    only one of them is how the next sourceless review gets run. See
+    `glm_review.PromptCarriesNoSource` for the incident this records.
+    """
+
+
+def build_prompt(question, name, fn):
+    """Render one prompt, refusing if the code did not make it in.
+
+    `question` is a parameter rather than the module constant so the refusal
+    is testable and so the two harnesses share one shape.
+    """
+    source = inspect.getsource(fn)
+    prompt = question.format(name=name, source=source)
+    if source not in prompt:
+        raise PromptCarriesNoSource(
+            f"the prompt for {name} does not contain its source, so the model "
+            f"would be asked to review code it cannot see. The question "
+            f"template needs a {{source}} placeholder. Nothing was sent.")
+    return prompt
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--live", action="store_true",
                         help="call GLM; omit to print the prompt only")
-    parser.add_argument("--max-tokens", type=int, default=6000)
+    parser.add_argument("--max-tokens", type=int,
+                        default=DEFAULT_MAX_TOKENS)
     args = parser.parse_args(argv)
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -106,13 +135,13 @@ def main(argv=None):
     if not args.live:
         for name, fn in TARGETS:
             print(f"  {name:20s} prompt chars: "
-                  f"{len(build_prompt(name, fn))}")
+                  f"{len(build_prompt(QUESTION, name, fn))}")
         print("\nDRY RUN: GLM was not called. Re-run with --live.")
         return 0
 
     findings = []
     for name, fn in TARGETS:
-        prompt = build_prompt(name, fn)
+        prompt = build_prompt(QUESTION, name, fn)
         print(f"\n--- {name} ({len(prompt)} chars) ---")
         try:
             result = glm.complete(prompt, system=SYSTEM,

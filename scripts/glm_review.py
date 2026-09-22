@@ -42,6 +42,50 @@ sys.path.insert(0, ROOT)
 
 from src.providers import glm, load_env                          # noqa: E402
 
+# PROBLEM-REGISTER ISSUE-008. `glm-5.3` spends most of its output budget on
+# REASONING tokens rather than on the answer - the 2026-09-21 attribution run
+# burned 6,592 reasoning tokens of 7,266 completion - so this is not a limit on
+# how long the answer may be, it is a limit on the thinking that precedes one.
+# At 6,000 two real targets returned `finish_reason='length'` with an EMPTY
+# completion, which the adapter correctly refused and which cost a call each
+# time. 16,000 is half the adapter's `MAX_TOKENS_CAP` of 32,768.
+DEFAULT_MAX_TOKENS = 16000
+
+
+class PromptCarriesNoSource(RuntimeError):
+    """A review prompt was built that does not contain the code under review.
+
+    Raised rather than sent. `str.format` ignores a keyword the template never
+    mentions, so a question with no `{source}` placeholder renders to the
+    question alone - and the call is still made, still paid for, and answered
+    by a model that was shown no code.
+
+    THIS HAS ALREADY HAPPENED. `ATTRIBUTION_QUESTION` carried no placeholder
+    and ran live on 2026-09-21 against two functions;
+    `docs/GLM-REVIEW-ATTRIBUTION-2026-09-21.md` records `prompt_tokens: 312`
+    for both, identical because the prompt did not depend on which function
+    was under review, against 400-2,172 for every target that does carry its
+    source. The model said so in the output: "I cannot construct a concrete
+    drop without the body of `_positively_not_ours`".
+
+    Checked against the RENDERED PROMPT, not against the template, because the
+    rendered text is what the model reads and a placeholder that is present
+    but mis-spelled would pass a template check.
+    """
+
+
+def build_prompt(question, name, fn):
+    """Render one review prompt, refusing if the code did not make it in."""
+    source = inspect.getsource(fn)
+    prompt = question.format(name=name, source=source)
+    if source not in prompt:
+        raise PromptCarriesNoSource(
+            f"the prompt for {name} does not contain its source, so the model "
+            f"would be asked to review code it cannot see. The question "
+            f"template needs a {{source}} placeholder. Nothing was sent.")
+    return prompt
+
+
 SYSTEM = (
     "You are an adversarial reviewer of a production cold-outreach system. "
     "You are looking for DEFEATS and MEASURABLE COSTS, not style. A finding "
@@ -239,6 +283,11 @@ ATTRIBUTION_QUESTION = (
     "(4) Is it idempotent - same event twice, same outcome, no double hold? "
     "(5) Can a crafted event suppress an alert it should raise? Say UNKNOWN "
     "rather than guessing; a confident wrong answer here loses a reply."
+    # THE PLACEHOLDER THAT WAS MISSING. Without these two lines this template
+    # rendered to itself, and the 2026-09-21 run reviewed nothing. See
+    # `build_prompt`; `tests/test_a_review_call_carries_its_source.py` holds
+    # the receipt.
+    "\n\nThe function under review is `{name}`:\n\n{source}\n"
 )
 
 
@@ -361,18 +410,22 @@ def _targets():
     }
 
 
-def main(argv=None):
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--target", default="storage")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--live", action="store_true")
-    parser.add_argument("--max-tokens", type=int, default=6000)
+    parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
     # The adapter clamps this to `glm.GLM_TIMEOUT`, so asking for
     # more than the ceiling is harmless and asking for less is the
     # point of the flag. 60 was the ceiling until 2026-09-17 and
     # both storage calls timed out against it.
     parser.add_argument("--timeout", type=int, default=180)
-    args = parser.parse_args(argv)
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
 
     load_env(os.path.join(ROOT, "config", ".env"))
     targets = _targets()
@@ -385,8 +438,11 @@ def main(argv=None):
         return 2
 
     question, functions = targets[args.target]
-    prompts = [(name, question.format(name=name,
-                                      source=inspect.getsource(fn)))
+    # BUILT BEFORE `--live` IS CONSULTED, deliberately: a template that lost
+    # its source is then a non-zero exit on a dry run, with no credential, no
+    # network call and no charge. Finding it by paying for it is what happened
+    # last time.
+    prompts = [(name, build_prompt(question, name, fn))
                for name, fn in functions]
     if not args.live:
         for name, prompt in prompts:
