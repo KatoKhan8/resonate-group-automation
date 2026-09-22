@@ -1246,6 +1246,78 @@ def lead_in_campaign(scope, argument=None):
     return out
 
 
+def meetings_booked(scope, argument=None):
+    """How many meetings are booked, per source, and for a client whose.
+
+    THE NUMBER THE COMMERCIAL RELATIONSHIP RUNS ON, and the one the
+    catalogue names first: 93 questions about replies and meetings, and
+    "meetings booked" the single most-asked figure nothing could produce.
+    `src/slackmeetings.py` is the ledger; this reads it.
+
+    ## THE COUNT IS PER SOURCE AND THERE IS NO BARE TOTAL
+
+    The operator: "Add a second source later (Calendly/CRM) as a separate
+    tag; never merge sources silently." So `by_source` is the answer and
+    `total` is only ever reported beside the list of sources it spans. The
+    day a second source is wired, every reader sees two numbers instead of
+    one number that grew.
+
+    ## DETAIL IS SCOPED, THE COUNT IS NOT
+
+    "Counts appear in the digest, the weekly plan and client answers;
+    per-domain detail only internally or in that client's channel." A
+    client channel is that client's channel, so it gets its own rows -
+    resolved from the SCOPE, never from the argument, so no phrasing
+    reaches another client's.
+
+    `argument` is a window: `week`, `month`, or nothing for everything.
+    """
+    import datetime
+    slug = scope.workspace if scope.is_client else None
+    window = str(argument or "").strip().lower()
+    since = None
+    today = datetime.date.today()
+    if window in ("week", "this week", "tjedan", "ovaj tjedan"):
+        since = (today - datetime.timedelta(days=7)).isoformat()
+    elif window in ("month", "this month", "mjesec", "ovaj mjesec"):
+        since = (today - datetime.timedelta(days=30)).isoformat()
+
+    try:
+        from . import slackmeetings
+        counted = slackmeetings.counts(workspace=slug, since=since)
+        rows = slackmeetings.by_domain(workspace=slug, since=since)
+    except Exception as exc:                                    # noqa: BLE001
+        return {"read_at": _now(),
+                "_error": "the meetings ledger could not be read: %s: %s"
+                          % (type(exc).__name__, str(exc)[:200])}
+
+    out = {"read_at": _now(), "workspace": slug or "all",
+           "since": since or "the beginning",
+           "by_source": counted}
+    out.update(slackmeetings.total_across(counted))
+    out["meetings_note"] = (
+        "this is a ledger people write to by hand. It is as complete as "
+        "what has been recorded, which is not the same as what happened - "
+        "an absent meeting is an unrecorded one, not a meeting that did "
+        "not occur.")
+    if scope.is_client:
+        # THEIR OWN ROWS, IN THEIR OWN CHANNEL. `slug` came from the scope,
+        # so there is no argument that reaches another client's.
+        out["meetings"] = rows
+    else:
+        out["meetings"] = rows
+        out["by_workspace"] = _meetings_by_workspace(rows)
+    return out
+
+
+def _meetings_by_workspace(rows):
+    out = {}
+    for row in rows or []:
+        key = row.get("workspace") or "unattributed"
+        out[key] = out.get(key, 0) + 1
+    return out
+
+
 def replies(scope, argument=None):
     """What has come back: the provider's counters and the reply feed.
 
@@ -1567,6 +1639,7 @@ def weekly_plan(scope, argument=None):
            "campaigns_unreadable": unreadable,
            "emails_sent_last_7_days": emails_week,
            "leads_emailed_last_7_days": len(people_week),
+           "meetings_booked": _meetings_for_plan(scope),
            "forward": _forward_window(ids),
            "forward_horizon": "the provider answers today, tomorrow and the "
                               "day after, and nothing beyond that",
@@ -1585,6 +1658,27 @@ def weekly_plan(scope, argument=None):
         # they asked for.
         out["waiting_on_a_decision"] = _open_tickets()
         out["campaigns_awaiting_decision"] = _awaiting_decision()
+    return out
+
+
+def _meetings_for_plan(scope):
+    """The meeting count for the week, for the plan. Counts only.
+
+    The operator asked for counts in the weekly plan; the rows live in
+    `meetings_booked`, which is one tool call away. A plan carrying every
+    account name would also be a plan nobody reads.
+    """
+    try:
+        from . import slackmeetings
+        import datetime
+        since = (datetime.date.today()
+                 - datetime.timedelta(days=7)).isoformat()
+        slug = scope.workspace if scope.is_client else None
+        counted = slackmeetings.counts(workspace=slug, since=since)
+    except Exception as exc:                                    # noqa: BLE001
+        return {"_error": "%s: %s" % (type(exc).__name__, str(exc)[:120])}
+    out = {"since": since, "by_source": counted}
+    out.update(slackmeetings.total_across(counted))
     return out
 
 
@@ -1748,6 +1842,11 @@ REGISTRY = {
         activity_this_week,
         "what actually went out in the last seven days, per campaign",
         _INTERNAL_CLIENT, None),
+    "meetings_booked": (
+        meetings_booked,
+        "how many meetings are booked, counted per source, with the "
+        "accounts and dates for this channel's own workspace",
+        _INTERNAL_CLIENT, "week, month, or nothing for all of them"),
     "replies": (
         replies,
         "what has come back: provider reply counts and the classified feed",

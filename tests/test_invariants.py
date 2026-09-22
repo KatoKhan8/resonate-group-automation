@@ -676,7 +676,11 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
                     # when the first send lands" and a row is written
                     # beside the queue. Added 2026-09-22, caught by the
                     # other half of this pair within the hour.
-                    "slackfollowup")
+                    "slackfollowup",
+                    # The meetings ledger: the one thing a Slack message
+                    # can make the agent write on purpose. Added
+                    # 2026-09-22 with the ledger itself.
+                    "slackmeetings")
 
     def _real(self, name):
         return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")
@@ -691,7 +695,7 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
         """
         from src import (agencydnc, clientreview, discovery, gtm,
                          slackconversation, slackfollowup, slackknowledge,
-                         slackrequests, spendledger, tagsync)
+                         slackmeetings, slackrequests, spendledger, tagsync)
         row = {"record_id": "r", "contact_key": "c", "workspace": "w",
                "provider": "heyreach", "tags": [], "stage": "s",
                "status": "pending", "attempts": 0, "outcome": "negative"}
@@ -720,6 +724,8 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
                 "C", "1", "them", "hello"),
             "slackfollowup": lambda: slackfollowup.register(
                 "C", "T", "w", ["1"], {"1": 0}),
+            "slackmeetings": lambda: slackmeetings.record(
+                "w", "example.test", "2026-01-01", "U"),
             "slackrequests": lambda: slackrequests.write(
                 {"id": "2026-01-01-aaaa", "kind": "remove_lead",
                  "label": "Remove a lead from outreach", "status": "x",

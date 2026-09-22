@@ -64,6 +64,10 @@ AGENT_SOURCES = (
     "src/slackclientview.py",
     "src/slackfollowup.py",
     "src/slacklanguage.py",
+    # The one module the agent WRITES on somebody's instruction. It belongs
+    # here more than any of the others: it is the place a Slack message
+    # comes closest to changing something.
+    "src/slackmeetings.py",
     "scripts/slack_agent_loop.py",
     # The follow-up deliverer runs on its own interval rather than on a
     # message, and it reaches the provider and posts. Same rules.
@@ -246,8 +250,9 @@ class NoStateWriterIsCalled(unittest.TestCase):
 
     def test_the_agent_writes_only_inside_work(self):
         """Every path the agent opens for writing is under `work/`."""
-        from src import slackknowledge
-        for path in (slackknowledge.CACHE, slackconversation.THREADS):
+        from src import slackfollowup, slackknowledge, slackmeetings
+        for path in (slackknowledge.CACHE, slackconversation.THREADS,
+                     slackfollowup.path(), slackmeetings.path()):
             self.assertIn(os.path.join("work", ""), path + os.sep,
                           "%s is outside work/" % path)
 

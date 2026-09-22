@@ -162,6 +162,7 @@ def gather(scope=None):
         {"name": "next_actions"},
         {"name": "sends_today"},
         {"name": "batch_state"},
+        {"name": "meetings_booked", "argument": "week"},
         {"name": "monitors"},
     ])
     pending = requests.pending()

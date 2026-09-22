@@ -50,6 +50,7 @@ import time
 from . import llm, slackagenttools as tools, slackknowledge as knowledge
 from . import slackclientview as clientview
 from . import slackfollowup as followup
+from . import slackmeetings as meetings
 from . import slacklanguage as language
 from . import slackrequests as requests, slackscope
 
@@ -1061,6 +1062,63 @@ def _offer_on_the_table(channel, thread_ts):
     return None
 
 
+#: What somebody outside Resonate is told if they try to record a meeting.
+#: Plainly, because a silent no reads as a yes that failed - the same
+#: reasoning `REFUSAL_APPROVAL_ELSEWHERE` is written on.
+REFUSAL_MEETINGS_INTERNAL = (
+    "I only record meetings when a Resonate person asks me to, in one of "
+    "our own channels. Nothing was recorded.")
+
+
+def _record_meeting(booking, user, scope, question, rows=None):
+    """One row in the meetings ledger, or a refusal that says why.
+
+    THE CHECK IS ON THE PERSON, NOT ONLY THE ROOM. `scope.is_internal` is
+    true for an internal channel whoever is speaking in it, and the number
+    the commercial relationship is measured by is not one the other party
+    writes. So both have to hold.
+
+    Every refusal here names what to type instead. A ledger fed by hand is
+    only fed if feeding it is easy, and "I could not do that" with no
+    remedy is how a hand-fed ledger becomes an empty one.
+    """
+    if not scope.is_internal or user not in slackscope.internal_users(rows):
+        return {"reply": REFUSAL_MEETINGS_INTERNAL, "how": "refused",
+                "tools": []}
+    workspace = booking.get("workspace")
+    if not workspace:
+        workspace, why = meetings.workspace_for_domain(booking["domain"])
+        if not workspace:
+            return {"reply": "I did not record that: %s. If you tell me "
+                             "whose it is - `meeting booked %s %s for "
+                             "<workspace>` - I will."
+                             % (why, booking["domain"], booking["date"]),
+                    "how": "meeting_unattributed", "tools": []}
+    try:
+        row = meetings.record(
+            workspace=workspace, domain=booking["domain"],
+            date=booking["date"], recorded_by=user,
+            with_role=booking.get("with_role"),
+            source=meetings.MANUAL, original=question)
+    except meetings.MeetingRefused as exc:
+        return {"reply": str(exc), "how": "meeting_duplicate", "tools": []}
+    except Exception as exc:                                    # noqa: BLE001
+        return {"reply": "I could not write that down (%s), so it is NOT "
+                         "recorded." % type(exc).__name__,
+                "how": "meeting_write_failed", "tools": []}
+    # THE DATE IS SAID BACK IN ISO. `_as_date` reads `03/04` in European
+    # order because that is how the people typing it write dates, and a
+    # parser that guesses is only safe when the guess is visible. A misread
+    # is caught in the same second here rather than in a quarterly number.
+    role = (" with %s" % row["with_role"]) if row.get("with_role") else ""
+    return {"reply": "Recorded `%s`: a meeting with %s on %s%s, for %s. "
+                     "Source: %s. Correct the date now if I read it wrong."
+                     % (row["id"], row["domain"], row["date"], role,
+                        row["workspace"], row["source"]),
+            "how": "meeting_recorded", "tools": [],
+            "meeting": row["id"]}
+
+
 def _register_followup(offer, scope, channel, thread_ts, user):
     """Open the watch. This is what makes the offer honest."""
     try:
@@ -1170,6 +1228,13 @@ def respond(question, channel=None, user=None, channel_type=None,
         out.update({"reply": REFUSAL_APPROVAL_ELSEWHERE, "how": "refused",
                     "tools": []})
         return _prefaced(out, relayed, out.get("language") or language.detect(question))
+
+    # ---- 2a1. RECORDING A MEETING. Internal people, in an internal room.
+    booking = meetings.parse(question)
+    if booking:
+        out.update(_record_meeting(booking, user, scope, question, rows))
+        return _prefaced(out, relayed, out.get("language")
+                         or language.detect(question))
 
     # ---- 2a2. A client saying YES to the first-send offer.
     pending_offer = _offer_on_the_table(channel, thread_ts)
