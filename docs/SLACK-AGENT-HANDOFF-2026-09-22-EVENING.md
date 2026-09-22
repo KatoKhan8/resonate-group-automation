@@ -6,12 +6,13 @@ unmerged" is now four.
 **Merged to master:** Phases A and B, and Phase C increments 1 and 2
 (`cd143eda`). Master head is `be6e14b2`.
 
-**On the branch, not merged:** `slack-agent` @ `1af0b5b9`, pushed.
+**On the branch, not merged:** `slack-agent` @ `57c882a6`, pushed.
 
     5ad2f7f7  the six client-channel fixes (client view, the offer)
     f3ecba4c  the offer's missing process, and counting
     c4120b45  per-user roles, and the week as an answer
     1af0b5b9  the material the client prompt was built from
+    57c882a6  one domain, which is how the question is asked
 
 Merge request: `docs/MERGE-REQUEST-SLACK-AGENT-PHASE-C2.md`. It touches
 nothing of the production session's: no `config/.env`, no `work/`, no
@@ -56,6 +57,12 @@ no roles at all. Widening requests are raised unchanged and arrive flagged.
 forward horizon it names, because that is how far the provider answers.
 `none scheduled`, `0` and `unreadable` stay three separate states.
 
+**One domain.** `domain_detail` answers the question the catalogue says
+is actually asked — one domain, not a list of sixty-nine — which is the
+message that followed the 194KB CSV in the client channel. A domain that
+is not this workspace's reads exactly like a domain that is nobody's, and
+a pasted address leaves as a domain with the local part dropped.
+
 **The material.** An audit of the client-filtered pack against the term
 list the answer is checked against found three faults: policy rule text
 carrying our operating procedure into every client prompt, a client named
@@ -66,7 +73,7 @@ the live pack.
 
 ## STATE OF THE TESTS
 
-**488 slack tests, green**, together and file by file.
+**503 slack tests, green**, together and file by file.
 `tests/test_invariants.py` has its one pre-existing failure — two modules
 importing `ProviderError` by name — which predates this branch and is the
 same one increment 1 reported.
@@ -107,6 +114,6 @@ read in the first place.
 2. The promise scan. Fifty-three commitments in ten days and nothing tracks
    whether any was kept; the scan exists in the history script and nothing
    consumes it. It needs a decision about what counts as delivery.
-3. `domain_detail` — the catalogue's third tool. The real questions are
-   singular ("what is this domain") and `sending_domains` answers at list
-   granularity.
+3. `campaign_copy` — the catalogue's fourth tool: what a step actually
+   says, rather than the shape of the sequence. Client visibility of
+   approved copy is an operator decision before it is a function.

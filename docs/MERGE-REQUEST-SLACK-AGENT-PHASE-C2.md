@@ -1,18 +1,19 @@
-# Merge request — Phase C, increments 3, 4 and 5
+# Merge request — Phase C, increments 3 to 6
 
-**For the production session.** Branch `slack-agent` at `1af0b5b9`, pushed.
+**For the production session.** Branch `slack-agent` at `57c882a6`, pushed.
 Not merged, not pushed to master.
 
 Increments 1 and 2 are already on master as `cd143eda`. The branch carries
-four commits master does not have:
+five commits master does not have:
 
     5ad2f7f7  the six client-channel fixes (client view, the offer)
     f3ecba4c  increment 3 — the offer's missing process, and counting
     c4120b45  increment 4 — per-user roles, and the week as an answer
     1af0b5b9  increment 5 — the material the client prompt was built from
+    57c882a6  increment 6 — one domain, which is how the question is asked
 
 `docs/MERGE-REQUEST-SLACK-AGENT-PHASE-C1.md` covers what is already merged.
-This covers the four above.
+This covers the five above.
 
 ---
 
@@ -275,16 +276,54 @@ All three client packs now audit clean. There is a test that asserts it
 against the **live** pack rather than a fixture, which is the only version
 of it that can catch a policy somebody edits next month.
 
+## 5b. ONE DOMAIN, WHICH IS HOW THE QUESTION IS ASKED
+
+Added at `57c882a6`. `domain_detail` — the catalogue's third tool.
+
+> Note the shape: almost never "list the domains". Usually ONE domain, one
+> sender, one campaign — which `sending_domains` answers at the wrong
+> granularity.
+
+The proof is the message immediately after the 194KB CSV went into the
+client channel: *dontgoproductive.com, kakva je ovo domena?* Sixty-nine
+domains answer a question nobody asked while leaving the one they did ask
+open.
+
+It gives whose mailboxes are on the domain, how many, the daily ceiling,
+which campaigns it carries, and what it sent this week — people and emails
+apart, as `lead_counts` does. Health and bounce stay internal, on the line
+`sending_domains` already draws.
+
+- **Not yours and nobody's are one answer.** Same rule as
+  `lead_in_campaign`: distinguishing them confirms the other client's
+  estate exists.
+- **A pasted address leaves as a domain.** People paste
+  `tina@dontgoproductive.com` when they mean the domain. The local part is
+  dropped before anything is looked up, so the answer cannot echo a mailbox
+  back — which `sending_domains` refuses on purpose in every scope. A test
+  asserts no `@` survives anywhere in the answer.
+- **A value with no dot in it is refused**, not looked up as a domain.
+
+### And the test file found something about the tests
+
+It passed alone and failed in a full run. `from . import senderidentity`
+reads the ATTRIBUTE on the `src` package and only falls back to
+`sys.modules` when there is none — so patching `sys.modules` works exactly
+until something earlier in the run imports the real module. Both are
+patched now, and the comment says why, because the next person mocking a
+`src` sibling will hit it.
+
 ## 6. TESTS
 
     tests/test_counting_is_a_different_question_from_lookup.py   25  NEW
     tests/test_the_offer_has_a_process_behind_it.py              15  NEW
     tests/test_a_role_records_and_never_refuses.py               18  NEW
     tests/test_the_week_is_an_answer_not_a_promise.py            14  NEW
+    tests/test_the_question_is_one_domain_not_the_list.py        15  NEW
     tests/test_what_a_client_is_shown.py                         50  (+17)
     tests/test_slack_agent_cannot_act.py                         10
 
-**488 slack tests, green**, run together and each file alone.
+**503 slack tests, green**, run together and each file alone.
 
 `tests/test_invariants.py` still has its one pre-existing failure — two
 modules importing `ProviderError` by name — which is not from this branch
