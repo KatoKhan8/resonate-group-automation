@@ -295,8 +295,18 @@ def main():
     age_minutes = (time.time() - mtime) / 60
     run_in_flight = age_minutes < 5
 
-    queue_dir = os.path.dirname(os.path.abspath(queue_path))
-    store.use_directory(queue_dir)
+    # `QUEUE` DIRECTLY, NOT `store.use_directory()`. Its docstring says "Demo
+    # mode and tests only", and it does two things this script must not: it
+    # `makedirs` the target, and it CLEARS every entry in `STATE_OVERRIDES` so
+    # all twenty-odd state files re-resolve beside the queue. This script's
+    # default target is the production `work/` directory, and it is a
+    # read-only funnel report - it has no business creating directories there
+    # or repointing the action ledger, the spend ledger and the approval store
+    # as a side effect of being run.
+    #
+    # Naming the one variable that decides where the queue is read from is the
+    # whole of what is needed here.
+    os.environ["QUEUE"] = os.path.abspath(queue_path)
     records = list(store.load())
     funnel, dropped, held, drop_reasons = compute_funnel(records)
     states = state_distribution(records)
