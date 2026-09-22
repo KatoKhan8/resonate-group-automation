@@ -559,6 +559,48 @@ question rather than a tuning one.
   (QUALIFIED only) is one line but changes what "supply" means, so it is the
   operator's call
 
+### ISSUE-023 · QUALIFIED is as wrong as REVIEW was, and the export still cannot ship · CRITICAL
+
+**Found 2026-09-22 while implementing the operator's QUALIFIED-only ruling for
+ISSUE-019. The ruling is implemented and correct. It does not rescue this
+export, because the QUALIFIED bucket is defective in the same direction.**
+
+Of the 1,508 candidates, **114 are QUALIFIED and 1,394 are REVIEW.** The 114:
+
+    median headcount 16,996 · min 9,620 · max 121,205
+    under 20 staff        0 of 114
+    in the 20-200 range   0 of 114
+    industries            software development 62 · telecommunications 24
+                          advertising services 11
+    icp_score             0.0 on 58 of them, 8.0 on 55, 16.0 on one
+                          median 0.0
+
+The top rows by headcount are a Spanish telecom at 121,205 staff, a Swedish
+one at 107,286, a Finnish one at 101,120 and a US cable operator at 96,438 -
+all four **QUALIFIED at `icp_score` 0.0**. Productive sells to 20+ person
+marketing and creative agencies in eight named markets.
+
+**A ZERO SCORE THAT READS QUALIFIED IS THE DEFECT.** `score()` returns a
+`structural` verdict alongside the numeric one, and a record can take
+`icp_pass` structurally while scoring nothing. Geography contributes
+`"status": "not_required"`, which is how `why_matched` comes to say **"Other
+is a market this client sells to"** - a sentence that passes every country.
+`why_matched` still reads "scored above threshold" on eight rows that scored
+0.0, and that column is what the client reads.
+
+**So the ISSUE-019 fix was necessary and is not sufficient.** Dropping REVIEW
+removes 1,394 undecided rows; it does not remove a 121,205-employee telecom
+that the scorer affirmatively qualified. Shipping the 114 would send a client
+who sells to small agencies a list of 62 enterprise software companies and 24
+telecoms, which is worse than shipping nothing.
+
+- **Status** OPEN · the export is STOPPED for the second time and nothing has
+  been sent · the QUALIFIED-only ruling is implemented (`4afb54d5`) and stands
+- **Not a tuning question.** Two separate gates - the REVIEW pass and the
+  structural-pass-at-zero-score - both admitted enterprise accounts. The
+  scorer's threshold semantics are the thing to settle, and that is the
+  operator's call, not a weight to nudge.
+
 ### ISSUE-020 · Successive sourcing runs re-walked page one and added nothing · MEDIUM · **FIXED**
 
 `domains_already_known()` removes what is held, so a run that always starts at
