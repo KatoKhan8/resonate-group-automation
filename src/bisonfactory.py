@@ -1311,8 +1311,47 @@ def _stale_clearances(sequence):
     return entries
 
 
-def _refuse_colliding_leads(wanted, workspace_id):
+def _already_on_campaign(provider_id):
+    """Addresses this campaign ALREADY holds, lowercased.
+
+    Read from the campaign's own queue, which carries `lead.email` per row and
+    is one paginated read. A lead enrolled but with no queue row yet is not in
+    this set and is therefore still collision-checked - the safe direction, and
+    the reason this returns a set of what is KNOWN present rather than a claim
+    about what is absent.
+
+    An unreadable queue returns the empty set, so every lead is checked. That
+    is the same direction: it can only add checks, never skip one.
+    """
+    if not provider_id:
+        return set()
+    try:
+        rows = bison.scheduled_emails(provider_id)
+    except Exception:                                           # noqa: BLE001
+        return set()
+    return {str(((row.get("lead") or {}).get("email") or "")).strip().lower()
+            for row in rows} - {""}
+
+
+def _refuse_colliding_leads(wanted, workspace_id, already_on=()):
     """Refuse leads whose account the client's estate says STOP or HOLD.
+
+    ## RE-STAGING AN EXISTING MEMBER IS NOT A NEW TOUCH
+
+    ISSUE-021. `stage` re-submits every lead on the campaign, not only the new
+    ones, so once a campaign has emailed somebody that lead collides with ITS
+    OWN sent state - and this refuses the WHOLE stage rather than one lead, so
+    two already-contacted people blocked 34 good ones on 2026-09-22.
+
+    The account gate exists to stop us ADDING somebody to an account that is
+    already in play. A lead that is already on this campaign is not being
+    added; it is being re-described. Whether it should have been added was
+    decided when it was, and re-deciding it now on a state OUR OWN send
+    created is the circular reading that blocked batch 3.
+
+    `already_on` is what the campaign already holds. It never widens the check
+    to a lead that is not there: an unreadable queue yields an empty set and
+    everything is checked, which is the safe direction.
 
     Uses `collision.check_account` and `collision.account_policy` - the same
     gates `executionguard` runs at send time. Fetched per domain and cached
@@ -1336,9 +1375,15 @@ def _refuse_colliding_leads(wanted, workspace_id):
     """
     from . import collision
 
+    on_campaign = {str(a).strip().lower() for a in (already_on or ())}
+
     by_domain = {}
     for lead in wanted:
-        domain = str(lead["email"]).rsplit("@", 1)[-1].strip().lower()
+        address = str(lead["email"]).strip().lower()
+        if address in on_campaign:
+            # Already a member: being re-described, not added. See ISSUE-021.
+            continue
+        domain = address.rsplit("@", 1)[-1]
         if domain:
             by_domain.setdefault(domain, []).append(lead)
 
@@ -1428,7 +1473,8 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     # The cache lives for the duration of this call only.
     workspace_id = (report.get("workspace") or {}).get("id")
     if workspace_id:
-        _refuse_colliding_leads(wanted, workspace_id)
+        _refuse_colliding_leads(wanted, workspace_id,
+                                already_on=_already_on_campaign(provider_id))
     # The variables must exist on the workspace before a lead may carry one:
     # the provider refuses an undeclared name outright. Idempotent, and it
     # creates nothing that can reach a person.
