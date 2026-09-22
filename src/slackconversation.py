@@ -59,7 +59,13 @@ THREADS = os.path.join(ROOT, "work", "slack-threads.jsonl")
 _DEFAULT_THREADS = THREADS
 
 
+THREADS_VAR = "SLACK_THREADS"
+
+
 def threads_path():
+    override = (os.environ.get(THREADS_VAR) or "").strip()
+    if override:
+        return os.path.abspath(override)
     if THREADS != _DEFAULT_THREADS:
         return THREADS
     try:
@@ -108,7 +114,9 @@ def _thread_key(channel, thread_ts):
 
 def remember(channel, thread_ts, role, text, **extra):
     """Append one turn. The file is append-only and read tail-first."""
+    from . import store
     path = threads_path()
+    store.refuse_production_write(path)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     row = dict(extra, at=_now(), thread=_thread_key(channel, thread_ts),
                role=role, text=str(text or "")[:2000])

@@ -144,12 +144,28 @@ class ThePoliciesAreParsedNotTranscribed(unittest.TestCase):
 class TheCacheIsRebuiltWhenItIsStale(unittest.TestCase):
 
     def setUp(self):
+        """Pin the cache through its ENV OVERRIDE, not the module constant.
+
+        This set the constant alone and passed in isolation and failed after
+        `tests.test_invariants`, which calls `store.use_directory` and leaves
+        `KNOWLEDGE_PACK` pointing at a temp tree it has since deleted.
+        `cache_path()` reads the override first - deliberately, it is the
+        canonical one now that the pack is in `store.STATE_OVERRIDES` - so a
+        test that pins only the constant is pinning the thing that loses.
+        """
         self.tmp = tempfile.mkdtemp(prefix="rga-pack-")
+        self.path = os.path.join(self.tmp, "work", "pack.json")
         self._cache = knowledge.CACHE
-        knowledge.CACHE = os.path.join(self.tmp, "work", "pack.json")
+        self._env = os.environ.get(knowledge.CACHE_VAR)
+        knowledge.CACHE = self.path
+        os.environ[knowledge.CACHE_VAR] = self.path
 
     def tearDown(self):
         knowledge.CACHE = self._cache
+        if self._env is None:
+            os.environ.pop(knowledge.CACHE_VAR, None)
+        else:
+            os.environ[knowledge.CACHE_VAR] = self._env
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_a_fresh_cache_is_served(self):
@@ -160,19 +176,19 @@ class TheCacheIsRebuiltWhenItIsStale(unittest.TestCase):
     def test_a_stale_cache_is_rebuilt_rather_than_disclaimed(self):
         built = knowledge.write(knowledge.build())
         stale = dict(built, built_epoch=int(time.time()) - 7200)
-        with open(knowledge.CACHE, "w", encoding="utf-8") as handle:
+        with open(knowledge.cache_path(), "w", encoding="utf-8") as handle:
             json.dump(stale, handle, default=str)
         fresh = knowledge.pack()
         self.assertGreater(fresh["built_epoch"], stale["built_epoch"])
 
     def test_an_unreadable_cache_is_rebuilt_not_raised(self):
-        os.makedirs(os.path.dirname(knowledge.CACHE), exist_ok=True)
-        with open(knowledge.CACHE, "w", encoding="utf-8") as handle:
+        os.makedirs(os.path.dirname(knowledge.cache_path()), exist_ok=True)
+        with open(knowledge.cache_path(), "w", encoding="utf-8") as handle:
             handle.write("not json")
         self.assertIn("built_at", knowledge.pack())
 
     def test_the_cache_lives_under_work(self):
-        self.assertIn("work", knowledge.CACHE)
+        self.assertIn("work", knowledge.cache_path())
 
 
 class ThePackCarriesNoAddress(unittest.TestCase):

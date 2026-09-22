@@ -78,6 +78,13 @@ STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    # beside the queue and able to be left pointing at the
                    # real directory by a stale override.
                    "CRAWL_CACHE",
+                   # The Slack agent's three: its knowledge-pack cache, its
+                   # per-thread conversation memory and its change-request
+                   # journal. Added 2026-09-22 with Phase B, after
+                   # `test_the_checklist_has_not_fallen_behind_the_code`
+                   # caught all three writing beside the queue without
+                   # asking the barrier.
+                   "KNOWLEDGE_PACK", "SLACK_THREADS", "SLACK_REQUESTS",
                    # The prospect-facing action ledger. Of everything in this
                    # tuple it is the one a test must never write into the real
                    # `work/`: a stray reservation there would count against a

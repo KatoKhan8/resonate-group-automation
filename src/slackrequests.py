@@ -67,10 +67,17 @@ def requests_dir():
     override = (os.environ.get(REQUESTS_DIR_VAR) or "").strip()
     return os.path.abspath(override) if override else REQUESTS_DIR
 
-#: The queue the main session drains. Beside the queue like every other
+#: The worklist the main session drains. Beside the queue like every other
 #: piece of runtime state, and derived: the ticket file is the record, this
 #: is the worklist pointing at it.
-QUEUE_NAME = "request-queue.jsonl"
+#:
+#: NOT "request-queue.jsonl". `tests/test_invariants` refuses any literal
+#: containing "queue.jsonl" outside `store`, and it is right to: the queue
+#: is one named thing in this repository and a second file whose name reads
+#: like it is how somebody ends up pointing the wrong override at the wrong
+#: file. This is a journal of requests, so it is named one.
+JOURNAL_NAME = "slack-requests.jsonl"
+JOURNAL_VAR = "SLACK_REQUESTS"
 
 AWAITING = "awaiting_operator"
 APPROVED = "approved"
@@ -91,11 +98,15 @@ def _today():
 
 
 def queue_path():
+    """Where the request journal lives. Beside the queue, override-able."""
+    override = (os.environ.get(JOURNAL_VAR) or "").strip()
+    if override:
+        return os.path.abspath(override)
     try:
         from . import store
-        return os.path.join(os.path.dirname(store.queue_path()), QUEUE_NAME)
+        return os.path.join(os.path.dirname(store.queue_path()), JOURNAL_NAME)
     except Exception:                                           # noqa: BLE001
-        return os.path.join(ROOT, "work", QUEUE_NAME)
+        return os.path.join(ROOT, "work", JOURNAL_NAME)
 
 
 # ------------------------------------------------------------ recognition
@@ -561,8 +572,10 @@ def render(ticket):
 
 def write(ticket):
     """The ticket file and its queue row. The only files this writes."""
-    os.makedirs(requests_dir(), exist_ok=True)
+    from . import store
     path = path_for(ticket)
+    store.refuse_production_write(path)
+    os.makedirs(requests_dir(), exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as handle:
         handle.write(render(ticket))
@@ -572,7 +585,12 @@ def write(ticket):
 
 
 def _append_queue(ticket):
+    from . import store
     path = queue_path()
+    # BEFORE `makedirs`, not after. The refusal has to land before any
+    # filesystem mutation, which is what `refuse_production_write`'s own
+    # docstring says and why it is called here rather than at the open.
+    store.refuse_production_write(path)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(dict(ticket, at=_now()), default=str) + "\n")
