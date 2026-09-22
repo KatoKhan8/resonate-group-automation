@@ -8,8 +8,10 @@ to read this and say what happened and what to do next.
 **Merged to master:** Phases A and B, and Phase C increments 1 and 2
 (`cd143eda`). Master head when this was written: `be6e14b2`.
 
-**On the branch, not merged:** `slack-agent` @ `816e42b7`, pushed and
-verified against the remote. **Ten commits master does not have:**
+**On the branch, not merged:** `slack-agent`, pushed and verified against
+the remote. The last CODE commit is `ecb93a9f`; everything after it is this
+handoff and its merge request, so a sha quoted here cannot be the branch
+head by the time you read it. **Eleven commits master does not have:**
 
     5ad2f7f7  the six client-channel fixes (client view, the offer)
     f3ecba4c  the offer's missing process, and counting
@@ -21,6 +23,7 @@ verified against the remote. **Ten commits master does not have:**
     1f840c4f  campaign_copy - nobody ever asked for the shape
     ecb93a9f  a client sees a winner, and nothing else
     816e42b7  the merge request for all of it
+    (+ this handoff)
 
 Two merge requests, both current:
 
