@@ -59,3 +59,52 @@ other check: payload present, delay, branch shape, termination.
 - Any write to 487 or 489, which the batch-1 grant already excluded.
 - A second batch beyond the pacing rule, which the CONTINUOUS grant already
   governs.
+
+---
+
+# Amendment — 2026-09-22 — HeyReach activation
+
+Recorded verbatim.
+
+    AUTHORIZED: widen HeyReach activation to the 33 batch campaigns created
+    last night (list them by id in the authorization record), check hard
+    stops per seat, activate, read back status and connection-request
+    counters per campaign. Connection requests follow the graph's own
+    timing; report "enrolled is not requested".
+
+## The thirty-three, by id and seat
+
+Read from the provider 2026-09-22, all DRAFT at the time of this record.
+Each is `RESONATE PRODUCTIVE LI B1 SEAT <seat>` and names exactly one seat.
+
+    613724 / 116968      613737 / 174742      613750 / 181653
+    613725 / 116973      613738 / 174748      613751 / 181658
+    613726 / 116988      613739 / 174797      613752 / 191848
+    613727 / 116989      613740 / 174803      613753 / 201959
+    613728 / 119588      613741 / 174810      613754 / 201978
+    613729 / 125748      613742 / 174822      613755 / 208242
+    613730 / 125775      613744 / 174892      613756 / 208253
+    613731 / 129082      613746 / 175455      613757 / 212356
+    613732 / 139699      613747 / 175552      613761 / 174845
+    613733 / 143105      613748 / 177751
+    613734 / 159259      613749 / 179527
+    613735 / 169600
+    613736 / 174332
+
+**No other HeyReach campaign is covered.** 604869 keeps its own separate
+grant, and the client's own campaigns — 565765, 523983, 524002 and the rest
+of the estate on the shared key — are refused by the same check that refuses
+an unnamed EmailBison campaign.
+
+## What activation means on this channel
+
+A DRAFT campaign has issued nothing. Started, it begins working its list at
+the seat's own pace: **10 connection requests per seat per day**, and the
+graph's own timing decides everything after that — a 3-hour wait before the
+first message on the accepted branch, five days between messages, five days
+before each profile view.
+
+**ENROLLED IS NOT REQUESTED.** 151 leads sit on 33 lists. Starting the
+campaigns does not issue 151 connection requests; it lets each seat begin
+issuing up to ten a day against its own four or five leads, and LinkedIn
+decides whether each is accepted.
