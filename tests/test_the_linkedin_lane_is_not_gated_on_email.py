@@ -47,7 +47,7 @@ def a_contact(key, email, linkedin, verified, angle=None):
         contact["sendable"] = True
         contact["verification"] = {
             "state": "verified", "sendable": True, "confirmation_count": 2,
-            "evidence": [verification.result("contactout", verification.S_VALID,
+            "evidence": [verification.result("deliverable", verification.S_VALID,
                                              email),
                          verification.result("reoon", verification.S_VALID,
                                              email)]}

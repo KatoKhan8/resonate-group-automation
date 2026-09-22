@@ -70,7 +70,7 @@ class TheSendGateHonoursTheAgencyList(unittest.TestCase):
             "linkedin": self.PROFILE, "selected": True, "verdict": "valid",
             "sendable": True, "persona": "champion", "angle": "operations",
             "verification": {"evidence": [
-                verification.result("contactout", "valid", self.EMAIL),
+                verification.result("deliverable", "valid", self.EMAIL),
                 verification.result("reoon", "valid", self.EMAIL)]}}]
         rec["cadence"] = {"acme-1": {
             "day5": {"channel": "email", "subject": "resourcing at Acme",
