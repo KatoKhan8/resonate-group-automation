@@ -42,10 +42,25 @@ Both tasks touch `tests/test_task081_thread_reply.py` and both touch the
 threading shape; two workers there will collide. Wait for TASK-258 to land,
 then start from a tree where the default is already correct.
 
-**Re-run the 28 before you fix anything.** With the default repaired, some of
-them will already be green — a fixture that relied on the ladder rather than
-on its own override may need no change at all. Fixing a test that is no longer
-failing is how a diff grows a hundred lines that answer to nothing.
+**TASK-258 HAS LANDED AND IT ALREADY CLEARED 13 OF THE 28.** Measured on
+branch `infra` immediately after integrating it, with no fixture touched:
+
+    module                       before   after
+    test_task081_thread_reply         6       0   all six, fixed by the ladder
+    test_render_preview              11       4   seven cleared
+    test_bison_campaign_write        11      11   unchanged - these are yours
+
+    total                            28      15
+
+So **your real scope is 15, not 28**, and the whole of it is in
+`test_bison_campaign_write` plus four in `test_render_preview`. Re-measure
+before you start rather than trusting this table - it was taken at one commit
+and the register's rule is that a derived report is only as good as its last
+verification.
+
+**Do not "fix" a test that is already passing.** That is how a diff grows a
+hundred lines answering to nothing, and it is the specific risk on a task
+whose brief says 28 and whose reality is 15.
 
 ## Then the fixtures
 
