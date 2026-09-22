@@ -1,17 +1,18 @@
 # Merge request — Phase C3: the three decisions, built
 
-**For the production session.** Branch `slack-agent` at `1f840c4f`, pushed.
+**For the production session.** Branch `slack-agent` at `ecb93a9f`, pushed.
 Not merged, not pushed to master.
 
-Three commits, one per decision:
+Four commits: one per decision, plus the follow-up on variant status.
 
     5025feb6  meetings_booked — the number the contract runs on
     0e376be1  the promise scan — 53 promises, now checked
     1f840c4f  campaign_copy — nobody ever asked for the shape
+    ecb93a9f  the variant visibility axis (your follow-up decision)
 
 `docs/MERGE-REQUEST-SLACK-AGENT-PHASE-C2.md` covers increments 3 to 6,
-which are also still unmerged. **The branch now carries eight commits
-master does not have** — C2's five and these three.
+which are also still unmerged. **The branch now carries nine commits
+master does not have** — C2's five and these four.
 
 ## WHAT THIS TOUCHES THAT IS YOURS
 
@@ -21,10 +22,18 @@ No `config/.env`, no `work/`, no `src/providers/*`, no `*_watch_loop.py`.
 `scripts/digest_loop.py` is untouched — see §1e for the one line you may
 want to add to the digest.
 
-New: `src/slackmeetings.py`, `src/slackpromises.py`, and four test files.
+New: `src/slackmeetings.py`, `src/slackpromises.py`, and three test files.
 Modified: `src/slackagenttools.py`, `src/slackconversation.py`,
-`scripts/slack_agent_briefing.py`, `tests/test_slack_agent_cannot_act.py`,
-`tests/test_invariants.py`.
+`src/variants.py` (additive — see §3c), `scripts/slack_agent_briefing.py`,
+`tests/test_slack_agent_cannot_act.py`, `tests/test_invariants.py`,
+`tests/test_what_a_client_is_shown.py`.
+
+`src/variants.py` is the one file here that is not slack-agent code.
+Checked first: no branch ahead of master touches it. The change is two
+constants, one derived reader, one defaulted keyword, one line in
+`apply_to_step` and one `validate` check — no existing filter, allocation
+rule or status value changed, and the 218 variant-engine tests pass
+untouched.
 
 **Still true from C2 §0: the running agent loop is executing pre-merge
 code.** It started 13:18:29 and has never been restarted. None of this
@@ -172,8 +181,25 @@ cases explicitly and names the command:
 > no Slack history has been pulled, so this is not a clean week — it is an
 > empty file. Run `py -3 scripts/slack_history.py --read`.
 
-**This is the one thing in C3 that needs an input you control.** Without a
-history refresh the scan is correct and empty.
+### The monitor, for you to start
+
+**Your decision: this goes to the production session as a monitor, and this
+session does not run it.** The scan is correct and empty until it does.
+
+    py -3 -u scripts/slack_history.py --read          # one pull
+    py -3 -u scripts/slack_history.py --loop          # as a monitor
+
+`--loop` is written and has never been started — it is on the open list in
+every handoff since the 22nd. It writes only `work/slack-history/` and
+reads only rooms the bot is already in; unbound shared channels are skipped
+by name and listed, so no unattributable client room is pulled.
+
+**One thing to know before you start it.** The raw history contains the
+plaintext GoDaddy password, payroll and personal phone numbers — the
+standing exposure already on your list — and a scheduled pull puts a copy
+of it on disk on a schedule. `work/` is gitignored and uncommitted. The
+promise scan reads message shape only and never quotes a body into an
+answer, but the file on disk is the file on disk.
 
 ## 2f. Clients never see it — structurally
 
@@ -215,27 +241,66 @@ does carry alpha's. "The other client's copy is absent" passes by accident
 against an empty fixture, and that is the shape of test this repository has
 been caught by before.
 
-## 3c. Variants under test are withheld and counted
+## 3c. Testing / winner / retired — your follow-up decision, built
 
-A client is not shown a variant, and is **not left thinking they have seen
-everything**: the number withheld travels with the answer. No variant
-vocabulary and no approver's name reach a client channel. Internal sees the
-copy, the variant id, the style and who signed it.
+`ecb93a9f`. A client sees a **winner** as part of the cadence and never a
+`testing` or `retired` one. Internal sees all three, each labelled. No
+variant vocabulary and no approver's name reach a client channel.
 
-**One reading you should check.** I took *presence of a `variant_id`* as
-"under test". That is conservative: it withholds a variant that has already
-settled as a winner as well as one still being trialled. If a settled
-winner should reach a client, the signal is the variant's own status and
-that is your call, not a guess made here.
+**A second axis, not a renaming of the first.** `variants.status` decides
+ALLOCATION — who receives which arm — and `even_allocation`,
+`experiment_of`, `shifted_allocation` and `validate` all read it. Rewriting
+its vocabulary would let a visibility decision change which message a real
+person gets. So `client_status` is its own field, and a variant is `active`
+for sending and `testing` for showing, which is the ordinary state.
 
-## 3d. One thing it does show, and it is worth your eye
+    variants.TESTING / VARIANT_WINNER / RETIRED
+    variants.client_status(entry)    testing | winner | retired, never None
+    variants.client_may_see(entry)   winner only
+    apply_to_step()                  writes `variant_client_status` onto
+                                     the step, so the readers of a step do
+                                     not each re-derive it
+
+### The migration note
+
+**Nothing to backfill, and no client answer changes on merge.**
+`client_status` is DERIVED, not required:
+
+    an explicit `client_status`   that, when it is one of the three
+    `status` is `retired`         retired — a retired arm is retired on
+                                  both axes; two truths about one thing
+                                  would be worse than one
+    anything else                 testing
+
+So every variant written before today reads as `testing` and is withheld,
+which is precisely how it behaved before the field existed. Promoting a
+winner is a deliberate act, one variant at a time, by setting
+`client_status: "winner"` on the entry in the cadence node.
+
+**Testing is the default and the default is the withheld one.** An unknown
+or typo'd value reads as `testing`, so the failure mode is copy staying
+private rather than copy under test quoted to a customer as settled. But
+`variants.validate` **blocks** an unrecognised value — a `winnner` that
+silently meant `testing` would be a decision you made that the system
+quietly did not carry out, so it fails loudly instead.
+
+### And the winner is not labelled a winner
+
+It arrives in a client answer as ordinary cadence copy, with no experiment
+vocabulary attached: "winner" implies the losers they are not being shown.
+Withheld messages are still counted, so an answer showing one of three does
+not read as the whole set.
+
+218 variant-engine tests still green, unchanged.
+
+## 3d. Merge-resolved copy names a prospect — CONFIRMED, STAYS AS JUDGED
 
 The copy is merge-resolved, so a body can carry a recipient's first name
 and company — *"Hi Ivana, one line about margins."* **"As sent" cannot be
 satisfied any other way.** A client seeing their own outreach to their own
 prospect in their own channel is the rule `lead_lookup` already runs on,
-and addresses are still stripped by the answer guard. Say if you want it
-narrower.
+and addresses are still stripped by the answer guard. Confirmed by the
+operator on 2026-09-22: it stays as judged.
 
 ## 3e. One step carries several texts
 
@@ -250,9 +315,10 @@ become a three-hundred-message answer.
 
     tests/test_the_number_the_contract_runs_on.py              25  NEW
     tests/test_nothing_tracked_whether_a_promise_was_kept.py   27  NEW
-    tests/test_nobody_ever_asked_for_the_shape.py              22  NEW
+    tests/test_nobody_ever_asked_for_the_shape.py              36  NEW
 
-**577 slack tests, green**, run together and each file alone.
+**591 slack tests, green**, run together and each file alone, plus 218
+variant-engine tests unchanged and green.
 `tests/test_invariants.py` keeps its one pre-existing failure (two modules
 importing `ProviderError` by name), which predates this branch.
 
@@ -285,8 +351,25 @@ Carried forward and unchanged:
 
 New:
 
-- **Run `scripts/slack_history.py --read`**, or on a schedule. The promise
-  scan is correct and empty without it.
+- **Start `scripts/slack_history.py --loop` as a monitor** (§2e). The
+  promise scan is correct and empty without it, and it has never been
+  started. Read the note there about what the raw history contains.
 - **The digest line** in §1e, if you want meeting counts there.
-- **The variant reading** in §3c and the merge-resolved copy in §3d.
+- **Promote a winner** when there is one (§3c). Until then every variant
+  reads as `testing` and no client sees one, which is the pre-merge
+  behaviour.
 - **A correction verb for the meetings ledger**, if you want one.
+
+## One thing found on the way past, and not ours to fix
+
+`tests/test_the_cadence_the_client_chose_is_the_one_that_runs.py` and
+`tests/test_the_cadence_reacts_to_what_the_prospect_did.py` both fail:
+`productive_li_heavy_v1` is expected to carry **6 LinkedIn steps and has
+5**, total 10 rather than 11.
+
+**Verified pre-existing.** They fail identically against the pristine
+`src/variants.py` from before this branch touched it, so nothing here
+caused it. It reads as drift between the client config and the tests'
+expectation. It may be this worktree's own `work/clients/productive`
+rather than production's, so it is worth one check on master before
+anybody edits a cadence on the strength of it.
