@@ -425,6 +425,67 @@ _together_set`, which is that invariant pair doing exactly its job.
 
 ---
 
+## 4e. THE PROMOTION RULE, AND THE TWO TASKS IT GATES ON
+
+**Operator, Zvonimir, 2026-09-22. Recorded in full as
+`docs/STORE-SQLITE-DESIGN-2026-09-22.md` §11** — put there rather than only
+here, because §11 is where somebody reaching for the flag will actually look.
+
+    QUEUE_BACKEND=sqlite goes live ONLY when all four hold:
+      1. TASK-259 green   both loss guards exercised on BOTH backends
+      2. TASK-260 green   the checkpoint read is O(changed)
+      3. 48 hours of shadow on the live queue with a ZERO diff
+      4. the PRODUCTION SESSION flips it, in a window with no sends
+
+    Until then, JSONL stays live.
+
+Condition 3 has a trap written next to it. **An empty diff ledger is not the
+same as a clean one** — zero rows because nothing ran looks identical to zero
+rows because everything agreed, and this repository has shipped that exact
+vacuous pass twice (F-003's `coverage()` passing against nothing, and
+`leadstop.sweep` reporting clean because it never incremented its counter).
+TASK-253's ledger records **writes observed** as well as divergences, so the
+check is `writes_observed > 0 AND divergences == 0`, not "the file is empty".
+
+§11 also records what promotion does **not** require, so nobody adds it later:
+not a full-suite green (the baseline carries ~111 known failures, none about
+storage), and not the jsonl 20k arm being performed (it writes ~1.59 TB and is
+projected by design).
+
+And it is reversible: `QUEUE_BACKEND=jsonl` restores the old path, because the
+migration never deletes or modifies `queue.jsonl` and JSONL keeps being
+written throughout shadow. That is the reason shadow comes first, and the
+reason it is 48 hours rather than an afternoon.
+
+### TASK-260 — dispatched, and it is a safety task wearing a performance hat
+
+`docs/qwen-tasks/TODO/TASK-260-...md`. It leads with the hazard rather than
+the optimisation, because the optimisation is easy:
+
+**Both loss guards fail open on absence.** `refuse_evidence_loss` and
+`refuse_history_loss` each `continue` past a record id missing from the new
+set — correct today, because removal is a different rule with a different
+guard. The moment the read narrows, every record outside the subset *is*
+absent, so both guards skip it. Silently. **A narrowed read converts both into
+no-ops for everything they did not read**, and these are the guards that exist
+because a 2026-09-11 checkpoint erased a prospect's request to be removed and
+left `eligibility` answering with an approval gate rather than a stop.
+
+So the task forbids touching either guard, and requires the correctness to
+come from the input being provably sufficient — the records the caller
+touched, union the records changed on disk since its baseline — proven by a
+200-round randomised property test that the narrowed input gives the identical
+verdict to the full set, for the same ids. Plus a fail-closed fallback to the
+full read whenever the cursor cannot be trusted.
+
+It also tells the worker the thing that would otherwise cost it a day:
+**`updated_at` cannot be the cursor.** Second-resolution from `store.now()`,
+`CHECKPOINT_EVERY` is 5, so a cursor built on it would skip every change
+landing in the same second. TASK-251 measured that. It specifies a real
+per-row `rev` column fed from `meta.revision`.
+
+---
+
 ## 5. WHAT I DID NOT DO
 
 - **Did not fix the PII guard** — §2, your files.
