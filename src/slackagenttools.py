@@ -97,6 +97,50 @@ def cadence_detail(scope, argument=None):
 COPY_PER_STEP_CAP = 5
 
 
+#: How many campaigns each capped question may spend a provider read on.
+#: Every one of these costs one read per campaign and there is no route
+#: that asks the other direction, so they are caps rather than preferences.
+SENDS_TODAY_CAP = 8
+WEEK_CAMPAIGN_CAP = 10
+DOMAIN_CAMPAIGN_CAP = 12
+
+
+def _campaigns_to_read(entry, cap):
+    """`(the ids to read, how many the cap hid)` for one workspace.
+
+    TWO THINGS THAT WERE BOTH WRONG, AND THE SECOND IS THE GENERAL ONE.
+
+    `slackknowledge._campaign_ids_newest_first` now hands this list over
+    newest first, so the head of it is the campaigns that are running.
+    It used to be `sorted()`, oldest first, and on 2026-09-22 that made
+    `sends_today` answer "what was sent today" out of six campaigns that
+    had not sent since the 14th while missing two that had sent 65 emails
+    between them that morning.
+
+    Reordering alone is not the fix. A cap can still bite - a workspace
+    with thirty campaigns has thirty and gets ten - and the answer built
+    on it is then a FLOOR. It has to say so, in the same breath, or the
+    next reader takes it for a total exactly as the last one did. This
+    returns the count so every caller can, and `lead_counts` already
+    treats an unreadable campaign the same way for the same reason.
+    """
+    ids = [str(i) for i in (entry.get("provider_campaign_ids") or [])]
+    return ids[:cap], max(0, len(ids) - cap)
+
+
+def _floor_note(note, hidden, what="campaigns"):
+    """The note a capped answer carries, and nothing when it is not capped.
+
+    A warning printed unconditionally is a warning people stop reading, so
+    this appends only when the cap actually bit.
+    """
+    if not hidden:
+        return note
+    return ("%s; this is a FLOOR - %d more %s were not read, so anything "
+            "counted here is at least this and may be more"
+            % (note, hidden, what))
+
+
 def campaign_copy(scope, argument=None):
     """What a step actually SAYS. The approved set and nothing else.
 
@@ -596,7 +640,7 @@ def sending_domains(scope, argument=None):
              for p in senderidentity.senders(slug, rows=rows)}
     accounts = {a.get("account_id"): a
                 for a in senderidentity.email_accounts(slug, rows=rows)}
-    recent, unreadable = _recent_send_domains(slug)
+    recent, unreadable, capped = _recent_send_domains(slug)
 
     senders, every_domain, mailboxes = [], set(), 0
     for sender_id, account_ids in sorted(owned.items()):
@@ -638,12 +682,18 @@ def sending_domains(scope, argument=None):
            "senders": senders,
            "note": "domains only. The mailbox addresses behind them are not "
                    "part of this answer."}
-    if unreadable:
-        out["campaigns_unreadable"] = unreadable
+    if unreadable or capped:
+        # Reported apart: a refused queue is an outage, a campaign past the
+        # cap was never asked. Both make the recency flag a floor.
+        if unreadable:
+            out["campaigns_unreadable"] = unreadable
+        if capped:
+            out["campaigns_not_read"] = capped
         out["recency_note"] = (
-            "%d campaign queue(s) could not be read, so "
             "'sent in the last 7 days' is a floor rather than the whole "
-            "picture" % unreadable)
+            "picture: %d campaign queue(s) could not be read and %d were "
+            "past the %d-campaign cap"
+            % (unreadable, capped, DOMAIN_CAMPAIGN_CAP))
     if recent is None:
         out["recency_note"] = ("no campaign queue could be read, so no "
                                "claim is made about which domains sent "
@@ -745,14 +795,22 @@ def domain_detail(scope, argument=None):
             "no campaign queue could be read, so nothing is claimed about "
             "what this domain sent this week")
     else:
-        emails, persons, unreadable = week
+        emails, persons, unreadable, capped = week
         out["emails_sent_last_7_days"] = emails
         out["leads_emailed_last_7_days"] = persons
-        if unreadable:
-            out["campaigns_unreadable"] = unreadable
+        if unreadable or capped:
+            # REFUSED AND NOT ASKED ARE DIFFERENT and are reported apart. A
+            # queue that refused is an outage; a campaign past the cap was
+            # never attempted. Both make the figure a floor, and only one of
+            # them is a fault worth chasing.
+            if unreadable:
+                out["campaigns_unreadable"] = unreadable
+            if capped:
+                out["campaigns_not_read"] = capped
             out["last_7_days_note"] = (
-                "%d campaign queue(s) refused, so these are floors"
-                % unreadable)
+                "these are floors: %d campaign queue(s) refused and %d were "
+                "past the %d-campaign cap" % (unreadable, capped,
+                                              DOMAIN_CAMPAIGN_CAP))
 
     if scope.is_internal:
         # HOW WE JUDGE OUR OWN INFRASTRUCTURE. `sending_domains` keeps
@@ -821,13 +879,13 @@ def _week_for_domain(slug, domain):
     """
     import datetime
     entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
-    ids = entry.get("provider_campaign_ids") or []
+    ids, capped = _campaigns_to_read(entry, DOMAIN_CAMPAIGN_CAP)
     if not ids:
         return None
     cutoff = datetime.datetime.now(datetime.timezone.utc) - \
         datetime.timedelta(seconds=WEEK_SECONDS)
     emails, people, unreadable, read_any = 0, set(), 0, False
-    for campaign_id in ids[:12]:
+    for campaign_id in ids:
         try:
             from .providers import bison
             queue = bison.scheduled_emails(campaign_id) or []
@@ -858,7 +916,7 @@ def _week_for_domain(slug, domain):
                        else ("row:%s" % row.get("id")))
     if not read_any:
         return None
-    return emails, len(people), unreadable
+    return emails, len(people), unreadable, capped
 
 
 def _recent_send_domains(slug):
@@ -871,13 +929,13 @@ def _recent_send_domains(slug):
     """
     import datetime
     entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
-    ids = entry.get("provider_campaign_ids") or []
+    ids, capped = _campaigns_to_read(entry, DOMAIN_CAMPAIGN_CAP)
     if not ids:
-        return None, 0
+        return None, 0, 0
     cutoff = datetime.datetime.now(datetime.timezone.utc) - \
         datetime.timedelta(seconds=WEEK_SECONDS)
     found, unreadable, read_any = set(), 0, False
-    for campaign_id in ids[:12]:
+    for campaign_id in ids:
         try:
             from .providers import bison
             queue = bison.scheduled_emails(campaign_id) or []
@@ -902,7 +960,7 @@ def _recent_send_domains(slug):
                 # sending address is in memory at all, and it leaves as its
                 # domain or not at all.
                 found.add(address.rsplit("@", 1)[-1].lower())
-    return (found if read_any else None), unreadable
+    return (found if read_any else None), unreadable, capped
 
 
 #: Above this many lines the listing is a block of its own rather than
@@ -1075,12 +1133,12 @@ def activity_this_week(scope, argument=None):
     import datetime
     slug = _workspace_for(scope, argument)
     entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
-    ids = entry.get("provider_campaign_ids") or []
+    ids, hidden = _campaigns_to_read(entry, WEEK_CAMPAIGN_CAP)
     cutoff = datetime.datetime.now(datetime.timezone.utc) - \
         datetime.timedelta(seconds=WEEK_SECONDS)
 
     rows, sent_week, lifetime, unreadable = [], 0, 0, 0
-    for campaign_id in ids[:10]:
+    for campaign_id in ids:
         detail = readback.campaign_by_id(campaign_id)
         if detail.get("_error"):
             unreadable += 1
@@ -1104,15 +1162,18 @@ def activity_this_week(scope, argument=None):
     out = {"read_at": _now(), "workspace": slug,
            "campaigns_read": len(rows),
            "campaigns_unreadable": unreadable,
+           "campaigns_not_read": hidden,
            "sent_last_7_days": sent_week,
            "sent_lifetime": lifetime,
            "campaigns": rows,
            "note": "sent_last_7_days is counted from queue rows carrying a "
                    "sent_at inside the window. sent_lifetime is the "
                    "provider's own counter and is NOT a weekly figure."}
-    if unreadable:
-        out["warning"] = ("%d campaign(s) could not be read, so this total "
-                          "is a floor and not the whole picture" % unreadable)
+    if unreadable or hidden:
+        out["warning"] = (
+            "this total is a floor and not the whole picture: %d campaign(s) "
+            "could not be read and %d were past the %d-campaign cap"
+            % (unreadable, hidden, WEEK_CAMPAIGN_CAP))
     return out
 
 
@@ -1197,8 +1258,9 @@ def lead_counts(scope, argument=None):
                     "_error": "campaign %s does not belong to this "
                               "channel's workspace" % asked}
         wanted = [asked]
+        counts_hidden = 0
     else:
-        wanted = mine[:10]
+        wanted, counts_hidden = _campaigns_to_read(entry, WEEK_CAMPAIGN_CAP)
 
     cutoff = datetime.datetime.now(datetime.timezone.utc) - \
         datetime.timedelta(seconds=WEEK_SECONDS)
@@ -1263,10 +1325,14 @@ def lead_counts(scope, argument=None):
         "workspace people figure de-duplicates across campaigns, so the "
         "per-campaign figures do not sum to it. sent_lifetime is the "
         "provider's lifetime counter and is not a weekly figure.")
-    if unreadable or queue_unreadable:
+    if counts_hidden:
+        out["campaigns_not_read"] = counts_hidden
+    if unreadable or queue_unreadable or counts_hidden:
         out["warning"] = (
-            "%d campaign read(s) failed, so every total here is a FLOOR and "
-            "not the whole picture" % (unreadable + queue_unreadable))
+            "every total here is a FLOOR and not the whole picture: %d "
+            "campaign read(s) failed and %d were past the %d-campaign cap"
+            % (unreadable + queue_unreadable, counts_hidden,
+               WEEK_CAMPAIGN_CAP))
 
     if scope.is_internal:
         # THE LOCAL PIPELINE, UNDER ITS OWN NAME. "how many are ready" is
@@ -1387,10 +1453,10 @@ def lead_in_campaign(scope, argument=None):
                 "_error": "lead_in_campaign needs an email address"}
     slug = _workspace_for(scope, None)
     entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
-    mine = [str(i) for i in (entry.get("provider_campaign_ids") or [])][
-        :MEMBERSHIP_CAMPAIGN_CAP]
+    mine, mine_hidden = _campaigns_to_read(entry, MEMBERSHIP_CAMPAIGN_CAP)
     out = {"read_at": _now(), "workspace": slug, "address": address,
-           "campaigns_checked": len(mine), "source": "provider"}
+           "campaigns_checked": len(mine),
+           "campaigns_not_checked": mine_hidden, "source": "provider"}
     #: The one sentence for both "no such lead" and "not one of yours".
     absent = ("the provider has no lead with that address in any of this "
               "workspace's campaigns")
@@ -1519,7 +1585,8 @@ def replies(scope, argument=None):
     out = {"read_at": _now(), "workspace": slug}
 
     counted, unreadable = 0, 0
-    for campaign_id in (entry.get("provider_campaign_ids") or [])[:10]:
+    reply_ids, reply_hidden = _campaigns_to_read(entry, WEEK_CAMPAIGN_CAP)
+    for campaign_id in reply_ids:
         detail = readback.campaign_by_id(campaign_id)
         if detail.get("_error"):
             unreadable += 1
@@ -1529,6 +1596,12 @@ def replies(scope, argument=None):
     out["replies_counted_by_provider"] = counted
     if unreadable:
         out["campaigns_unreadable"] = unreadable
+    if reply_hidden:
+        out["campaigns_not_read"] = reply_hidden
+    if unreadable or reply_hidden:
+        out["replies_note"] = (
+            "a floor: %d campaign(s) could not be read and %d were past the "
+            "%d-campaign cap" % (unreadable, reply_hidden, WEEK_CAMPAIGN_CAP))
 
     try:
         from . import notify
@@ -1741,20 +1814,30 @@ def timeline(scope, argument=None):
 
 
 def sends_today(scope, argument=None):
-    """What actually went out, from the provider's own counters."""
+    """What actually went out, from the provider's own counters.
+
+    THE EIGHT ARE THE NEWEST EIGHT, and that is the whole of a defect
+    measured live on 2026-09-22 - see `_campaigns_to_read`. Asked *what
+    was sent today* against a fourteen-campaign estate, this read the
+    eight OLDEST and answered with 231 of the day's 296 sends, silently.
+    """
     slug = _workspace_for(scope, None)
     entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
-    ids = entry.get("provider_campaign_ids") or []
+    ids, hidden = _campaigns_to_read(entry, SENDS_TODAY_CAP)
     rows = []
-    for campaign_id in ids[:8]:
+    for campaign_id in ids:
         row = readback.campaign_by_id(campaign_id)
         if row.get("emails_sent") or row.get("queue_rows"):
             rows.append(row)
     return {"read_at": _now(), "workspace": slug,
             "campaigns_read": len(rows),
+            "campaigns_in_workspace": len(
+                entry.get("provider_campaign_ids") or []),
+            "campaigns_not_read": hidden,
             "campaigns": rows,
-            "note": "enrolled is not sent; emails_sent is the provider's "
-                    "own counter and queue_sent_rows is the queue's"}
+            "note": _floor_note(
+                "enrolled is not sent; emails_sent is the provider's "
+                "own counter and queue_sent_rows is the queue's", hidden)}
 
 
 def weekly_plan(scope, argument=None):
@@ -1797,7 +1880,7 @@ def weekly_plan(scope, argument=None):
     import datetime
     slug = _workspace_for(scope, argument)
     entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
-    ids = [str(i) for i in (entry.get("provider_campaign_ids") or [])][:10]
+    ids, week_hidden = _campaigns_to_read(entry, WEEK_CAMPAIGN_CAP)
     cutoff = datetime.datetime.now(datetime.timezone.utc) - \
         datetime.timedelta(seconds=WEEK_SECONDS)
 
@@ -1834,9 +1917,13 @@ def weekly_plan(scope, argument=None):
                    "for three named days, not a commitment and not a date "
                    "anyone has promised. The backward half is the last 7 "
                    "days, with people and emails counted apart."}
-    if unreadable:
-        out["warning"] = ("%d campaign(s) could not be read, so this is a "
-                          "partial picture of the week" % unreadable)
+    if week_hidden:
+        out["campaigns_not_read"] = week_hidden
+    if unreadable or week_hidden:
+        out["warning"] = (
+            "this is a partial picture of the week: %d campaign(s) could not "
+            "be read and %d were past the %d-campaign cap"
+            % (unreadable, week_hidden, WEEK_CAMPAIGN_CAP))
 
     if scope.is_internal:
         # WHAT THE WEEK IS WAITING ON. Internal only, and not because it is
