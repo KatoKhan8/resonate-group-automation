@@ -1,20 +1,25 @@
 # Slack agent — handoff, 2026-09-22 evening
 
 Supersedes `SLACK-AGENT-HANDOFF-2026-09-22-PM.md`, whose "one commit
-unmerged" is now five.
+unmerged" is now eight.
 
 **Merged to master:** Phases A and B, and Phase C increments 1 and 2
 (`cd143eda`). Master head is `be6e14b2`.
 
-**On the branch, not merged:** `slack-agent` @ `57c882a6`, pushed.
+**On the branch, not merged:** `slack-agent` @ `1f840c4f`, pushed.
 
     5ad2f7f7  the six client-channel fixes (client view, the offer)
     f3ecba4c  the offer's missing process, and counting
     c4120b45  per-user roles, and the week as an answer
     1af0b5b9  the material the client prompt was built from
     57c882a6  one domain, which is how the question is asked
+    5025feb6  meetings booked - the number the contract runs on
+    0e376be1  the promise scan - 53 promises, now checked
+    1f840c4f  campaign_copy - nobody ever asked for the shape
 
-Merge request: `docs/MERGE-REQUEST-SLACK-AGENT-PHASE-C2.md`. It touches
+Merge requests: `docs/MERGE-REQUEST-SLACK-AGENT-PHASE-C2.md` (the first
+five) and `docs/MERGE-REQUEST-SLACK-AGENT-PHASE-C3.md` (the last three,
+built to the operator's decisions of 2026-09-22). Neither touches
 nothing of the production session's: no `config/.env`, no `work/`, no
 `src/providers/*`, no `*_watch_loop.py`.
 
@@ -29,7 +34,7 @@ not reload, so `sending_domains`, `slacklanguage`, the relay trigger and
 the seat handling are all merged and none of them is running. A restart is
 the whole fix and it is the operator's to do.
 
-## WHAT THE FIVE COMMITS ADDED
+## WHAT THE EIGHT COMMITS ADDED
 
 **The offer now has a process.** `slackfollowup` shipped with `register()`
 wired in and `due()` read by nothing — a client could say yes, a row was
@@ -71,9 +76,28 @@ and the experiment vocabulary blocked in campaign names but not in prose.
 All three fixed; all three client packs now audit clean, asserted against
 the live pack.
 
+**Meetings booked.** A hand-fed ledger, the operator's design: an internal
+person types `meeting booked <domain> <date>` and one row is recorded.
+Sources never merge because `counts()` returns `{source: n}` and nothing in
+the module hands back a bare number. A question never writes a row, the
+check is on the person rather than the room, and attribution is refused
+rather than guessed.
+
+**The promise scan.** The operator's delivery definition, implemented
+verbatim. Four states, and `undated` is never called late. "danas ili
+sutra" is judged on sutra. The evidence is named rather than collapsed,
+because the promise this was written about was kept with the wrong
+artefact. Internal-only, structurally.
+
+**Campaign copy.** What a step actually says, filtered by walking
+approvals rather than steps - so a revoked or edited step drops out by
+itself and "not history" needs no code that knows what history is. A
+variant under test is withheld from a client and counted, never silently
+omitted.
+
 ## STATE OF THE TESTS
 
-**503 slack tests, green**, together and file by file.
+**577 slack tests, green**, together and file by file.
 `tests/test_invariants.py` has its one pre-existing failure — two modules
 importing `ProviderError` by name — which predates this branch and is the
 same one increment 1 reported.
@@ -109,11 +133,15 @@ read in the first place.
 
 ## NEXT THREE
 
-1. `meetings_booked` — still the most-asked number nothing can produce, and
-   still the one the commercial relationship runs on. It needs a source.
-2. The promise scan. Fifty-three commitments in ten days and nothing tracks
-   whether any was kept; the scan exists in the history script and nothing
-   consumes it. It needs a decision about what counts as delivery.
-3. `campaign_copy` — the catalogue's fourth tool: what a step actually
-   says, rather than the shape of the sequence. Client visibility of
-   approved copy is an operator decision before it is a function.
+All three of the previous next-three are built. What is left:
+
+1. **`report_link`** — the catalogue's fifth tool and the last one on its
+   list. `src/clientreport.py` exists and nothing calls it from here;
+   reporting is 11 questions, all client. Pointing at a report is a
+   smaller and more honest thing than composing one.
+2. **A second meetings source.** The ledger is shaped for it - a new tag,
+   never a bigger number under the old one - and Calendly or the CRM would
+   halve the hand-feeding.
+3. **Refresh the Slack history on a schedule.** The promise scan is
+   correct and empty until something pulls history; `slack_history.py
+   --loop` is written, handed over, and not running.
