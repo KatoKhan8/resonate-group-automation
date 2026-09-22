@@ -190,6 +190,204 @@ def sender_summary(scope, argument=None):
     return out
 
 
+#: The bounce rate at which sending stops. A client is owed this number
+#: beside their own senders' rates, because a rate means nothing without the
+#: line it is measured against.
+BOUNCE_HARD_STOP_PERCENT = 2.0
+
+
+def sender_roster(scope, argument=None):
+    """This client's OWN authorized senders, by name.
+
+    OPERATOR, 2026-09-22: "a client's OWN senders are the client's own data.
+    In #productive-resonate-outbound the agent may name Productive's
+    authorized sender humans, say how many mailboxes and LinkedIn seats each
+    has, their daily capacity, which campaigns they carry, and their health."
+
+    THE PEOPLE SENDING FOR PRODUCTIVE ARE PRODUCTIVE'S OWN STAFF, and half
+    of them are in that channel. Withholding their own colleagues' names
+    from them was this module protecting the wrong thing.
+
+    What it still refuses, and the refusals are structural rather than
+    phrased:
+
+    - Every row is filtered on `workspace` before it is read, so another
+      client's senders are never in the material at all.
+    - The provider's estate read is filtered against THIS workspace's own
+      account ids rather than trusted to be scoped. A provider workspace is
+      a binding beneath a client, not the client, and `PRODUCT-GOAL` says a
+      credential that reaches an estate proves nothing about whose it is.
+    - An account with no attestation is not in the roster. That is what
+      keeps the three excluded identities out without naming them: they are
+      excluded by having no attestation, so a filter on attestation cannot
+      list them however the question is phrased.
+    - The attestation's `by` text - which records how attestation works and
+      who signed it - is never read into the answer.
+    """
+    slug = _workspace_for(scope, argument)
+    try:
+        from . import senderidentity, senderownership
+        rows = senderidentity.load()
+    except Exception as exc:                                    # noqa: BLE001
+        return {"read_at": _now(), "workspace": slug,
+                "_error": "sender roster unreadable: %s" % type(exc).__name__}
+
+    # THE ATTESTATION DRIVES THE ROSTER, not the account's own `sender_id`.
+    #
+    # An account row imported from the provider carries no owner - 225
+    # mailboxes arrived that way and 159 of them were attested afterwards -
+    # so joining on the account's `sender_id` found nobody at all. The
+    # attestation IS the authorization record, which makes it both the
+    # correct join and the one that cannot list an unauthorized account:
+    # walking attestations means an account with none is not reachable,
+    # rather than reachable and then filtered.
+    owned = {}
+    for attestation in rows:
+        if (attestation.get("kind") != "ownership_attestation"
+                or attestation.get("workspace") != slug):
+            continue
+        owned.setdefault(attestation.get("sender_id"), {}).setdefault(
+            attestation.get("channel"), set()).add(
+                attestation.get("account_id"))
+    if not owned:
+        return {"read_at": _now(), "workspace": slug, "senders": [],
+                "note": "no authorized sender is recorded for this workspace"}
+
+    by_id = {p.get("sender_id"): p
+             for p in senderidentity.senders(slug, rows=rows)}
+    campaigns_by_account = _campaigns_by_sending_account(slug)
+    bounce = _bounce_by_provider_account(slug, rows)
+
+    out, mailboxes, seats = [], 0, 0
+    for sender_id, channels in sorted(owned.items()):
+        person = by_id.get(sender_id) or {}
+        email = [a for a in senderidentity.email_accounts(
+            slug, rows=rows, active_only=True)
+            if a.get("account_id") in channels.get("email", ())]
+        linkedin = [a for a in senderidentity.linkedin_accounts(
+            slug, rows=rows, active_only=True)
+            if a.get("account_id") in channels.get("linkedin", ())]
+        if not email and not linkedin:
+            # Authorized, but every account of theirs is inactive. Absent
+            # rather than listed as zero: a row of zeroes is still a name,
+            # and this person is not currently part of the sending estate.
+            continue
+        mailboxes += len(email)
+        seats += len(linkedin)
+        carried = sorted({name for account in email + linkedin
+                          for name in campaigns_by_account.get(
+                              str(account.get("provider_account_id")), ())})
+        rates = [bounce[str(a.get("provider_account_id"))] for a in email
+                 if str(a.get("provider_account_id")) in bounce]
+        row = {
+            "name": person.get("display_name") or sender_id,
+            "title": person.get("title"),
+            "mailboxes": len(email),
+            "linkedin_seats": len(linkedin),
+            "daily_email_capacity": sum(a.get("daily_limit") or 0
+                                        for a in email),
+            "daily_linkedin_capacity": sum(a.get("daily_limit") or 0
+                                           for a in linkedin),
+            "campaigns_carried": carried,
+        }
+        if rates:
+            sent = sum(r["sent"] for r in rates)
+            bounced = sum(r["bounced"] for r in rates)
+            row["emails_sent_lifetime"] = sent
+            row["bounces_lifetime"] = bounced
+            row["bounce_rate_percent"] = (round(100.0 * bounced / sent, 2)
+                                          if sent else None)
+            if row["bounce_rate_percent"] is not None:
+                row["over_hard_stop"] = (row["bounce_rate_percent"]
+                                         > BOUNCE_HARD_STOP_PERCENT)
+        else:
+            row["bounce_rate_percent"] = None
+            row["bounce_note"] = ("the provider estate could not be read, so "
+                                  "no bounce rate is claimed")
+        out.append(row)
+
+    answer = {"read_at": _now(), "workspace": slug,
+              "senders": out,
+              "authorized_people": len(out),
+              "mailboxes": mailboxes,
+              "linkedin_seats": seats,
+              "bounce_hard_stop_percent": BOUNCE_HARD_STOP_PERCENT,
+              "note": "these are this workspace's own authorized senders. "
+                      "Capacity is a per-day ceiling, not a plan."}
+
+    # AN AUTHORIZATION THAT RESOLVES TO NOTHING IS SAID OUT LOUD.
+    #
+    # Measured 2026-09-22 against the live roster: LinkedIn authorizations
+    # carry account ids prefixed `hr-` while the seat rows carry `li-`, same
+    # numbers. The overlap is ZERO, so no LinkedIn seat can resolve its
+    # authorization and the honest seat count is not "0 seats" - it is "the
+    # seats cannot be matched". Reporting zero would read as "you have no
+    # LinkedIn sending", which is a different and false statement.
+    #
+    # Not joined by stripping the prefix. That would be this module
+    # inventing an identity mapping between two id spaces, which is exactly
+    # what an attestation exists to prevent somebody doing.
+    unresolved = len([1 for channels in owned.values()
+                      for account in channels.get("linkedin", ())]) - seats
+    if unresolved > 0:
+        answer["linkedin_authorizations_unresolved"] = unresolved
+        answer["linkedin_note"] = (
+            "LinkedIn seat ownership is recorded but does not currently "
+            "match a seat on the roster, so no seat count is claimed. This "
+            "is not a statement that there are none.")
+    return answer
+
+
+def _campaigns_by_sending_account(slug):
+    """`{provider account id: {campaign names}}` for THIS workspace."""
+    out = {}
+    for row in _campaign_rows(slug):
+        name = row.get("name") or row.get("campaign_id")
+        for channel in ("email", "linkedin"):
+            for entry in (row.get("senders") or {}).get(channel) or []:
+                key = str(entry.get("provider_account_id")
+                          or entry.get("account_id"))
+                out.setdefault(key, set()).add(name)
+    return out
+
+
+def _bounce_by_provider_account(slug, rows):
+    """Lifetime sent and bounced per mailbox, from the provider.
+
+    FILTERED AGAINST THIS WORKSPACE'S OWN ACCOUNT IDS, not against whatever
+    the provider hands back. `sender_emails()` returns the estate the
+    credential reaches, and PRODUCT-GOAL is explicit that a credential
+    reaching an estate proves nothing about whose estate it is. So the
+    provider supplies the counters and the local roster decides which of
+    them belong to this client.
+    """
+    try:
+        from . import senderidentity
+        from .providers import bison
+        mine = {str(a.get("provider_account_id"))
+                for a in senderidentity.email_accounts(slug, rows=rows)
+                if a.get("provider_account_id")}
+        if not mine:
+            return {}
+        # `(rows, meta)`, not a list. It reads the envelope first and
+        # REFUSES a short list rather than returning a page as a total -
+        # which is the defect its own docstring records, where fifteen rows
+        # of a 225-inbox estate were reported as the estate. A refusal
+        # lands here as an exception and becomes "no bounce rate claimed",
+        # which is the right answer: a partial estate cannot give a rate.
+        estate, _meta = bison.sender_emails()
+    except Exception:                                           # noqa: BLE001
+        return {}
+    out = {}
+    for row in estate:
+        key = str(row.get("id") or row.get("provider_account_id") or "")
+        if key not in mine:
+            continue
+        out[key] = {"sent": row.get("emails_sent_count") or 0,
+                    "bounced": row.get("bounced_count") or 0}
+    return out
+
+
 #: A week, in seconds. The window "this week" means, and it is a rolling
 #: seven days rather than a calendar week on purpose: a client asking on a
 #: Monday means the last seven days, not the four hours since midnight.
@@ -527,6 +725,11 @@ REGISTRY = {
     "sender_summary": (
         sender_summary,
         "how many sending accounts are working this client's campaigns",
+        _INTERNAL_CLIENT, None),
+    "sender_roster": (
+        sender_roster,
+        "this client's own authorized senders by name, with their mailboxes, "
+        "seats, daily capacity, campaigns carried and bounce rate",
         _INTERNAL_CLIENT, None),
     "activity_this_week": (
         activity_this_week,

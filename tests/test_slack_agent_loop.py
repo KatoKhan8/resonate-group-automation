@@ -40,18 +40,34 @@ TICKET = "2026-09-21-abcd"
 class LoopEnvironment(unittest.TestCase):
 
     def setUp(self):
+        """Isolate the store, because answering a DM builds the pack.
+
+        Without this the barrier refuses - correctly. `test_a_direct_message
+        _is_always_answered` drives a real turn, a real turn reads the
+        knowledge pack, and a stale pack is rebuilt and WRITTEN. The first
+        run after the agent's writers went behind
+        `store.refuse_production_write` failed here, which is the guard
+        catching the test that needed it rather than a regression.
+        """
+        from src import store
+
         self.tmp = tempfile.mkdtemp(prefix="rga-loop-")
         self._log = loop.LOG
         loop.LOG = os.path.join(self.tmp, "work", "slack-agent.jsonl")
         self._prev = {}
         for key, value in ((slackscope.INTERNAL_CHANNELS_VAR, INTERNAL),
                            (slackscope.OPS_CHANNEL_VAR, ""),
-                           (slackscope.STATUS_CHANNEL_VAR, "")):
+                           (slackscope.STATUS_CHANNEL_VAR, ""),
+                           ("QUEUE", os.path.join(self.tmp, "queue.jsonl"))):
             self._prev[key] = os.environ.get(key)
             if value:
                 os.environ[key] = value
             else:
                 os.environ.pop(key, None)
+        for name in store.STATE_OVERRIDES:
+            self._prev[name] = os.environ.get(name)
+            os.environ[name] = os.path.join(self.tmp, "%s.jsonl"
+                                            % name.lower())
 
     def tearDown(self):
         loop.LOG = self._log

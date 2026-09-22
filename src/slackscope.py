@@ -184,9 +184,22 @@ INTERNAL_COMMERCIAL_TERMS = (
 
 #: Provider estate vocabulary. A client is told their campaign is sending;
 #: they are not told which vendor's estate carries it.
+#:
+#: OPERATOR, 2026-09-22: "a client's OWN senders are the client's own data."
+#: `mailbox` and `seat` came OFF this list with that decision, because the
+#: people sending for Productive are Productive's own staff and half of them
+#: are in the channel. Refusing to say "mailbox" to the person whose mailbox
+#: it is was the module being cautious about the wrong thing.
+#:
+#: `attested` and `attestation` STAY, and not as an oversight. The operator
+#: asked for the words "authorized senders", and how attestation works is
+#: Resonate's internal control rather than a fact about the client's
+#: estate - so the vocabulary is enforced here rather than hoped for in a
+#: prompt. `warmup` stays for the same reason: it is a property of how we
+#: run an estate, and it is not on the list of what a client may be told.
 INTERNAL_PROVIDER_TERMS = (
     "emailbison", "email bison", "bison", "heyreach", "hey reach",
-    "mailbox", "warmup", "attested", "attestation",
+    "warmup", "attested", "attestation",
 )
 
 CLIENT_FORBIDDEN_TERMS = (INTERNAL_WORKER_TERMS + INTERNAL_ENGINEERING_TERMS
