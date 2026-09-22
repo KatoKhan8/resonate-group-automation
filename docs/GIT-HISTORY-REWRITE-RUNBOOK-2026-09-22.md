@@ -1,5 +1,26 @@
 # Git history rewrite — runbook for the operator
 
+> ## STATUS: NOT SCHEDULED YET. DO NOT EXECUTE.
+>
+> **Operator decision, Zvonimir, 2026-09-22: keep this runbook, do not run it.
+> He will schedule it for a weekend.** It is not a backlog item for a session
+> to pick up, and it is not "blocked" - it is deliberately waiting for a
+> window when all three sessions and the Qwen pool can be frozen.
+>
+> Two things that should happen BEFORE that window, and both are ordinary
+> merge requests rather than part of the rewrite (section 8):
+>
+> 1. **Fix the PII guard** — it is red on master right now, and the newest
+>    identifier in history is dated today. A rewrite run against a tree still
+>    producing identifiers is stale the moment it finishes.
+> 2. **Decide section 0.3** — move the guard's 117 values to a gitignored
+>    sidecar, so the rewrite does not leave them in the one file present in
+>    every commit.
+>
+> If neither has happened by the time the window arrives, say so before
+> starting rather than proceeding: the rewrite is expensive to run and
+> expensive to run twice.
+
 **Written on branch `infra` for Zvonimir to execute. Nothing here has been
 run.** A history rewrite is irreversible, changes every commit id in the
 repository, and invalidates every clone and worktree. It is not mine to do and
