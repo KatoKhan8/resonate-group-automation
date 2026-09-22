@@ -72,9 +72,51 @@ INTERESTED = "interested"
 MEETING_INTENT = "meeting_intent"
 OBJECTION = "objection"
 
+# OPERATOR DECISION, Zvonimir Bešlić, 2026-09-22.
+#
+#   "add class automated (out-of-office, auto-acknowledgement, ticketing,
+#    assistant or EA redirect, 'thanks for your email' with no content).
+#    Automated is never positive_reply. Assistant redirects get their own
+#    class assistant_redirect: logged as a new contact candidate at that
+#    account, routed to internal review only. Positive requires intent: a
+#    question, interest, a meeting ask, a request for more."
+#
+# `AUTOMATED` covers the machine-written acknowledgements that carry no
+# person: ticketing systems, receipt confirmations, "thank you for your
+# email" with nothing after it.
+#
+# `OUT_OF_OFFICE` KEEPS ITS OWN LABEL and is automated by the predicate
+# below rather than by being folded into this one. It is named directly in
+# `events`, in `inbound`, and in `accountpolicy.CLASSIFIER_OUTCOME`, and a
+# pure out-of-office is the one reply shape that SKIPS the cadence pause -
+# see this module's own docstring. Collapsing the label would change which
+# replies pause a cadence, which is a sending-behaviour change nobody asked
+# for. The operator's rule is enforced by `is_automated`, which is what the
+# never-positive guarantee and every automated-vs-human count read.
+AUTOMATED = "automated"
+ASSISTANT_REDIRECT = "assistant_redirect"
+
 CATEGORIES = (POSITIVE, NEUTRAL, NEGATIVE, UNSUBSCRIBE, ACCOUNT_DNC,
               OUT_OF_OFFICE, NOT_NOW, REFERRAL, NOT_RELEVANT,
-              UNKNOWN, INTERESTED, MEETING_INTENT, OBJECTION)
+              UNKNOWN, INTERESTED, MEETING_INTENT, OBJECTION,
+              AUTOMATED, ASSISTANT_REDIRECT)
+
+#: Every classification that means "no human chose to write this to us",
+#: which is the operator's `automated` umbrella. ONE definition, because
+#: the 18:00 summary, the client-facing counts and the never-positive
+#: guarantee all have to agree on what automated means.
+AUTOMATED_CATEGORIES = (OUT_OF_OFFICE, AUTOMATED, ASSISTANT_REDIRECT)
+
+
+def is_automated(classification):
+    """True when a classification is automated under the operator's rule.
+
+    An assistant redirect IS automated in the sense that matters here -
+    nobody at the account has expressed interest - and it is separately
+    classified because it carries a contact candidate worth keeping.
+    """
+    return str(classification or "") in AUTOMATED_CATEGORIES
+
 
 # Only `positive` is worth waking someone for.
 ALERTING = (POSITIVE,)
@@ -317,6 +359,115 @@ NOT_RELEVANT_PATTERNS = (
     r"\b(?:i'?m|i am) not (?:at|with) \S+ (?:anymore|any more)\b",
     r"\bnot (?:responsible|in charge) (?:for|of)\b",
 )
+# An assistant, EA or PA answering for somebody else. OPERATOR, 2026-09-22:
+# its own class, logged as a new contact candidate at that account and
+# routed to internal review only.
+#
+# Every pattern needs the ASSISTANT ROLE in it. "Please contact Sam" is a
+# referral and stays one; it is only this when the writer says who they are.
+# That is the difference between "somebody named a person" and "the person
+# who manages the diary just introduced themselves", and only the second is
+# a reliable new contact.
+ASSISTANT_REDIRECT_PATTERNS = (
+    r"\b(?:executive |personal |admin(?:istrative)? )?assistant to\b",
+    r"\b(?:i'?m|i am|this is) [^.\n]{0,40}\b(?:executive |personal )?"
+    r"assistant\b",
+    r"\b(?:i'?m|i am|this is) [^.\n]{0,40}\b(?:ea|pa) to\b",
+    r"\bon behalf of\b",
+    r"\bi (?:look after|manage|handle|keep|run) [^.\n]{0,30}"
+    r"(?:diary|calendar|schedule|inbox)\b",
+    r"\b(?:i'?m|i am) (?:the )?(?:ea|pa|executive assistant|"
+    r"personal assistant)\b",
+    r"\bcopying (?:in )?[^.\n]{0,30}assistant\b",
+    r"\bplease (?:go through|liaise with|coordinate with) me\b",
+)
+
+# Machine-written acknowledgements. Nobody chose to send these to us.
+#
+# The bare-thanks case is deliberately NOT here: "thanks for your email"
+# is only automated when it carries nothing else, and "no content" is a
+# property of the whole message rather than a phrase in it. It is handled
+# in `classify_rules` by `_is_bare_acknowledgement`, which requires the
+# phrase AND the absence of intent AND a short body - a human who writes
+# "thanks for your email, what does it cost?" is not an autoresponder.
+AUTOMATED_PATTERNS = (
+    r"\bthis is an automated\b", r"\bautomated (?:response|reply|message)\b",
+    r"\bdo not reply to this\b", r"\bplease do not reply\b",
+    r"\bno[- ]?reply@\b",
+    # Ticketing and case management.
+    r"\b(?:ticket|case|request|enquiry|inquiry) (?:#|number|id|ref)\b",
+    r"\b(?:ticket|case) #?\d+\b",
+    r"\byour (?:ticket|case|request) has been (?:created|logged|received|"
+    r"opened)\b",
+    r"\bwe have (?:received|logged) your (?:email|message|request|enquiry)\b",
+    r"\bwe'?ve (?:received|logged) your (?:email|message|request|enquiry)\b",
+    r"\breference number\b",
+    r"\bhas been (?:assigned|routed) to (?:a|our) (?:team|agent|advisor)\b",
+    # Receipt confirmations with a promise and no person.
+    r"\bthank you for contacting\b",
+    r"\bthanks? for (?:getting in touch|reaching out)[^.\n]{0,20}"
+    r"we(?:'| wi)ll (?:get back|be in touch|respond)\b",
+    r"\bsomeone (?:from our team )?will (?:be in touch|get back to you)\b",
+    r"\bwithin \d+ (?:business )?(?:hours|days)\b",
+)
+
+#: The bare acknowledgement, which is only automated when it says nothing
+#: else. Paired with `_carries_intent` and a length ceiling in
+#: `classify_rules`.
+BARE_ACKNOWLEDGEMENT_PATTERNS = (
+    r"\b(?:thank you|thanks|many thanks) (?:so much |very much )?"
+    r"for (?:your|the) (?:email|e-mail|message|note|mail)\b",
+    r"\b(?:thank you|thanks)[!.,]*\s*$",
+    r"\breceived,? thank(?:s| you)\b",
+    r"\bnoted,? thank(?:s| you)\b",
+    r"\back(?:nowledged)?,? thank(?:s| you)\b",
+)
+
+#: How long a "thanks for your email" may be before it stops being bare.
+#: A real person who thanks you and then writes three sentences has
+#: written three sentences.
+BARE_ACKNOWLEDGEMENT_MAX_CHARS = 160
+
+# OPERATOR, 2026-09-22: "Positive requires intent: a question, interest, a
+# meeting ask, a request for more."
+#
+# `POSITIVE_PATTERNS` below carries bare nouns - `pricing`, `calendar`,
+# `availability` - which were added because they appear in warm replies.
+# They also appear in signatures, in autoresponders and in sentences about
+# somebody else's calendar. This is the gate: a POSITIVE match that carries
+# no intent does NOT become positive, it becomes UNKNOWN and a person looks
+# at it. That is the direction this module always fails in.
+INTENT_PATTERNS = (
+    r"\?",                                   # they asked us something
+    r"\binterested\b", r"\bkeen\b",
+    r"\bhappy to (?:chat|talk|speak|meet|connect)\b",
+    r"\blet'?s (?:chat|talk|speak|do)\b",
+    r"\bwould (?:like|love) to\b",
+    r"\btell me more\b", r"\bmore (?:info|information|details)\b",
+    r"\bsend (?:me|us|over|through)\b",
+    r"\b(?:book|set up|schedule|arrange) (?:a|some)\b",
+    r"\b(?:i'?m|i am|we'?re|we are) (?:in|up for it|game)\b",
+    r"\b(?:call|meeting|demo|chat) (?:on|next|this|at)\b",
+    r"\bworks for me\b", r"\bsounds (?:good|great|interesting)\b",
+    r"\bwhen (?:are|can|would) you\b",
+    r"\bwhat (?:does|is|are)\b", r"\bhow (?:much|many|does)\b",
+)
+
+
+def _carries_intent(body):
+    """Did the writer ask, invite, or want something? See `INTENT_PATTERNS`."""
+    return bool(_hits(body, INTENT_PATTERNS))
+
+
+def _is_bare_acknowledgement(body):
+    """"Thanks for your email" and nothing else."""
+    if len(body) > BARE_ACKNOWLEDGEMENT_MAX_CHARS:
+        return False
+    if _carries_intent(body):
+        return False
+    return bool(_hits(body, BARE_ACKNOWLEDGEMENT_PATTERNS))
+
+
 POSITIVE_PATTERNS = (
     r"\binterested\b", r"\bsounds (?:good|interesting|great)\b",
     r"\bhappy to (?:chat|talk|speak|meet|connect)\b",
@@ -379,6 +530,43 @@ POSITIVE_PATTERNS = (
     # a conversation; this is about the content. 3+ replies.
     r"\bhappy to (?:learn|hear|know) more\b",
 )
+
+
+#: The POSITIVE patterns that are BARE NOUNS, and the only ones the intent
+#: gate applies to.
+#:
+#: These three were added because they appear in warm replies. They also
+#: appear in email signatures, in autoresponders, and in sentences about
+#: somebody else's diary - "I look after his calendar", which is the EA
+#: reply this decision was written about. Every other positive pattern
+#: already carries a verb somebody chose: `interested`, `send me`,
+#: `let's talk`, `can we schedule`.
+#:
+#: So the gate is narrow on purpose. Applying it to the whole list dropped
+#: "Yes please", "Show me" and "Sure, happy to discuss" to `unknown`, which
+#: is the opposite of the fix: a false negative on a real buying signal
+#: costs a client a meeting.
+WEAK_POSITIVE_PATTERNS = (
+    r"\bpricing\b", r"\bcalendar\b", r"\bavailability\b",
+)
+
+STRONG_POSITIVE_PATTERNS = tuple(
+    p for p in POSITIVE_PATTERNS if p not in WEAK_POSITIVE_PATTERNS)
+
+
+def _positive_carries_intent(body):
+    """OPERATOR, 2026-09-22: "Positive requires intent."
+
+    True when the reply carries a positive signal somebody chose to send -
+    a strong pattern, or a weak one corroborated by intent elsewhere in the
+    message. False when the only evidence is a bare `pricing`, `calendar`
+    or `availability` sitting in a signature or an autoresponder.
+    """
+    if _hits(body, STRONG_POSITIVE_PATTERNS):
+        return True
+    return _carries_intent(body)
+
+
 RULES = (
     (ACCOUNT_DNC, ACCOUNT_DNC_PATTERNS, 0.95),
     (UNSUBSCRIBE, UNSUBSCRIBE_PATTERNS, 0.95),
@@ -392,6 +580,25 @@ RULES = (
     # out-of-office ranking raises - see PRODUCT-GAPS 15b, which now covers
     # both rather than two decisions that could drift apart.
     (NOT_NOW, NOT_NOW_PATTERNS, 0.8),
+    # OPERATOR, 2026-09-22. BOTH SIT DIRECTLY ABOVE POSITIVE AND BELOW EVERY
+    # REFUSAL, which is the whole of the placement decision.
+    #
+    # Above POSITIVE because that is the error being fixed: an EA writing
+    # "happy to help, I look after his calendar" matched POSITIVE_PATTERNS
+    # twice and was counted as interest from a person who has expressed
+    # none.
+    #
+    # Below NOT_RELEVANT, NEGATIVE and NOT_NOW because those are stops and
+    # deferrals, and a classification may never soften one. "Not interested
+    # - I'm his assistant" is a refusal that happens to be written by an
+    # assistant, and it stays a refusal. This is the same ordering argument
+    # REFERRAL is given below.
+    #
+    # ASSISTANT_REDIRECT before AUTOMATED: an EA redirect is automated
+    # under `is_automated`, and it is the more specific reading, so it must
+    # not be swallowed by a generic acknowledgement phrase.
+    (ASSISTANT_REDIRECT, ASSISTANT_REDIRECT_PATTERNS, 0.85),
+    (AUTOMATED, AUTOMATED_PATTERNS, 0.85),
     (POSITIVE, POSITIVE_PATTERNS, 0.75),
     # Last, and that is the whole design of it. `reply.on_referral` holds
     # the replier where `on_negative` and `on_wrong_person` stop them, so a
@@ -809,8 +1016,28 @@ def classify_rules(text):
                 "classifier": VERSION}
     for category, patterns, confidence in RULES:
         hits = _hits(body, patterns)
+        if category == AUTOMATED and not hits and _is_bare_acknowledgement(body):
+            # OPERATOR, 2026-09-22: "'thanks for your email' with no
+            # content" is automated. It is checked HERE, at AUTOMATED's own
+            # place in the table, and not before the loop.
+            #
+            # Before the loop is where I first put it and it was wrong:
+            # "No, thank you.", "Not for me, thanks." and "No interest,
+            # thanks." are all short, carry no intent, and end in a thanks,
+            # so every one of them became `automated` - a refusal softened
+            # by a classification, which is the single thing this module's
+            # docstring says must never happen. Three existing tests caught
+            # it. At this position every refusal has already been tested.
+            hits = _hits(body, BARE_ACKNOWLEDGEMENT_PATTERNS)
         if category == REFERRAL and hits and not _points_at_somebody(body):
             continue                  # a hand-off phrase pointing at nobody
+        if category == POSITIVE and hits and not _positive_carries_intent(body):
+            # OPERATOR, 2026-09-22: "Positive requires intent." A bare
+            # `pricing` or `calendar` out of a signature or an
+            # autoresponder is not somebody asking for anything. Fall
+            # through rather than claim interest: whatever matches next is
+            # safer, and nothing matching leaves it UNKNOWN for a person.
+            continue
         if hits:
             return {"classification": category, "confidence": confidence,
                     "reason": f"matched {len(hits)} {category} phrase(s)",

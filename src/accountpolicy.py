@@ -159,6 +159,24 @@ CLASSIFIER_OUTCOME = {
     "interested": UNKNOWN,
     "meeting_intent": UNKNOWN,
     "objection": UNKNOWN,
+    # OPERATOR DECISION, Zvonimir Bešlić, 2026-09-22.
+    #
+    # `automated` maps to NOT_NOW, exactly as `out_of_office` does: nobody
+    # chose to write it, so nothing has been refused and nothing has been
+    # offered. NOT_NOW pauses the cadence, which is the conservative
+    # reading and the one already proven for the autoresponder case.
+    #
+    # `assistant_redirect` maps to UNKNOWN, NOT to REFERRAL. The operator's
+    # words are "routed to internal review only", and UNKNOWN is this
+    # module's name for that: a person looks at it and no automation acts
+    # on it. REFERRAL would have been the tempting mapping - an assistant
+    # does point at somebody - but `reply.on_referral` is a policy some
+    # workspace may set to keep contacting, and a new class must not
+    # inherit a permission nobody granted it.
+    #
+    # NEITHER MAPS TO POSITIVE, which is the decision's whole point.
+    "automated": NOT_NOW,
+    "assistant_redirect": UNKNOWN,
 }
 
 # Which policy each outcome consults.

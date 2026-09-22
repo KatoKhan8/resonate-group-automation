@@ -138,7 +138,7 @@ class TheRealQuestionIsAnswered(OneDomain):
                          ["campaign 491", "campaign 492"])
 
     def test_the_week_carries_people_and_emails_apart(self):
-        out = self.ask(client(), "sending-domain-a.example.test", week=(9, 3, 0))
+        out = self.ask(client(), "sending-domain-a.example.test", week=(9, 3, 0, 0))
         self.assertEqual(out["emails_sent_last_7_days"], 9)
         self.assertEqual(out["leads_emailed_last_7_days"], 3)
 
@@ -148,9 +148,19 @@ class TheRealQuestionIsAnswered(OneDomain):
         self.assertIn("nothing is claimed", out["last_7_days_note"])
 
     def test_a_partly_readable_queue_says_the_figures_are_floors(self):
-        out = self.ask(client(), "sending-domain-a.example.test", week=(4, 2, 1))
+        out = self.ask(client(), "sending-domain-a.example.test", week=(4, 2, 1, 0))
         self.assertEqual(out["campaigns_unreadable"], 1)
         self.assertIn("floors", out["last_7_days_note"])
+
+    def test_a_campaign_past_the_cap_is_a_floor_but_not_an_outage(self):
+        """Refused and not-asked both make the figure a floor, and they are
+        reported apart: only one of them is a fault worth chasing."""
+        out = self.ask(client(), "sending-domain-a.example.test",
+                       week=(4, 2, 0, 3))
+        self.assertNotIn("campaigns_unreadable", out)
+        self.assertEqual(out["campaigns_not_read"], 3)
+        self.assertIn("floors", out["last_7_days_note"])
+        self.assertIn("cap", out["last_7_days_note"])
 
 
 # ================================ 2. NOT YOURS AND NOBODY'S ARE ONE ANSWER

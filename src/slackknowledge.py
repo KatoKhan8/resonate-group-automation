@@ -693,6 +693,67 @@ def _client_config(slug):
         return None
 
 
+def _id_sort_key(ident):
+    """Sort a campaign id the way its issuer counts, not as text.
+
+    These ids arrive as strings and were sorted as strings. That is right
+    for three digits and wrong for four: `'1001'` sorts BELOW `'451'`, so
+    the first four-digit campaign this provider issues would scramble the
+    whole order. Comparing `(len, text)` orders digit strings numerically
+    without assuming they parse as ints, and anything non-numeric sorts
+    after all of them rather than raising.
+    """
+    ident = str(ident or "")
+    if ident.isdigit():
+        return (0, len(ident), ident)
+    return (1, 0, ident)
+
+
+def _campaign_ids_newest_first(rows):
+    """This workspace's provider campaign ids, newest first.
+
+    THE ORDER IS LOAD-BEARING AND WAS BACKWARDS. Seven readers in
+    `slackagenttools` take `ids[:N]` - `sends_today` takes eight,
+    `activity_this_week` and `replies` and `weekly_plan` ten,
+    `lead_in_campaign` and the two domain walks twelve - because each one
+    costs a provider read per campaign. This list decides which N they get.
+
+    It was built with `sorted()`, which is oldest first, so every cap
+    discarded the newest campaigns - and new campaigns are the ones that
+    are running. Measured live on 2026-09-22: the estate held fourteen
+    campaigns, four had sent that day (491, 492, 494, 495 - 296 emails),
+    and `sends_today` saw two of them, because 493 onward sat past the
+    cut behind six campaigns that had not sent since the 14th.
+
+    ## AND THE ORDER IS THE PROVIDER'S ID, NOT `created_at`
+
+    `created_at` was the obvious key and it is the wrong one. Measured
+    against the live store on 2026-09-22, every campaign in this estate
+    that has ever sent carries **`created_at: None`**:
+
+        451 484 485 487 489      2026-09-13 .. 2026-09-18   draft/approved
+        491 492 493 494 495 ...  None                       the batch that
+                                                            is sending
+
+    The eight batch-1 campaigns were written by a path that never set it.
+    So ordering on it - under any rule for the nulls - sorts the six dead
+    campaigns above the eight live ones, which is the defect this function
+    exists to fix, restored by the fix. A signal that is absent on exactly
+    the rows that matter is not a signal.
+
+    The provider's id IS present on every row and IS its issue order:
+    451 predates 481 predates 491. That is what this sorts on, descending,
+    through `_id_sort_key` so it counts rather than compares text.
+
+    `created_at` is not consulted at all. Ordering on a field that is null
+    for the newest half of the estate would be a second way to get this
+    wrong, and the first way already reached a client channel.
+    """
+    ids = [str(r["bison_campaign_id"]) for r in rows
+           if r.get("bison_campaign_id")]
+    return sorted(ids, key=_id_sort_key, reverse=True)
+
+
 def _campaign_rows(slug):
     try:
         from . import campaigns
@@ -835,8 +896,7 @@ def workspace_entry(slug, config=None):
         status = (row.get("status") or "unknown").lower()
         by_status[status] = by_status.get(status, 0) + 1
     entry["campaigns"] = {"total": len(rows), "by_status": by_status}
-    entry["provider_campaign_ids"] = sorted(
-        str(r["bison_campaign_id"]) for r in rows if r.get("bison_campaign_id"))
+    entry["provider_campaign_ids"] = _campaign_ids_newest_first(rows)
 
     batches = {}
     for row in rows:
