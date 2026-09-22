@@ -44,9 +44,23 @@ class AnIsolatedStore(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         self.addCleanup(_rmtree, self.dir)
         self._prev = {k: os.environ.get(k) for k in
-                      ("QUEUE", "QUEUE_JOURNAL")}
+                      ("QUEUE", "QUEUE_JOURNAL", "QUEUE_BACKEND")}
         store.use_directory(self.dir)
         os.environ.pop("QUEUE_JOURNAL", None)
+        # PIN THE BACKEND THIS TOOL CONVERTS **FROM**.
+        #
+        # The migration reads through `store._current_records()` and
+        # fingerprints with `store.digest()`, and both of those route on
+        # `QUEUE_BACKEND`. Run with it set to `sqlite`, they read the DATABASE
+        # - so the seeded JSONL estate is invisible and five of these tests
+        # fail against an empty source. That is the harness misreporting, not
+        # the migration: it converts jsonl -> sqlite and there is no such
+        # thing as running it "on the sqlite backend".
+        #
+        # Found by running the whole store set under QUEUE_BACKEND=sqlite
+        # while checking something else, and confirmed pre-existing rather
+        # than caused by it.
+        os.environ["QUEUE_BACKEND"] = "jsonl"
 
     def tearDown(self):
         for k, v in self._prev.items():

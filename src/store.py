@@ -551,7 +551,7 @@ def load():
 
 
 def _incremental_guard_input(snapshot, full_read_fn):
-    """For sqlite backend: return (guard_old, guard_new, on_disk_for_merge).
+    """For sqlite backend: return (guard_old, on_disk_for_merge, path, rows).
 
     TASK-260. If the snapshot has a valid baseline and the backend is sqlite,
     use the rev cursor to read only the records the guards need: caller-touched
@@ -566,23 +566,24 @@ def _incremental_guard_input(snapshot, full_read_fn):
     - Backend is not sqlite
     - Cursor is missing/stale/backwards
 
-    Returns (guard_old, guard_new, on_disk_for_merge, path, rows_read).
+    Returns (guard_old, on_disk_for_merge, path, rows_read). `guard_new`
+    is NOT returned: it is the MERGED result and only `save` has that.
     """
     mode = backend()
     if mode != "sqlite":
         on_disk = full_read_fn()
-        return on_disk, on_disk, on_disk, "full", len(on_disk)
+        return on_disk, on_disk, "full", len(on_disk)
 
     if not isinstance(snapshot, Snapshot) or not hasattr(snapshot, "baseline"):
         on_disk = full_read_fn()
-        return on_disk, on_disk, on_disk, "full", len(on_disk)
+        return on_disk, on_disk, "full", len(on_disk)
 
     from . import sqlitestore
     import sqlite3
     path = db_path()
     if not os.path.exists(path):
         on_disk = full_read_fn()
-        return on_disk, on_disk, on_disk, "full", len(on_disk)
+        return on_disk, on_disk, "full", len(on_disk)
 
     conn = sqlite3.connect(path)
     try:
@@ -591,7 +592,7 @@ def _incremental_guard_input(snapshot, full_read_fn):
 
         if baseline_rev is None or baseline_rev > current_rev or baseline_rev < 0:
             on_disk = full_read_fn()
-            return on_disk, on_disk, on_disk, "full", len(on_disk)
+            return on_disk, on_disk, "full", len(on_disk)
 
         changed = sqlitestore.read_changed_since(conn, baseline_rev)
         changed_by_id = {r.get("id"): r for r in changed}
@@ -605,10 +606,9 @@ def _incremental_guard_input(snapshot, full_read_fn):
 
         needed_ids = set(caller_touched) | set(changed_by_id)
         if not needed_ids:
-            return [], [], [], "incremental", 0
+            return [], [], "incremental", 0
 
         guard_old = []
-        guard_new = []
         for rid in needed_ids:
             old_rec = changed_by_id.get(rid)
             if old_rec is None:
@@ -619,14 +619,20 @@ def _incremental_guard_input(snapshot, full_read_fn):
             if old_rec is not None:
                 guard_old.append(old_rec)
 
-            new_rec = caller_touched.get(rid)
-            if new_rec is None:
-                new_rec = changed_by_id.get(rid)
-            if new_rec is not None:
-                guard_new.append(new_rec)
-
+        # NO `guard_new` IS BUILT HERE, deliberately. This loop used to set it
+        # from `caller_touched[rid]` - the caller's RAW row - and that is the
+        # stale pre-merge copy. For a record BOTH the caller and a second
+        # writer touched, the merge keeps the second writer's field (the
+        # caller did not change it) while the raw row does not have it, so
+        # `refuse_history_loss` read a stop as lifted and raised on a write
+        # the merge was about to make safe. Two tests in
+        # `test_a_stop_survives_a_concurrent_run` caught it.
+        #
+        # The merged result IS the narrowed set - `merge_onto` appends only
+        # rows the caller actually edited - so `save` passes `recs` straight
+        # to the guards on this path exactly as it does on the whole-file one.
         on_disk_narrowed = guard_old
-        return guard_old, guard_new, on_disk_narrowed, "incremental", len(changed)
+        return guard_old, on_disk_narrowed, "incremental", len(changed)
     finally:
         conn.close()
 
@@ -1204,11 +1210,11 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         snapshot = recs if isinstance(recs, Snapshot) else None
         mode = backend()
         if mode == "sqlite" and snapshot is not None:
-            guard_old, guard_new, on_disk, _path, _rows = \
+            guard_old, on_disk, _path, _rows = \
                 _incremental_guard_input(snapshot, _current_records)
         else:
             on_disk = _current_records()
-            guard_old, guard_new = on_disk, recs if snapshot is None else list(snapshot)
+            guard_old = on_disk
         if expect_digest is not None and digest() != expect_digest:
             raise QueueChanged(
                 "the queue changed while this work was in progress, so writing "
@@ -1216,6 +1222,25 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
                 "reload and re-apply.")
         if snapshot is not None:
             recs = snapshot.merge_onto(on_disk)
+        # THE GUARDS SEE THE MERGED RESULT, NEVER THE CALLER'S SNAPSHOT.
+        #
+        # TASK-260 set `guard_new = list(snapshot)` here, which is the stale
+        # pre-merge copy. That is a FALSE POSITIVE FACTORY on the safety path:
+        # a concurrent run sets a stop, the caller's snapshot predates it, and
+        # `refuse_history_loss` sees the stop present in `on_disk` and absent
+        # in the snapshot - so it raises `HistoryLost` on a write that the
+        # merge was about to make perfectly safe. Six tests in
+        # `test_a_stop_survives_a_concurrent_run` and `test_approve` caught it.
+        #
+        # `_evidence_index`'s docstring already names why this is worse than
+        # it sounds: "a false positive on a safety guard ... appears
+        # intermittently, it blocks a legitimate write, and the quickest way to
+        # make it stop is to weaken the guard."
+        #
+        # The merged result is what is about to be written, so it is the only
+        # thing worth asking the guards about. The sqlite branch above is
+        # different only in that it narrows BOTH sides consistently.
+        guard_new = recs
         refuse_evidence_loss(guard_old, guard_new)
         # `allow_history_loss` IS FOR TEST CLEANUP AND NOTHING ELSE. A test
         # that adds an event to a shared estate has to take it back out again,

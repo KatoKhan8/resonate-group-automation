@@ -214,8 +214,30 @@ def write_changed(conn, records, _fail_after=None, _failure=RuntimeError):
             "two records carry the same id and cannot both be written: "
             + ", ".join(sorted(duplicates)) + ". Nothing was written.")
 
-    existing = {r[0]: r[1] for r in
-                conn.execute("SELECT id, doc FROM records")}
+    # ONLY THE ROWS BEING WRITTEN, NOT THE WHOLE TABLE.
+    #
+    # This was `SELECT id, doc FROM records` - every document, on every write,
+    # to decide which of them changed. O(N) per call with N/5 calls per pass,
+    # so O(N-squared), and it swallowed the win TASK-260 had just delivered on
+    # the read side: that task's own benchmark went sub-quadratic to 1,600
+    # records and back to 4.1x at 3,200, and named "the SQLite write path
+    # itself" as the reason. It was right, and the line was mine from
+    # TASK-251.
+    #
+    # The caller already knows which ids it is writing, so ask for those.
+    # Chunked because SQLite caps host parameters (SQLITE_MAX_VARIABLE_NUMBER,
+    # 999 on older builds) and a checkpoint that writes more rows than the cap
+    # would otherwise raise rather than being slow - a failure mode strictly
+    # worse than the one being fixed.
+    existing = {}
+    ids = [r["id"] for r in rows]
+    for start in range(0, len(ids), 400):
+        chunk = ids[start:start + 400]
+        placeholders = ",".join("?" * len(chunk))
+        existing.update(
+            {r[0]: r[1] for r in conn.execute(
+                f"SELECT id, doc FROM records WHERE id IN ({placeholders})",
+                chunk)})
     stamp = _now()
     written = 0
     new_rev = revision(conn) + 1
