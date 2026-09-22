@@ -60,7 +60,7 @@ name the loop.
 
 ---
 
-## WHAT THE TEN COMMITS ADDED
+## WHAT THE BRANCH ADDS
 
 **The offer has a process.** `slackfollowup` shipped with `register()`
 wired in and `due()` read by nothing — a client said yes, a row was
