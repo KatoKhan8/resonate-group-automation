@@ -555,20 +555,42 @@ class Snapshot(list):
         self.key = key
         self._serialised = None
         self._dirty = set()
+        self._by_id = {}
+        self._keyless_count = 0
         wrapped = []
         for row in rows:
-            if isinstance(row, dict) and not isinstance(row, _TrackingDict) \
-                    and key in row:
+            if isinstance(row, dict) and not isinstance(row, _TrackingDict):
+                if key not in row:
+                    self._keyless_count += 1
+                    wrapped.append(row)
+                    continue
                 td = _TrackingDict(row, _key=row[key])
                 # The root TrackingDict carries _dirty so nested wrappers
                 # can reach it via self._root._dirty. It IS the Snapshot's
                 # dirty set - same object, not a copy.
                 td._dirty = self._dirty
                 wrapped.append(td)
+                self._by_id[row[key]] = td
             else:
+                if not (isinstance(row, dict) and key in row):
+                    self._keyless_count += 1
                 wrapped.append(row)
         super().__init__(wrapped)
         self.rebase()
+
+    def append(self, row):
+        if isinstance(row, dict) and self.key not in row:
+            self._keyless_count += 1
+        elif not isinstance(row, dict):
+            self._keyless_count += 1
+        if isinstance(row, dict) and not isinstance(row, _TrackingDict) \
+                and self.key in row:
+            td = _TrackingDict(row, _key=row[self.key])
+            td._dirty = self._dirty
+            self._by_id[row[self.key]] = td
+            list.append(self, td)
+        else:
+            list.append(self, row)
 
     def __iter__(self):
         for i in range(len(self)):
@@ -661,32 +683,24 @@ class Snapshot(list):
         where an append would have put them.
         """
         # A ROW WITH NO KEY CANNOT BE MERGED, SO IT IS REFUSED RATHER THAN
-        # SKIPPED. The comprehension below can only match rows it can address;
-        # one without the key silently matched nothing, was written nowhere,
-        # and raised nothing - the caller held two rows and one reached the
-        # disk. That is the failure mode this whole class exists to remove,
-        # so it fails closed here instead.
-        keyless = [row for row in self
-                   if not (isinstance(row, dict) and self.key in row)]
-        if keyless:
+        # SKIPPED. Counted at construction time, not here, to avoid an O(N)
+        # walk on every checkpoint.
+        if self._keyless_count:
             raise ValueError(
-                f"{len(keyless)} row(s) carry no {self.key!r} and cannot be "
-                f"merged onto what is on disk. Nothing was written.")
+                f"{self._keyless_count} row(s) carry no {self.key!r} and "
+                f"cannot be merged onto what is on disk. Nothing was written.")
         # TASK-261: only serialise dirty rows, not every row. The dirty set
         # tracks which records were mutated in place (including nested
-        # mutations to contacts, events, cadence, log). This is O(|dirty|)
-        # rather than O(N), which is the whole point of the task.
+        # mutations to contacts, events, cadence, log). Using _by_id makes
+        # this O(|dirty|) rather than O(N), which is the whole point.
         frozen_dirty = {}
-        for row in self:
-            if not (isinstance(row, dict) and self.key in row):
-                continue
-            key = row[self.key]
-            if key in self._dirty:
-                frozen_dirty[key] = _frozen(row)
+        edits = {}
+        for rid in self._dirty:
+            row = self._by_id.get(rid)
+            if row is not None:
+                frozen_dirty[rid] = _frozen(row)
+                edits[rid] = row
         self._serialised = frozen_dirty
-        edits = {key: row for row in self
-                 for key in (row[self.key],)
-                 if key in self._dirty}
         out = []
         for row in on_disk:
             if not (isinstance(row, dict) and self.key in row):
@@ -813,11 +827,10 @@ def _incremental_guard_input(snapshot, full_read_fn):
         changed_by_id = {r.get("id"): r for r in changed}
 
         caller_touched = {}
-        for rec in snapshot:
-            if isinstance(rec, dict) and "id" in rec:
-                rid = rec["id"]
-                if rid in snapshot._dirty:
-                    caller_touched[rid] = rec
+        for rid in snapshot._dirty:
+            rec = snapshot._by_id.get(rid)
+            if rec is not None:
+                caller_touched[rid] = rec
 
         needed_ids = set(caller_touched) | set(changed_by_id)
         if not needed_ids:
