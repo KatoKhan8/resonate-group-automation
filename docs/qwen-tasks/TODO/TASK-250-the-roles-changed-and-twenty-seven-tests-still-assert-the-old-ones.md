@@ -63,3 +63,62 @@ them, that is a finding: write it in the result block and stop.
 
     src/verification.py   src/lint.py   src/approve.py
     config/clients/*.yaml   src/providers/*   work/*.jsonl
+
+---
+
+# ATTEMPT 1 FAILED AND WAS REVERTED. READ THIS BEFORE ATTEMPT 2.
+
+`qwen-worker-r57` claimed this task (`61a2bc60`) and did the fixture work
+(`126dcfa1`), then stopped: the file stayed in `RUNNING/` with no result
+block and the worker exited. The infra session merged it on 2026-09-22,
+measured, and **reverted it**.
+
+**Measured, whole suite, before and after by name:**
+
+    before r57   11,226 tests    82 distinct failures
+    after  r57   11,346 tests   123 distinct failures
+
+    gone:   6   test_e2e 2, test_invariants 1, PII guard 3 (the guard was
+                master's fix, not r57's)
+    new:   47   test_approve 14, test_push 13, test_cadence 5,
+                test_generate 4, and 11 more across 8 modules
+
+**IT MADE THE BASELINE 41 WORSE.**
+
+## Why, exactly — and this is the trap for attempt 2
+
+r57 changed the evidence in the SHARED phase fixtures from contactout to
+deliverable:
+
+    tests/fixtures/phase2.jsonl   read by test_audit, test_render
+    tests/fixtures/phase5.jsonl   read by test_audit, test_generate,
+                                  test_company_evidence_cache, test_siblings_block
+    tests/fixtures/phase6.jsonl   read by test_personas
+    tests/fixtures/phase7.jsonl   read by test_approve, test_cadence,
+                                  test_double_verification, test_events
+
+That fixed `test_e2e`, which was the target, and broke every OTHER consumer of
+those files. The failures are `'blocked' != 'eligible'` — records that no
+longer verify, so the gates below them refuse.
+
+**The fixtures are shared and the task brief did not say so.** A change to
+`phase7.jsonl` is a change to four test modules at once. That is the whole
+difficulty of this task and it is why "27 tests" understates it.
+
+## What attempt 2 has to do differently
+
+1. **Enumerate every consumer of every fixture you touch, first.**
+   `grep -rl phase7.jsonl tests/` before editing `phase7.jsonl`, not after.
+2. **Run the FULL suite before and after and diff by name in both
+   directions.** The brief already asked for this and attempt 1 did not do
+   it — which is precisely how 47 new failures reached a merge. The baseline
+   artifact is `docs/state/SUITE-BASELINE-2026-09-22.json`; regenerate it and
+   `comm` the two.
+3. Consider whether the shared fixture should be SPLIT instead: a
+   verification-specific fixture for the tests that are about verification,
+   leaving the shared ones alone. Four modules sharing one evidence blob is
+   what makes a one-line change cost 47 failures.
+4. r57's approach was otherwise RIGHT and is worth recovering rather than
+   re-inventing — evidence to deliverable, a deliverable cassette,
+   `confirm_deliverable_contract()` in the e2e setup. The commit is
+   `126dcfa1` on `qwen-worker-r57`, unmerged and preserved.
