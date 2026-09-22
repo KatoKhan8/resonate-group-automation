@@ -411,6 +411,16 @@ def leads_endpoint(campaign_id):
 
 ATTACH_PATH = "/campaigns/{campaign_id}/leads/attach-leads"
 
+#: How hard `attach_leads` tries to SEE what it just wrote. The provider
+#: accepts the attach and then takes a moment to show it on the membership
+#: route, so a single read reports absence for leads that are present -
+#: ISSUE-016, measured three times in one batch on 2026-09-22 (493, 494 and
+#: 492, the last of them reporting 157 of 206 missing from a write that had
+#: taken all 206). Six reads over roughly fifteen seconds; a lead genuinely
+#: not attached still raises, just later.
+ATTACH_READBACK_ATTEMPTS = 6
+ATTACH_READBACK_INTERVAL = 2.5
+
 # EVERY PATH THIS MODULE IS ALLOWED TO WRITE TO.
 #
 # The same guarantee `heyreach.WRITE_ROUTES` gives: the verb is not the
@@ -1411,13 +1421,43 @@ def attach_leads(campaign_id, lead_ids):
         raise ProviderError(
             f"emailbison attach_leads: POST attach-leads -> {status} "
             f"{_message(data)}")
+    # THE READ IS EXACT BUT NOT IMMEDIATELY CONSISTENT, so it is retried.
+    #
+    # ISSUE-016. The docstring above records the first half of this fix - the
+    # readback used to list the campaign's members, which serves fifteen rows
+    # whatever it is asked for. Asking about the named leads made it exact at
+    # any campaign size, and left this: the provider accepts the attach and
+    # then takes a moment to show it on the membership route.
+    #
+    # Measured 2026-09-22 pushing batch 3, three times in a row. Campaign 493
+    # raised "2 of 22 leads are not in campaign 493"; 494 raised 60 of 77; 492
+    # raised 157 of 206. Every one of those writes had SUCCEEDED - read again
+    # seconds later, 493 held 22 leads, 494 held 76 and 492 held all 206.
+    #
+    # THE FAILURE DIRECTION IS THE EXPENSIVE ONE. A refusal on a write that
+    # worked invites a re-run, reports zero enrolled for a campaign that just
+    # took 176 leads, and makes an operator distrust a readback that is
+    # otherwise the only thing worth trusting. So absence is now confirmed
+    # rather than assumed on first read: it polls while anything is missing,
+    # and raises only when the provider has had its chance and still disagrees.
+    # A genuinely unattached lead still raises, just later.
+    import time as _time
+
     after = set(membership(campaign_id, wanted))
     absent = [i for i in wanted if int(i) not in after]
+    for _ in range(ATTACH_READBACK_ATTEMPTS - 1):
+        if not absent:
+            break
+        _time.sleep(ATTACH_READBACK_INTERVAL)
+        after = set(membership(campaign_id, wanted))
+        absent = [i for i in wanted if int(i) not in after]
     if absent:
         raise ProviderError(
             f"emailbison attach_leads: the provider answered {status} but "
             f"{len(absent)} of {len(wanted)} leads are not in campaign "
-            f"{campaign_id} on readback: {absent[:5]}")
+            f"{campaign_id} after {ATTACH_READBACK_ATTEMPTS} readbacks over "
+            f"~{ATTACH_READBACK_ATTEMPTS * ATTACH_READBACK_INTERVAL:.0f}s: "
+            f"{absent[:5]}")
     return {"attached": missing,
             "already": [i for i in wanted if int(i) in before],
             "members": sorted(after),
