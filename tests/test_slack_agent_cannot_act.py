@@ -68,6 +68,9 @@ AGENT_SOURCES = (
     # here more than any of the others: it is the place a Slack message
     # comes closest to changing something.
     "src/slackmeetings.py",
+    # The promise scan reads Slack history off disk. It writes nothing and
+    # it is internal-only, and both belong under this file's eye.
+    "src/slackpromises.py",
     "scripts/slack_agent_loop.py",
     # The follow-up deliverer runs on its own interval rather than on a
     # message, and it reaches the provider and posts. Same rules.

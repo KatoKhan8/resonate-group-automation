@@ -1773,6 +1773,44 @@ def credits(scope, argument=None):
     return readback.credits()
 
 
+def promises(scope, argument=None):
+    """What we said we would do, and whether we did. INTERNAL ONLY.
+
+    `docs/SLACK-AGENT-EXPECTATIONS.md` called this the highest-value thing
+    the history suggests building and the one thing it could not specify:
+    53 promise-shaped messages in ten days and nothing tracking whether any
+    was kept. The missing piece was a definition of delivery, and there is
+    one now - `src/slackpromises.py` carries it and the operator's words.
+
+    THERE IS NO CLIENT SCOPE FOR THIS, and that is the whole of the
+    access control. The operator: "Clients never see the promise scan."
+    Registering it `_INTERNAL` means `run` refuses it in a client channel
+    by name, `for_scope` never lists it, and no phrasing reaches it -
+    rather than an answer that filters itself once it has been built.
+
+    `argument` narrows to one status: `open`, `due`, `delivered`,
+    `undated`. Nothing means the summary and the open list, which is what
+    the briefing wants.
+    """
+    try:
+        from . import slackpromises, slackscope as scope_module
+        rows = slackpromises.messages()
+        found = slackpromises.scan(
+            rows, internal_users=scope_module.internal_users())
+    except Exception as exc:                                    # noqa: BLE001
+        return {"read_at": _now(),
+                "_error": "the promise scan failed: %s: %s"
+                          % (type(exc).__name__, str(exc)[:200])}
+    out = {"read_at": _now()}
+    out.update(slackpromises.summary(found, history_found=bool(rows)))
+    wanted = str(argument or "").strip().lower()
+    if wanted in (slackpromises.OPEN, slackpromises.DUE,
+                  slackpromises.DELIVERED, slackpromises.UNDATED):
+        out["filtered_to"] = wanted
+        out["matching"] = [p for p in found if p["status"] == wanted]
+    return out
+
+
 def monitors(scope, argument=None):
     """Which watchers are beating, and how long ago. INTERNAL ONLY."""
     return readback.monitors()
@@ -1894,6 +1932,11 @@ REGISTRY = {
         credits,
         "the credit position",
         _INTERNAL, None),
+    "promises": (
+        promises,
+        "what we told somebody we would do in the last 10 days, and "
+        "whether anything was posted in that thread afterwards",
+        _INTERNAL, "open, due, delivered, undated, or nothing"),
     "monitors": (
         monitors,
         "which watchers are beating and how long ago",
