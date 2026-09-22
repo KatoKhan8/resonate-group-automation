@@ -254,6 +254,75 @@ per-branch check before merging, not a bulk merge.
 - **Fix** smaller review targets, or a raised output budget.
 - **Status** NEW
 
+### ISSUE-011 · The forward book's COVERING property decays silently as campaigns are created · HIGH
+
+**Found and worked around 2026-09-22. The census is not wrong; its state file
+goes stale in a way nothing reports.**
+
+`bison_forward_book_census` derives its campaign set from the provider - F-002
+fixed the hardcoded list and the fix is sound. But the DERIVATION HAPPENS AT
+WALK TIME and the result is frozen into `work/forward-book-census.json`. The
+18:50Z walk on 2026-09-21 correctly derived `{327, 328, 352, 481, 487, 489}`.
+By 2026-09-22 the bookable set was fourteen: 491-498 had been created and
+activated overnight and held **243 scheduled rows on the same attested
+mailboxes**.
+
+- **`freshness()` still said FRESH** - 16.2 hours, inside the 24-hour window -
+  because freshness asks when the walk ran, not what it walked.
+- **`completeness()` still said COMPLETE**, because every walk it holds did
+  reach its end.
+- **`coverage()` is the one that would have caught it**, and only if the
+  caller passes the CURRENT bookable set. A caller that passes
+  `walked_campaigns(state)` - the obvious thing to pass - is asking the state
+  whether it covers itself, which it always does.
+
+So the handoff's 1,470 counted 243 booked slots as free. Corrected figure for
+2026-09-22 is **1,301 free first-step slots**, and it also revealed that
+496/497/498 have ZERO room today and through the 25th while 493 has two.
+
+**Worked around, not fixed:** the walk was extended over 491-498 (243 rows, 19
+pages) and the state now covers all fourteen. The defect is that nothing made
+that necessary visible. The structural fix is the one the register's closing
+section already names - a cached value on a safety path carries the source it
+was derived from and refuses rather than answers when it cannot prove it is
+current. Here that means the state file should record the campaign set as
+derived AT WALK TIME and `freshness`/`coverage` should re-derive and compare.
+
+- **Status** OPEN · worked around for today · `docs/THE-7-DAY-BOUNCE-STOP-2026-09-22.md` is unrelated; the correction itself is in the 2026-09-22 batch-3 stats post
+
+### ISSUE-012 · The collision gate refused a batch's whole supply as NOT WALKED · HIGH · **FIXED**
+
+`batch_eligibility.collision_cleared()` read `work/stage/batch1-candidates.json`
+- the 868 addresses batch 1's walk cleared on 2026-09-21 - and refused every
+account outside it. On 2026-09-22 that refused **5,488 verified contacts on
+3,080 accounts**, and the refusal reason is NOT_WALKED rather than COLLIDES.
+
+Fail-closed is the right direction and the gate was not unsafe. The defect is
+that a cached clearance from an earlier batch was standing in for the current
+question, and the report said "collision: account not cleared", which reads as
+a collision finding rather than as a walk nobody had run.
+
+- Fixed by `scripts/s6_collision_walk.py` - resumable, checkpointed, records
+  ALLOW/HOLD/STOP beside the estate verdict, and carries a domain the provider
+  could not be read for as REFUSED rather than folding it into clear.
+- `collision_cleared()` now prefers the fresh walk and keeps batch 1's file as
+  a fallback, unioned so a re-run cannot go backwards.
+- **Measured on the walk:** roughly 27% of accounts come back ALLOW. Batch 3's
+  supply is that set, not the 850 rendered - of which 636 are people already
+  enrolled, 195 are deferred at accounts already in a batch, and 19 are
+  Australian with no campaign window.
+
+### ISSUE-013 · `batch_eligibility` could not finish · MEDIUM · **FIXED**
+
+`clientapproval.is_approved()` re-reads a 7.4MB, 24,711-row journal on every
+call when `rows` is None, and the walk called it once per candidate. At 9,140
+candidates the run did not finish - it was killed twice at fifteen minutes
+with no output, which looks identical to a hang.
+
+Fixed by loading the ledger once and passing it through. The gate is unchanged
+and it now reads one consistent snapshot rather than re-reading a live file
+per candidate, which is also the stricter reading of "walk every gate again".
+
 ### ISSUE-009 · Two model workers are invisible to credential health · LOW
 
 - `ZAI_API_KEY` (GLM) and `XAI_API_KEY` (Grok) are absent from

@@ -95,12 +95,44 @@ def store_domains():
 
 
 def collision_cleared():
-    """The accounts tonight's collision walk cleared, or None if unwalked."""
-    path = os.path.join(STAGE, "batch1-candidates.json")
-    if not os.path.exists(path):
+    """The accounts a collision walk cleared, or None if none has run.
+
+    PREFERS THE FRESH WALK. `s6-collision-walk.json` is written by
+    `scripts/s6_collision_walk.py`, carries a policy per account, and is the
+    current answer. Only `collision.ALLOW` is supply: HOLD wants a person to
+    look, STOP means the account is answered or in play, and a domain the
+    provider could not be read for is REFUSED and is not cleared.
+
+    FALLS BACK TO BATCH 1'S SET, which is what this read before the walker
+    existed. That file is a list of ADDRESSES cleared on 2026-09-21 and it is
+    a cached value on a safety path - the shape of six rows in the problem
+    register. It stays as the fallback rather than the answer, so an estate
+    with no fresh walk behaves exactly as it did, and one with a walk uses it.
+
+    The two are UNIONED rather than replaced. Batch 1's accounts are all
+    already in our store and the overlap gate removes them regardless, so the
+    union adds no supply; it only means a re-run cannot go backwards.
+    """
+    cleared, found = set(), False
+
+    walk = os.path.join(STAGE, "s6-collision-walk.json")
+    if os.path.exists(walk):
+        with open(walk, encoding="utf-8") as handle:
+            accounts = (json.load(handle) or {}).get("accounts") or {}
+        for domain, entry in accounts.items():
+            if (entry or {}).get("policy") == "allow":
+                cleared.add(ca.account_of(domain))
+        found = found or bool(accounts)
+
+    legacy = os.path.join(STAGE, "batch1-candidates.json")
+    if os.path.exists(legacy):
+        with open(legacy, encoding="utf-8") as handle:
+            cleared |= {ca.account_of(e) for e in json.load(handle)}
+        found = True
+
+    if not found:
         return None
-    with open(path, encoding="utf-8") as handle:
-        return {ca.account_of(e) for e in json.load(handle)} - {""}
+    return cleared - {""}
 
 
 def eligible(client="productive", require_collision=True):
