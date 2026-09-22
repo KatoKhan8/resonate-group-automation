@@ -94,3 +94,44 @@ Falsifiable requirements:
   the decision.
 - Do not touch `config/.env`, `src/providers/*`, `scripts/*_watch_loop.py` or
   anything under `work/`.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 56a0fbb3
+
+**TESTS:**
+- jsonl backend: 130 tests pass, 1 expected failure (identical to baseline)
+- sqlite backend: 130 tests pass, 1 expected failure (was 10 failures + 46 errors)
+- All four incident-encoding test files now run and pass on both backends
+
+**FILES CHANGED:**
+- tests/base.py: added write_as_another_process(), refuse_writes(), install_fixture()
+- tests/test_a_batch_does_not_erase_what_arrived_during_it.py: replaced store._write() calls with write_as_another_process(), replaced refusal patches with refuse_writes()
+- tests/test_approve.py: replaced store._write() in degraded_fixture(), updated fixture loading to use install_fixture(), made test_approval_state_lives_in_the_queue_and_nowhere_else backend-aware
+- tests/test_double_verification.py: replaced store._write() in degraded_fixture(), updated three fixture loading sites to use install_fixture()
+- tests/test_the_provider_acting_alone_is_still_a_touch.py: replaced store._write() in reset() with write_as_another_process()
+
+**FINDINGS:**
+1. The diagnosis in the task file was correct: all three failures were test-mechanism artifacts, not backend defects. The sqlite backend's concurrency semantics are sound; the tests just could not reach them.
+
+2. Four test files reached store._write() directly. Under sqlite, save() calls _write_sqlite instead, so:
+   - Fixture writes went to a JSONL file nothing reads
+   - Refusal monkeypatches never fired
+   - The 2026-09-12 incident tests - the most valuable in the repository - were unproven on sqlite
+
+3. Three helpers close the gap:
+   - write_as_another_process(recs): one definition that persists through the active backend without save()'s merge. On jsonl that is store._write; on sqlite it is _write_sqlite.
+   - refuse_writes(): patches both backend writers to raise QueueLocked, so refusal tests fire regardless of backend.
+   - install_fixture(name): loads a JSONL fixture into the active backend. Under sqlite, store.load() reads from the DB, not the JSONL file.
+
+4. The concurrency semantics that matter most - the three-way merge, refuse_evidence_loss, refuse_history_loss and the checkpoint/rebase ordering - are now exercised on both backends. This is the evidence TASK-253's promotion decision will need.
+
+5. No backend defects were found. The sqlite implementation is correct; the tests just could not reach it.
+
+**RISKS:**
+- None identified. The helpers are test-only and do not change production code. Behaviour on the default jsonl backend is identical to baseline.
+
+**RECOMMENDED CLAUDE ACTION:**
+Review and integrate. This is the gate on promoting QUEUE_BACKEND=sqlite. The incident tests now run on both backends, and no defects were found. The sqlite backend's concurrency semantics are proven.
