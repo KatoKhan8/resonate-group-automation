@@ -17,24 +17,15 @@ import time
 from collections import Counter
 from datetime import datetime, timezone
 
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, ROOT)
+
+from src import store
+
 # Default: Claude's worktree, where queue.jsonl lives
 DEFAULT_QUEUE = (
     r"C:\Users\Zvonimir\Desktop\resonate-group-automation\work\queue.jsonl"
 )
-
-
-def load_records(path):
-    records = []
-    with open(path, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-    return records
 
 
 def has_company_facts(r):
@@ -240,15 +231,9 @@ def contact_summary(records):
     }
 
 
-def reconcile_populations(queue_path, snapshot_path, snapshot_stamp_path):
+def reconcile_populations(queue_path, queue_count, snapshot_path,
+                          snapshot_stamp_path):
     """Explain the three populations: 550, 316, 300."""
-    queue_count = 0
-    if os.path.exists(queue_path):
-        with open(queue_path, encoding="utf-8") as fh:
-            for line in fh:
-                if line.strip():
-                    queue_count += 1
-
     snapshot_count = 0
     if os.path.exists(snapshot_path):
         with open(snapshot_path, encoding="utf-8") as fh:
@@ -310,12 +295,15 @@ def main():
     age_minutes = (time.time() - mtime) / 60
     run_in_flight = age_minutes < 5
 
-    records = load_records(queue_path)
+    queue_dir = os.path.dirname(os.path.abspath(queue_path))
+    store.use_directory(queue_dir)
+    records = list(store.load())
     funnel, dropped, held, drop_reasons = compute_funnel(records)
     states = state_distribution(records)
     icp = icp_distribution(records)
     contacts = contact_summary(records)
-    populations = reconcile_populations(queue_path, snapshot_path, stamp_path)
+    populations = reconcile_populations(queue_path, len(records),
+                                        snapshot_path, stamp_path)
 
     output = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
