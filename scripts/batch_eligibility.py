@@ -107,6 +107,12 @@ def eligible(client="productive", require_collision=True):
     """Walk every gate and report what each one removed."""
     icp, mx, verified = icp_verdicts(), mx_status(), verifications()
     overlap, cleared = store_domains(), collision_cleared()
+    # Load the approval ledger ONCE. `is_approved` re-reads a 7.4MB journal on
+    # every call when `rows` is None, so the walk was O(candidates x ledger) -
+    # 9,140 x 24,711 rows, which does not finish. The gate is unchanged; it now
+    # reads one consistent snapshot instead of re-reading a live file per
+    # candidate, which is also the stricter reading of "walk every gate again".
+    approvals = ca.load()
     funnel = collections.OrderedDict()
     dropped = collections.Counter()
 
@@ -118,7 +124,7 @@ def eligible(client="productive", require_collision=True):
         row = verified[email]
         domain = ca.account_of(email)
 
-        if not ca.is_approved(domain, client):
+        if not ca.is_approved(domain, client, rows=approvals):
             dropped["client approval not `approved`"] += 1
             continue
         verdict = (icp.get(domain) or {}).get("verdict")
