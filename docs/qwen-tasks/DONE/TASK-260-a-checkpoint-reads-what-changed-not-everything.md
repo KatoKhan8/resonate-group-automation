@@ -217,7 +217,8 @@ TASK-255 did — 2x records should stop costing 4x time.
 **TESTS:**
 - `tests.test_incremental_checkpoint`: 18 tests, all passing
 - `tests.test_store`: 12 tests, all passing
-- Total: 30 tests passing
+- `tests.test_the_sqlite_store_keeps_the_order_it_was_given`: 25 tests, all passing (TASK-251 SQLite backend tests)
+- Total: 55 tests passing
 
 **FILES CHANGED:**
 - `src/sqlitestore.py`: Added `rev` column (INTEGER NOT NULL DEFAULT 0), `records_rev` index, `read_changed_since()`, `incremental_read_or_full()`, `_migrate()`. Modified `write_changed()` to set `rev` from `meta.revision`.
@@ -237,7 +238,7 @@ TASK-255 did — 2x records should stop costing 4x time.
 
 5. **Fail-closed works.** Missing/stale/backwards cursor or Snapshot without baseline falls back to full read (6 tests in TestFailClosedFallback).
 
-6. **UNVERIFIED: existing store suite on both backends.** Requirement 6 depends on TASK-259 (reproduced-incident tests). TASK-259 is running in parallel in another worktree and touches `tests/base.py` and four test files, which I did not touch. The existing `tests.test_store` passes on jsonl backend (the default). **Verification on sqlite backend with TASK-259's tests is owed at integration.**
+6. **PARTIALLY VERIFIED.** The existing `tests.test_store` (12 tests, jsonl backend) and `tests.test_the_sqlite_store_keeps_the_order_it_was_given` (25 tests, sqlite backend) all pass. **TASK-259's reproduced-incident tests are not yet on this branch** - TASK-259 is running in parallel in another worktree and touches `tests/base.py` and four test files, which I did not touch. Verification with TASK-259's tests is owed at integration.
 
 7. **jsonl path unchanged.** `QUEUE_BACKEND` unset is byte-identical to today. The incremental path only fires on sqlite backend.
 
