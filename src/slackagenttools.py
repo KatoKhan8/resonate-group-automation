@@ -466,6 +466,214 @@ def sending_domains(scope, argument=None):
     return out
 
 
+def domain_detail(scope, argument=None):
+    """ONE domain: whose mailboxes sit on it, what it carried, how it did.
+
+    The catalogue's third tool, and the shape of the real question:
+
+    > *dontgoproductive.com, kakva je ovo domena?*
+
+    That is the message that followed `sending_domains` being answered with
+    a 194KB CSV. The catalogue puts it plainly - *almost never "list the
+    domains". Usually ONE domain, one sender, one campaign* - and a list of
+    sixty-nine answers a question nobody asked while leaving the one they
+    did ask unanswered.
+
+    ## A DOMAIN THAT IS NOT YOURS READS THE SAME AS A DOMAIN THAT IS NOBODY'S
+
+    The same rule as `lead_in_campaign`, for the same reason. An answer that
+    distinguished "not yours" from "another client's" would confirm the
+    other client's estate exists, and that confirmation IS the disclosure.
+    So both produce `ours: false` and one sentence, and the sentence does
+    not vary.
+
+    ## THE ARGUMENT MAY ARRIVE AS AN ADDRESS AND LEAVES AS A DOMAIN
+
+    People paste `tina@dontgoproductive.com` when they mean the domain.
+    Taking the domain is right; echoing the local part back would put a
+    mailbox in the answer, which `sending_domains` refuses on purpose in
+    every scope. The local part is dropped before anything is looked up and
+    the answer names only what was resolved.
+    """
+    domain = _as_domain(argument)
+    if not domain:
+        return {"read_at": _now(),
+                "_error": "domain_detail needs a domain, like example.com"}
+    slug = _workspace_for(scope, None)
+    #: The one sentence for "nobody's" and "somebody else's" alike.
+    absent = ("%s is not one of the domains sending for this workspace"
+              % domain)
+
+    try:
+        from . import senderidentity
+        rows = senderidentity.load()
+    except Exception as exc:                                    # noqa: BLE001
+        return {"read_at": _now(), "workspace": slug, "domain": domain,
+                "_error": "sender roster unreadable: %s" % type(exc).__name__}
+
+    attested = set()
+    for attestation in rows:
+        if (attestation.get("kind") == "ownership_attestation"
+                and attestation.get("workspace") == slug
+                and attestation.get("channel") == "email"):
+            attested.add((attestation.get("sender_id"),
+                          attestation.get("account_id")))
+    people = {p.get("sender_id"): p
+              for p in senderidentity.senders(slug, rows=rows)}
+    accounts = {a.get("account_id"): a
+                for a in senderidentity.email_accounts(slug, rows=rows)}
+
+    mine, owners = [], set()
+    for sender_id, account_id in attested:
+        account = accounts.get(account_id)
+        if not account:
+            continue
+        if str(account.get("domain") or "").lower().strip() != domain:
+            continue
+        mine.append(account)
+        owners.add((people.get(sender_id) or {}).get("display_name")
+                   or sender_id)
+
+    out = {"read_at": _now(), "workspace": slug, "domain": domain,
+           "ours": bool(mine)}
+    if not mine:
+        out["note"] = absent
+        return out
+
+    out["mailboxes"] = len(mine)
+    # THE SENDER HUMANS, BY NAME. The operator's decision of 2026-09-22: a
+    # client's own senders are the client's own data, and the people
+    # sending for them are their own staff.
+    out["senders"] = sorted(owners)
+    out["daily_capacity"] = sum(a.get("daily_limit") or 0 for a in mine)
+
+    carried = _campaigns_by_sending_account(slug)
+    out["campaigns_carried"] = sorted(
+        {name for a in mine
+         for name in carried.get(str(a.get("provider_account_id")), ())})
+
+    week = _week_for_domain(slug, domain)
+    if week is None:
+        out["last_7_days_note"] = (
+            "no campaign queue could be read, so nothing is claimed about "
+            "what this domain sent this week")
+    else:
+        emails, persons, unreadable = week
+        out["emails_sent_last_7_days"] = emails
+        out["leads_emailed_last_7_days"] = persons
+        if unreadable:
+            out["campaigns_unreadable"] = unreadable
+            out["last_7_days_note"] = (
+                "%d campaign queue(s) refused, so these are floors"
+                % unreadable)
+
+    if scope.is_internal:
+        # HOW WE JUDGE OUR OWN INFRASTRUCTURE. `sending_domains` keeps
+        # health internal for the same reason: which domains send for a
+        # client is theirs, our assessment of the mailboxes is ours.
+        health = {}
+        for account in mine:
+            state = str(account.get("health")
+                        or account.get("provider_state") or "unknown")
+            health[state] = health.get(state, 0) + 1
+        out["health"] = health
+        bounce = _bounce_by_provider_account(slug, rows)
+        rates = [bounce[str(a.get("provider_account_id"))] for a in mine
+                 if str(a.get("provider_account_id")) in bounce]
+        if rates:
+            sent = sum(r["sent"] for r in rates)
+            bounced = sum(r["bounced"] for r in rates)
+            out["emails_sent_lifetime"] = sent
+            out["bounces_lifetime"] = bounced
+            out["bounce_rate_percent"] = (round(100.0 * bounced / sent, 2)
+                                          if sent else None)
+            if out["bounce_rate_percent"] is not None:
+                out["over_hard_stop"] = (out["bounce_rate_percent"]
+                                         > BOUNCE_HARD_STOP_PERCENT)
+                out["bounce_hard_stop_percent"] = BOUNCE_HARD_STOP_PERCENT
+        else:
+            out["bounce_rate_percent"] = None
+            out["bounce_note"] = ("the provider estate could not be read, "
+                                  "so no bounce rate is claimed")
+
+    out["note"] = ("one domain, with the mailbox addresses on it left out - "
+                   "the count is the answer, the addresses are not.")
+    return out
+
+
+def _as_domain(argument):
+    """`"tina@dontgoproductive.com"` -> `"dontgoproductive.com"`, or None.
+
+    Takes what a person would actually paste - an address, a bare domain, a
+    URL - and returns the registrable text or nothing. It never guesses: a
+    value with no dot in it is not a domain and gets None rather than being
+    looked up as one.
+    """
+    import re
+    text = str(argument or "").strip().lower()
+    text = re.sub(r"^[a-z]+://", "", text)
+    text = text.split("/")[0].split("?")[0]
+    # THE LOCAL PART IS DROPPED HERE AND NEVER READ AGAIN. `sending_domains`
+    # refuses to put a mailbox in an answer in any scope, and echoing back
+    # the address somebody pasted would do it by the back door.
+    if "@" in text:
+        text = text.rsplit("@", 1)[-1]
+    text = text.strip(" <>,.;:\"'").strip()
+    if "." not in text or " " in text:
+        return None
+    return text
+
+
+def _week_for_domain(slug, domain):
+    """`(emails, people, campaigns that refused)` for one domain this week.
+
+    `None` rather than zeroes when NOTHING could be read, which is the
+    distinction `_recent_send_domains` draws and for the same reason: a
+    silent outage reported as a quiet week is the failure this repository
+    keeps finding.
+    """
+    import datetime
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    ids = entry.get("provider_campaign_ids") or []
+    if not ids:
+        return None
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - \
+        datetime.timedelta(seconds=WEEK_SECONDS)
+    emails, people, unreadable, read_any = 0, set(), 0, False
+    for campaign_id in ids[:12]:
+        try:
+            from .providers import bison
+            queue = bison.scheduled_emails(campaign_id) or []
+        except Exception:                                       # noqa: BLE001
+            unreadable += 1
+            continue
+        read_any = True
+        for row in queue:
+            stamp = row.get("sent_at")
+            address = str(row.get("sender_email") or "")
+            if not stamp or "@" not in address:
+                continue
+            if address.rsplit("@", 1)[-1].lower() != domain:
+                continue
+            try:
+                when = datetime.datetime.fromisoformat(
+                    str(stamp).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=datetime.timezone.utc)
+            if when < cutoff:
+                continue
+            emails += 1
+            lead = row.get("lead")
+            lead_id = lead.get("id") if isinstance(lead, dict) else None
+            people.add(lead_id if lead_id is not None
+                       else ("row:%s" % row.get("id")))
+    if not read_any:
+        return None
+    return emails, len(people), unreadable
+
+
 def _recent_send_domains(slug):
     """`(domains that sent inside the window, campaigns that refused)`.
 
@@ -1526,6 +1734,11 @@ REGISTRY = {
         "which domains this workspace's mail is sent from, grouped by "
         "sender, with mailboxes per domain and whether it sent this week",
         _INTERNAL_CLIENT, None),
+    "domain_detail": (
+        domain_detail,
+        "one sending domain: how many mailboxes are on it, whose they are, "
+        "which campaigns it carries and what it sent this week",
+        _INTERNAL_CLIENT, "a domain, like example.com"),
     "sender_roster": (
         sender_roster,
         "this client's own authorized senders by name, with their mailboxes, "
