@@ -150,7 +150,8 @@ class TwoClients(unittest.TestCase):
                                  "k1@alpha-co.test", provider_account_id="5001",
                                  daily_limit=15),
             si.new_email_account("alpha", "eb-5002", "kresimir",
-                                 "k2@alpha-co.test", provider_account_id="5002",
+                                 "k2@alpha-second.test",
+                                 provider_account_id="5002",
                                  daily_limit=15),
             # Authorized on paper for nothing: no attestation below, so this
             # one must not appear however the question is asked. It stands
@@ -338,6 +339,84 @@ class AClientsOwnSendersAreTheirOwnData(TwoClients):
         result = tools.run(self.alpha(), "sender_roster")
         self.assertEqual(result["linkedin_seats"], 0)
         self.assertNotIn("linkedin_authorizations_unresolved", result)
+
+
+class SendingDomainsAreScopedLikeEverythingElse(TwoClients):
+    """OPERATOR, 2026-09-22, from a real client question.
+
+    A Productive person asked Jelena and Tina for "popis domena s kojih
+    šaljete mailove u email kampanjama". What came back was a 194KB CSV of
+    every sender, and the next message in that thread was
+    "dontgoproductive.com, kakva je ovo domena?" - a question caused by
+    answering with addresses when the question was about domains.
+    """
+
+    def beta(self):
+        return slackscope.resolve(channel=BETA_CHANNEL)
+
+    def test_alpha_gets_its_own_domains_grouped_by_sender(self):
+        result = tools.run(self.alpha(), "sending_domains")
+        self.assertEqual(result["workspace"], "alpha")
+        names = [s["sender"] for s in result["senders"]]
+        self.assertEqual(names, ["Kresimir Simicic"])
+        domains = sorted(d["domain"] for s in result["senders"]
+                         for d in s["domains"])
+        self.assertEqual(domains, ["alpha-co.test", "alpha-second.test"])
+        self.assertEqual(result["domains_total"], 2)
+        self.assertEqual(result["mailboxes_total"], 2)
+
+    def test_no_mailbox_address_is_anywhere_in_the_answer(self):
+        """Domains only. The question was about domains and the addresses
+        are neither what was asked for nor theirs to hold in a thread."""
+        body = json.dumps(tools.run(self.alpha(), "sending_domains"))
+        self.assertNotIn("@", body)
+        self.assertNotIn("k1@", body)
+        self.assertNotIn("k2@", body)
+
+    def test_beta_cannot_see_one_of_alphas_domains(self):
+        result = tools.run(self.beta(), "sending_domains")
+        body = json.dumps(result).lower()
+        self.assertNotIn("alpha-co.test", body)
+        self.assertNotIn("alpha-second.test", body)
+        self.assertNotIn("kresimir", body)
+        self.assertEqual(result["workspace"], "beta")
+
+    def test_a_workspace_argument_cannot_fetch_alphas_domains(self):
+        result = tools.run(self.beta(), "sending_domains", "alpha")
+        self.assertEqual(result["workspace"], "beta")
+        self.assertNotIn("alpha-co.test", json.dumps(result))
+
+    def test_an_unauthorized_mailbox_contributes_no_domain(self):
+        """`eb-5099` has no attestation, so `x@alpha-co.test`'s domain
+        reaches the list only because an authorized mailbox also sits on
+        it - and `excluded_person` is never named."""
+        result = tools.run(self.alpha(), "sending_domains")
+        self.assertNotIn("Casey Excluded", json.dumps(result))
+
+    def test_health_is_internal_only(self):
+        """A client is told which domains send for them and whether they
+        are sending. How healthy we judge our own infrastructure is ours."""
+        client = json.dumps(tools.run(self.alpha(), "sending_domains"))
+        self.assertNotIn("health", client)
+        internal = slackscope.resolve(channel=INTERNAL_CHANNEL)
+        self.assertIn("health",
+                      json.dumps(tools.run(internal, "sending_domains",
+                                           "alpha")))
+
+    def test_the_listing_is_built_in_code_and_says_distinct(self):
+        """A domain can sit under two senders, so rows outnumber domains
+        and a reader counting rows must not find a discrepancy."""
+        result = tools.run(self.alpha(), "sending_domains")
+        listing = result["listing"]
+        self.assertIn("distinct sending domains", listing)
+        self.assertIn("more than one sender", listing)
+        self.assertIn("alpha-co.test", listing)
+
+    def test_the_listing_is_localised(self):
+        result = tools.run(self.alpha(), "sending_domains")
+        croatian = tools.render_domain_listing(result, "hr")
+        self.assertIn("razli", croatian)
+        self.assertNotIn("distinct sending domains", croatian)
 
 
 # ============================================================== TRIGGER

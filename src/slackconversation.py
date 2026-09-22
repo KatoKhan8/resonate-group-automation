@@ -48,6 +48,7 @@ import re
 import time
 
 from . import llm, slackagenttools as tools, slackknowledge as knowledge
+from . import slacklanguage as language
 from . import slackrequests as requests, slackscope
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -155,6 +156,64 @@ def render_history(rows):
     return "\n".join("%s: %s" % (r.get("role"), r.get("text", "")[:600])
                      for r in rows
                      if r.get("role") in ("them", "me"))
+
+
+# ----------------------------------------------------- the relay trigger
+#
+# OPERATOR, 2026-09-22: "When a client addresses Resonate people by name and
+# does not mention the agent, the agent stays silent, but a Resonate person
+# may reply in that thread with '@Resonate OS answer this' and the agent
+# answers the original question in-thread, in its language."
+#
+# Silence is the default and it is not an accident of routing: a bot that
+# answers a question addressed to two named colleagues has answered FOR
+# them. The relay is somebody at Resonate deciding the machine should take
+# it, which is a different act from the machine deciding.
+
+RELAY_TRIGGERS = (
+    "answer this", "answer that", "odgovori na ovo", "odgovori ovo",
+    "odgovori na ovaj", "please answer", "take this", "handle this",
+    "javi ovo", "odgovori",
+)
+
+_RELAY = re.compile(r"\b(?:%s)\b"
+                    % "|".join(re.escape(t) for t in RELAY_TRIGGERS), re.I)
+
+
+def is_relay_request(text, user, scope, rows=None):
+    """Is this a Resonate person telling the agent to take the question?
+
+    THREE THINGS, ALL REQUIRED. A short trigger phrase, a thread to relay
+    inside, and a user on the Resonate list - checked against
+    `slackscope.internal_users`, not against the channel. A client saying
+    "answer this" in their own channel is a client asking a question, and
+    it is answered as one; it is not authority to answer on Resonate's
+    behalf in a thread addressed to named colleagues.
+    """
+    if not text or not user:
+        return False
+    if not _RELAY.search(requests.strip_mentions(text)):
+        return False
+    return user in slackscope.internal_users(rows)
+
+
+#: The line a relayed answer opens with, so the people the question was
+#: actually addressed to are not misrepresented as having written it.
+#: Generic on purpose. An earlier draft named the two colleagues from the
+#: thread it was written against, which would have put their names on every
+#: relayed answer in every channel - the opposite of not misrepresenting
+#: them.
+RELAY_PREFACE = {
+    "hr": "Ovo je automatski izvještaj iz sustava, stanje %s — nije odgovor "
+          "kolega kojima ste se obratili.",
+    "en": "This is a system readback, as of %s — not a reply from the "
+          "colleagues you addressed.",
+}
+
+
+def relay_preface(code, at=None):
+    template = RELAY_PREFACE.get(code or "en") or RELAY_PREFACE["en"]
+    return template % (at or _now())
 
 
 #: A change request that has been restated and is waiting for the requester
@@ -338,8 +397,27 @@ KEYWORD_PLAN = (
     (("batch",), ("batch_state",)),
     (("held", "hold", "blocked", "why is"), ("held_by_reason",)),
     (("sent", "send", "delivered", "today", "going out"), ("sends_today",)),
-    (("cadence", "sequence", "step", "follow-up", "followup"),
+    (("cadence", "sequence", "step", "follow-up", "followup",
+      "kadenca", "sekvenca", "korak"),
      ("cadence_detail",)),
+    # OPERATOR, 2026-09-22, the client query set. Croatian keywords beside
+    # the English ones because the questions arrive in both - this is the
+    # no-model fallback, and a fallback that only works in English is a
+    # fallback that stops working for the people who actually ask.
+    (("domain", "domains", "domena", "domene", "domenama", "popis domena",
+      "sending domain", "send from", "saljete", "šaljete"),
+     ("sending_domains",)),
+    (("mailbox", "mailboxes", "sandu", "po domeni", "per domain"),
+     ("sending_domains", "sender_roster")),
+    (("sender", "senders", "sendera", "senderi", "who is sending",
+      "active this week", "aktivni"),
+     ("sender_roster", "sender_summary")),
+    (("volume", "daily volume", "how many a day", "dnevno", "volumen",
+      "kapacitet"),
+     ("sender_summary", "sender_roster")),
+    (("last email", "last send", "when did", "zadnji mail", "zadnji email",
+      "kad je", "kada je"),
+     ("activity_this_week", "sends_today")),
     (("icp", "persona", "angle", "who are we targeting", "targeting"),
      ("workspace_summary",)),
     (("decision", "policy", "why do we", "rule"), ("decisions_log",)),
@@ -427,6 +505,10 @@ ANSWER_PROMPT = """You are Resonate OS, answering in Slack.
 
 {tone}
 
+{language}
+
+{listing_notice}
+
 WHAT YOU MAY USE. The MATERIAL below is everything you know. Answer from it
 and from nothing else.
 
@@ -474,6 +556,38 @@ YOUR PREVIOUS ANSWER:
 MATERIAL:
 {material}
 """
+
+
+#: Told to the model whenever a list will be appended under its answer.
+#:
+#: THE DEFECT THIS EXISTS FOR, seen in the first live dry run of a real
+#: client question. The model wrote, in Croatian, "the list I can see here
+#: is not complete, so I do not want to paste you half of it - I will ask
+#: the team for a full verified list and put it in this thread" - and the
+#: full verified list was appended immediately underneath. It had no way to
+#: know, so it hedged, and the hedge contradicted the thing it was hedging
+#: about.
+LISTING_NOTICE = """A COMPLETE LIST IS APPENDED BELOW YOUR ANSWER, automatically,
+assembled from the readback. It is there whatever you write.
+
+It is ALREADY grouped by sender, with the mailbox count per domain and
+whether each domain sent in the last seven days, and it carries its own
+totals line.
+
+So: introduce it in one or two sentences and stop. Do NOT retype it, do NOT
+say you cannot provide it, do NOT promise to send it later or offer to
+fetch it, do NOT say it is partial, and do NOT offer to group it or add the
+counts - they are there. Close on something the list does not already
+answer, or on nothing at all."""
+
+
+def _listing_language(results, code):
+    """Re-render a tool's listing in the language of the question."""
+    for _name, _argument, value in results or []:
+        if isinstance(value, dict) and value.get("listing"):
+            if tools.listing_is_long(value):
+                return tools.render_domain_listing(value, code)
+    return None
 
 
 def material_for(scope, question, results, pack=None):
@@ -590,6 +704,46 @@ def unsupported_numbers(text, material):
     return out
 
 
+#: A domain, as it appears in prose. Deliberately narrow: a known TLD-ish
+#: tail and no scheme, so "e.g." and "i.e." are not domains and neither is
+#: a sentence that happens to contain a full stop.
+_DOMAIN_SHAPE = re.compile(
+    r"\b((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,})\b", re.I)
+
+#: Words that look like a domain and are not. `slack.post`, `notify.plan`
+#: and `store.save` are module paths, and an answer naming one is talking
+#: about code rather than about a sending domain.
+_NOT_A_DOMAIN = frozenset((
+    "e.g", "i.e", "etc.al", "resonate.os",
+))
+
+
+def domains_in(text):
+    """Every domain-shaped token in a piece of text, lower case."""
+    out = set()
+    for match in _DOMAIN_SHAPE.finditer(str(text or "")):
+        token = match.group(1).lower().rstrip(".")
+        if token in _NOT_A_DOMAIN or token.count(".") == 0:
+            continue
+        out.add(token)
+    return out
+
+
+def unsupported_domains(text, material):
+    """Domains in `text` that `material` does not contain.
+
+    THE SAME RULE AS NUMBERS, AND FOR A SHARPER REASON. A misremembered
+    figure is wrong; a misremembered domain is a domain somebody will go
+    and look up, fail to find, and ask about - which is exactly what
+    happened when a client was sent a sender CSV and wrote back
+    "dontgoproductive.com, kakva je ovo domena?". A model retyping
+    sixty-nine domains will drop a hyphen in one of them, and the reader
+    cannot tell a typo from a domain they have not seen before.
+    """
+    known = domains_in(material)
+    return sorted(d for d in domains_in(text) if d not in known)
+
+
 #: A value under a key whose name says it is a percentage.
 _PERCENT_FIELD = re.compile(
     r'"([A-Za-z_]*percent[A-Za-z_]*)"\s*:\s*(-?\d+(?:\.\d+)?)')
@@ -637,6 +791,9 @@ def guard(text, material, scope, allow_addresses=False):
     invented = unsupported_numbers(body, material)
     if invented:
         return None, "unsupported number(s): %s" % ", ".join(invented[:6])
+    made_up = unsupported_domains(body, material)
+    if made_up:
+        return None, "unsupported domain(s): %s" % ", ".join(made_up[:6])
     try:
         body = scope.check_outbound(body)
     except slackscope.ScopeViolation as exc:
@@ -750,6 +907,22 @@ def _decide(decision, user, channel, thread_ts):
                 "text": requests.decision_note_for(ticket)}}
 
 
+def _listing_from(results):
+    """The pre-rendered block a tool built, if one did. At most one."""
+    for _name, _argument, value in results or []:
+        if isinstance(value, dict) and value.get("listing"):
+            if tools.listing_is_long(value):
+                return value["listing"]
+    return None
+
+
+def _with_listing(text, listing):
+    if not listing:
+        return text
+    gap = chr(10) + chr(10)
+    return str(text).rstrip() + gap + listing
+
+
 def safe_fallback(results, scope):
     """The deterministic answer, itself checked before it is posted.
 
@@ -775,58 +948,73 @@ def stamp(text, at=None):
 
 # ----------------------------------------------------------------- a turn
 
+def _prefaced(out, relayed, code):
+    """Put the relay line in front of whatever the turn produced."""
+    if not relayed or not out.get("reply"):
+        return out
+    out["reply"] = relay_preface(code) + chr(10) + chr(10) + out["reply"]
+    return out
+
+
 def respond(question, channel=None, user=None, channel_type=None,
-            thread_ts=None, model=None, rows=None):
+            thread_ts=None, model=None, rows=None, relay_of=None):
     """One whole turn. Returns a dict; posts nothing and writes no state
     but the thread memory."""
     scope = slackscope.resolve(channel=channel, user=user,
                                channel_type=channel_type, rows=rows)
+    # A RELAY ANSWERS THE PARENT, not the sentence that asked for a relay.
+    # "@Resonate OS answer this" is an instruction about which question to
+    # take, and taking it literally would answer "answer this".
+    relayed = bool(relay_of and str(relay_of).strip())
+    if relayed:
+        question = str(relay_of)
     past = history(channel, thread_ts)
     out = {"at": _now(), "scope": scope.kind, "workspace": scope.workspace,
-           "scope_source": scope.source, "user": user, "channel": channel}
+           "scope_source": scope.source, "user": user, "channel": channel,
+           "relayed": relayed}
 
     # ---- 2a. A DECISION on an existing request. Internal channels only.
     decision = requests.parse_decision(question)
     if decision and scope.is_internal:
         out.update(_decide(decision, user, channel, thread_ts))
-        return out
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
     if decision and not scope.is_internal:
         # Somebody in a client channel typing "approve <id>". Say no plainly
         # rather than ignoring it: a silent no reads as a yes that failed.
         out.update({"reply": REFUSAL_APPROVAL_ELSEWHERE, "how": "refused",
                     "tools": []})
-        return out
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     # ---- 2b. A CONFIRMATION of a restatement made earlier in this thread.
     open_request = pending_request(channel, thread_ts)
     if open_request and is_confirmation_of(question, open_request):
         out.update(_raise_ticket(open_request, user, channel, scope,
                                  thread_ts))
-        return out
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
     if open_request and requests.is_decline(question):
         clear_pending(channel, thread_ts, "the requester declined")
         out.update({"reply": "Dropped - nothing was raised.",
                     "how": "request_withdrawn", "tools": []})
-        return out
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     # ---- 2c. A NEW change request: restate it, or ask what is missing.
     kind, fields = requests.recognise(question)
     if kind and not scope.is_unbound:
         out.update(_open_request(kind, fields, question, channel, scope,
                                  thread_ts))
-        return out
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     if wants_an_action(question):
         out.update({"reply": refusal_for(scope), "how": "refused",
                     "tools": []})
-        return out
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     model = model_for_agent() if model is None else model
     calls, clarify, how_planned = plan(question, scope, past, model)
     out["planned"] = how_planned
     if clarify:
         out.update({"reply": clarify, "how": "clarify", "tools": []})
-        return out
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     results = tools.run_all(scope, calls)
     out["tools"] = [{"name": n, "argument": a} for n, a, _ in results]
@@ -839,6 +1027,19 @@ def respond(question, channel=None, user=None, channel_type=None,
 
     material = material_for(scope, question, results)
     plain = safe_fallback(results, scope)
+    out["language"] = language.detect(question)
+
+    # A LONG LIST IS APPENDED, NEVER RETYPED.
+    #
+    # Sixty-nine domains written out by a language model is sixty-nine
+    # chances to drop a hyphen, and a reader cannot tell a typo from a
+    # domain they have not seen before - which is precisely the confusion
+    # that produced "dontgoproductive.com, kakva je ovo domena?". So the
+    # block is assembled in code from the readback and appended verbatim,
+    # and the model writes only the sentence in front of it.
+    listing = _listing_from(results)
+    if listing:
+        listing = _listing_language(results, out["language"]) or listing
 
     if isinstance(model, llm.NoModel):
         checked, why = guard(plain, material, scope,
@@ -847,23 +1048,26 @@ def respond(question, channel=None, user=None, channel_type=None,
                     "deterministic (no model configured)"})
         if why:
             out["guard"] = why
-        return out
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     prompt = ANSWER_PROMPT.format(
-        tone=TONE[scope.kind], history=render_history(past),
-        material=material, question=str(question or "")[:2000])
+        tone=TONE[scope.kind], language=language.instruction(question),
+        listing_notice=LISTING_NOTICE if listing else "",
+        history=render_history(past), material=material,
+        question=str(question or "")[:2000])
     try:
         text = model.complete(prompt)
     except Exception as exc:                                    # noqa: BLE001
         out.update({"reply": stamp(plain),
                     "how": "deterministic (model %s)" % type(exc).__name__})
-        return out
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     checked, why = guard(text, material, scope,
                          allow_addresses=scope.is_client)
     if checked is not None:
-        out.update({"reply": stamp(checked), "how": "model"})
-        return out
+        out.update({"reply": stamp(_with_listing(checked, listing)),
+                    "how": "model"})
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     # THE REJECTED TEXT IS RECORDED, NEVER POSTED.
     #
@@ -883,9 +1087,9 @@ def respond(question, channel=None, user=None, channel_type=None,
     # model that just named another client to try again is asking it to
     # leak more carefully - so that one is never retried.
     if not why.startswith("unsupported number"):
-        out.update({"reply": stamp(plain),
+        out.update({"reply": stamp(_with_listing(plain, listing)),
                     "how": "deterministic (guard: %s)" % why})
-        return out
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     try:
         second = model.complete(
@@ -894,7 +1098,7 @@ def respond(question, channel=None, user=None, channel_type=None,
     except Exception as exc:                                    # noqa: BLE001
         out.update({"reply": stamp(plain),
                     "how": "deterministic (retry %s)" % type(exc).__name__})
-        return out
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     rechecked, why_again = guard(second, material, scope,
                                  allow_addresses=scope.is_client)
@@ -903,6 +1107,7 @@ def respond(question, channel=None, user=None, channel_type=None,
                     "how": "deterministic (guard twice: %s)" % why_again,
                     "guard_retry": why_again,
                     "rejected_retry": str(second)[:2000]})
-        return out
-    out.update({"reply": stamp(rechecked), "how": "model (retried)"})
-    return out
+        return _prefaced(out, relayed, out.get("language") or language.detect(question))
+    out.update({"reply": stamp(_with_listing(rechecked, listing)),
+                "how": "model (retried)"})
+    return _prefaced(out, relayed, out.get("language") or language.detect(question))
