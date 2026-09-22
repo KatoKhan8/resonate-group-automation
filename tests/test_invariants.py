@@ -671,7 +671,12 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
                     # the knowledge-pack cache, the thread memory and the
                     # change-request journal. Added 2026-09-22, caught by
                     # the other half of this pair on the same day.
-                    "slackknowledge", "slackconversation", "slackrequests")
+                    "slackknowledge", "slackconversation", "slackrequests",
+                    # The client follow-up watch: a client says "tell me
+                    # when the first send lands" and a row is written
+                    # beside the queue. Added 2026-09-22, caught by the
+                    # other half of this pair within the hour.
+                    "slackfollowup")
 
     def _real(self, name):
         return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")
@@ -685,8 +690,8 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
         them. What matters is that the call refuses, so the call is made.
         """
         from src import (agencydnc, clientreview, discovery, gtm,
-                         slackconversation, slackknowledge, slackrequests,
-                         spendledger, tagsync)
+                         slackconversation, slackfollowup, slackknowledge,
+                         slackrequests, spendledger, tagsync)
         row = {"record_id": "r", "contact_key": "c", "workspace": "w",
                "provider": "heyreach", "tags": [], "stage": "s",
                "status": "pending", "attempts": 0, "outcome": "negative"}
@@ -713,6 +718,8 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
                 {"built_at": "x", "built_epoch": 0}),
             "slackconversation": lambda: slackconversation.remember(
                 "C", "1", "them", "hello"),
+            "slackfollowup": lambda: slackfollowup.register(
+                "C", "T", "w", ["1"], {"1": 0}),
             "slackrequests": lambda: slackrequests.write(
                 {"id": "2026-01-01-aaaa", "kind": "remove_lead",
                  "label": "Remove a lead from outreach", "status": "x",

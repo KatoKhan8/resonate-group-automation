@@ -36,6 +36,7 @@ import os
 import time
 
 from . import slackagentreadback as readback
+from . import slackclientview as clientview
 from . import slackknowledge as knowledge
 from . import slackscope
 
@@ -803,16 +804,97 @@ def batch_state(scope, argument=None):
     """Where the current batch stands: campaigns, accounts, enrolled.
 
     DELEGATES to `slackagentreadback.batch_state` when that module carries
-    one. It does not on the commit this branch forked from, and the main
-    session was adding it while this was written - so rather than copy it
-    into a second place that can drift, this asks for the canonical one and
-    falls back to reading the campaign store itself.
+    one, and then REPLACES its enrolled figure for a client.
+
+    OPERATOR, 2026-09-22: "Enrolled counts shown to a client must be
+    provider-confirmed membership per campaign, never the local store's
+    enrolled state."
+
+    The first live client answer said "lokalno je upisano 724 leada na 643
+    računa". That is the local store's enrolled state across everything
+    ever staged for this workspace; the batch the client was asking about
+    holds 151. The local number is not a worse version of the right one, it
+    is a different question - and it reached a client in their own channel.
+
+    So for a client the local figure is REMOVED rather than corrected
+    alongside, because a readback carrying both invites an answer carrying
+    both.
     """
     canonical = getattr(readback, "batch_state", None)
     state = canonical() if callable(canonical) else _batch_state_local(scope)
-    if scope.is_client:
-        state.pop("bound_to_provider", None)
+    if not scope.is_client:
+        return state
+
+    # THE BATCH'S OWN CAMPAIGNS, not every campaign this workspace has
+    # ever had. The first pass summed all twelve provider ids on the
+    # workspace and reported 422 where the batch holds 151 - a number as
+    # wrong as the local one it replaced, arrived at more honestly.
+    batch_ids = [str(i) for i in (state.get("bound_to_provider") or [])]
+    state.pop("bound_to_provider", None)
+    for key in ("leads_enrolled_locally", "accounts", "records",
+                "leads_enrolled", "enrolled"):
+        state.pop(key, None)
+    confirmed = provider_enrolled(scope, batch_ids or None)
+    state["enrolled_confirmed_by_provider"] = confirmed.get("total")
+    state["enrolled_per_campaign"] = confirmed.get("per_campaign")
+    state["sent_from_these_campaigns"] = confirmed.get("sent_total")
+    state["sent_per_campaign"] = confirmed.get("sent_per_campaign")
+    if confirmed.get("unreadable"):
+        state["enrolled_unreadable_campaigns"] = confirmed["unreadable"]
+        state["enrolled_note"] = (
+            "%d campaign(s) could not be read, so the enrolled total is a "
+            "floor" % confirmed["unreadable"])
+    else:
+        state["enrolled_note"] = ("enrolled is the provider's own membership "
+                                  "count per campaign. Enrolled is not sent.")
     return state
+
+
+def provider_enrolled(scope, campaign_ids=None):
+    """How many leads the PROVIDER says each named campaign holds.
+
+    `campaign_lead_count` reads `meta.total` and refuses to count a page,
+    which is what makes this a membership figure rather than a page length.
+    One read per campaign.
+
+    `campaign_ids` is REQUIRED in spirit: with none, this falls back to
+    every campaign the workspace has, which answers a question nobody
+    asked. The caller names the campaigns it means.
+    """
+    slug = _workspace_for(scope, None)
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    wanted = [str(i) for i in (campaign_ids
+                               or entry.get("provider_campaign_ids") or [])]
+    # Only this workspace's own campaigns, whatever the caller passed.
+    mine = {str(i) for i in (entry.get("provider_campaign_ids") or [])}
+    wanted = [i for i in wanted if i in mine][:16]
+    per_campaign, unreadable, total = {}, 0, 0
+    for campaign_id in wanted:
+        try:
+            from .providers import bison
+            count = bison.campaign_lead_count(campaign_id)
+        except Exception:                                       # noqa: BLE001
+            unreadable += 1
+            continue
+        if isinstance(count, int):
+            per_campaign[str(campaign_id)] = count
+            total += count
+    # SENT, BESIDE ENROLLED, FROM THE SAME CAMPAIGNS.
+    #
+    # The first live answer opened "Da, prvi mailovi su prošli" on the
+    # strength of three sends that belonged to a DIFFERENT campaign, while
+    # every campaign in the batch stood at zero. The two numbers travel
+    # together now so the material cannot be read as one.
+    sent, sent_total = {}, 0
+    for campaign_id in wanted:
+        detail = readback.campaign_by_id(campaign_id)
+        value = detail.get("emails_sent")
+        if isinstance(value, int):
+            sent[str(campaign_id)] = value
+            sent_total += value
+    return {"read_at": _now(), "workspace": slug, "total": total,
+            "per_campaign": per_campaign, "unreadable": unreadable,
+            "sent_per_campaign": sent, "sent_total": sent_total}
 
 
 def _batch_state_local(scope):
@@ -1090,7 +1172,7 @@ def run(scope, name, argument=None):
         raise ToolRefused(
             "a %s channel may not call %r" % (scope.kind, name))
     try:
-        return function(scope, argument)
+        return for_client(scope, function(scope, argument))
     except Exception as exc:                                    # noqa: BLE001
         # THE MESSAGE, NOT JUST THE TYPE. A bare "sender_summary failed:
         # NameError" is what this returned when two tools called a helper
@@ -1103,6 +1185,46 @@ def run(scope, name, argument=None):
         return {"read_at": _now(),
                 "_error": "%s failed: %s: %s"
                           % (name, type(exc).__name__, str(exc)[:200])}
+
+
+def for_client(scope, result):
+    """The last pass over a readback before a client can see it.
+
+    Two corrections that a prompt cannot make, applied to the MATERIAL so
+    the model has nothing wrong to repeat:
+
+    1. **Times in the workspace's own zone, named.** Taken from its own
+       `sending_window.timezone` - the zone its mail is already scheduled
+       against - so "13:03 UTC" becomes "15:03 CEST" for a Zagreb client.
+       UTC is what an internal channel gets and what this leaves alone
+       when a workspace has no zone configured.
+    2. **Campaign names without our experiment design.** `RESONATE -
+       PRODUCTIVE - EMAIL - US-HOURS - CONTROL - COHORT B` becomes "email
+       campaign 491". The channel and the id survive; how we run the test
+       does not.
+    """
+    if not scope.is_client or not isinstance(result, dict):
+        return result
+    entry = (knowledge.pack().get("workspaces") or {}).get(
+        scope.workspace) or {}
+    result = _plain_labels(result)
+    return clientview.localise(result, clientview.zone_for(entry))
+
+
+def _plain_labels(value):
+    """Replace every campaign `name` with one a client should hear."""
+    if isinstance(value, list):
+        return [_plain_labels(v) for v in value]
+    if not isinstance(value, dict):
+        return value
+    out = {}
+    for key, item in value.items():
+        if key == "name" and clientview.carries_internal_label(item):
+            out[key] = clientview.plain_campaign_label(
+                item, value.get("campaign_id") or value.get("id"))
+            continue
+        out[key] = _plain_labels(item)
+    return out
 
 
 def run_all(scope, calls):

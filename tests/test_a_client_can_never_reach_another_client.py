@@ -65,7 +65,14 @@ class TwoClients(unittest.TestCase):
             else:
                 os.environ[key] = value
         for name in store.STATE_OVERRIDES:
-            self._prev[name] = os.environ.get(name)
+            # CAPTURE ONCE. `KNOWLEDGE_PACK` is in both this loop and the
+            # one above, and re-capturing here read back the value the
+            # first loop had just written - so tearDown "restored" the
+            # environment to a temp path it then deleted, and every later
+            # module in the run found the knowledge pack pointing at a
+            # directory that no longer existed. The production-write
+            # barrier stopped refusing, which is how it surfaced.
+            self._prev.setdefault(name, os.environ.get(name))
             os.environ[name] = os.path.join(self.tmp, "%s.jsonl"
                                             % name.lower())
         os.environ["WORKSPACES"] = os.path.join(self.tmp, "workspaces.jsonl")
