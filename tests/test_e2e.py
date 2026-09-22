@@ -134,9 +134,6 @@ class EndToEnd(ProviderTest):
         # Pinned: these tests are about the end-to-end pipeline, not about
         # which cadence Productive currently runs.
         pin_client_config(self)
-        # The productive policy now requires deliverable as primary verifier,
-        # so the contract must be confirmed for the waterfall to call it.
-        self.confirm_deliverable_contract()
         self.tmp = tempfile.mkdtemp(prefix="rga-e2e-run-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         self.out = os.path.join(self.tmp, "out")
