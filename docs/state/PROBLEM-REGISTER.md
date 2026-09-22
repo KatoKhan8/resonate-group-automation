@@ -431,11 +431,44 @@ untouched supply in the estate.
 same constraint that held 46 Australians out of batch 3. The actionable
 US-first supply is **289**, not 973.
 
-- **Fix** the lane is recomputed at read time from the current campaign
-  status, or the row records the status it was derived from and refuses when
-  that has moved. `senderheadroom` is the model: complete, covering, fresh, or
-  REFUSED.
-- **Status** OPEN · the supply is usable today by recomputing · reported
+### RESOLVED, and the diagnosis was narrower than the first write-up
+
+**`report()` was never wrong.** It already fetched live campaign statuses and
+recomputed every lane, and it has always answered REENGAGE 985 / REVIVE 37 /
+NEVER 89 / UNKNOWN 287 / ACTIVE 17. The canonical path was correct the whole
+time.
+
+**`walk()` was writing a lane it had no basis for.** The line was
+`row["lane"], row["why"] = lane_for(row)` — called with NO campaign status. So
+every stored lane was computed as though no campaign were live, and the stored
+text does not even match the current classifier's wording, which means the
+file also predates a change to it. A field that is stale, unbasis'd and
+authoritative-looking, that the only correct consumer ignores.
+
+So the defect was never a wrong count. It was a decorative field that invited
+exactly one misreading, and got it — mine.
+
+**Fixed:**
+
+- `walk()` now passes the campaign's status, and writes `lane_at_walk`,
+  `why_at_walk` and `campaign_status_at_walk`. The bare `lane` key is gone: it
+  read as current truth and was not.
+- `lanes_now(statuses=None, path=None)` is the one way to read the inventory.
+  It recomputes every lane against current status and deliberately does not
+  consult what was stored. `report()` is now a thin caller of it.
+- `live_statuses()` REFUSES rather than returning a partial map. A campaign
+  missing from that map reads as not-running, which reclassifies its stopped
+  leads — so a partial map silently moves leads between lanes.
+- The unreadable-statuses path used to print a warning and carry on, and its
+  own warning said what that costs: "every stop will be read as the lead's
+  own, which OVER-counts NEVER". It now raises `StatusesUnreadable`. A count
+  nobody can trust is worse than a refusal, because it looks like an answer.
+- 7 tests, including the defect in one assertion — the identical row is NEVER
+  with its campaign live and REENGAGE with it archived — and one proving a
+  stored lane that disagrees is not believed in either direction.
+
+- **Status** FIXED · `--report` output unchanged before and after, which is
+  the point: the canonical answer never moved
 
 ### ISSUE-011 · The forward book's COVERING property decays silently as campaigns are created · HIGH
 
