@@ -110,3 +110,64 @@ truth, which is how the two drift.
 
 Tests green in isolation, `src/store.py` unchanged in the diff, and the module
 has no caller anywhere in `src/`.
+
+---
+
+STATUS
+DONE — built on branch `infra` rather than dispatched to a worker. The Qwen
+pool's worktrees were carrying other sessions' branches (task-244 … 249) and
+dispatching into shared infrastructure was not mine to do without asking; the
+task is small enough that writing it was cheaper than coordinating it.
+
+COMMIT SHA
+3402ddd9
+
+TESTS
+`tests/test_the_sqlite_store_keeps_the_order_it_was_given.py` — 26, green.
+Written first, confirmed red. Attacked with three deliberate breaks, each
+caught by its intended test: `read_all` sorted by id (the shuffled 500-record
+order test), upsert as delete-then-insert (8 tests), `open_db` without the
+barrier (both barrier tests).
+
+FILES CHANGED
+    src/sqlitestore.py                                          new
+    tests/test_the_sqlite_store_keeps_the_order_it_was_given.py new
+
+`src/store.py` untouched, asserted in both directions.
+
+FINDINGS
+
+1. `updated_at` is unusable as a test probe. It is second-resolution, matching
+   `store.now()`, so two writes inside one second are indistinguishable by it.
+   Change detection compares the DOCUMENT and is unaffected, but anything
+   building a "what changed" check on the stamp will silently see nothing.
+   The test counts `conn.total_changes` instead — SQLite's own tally rather
+   than the writer's account of itself.
+
+2. The first version of the no-circular-import test GREPPED THE SOURCE and
+   failed on this module's own docstring, which explains `store.save`'s cost
+   as the reason the module exists. That is exactly the failure CLAUDE.md
+   names — "searching source for words produces a test that fails when
+   somebody writes a comment, which has happened repeatedly here" — and it
+   was reproduced within the hour of writing it. It walks the AST now. Worth
+   repeating in the next task's brief.
+
+3. A sorted fixture cannot distinguish insertion order from key order. The
+   order test shuffles deliberately, and ATTACK 1 confirmed only the shuffled
+   test catches a key-sorting backend — the two small a/b/c ordering tests do
+   not, because their ids are already sorted.
+
+RISKS
+
+- `revision()` is stricter than the content hash it replaces: a record changed
+  and changed back now refuses under `expect_digest`. Asserted as intended in
+  a test so nobody shims it back, but TASK-253 is where it becomes visible to
+  callers, and it is a concurrency guard.
+- Nothing here is proven at 20k records. TASK-255 owns that, and it must build
+  its estate at the MEASURED record size — the 22.7x error in the journal's
+  benchmark came from exactly that assumption going unchecked.
+
+RECOMMENDED CLAUDE ACTION
+Merge with `docs/MERGE-REQUEST-INFRA-2026-09-22.md`. TASK-252 (migration) is
+next and depends only on this. TASK-253 is the one that touches `store.py` and
+should land alone.
