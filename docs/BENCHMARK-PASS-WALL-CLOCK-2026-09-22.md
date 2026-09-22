@@ -94,3 +94,67 @@ incident, so it is a task with a property test, not a drive-by optimisation.
 
 Detached, no `timeout` wrapper. The 5,000-record sqlite arm takes ~25 minutes;
 the 20,000 arm is not worth running until TASK-261 lands.
+
+---
+
+# RE-MEASURED AFTER TASK-261 — 2026-09-22, later the same day
+
+`Snapshot` now tracks dirty ids instead of re-serialising every record twice
+per checkpoint. Same benchmark, same machine, detached, no `timeout` wrapper.
+
+    size     backend   BEFORE 261    AFTER 261    speedup
+    1,000    sqlite        60.53 s       5.04 s     12.0x
+    5,000    sqlite     1,522.58 s      55.24 s     27.6x
+    20,000   sqlite     ~6.8 h (proj)  707.73 s     ~35x
+    1,000    jsonl         88.36 s      32.81 s      2.7x
+
+    20,000 sqlite = 11 minutes 48 seconds, MEASURED, not projected.
+
+**A 20,000-record pass now completes in under twelve minutes.** It was
+projected at nearly seven hours this morning. That is the number the promotion
+decision wanted and it now exists.
+
+## THE ACCEPTANCE CRITERION IS STILL NOT MET, AND I AM NOT ROUNDING IT
+
+The operator set it precisely: *the 5k/1k ratio must be near 5x, not 25x.*
+
+    before 261   1,522.58 / 60.53  =  25.2x
+    after  261      55.24 /  5.04  =  11.0x
+    target                            ~5x
+
+**11.0x is not near 5x.** The shape improved from ~N² to ~N^1.65 and it is
+still superlinear. By the criterion as written, **TASK-261 does not pass**,
+and the worker said so itself: its own STATUS line reads PARTIAL PASS.
+
+### Where the remaining superlinearity is
+
+TASK-261's own isolating measurement, holding checkpoints constant at 200:
+
+    1,000  8.07 s     2,000  9.48 s     3,000  11.06 s     5,000  12.20 s
+                                                            -> 1.51x for 5x
+
+**The per-checkpoint save path is sub-linear.** What remains is that a pass
+over 5x the records performs 5x more checkpoints, because
+`run.CHECKPOINT_EVERY` is 5 — so even a perfectly O(changed) checkpoint gives
+a pass that grows with N. The residual above linear is whatever per-pass work
+still touches all N.
+
+`CHECKPOINT_EVERY` is not available as a lever: it is a durability decision
+with a reproduced incident behind it and `queuejournal.py` says explicitly it
+must not be reopened as a performance one.
+
+## What this changes for promotion
+
+**Nothing automatically.** Condition 2 in
+`docs/STORE-SQLITE-DESIGN-2026-09-22.md` §11 says "TASK-260 green", and the
+substance of it — a checkpoint that reads O(changed) — is now delivered for
+the save path and not for the pass.
+
+**That is an operator call, not mine**, and it is the only one outstanding:
+whether 11.8 minutes at 20,000 records satisfies the intent of a criterion
+written as a ratio. The numbers are above; the verdict is not mine to record.
+
+If the answer is "not yet", the next lever is the residual per-pass O(N) work
+rather than anything in the storage layer — and it should be found by
+profiling a pass rather than by guessing, because two guesses about this have
+already been wrong.
