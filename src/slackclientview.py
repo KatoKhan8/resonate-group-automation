@@ -118,10 +118,47 @@ INTERNAL_LABEL_WORDS = (
     "control", "kontroln", "canary", "cohort", "kohort", "batch",
     "us-hours", "zagreb-hours", "eu-hours", "liheavy", "li-heavy",
     "variant", "arm", "test", "holdout", "pilot",
+    # 2026-09-22, found writing the operator's "a client channel never
+    # receives an internal campaign name" test. This list decides whether
+    # `slackagenttools._plain_labels` rewrites a name AT ALL, so a name it
+    # does not recognise reaches a client VERBATIM.
+    #
+    # All 37 live HeyReach campaigns are named
+    # `RESONATE <CLIENT> LI B1 SEAT <provider seat id>` and not one word of
+    # that was on this list - "B1" is not "batch". So the seat id was
+    # reaching client answers inside the campaign's own name, which is
+    # exactly what increment 2 decided a client channel never carries: it
+    # gives counts of seats and never attributes one.
+    #
+    # `resonate` goes on with it. Our own name at the head of a campaign
+    # tells a client how we organise our estate, not how their outreach is
+    # running, and it is the other half of every one of those 37 names.
+    #
+)
+
+#: SHAPES rather than words, for the same job.
+#:
+#: `seat` was first added to the word list above and that was wrong, caught
+#: by three existing tests in the same run. `_plain_labels` rewrites ANY
+#: dict key called `name` whose value this function flags - not only a
+#: campaign's - so the bare word turned a client's own sender, whose name
+#: contains "seat-holder" in the fixtures, into "email campaign". A client
+#: seeing their own sender named is the rule increment 2 established; I had
+#: just deleted it.
+#:
+#: The leak is the provider SEAT ID, not the word, so this matches the id's
+#: shape and nothing else. `resonate` came off the word list with it: our
+#: own name at the head of a campaign tells a client nothing they do not
+#: know, and the seat shape already catches every one of those names.
+INTERNAL_LABEL_PATTERNS = (
+    r"\bseat\s+\d{3,}\b",
+    r"\bseat[-_]?id\b",
 )
 
 _LABEL = re.compile(r"\b(?:%s)\w*\b"
                     % "|".join(INTERNAL_LABEL_WORDS), re.I)
+
+_LABEL_SHAPE = re.compile("|".join(INTERNAL_LABEL_PATTERNS), re.I)
 
 
 def plain_campaign_label(name, campaign_id=None):
@@ -140,4 +177,5 @@ def plain_campaign_label(name, campaign_id=None):
 
 
 def carries_internal_label(name):
-    return bool(_LABEL.search(str(name or "")))
+    text = str(name or "")
+    return bool(_LABEL.search(text) or _LABEL_SHAPE.search(text))
