@@ -254,6 +254,70 @@ per-branch check before merging, not a bulk merge.
 - **Fix** smaller review targets, or a raised output budget.
 - **Status** NEW
 
+### ISSUE-014 · An ACTIVATED campaign can never be topped up — the continuous-cohort model is deadlocked · CRITICAL
+
+**Found 2026-09-22 by batch 3's push being refused. Nothing unsafe happened;
+the guard refused, which is the safe direction. But it refuses forever.**
+
+`batch1_push --live --only ivan` returned:
+
+    FactoryRefused: 20 contact(s) collided with the client's own estate:
+    leo-santizo (leo@ao2management.com): stop - somebody at this account is
+    mid-sequence right now
+
+**The mid-sequence campaign is OURS.** Read per lead at the provider:
+
+    svanderhaar@arketi.com  274 sequence_finished 8 · 327 sequence_finished 8
+                            352 sequence_finished 5 · 495 in_sequence 0
+
+The client's three campaigns are all FINISHED - which `account_policy` calls
+ALLOW, "history, not a live conflict". The only `in_sequence` row is campaign
+495, which this system created and activated last night, and which has sent
+**zero** emails.
+
+`without_our_staging` exists precisely to remove our own rows, and it excluded
+**nothing**. `staging_artifact_evidence(495)` says why:
+
+    ours       true   "claimed by productive/productive-email-batch1-tomislav
+                       on both sides"
+    zero_send  FALSE  "campaign 495 reads status 'active', which is not a
+                       state this system has verified means `not sending`;
+                       a campaign that started a moment ago also reports zero"
+
+That reasoning is CORRECT as written. A campaign that started a moment ago
+does report zero, and treating `active` as inert would be the unsafe read.
+
+**But it makes the CONTINUOUS grant unsatisfiable.** That grant's whole shape
+is batches 2..N filling the eight standing campaigns. The moment those
+campaigns were activated, every account they hold began reading `in_sequence`
+from our own membership, so every subsequent batch is refused at every
+account already enrolled - and the factory refuses the WHOLE stage rather
+than skipping the lead, by design.
+
+Measured across the four campaigns sending today: **95 of 95 accounts read
+STOP**, and a sampled check found **zero** client-side `in_sequence` rows on
+any of them. Every stop is ours.
+
+**THE 13:02Z SENDS ARE NOT AFFECTED and must not be paused over this.** They
+are already scheduled, the client's sequences at those accounts are finished,
+and nothing here is evidence of a real collision.
+
+**The narrow fix, not yet applied.** The campaign-level `zero_send` arm is the
+wrong granularity. The per-lead membership row carries that lead's OWN
+`emails_sent` for that campaign, and it reads 0 - which is strictly stronger
+evidence than the campaign counter and immune to the "started a moment ago"
+objection, because it is the lead's own row rather than an aggregate. So a
+membership row may be excluded as our staging when the campaign is ours AND
+that row's own `emails_sent` is 0. A lead we have actually emailed still
+counts, which is what the guard is for.
+
+Deliberately NOT applied under time pressure an hour before the first
+provider-confirmed batch send in this project's history. It is a collision
+safety path and it gets tests first.
+
+- **Status** OPEN · blocks every batch after activation · batch 3 is written
+  to canonical state (515 records, 1,719 steps approved) and waiting on it
+
 ### ISSUE-011 · The forward book's COVERING property decays silently as campaigns are created · HIGH
 
 **Found and worked around 2026-09-22. The census is not wrong; its state file
