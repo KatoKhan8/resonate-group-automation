@@ -673,6 +673,44 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
                     # the other half of this pair on the same day.
                     "slackknowledge", "slackconversation", "slackrequests")
 
+    def setUp(self):
+        """PIN THE ENVIRONMENT THIS TEST CLAIMS TO BE TESTING.
+
+        `_writers` says "invoked for real against the real work directory" and
+        that was true only when no earlier test had left a state override set.
+        Two of the writers below - `spendledger` and `observability` - resolve
+        their own path rather than taking one, and they resolve it beside
+        `store.queue_path()`. With `QUEUE` still pointing at some earlier
+        module's temp directory they write THERE, the barrier correctly does
+        not fire, and this test fails with "ProductionStateUnderTest not
+        raised" while the barrier is in perfect health.
+
+        Measured on 2026-09-22: this class is 5/5 green run alone and
+        contributes 5 failures inside the full suite - the ONLY module of the
+        33 failing ones whose count changes with run order. Reproduced
+        directly: `QUEUE=<tmp> python -m unittest ...` fails 4 of 5, and
+        `SPEND_LEDGER=<tmp>` fails exactly the `spendledger` subtest. 50 test
+        modules call `store.use_directory`, so which one leaked is not the
+        interesting question - depending on all 50 is.
+
+        Clearing rather than asserting-clean, deliberately: a test that skips
+        or errors when the environment is dirty tests nothing on a dirty
+        environment, and this is the barrier that stops a test writing real
+        client state. It must run, and it must run against the real paths.
+        Restored in tearDown so this does not become the leak it is fixing.
+        """
+        self._saved = {name: os.environ.get(name)
+                       for name in ("QUEUE",) + store.STATE_OVERRIDES}
+        for name in self._saved:
+            os.environ.pop(name, None)
+
+    def tearDown(self):
+        for name, value in self._saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
     def _real(self, name):
         return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")
 

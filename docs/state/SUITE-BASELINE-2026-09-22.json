@@ -1,0 +1,738 @@
+{
+ "taken_at": "2026-09-22",
+ "branch": "infra",
+ "commit": "a3ceb50da8377f9093e619b24c6a427742d47da2",
+ "master_at_measurement": "c75b4b6075c3b760e094e83c1fcfc909927c62c6",
+ "runner": "py -3 -m tests.offline",
+ "tests_run": 11098,
+ "failures": 80,
+ "errors": 36,
+ "total_entries": 116,
+ "parsed_detail_blocks": 115,
+ "distinct_tests": 112,
+ "clusters": {
+  "threading-invariant": 28,
+  "unclustered:test_e2e": 11,
+  "invariants": 7,
+  "verification-roles": 6,
+  "account-fatigue": 6,
+  "unclustered:test_a_gated_step_is_waiting_not_absent": 5,
+  "unclustered:test_preproduction": 5,
+  "unclustered:test_two_providers_disagreeing_is_not_a_headcount": 5,
+  "unclustered:test_for_prompt_quality": 5,
+  "unclustered:test_enrich": 3,
+  "pii-guard": 3,
+  "unclustered:test_task034_llm_estimate": 3,
+  "unclustered:test_an_email_is_not_a_finished_person": 2,
+  "unclustered:test_campaign_cannot_send": 2,
+  "unclustered:test_ladder_impact": 2,
+  "unclustered:test_replaysim": 2,
+  "unclustered:test_set_regeneration": 2,
+  "unclustered:test_staging_the_same_material_twice": 2,
+  "unclustered:test_the_email_activation_grant_is_two_rows_not_a_channel": 2,
+  "unclustered:test_the_free_leg_runs_before_the_paid_one": 2,
+  "unclustered:test_the_live_activation_grant": 2,
+  "unclustered:test_a_bounced_address_stops_being_sendable": 1,
+  "unclustered:test_contactout_first": 1,
+  "unclustered:test_delivery_titles_are_a_persona_family": 1,
+  "unclustered:test_mutation_anchors": 1,
+  "unclustered:test_referral": 1,
+  "unclustered:test_secrets": 1,
+  "unclustered:test_the_cadence_reacts_to_what_the_prospect_did": 1,
+  "unclustered:test_the_cadence_the_client_chose_is_the_one_that_runs": 1,
+  "unclustered:test_the_emailbison_write_door_is_enforced": 1,
+  "unclustered:test_the_prototype_cannot_send": 1
+ },
+ "entries": [
+  {
+   "kind": "FAIL",
+   "test": "test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_a_config_cannot_raise_the_limit_by_being_unreadable",
+   "cluster": "account-fatigue",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_a_second_contact_does_not_reset_the_company_count",
+   "cluster": "account-fatigue",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_it_is_asked_before_content_and_cannot_be_out_ranked",
+   "cluster": "account-fatigue",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_account_is_the_unit_of_outreach.TheDecisionConsultsIt.test_the_check_returns_the_reason_when_the_company_is_past_policy",
+   "cluster": "account-fatigue",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_account_is_the_unit_of_outreach.TheDecisionItselfHoldsIt.test_a_company_past_its_weekly_limit_is_held",
+   "cluster": "account-fatigue",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_account_is_the_unit_of_outreach.TheDecisionItselfHoldsIt.test_it_is_asked_before_any_content_work",
+   "cluster": "account-fatigue",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_invariants.NoTestBindsAReloadedExceptionClass.test_no_test_module_imports_a_provider_exception_by_name",
+   "cluster": "invariants",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_invariants.TestNothingCanSend.test_emailbison_posts_only_to_routes_it_declares",
+   "cluster": "invariants",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_invariants.TestTheBarrierCoversEveryWriter.test_every_self_writer_refuses_the_real_work_directory",
+   "cluster": "invariants",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_invariants.TestTheBarrierCoversEveryWriter.test_every_self_writer_refuses_the_real_work_directory",
+   "cluster": "invariants",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_invariants.TestTheBarrierCoversEveryWriter.test_every_self_writer_refuses_the_real_work_directory",
+   "cluster": "invariants",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_invariants.TestTheBarrierCoversEveryWriter.test_every_self_writer_refuses_the_real_work_directory",
+   "cluster": "invariants",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_invariants.TestValidationCannotSpendByAccident.test_raw_payloads_go_to_a_gitignored_directory",
+   "cluster": "invariants",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_fixture_hygiene.TestNoRealDataAnywhereInGit.test_every_email_address_is_on_a_reserved_domain",
+   "cluster": "pii-guard",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_fixture_hygiene.TestNoRealDataAnywhereInGit.test_no_real_client_prospect_or_roster_domain",
+   "cluster": "pii-guard",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_fixture_hygiene.TestNoRealDataAnywhereInGit.test_no_real_person_or_client_named",
+   "cluster": "pii-guard",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_bison_campaign_write.AppendBehaviourProven.test_second_write_appends_not_replaces",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_bison_campaign_write.EnsureSequenceRefusesNonEmpty.test_passes_when_campaign_holds_identical_steps",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_bison_campaign_write.EnsureSequenceRefusesNonEmpty.test_refuses_when_campaign_holds_different_steps",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_bison_campaign_write.RetryQuestion.test_blind_retry_doubles_the_sequence",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_bison_campaign_write.RetryQuestion.test_correct_recovery_read_before_write",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_bison_campaign_write.RetryQuestion.test_once_or_twice_check",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_bison_campaign_write.SequenceShape.test_threading_is_false_true_false",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_bison_campaign_write.SequenceShape.test_three_steps_in_cadence_order",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_bison_campaign_write.SequenceShape.test_waits_are_declared",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_bison_campaign_write.SequenceWriteAndReadback.test_held_steps_carry_wait_in_days",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_bison_campaign_write.SequenceWriteAndReadback.test_write_three_steps_readback_matches",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_no_issues_for_clean_copy",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_renders_all_five_emails",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_angle",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_day_numbers",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_ladder_purposes",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_next_branch",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_five_shows_provider_variables",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_missing_reports_product_name_absent",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_missing_shows_missing_for_em3",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_preview_renders_through_bisonfactory_variables_for",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_render_preview.TestEmailPreviewUsesTheProductionCodePath.test_email_preview_two_leads_render_different_copy",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_task081_thread_reply.BreakTheWiring.test_removing_thread_reply_from_step_is_detected",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_task081_thread_reply.BreakTheWiring.test_wrong_pattern_is_detected",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_task081_thread_reply.FactoryCarriesThreadReply.test_follow_up_step_still_carries_subject",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_task081_thread_reply.FactoryCarriesThreadReply.test_thread_reply_matches_ladder_pattern",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_task081_thread_reply.ThreadReplyRoundTrips.test_flag_round_trips_through_fake_provider",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_task081_thread_reply.ThreadReplyRoundTrips.test_follow_up_step_keeps_subject_after_round_trip",
+   "cluster": "threading-invariant",
+   "exception": "src.bisonfactory.FactoryRefused"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_a_bounced_address_stops_being_sendable.TheSENDPathReadsIt.test_decide_blocks_a_bounced_address",
+   "cluster": "unclustered:test_a_bounced_address_stops_being_sendable",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_a_gated_step_is_waiting_not_absent.GatedStepsAppearInTheTimeline.test_each_gated_step_names_the_unmet_requirement",
+   "cluster": "unclustered:test_a_gated_step_is_waiting_not_absent",
+   "exception": "KeyError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_a_gated_step_is_waiting_not_absent.GatedStepsAppearInTheTimeline.test_li2_through_li6_appear_for_an_unconnected_contact",
+   "cluster": "unclustered:test_a_gated_step_is_waiting_not_absent",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_a_gated_step_is_waiting_not_absent.GatedStepsAppearInTheTimeline.test_the_acceptance_releases_the_waiting_steps",
+   "cluster": "unclustered:test_a_gated_step_is_waiting_not_absent",
+   "exception": "KeyError"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_a_gated_step_is_waiting_not_absent.WaitingStepsAreNotExposures.test_push_does_not_pick_up_waiting_steps",
+   "cluster": "unclustered:test_a_gated_step_is_waiting_not_absent",
+   "exception": "KeyError"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_a_gated_step_is_waiting_not_absent.WaitingStepsAreNotExposures.test_waiting_steps_are_not_confirmed_touches",
+   "cluster": "unclustered:test_a_gated_step_is_waiting_not_absent",
+   "exception": "KeyError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_an_email_is_not_a_finished_person.AKnownCompanyFieldIsNotReBought.test_a_fallback_for_another_field_is_walked_past",
+   "cluster": "unclustered:test_an_email_is_not_a_finished_person",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_an_email_is_not_a_finished_person.AKnownCompanyFieldIsNotReBought.test_the_two_company_fields_route_independently",
+   "cluster": "unclustered:test_an_email_is_not_a_finished_person",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_campaign_cannot_send.TheNarrowedSeals.test_add_lead_is_refused_for_finished",
+   "cluster": "unclustered:test_campaign_cannot_send",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_campaign_cannot_send.ThePredicateReadsProviderTruth.test_finished_is_not_proven_safe",
+   "cluster": "unclustered:test_campaign_cannot_send",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_contactout_first.TestStoredDataWinsFirst.test_a_stored_verdict_is_not_bought_again",
+   "cluster": "unclustered:test_contactout_first",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_delivery_titles_are_a_persona_family.AnArbitraryTitleStillFailsClosed.test_a_classified_title_with_no_angle_is_still_held",
+   "cluster": "unclustered:test_delivery_titles_are_a_persona_family",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestEnrichmentOutcomes.test_the_ai_ark_fallback_finds_what_contactout_missed",
+   "cluster": "unclustered:test_e2e",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestEnrichmentOutcomes.test_the_clean_domain_verifies",
+   "cluster": "unclustered:test_e2e",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestEnrichmentOutcomes.test_the_invalid_address_ends_dropped_with_a_reason",
+   "cluster": "unclustered:test_e2e",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestGenerationAndLint.test_the_good_records_still_ship_alongside_it",
+   "cluster": "unclustered:test_e2e",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_e2e.TestPushPreparationAndIdempotency.test_the_payloads_are_the_documented_shapes",
+   "cluster": "unclustered:test_e2e",
+   "exception": "IndexError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestTheFinalShape.test_the_review_sheet_shows_green_and_can_show_red",
+   "cluster": "unclustered:test_e2e",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestTheFinalShape.test_the_state_of_every_record",
+   "cluster": "unclustered:test_e2e",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestTheFinalShape.test_the_summary_counts_add_up",
+   "cluster": "unclustered:test_e2e",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestTheProviderWaterfall.test_one_provider_failing_does_not_stop_the_batch",
+   "cluster": "unclustered:test_e2e",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestTheProviderWaterfall.test_the_catch_all_that_cleared_needed_reoon",
+   "cluster": "unclustered:test_e2e",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestTheProviderWaterfall.test_the_invalid_address_stopped_the_spend_immediately",
+   "cluster": "unclustered:test_e2e",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_enrich.TestTheAcceptanceTest.test_the_verified_record_still_ships",
+   "cluster": "unclustered:test_enrich",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_enrich.TestTheCap.test_a_dry_run_reports_what_it_would_do_and_what_it_would_cost",
+   "cluster": "unclustered:test_enrich",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_enrich.TestTheWaterfallOrder.test_a_record_with_an_address_does_not_buy_decision_makers",
+   "cluster": "unclustered:test_enrich",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_for_prompt_quality.ForPromptFiltersUnusable.test_all_unusable_means_empty_public_evidence",
+   "cluster": "unclustered:test_for_prompt_quality",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_for_prompt_quality.ForPromptFiltersUnusable.test_hook_step_also_filters_unusable",
+   "cluster": "unclustered:test_for_prompt_quality",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_for_prompt_quality.ForPromptFiltersUnusable.test_unusable_rows_are_excluded_from_public_evidence",
+   "cluster": "unclustered:test_for_prompt_quality",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_for_prompt_quality.ForPromptHandlesRefresh.test_fresh_rows_come_first_after_refresh",
+   "cluster": "unclustered:test_for_prompt_quality",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_for_prompt_quality.ForPromptRanksByQuality.test_strong_before_medium",
+   "cluster": "unclustered:test_for_prompt_quality",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_ladder_impact.TestAnalyzeRecord.test_all_linkedin_steps_affected",
+   "cluster": "unclustered:test_ladder_impact",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_ladder_impact.TestAnalyzeRecord.test_full_linkedin_shape",
+   "cluster": "unclustered:test_ladder_impact",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_mutation_anchors.EveryAnchorStillMatches.test_every_guard_appears_exactly_once",
+   "cluster": "unclustered:test_mutation_anchors",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_preproduction.TestApprovalIsRequired.test_after_approval_the_payloads_appear",
+   "cluster": "unclustered:test_preproduction",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_preproduction.TestApprovalIsRequired.test_editing_after_approval_pulls_it_back_out_of_the_payload",
+   "cluster": "unclustered:test_preproduction",
+   "exception": "KeyError"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_preproduction.TestApprovalIsRequired.test_the_approval_is_attributed_to_a_person",
+   "cluster": "unclustered:test_preproduction",
+   "exception": "TypeError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_preproduction.TestTheCadenceIsPrepared.test_each_contact_has_the_full_seven_step_timeline",
+   "cluster": "unclustered:test_preproduction",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_preproduction.TestTheWholeRunIsAccountedFor.test_the_funnel_adds_up",
+   "cluster": "unclustered:test_preproduction",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_referral.TheWholeChain.test_a_plain_hand_off_holds_the_referrer",
+   "cluster": "unclustered:test_referral",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_replaysim.TestThePositiveChain.test_the_company_is_paused_afterwards",
+   "cluster": "unclustered:test_replaysim",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_replaysim.TestTheScenarios.test_each_one_classifies_as_documented",
+   "cluster": "unclustered:test_replaysim",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_secrets.TestTheEnvFileIsIgnored.test_every_state_override_is_in_the_example",
+   "cluster": "unclustered:test_secrets",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_set_regeneration.GenerateRecordIntegrationTest.test_model_calls_are_counted",
+   "cluster": "unclustered:test_set_regeneration",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_set_regeneration.SetRegenerationTransactionTest.test_successful_regeneration_replaces_all_notes",
+   "cluster": "unclustered:test_set_regeneration",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_staging_the_same_material_twice.StagingIsIdempotent.test_and_it_is_recorded_on_the_campaign",
+   "cluster": "unclustered:test_staging_the_same_material_twice",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_staging_the_same_material_twice.StagingIsIdempotent.test_the_second_with_the_same_material_is_refused",
+   "cluster": "unclustered:test_staging_the_same_material_twice",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_task034_llm_estimate.TestEstimateMovesWithCadence.test_benchmark_estimate_follows_cadence",
+   "cluster": "unclustered:test_task034_llm_estimate",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_task034_llm_estimate.TestEstimateMovesWithCadence.test_costsim_derives_from_named_cadence",
+   "cluster": "unclustered:test_task034_llm_estimate",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_task034_llm_estimate.TestGeneratedKeysDerivesFromCadence.test_li_heavy_has_five_emails_and_six_linkedin",
+   "cluster": "unclustered:test_task034_llm_estimate",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_cadence_reacts_to_what_the_prospect_did.TheConfiguredCadenceAndTheConfiguredCapsAgree.test_the_client_file_selects_the_linkedin_heavy_sequence",
+   "cluster": "unclustered:test_the_cadence_reacts_to_what_the_prospect_did",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_cadence_the_client_chose_is_the_one_that_runs.TheClientRunsTheSequenceItNames.test_it_is_the_shape_the_operator_asked_for",
+   "cluster": "unclustered:test_the_cadence_the_client_chose_is_the_one_that_runs",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_email_activation_grant_is_two_rows_not_a_channel.TestEverythingElseStillRefuses.test_the_two_authorized_rows_cannot_borrow_each_others_campaign",
+   "cluster": "unclustered:test_the_email_activation_grant_is_two_rows_not_a_channel",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_email_activation_grant_is_two_rows_not_a_channel.TestTheGrantIsTwoNamedRows.test_an_unbound_row_is_refused_rather_than_waved_through",
+   "cluster": "unclustered:test_the_email_activation_grant_is_two_rows_not_a_channel",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_emailbison_write_door_is_enforced.TheDoorDidNotWidenWhatThisModuleMaySend.test_resume_is_declared_and_authorised_for_one_campaign_only",
+   "cluster": "unclustered:test_the_emailbison_write_door_is_enforced",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_free_leg_runs_before_the_paid_one.TheFreeLegSettlesIt.test_a_site_that_defeats_it_falls_through",
+   "cluster": "unclustered:test_the_free_leg_runs_before_the_paid_one",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_free_leg_runs_before_the_paid_one.TheFreeLegSettlesIt.test_boilerplate_is_refused_rather_than_stored",
+   "cluster": "unclustered:test_the_free_leg_runs_before_the_paid_one",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_live_activation_grant.TheGrantIsEmptyUntilSomebodyDecides.test_each_grant_names_one_channel_only",
+   "cluster": "unclustered:test_the_live_activation_grant",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_live_activation_grant.TheGrantIsEmptyUntilSomebodyDecides.test_the_grant_holds_exactly_what_an_operator_decided",
+   "cluster": "unclustered:test_the_live_activation_grant",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_the_prototype_cannot_send.EveryLivePathRefuses.test_the_linkedin_path_refuses_before_it_imports_a_transport",
+   "cluster": "unclustered:test_the_prototype_cannot_send",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_a_dry_run_calls_nothing_and_still_says_it_would",
+   "cluster": "unclustered:test_two_providers_disagreeing_is_not_a_headcount",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_call_is_on_the_waterfall_ledger_with_its_reason",
+   "cluster": "unclustered:test_two_providers_disagreeing_is_not_a_headcount",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_provider_is_called",
+   "cluster": "unclustered:test_two_providers_disagreeing_is_not_a_headcount",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "ERROR",
+   "test": "test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_reported_cost_replaces_the_assumed_one",
+   "cluster": "unclustered:test_two_providers_disagreeing_is_not_a_headcount",
+   "exception": "?"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_two_providers_disagreeing_is_not_a_headcount.TheProviderCanActuallyBeReached.test_the_field_routes_to_blitz",
+   "cluster": "unclustered:test_two_providers_disagreeing_is_not_a_headcount",
+   "exception": "HeyReach"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestEnrichmentOutcomes.test_a_catch_all_cleared_by_one_provider_is_now_held",
+   "cluster": "verification-roles",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestEnrichmentOutcomes.test_the_catch_all_that_does_not_clear_is_held_and_not_sendable",
+   "cluster": "verification-roles",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_e2e.TestTheProviderWaterfall.test_the_report_can_break_verification_down_by_verifier",
+   "cluster": "verification-roles",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_enrich.TestSection9Traps.test_trap_2_accept_all_is_never_sendable_on_its_own",
+   "cluster": "verification-roles",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_enrich.TestTheAcceptanceTest.test_its_address_was_checked_by_both_verifiers",
+   "cluster": "verification-roles",
+   "exception": "AssertionError"
+  },
+  {
+   "kind": "FAIL",
+   "test": "test_preproduction.TestTheControlledScope.test_the_catch_all_cleared_through_reoon_before_being_used",
+   "cluster": "verification-roles",
+   "exception": "AssertionError"
+  }
+ ]
+}
