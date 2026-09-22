@@ -92,3 +92,41 @@ A second batch. Any write to 487 or 489 - both are live and 489 sent its
 first email today at 13:34:48Z. Any pause or resume of anything. Any change
 to approved live copy. And no push at all below 500 READY without a separate
 line from the operator.
+
+---
+
+## AMENDMENT — 2026-09-22 — Zvonimir — a ninth campaign for Australia
+
+Recorded verbatim. This amends condition 2 of the grant above, which reads
+"one EmailBison campaign per attested human, 8 max".
+
+    Australian re-engagement cohort: AUTHORIZED, a ninth campaign with an
+    Australia/Sydney sending window, on attested senders that have
+    forward-book room (the US-cohort humans), same gates, stats, veto, push.
+    Amend the batch grant from 8 campaigns to 9.
+
+### What this licenses, stated as the change it makes
+
+**The cap moves from 8 to 9.** The ninth campaign carries an
+`Australia/Sydney` sending window, which is the thing none of the existing
+eight can do: a campaign carries ONE window, and the grant forbids an inferred
+timezone where the country spans several - which is why 46 Australians were
+held out of batch 3 and why 694 of the 985 re-engagement leads had nowhere to
+send from.
+
+**Its senders come from humans who have forward-book room**, which today means
+the US-cohort humans - kresimir, bernarda, fran, tomislav. Bojan, jakov and
+luka have none: all eight of their mailboxes read 15/15 today and on every day
+through the 25th.
+
+### What it does NOT widen
+
+The cross-channel identity rule is untouched: within one channel the same
+human stays on the thread for the whole cadence. A US-cohort human sending the
+Australian campaign is one human on one campaign, which is the rule, not an
+exception to it.
+
+Every other condition of the batch-1 grant stands - two independent fresh
+verifications, MX open, collision and suppression cleared fail-closed, copy
+from approved templates, stats posted, the fifteen-minute veto, and the hard
+stops before and after.
