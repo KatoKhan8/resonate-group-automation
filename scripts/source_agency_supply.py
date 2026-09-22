@@ -87,6 +87,20 @@ GEOS = (
 MIN_EMPLOYEES = 20
 TARGET_NEW_DOMAINS = 50000
 PAGE_SIZE = 25
+
+#: Seconds between pages. The first run walked 65 pages of one slice and then
+#: took a 429 on every page after it, including the first page of the next
+#: seven slices - the limit is per-key and per-minute, not per-slice, so
+#: marching on to the next slice inherits the same exhausted budget.
+PAGE_PAUSE = 1.5
+
+#: Backoff for a rate limit, in seconds. **A 429 RETRIES THE SAME PAGE.** The
+#: standing order is explicit that a provider rate limit is a reason to back
+#: off and continue, never a reason to halt - and abandoning the slice is a
+#: quiet way of halting it. The first version of this script treated any
+#: exception as end-of-slice, so one burst of 429s marched through eight
+#: slices collecting nothing and marking them finished.
+RATE_LIMIT_BACKOFF = (20, 45, 90, 180, 300)
 #: A slice the provider says is enormous is still walked, but the provider
 #: stops paging somewhere; this bounds a runaway rather than the spend.
 MAX_PAGES_PER_SLICE = 400
@@ -175,6 +189,39 @@ def count_slice(industry, bucket, geo):
     return int(result.get("profiles") or 0)
 
 
+def is_rate_limit(exc):
+    return "429" in str(exc)
+
+
+def fetch_page(industry, bucket, geo, page_number, key):
+    """One page, backing off and RETRYING on a rate limit.
+
+    Returns the page, or None when the slice cannot be advanced now. The
+    distinction that matters: a 429 is not a fact about this slice, it is a
+    fact about the last minute, so it retries the same page rather than
+    concluding anything about the data behind it.
+    """
+    for attempt, wait in enumerate((0,) + RATE_LIMIT_BACKOFF):
+        if wait:
+            print(f"    {key} page {page_number}: rate limited, "
+                  f"waiting {wait}s", flush=True)
+            time.sleep(wait)
+        try:
+            return contactout.company_search(
+                industry=industry, size=bucket, location=geo,
+                page=page_number)
+        except Exception as exc:                  # noqa: BLE001
+            if not is_rate_limit(exc):
+                print(f"    {key} page {page_number}: {exc}", flush=True)
+                return None
+            if attempt == len(RATE_LIMIT_BACKOFF):
+                print(f"    {key} page {page_number}: still rate limited "
+                      "after every backoff; leaving the cursor here",
+                      flush=True)
+                return None
+    return None
+
+
 def plan():
     load_env()
     total = 0
@@ -223,15 +270,11 @@ def run():
             while record["page"] <= MAX_PAGES_PER_SLICE:
                 if state["new_domains"] >= TARGET_NEW_DOMAINS:
                     break
-                try:
-                    page = contactout.company_search(
-                        industry=industry, size=bucket, location=geo,
-                        page=record["page"])
-                except Exception as exc:          # noqa: BLE001
-                    # A provider failure ends THIS slice, never the run. The
-                    # cursor stays where it is so a resume retries the page.
-                    print(f"    {key} page {record['page']}: {exc}",
-                          flush=True)
+                page = fetch_page(industry, bucket, geo, record["page"], key)
+                if page is None:
+                    # A non-rate-limit failure, or a rate limit that outlasted
+                    # every backoff. The cursor stays put, so a resume picks
+                    # this page up rather than skipping past it.
                     break
                 companies = page["companies"]
                 record["credits"] += len(companies)
@@ -260,6 +303,7 @@ def run():
                     break
                 record["page"] += 1
                 save_state(state)
+                time.sleep(PAGE_PAUSE)
             save_state(state)
             if record["new"]:
                 print(f"    {key}: +{record['new']} new, "
