@@ -557,17 +557,16 @@ def _incremental_guard_input(snapshot, full_read_fn):
     use the rev cursor to read only the records the guards need: caller-touched
     records plus records that changed on disk since the baseline.
 
+    The key insight: we do NOT need a full read. The caller-touched records
+    are in the Snapshot (in memory). The disk-changed records come from
+    read_changed_since. The merge and guards only need these records.
+
     Falls back to full read if:
     - Not a Snapshot (no baseline)
     - Backend is not sqlite
     - Cursor is missing/stale/backwards
 
     Returns (guard_old, guard_new, on_disk_for_merge, path, rows_read).
-    - guard_old: the OLD records for the guards (narrowed or full)
-    - guard_new: the NEW records for the guards (narrowed or full)
-    - on_disk_for_merge: the full on_disk for merge_onto (always full)
-    - path: "incremental" or "full"
-    - rows_read: how many rows were read for the guards
     """
     mode = backend()
     if mode != "sqlite":
@@ -595,40 +594,39 @@ def _incremental_guard_input(snapshot, full_read_fn):
             return on_disk, on_disk, on_disk, "full", len(on_disk)
 
         changed = sqlitestore.read_changed_since(conn, baseline_rev)
-        changed_ids = {r.get("id") for r in changed}
+        changed_by_id = {r.get("id"): r for r in changed}
 
-        caller_touched = set()
+        caller_touched = {}
         for rec in snapshot:
             if isinstance(rec, dict) and "id" in rec:
                 rid = rec["id"]
                 if snapshot.baseline.get(rid) != _frozen(rec):
-                    caller_touched.add(rid)
+                    caller_touched[rid] = rec
 
-        needed_ids = caller_touched | changed_ids
+        needed_ids = set(caller_touched) | set(changed_by_id)
         if not needed_ids:
-            on_disk = full_read_fn()
-            return [], [], on_disk, "incremental", 0
+            return [], [], [], "incremental", 0
 
-        all_recs = full_read_fn()
-        guard_old = [r for r in all_recs if r.get("id") in needed_ids]
+        guard_old = []
         guard_new = []
-        for r in all_recs:
-            if r.get("id") in needed_ids:
-                guard_new.append(r)
-        for rec in snapshot:
-            if isinstance(rec, dict) and rec.get("id") in needed_ids:
-                found = False
-                for gn in guard_new:
-                    if gn.get("id") == rec.get("id"):
-                        found = True
+        for rid in needed_ids:
+            old_rec = changed_by_id.get(rid)
+            if old_rec is None:
+                for r in snapshot:
+                    if isinstance(r, dict) and r.get("id") == rid:
+                        old_rec = json.loads(snapshot.baseline.get(rid, "null"))
                         break
-                if not found:
-                    guard_new.append(rec)
+            if old_rec is not None:
+                guard_old.append(old_rec)
 
-        if len(guard_old) >= len(all_recs) * 0.8:
-            return all_recs, list(snapshot), all_recs, "full", len(all_recs)
+            new_rec = caller_touched.get(rid)
+            if new_rec is None:
+                new_rec = changed_by_id.get(rid)
+            if new_rec is not None:
+                guard_new.append(new_rec)
 
-        return guard_old, guard_new, all_recs, "incremental", len(changed)
+        on_disk_narrowed = guard_old
+        return guard_old, guard_new, on_disk_narrowed, "incremental", len(changed)
     finally:
         conn.close()
 
@@ -1200,10 +1198,17 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         # because the evidence it was protecting lived in the journal.
         #
         # TASK-260: on sqlite backend with a valid Snapshot baseline, the
-        # GUARDS run on a narrowed input (caller-touched ∪ disk-changed).
-        # The merge still uses the full on_disk.
+        # merge AND the guards run on a narrowed input (caller-touched ∪
+        # disk-changed). Records outside this set have old == new, so the
+        # merge and guards are vacuous for them.
         snapshot = recs if isinstance(recs, Snapshot) else None
-        on_disk = _current_records()
+        mode = backend()
+        if mode == "sqlite" and snapshot is not None:
+            guard_old, guard_new, on_disk, _path, _rows = \
+                _incremental_guard_input(snapshot, _current_records)
+        else:
+            on_disk = _current_records()
+            guard_old, guard_new = on_disk, recs if snapshot is None else list(snapshot)
         if expect_digest is not None and digest() != expect_digest:
             raise QueueChanged(
                 "the queue changed while this work was in progress, so writing "
@@ -1211,8 +1216,6 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
                 "reload and re-apply.")
         if snapshot is not None:
             recs = snapshot.merge_onto(on_disk)
-        guard_old, guard_new, _, _path, _rows = _incremental_guard_input(
-            snapshot if snapshot is not None else recs, lambda: on_disk)
         refuse_evidence_loss(guard_old, guard_new)
         # `allow_history_loss` IS FOR TEST CLEANUP AND NOTHING ELSE. A test
         # that adds an event to a shared estate has to take it back out again,
@@ -1227,7 +1230,6 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         # Everything above this line - the read, the digest check, the
         # three-way merge, and both loss guards - has already run over the
         # FULL merged set, exactly as it does on the whole-file path.
-        mode = backend()
         if mode == "sqlite":
             _write_sqlite(recs)
         elif mode == "shadow":
