@@ -323,6 +323,188 @@ def _frozen(value):
     return json.dumps(value, sort_keys=True, ensure_ascii=False)
 
 
+class _TrackingRoot:
+    """Mixin: marks the root record dirty on any mutation.
+
+    The root is the top-level TrackingDict for this record. Every nested
+    TrackingDict and TrackingList holds a reference to it, so a mutation at
+    any depth - ``rec["contacts"].append(person)``,
+    ``rec["cadence"]["day1"]["body"] = "..."`` - propagates to the same
+    dirty set.
+    """
+    __slots__ = ()
+
+    def _mark(self):
+        self._root._dirty.add(self._key)
+
+
+class _TrackingDict(_TrackingRoot, dict):
+    """A dict subclass that marks its root record dirty on mutation.
+
+    Replaces every nested dict and list with a tracking wrapper at
+    construction time, so mutations at any depth propagate. The underlying
+    dict data IS the record data: ``json.dumps`` reads it directly through
+    the C encoder's dict-subclass path, and the output is identical to a
+    plain dict because the wrappers subclass dict/list and compare equal.
+
+    THE TRAP THIS PREVENTS: callers do not replace rows, they mutate them
+    in place. A tracker that catches only ``__setitem__`` on the top-level
+    dict silently stops detecting ``rec["contacts"].append(person)`` and
+    ``rec["cadence"]["day1"]["body"] = "..."`` - the edits that carry
+    contacts, events and cadence.
+    """
+    __slots__ = ("_root", "_key", "_dirty")
+
+    def __init__(self, data=None, _root=None, _key=None):
+        if isinstance(data, _TrackingDict):
+            dict.__init__(self, data)
+            self._root = _root or data._root
+            self._key = _key if _key is not None else data._key
+            return
+        dict.__init__(self)
+        self._root = self if _root is None else _root
+        self._key = _key
+        if data:
+            for k, v in data.items():
+                if isinstance(v, dict) and not isinstance(v, _TrackingDict):
+                    v = _TrackingDict(v, _root=self._root, _key=self._key)
+                    dict.__setitem__(self, k, v)
+                elif isinstance(v, list) and not isinstance(v, _TrackingList):
+                    v = _TrackingList(v, _root=self._root, _key=self._key)
+                    dict.__setitem__(self, k, v)
+                else:
+                    dict.__setitem__(self, k, v)
+
+    def _wrap_value(self, value):
+        if isinstance(value, dict) and not isinstance(value, _TrackingDict):
+            return _TrackingDict(value, _root=self._root, _key=self._key)
+        if isinstance(value, list) and not isinstance(value, _TrackingList):
+            return _TrackingList(value, _root=self._root, _key=self._key)
+        return value
+
+    def __setitem__(self, key, value):
+        self._mark()
+        dict.__setitem__(self, key, self._wrap_value(value))
+
+    def __delitem__(self, key):
+        self._mark()
+        dict.__delitem__(self, key)
+
+    def clear(self):
+        self._mark()
+        dict.clear(self)
+
+    def pop(self, *args):
+        self._mark()
+        return dict.pop(self, *args)
+
+    def popitem(self):
+        self._mark()
+        return dict.popitem(self)
+
+    def setdefault(self, key, default=None):
+        if key not in self:
+            self._mark()
+            wrapped = self._wrap_value(default)
+            dict.__setitem__(self, key, wrapped)
+            return wrapped
+        return self[key]
+
+    def update(self, *args, **kwargs):
+        self._mark()
+        if args:
+            other = dict(args[0])
+            for k, v in other.items():
+                dict.__setitem__(self, k, self._wrap_value(v))
+        for k, v in kwargs.items():
+            dict.__setitem__(self, k, self._wrap_value(v))
+
+    def __ior__(self, other):
+        self._mark()
+        for k, v in other.items():
+            dict.__setitem__(self, k, self._wrap_value(v))
+        return self
+
+
+class _TrackingList(_TrackingRoot, list):
+    """A list subclass that marks its root record dirty on mutation.
+
+    Replaces every nested dict and list with a tracking wrapper at
+    construction time, so mutations at any depth propagate.
+    """
+    __slots__ = ("_root", "_key")
+
+    def __init__(self, data=None, _root=None, _key=None):
+        if isinstance(data, _TrackingList):
+            list.__init__(self, data)
+            self._root = _root or data._root
+            self._key = _key if _key is not None else data._key
+            return
+        list.__init__(self)
+        self._root = self if _root is None else _root
+        self._key = _key
+        if data:
+            for i, item in enumerate(data):
+                if isinstance(item, dict) and not isinstance(item, _TrackingDict):
+                    list.append(self, _TrackingDict(item, _root=self._root,
+                                                    _key=self._key))
+                elif isinstance(item, list) and not isinstance(item, _TrackingList):
+                    list.append(self, _TrackingList(item, _root=self._root,
+                                                    _key=self._key))
+                else:
+                    list.append(self, item)
+
+    def _wrap_value(self, value):
+        if isinstance(value, dict) and not isinstance(value, _TrackingDict):
+            return _TrackingDict(value, _root=self._root, _key=self._key)
+        if isinstance(value, list) and not isinstance(value, _TrackingList):
+            return _TrackingList(value, _root=self._root, _key=self._key)
+        return value
+
+    def __setitem__(self, index, value):
+        self._mark()
+        list.__setitem__(self, index, self._wrap_value(value))
+
+    def __delitem__(self, index):
+        self._mark()
+        list.__delitem__(self, index)
+
+    def append(self, value):
+        self._mark()
+        list.append(self, self._wrap_value(value))
+
+    def extend(self, values):
+        self._mark()
+        for v in values:
+            list.append(self, self._wrap_value(v))
+
+    def insert(self, index, value):
+        self._mark()
+        list.insert(self, index, self._wrap_value(value))
+
+    def pop(self, *args):
+        self._mark()
+        return list.pop(self, *args)
+
+    def remove(self, value):
+        self._mark()
+        list.remove(self, value)
+
+    def reverse(self):
+        self._mark()
+        list.reverse(self)
+
+    def sort(self, *args, **kwargs):
+        self._mark()
+        list.sort(self, *args, **kwargs)
+
+    def __iadd__(self, other):
+        self._mark()
+        for v in other:
+            list.append(self, self._wrap_value(v))
+        return self
+
+
 class Snapshot(list):
     """The queue as one reader found it, remembering what each row then was.
 
@@ -372,10 +554,66 @@ class Snapshot(list):
     """
 
     def __init__(self, rows, key="id"):
-        super().__init__(rows)
         self.key = key
         self._serialised = None
+        self._dirty = set()
+        self._by_id = {}
+        self._keyless_count = 0
+        wrapped = []
+        for row in rows:
+            if isinstance(row, dict) and not isinstance(row, _TrackingDict):
+                if key not in row:
+                    self._keyless_count += 1
+                    wrapped.append(row)
+                    continue
+                td = _TrackingDict(row, _key=row[key])
+                # The root TrackingDict carries _dirty so nested wrappers
+                # can reach it via self._root._dirty. It IS the Snapshot's
+                # dirty set - same object, not a copy.
+                td._dirty = self._dirty
+                wrapped.append(td)
+                self._by_id[row[key]] = td
+            else:
+                if not (isinstance(row, dict) and key in row):
+                    self._keyless_count += 1
+                wrapped.append(row)
+        super().__init__(wrapped)
         self.rebase()
+
+    def append(self, row):
+        if isinstance(row, dict) and self.key not in row:
+            self._keyless_count += 1
+        elif not isinstance(row, dict):
+            self._keyless_count += 1
+        if isinstance(row, dict) and not isinstance(row, _TrackingDict) \
+                and self.key in row:
+            td = _TrackingDict(row, _key=row[self.key])
+            td._dirty = self._dirty
+            self._by_id[row[self.key]] = td
+            # AN APPENDED ROW IS DIRTY BY DEFINITION, AND SAYING SO IS NOT
+            # OPTIONAL NOW THAT `merge_onto` READS `_dirty` RATHER THAN
+            # RE-DERIVING IT.
+            #
+            # Before this task the edit set was recomputed by serialising
+            # every row and comparing to the baseline, and a row with NO
+            # baseline fell out of that comparison as changed for free. With
+            # an explicit dirty set it does not: the row is wrapped, indexed
+            # and appended, and then never written, because nothing put its
+            # id in `_dirty`.
+            #
+            # `test_a_stop_survives_a_concurrent_run.test_adding_a_record_
+            # passes` caught it - a record added to the snapshot simply did
+            # not reach the disk. That is silent record loss, which is the
+            # exact failure class `Snapshot` exists to prevent, arriving
+            # through the optimisation meant to make it cheaper.
+            self._dirty.add(row[self.key])
+            list.append(self, td)
+        else:
+            list.append(self, row)
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield list.__getitem__(self, i)
 
     def rebase(self):
         """The baseline becomes what these rows are now. Called after a write.
@@ -406,10 +644,15 @@ class Snapshot(list):
         """
         handed_over, self._serialised = self._serialised, None
         if handed_over is not None:
-            self.baseline = handed_over
+            # TASK-261: handover contains only dirty rows' serialised forms.
+            # Update the baseline for those rows; clean rows' entries are
+            # already correct (nothing changed since the last rebase).
+            self.baseline.update(handed_over)
+            self._dirty.clear()
             return
         self.baseline = {row[self.key]: _frozen(row) for row in self
                          if isinstance(row, dict) and self.key in row}
+        self._dirty.clear()
 
     def _base_row(self, rec):
         """The row as it was read, or None if this caller introduced it."""
@@ -425,7 +668,10 @@ class Snapshot(list):
         because a checkpoint every five records over a long batch walks the
         whole file each time, and most of the file is untouched.
         """
-        known = self.baseline.get(rec.get(self.key))
+        rid = rec.get(self.key)
+        if rid not in self._dirty:
+            return self.baseline.get(rid) is not None
+        known = self.baseline.get(rid)
         return known is not None and known == _frozen(rec)
 
     def _merge_row(self, rec, on_disk_row):
@@ -456,24 +702,24 @@ class Snapshot(list):
         where an append would have put them.
         """
         # A ROW WITH NO KEY CANNOT BE MERGED, SO IT IS REFUSED RATHER THAN
-        # SKIPPED. The comprehension below can only match rows it can address;
-        # one without the key silently matched nothing, was written nowhere,
-        # and raised nothing - the caller held two rows and one reached the
-        # disk. That is the failure mode this whole class exists to remove,
-        # so it fails closed here instead.
-        keyless = [row for row in self
-                   if not (isinstance(row, dict) and self.key in row)]
-        if keyless:
+        # SKIPPED. Counted at construction time, not here, to avoid an O(N)
+        # walk on every checkpoint.
+        if self._keyless_count:
             raise ValueError(
-                f"{len(keyless)} row(s) carry no {self.key!r} and cannot be "
-                f"merged onto what is on disk. Nothing was written.")
-        # One pass, one serialisation per row: `unchanged` needs it to decide,
-        # and `rebase` needs the same answer immediately afterwards.
-        frozen = {row[self.key]: _frozen(row) for row in self}
-        edits = {key: row for row in self
-                 for key in (row[self.key],)
-                 if self.baseline.get(key) != frozen[key]}
-        self._serialised = frozen
+                f"{self._keyless_count} row(s) carry no {self.key!r} and "
+                f"cannot be merged onto what is on disk. Nothing was written.")
+        # TASK-261: only serialise dirty rows, not every row. The dirty set
+        # tracks which records were mutated in place (including nested
+        # mutations to contacts, events, cadence, log). Using _by_id makes
+        # this O(|dirty|) rather than O(N), which is the whole point.
+        frozen_dirty = {}
+        edits = {}
+        for rid in self._dirty:
+            row = self._by_id.get(rid)
+            if row is not None:
+                frozen_dirty[rid] = _frozen(row)
+                edits[rid] = row
+        self._serialised = frozen_dirty
         out = []
         for row in on_disk:
             if not (isinstance(row, dict) and self.key in row):
@@ -600,11 +846,10 @@ def _incremental_guard_input(snapshot, full_read_fn):
         changed_by_id = {r.get("id"): r for r in changed}
 
         caller_touched = {}
-        for rec in snapshot:
-            if isinstance(rec, dict) and "id" in rec:
-                rid = rec["id"]
-                if snapshot.baseline.get(rid) != _frozen(rec):
-                    caller_touched[rid] = rec
+        for rid in snapshot._dirty:
+            rec = snapshot._by_id.get(rid)
+            if rec is not None:
+                caller_touched[rid] = rec
 
         needed_ids = set(caller_touched) | set(changed_by_id)
         if not needed_ids:
