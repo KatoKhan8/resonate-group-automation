@@ -342,10 +342,26 @@ class TestNothingCanSend(unittest.TestCase):
             slack.post({"channel": "C1", "text": "x"})
 
     def test_contactouts_post_routes_are_read_only(self):
+        """POST here means "the query is too big for a URL", never a write.
+
+        ContactOut's search and enrichment endpoints take POST bodies because
+        the filter sets are large, not because they change anything at the
+        provider. The allow-list is what keeps that true: a POST route that
+        MUTATES something at ContactOut - or worse, reaches a prospect - must
+        not be able to arrive here unnoticed, so every addition is named.
+
+        `/company/search` added 2026-09-22 for agency sourcing. It is a PAID
+        SEARCH, not a write: it bills one search credit per company returned
+        and creates, changes and deletes nothing. Spend is not the property
+        this test protects - `enrich`'s `spend()` and the waterfall ledger
+        do that - and conflating "costs money" with "writes something" would
+        make this list refuse the read endpoints the system runs on.
+        """
         from src.providers import contactout
         posted = {p for m, p in contactout.ROUTES.values() if m == "POST"}
         self.assertTrue(posted <= {"/people/count", "/people/search",
-                                   "/domain/enrich"}, posted)
+                                   "/domain/enrich", "/company/search"},
+                        posted)
 
     def test_the_push_module_cannot_reach_the_transport(self):
         source = inspect.getsource(push)
