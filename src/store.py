@@ -154,7 +154,12 @@ STATE_OVERRIDES = (
                    # The nightly sourcing candidate list. Not queue state,
                    # but written beside the queue and must move with it in
                    # tests or a fixture would append to the real list.
-                   "CANDIDATES")
+                   "CANDIDATES",
+                   # The supervisor's per-monitor lock files and state files.
+                   # Not queue state, but written beside the queue and must
+                   # move with it in tests or a fixture lock would block the
+                   # real supervisor. Added 2026-09-22 with TASK-263.
+                   "SUPERVISOR_LOCKS", "SUPERVISOR_STATE")
 
 def use_directory(path):
     """Point every state file at one directory. Demo mode and tests only.
