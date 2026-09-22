@@ -99,8 +99,23 @@ GEOS = (
 )
 
 MIN_EMPLOYEES = 20
-TARGET_NEW_DOMAINS = 50000
 PAGE_SIZE = 25
+
+#: **THERE IS NO DOMAIN TARGET AND NO SPEND CAP.** Operator decision,
+#: 2026-09-22: the account behind `CONTACTOUT_TOKEN` is the operator's own and
+#: its search credits are available in full for sourcing. The earlier
+#: 50,000-domain stop is removed. Every slice runs to exhaustion, in the
+#: recorded bucket order, until the slices are done or the balance is empty.
+#:
+#: THE ONLY THING THAT STOPS THIS RUN IS THE PROVIDER SAYING NO. Slice
+#: exhaustion ends a slice; an exhausted balance ends the run. Neither is a
+#: question to bring back to the operator mid-run, and a rate limit is neither
+#: of them.
+#: 402 is payment required. 403 is AMBIGUOUS - it can be an exhausted balance
+#: or a revoked key - and both need a human, so both end the run rather than
+#: spinning. The stop message quotes the status so the morning summary says
+#: which it was instead of guessing.
+BALANCE_EXHAUSTED_STATUSES = ("402", "403")
 
 #: Seconds between pages. The first run walked 65 pages of one slice and then
 #: took a 429 on every page after it, including the first page of the next
@@ -211,8 +226,24 @@ def count_slice(industry, bucket, geo):
     return int(result.get("profiles") or 0)
 
 
+class BalanceExhausted(RuntimeError):
+    """The provider refused for want of credit. The one thing that ends a run."""
+
+
 def is_rate_limit(exc):
     return "429" in str(exc)
+
+
+def is_balance_exhausted(exc):
+    """A refusal for credit, told apart from every other 4xx.
+
+    Kept separate from `is_rate_limit` deliberately: a 429 means "not this
+    minute" and a 402 means "not ever, until somebody tops up". Treating the
+    second as the first would spin on backoff for hours against a provider
+    that has already given its final answer.
+    """
+    text = str(exc)
+    return any(code in text for code in BALANCE_EXHAUSTED_STATUSES)
 
 
 def fetch_page(industry, bucket, geo, page_number, key):
@@ -233,6 +264,9 @@ def fetch_page(industry, bucket, geo, page_number, key):
                 industry=industry, size=bucket, location=geo,
                 page=page_number)
         except Exception as exc:                  # noqa: BLE001
+            if is_balance_exhausted(exc):
+                raise BalanceExhausted(
+                    f"{key} page {page_number}: {exc}") from exc
             if not is_rate_limit(exc):
                 print(f"    {key} page {page_number}: {exc}", flush=True)
                 return None
@@ -268,6 +302,7 @@ def run():
           f"collected by this run", flush=True)
 
     handle = open(OUT, "a", encoding="utf-8", newline="\n")
+    stopped_for = "slices exhausted"
     try:
         for industry, bucket, geo in slices():
             key = slice_key(industry, bucket, geo)
@@ -276,11 +311,6 @@ def run():
                       "credits": 0, "new": 0})
             if record["done"]:
                 continue
-            if state["new_domains"] >= TARGET_NEW_DOMAINS:
-                print(f"  TARGET REACHED: {state['new_domains']:,} new "
-                      "domains. Stopping; the rest is resumable.", flush=True)
-                break
-
             if record["count"] is None:
                 record["count"] = count_slice(industry, bucket, geo)
                 save_state(state)
@@ -290,8 +320,6 @@ def run():
                 continue
 
             while record["page"] <= MAX_PAGES_PER_SLICE:
-                if state["new_domains"] >= TARGET_NEW_DOMAINS:
-                    break
                 page = fetch_page(industry, bucket, geo, record["page"], key)
                 if page is None:
                     # A non-rate-limit failure, or a rate limit that outlasted
@@ -331,9 +359,15 @@ def run():
                 print(f"    {key}: +{record['new']} new, "
                       f"{record['credits']} credits, total "
                       f"{state['new_domains']:,}", flush=True)
+    except BalanceExhausted as exc:
+        # The provider's final answer, not a transient one. Everything bought
+        # so far is on disk and every cursor is saved, so a top-up resumes
+        # exactly here.
+        stopped_for = f"BALANCE EXHAUSTED - {exc}"
     finally:
         handle.close()
         save_state(state)
+    print(f"\n  stopped: {stopped_for}")
     report(state)
     return 0
 
