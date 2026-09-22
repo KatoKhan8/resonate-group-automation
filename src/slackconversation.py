@@ -449,6 +449,25 @@ MESSAGE:
 """
 
 
+RETRY_PROMPT = """Your previous answer contained {offending}, which the
+material does not. Those figures are not in the readback - you derived or
+estimated them, and this system does not state a number it was not given.
+
+Write the answer again WITHOUT them. Do not substitute different figures and
+do not hedge the whole answer: drop the sentence that needed the number, or
+say plainly that the material does not carry it. Everything else you said
+that was supported should survive.
+
+Keep the same voice, the same length and the same closing offer.
+
+YOUR PREVIOUS ANSWER:
+{answer}
+
+MATERIAL:
+{material}
+"""
+
+
 def material_for(scope, question, results, pack=None):
     """Everything the model is handed, as text. Scoped before it is built."""
     pack = pack or knowledge.pack()
@@ -780,12 +799,48 @@ def respond(question, channel=None, user=None, channel_type=None,
 
     checked, why = guard(text, material, scope,
                          allow_addresses=scope.is_client)
-    if checked is None:
-        # The model's answer is DISCARDED, not patched. A number that is not
-        # in the material is not a wording problem.
-        out.update({"reply": stamp(plain),
-                    "how": "deterministic (guard: %s)" % why,
-                    "guard": why})
+    if checked is not None:
+        out.update({"reply": stamp(checked), "how": "model"})
         return out
-    out.update({"reply": stamp(checked), "how": "model"})
+
+    # THE REJECTED TEXT IS RECORDED, NEVER POSTED.
+    #
+    # The first live guard trip in an internal channel said "unsupported
+    # number(s): 101, 46, 52, 61, 72" and there was no way to find out where
+    # those came from, because the discarded answer was thrown away. A guard
+    # whose trips cannot be diagnosed gets switched off by whoever is tired
+    # of the fallback.
+    out["guard"] = why
+    out["rejected"] = str(text)[:2000]
+
+    # ONE RETRY, AND ONLY FOR NUMBERS.
+    #
+    # A number the material does not carry is a WORDING fault: the model
+    # knows the answer and added arithmetic nobody asked for, and naming the
+    # figures back to it fixes that. A SCOPE violation is not - asking a
+    # model that just named another client to try again is asking it to
+    # leak more carefully - so that one is never retried.
+    if not why.startswith("unsupported number"):
+        out.update({"reply": stamp(plain),
+                    "how": "deterministic (guard: %s)" % why})
+        return out
+
+    try:
+        second = model.complete(
+            RETRY_PROMPT.format(offending=why.split(":", 1)[-1].strip(),
+                                answer=str(text)[:3000], material=material))
+    except Exception as exc:                                    # noqa: BLE001
+        out.update({"reply": stamp(plain),
+                    "how": "deterministic (retry %s)" % type(exc).__name__})
+        return out
+
+    rechecked, why_again = guard(second, material, scope,
+                                 allow_addresses=scope.is_client)
+    if rechecked is None:
+        out.update({"reply": stamp(plain),
+                    "how": "deterministic (guard twice: %s)" % why_again,
+                    "guard_retry": why_again,
+                    "rejected_retry": str(second)[:2000]})
+        return out
+    out.update({"reply": stamp(rechecked), "how": "model (retried)"})
     return out

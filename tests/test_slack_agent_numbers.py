@@ -145,6 +145,105 @@ class ALyingModelIsDiscarded(unittest.TestCase):
         self.assertIn("2026-09-09", result["reply"])
 
 
+class OneRetryForNumbersAndNoneForScope(unittest.TestCase):
+    """A number is a wording fault. A scope violation is not.
+
+    The first live guard trip in an internal channel reported "unsupported
+    number(s): 101, 46, 52, 61, 72" and posted a raw readback dump instead
+    of prose. Two things were wrong: the discarded answer was not recorded,
+    so nobody could find out where those figures came from, and a model
+    that knows the answer and added arithmetic nobody asked for is one
+    sentence away from a good reply.
+
+    Asking a model that has just named ANOTHER CLIENT to try again is a
+    different thing entirely - it is asking it to leak more carefully - so
+    that trip is never retried.
+    """
+
+    class InventsThenBehaves:
+        model = "invents-then-behaves"
+
+        def __init__(self):
+            self.answers = 0
+
+        def complete(self, prompt, temperature=0):
+            if "Answer with JSON" in prompt:
+                return '{"tools": [{"name": "timeline"}], "clarify": null}'
+            self.answers += 1
+            if self.answers == 1:
+                return "We contacted 74211 people, starting 2026-09-09."
+            return "We started on 2026-09-09."
+
+    class LeaksTwice:
+        model = "leaks"
+
+        def __init__(self):
+            self.answers = 0
+
+        def complete(self, prompt, temperature=0):
+            if "Answer with JSON" in prompt:
+                return '{"tools": [{"name": "timeline"}], "clarify": null}'
+            self.answers += 1
+            return "Qwen is working on it."
+
+    def setUp(self):
+        self._prev = os.environ.get(slackscope.INTERNAL_CHANNELS_VAR)
+        os.environ[slackscope.INTERNAL_CHANNELS_VAR] = "C_INTERNAL"
+
+    def tearDown(self):
+        if self._prev is None:
+            os.environ.pop(slackscope.INTERNAL_CHANNELS_VAR, None)
+        else:
+            os.environ[slackscope.INTERNAL_CHANNELS_VAR] = self._prev
+
+    def test_an_invented_number_is_retried_once_and_the_retry_is_posted(
+            self):
+        model = self.InventsThenBehaves()
+        result = conversation.respond("when did we start?",
+                                      channel="C_INTERNAL", user="U",
+                                      model=model)
+        self.assertEqual(model.answers, 2, "it should retry exactly once")
+        self.assertEqual(result["how"], "model (retried)")
+        self.assertNotIn("74211", result["reply"])
+        self.assertIn("2026-09-09", result["reply"])
+
+    def test_the_rejected_answer_is_recorded_so_a_trip_can_be_diagnosed(
+            self):
+        result = conversation.respond("when did we start?",
+                                      channel="C_INTERNAL", user="U",
+                                      model=self.InventsThenBehaves())
+        self.assertIn("74211", result["rejected"])
+        self.assertIn("74211", result["guard"])
+
+    def test_a_scope_violation_is_never_retried(self):
+        scope = slackscope.Scope(slackscope.CLIENT, workspace="alpha",
+                                 source="test", slugs=("alpha",))
+        model = self.LeaksTwice()
+        checked, why = conversation.guard("Qwen is working on it.",
+                                          "material", scope)
+        self.assertIsNone(checked)
+        self.assertFalse(why.startswith("unsupported number"),
+                         "a scope trip must not take the retry branch")
+
+    def test_a_retry_that_still_invents_falls_back(self):
+        class NeverLearns(self.InventsThenBehaves):
+            def complete(self, prompt, temperature=0):
+                if "Answer with JSON" in prompt:
+                    return '{"tools": [{"name": "timeline"}], ' \
+                           '"clarify": null}'
+                self.answers += 1
+                return "We contacted 74211 people."
+
+        model = NeverLearns()
+        result = conversation.respond("when did we start?",
+                                      channel="C_INTERNAL", user="U",
+                                      model=model)
+        self.assertEqual(model.answers, 2)
+        self.assertIn("guard twice", result["how"])
+        self.assertNotIn("74211", result["reply"])
+        self.assertIn("74211", result["rejected_retry"])
+
+
 class EveryAnswerSaysWhenItWasRead(unittest.TestCase):
 
     def test_the_stamp_is_added(self):
