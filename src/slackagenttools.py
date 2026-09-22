@@ -128,6 +128,44 @@ def _campaigns_to_read(entry, cap):
     return ids[:cap], max(0, len(ids) - cap)
 
 
+def _sender_domain(row):
+    """The sending DOMAIN of one queue row, or `None`.
+
+    `scheduled_emails` returns the provider's rows untrimmed, and
+    `sender_email` on them is an OBJECT rather than an address:
+
+        {"id": 3392, "name": "...", "email": "k.s@useproductive.live",
+         "email_signature": "<p>... @Productive</p>", "daily_limit": 15}
+
+    Both domain walks used to do `str(row.get("sender_email") or "")` and
+    then `rsplit("@", 1)`. THE GUARD IN FRONT OF THAT IS WHAT MADE IT
+    SILENT: `str(a_dict)` contains an `@` - out of the HTML signature - so
+    `"@" not in address` was False, the row was not skipped, and the split
+    returned the tail of a mangled signature. Never a domain, never a
+    match, never an error. Measured 2026-09-22: all 69 of a client's
+    sending domains reported "no sends in the last 7 days" on a day those
+    mailboxes sent 316 emails.
+
+    A string is still accepted, because that is what the code was
+    originally written against and a caller may yet hand one over. Anything
+    else - a sender object with no `email`, a missing sender, a value with
+    no `@` - returns `None` and the row is skipped, which is what the
+    original guard was trying to do.
+
+    `src/leadobserve.py` has read this field correctly all along.
+    """
+    sender = row.get("sender_email")
+    if isinstance(sender, dict):
+        address = sender.get("email")
+    else:
+        address = sender
+    address = str(address or "").strip()
+    if "@" not in address:
+        return None
+    domain = address.rsplit("@", 1)[-1].lower().strip()
+    return domain or None
+
+
 def _floor_note(note, hidden, what="campaigns"):
     """The note a capped answer carries, and nothing when it is not capped.
 
@@ -895,10 +933,7 @@ def _week_for_domain(slug, domain):
         read_any = True
         for row in queue:
             stamp = row.get("sent_at")
-            address = str(row.get("sender_email") or "")
-            if not stamp or "@" not in address:
-                continue
-            if address.rsplit("@", 1)[-1].lower() != domain:
+            if not stamp or _sender_domain(row) != domain:
                 continue
             try:
                 when = datetime.datetime.fromisoformat(
@@ -945,8 +980,11 @@ def _recent_send_domains(slug):
         read_any = True
         for row in queue:
             stamp = row.get("sent_at")
-            address = str(row.get("sender_email") or "")
-            if not stamp or "@" not in address:
+            # The DOMAIN, never the address. This is the one place a sending
+            # address is in memory at all, and `_sender_domain` is the only
+            # way it leaves - as its domain or not at all.
+            domain = _sender_domain(row)
+            if not stamp or not domain:
                 continue
             try:
                 when = datetime.datetime.fromisoformat(
@@ -956,10 +994,7 @@ def _recent_send_domains(slug):
             if when.tzinfo is None:
                 when = when.replace(tzinfo=datetime.timezone.utc)
             if when >= cutoff:
-                # The DOMAIN, never the address. This is the one place a
-                # sending address is in memory at all, and it leaves as its
-                # domain or not at all.
-                found.add(address.rsplit("@", 1)[-1].lower())
+                found.add(domain)
     return (found if read_any else None), unreadable, capped
 
 
