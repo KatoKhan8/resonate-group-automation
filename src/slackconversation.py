@@ -601,7 +601,8 @@ def _open_request(kind, fields, question, channel, scope, thread_ts):
                 "request_kind": kind}
     workspace = scope.workspace or "the internal workspace"
     remember_pending(channel, thread_ts, kind, fields, question)
-    return {"reply": requests.restate(kind, fields, workspace),
+    return {"reply": requests.restate(kind, fields, workspace,
+                                      client_facing=scope.is_client),
             "how": "request_restated", "tools": [], "request_kind": kind}
 
 
@@ -619,9 +620,24 @@ def _raise_ticket(open_request, user, channel, scope, thread_ts):
                          % type(exc).__name__,
                 "how": "request_write_failed", "tools": []}
     clear_pending(channel, thread_ts, "raised as %s" % ticket["id"])
-    reply = ("Raised as `%s`. It is with Zvonimir to approve or reject, and "
-             "I will report the outcome back in this thread. Nothing changes "
-             "until then." % ticket["id"])
+    if scope.is_client:
+        # OPERATOR, 2026-09-22, on the first week of a live client channel:
+        # the agent tells the client "I've passed this to the Resonate team"
+        # WITHOUT PROMISING A TIME.
+        #
+        # So this says what has happened and what has not, and stops. No
+        # "shortly", no "today", no "they will get back to you by" - a
+        # timescale the agent cannot keep is a promise Resonate has to keep
+        # instead, and it would have been made by a bot to a customer.
+        # It does say the outcome comes back here, because that is a fact
+        # about where, not a claim about when.
+        reply = ("I've passed this to the Resonate team. Nothing has "
+                 "changed yet and nothing will until they have reviewed it. "
+                 "I'll post the outcome in this thread when there is one.")
+    else:
+        reply = ("Raised as `%s`. It is with Zvonimir to approve or reject, "
+                 "and I will report the outcome back in this thread. "
+                 "Nothing changes until then." % ticket["id"])
     return {"reply": reply, "how": "request_raised", "tools": [],
             "ticket": ticket["id"], "ticket_path": path,
             "post_to_internal": requests.action_required(ticket)}
