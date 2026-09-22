@@ -164,7 +164,75 @@ sender's name.
 
 ---
 
-## 8. STILL OPEN FROM YESTERDAY
+## 8. INCREMENT 2 — SENDERS, SEATS, AND THE HISTORY
 
-`hr-` vs `li-` on LinkedIn attestations — zero overlap, so no LinkedIn seat
-is provably authorized. Unchanged and still blocking a seat count.
+Added at `713d0bf4`, same branch, same rules: nothing merged, nothing
+pushed to master.
+
+### 8a. `hr-` vs `li-` is resolved WITHOUT a canonical scheme being chosen
+
+    email     account_id "eb-2736"
+    linkedin  account_id "hr-116968"      <- the attestation
+    roster    account_id "li-116968", provider_account_id "116968"
+
+**`src/senderownership` writes NEITHER.** `attest()` stores whatever
+`account_id` its caller hands it. `li-` comes from code
+(`src/senderinventory.py:298`); `hr-` comes from nothing in the tree — it
+was written ad hoc, as `scripts/attestation_packet.py` instructs.
+
+So there is no scheme to declare canonical from `senderownership`, and the
+operator's fallback applies: **reconciling them is filed here for you**.
+Meanwhile the seat count works, by joining on `provider_account_id` — the
+bare id both sides carry. That is not a mapping invented here:
+`scripts/batch_linkedin_push.py:88` already does
+`str(account_id).replace("hr-", "")` and pushes live campaigns on the
+result. **32 of 33 seats now resolve.**
+
+### 8b. AND RESOLVING IT IMMEDIATELY EXPOSED SOMETHING
+
+The seat roster mixes two organisations. Alongside the client's staff it
+carries **Resonate's own people**, and the register already records "we own
+4 of 86" seats in this estate. Nothing in the data says which seat belongs
+to whom.
+
+Your rule is that a client channel never names Resonate's own accounts. So
+a client channel now names only people with an attested **mailbox** — the
+eight who match the handoff's estate — and LinkedIn seats are given as a
+workspace total with a note saying they are not attributed. Internal scope
+is unchanged. Verified: client 8 named, 0 Resonate people; internal 40.
+
+**Seat ownership is a decision for you.** Until it is made, no client
+channel names a seat holder.
+
+### 8c. The history, and what reading it found
+
+6,091 messages, 22 channels. All seven scopes verified by real reads;
+`channels:join` proved by joining three public rooms. Nine externally
+shared channels skipped and listed; thirteen private ones the bot was
+already in.
+
+`docs/SLACK-AGENT-QUESTION-CATALOGUE.md` and
+`docs/SLACK-AGENT-EXPECTATIONS.md` carry the output. Both were scanned for
+addresses, client names, person names and phone numbers before commit and
+are clean.
+
+**Two things you should see:**
+
+- **A credential is in Slack history in plain text** (a GoDaddy password),
+  along with payroll and personal phone numbers. It is now also in
+  `work/slack-history/`, which is gitignored and uncommitted. The mining
+  skips those rooms and drops credential-shaped messages whole, but the
+  password in Slack is a standing exposure that predates any of this.
+- **A client asked, in their own channel, "can you please stop sending
+  messages to people who have replied????"** — four question marks. That is
+  a reply-stop complaint and the highest-severity shape in the corpus. The
+  agent would raise a `stop_account` ticket, which is right and is not
+  enough; a question of that shape should reach you immediately.
+
+### 8d. Still yours
+
+- Reconcile `hr-`/`li-` properly.
+- Decide seat ownership, or accept counts-without-names indefinitely.
+- Decide the eight unbound shared client channels: bind, leave, or
+  authorise reading.
+- `src/providers/slack.py` `thread_parent` — unchanged, still for review.
