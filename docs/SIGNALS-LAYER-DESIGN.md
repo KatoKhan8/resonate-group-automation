@@ -4,9 +4,29 @@
 2026-09-22. No code has been written and no task has been dispatched for any
 of it.
 
+## OPERATOR DECISIONS — Zvonimir, 2026-09-22
+
+| # | Decision | Effect here |
+| --- | --- | --- |
+| 1 | **Gojiberry is DROPPED.** No adapter, no design dependency. | §0.2 rewritten, TASK-I withdrawn, `intent` becomes an empty slot |
+| 2 | The RGA runbook lives **outside** the repo; being added under `docs/reference/` (3 files). Ignore the Clay and n8n mechanics; take TAM, Signals, refresh-jobs and router. | §6 to be RE-DERIVED against it — **not yet possible, see §0.3** |
+| 3 | **`signalrouter.py` confirmed**; `routing.py` keeps its meaning. **Keep half-life decay; never replace it with cliff-edge expiry.** | §1.1, §1.2 and §2.2 now record this as settled |
+| 4 | Review tomorrow. **No build until then.** | Unchanged — nothing is dispatched |
+
+### 0.3 §6 IS NOT RE-DERIVED YET, AND WHY
+
+`docs/reference/` **does not exist** on this branch, on `master`, or as
+untracked files in any worktree. Checked 2026-09-22 after the decision was
+given. The three runbook files have not landed yet.
+
+So **§6 still says what it said** — the list of places I inferred rather than
+read. When the files appear I will re-derive §6 against them and mark what
+changed, per decision 2. **Nothing else in this document should be treated as
+runbook-derived until that pass happens.**
+
 ---
 
-## 0. TWO THINGS TO SETTLE BEFORE THE REST IS WORTH READING
+## 0. THE TWO THINGS THAT NEEDED SETTLING — both now settled above
 
 ### 0.1 I could not find the RGA runbook
 
@@ -34,19 +54,27 @@ the four modules named in the brief, which all exist. What I used:
 re-derive this against it.** Where I have inferred intent rather than read it,
 §6 says so.
 
-### 0.2 Gojiberry is a NET-NEW INTEGRATION, not a wiring job
+### 0.2 Gojiberry is DROPPED — operator decision 1
 
-No adapter, no `config.VARIABLES` entry, no mention anywhere. The providers
-that exist are:
+It had no adapter, no `config.VARIABLES` entry and no mention anywhere in the
+repository, and it is now formally out of scope. **No adapter, no design
+dependency.**
 
-    aiark  apify  bison  blitz  contactout  deliverable  glm  heyreach  reoon  slack  xai
+**`intent` remains as an EMPTY SLOT.** The signal type stays defined in the
+design with a half-life and a place in the router, and nothing writes it until
+an operator names a source. That is deliberate: designing the other four types
+around a gap that may be filled later is cheap, and retrofitting a fifth type
+into a router that assumed four is not.
 
-Treating "Gojiberry intent" as a collector to wire up would be wrong by an
-order of magnitude. It needs an adapter, a credential, a cassette, a trimmed
-response contract, a place in `PROVIDER-ROUTING-POLICY.md`'s order, and a
-`spend()` path — the same work every other provider needed. **It is the
-largest single item here and it is gated on a commercial decision nobody has
-recorded.**
+**The empty slot must behave like an empty slot, not like a zero.** A signal
+type with no collector must be distinguishable from one whose collector ran
+and found nothing — otherwise "no intent signal" reads as "no intent", which
+is the missing-evidence-as-positive-evidence error CLAUDE.md names. Whatever
+consumes signal strength has to treat `intent` as ABSENT rather than as a
+weight of 0.
+
+The four that proceed: `job_post`, `new_hire`, `post_engagement`,
+`job_change`.
 
 ---
 
@@ -76,9 +104,12 @@ cadence enrolment.** Nothing in `src/` selects a cadence from a signal;
 `grep` for `cadence_for` / `select_cadence` / `choose_cadence` returns nothing.
 
 This matters because the brief reads as though the router is a wiring change.
-It is a new module. Calling it `routing.py` would also collide with an
-existing concept, which is how two things end up meaning one word. **Propose
-`signalrouter.py`.**
+It is a new module.
+
+**SETTLED — operator decision 3: the new module is `signalrouter.py`, and
+`routing.py` keeps its meaning.** Do not extend `routing.py` to do cadence
+selection and do not rename it. One word meaning two things is how the next
+reader picks the wrong one.
 
 ### 1.2 `signals.py` already has expiry, and it is better than "expiry"
 
@@ -90,9 +121,18 @@ existing concept, which is how two things end up meaning one word. **Propose
 
 **The brief says "expiry"; the code implements half-life decay**, which is
 strictly better — a 40-day-old funding round is weaker than a 3-day-old one
-rather than equally valid until it falls off a cliff. **Do not replace decay
-with expiry.** The gap is that new signal *types* need half-lives added, not
-that the mechanism is missing.
+rather than equally valid until it falls off a cliff.
+
+**SETTLED — operator decision 3: half-life decay is KEPT and is NEVER to be
+replaced with a cliff-edge expiry.** This is a standing instruction, not a
+preference for this design round. A future task that reads "add expiry to
+signals" is asking for a regression and should be refused with this
+paragraph.
+
+The gap is that new signal *types* need half-lives added, not that the
+mechanism is missing. `is_stale` remains useful as a cheap filter for signals
+whose weight has decayed below usefulness — that is decay reporting a floor,
+not an expiry replacing decay.
 
 Its docstring also states the rule the whole layer hangs on: *"Signals observe
 canonical state; they never replace it."*
@@ -157,7 +197,7 @@ One process per source, each writing signals and nothing else:
     collect_job_posts      apify     daily    -> job_post
     collect_new_hires      apify     daily    -> new_hire
     collect_posts          apify     daily    -> post_engagement
-    collect_intent         GOJIBERRY daily    -> intent        [NET NEW, §0.2]
+    collect_intent         (no source)        -> intent        [EMPTY SLOT, §0.2]
 
 **A collector writes signals and never enrols anybody.** That separation is
 the design: the router decides, the collector observes. Collapsing them is how
@@ -250,8 +290,12 @@ Not dispatched. Listed in dependency order.
     TASK-H  "engaged without reply" as a DERIVED segment over the action
             ledger. Must sit behind the positive-reply stop.
 
-    TASK-I  Gojiberry adapter — NET NEW, and gated on a commercial decision
-            that has not been recorded. §0.2. Do not start until that exists.
+    TASK-I  WITHDRAWN. Gojiberry is dropped (operator decision 1). `intent`
+            stays an empty slot with a half-life and a router position, and
+            nothing writes it until an operator names a source. When one is
+            named, the task is a provider adapter with everything that
+            entails - credential, cassette, trimmed contract, routing-policy
+            position, spend() path - and NOT a collector wiring job.
 
 ---
 
@@ -262,6 +306,10 @@ Not dispatched. Listed in dependency order.
 - **No claim a signal cannot license.** §2.6.
 - **No paid person-level call before a company ICP verdict.** Standing rule.
 - **No new path to a provider.** The router feeds the existing gates.
+- **Half-life decay is never replaced with cliff-edge expiry.** Operator
+  decision 3, standing. §1.2.
+- **`intent` is an empty slot, not a zero.** A type with no collector must
+  read as ABSENT, never as a weight of 0. §0.2.
 - **Intent is not treated as fact.** It is probabilistic, it decays fastest of
   the five types, and it may not be quoted to a prospect.
 

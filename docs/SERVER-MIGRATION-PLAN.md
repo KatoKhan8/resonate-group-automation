@@ -3,6 +3,31 @@
 **FOR REVIEW. Nothing here has been executed and no host has been
 provisioned.** Written on branch `infra` 2026-09-22.
 
+## OPERATOR DECISION — Zvonimir, 2026-09-22
+
+> *Hetzner EU accepted in principle; the governance items stay listed as
+> tasks, not promises, until built. I will review both docs tomorrow; no build
+> until then.*
+
+**Accepted in principle is not accepted.** §7's restore drill still gates the
+cutover, and nothing in §1 has been provisioned. The host choice is settled;
+the move is not.
+
+**The governance items in §9 stay TASKS.** Retention, erasure-on-request and
+suppression minimisation are listed in §10 as unimplemented and they remain
+so. Until they are built:
+
+- **A DPA may not promise an erasure timescale.** §9's DPA checklist item 8
+  already says this and it is now an instruction rather than a caution.
+- **Retention is aspirational.** The table in §9 describes what we intend to
+  keep and for how long. There is no deletion path in the codebase and
+  `store` refuses to delete a record by design, so nothing enforces it today.
+  Anybody quoting that table to a client is quoting a plan.
+
+Do not let the distinction erode. A governance section that reads as
+description rather than intent is exactly how a commitment gets made in a
+sales call that the code cannot honour.
+
 Read `DEPLOYMENT-PLAN.md` first. This does not replace it — it takes the
 branch that document already blesses (*"A single VM. Also fine, and cheaper.
 systemd units … More operational work, fewer moving parts"*) and makes it
