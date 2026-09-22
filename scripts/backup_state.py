@@ -50,7 +50,7 @@ def collect_state_files(directory=None):
     if os.path.isdir(directory):
         for fn in sorted(os.listdir(directory)):
             fp = os.path.join(directory, fn)
-            if os.path.isfile(fp):
+            if os.path.isfile(fp) and not fn.endswith(".lock"):
                 found.append(fp)
 
     return found
