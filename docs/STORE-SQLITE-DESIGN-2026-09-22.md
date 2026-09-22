@@ -355,6 +355,62 @@ holding real client state are separate reviewable things, exactly as
               a 900-byte one, and reports the same columns as
               store_write_profile so the two are comparable.
 
-Promotion to `QUEUE_BACKEND=sqlite` is NOT in this list. It is an operator
-decision against a clean shadow ledger, and it belongs to the production
-session.
+Promotion to `QUEUE_BACKEND=sqlite` is NOT in this list. See §11.
+
+---
+
+## 11. THE PROMOTION RULE — recorded, operator, 2026-09-22
+
+**Set by Zvonimir. Four conditions, all of them, and none is inferable from a
+passing test suite. Until every one holds, JSONL stays live.**
+
+    1. TASK-259 green    the reproduced-incident tests run on BOTH backends,
+                         so both loss guards are exercised on both. Until
+                         this, the three-way merge and both guards are
+                         proven on JSONL only.
+
+    2. TASK-260 green    the checkpoint read is O(changed). Without it a 20k
+                         pass is ~23 minutes and still O(N-squared); SQLite
+                         has solved the write half and not the read half.
+
+    3. 48 HOURS OF SHADOW WITH A ZERO DIFF
+                         `QUEUE_BACKEND=shadow` on the live queue, for two
+                         full days, with `work/store-shadow-diff.jsonl`
+                         carrying no divergence.
+
+    4. THE PRODUCTION SESSION FLIPS IT, IN A WINDOW WITH NO SENDS.
+                         Not this session, not a worker, not a script. And
+                         not while a campaign is sending.
+
+### The trap condition 3 is built to avoid, and how to not fall into it
+
+**An empty diff ledger is not the same as a clean one.** A ledger with zero
+rows because nothing ran looks identical to a ledger with zero rows because
+everything agreed, and this repository has shipped that exact vacuous pass
+twice — F-003's `active_campaign_ids` defaulting to `()` so `coverage()`
+passed against nothing, and `leadstop.sweep` reporting clean because it never
+incremented its counter.
+
+TASK-253's ledger therefore records **writes observed** as well as
+divergences, and the promotion check refuses on zero of both. So condition 3
+is not "the file is empty" — it is:
+
+    writes_observed > 0  AND  divergences == 0  over 48 hours
+
+Read the count before believing the silence.
+
+### What promotion does NOT require, so nobody adds it later
+
+Not a full-suite green: the baseline carries 111 known failures
+(`docs/state/SUITE-BASELINE-2026-09-22.md`) and none of them is about storage.
+Not the 20k load test being performed on the jsonl arm — it writes ~1.59 TB
+and is projected by design.
+
+### And it is reversible
+
+`QUEUE_BACKEND=jsonl` puts the old path back, because the migration never
+deletes or modifies `queue.jsonl` (§8) and the JSONL file keeps being written
+throughout shadow. The rollback is one environment variable, provided nothing
+has been written in `sqlite` mode that JSONL did not also get — which is the
+reason shadow comes first and the reason it is 48 hours rather than an
+afternoon.
