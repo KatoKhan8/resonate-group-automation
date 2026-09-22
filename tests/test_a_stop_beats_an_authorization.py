@@ -72,7 +72,7 @@ def a_contact(email="dana@acme.test"):
             "selected": True, "primary": True, "verdict": "valid",
             "sendable": True, "persona": "champion", "angle": "operations",
             "verification": {"evidence": [
-                verification.result("contactout", "valid", email),
+                verification.result("deliverable", "valid", email),
                 verification.result("reoon", "valid", email)]}}
 
 

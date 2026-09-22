@@ -28,11 +28,13 @@ def record(*entries):
 
 def contact(key="ck-1", email="dana@acme.test"):
     """A contact that would otherwise be sendable."""
+    # Use (contactout, deliverable) which works with the default policy since
+    # this test doesn't pass a client config to email_verdict.
     return {"key": key, "email": email, "name": "Dana Reed",
             "sendable": True, "verdict": "valid",
             "verification": {"evidence": [
                 {"provider": "contactout", "status": "valid", "email": email},
-                {"provider": "reoon", "status": "valid", "email": email}]}}
+                {"provider": "deliverable", "status": "valid", "email": email}]}}
 
 
 def bounce(contact_key=None, email=None):

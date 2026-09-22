@@ -79,7 +79,7 @@ class GuardTest(QueueTest):
             "linkedin": "danamarsh", "persona": "champion",
             "angle": "operations",
             "verification": {"evidence": [
-                {"provider": "contactout", "status": "valid",
+                {"provider": "deliverable", "status": "valid",
                  "email": "dana@brightpath.test", "catch_all": False,
                  "disposable": False, "at": "2026-09-09T00:00:00+00:00"},
                 {"provider": "reoon", "status": "valid",

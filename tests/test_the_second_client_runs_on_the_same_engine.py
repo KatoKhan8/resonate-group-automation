@@ -229,6 +229,25 @@ class _both:
 
 def a_record(rid, client, company, domain, contact_key, email, linkedin):
     """One verified, researched record. `store.validate` accepts it."""
+    # Productive's verification policy (2026-09-21) uses deliverable+reoon,
+    # while other clients use the default contactout+reoon.
+    if client == "productive":
+        evidence = [
+            {"provider": "deliverable", "status": "valid", "email": email,
+             "catch_all": False, "disposable": False,
+             "at": NOW.isoformat()},
+            {"provider": "reoon", "status": "valid", "email": email,
+             "catch_all": False, "disposable": False,
+             "safe_to_send": True, "at": NOW.isoformat()}]
+    else:
+        evidence = [
+            {"provider": "contactout", "status": "valid", "email": email,
+             "catch_all": False, "disposable": False,
+             "at": NOW.isoformat()},
+            {"provider": "reoon", "status": "valid", "email": email,
+             "catch_all": False, "disposable": False,
+             "safe_to_send": True, "at": NOW.isoformat()}]
+    
     return {
         "id": rid, "lane": "domains", "client": client, "company": company,
         "domain": domain, "state": "verified", "drop_reason": None,
@@ -240,13 +259,7 @@ def a_record(rid, client, company, domain, contact_key, email, linkedin):
             "title": "Head of Production", "email": email,
             "linkedin": linkedin, "persona": "champion",
             "angle": "operations", "selected": True, "verified": True,
-            "verification": {"evidence": [
-                {"provider": "contactout", "status": "valid", "email": email,
-                 "catch_all": False, "disposable": False,
-                 "at": NOW.isoformat()},
-                {"provider": "reoon", "status": "valid", "email": email,
-                 "catch_all": False, "disposable": False,
-                 "safe_to_send": True, "at": NOW.isoformat()}]},
+            "verification": {"evidence": evidence},
             "mx": {"status": "known_allowed", "email_eligible": True},
         }],
     }
