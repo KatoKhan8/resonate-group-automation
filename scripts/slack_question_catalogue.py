@@ -94,7 +94,7 @@ REDACTIONS = (
 #: `<name>-team` and `<name>-resonate-outbound` room names one.
 CLIENT_WORDS = (
     "productiv", "nextori", "netnad", "synvers", "pepermint", "idegas",
-    "cyber64", "cyber-64", "mediaboard", "masterinbox", "farseer",
+    "<agency-c>", "cyber-64", "<agency-b>", "masterinbox", "farseer",
     "weekend media", "finance weekend", "wa-outreach", "blitz",
 )
 

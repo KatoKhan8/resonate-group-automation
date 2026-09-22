@@ -45,7 +45,7 @@ Productive person to Jelena and Tina by name:
 At 11:17 a 194KB CSV of every sender was attached. At 11:18 the next
 message in the thread was:
 
-> dontgoproductive.com, kakva je ovo domena?
+> <sending-domain>.example.test, kakva je ovo domena?
 
 **The question was about domains and the answer was addresses.** That gap
 is what this increment closes.
@@ -60,7 +60,7 @@ with mailboxes per domain and whether the domain carried sends in the last
 seven days.
 
 Live against the real estate: **69 distinct domains, 159 mailboxes, 8
-people** — and `dontgoproductive.com` is there, under two of them.
+people** — and `<sending-domain>.example.test` is there, under two of them.
 
 - **Domains only.** `email_address` and the queue row's `sender_email` are
   read to take the domain and dropped. A test asserts no `@` survives

@@ -370,7 +370,7 @@ def sending_domains(scope, argument=None):
     OPERATOR, 2026-09-22, from a real question: a Productive person asked
     Jelena and Tina for "popis domena s kojih šaljete mailove u email
     kampanjama". What they were sent was a 194KB CSV of every sender, and
-    the next message in the thread was "dontgoproductive.com, kakva je ovo
+    the next message in the thread was "<sending-domain>.example.test, kakva je ovo
     domena?" - a question caused by answering with addresses when the
     question was about domains.
 
@@ -520,12 +520,12 @@ def render_domain_listing(answer, code=None):
     NOT LEFT TO THE MODEL. Sixty-nine domains retyped by a language model
     is sixty-nine chances to drop a hyphen, and the reader cannot tell a
     typo from a domain they have not seen before - which is exactly the
-    confusion that produced "dontgoproductive.com, kakva je ovo domena?".
+    confusion that produced "<sending-domain>.example.test, kakva je ovo domena?".
     The model writes the sentence around this block; the block itself is
     assembled from the readback and appended verbatim.
 
     IT CARRIES ITS OWN SUMMARY LINE, and the line says DISTINCT. A domain
-    can sit under more than one sender - `dontgoproductive.com` is under
+    can sit under more than one sender - `<sending-domain>.example.test` is under
     two - so the rows outnumber the domains, and a reader who counts rows
     and compares them to "69 domains" finds a discrepancy that is not one.
 

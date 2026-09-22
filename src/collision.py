@@ -810,8 +810,8 @@ def _excludable(entry, evidence):
     # FALSE FOR THIS PROVIDER. Seventeen minutes after that send, read back
     # live at the same account:
     #
-    #     dan@thinknectar.com    camp 495  in_sequence  emails_sent 1
-    #     jason@thinknectar.com  camp 495  in_sequence  emails_sent 0
+    #     <prospect-c>@example.test    camp 495  in_sequence  emails_sent 1
+    #     <prospect-d>@example.test  camp 495  in_sequence  emails_sent 0
     #
     # The per-lead counter updated, and it discriminated between two leads at
     # one account. So the lead's own row is not an aggregate that trails the

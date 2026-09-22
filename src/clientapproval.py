@@ -136,8 +136,8 @@ def account_of(value):
     """The account key for a domain, a URL or an email address.
 
     ONE function, so a caller cannot key the store one way and read it
-    another. `A.Hobson@Fantastic-Media.co.uk`, `www.fantastic-media.co.uk/`
-    and `Fantastic-Media.co.uk` are one account.
+    another. `A.Hobson@Example-Agency.example.test`, `www.example-agency.example.test/`
+    and `Example-Agency.example.test` are one account.
     """
     text = str(value or "").strip().lower()
     if "@" in text:

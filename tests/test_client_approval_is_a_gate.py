@@ -72,9 +72,9 @@ class TheDefaultIsClosed(ApprovalCase):
 class OneAccountManySpellings(ApprovalCase):
 
     def test_an_address_resolves_to_its_domain(self):
-        ca.record("Fantastic-Media.co.uk", state=ca.APPROVED, who="z",
+        ca.record("Example-Agency.example.test", state=ca.APPROVED, who="z",
                   source="test")
-        self.assertTrue(ca.is_approved("A.Hobson@Fantastic-Media.co.uk"))
+        self.assertTrue(ca.is_approved("A.Hobson@Example-Agency.example.test"))
 
     def test_www_and_a_url_are_the_same_account(self):
         ca.record("example.com", state=ca.APPROVED, who="z", source="test")

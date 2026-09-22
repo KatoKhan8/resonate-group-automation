@@ -74,8 +74,8 @@ class AnActiveCampaignOfOursDoesNotCollideWithItself(StagingTest):
         lag behind the campaign counter. Measured live on 2026-09-22,
         seventeen minutes after campaign 495's first send, at one account:
 
-            dan@thinknectar.com    camp 495  in_sequence  emails_sent 1
-            jason@thinknectar.com  camp 495  in_sequence  emails_sent 0
+            <prospect-c>@example.test    camp 495  in_sequence  emails_sent 1
+            <prospect-d>@example.test  camp 495  in_sequence  emails_sent 0
 
         The per-lead counter updated AND discriminated between two leads at
         the same account, so it is the per-lead fact rather than a trailing

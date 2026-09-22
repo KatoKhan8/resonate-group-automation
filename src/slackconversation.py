@@ -736,7 +736,7 @@ def unsupported_domains(text, material):
     figure is wrong; a misremembered domain is a domain somebody will go
     and look up, fail to find, and ask about - which is exactly what
     happened when a client was sent a sender CSV and wrote back
-    "dontgoproductive.com, kakva je ovo domena?". A model retyping
+    "<sending-domain>.example.test, kakva je ovo domena?". A model retyping
     sixty-nine domains will drop a hyphen in one of them, and the reader
     cannot tell a typo from a domain they have not seen before.
     """
@@ -1034,7 +1034,7 @@ def respond(question, channel=None, user=None, channel_type=None,
     # Sixty-nine domains written out by a language model is sixty-nine
     # chances to drop a hyphen, and a reader cannot tell a typo from a
     # domain they have not seen before - which is precisely the confusion
-    # that produced "dontgoproductive.com, kakva je ovo domena?". So the
+    # that produced "<sending-domain>.example.test, kakva je ovo domena?". So the
     # block is assembled in code from the readback and appended verbatim,
     # and the model writes only the sentence in front of it.
     listing = _listing_from(results)

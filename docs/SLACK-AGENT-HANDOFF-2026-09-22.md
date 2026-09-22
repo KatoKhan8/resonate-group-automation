@@ -40,7 +40,7 @@ heartbeat; if it hangs again nothing will notice.
 | --- | --- |
 | `slack.agent_channel` productive | `C0ADUMGQX8S` `#productive-resonate-outbound` |
 | `slack.workspace_channel` productive | `C0BFUF4JRK9` `#replies-productive` — notifications only, **not** an agent channel |
-| `slack.workspace_users` productive | 15 external `@productive.io` ids |
+| `slack.workspace_users` productive | 15 external `@<client-domain>.example.test` ids |
 | `slack.internal_users` | 4 `@resonategroup.co` ids |
 
 Verified: `C0BFUF4JRK9` resolves **unbound** for the agent, and **no notify

@@ -144,7 +144,7 @@ class TwoClients(unittest.TestCase):
         from src import senderidentity as si
 
         rows = [
-            si.new_sender("alpha", "kresimir", "Kresimir Simicic",
+            si.new_sender("alpha", "kresimir", "Kresimir <seat-holder-b>",
                           title="Account Executive"),
             si.new_email_account("alpha", "eb-5001", "kresimir",
                                  "k1@alpha-co.test", provider_account_id="5001",
@@ -274,11 +274,11 @@ class AClientsOwnSendersAreTheirOwnData(TwoClients):
     def test_alpha_can_see_its_own_sender_by_name(self):
         result = tools.run(self.alpha(), "sender_roster")
         names = [row["name"] for row in result["senders"]]
-        self.assertIn("Kresimir Simicic", names)
+        self.assertIn("Kresimir <seat-holder-b>", names)
 
     def test_alpha_is_told_the_mailboxes_capacity_and_campaigns(self):
         row = [r for r in tools.run(self.alpha(), "sender_roster")["senders"]
-               if r["name"] == "Kresimir Simicic"][0]
+               if r["name"] == "Kresimir <seat-holder-b>"][0]
         self.assertEqual(row["mailboxes"], 2)
         self.assertEqual(row["daily_email_capacity"], 30)
         self.assertEqual(row["campaigns_carried"], ["Alpha cohort"])
@@ -310,7 +310,7 @@ class AClientsOwnSendersAreTheirOwnData(TwoClients):
         result = tools.run(self.alpha(), "sender_roster")
         self.assertNotIn("Seat Only Person", json.dumps(result))
         self.assertEqual([r["name"] for r in result["senders"]],
-                         ["Kresimir Simicic"])
+                         ["Kresimir <seat-holder-b>"])
         self.assertEqual(result["linkedin_seats"], 1)
 
     def test_an_internal_channel_still_sees_the_seat_holder(self):
@@ -362,7 +362,7 @@ class AClientsOwnSendersAreTheirOwnData(TwoClients):
 
     def test_beta_cannot_see_alphas_sender_at_all(self):
         result = tools.run(self.beta(), "sender_roster")
-        self.assertNotIn("Kresimir Simicic",
+        self.assertNotIn("Kresimir <seat-holder-b>",
                          [row["name"] for row in result["senders"]])
         self.assertNotIn("kresimir", json.dumps(result).lower())
         self.assertNotIn("alpha", json.dumps(result).lower())
@@ -418,7 +418,7 @@ class SendingDomainsAreScopedLikeEverythingElse(TwoClients):
     A Productive person asked two Resonate colleagues for "popis domena s
     kojih saljete mailove u email kampanjama". What came back was a 194KB
     CSV of every sender, and the next message in that thread was
-    "dontgoproductive.com, kakva je ovo domena?" - a question caused by
+    "<sending-domain>.example.test, kakva je ovo domena?" - a question caused by
     answering with addresses when the question was about domains.
     """
 
@@ -429,7 +429,7 @@ class SendingDomainsAreScopedLikeEverythingElse(TwoClients):
         result = tools.run(self.alpha(), "sending_domains")
         self.assertEqual(result["workspace"], "alpha")
         self.assertEqual([s["sender"] for s in result["senders"]],
-                         ["Kresimir Simicic"])
+                         ["Kresimir <seat-holder-b>"])
         domains = sorted(d["domain"] for s in result["senders"]
                          for d in s["domains"])
         self.assertEqual(domains, ["alpha-co.test", "alpha-second.test"])

@@ -175,7 +175,49 @@ per-branch check before merging, not a bulk merge.
   is the per-workspace ids and the NOWHERE-routes decision, both operator
   calls. Global-destination notifications now have somewhere to go.
 
-### ISSUE-006 · The PII guard was red · HIGH · **FIXED `cecd4223`**
+### ISSUE-006 · The PII guard was red · HIGH · **REOPENED 2026-09-22, green again**
+
+**REOPENED, and the reason is worth more than the fix.** On 2026-09-22 the
+guard was red again - 3 of 13 - on files that landed 2026-09-21 and 09-22.
+
+**A RED GUARD WAS CLOSED AS "CATCHES NOTHING" WHILE IT WAS CATCHING THESE.**
+That is the sentence this row exists for now. The original entry reasoned that
+a red guard catches nothing, so every leak after it went red was invisible -
+correct, and it is exactly what happened the second time. The guard was not
+silent. It was red, and red was read as noise.
+
+**What it was catching this time**, all of it in TRACKED files on master:
+
+    docs/state/PROBLEM-REGISTER.md      2 prospect addresses on live domains
+    src/collision.py                    a prospect address and account domain
+    tests/test_an_active_campaign...py  the same, in a docstring
+    docs/SLACK-AGENT-HANDOFF-2026-09-22 the client's own mail domain
+    docs/HEYREACH-CADENCES-2026-09-21   an agency name and a seat-holder
+    docs/MERGE-REQUEST-...-PHASE-C1     a live sending domain
+    scripts/slack_question_catalogue.py two agency names
+    src/slackagenttools.py              a live sending domain stem
+    src/slackconversation.py            the same
+    tests/test_a_client_can_never...py  a sending domain and a seat-holder
+    scripts/batch1_build.py             our own mail domain
+    src/clientapproval.py               a real agency domain
+    tests/test_client_approval...py     the same
+
+**FOUR OF THEM WERE MINE, WRITTEN TODAY.** Documenting ISSUE-014 and ISSUE-018
+in this very register meant quoting the live rows that proved them, and the
+quotes carried real prospect addresses into git. The register's own rule -
+"every row names its evidence" - is what did it. Evidence can be named without
+being identifying, and from now on it is: `<prospect-a>@example.test`,
+`<account-c>.example.test`, which read the same and resolve nowhere.
+
+Everything is redacted to reserved domains and placeholder names. 13/13 green,
+and 218 tests across the suites that use those fixtures pass with the renames.
+
+**Git history still holds the identifiers**, as it did after the 09-17 and
+09-18 redactions. Rewriting a pushed history is the operator's decision.
+
+---
+
+### ISSUE-006 (original) · The PII guard was red · HIGH · **FIXED `cecd4223`**
 
 - Red since ~2026-09-18, reported green on the 16th, never triaged. **A red
   guard catches nothing**, so every leak after that date was invisible.
@@ -262,12 +304,12 @@ the guard refused, which is the safe direction. But it refuses forever.**
 `batch1_push --live --only ivan` returned:
 
     FactoryRefused: 20 contact(s) collided with the client's own estate:
-    leo-santizo (leo@ao2management.com): stop - somebody at this account is
+    leo-santizo (<prospect-a>@example.test): stop - somebody at this account is
     mid-sequence right now
 
 **The mid-sequence campaign is OURS.** Read per lead at the provider:
 
-    svanderhaar@arketi.com  274 sequence_finished 8 · 327 sequence_finished 8
+    <prospect-b>@example.test  274 sequence_finished 8 · 327 sequence_finished 8
                             352 sequence_finished 5 · 495 in_sequence 0
 
 The client's three campaigns are all FINISHED - which `account_policy` calls
@@ -334,9 +376,9 @@ the five campaigns carrying batch 3:
 
 **`Will` is a first name and an ordinary English auxiliary verb.** One cohort
 member named Will makes every body containing the word "will" a defect. The
-rest are company names that contain a person's name: `russellherder.com`,
-`terrisandy.com`, `bigstarbranding.com`, `wearerichlifestyle.com`,
-`sobepromos.com`. Every one of the 275 is a false positive.
+rest are company names that contain a person's name: `<account-e>.example.test`,
+`<account-f>.example.test`, `<account-g>.example.test`, `<account-h>.example.test`,
+`<account-i>.example.test`. Every one of the 275 is a false positive.
 
 Checks 1 and 2 in the same function scan `first_line` - the greeting. Check 3
 scans the whole body, and that is where the imprecision comes from: the
@@ -491,9 +533,9 @@ into the candidate list as though they had qualified.
     countries        US 416 · India 133 · Brazil 117 · France 86 · UK 77
     industries       retail 138 · banking 109 · government administration 100
 
-    santander.com      Santander, 130,377 staff, Spain, banking
+    <large-bank>.example.test      Santander, 130,377 staff, Spain, banking
                        icp_score 0.0, icp_status "review"
-    education.gouv.fr  the French Ministry of Education
+    <a national education ministry>  the French Ministry of Education
 
 Productive sells to 20+ person marketing and creative agencies in eight named
 markets. A zero-scored bank is in the list.
