@@ -1,7 +1,7 @@
 # Slack agent — handoff, 2026-09-22 evening
 
 Supersedes `SLACK-AGENT-HANDOFF-2026-09-22-PM.md`, whose "one commit
-unmerged" is now four.
+unmerged" is now five.
 
 **Merged to master:** Phases A and B, and Phase C increments 1 and 2
 (`cd143eda`). Master head is `be6e14b2`.
@@ -29,7 +29,7 @@ not reload, so `sending_domains`, `slacklanguage`, the relay trigger and
 the seat handling are all merged and none of them is running. A restart is
 the whole fix and it is the operator's to do.
 
-## WHAT THE FOUR COMMITS ADDED
+## WHAT THE FIVE COMMITS ADDED
 
 **The offer now has a process.** `slackfollowup` shipped with `register()`
 wired in and `due()` read by nothing — a client could say yes, a row was
