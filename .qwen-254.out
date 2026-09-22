@@ -1,0 +1,14 @@
+TASK-254 is done. Here's what was delivered:
+
+**The test** (`tests/test_invariants.py`):
+- `_ast_contains_queue_path()` and `_find_direct_queue_readers()` walk the AST of every `src/` module looking for `open()` or `read_jsonl()` calls whose argument derives from `queue_path()`. Not a source grep - a comment mentioning the pattern does not trip it.
+- `QUEUE_DIRECT_READERS_EXEMPT = ("store",)` - asserted from both directions: nothing unlisted reads the queue, and nothing listed has stopped.
+- `queuejournal` turned out not to need an exemption - it receives the path as a parameter, never calls `queue_path()` itself.
+
+**The scripts**:
+- `scripts/task191_funnel.py` now goes through `store.use_directory()` + `store.load()` instead of parsing the JSONL directly. The `load_records()` function is gone.
+- `scripts/profile_scale.py` keeps its two `read_jsonl(queue_path())` calls with explicit EXEMPT comments - they profile raw primitives (`refuse_history_loss`, `snapshot.merge_onto`) that receive the un-replayed base file in production.
+
+**Verified**: The AST walk catches both `open(store.queue_path())` and `store.read_jsonl(store.queue_path())`, and does not false-positive on comments. Both new tests pass. Two pre-existing failures in `test_invariants.py` are unrelated.
+
+Commits: `49330349` (implementation), `09835cc3` (task to DONE), `3f54e906` (cleanup). Branch: `qwen-worker-3-task-254`.
