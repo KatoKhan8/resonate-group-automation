@@ -52,6 +52,8 @@ import argparse
 import csv
 import json
 import os
+import shutil
+import time
 import re
 import sys
 
@@ -280,6 +282,23 @@ def main(argv=None):
 
     rendered, held = 0, {}
     personas_seen, angles_seen = {}, {}
+    # A STAGE JOURNAL THAT TRUNCATES IS A STAGE JOURNAL THAT LOSES HISTORY.
+    # This has always written "w", and on 2026-09-22 a re-run for batch 3
+    # silently replaced the 871 rows batch 1 and 2 were built from. Nothing
+    # unsafe followed - double-enrolment is guarded by the STORE, not by this
+    # file, and the rendered copy of a lead already enrolled is live at the
+    # provider - but the local record of what was rendered and held went with
+    # it, and no backup existed to compare against.
+    #
+    # Truncation stays the behaviour: this file is "what the current ready set
+    # renders to", and appending would merge two runs into one journal that
+    # reads as a single answer. What changes is that the previous answer is
+    # kept beside it, stamped, so a re-run is recoverable.
+    if os.path.exists(args.out):
+        backup = f"{args.out}.{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.bak"
+        shutil.copy2(args.out, backup)
+        print(f"  previous journal kept at {os.path.basename(backup)}")
+
     with open(args.out, "w", encoding="utf-8") as out:
         for email in ready:
             row = rows.get(email.lower())

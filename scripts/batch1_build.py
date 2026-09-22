@@ -536,6 +536,81 @@ def assign_to_existing(selection):
     return plan, spilled
 
 
+
+def _released_accounts(held_accounts, now=None):
+    """Accounts whose deferral has expired, and one line saying why not more.
+
+    Returns `(released, detail)`. An account qualifies when ALL hold:
+
+      - a message to somebody at it reads `sent` at the provider, with a
+        `sent_at`. That is the register's definition of a send; `scheduled`
+        and `active` are not.
+      - that send is at least `min_hours_between_first_touches` old.
+      - the account currently holds fewer than `max_active_contacts`.
+
+    A provider that cannot be read releases NOTHING. Failing closed here costs
+    a batch some supply; failing open puts a second sender in front of a
+    company inside the window the client's own policy forbids.
+    """
+    import datetime
+    from src.providers import bison as _bison
+
+    policy = ((clients.load(CLIENT) or {}).get("fatigue") or {}).get("account") or {}
+    min_hours = float(policy.get("min_hours_between_first_touches") or 0)
+    max_active = int(policy.get("max_active_contacts") or 1)
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+
+    sent_at_by_domain, active_by_domain = {}, collections.Counter()
+    for row in campaigns.load():
+        provider_id = row.get("bison_campaign_id")
+        if not provider_id or row.get("client") != CLIENT:
+            continue
+        try:
+            queue = _bison.scheduled_emails(provider_id)
+        except Exception as exc:                                # noqa: BLE001
+            print(f"  release: campaign {provider_id} unreadable "
+                  f"({type(exc).__name__}); releasing nothing from it")
+            return set(), "a campaign could not be read"
+        for entry in queue:
+            email = str(((entry.get("lead") or {}).get("email") or "")).lower()
+            domain = email.split("@")[-1]
+            if not domain:
+                continue
+            active_by_domain[domain] += 0      # seen is not active
+            if str(entry.get("status") or "").lower() != "sent":
+                continue
+            stamp = entry.get("sent_at")
+            if not stamp:
+                continue
+            when = datetime.datetime.fromisoformat(
+                str(stamp).replace("Z", "+00:00"))
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=datetime.timezone.utc)
+            prior = sent_at_by_domain.get(domain)
+            if prior is None or when < prior:
+                sent_at_by_domain[domain] = when
+
+    for row in store.load():
+        domain = str(row.get("domain") or "").lower()
+        if domain:
+            active_by_domain[domain] = len(row.get("contacts") or [])
+
+    released, too_recent = set(), 0
+    for domain in held_accounts:
+        first = sent_at_by_domain.get(domain)
+        if first is None:
+            continue
+        if (now - first).total_seconds() / 3600.0 < min_hours:
+            too_recent += 1
+            continue
+        if active_by_domain.get(domain, 0) >= max_active:
+            continue
+        released.add(domain)
+    detail = (f"{too_recent} sent but inside the {min_hours:.0f}h "
+              f"first-touch window")
+    return released, detail
+
+
 def campaign_row(human, spec, mailbox):
     slug = f"productive-email-batch1-{human}"
     return {
@@ -610,11 +685,36 @@ def main(argv=None):
         # gone and we know how that account responded, a second person there
         # is a decision with evidence behind it instead of a coincidence of
         # two batches.
+        # AN ACCOUNT IS RELEASED WHEN ITS FIRST TOUCH HAS AGED, NOT WHEN IT
+        # HAS MERELY BEEN SENT.
+        #
+        # The deferral above is not permanent - a second person at an account
+        # becomes a decision with evidence once we know how the first one
+        # landed. What decides "once" is the CLIENT's own fatigue policy, not
+        # our convenience:
+        #
+        #     account.min_hours_between_first_touches   72
+        #     account.max_active_contacts                2
+        #
+        # So releasing on a confirmed send alone would breach the client's own
+        # config by up to three days. An account is released only when its
+        # first touch is PROVIDER-CONFIRMED SENT and that send is at least 72
+        # hours old, and only while the account holds fewer than
+        # max_active_contacts.
+        #
+        # Provider-confirmed, never inferred: the evidence is a scheduled-email
+        # row reading `sent` with a `sent_at`, which is the same witness the
+        # register accepts for a send. `scheduled` and `active` are not sends.
+        released, release_detail = _released_accounts(held_accounts)
+        held_accounts = held_accounts - released
+
         before = len(copy)
         copy = {e: v for e, v in copy.items()
                 if e.split("@")[-1].lower() not in held_accounts}
         print(f"  same person, already enrolled {same_person}")
         print(f"  deferred - account already in a batch  {before - len(copy)}")
+        print(f"  released - first touch sent and aged   {len(released)}"
+              f"   ({release_detail})")
         print(f"  available to enrol            {len(copy)}")
     selection, held, spill = select(copy, icp, people,
                                     apply_cohort_cap=not args.fill_existing)
@@ -635,7 +735,9 @@ def main(argv=None):
         print(f"  reservoir ({cohort}): {count} over the cohort cap, waiting")
     for cohort, count in spilled.items():
         print(f"  reservoir ({cohort}): {count} more, every campaign in that "
-              f"cohort is at its {PER_CAMPAIGN}-lead pacing cap")
+              f"cohort has no room: every campaign in it is at "
+              f"its pacing cap OR its mailboxes are full in the "
+              f"forward book")
     print("\n  campaigns")
     for human, spec in plan.items():
         mailbox = mailboxes[human]
