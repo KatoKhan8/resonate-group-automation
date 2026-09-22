@@ -12,7 +12,7 @@ HYPOTHESIS or UNKNOWN otherwise. Nothing here is provider truth until a readback
 
 `grok-4.6`, Nones, 65 search URLs, usage {'prompt_tokens': 305034, 'completion_tokens': 4920, 'total_tokens': 309954, 'cached_tokens': 230784, 'reasoning_tokens': 2933, 'cost_in_usd_ticks': 6668240000, 'num_sources_used': 0, 'num_server_side_tools_used': 16}.
 
-**Docs used:** [https://api.contactout.com/](https://api.contactout.com/) (same content as [https://api.contactout.io/](https://api.contactout.io/)), plus the FAQ the API reference links: [https://docs.google.com/document/d/11tobiUQHho36NtBg2alJ0UyVoS4HIeIz3hehu0EsFjw](https://docs.google.com/document/d/11tobiUQHho36NtBg2alJ0UyVoS4HIeIz3hehu0EsFjw).
+**Docs used:** [https://api.contactout.com/](https://api.contactout.com/) (same content as [https://api.contactout[.]io/](https://api.contactout[.]io/)), plus the FAQ the API reference links: [https://docs.google.com/document/d/11tobiUQHho36NtBg2alJ0UyVoS4HIeIz3hehu0EsFjw](https://docs.google.com/document/d/11tobiUQHho36NtBg2alJ0UyVoS4HIeIz3hehu0EsFjw).
 
 ### 1. Rate limits on `POST /v1/company/search`
 
@@ -29,14 +29,14 @@ Sources: [https://api.contactout.com/#rate-limits](https://api.contactout.com/#r
 - Per second: **NOT DOCUMENTED**
 - Per day: **NOT DOCUMENTED**
 - Per API key / per account / per endpoint: **NOT DOCUMENTED**
-- Shared with `/v1/people/search`: **NOT DOCUMENTED** as shared. People Search is a separate 60/min bucket; Company Search is not listed there.[[2]](https://api.contactout.io/)
+- Shared with `/v1/people/search`: **NOT DOCUMENTED** as shared. People Search is a separate 60/min bucket; Company Search is not listed there.[[2]](https://api.contactout[.]io/)
 - Shared with `/v1/people/count`: **NOT DOCUMENTED** (`/people/count` is not named in the rate-limits list)
 
-429 behaviour (all APIs): `Rate limit reached. Check header retry-after: <time_in_seconds> for when rate limit will reset`. [https://api.contactout.com/#errors](https://api.contactout.com/#errors)[[2]](https://api.contactout.io/)
+429 behaviour (all APIs): `Rate limit reached. Check header retry-after: <time_in_seconds> for when rate limit will reset`. [https://api.contactout.com/#errors](https://api.contactout.com/#errors)[[2]](https://api.contactout[.]io/)
 
 ### 2. Page size / paging ceiling on this endpoint
 
-Company Search query-parameter table does **not** list `page` or `page_size`. Documented body fields are: `linkedin_url`, `name`, `domain`, `size`, `hq_only`, `location`, `industries`, `technologies`, `min_revenue`, `max_revenue`, `year_founded_from`, `year_founded_to`. [https://api.contactout.com/#company-search-api](https://api.contactout.com/#company-search-api)[[2]](https://api.contactout.io/)
+Company Search query-parameter table does **not** list `page` or `page_size`. Documented body fields are: `linkedin_url`, `name`, `domain`, `size`, `hq_only`, `location`, `industries`, `technologies`, `min_revenue`, `max_revenue`, `year_founded_from`, `year_founded_to`. [https://api.contactout.com/#company-search-api](https://api.contactout.com/#company-search-api)[[2]](https://api.contactout[.]io/)
 
 What the docs *do* show:
 
@@ -51,7 +51,7 @@ What the docs *do* show:
 
 ### 3. HTTP 402 vs 403 on this endpoint
 
-Documented error table (all ContactOut APIs, not endpoint-specific): [https://api.contactout.com/#errors](https://api.contactout.com/#errors)[[2]](https://api.contactout.io/)
+Documented error table (all ContactOut APIs, not endpoint-specific): [https://api.contactout.com/#errors](https://api.contactout.com/#errors)[[2]](https://api.contactout[.]io/)
 
 | Code | Documented meaning |
 |---|---|
@@ -70,24 +70,24 @@ The docs do **not** say how to tell the two 403s apart except by **message** tex
 
 ### 4. Response headers for remaining credits / quota
 
-On `POST /v1/company/search`: **NOT DOCUMENTED**. No credit/quota response headers are listed for this (or any) search response.[[2]](https://api.contactout.io/)
+On `POST /v1/company/search`: **NOT DOCUMENTED**. No credit/quota response headers are listed for this (or any) search response.[[2]](https://api.contactout[.]io/)
 
 The only documented response header in Errors is `retry-after` on **429**. [https://api.contactout.com/#errors](https://api.contactout.com/#errors)
 
-Credits are a **separate** `GET https://api.contactout.com/v1/stats?period=YYYY-MM` call. Postpaid body fields include `search_remaining` (`search_quota - search_count`). Prepaid example has `search_quota` = “Prepaid Search credits remaining”, no `search_remaining`. [https://api.contactout.com/#api-usage-stats](https://api.contactout.com/#api-usage-stats)[[2]](https://api.contactout.io/)
+Credits are a **separate** `GET https://api.contactout.com/v1/stats?period=YYYY-MM` call. Postpaid body fields include `search_remaining` (`search_quota - search_count`). Prepaid example has `search_quota` = “Prepaid Search credits remaining”, no `search_remaining`. [https://api.contactout.com/#api-usage-stats](https://api.contactout.com/#api-usage-stats)[[2]](https://api.contactout[.]io/)
 
 FAQ also: web UI [https://contactout.com/api_users/stats](https://contactout.com/api_users/stats).
 
 Sources the model searched:
 
-- https://api.contactout.io/
+- https://api.contactout[.]io/
 - https://pipedream.com/apps/http/integrations/contactout/company-search-with-contactout-api-on-new-requests-from-http-webhook-api-int_avs2P5MG
 - https://docs.extruct.ai/api-reference/search-post
-- https://api.contactout.io/
+- https://api.contactout[.]io/
 - https://pipedream.com/apps/contactout/actions/company-search
-- https://api.contactout.io/
+- https://api.contactout[.]io/
 - https://treg.to/tools/contactout
-- https://api.contactout.io/
+- https://api.contactout[.]io/
 - https://competitors.explorium.ai/contactout-vs-thecompaniesapi
 - https://api.opencorporates.com/documentation/Home
 - https://docs.getcargo.ai/integration/contact-out
@@ -96,12 +96,12 @@ Sources the model searched:
 - https://docs.lusha.com/apis/openapi/search.md
 - https://developers.theorg.com/api/endpoints/mcp-api
 - https://docs.google.com/document/d/11tobiUQHho36NtBg2alJ0UyVoS4HIeIz3hehu0EsFjw
-- https://api.contactout.io/
+- https://api.contactout[.]io/
 - https://aeroleads.com/blog/contactout-api-documentation-endpoints-parameters-code-examples/
 - https://competitors.explorium.ai/contactout-vs-thecompaniesapi
 - https://www.enrich.so/blog/contactout-pricing-breakdown
-- https://api.contactout.io/
-- https://api.contactout.io/
+- https://api.contactout[.]io/
+- https://api.contactout[.]io/
 - https://aeroleads.com/blog/contactout-api-docs-start-developers-sales-engineers/
 - https://treg.to/tools/contactout
 - https://resources.reachstream.com/contactout-pricing/

@@ -111,7 +111,7 @@ Not constructible from the evidence provided. `resolve_owner`'s inputs and outpu
 
 - **Partial success / provider wrote, client saw error:** defeat exists iff enrolment dedupe consults our stored "enrolled" flag rather than the provider's membership list. Sequence would be: enrol → provider adds lead → response lost → flag unset → retry → second membership. Closed by a pre-write provider-membership read or a provider-side idempotency key.
 - **Two processes racing:** closed only by a DB unique constraint on the membership key or provider idempotency. Check-then-insert in application code is open.
-- **Already-present lead re-staged:** same guard, plus the dedupe key itself. If it's raw email string, `A@x.com` / `a@x.com` double-enrols trivially — that's the first thing I'd audit in the staging code.
+- **Already-present lead re-staged:** same guard, plus the dedupe key itself. If it's raw email string, `a@example.test` / `a@example.test` double-enrols trivially — that's the first thing I'd audit in the staging code.
 - **Two campaigns:** closed only by a lead-level invariant (one active membership) or a global suppression check at send.
 
 NO FINDING here is a statement about missing evidence, not about safety.
@@ -119,7 +119,7 @@ NO FINDING here is a statement about missing evidence, not about safety.
 ## B. Unattested / excluded sender — findings against the shown code
 
 **B1 — The direct path makes "attested" and "merely recorded" indistinguishable.**
-Input: `{"sender_id": "ops-shared@co.com", ...}` — any account row whose `sender_id` was populated by provisioning, import, or migration, with no attestation row.
+Input: `{"sender_id": "ops-shared@example.test", ...}` — any account row whose `sender_id` was populated by provisioning, import, or migration, with no attestation row.
 Call: `resolve_owner(account)` → path 1, `if direct: return direct` → returns that sender_id.
 Consequence: the return value is identical in type and content to an attested owner. If the send gate is `owner = resolve_owner(acct); if owner: send()`, one imported row puts an unattested mailbox behind an entire campaign's sends.
 Closing line that isn't there: an attestation-existence check on the direct path, or a gate-side `attestation_for(...)` call. The docstring's own principle — honesty about uncertainty — is violated by path 1 collapsing two epistemic states into one return. Verify the gate; this is conditional only on that.

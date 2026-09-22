@@ -46,15 +46,28 @@ def _parsed(value):
         return None
 
 
+#: Pages this check will walk for one campaign. The queue read refuses past
+#: its cap rather than truncating, and 40 stopped being enough the day 491
+#: reached 43 pages. Raised deliberately and still BOUNDED: past this the
+#: check reports itself BLIND rather than measuring part of a campaign and
+#: calling it the whole one.
+QUEUE_PAGE_CAP = 400
+
+
 def per_mailbox():
     cutoff = (datetime.datetime.now(datetime.timezone.utc)
               - datetime.timedelta(days=WINDOW_DAYS))
     counts = collections.defaultdict(collections.Counter)
+    blind = []
     for campaign in CAMPAIGNS:
         try:
-            rows = bison.scheduled_emails(campaign)
+            rows = bison.scheduled_emails(campaign, cap=QUEUE_PAGE_CAP)
         except Exception as exc:                  # noqa: BLE001
-            print(f"  UNREADABLE campaign {campaign}: {exc}")
+            # BLIND IS REPORTED, NEVER SKIPPED. A campaign we could not read
+            # is not a campaign with no bounces, and the difference is the
+            # whole reason this file exists.
+            blind.append(campaign)
+            print(f"  BLIND on campaign {campaign} - NOT proven clean: {exc}")
             continue
         for row in rows:
             status = row.get("status")
@@ -67,12 +80,12 @@ def per_mailbox():
             mailbox = (sender.get("email") if isinstance(sender, dict)
                        else sender) or row.get("from_email") or "?"
             counts[mailbox][status] += 1
-    return counts
+    return counts, blind
 
 
 def check():
     load_env()
-    counts = per_mailbox()
+    counts, blind = per_mailbox()
     tripped, undefined = [], []
     for mailbox, seen in counts.items():
         total = seen["sent"] + seen["bounced"]
@@ -91,7 +104,7 @@ def check():
             continue
         unsub += int(data.get("unsubscribed") or 0)
         spam += int(data.get("spam_complaints") or data.get("complaints") or 0)
-    return {"tripped": tripped, "undefined": undefined,
+    return {"tripped": tripped, "undefined": undefined, "blind": blind,
             "unsubscribed": unsub, "spam": spam, "mailboxes": len(counts)}
 
 
@@ -106,9 +119,18 @@ def main(argv=None):
         print(f"HARD STOP bounce {rate:.1f}% ({bounced}/{total}) on {mailbox}")
     if result["spam"]:
         print(f"HARD STOP spam complaints: {result['spam']}")
+    if result["blind"]:
+        # A BLIND CHECK MUST NEVER READ AS CLEAN, INCLUDING IN --quiet. The
+        # whole point of the quiet mode is that silence means "no stop
+        # tripped"; a campaign we could not read has not been checked, and
+        # letting that pass silently rebuilds the exact hole this file was
+        # written to close.
+        print("HARD STOP CHECK BLIND on campaigns "
+              f"{result['blind']} - they are NOT proven clean")
 
     if args.quiet:
-        return 1 if (result["tripped"] or result["spam"]) else 0
+        return 1 if (result["tripped"] or result["spam"]
+                     or result["blind"]) else 0
 
     print(f"\n  mailboxes with sends in {WINDOW_DAYS}d: {result['mailboxes']}")
     print(f"  unsubscribed: {result['unsubscribed']}  spam: {result['spam']}")
@@ -118,8 +140,11 @@ def main(argv=None):
         for mailbox, bounced, total, rate in result["undefined"]:
             print(f"    {bounced}/{total} ({rate:.0f}%)  {mailbox}")
     if not result["tripped"] and not result["spam"]:
-        print("\n  no hard stop tripped")
-    return 0
+        scope = ("across every campaign" if not result["blind"]
+                 else f"across the campaigns that could be READ - "
+                      f"{result['blind']} could not be")
+        print(f"\n  no hard stop tripped, {scope}")
+    return 1 if result["blind"] else 0
 
 
 if __name__ == "__main__":
