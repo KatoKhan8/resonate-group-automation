@@ -94,13 +94,22 @@ SYSTEM = (
     "answer is worth more than a plausible-sounding guess. Be brief."
 )
 
+# RE-MEASURED 2026-09-22. The figures below said "550 records, 31.8 KB per
+# record, measured on the real estate today" and had said so since 2026-09-17,
+# by which point the estate had nearly doubled and the mean had fallen by a
+# third. A stale number inside a prompt is the same defect as a stale number
+# inside a cache, with the added cost that the model cannot check it and will
+# reason confidently from whatever it is handed.
 STORAGE_QUESTION = """This is the persistence path of a system that processes
-company records. Context you need, all measured on the real estate today:
+company records. Context you need, all measured on the real estate on
+2026-09-22:
 
-- `work/queue.jsonl` is 17,484,788 bytes over 550 records: 31.8 KB per record.
-- Every benchmark in this repo assumed 4.2 KB per record.
+- `work/queue.jsonl` is 20,354,104 bytes over 1,027 records: a MEAN of 19,819
+  bytes per record, with a long tail - the largest single record is 162,117.
+- The repo's own write benchmark was run on ~874-byte records, so every figure
+  in it under-states production by a factor of about 22.
 - The pipeline checkpoints every 5 records.
-- The target is 5,000 records, then 100,000, then 1,000,000.
+- The target is 20,000 records, then 100,000, then 1,000,000.
 - Evidence about a company lives INSIDE the record, keyed by record id, so the
   same company met in a second cohort reuses nothing already paid for.
 
