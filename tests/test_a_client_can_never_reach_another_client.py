@@ -160,6 +160,11 @@ class TwoClients(unittest.TestCase):
             si.new_email_account("alpha", "eb-5099", "excluded_person",
                                  "x@alpha-co.test", provider_account_id="5099",
                                  daily_limit=15),
+            si.new_sender("alpha", "seat_only", "Seat Only Person"),
+            si.new_linkedin_account("alpha", "li-900001", "seat_only",
+                                    "https://example.test/in/seat",
+                                    provider_account_id="900001",
+                                    daily_limit=40),
             si.new_sender("beta", "mole", "Mole Person"),
             si.new_email_account("beta", "eb-6001", "mole",
                                  "m@beta-co.test", provider_account_id="6001",
@@ -177,6 +182,14 @@ class TwoClients(unittest.TestCase):
             {"kind": "ownership_attestation", "workspace": "beta",
              "channel": "email", "account_id": "eb-6001",
              "sender_id": "mole", "by": "operator, in a test",
+             "at": "2026-09-22T00:00:00+00:00"},
+            # A SEAT-ONLY PERSON, attested under the `hr-` scheme while the
+            # seat row carries `li-`. Stands in for the real roster, where
+            # resolving the two schemes surfaced Resonate's own staff
+            # inside a client's estate.
+            {"kind": "ownership_attestation", "workspace": "alpha",
+             "channel": "linkedin", "account_id": "hr-900001",
+             "sender_id": "seat_only", "by": "operator, in a test",
              "at": "2026-09-22T00:00:00+00:00"},
         ]
         si.save(rows)
@@ -270,6 +283,45 @@ class AClientsOwnSendersAreTheirOwnData(TwoClients):
         self.assertEqual(row["daily_email_capacity"], 30)
         self.assertEqual(row["campaigns_carried"], ["Alpha cohort"])
 
+    def test_a_linkedin_seat_resolves_across_the_two_id_schemes(self):
+        """`hr-900001` and `li-900001` are one seat.
+
+        `senderownership` writes neither scheme - it stores whatever id its
+        caller hands it. The roster writes `li-`, the LinkedIn
+        attestations carry `hr-`, and the full strings never matched, so
+        every seat resolved to nothing. The join is on the bare provider
+        id, which is what `scripts/batch_linkedin_push.py` already
+        normalises to before pushing live campaigns.
+        """
+        internal = slackscope.resolve(channel=INTERNAL_CHANNEL)
+        result = tools.run(internal, "sender_roster", "alpha")
+        self.assertEqual(result["linkedin_seats"], 1)
+        self.assertNotIn("linkedin_authorizations_unresolved", result)
+
+    def test_a_seat_only_person_is_NOT_named_to_the_client(self):
+        """A seat does not establish whose person this is.
+
+        Resolving the schemes on the real roster surfaced Resonate's own
+        staff beside the client's, and nothing in the data says which seat
+        belongs to whom. The operator's rule is that a client channel never
+        names Resonate's own accounts, so a person with no attested mailbox
+        is counted and not named.
+        """
+        result = tools.run(self.alpha(), "sender_roster")
+        self.assertNotIn("Seat Only Person", json.dumps(result))
+        self.assertEqual([r["name"] for r in result["senders"]],
+                         ["Kresimir Simicic"])
+        self.assertEqual(result["linkedin_seats"], 1)
+
+    def test_an_internal_channel_still_sees_the_seat_holder(self):
+        internal = slackscope.resolve(channel=INTERNAL_CHANNEL)
+        result = tools.run(internal, "sender_roster", "alpha")
+        self.assertIn("Seat Only Person", json.dumps(result))
+
+    def test_the_client_answer_says_seats_are_not_attributed(self):
+        result = tools.run(self.alpha(), "sender_roster")
+        self.assertIn("not attributed to named people", result["note"])
+
     def test_the_hard_stop_is_reported_beside_the_rate(self):
         """A bounce rate means nothing without the line it is measured
         against."""
@@ -332,21 +384,40 @@ class AClientsOwnSendersAreTheirOwnData(TwoClients):
             self.beta().check_outbound(
                 "Alpha's senders carry that campaign.", rows=None)
 
-    def test_an_unresolved_authorization_is_not_reported_as_zero(self):
-        """Measured on the live roster: LinkedIn authorizations carry `hr-`
-        ids and the seats carry `li-`, so none of them resolves. "0 seats"
-        would read as "you have no LinkedIn sending", which is false."""
-        result = tools.run(self.alpha(), "sender_roster")
-        self.assertEqual(result["linkedin_seats"], 0)
-        self.assertNotIn("linkedin_authorizations_unresolved", result)
+    def test_an_authorization_that_truly_cannot_resolve_is_not_a_zero(self):
+        """Rewritten 2026-09-22, and the rewrite is the point.
+
+        This used to assert `linkedin_seats == 0`, which described the
+        BROKEN state: `hr-` attestations against `li-` seat rows, zero
+        overlap, nothing resolving. The join is fixed, so asserting zero
+        would now pin the bug in place.
+
+        What still has to hold is the honesty rule underneath it. An
+        authorization pointing at a seat that is not on the roster at all
+        is reported as unresolved, because "0 seats" would read as "you
+        have no LinkedIn sending" and that is a different claim.
+        """
+        from src import senderidentity as si
+
+        rows = si.load()
+        rows.append({"kind": "ownership_attestation", "workspace": "alpha",
+                     "channel": "linkedin", "account_id": "hr-404404",
+                     "sender_id": "kresimir", "by": "operator, in a test",
+                     "at": "2026-09-22T00:00:00+00:00"})
+        si.save(rows)
+        internal = slackscope.resolve(channel=INTERNAL_CHANNEL)
+        result = tools.run(internal, "sender_roster", "alpha")
+        self.assertEqual(result["linkedin_authorizations_unresolved"], 1)
+        self.assertIn("not a statement that there are none",
+                      result["linkedin_note"])
 
 
 class SendingDomainsAreScopedLikeEverythingElse(TwoClients):
     """OPERATOR, 2026-09-22, from a real client question.
 
-    A Productive person asked Jelena and Tina for "popis domena s kojih
-    šaljete mailove u email kampanjama". What came back was a 194KB CSV of
-    every sender, and the next message in that thread was
+    A Productive person asked two Resonate colleagues for "popis domena s
+    kojih saljete mailove u email kampanjama". What came back was a 194KB
+    CSV of every sender, and the next message in that thread was
     "dontgoproductive.com, kakva je ovo domena?" - a question caused by
     answering with addresses when the question was about domains.
     """
@@ -357,8 +428,8 @@ class SendingDomainsAreScopedLikeEverythingElse(TwoClients):
     def test_alpha_gets_its_own_domains_grouped_by_sender(self):
         result = tools.run(self.alpha(), "sending_domains")
         self.assertEqual(result["workspace"], "alpha")
-        names = [s["sender"] for s in result["senders"]]
-        self.assertEqual(names, ["Kresimir Simicic"])
+        self.assertEqual([s["sender"] for s in result["senders"]],
+                         ["Kresimir Simicic"])
         domains = sorted(d["domain"] for s in result["senders"]
                          for d in s["domains"])
         self.assertEqual(domains, ["alpha-co.test", "alpha-second.test"])
@@ -370,8 +441,6 @@ class SendingDomainsAreScopedLikeEverythingElse(TwoClients):
         are neither what was asked for nor theirs to hold in a thread."""
         body = json.dumps(tools.run(self.alpha(), "sending_domains"))
         self.assertNotIn("@", body)
-        self.assertNotIn("k1@", body)
-        self.assertNotIn("k2@", body)
 
     def test_beta_cannot_see_one_of_alphas_domains(self):
         result = tools.run(self.beta(), "sending_domains")
@@ -387,17 +456,18 @@ class SendingDomainsAreScopedLikeEverythingElse(TwoClients):
         self.assertNotIn("alpha-co.test", json.dumps(result))
 
     def test_an_unauthorized_mailbox_contributes_no_domain(self):
-        """`eb-5099` has no attestation, so `x@alpha-co.test`'s domain
-        reaches the list only because an authorized mailbox also sits on
-        it - and `excluded_person` is never named."""
-        result = tools.run(self.alpha(), "sending_domains")
-        self.assertNotIn("Casey Excluded", json.dumps(result))
+        """`eb-5099` has no attestation, and `excluded_person` is never
+        named however the question is asked."""
+        self.assertNotIn("Casey Excluded",
+                         json.dumps(tools.run(self.alpha(),
+                                              "sending_domains")))
 
     def test_health_is_internal_only(self):
         """A client is told which domains send for them and whether they
         are sending. How healthy we judge our own infrastructure is ours."""
-        client = json.dumps(tools.run(self.alpha(), "sending_domains"))
-        self.assertNotIn("health", client)
+        self.assertNotIn("health",
+                         json.dumps(tools.run(self.alpha(),
+                                              "sending_domains")))
         internal = slackscope.resolve(channel=INTERNAL_CHANNEL)
         self.assertIn("health",
                       json.dumps(tools.run(internal, "sending_domains",
@@ -406,8 +476,7 @@ class SendingDomainsAreScopedLikeEverythingElse(TwoClients):
     def test_the_listing_is_built_in_code_and_says_distinct(self):
         """A domain can sit under two senders, so rows outnumber domains
         and a reader counting rows must not find a discrepancy."""
-        result = tools.run(self.alpha(), "sending_domains")
-        listing = result["listing"]
+        listing = tools.run(self.alpha(), "sending_domains")["listing"]
         self.assertIn("distinct sending domains", listing)
         self.assertIn("more than one sender", listing)
         self.assertIn("alpha-co.test", listing)

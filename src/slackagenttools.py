@@ -266,11 +266,29 @@ def sender_roster(scope, argument=None):
             if a.get("account_id") in channels.get("email", ())]
         linkedin = [a for a in senderidentity.linkedin_accounts(
             slug, rows=rows, active_only=True)
-            if a.get("account_id") in channels.get("linkedin", ())]
+            if _same_seat(a, channels.get("linkedin", ()))]
         if not email and not linkedin:
             # Authorized, but every account of theirs is inactive. Absent
             # rather than listed as zero: a row of zeroes is still a name,
             # and this person is not currently part of the sending estate.
+            continue
+        if scope.is_client and not email:
+            # A LINKEDIN SEAT DOES NOT ESTABLISH WHOSE PERSON THIS IS.
+            #
+            # Resolving the `hr-`/`li-` schemes made 32 seats resolve, and
+            # the roster they resolve to mixes two organisations: alongside
+            # the client's own staff it carries Resonate's - the register
+            # already records "we own 4 of 86" seats in this estate. Nothing
+            # in the data says which seat belongs to whom.
+            #
+            # The operator's rule is that a client channel never names
+            # "Resonate's own accounts". The eight EMAIL senders are known
+            # to be the client's: they are the attested mailbox estate and
+            # they match the humans in the handoff. A seat-only person is
+            # not established either way, so they are counted in the
+            # workspace total below and not named. Internal scope sees
+            # everything.
+            seats += len(linkedin)
             continue
         mailboxes += len(email)
         seats += len(linkedin)
@@ -327,6 +345,14 @@ def sender_roster(scope, argument=None):
     # Not joined by stripping the prefix. That would be this module
     # inventing an identity mapping between two id spaces, which is exactly
     # what an attestation exists to prevent somebody doing.
+    if scope.is_client:
+        out_names = {row["name"] for row in out}
+        answer["note"] = (
+            "these are this workspace's own authorized email senders. "
+            "LinkedIn seats are given as a workspace total: the seat "
+            "roster does not record which organisation each seat belongs "
+            "to, so seats are not attributed to named people here.")
+        answer["named_people"] = len(out_names)
     unresolved = len([1 for channels in owned.values()
                       for account in channels.get("linkedin", ())]) - seats
     if unresolved > 0:
@@ -543,6 +569,45 @@ LISTING_WORDS = {
 def listing_is_long(answer):
     listing = (answer or {}).get("listing") or ""
     return len(listing.splitlines()) > LISTING_IS_LONG
+
+
+def _bare_seat_id(value):
+    """The provider's own seat id, with whichever prefix stripped.
+
+    TWO ID SCHEMES, NEITHER OF THEM `senderownership`'s. That module stores
+    whatever `account_id` its caller hands it and owns no scheme at all.
+    The roster writes `li-116968` (`senderinventory`, in code); the LinkedIn
+    attestations carry `hr-116968`, written ad hoc - nothing in the tree
+    produces that prefix. The numbers are identical and the overlap on the
+    full strings is zero, so every LinkedIn attestation resolved to nothing
+    and no seat was provably authorized.
+
+    This is NOT a mapping invented here. `scripts/batch_linkedin_push.py`
+    already normalises the same way - `str(account_id).replace("hr-", "")`
+    - and pushes live campaigns on the result, so the bare provider id is
+    already the join the production session relies on. The account row
+    carries it outright as `provider_account_id`, which makes this an exact
+    match on a field both sides hold rather than a guess about prefixes.
+
+    Reconciling the two schemes is still the production session's call and
+    is filed as a merge-request note.
+    """
+    text = str(value or "").strip()
+    for prefix in ("li-", "hr-"):
+        if text.startswith(prefix):
+            return text[len(prefix):]
+    return text
+
+
+def _same_seat(account, attested_ids):
+    """Is this seat one of the attested ones, under either scheme?"""
+    if account.get("account_id") in attested_ids:
+        return True
+    bare = str(account.get("provider_account_id") or "").strip() \
+        or _bare_seat_id(account.get("account_id"))
+    if not bare:
+        return False
+    return bare in {_bare_seat_id(i) for i in attested_ids}
 
 
 def _campaigns_by_sending_account(slug):
