@@ -55,6 +55,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CACHE = os.path.join(ROOT, "work", "knowledge-pack.json")
 
 #: Set this to pin the cache; otherwise it follows the state directory.
+#: Registered in `store.STATE_OVERRIDES` so `use_directory` moves it with
+#: everything else - a state file the move-together set forgets keeps
+#: writing to the real `work/` while the rest go to the temp one.
 CACHE_VAR = "KNOWLEDGE_PACK"
 
 
@@ -896,6 +899,8 @@ def write(pack=None):
     """Cache the pack beside the queue. The only file this module writes."""
     pack = pack or build()
     path = cache_path()
+    from . import store
+    store.refuse_production_write(path)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as handle:

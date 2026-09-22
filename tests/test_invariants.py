@@ -666,7 +666,12 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
                     # 2026-09-20 with the module, and this checklist caught
                     # it the same hour - which is the half of the pair that
                     # keeps the list honest doing its job.
-                    "watchsink")
+                    "watchsink",
+                    # The Slack agent writes three files beside the queue:
+                    # the knowledge-pack cache, the thread memory and the
+                    # change-request journal. Added 2026-09-22, caught by
+                    # the other half of this pair on the same day.
+                    "slackknowledge", "slackconversation", "slackrequests")
 
     def _real(self, name):
         return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")
@@ -679,8 +684,9 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
         module with two append sites passed with the guard deleted from one of
         them. What matters is that the call refuses, so the call is made.
         """
-        from src import (agencydnc, clientreview, discovery, gtm, spendledger,
-                         tagsync)
+        from src import (agencydnc, clientreview, discovery, gtm,
+                         slackconversation, slackknowledge, slackrequests,
+                         spendledger, tagsync)
         row = {"record_id": "r", "contact_key": "c", "workspace": "w",
                "provider": "heyreach", "tags": [], "stage": "s",
                "status": "pending", "attempts": 0, "outcome": "negative"}
@@ -699,6 +705,20 @@ class TestTheBarrierCoversEveryWriter(unittest.TestCase):
                 row, True, file_path=self._real("tag-outbox")),
             "spendledger": lambda: spendledger.record(
                 "productive", "contactout", "decision-makers", 10),
+            # The Slack agent's three. Driven for real rather than only
+            # source-matched, which is the distinction this method's own
+            # docstring draws: a module with two append sites passed the
+            # text check with the guard deleted from one of them.
+            "slackknowledge": lambda: slackknowledge.write(
+                {"built_at": "x", "built_epoch": 0}),
+            "slackconversation": lambda: slackconversation.remember(
+                "C", "1", "them", "hello"),
+            "slackrequests": lambda: slackrequests.write(
+                {"id": "2026-01-01-aaaa", "kind": "remove_lead",
+                 "label": "Remove a lead from outreach", "status": "x",
+                 "requester": "U", "requester_scope": "internal",
+                 "channel": "C", "workspace": "w", "raised_at": "t",
+                 "fields": {}, "executes": "", "origin": "internal"}),
         }
 
     def test_every_self_writer_refuses_the_real_work_directory(self):
