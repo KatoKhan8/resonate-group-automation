@@ -13,6 +13,12 @@ else.
     e6847102  that MR
     a3ceb50d  git history runbook + scripts/history_pii_scan.py
     85867a9b  suite baseline, test_invariants fix, 7 bounded tasks
+    87535888  this MR
+    3402ddd9  TASK-251 src/sqlitestore.py + 26 tests (NOT WIRED)
+    6303248f  TASK-251 -> DONE, result block and findings
+    56177820  the storage prompt's five-day-stale measurement, corrected
+    9e2bf63d  the same env leak in a second class; setUp becomes a mixin
+    e9a704ac  baseline re-measured and the before/after diffed by name
 
 ## Overlap check, per the three-session rule
 
@@ -55,10 +61,14 @@ Measured on the live queue today:
 
 - **The brief's "~31 KB per record" is high.** 31 KB is inside the range but
   the mean is 19.8 KB, so every projection in the design is the conservative
-  version. (The 31.8 KB figure is still live inside
-  `scripts/glm_review.py`'s `STORAGE_QUESTION`, stated to GLM as "measured on
-  the real estate today" — it was measured on 550 records. Worth a correction
-  when you touch that file.)
+  version. **That same 31.8 KB figure was live inside
+  `scripts/glm_review.py`'s `STORAGE_QUESTION`**, stated to GLM as "measured on
+  the real estate today" since 2026-09-17, on 550 records. Every storage review
+  run since then did its arithmetic on a record size wrong by 60%, and the
+  model has no way to check a number it is handed. Corrected in `56177820`,
+  with the tail stated as well as the mean — this is also where the brief's
+  "~31 KB" came from, so it had already propagated out of the prompt and into
+  a work instruction.)
 - **`queuejournal.py`'s headline benchmark under-states production by
   22.7x.** Its table — 4,369.1 MB at 5,000 records, 1,000 checkpoints — works
   out to 874 bytes per record, matching its own "~900-byte record". Production
@@ -111,9 +121,20 @@ suite.
 So the artifact is the fix: every failure by fully-qualified name, regenerable,
 diffable as a set.
 
-    measured   11,098 tests · 80 F · 36 E · 116 entries · 112 distinct
+    before     11,098 tests · 80 F · 36 E · 116 entries · 112 distinct
+    after      11,109 tests · 75 F · 36 E · 111 entries · 111 distinct
     stable     110 of 115 reproduce identically when run alone
     fixed      -5, all test_invariants, all run-order
+
+**Measured twice, not measured once and estimated.** The second full run
+confirms the predicted -5 exactly, and the diff is a set difference rather
+than a subtraction: exactly one distinct test gone (one method, five subTest
+entries) and **nothing new**. 116 -> 111 could equally have been eleven fixes
+and six regressions; the old count-only format could not have said which.
+
+That diff then found a SECOND class with the same leak
+(`TestValidationCannotSpendByAccident`), fixed after the run — so expect
+**110** next measurement. The artifact earning its keep on first use.
 
 ### The 5 were the production-state barrier
 
@@ -135,11 +156,12 @@ Nothing retired, no assertion loosened, no guard widened.
 
 ### The number for the register
 
-    2026-09-22   11,098 tests   111 entries   107 distinct tests
+    2026-09-22   11,109 tests   111 entries   111 distinct
 
-A floor to work down from. ~47 of the 111 are two known contract changes —
-TASK-256 (28) and TASK-250 (~19, already written, never started) — both
-fixture work with a stated rule.
+Measured, and expect 110 next run. It is **a floor to work down from, not an
+achievement**: ~47 of the 111 are two known contract changes — TASK-256 (28)
+and TASK-250 (~19, already written, never started) — both fixture work with a
+stated rule, and neither hard.
 
 ### THE ONE THAT IS YOURS: the PII guard is red
 
@@ -252,6 +274,28 @@ person who writes a sum.
 
 It reads `actionledger.count_on` rather than adding a second counter, and it
 never writes.
+
+---
+
+## 4b. ALSO ON THE BRANCH AFTER THIS MR WAS FIRST WRITTEN
+
+**TASK-251 is BUILT, not just written** — `src/sqlitestore.py`, 26 tests,
+`3402ddd9`, moved to DONE with a result block. `src/store.py` is untouched and
+nothing imports it; both directions are asserted, so "not wired" is a property
+rather than a claim. Attacked with three deliberate breaks (key-sorted reads,
+upsert as delete-then-insert, `open_db` without the barrier), each caught by
+its intended test.
+
+It was built here rather than dispatched to the Qwen pool: those worktrees
+were carrying other sessions' branches (task-244 … 249) and dispatching into
+shared infrastructure was not mine to do without asking. **If you would rather
+the pool ran 252-257, say so and I will queue them instead.**
+
+Two findings from it are in the task's result block and worth reading before
+the next one — `updated_at` is second-resolution and unusable as a test probe,
+and my first no-circular-import test grepped the source and failed on the
+module's own docstring, which is the exact failure CLAUDE.md warns about,
+reproduced within the hour.
 
 ---
 
