@@ -75,6 +75,76 @@ SYSTEM = (
 )
 
 QUESTIONS = {
+    # ADDED 2026-09-22. Four questions whose answers this estate currently
+    # GUESSES. Each is durable - the answer stays true next week - and each
+    # names a decision it unblocks, because a research answer nobody needed
+    # is the failure mode this file is most prone to.
+    "contactout_company_search": """ContactOut (contactout.com) API,
+`POST /v1/company/search` specifically - NOT the people endpoints.
+We run this unattended overnight and it bills one search credit per COMPANY
+RETURNED, so the limits decide the shape of the run.
+1. What are the DOCUMENTED rate limits on company search - per second, per
+   minute, per day - and are they per API key, per account or per endpoint?
+   Is the limit shared with /people/search and /people/count?
+2. What is the maximum and default `page` size, and is there a maximum page
+   number or a total-results ceiling beyond which paging stops returning new
+   companies?
+3. On that endpoint, what do HTTP 402 and HTTP 403 each mean? We need to tell
+   "out of credit" from "key revoked" from "not entitled to this endpoint",
+   because we stop the run on 402/403 and the distinction decides whether a
+   human tops up or rotates a key.
+4. Does any response header report remaining credits or remaining quota?
+Cite documentation URLs.""",
+
+    "heyreach_seat_limits": """HeyReach (heyreach.io) LinkedIn automation API
+and product.
+1. What are the DOCUMENTED per-seat daily limits for CONNECTION REQUESTS and
+   for MESSAGES? Are they fixed, configurable per campaign, or adaptive to
+   the LinkedIn account's age and warmup state?
+2. Does HeyReach expose per-seat USAGE - requests sent today, messages sent
+   today - through the API, and on which endpoint? We share seats with a
+   client and need to read OUR usage and THEIR usage on the same seat.
+3. If a seat is used by two campaigns at once, how is the daily limit
+   divided, and does the API report the remaining allowance for the seat?
+4. What does HeyReach do when a seat hits its limit - queue, skip, or fail -
+   and is that visible in the campaign or lead status?
+Cite documentation URLs.""",
+
+    "bison_per_mailbox_daily": """EmailBison (emailbison.com) cold email
+platform API.
+We must enforce a hard stop of "bounce rate above 2% on any MAILBOX over a
+rolling 7 days", and we currently derive it by walking scheduled-email rows,
+which is expensive and may be incomplete.
+1. Is there any documented endpoint, report or webhook event that reports
+   SENDS PER MAILBOX PER DAY and BOUNCES PER MAILBOX PER DAY directly?
+2. If not per mailbox, what is the finest granularity available - per
+   campaign, per sender account, per workspace - and over what time window?
+3. Do bounce events distinguish HARD from SOFT bounces, and is that
+   distinction available per mailbox?
+4. Is there a sender-account health, reputation or deliverability field the
+   API exposes that already aggregates this?
+Cite documentation URLs.""",
+
+    "hosting_hetzner_vs_railway": """Hosting comparison for a SPECIFIC
+deployment, answered concretely rather than generally.
+The service: a Python application using ONLY the standard library - no
+third-party runtime dependencies - that runs about fifteen long-lived
+background loops plus a small HTTP server. It needs systemd (or equivalent
+process supervision with restart-on-failure), TLS on a custom domain, and
+nightly backups of a directory plus a SQLite database.
+1. Hetzner Cloud: which instance type suits this, what does it cost per month
+   in EUR, and what are the concrete setup steps for systemd units, TLS
+   (certbot or caddy) and a nightly backup - including whether Hetzner's own
+   backup/snapshot feature covers a live SQLite file safely?
+2. Railway: can it run long-lived background workers and systemd-style
+   supervision at all, what does this shape cost per month, how is TLS
+   handled, and what are the backup options for a persistent volume?
+3. The honest trade: which is cheaper at this size, which is less operational
+   work, and what does each NOT do that the other does?
+4. For a live SQLite database, what is the correct nightly backup method that
+   does not corrupt a file being written to?
+Cite documentation URLs and current pricing pages.""",
+
     "sender_selection": """EmailBison (emailbison.com) cold email platform API.
 When a campaign has MULTIPLE sender email accounts attached:
 1. How does EmailBison choose which sender sends a given email? Round robin,
