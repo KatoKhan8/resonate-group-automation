@@ -674,10 +674,20 @@ def offer_is_available(scope, results):
 
     Only in a client channel, only when the material actually carries the
     batch's campaigns and their current counters - the baseline the watch
-    needs - and only when nothing has sent yet. Offering to announce a
-    first send that already happened is not an offer.
+    needs, and only when nothing has sent yet. Offering to announce a first
+    send that already happened is not an offer.
+
+    AND ONLY WHILE SOMETHING IS DELIVERING. `slackfollowup` was written to
+    end "would you like a short update" with nothing behind it, and then
+    shipped with its own `due()` unread by any process - the identical
+    fault, wearing a journal. The registered watch is not the mechanism;
+    `scripts/slack_followup_loop.py` beating is. So the last thing checked
+    before the offer is made is whether that loop is alive, and a stopped
+    deliverer makes the agent silent rather than optimistic.
     """
     if not scope.is_client:
+        return None
+    if not followup.deliverer_is_running():
         return None
     for _name, _argument, value in results or []:
         if not isinstance(value, dict):

@@ -60,6 +60,28 @@ JOURNAL_VAR = "SLACK_FOLLOWUPS"
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+#: The deliverer's heartbeat, under the same name every other monitor here
+#: beats under. `scripts/slack_followup_loop.py` writes it.
+WATCHER = "slack-followup"
+
+#: How stale that beat may be before the OFFER STOPS BEING MADE.
+#:
+#: THIS IS THIS MODULE'S OWN FAULT, ONE LEVEL DOWN. This file was written
+#: because the agent offered an update nothing could deliver. It then
+#: shipped with `register()` wired into the conversation and NOTHING
+#: reading `due()` - so a client says yes, a row is written, and the same
+#: silence follows. A registered watch is not a mechanism; a process that
+#: fires it is. So the agent asks whether that process is beating before it
+#: opens its mouth, and stays quiet when it is not.
+#:
+#: Three minutes over a 60-second interval: long enough for one missed tick
+#: and a reconnect, short enough that a deliverer killed an hour ago cannot
+#: license an offer.
+MAX_BEAT_AGE_SECONDS = 180
+
+#: A test, or an operator proving the gate, points this at its own file.
+HEARTBEAT_VAR = "SLACK_FOLLOWUP_HEARTBEAT"
+
 
 def _now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -149,6 +171,45 @@ def register(channel, thread_ts, workspace, campaign_ids, baseline,
 def close(watch, status, detail=None):
     return _append(dict(watch, status=status, closed_at=_now(),
                         detail=detail))
+
+
+def heartbeat_path():
+    override = (os.environ.get(HEARTBEAT_VAR) or "").strip()
+    if override:
+        return os.path.abspath(override)
+    from . import watchsink
+    return watchsink.heartbeat_path(WATCHER)
+
+
+def deliverer_is_running(now=None):
+    """Is anything actually firing these watches right now?
+
+    Read from the heartbeat file rather than from a flag somebody sets,
+    because a flag records an intention and a beat records a process. The
+    deliverer being configured, installed, committed and not started is the
+    exact state this returns False for, and it is the state the feature
+    shipped in.
+
+    An unreadable or absent beat is False. There is no benefit of the doubt
+    available here: the cost of a wrong True is a client told they will be
+    updated and never updated, which is the one outcome the module exists
+    to prevent.
+    """
+    target = heartbeat_path()
+    try:
+        with open(target, encoding="utf-8") as handle:
+            row = json.load(handle)
+    except Exception:                                           # noqa: BLE001
+        return False
+    epoch = row.get("epoch")
+    if not isinstance(epoch, (int, float)):
+        stamp = str(row.get("at") or "").replace("Z", "+00:00")
+        try:
+            import datetime
+            epoch = datetime.datetime.fromisoformat(stamp).timestamp()
+        except Exception:                                       # noqa: BLE001
+            return False
+    return (float(now if now is not None else time.time()) - float(epoch))         <= MAX_BEAT_AGE_SECONDS
 
 
 def due(read_counts):

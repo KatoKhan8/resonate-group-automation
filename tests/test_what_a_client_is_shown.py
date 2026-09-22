@@ -163,6 +163,34 @@ class OurExperimentDesignIsNotTheirCampaignName(unittest.TestCase):
 # ===================================== 3. NO PROMISE WITHOUT A MECHANISM
 
 class TheOnlyOfferIsOneItCanKeep(unittest.TestCase):
+    """And "can keep" now includes "something is running".
+
+    The offer shipped with `slackfollowup.register()` wired in and
+    `slackfollowup.due()` read by no process at all - so a client said yes,
+    a row was written, and the silence that the module exists to prevent
+    followed anyway. These tests stand up a heartbeat for the deliverer
+    because the agent will not make the offer without one.
+    """
+
+    def setUp(self):
+        import json
+        import tempfile
+        import time
+        self.tmp = tempfile.mkdtemp(prefix="rga-fu-beat-")
+        self.beat = os.path.join(self.tmp, "slack-followup.json")
+        self._prev = os.environ.get(followup.HEARTBEAT_VAR)
+        os.environ[followup.HEARTBEAT_VAR] = self.beat
+        with open(self.beat, "w", encoding="utf-8") as handle:
+            json.dump({"watcher": followup.WATCHER,
+                       "epoch": int(time.time())}, handle)
+
+    def tearDown(self):
+        import shutil
+        if self._prev is None:
+            os.environ.pop(followup.HEARTBEAT_VAR, None)
+        else:
+            os.environ[followup.HEARTBEAT_VAR] = self._prev
+        shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_the_client_tone_forbids_the_phrases_that_went_out(self):
         tone = conversation.TONE[slackscope.CLIENT].lower()
@@ -198,6 +226,36 @@ class TheOnlyOfferIsOneItCanKeep(unittest.TestCase):
                      {"sent_per_campaign": {"491": 0, "492": 0}})])
         self.assertEqual(offer["baseline"], {"491": 0, "492": 0})
         self.assertEqual(offer["campaign_ids"], ["491", "492"])
+
+    def test_a_cold_deliverer_withdraws_the_offer_entirely(self):
+        """The one check that makes "build the mechanism" stick.
+
+        With nothing beating there is no process to fire the watch, so the
+        sentence is not available - not softened, not hedged, absent. This
+        is what a committed-but-unstarted `slack_followup_loop.py` looks
+        like from the client's side: the agent simply does not offer.
+        """
+        import json
+        import time
+        scope = slackscope.Scope(slackscope.CLIENT, workspace="alpha",
+                                 source="test")
+        material = [("batch_state", None, {"sent_per_campaign": {"491": 0}})]
+        self.assertIsNotNone(conversation.offer_is_available(scope, material))
+
+        with open(self.beat, "w", encoding="utf-8") as handle:
+            json.dump({"watcher": followup.WATCHER,
+                       "epoch": int(time.time())
+                       - followup.MAX_BEAT_AGE_SECONDS - 1}, handle)
+        self.assertIsNone(conversation.offer_is_available(scope, material))
+
+        os.remove(self.beat)
+        self.assertIsNone(conversation.offer_is_available(scope, material))
+        self.assertFalse(followup.deliverer_is_running())
+
+    def test_an_unreadable_beat_is_not_given_the_benefit_of_the_doubt(self):
+        with open(self.beat, "w", encoding="utf-8") as handle:
+            handle.write("{not json")
+        self.assertFalse(followup.deliverer_is_running())
 
     def test_a_yes_is_recognised_in_both_languages(self):
         for text in ("da", "može", "yes please", "ok", "molim"):

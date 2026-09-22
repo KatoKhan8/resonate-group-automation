@@ -57,13 +57,26 @@ AGENT_SOURCES = (
     "src/slackagenttools.py",
     "src/slackconversation.py",
     "src/slackagentreadback.py",
+    # THE THREE THAT ARRIVED WITH PHASE C AND WERE NOT LISTED HERE. Each of
+    # them runs on the path a Slack message takes, and a guarantee that
+    # covers five of eight files is a guarantee somebody will add the sixth
+    # to and not notice.
+    "src/slackclientview.py",
+    "src/slackfollowup.py",
+    "src/slacklanguage.py",
     "scripts/slack_agent_loop.py",
+    # The follow-up deliverer runs on its own interval rather than on a
+    # message, and it reaches the provider and posts. Same rules.
+    "scripts/slack_followup_loop.py",
 )
 
 #: Provider attributes the agent may touch. GETs, every one.
 PROVIDER_READ_VERBS = {
     "campaign", "campaigns", "scheduled_emails", "sender_emails",
     "membership", "campaign_lead_count", "lead", "schedule",
+    # GET /leads?search=<address>. The only real filter on that route, and
+    # the one way to turn an address into a lead id without guessing.
+    "find_lead_by_email",
     "campaign_senders", "base", "headers", "scope", "bound_workspace",
     "ProviderError",
     # HeyReach reads.
@@ -80,7 +93,12 @@ FORBIDDEN_CALLS = {
 
 #: `slack.post` is the one outward write the agent makes: one reply, in the
 #: thread it was asked in. It is allowed in the LOOP and nowhere else.
-POST_ALLOWED_IN = {"scripts/slack_agent_loop.py"}
+#: The deliverer posts too, which is its entire job: one message into one
+#: thread when a watch the client asked for fires. It is listed so that the
+#: rule stays "these two files and no others" rather than becoming "any
+#: file that wants to".
+POST_ALLOWED_IN = {"scripts/slack_agent_loop.py",
+                   "scripts/slack_followup_loop.py"}
 
 
 def _transitive_imports(module_name):

@@ -751,6 +751,293 @@ def _sent_since(campaign_id, cutoff):
     return count
 
 
+def lead_counts(scope, argument=None):
+    """HOW MANY. Enrolled, emailed, replied - counted, per campaign.
+
+    THE CATALOGUE'S SECOND GAP, and the largest one by volume: 175 of the
+    988 classified questions are about leads and lists, and almost none of
+    them is a lookup. *na koliko leadova smo poslali ovaj tjedan*, *jel
+    bilo dobrih leadova danas*, *imamo 1.5 kontakata po domeni*. What the
+    agent could answer was "is this person in a campaign", which the corpus
+    shows nobody has ever asked.
+
+    ## TWO NUMBERS THAT ARE NOT THE SAME NUMBER
+
+    *Na koliko LEADOVA smo poslali* asks how many PEOPLE. A three-step
+    sequence sends three emails to one of them, so the queue's row count
+    and the number of people it reached differ by the length of the
+    cadence - and the difference grows every day the sequence runs. Both
+    are reported, named apart, and the people figure is counted by distinct
+    provider lead id rather than derived from the other.
+
+    A person in two of the workspace's campaigns is ONE person in the
+    workspace total and appears under both campaigns. Summing the
+    per-campaign figures therefore does not give the total, which the note
+    says out loud so nobody adds them up.
+
+    ## ENROLLED IS THE PROVIDER'S MEMBERSHIP, IN EVERY SCOPE
+
+    `campaign_lead_count` reads `meta.total` and refuses to count a page.
+    The local store's enrolled state answers a different question - what we
+    have ever staged - and reached a client once already. It is available
+    here to an internal channel, under its own name, and to a client not at
+    all.
+
+    ## A CAMPAIGN THAT CANNOT BE READ MAKES EVERY TOTAL A FLOOR
+
+    Never a zero, and never quietly dropped: the count of unreadable
+    campaigns travels with the answer and the note changes shape when it is
+    non-zero, because "we emailed 40 people this week" and "we emailed at
+    least 40 people this week, two campaigns did not answer" are different
+    claims and only one of them is true.
+    """
+    import datetime
+    slug = _workspace_for(scope, None)
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    mine = [str(i) for i in (entry.get("provider_campaign_ids") or [])]
+    asked = str(argument or "").strip()
+    if asked:
+        if asked not in mine:
+            return {"read_at": _now(),
+                    "_error": "campaign %s does not belong to this "
+                              "channel's workspace" % asked}
+        wanted = [asked]
+    else:
+        wanted = mine[:10]
+
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - \
+        datetime.timedelta(seconds=WEEK_SECONDS)
+
+    rows, unreadable, queue_unreadable = [], 0, 0
+    enrolled_total = sent_total = replied_total = emails_week = 0
+    people_week = set()
+
+    for campaign_id in wanted:
+        row = {"campaign_id": campaign_id}
+        detail = readback.campaign_by_id(campaign_id)
+        if detail.get("_error"):
+            unreadable += 1
+            row["_error"] = detail["_error"]
+            rows.append(row)
+            continue
+        row["name"] = detail.get("name")
+        row["status"] = detail.get("status")
+        for key, target in (("emails_sent", "sent_lifetime"),
+                            ("replied", "replied_lifetime"),
+                            ("bounced", "bounced_lifetime")):
+            value = detail.get(key)
+            if isinstance(value, int):
+                row[target] = value
+        sent_total += row.get("sent_lifetime") or 0
+        replied_total += row.get("replied_lifetime") or 0
+
+        enrolled = _provider_membership(campaign_id)
+        if enrolled is None:
+            unreadable += 1
+            row["enrolled_unreadable"] = True
+        else:
+            row["enrolled"] = enrolled
+            enrolled_total += enrolled
+
+        week = _week_activity(campaign_id, cutoff)
+        if week is None:
+            queue_unreadable += 1
+            row["last_7_days_unreadable"] = True
+        else:
+            emails, people = week
+            row["emails_sent_last_7_days"] = emails
+            row["leads_emailed_last_7_days"] = len(people)
+            emails_week += emails
+            people_week |= people
+        rows.append(row)
+
+    out = {"read_at": _now(), "workspace": slug,
+           "campaigns_asked_for": len(wanted),
+           "campaigns_unreadable": unreadable + queue_unreadable,
+           "enrolled_total": enrolled_total,
+           "sent_lifetime_total": sent_total,
+           "replied_lifetime_total": replied_total,
+           "emails_sent_last_7_days": emails_week,
+           "leads_emailed_last_7_days": len(people_week),
+           "per_campaign": rows}
+    out["note"] = (
+        "enrolled is the provider's own membership count per campaign and "
+        "is NOT sent. emails_sent_last_7_days counts QUEUE ROWS; "
+        "leads_emailed_last_7_days counts distinct PEOPLE, which is the "
+        "smaller number whenever a sequence has more than one step. The "
+        "workspace people figure de-duplicates across campaigns, so the "
+        "per-campaign figures do not sum to it. sent_lifetime is the "
+        "provider's lifetime counter and is not a weekly figure.")
+    if unreadable or queue_unreadable:
+        out["warning"] = (
+            "%d campaign read(s) failed, so every total here is a FLOOR and "
+            "not the whole picture" % (unreadable + queue_unreadable))
+
+    if scope.is_internal:
+        # THE LOCAL PIPELINE, UNDER ITS OWN NAME. "how many are ready" is
+        # an internal question about our own staging, and the answer is
+        # ours - it is not a worse version of the provider's enrolled
+        # figure, it is a different one, which is exactly how the 724
+        # reached a client.
+        out["local_pipeline"] = _try_local_pipeline()
+        out["local_pipeline_note"] = (
+            "counted from OUR store, not the provider. These are staging "
+            "states, not campaign membership, and they are internal.")
+    return out
+
+
+def _provider_membership(campaign_id):
+    """The provider's membership count for one campaign, or None.
+
+    None rather than 0, for the reason every other reader here gives: a
+    campaign that could not be read and a campaign holding nobody are
+    different answers, and reporting the second for the first is how an
+    outage becomes a reassuring number.
+    """
+    try:
+        from .providers import bison
+        count = bison.campaign_lead_count(campaign_id)
+    except Exception:                                           # noqa: BLE001
+        return None
+    return count if isinstance(count, int) else None
+
+
+def _week_activity(campaign_id, cutoff):
+    """`(emails, {lead ids})` sent since `cutoff`, or None if unreadable.
+
+    One queue read answering both halves. `_sent_since` reads the same rows
+    for the row count alone; this exists because the PEOPLE figure cannot
+    be derived from it, and reading the queue twice to get two numbers out
+    of the same rows is a second chance for them to disagree.
+    """
+    import datetime
+    try:
+        from .providers import bison
+        queue = bison.scheduled_emails(campaign_id) or []
+    except Exception:                                           # noqa: BLE001
+        return None
+    emails, people = 0, set()
+    for row in queue:
+        stamp = row.get("sent_at")
+        if not stamp:
+            continue
+        try:
+            when = datetime.datetime.fromisoformat(
+                str(stamp).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=datetime.timezone.utc)
+        if when < cutoff:
+            continue
+        emails += 1
+        lead = row.get("lead")
+        lead_id = lead.get("id") if isinstance(lead, dict) else None
+        # A ROW WITH NO LEAD ID IS STILL A PERSON. Counting it as nobody
+        # would make the people figure quietly smaller than the truth, so
+        # it is counted under its own row id - distinct from every other
+        # row, which is the conservative direction and can never make the
+        # people figure exceed the email count.
+        people.add(lead_id if lead_id is not None
+                   else ("row:%s" % row.get("id")))
+    return emails, people
+
+
+def _try_local_pipeline():
+    try:
+        return readback.pipeline()
+    except Exception as exc:                                    # noqa: BLE001
+        return {"_error": "%s: %s" % (type(exc).__name__, str(exc)[:200])}
+
+
+#: How many of a workspace's campaigns one membership question may cost.
+#: One provider read each, and a question about one person should not turn
+#: into thirty.
+MEMBERSHIP_CAMPAIGN_CAP = 12
+
+
+def lead_in_campaign(scope, argument=None):
+    """Is this person in one of THIS workspace's campaigns - ask the provider.
+
+    `lead_lookup` answers this from our own store, where a contact carrying
+    a `bison_lead_id` was STAGED. Staged is not enrolled: the push can have
+    been refused, the lead can have been stopped, the campaign can have
+    been rebuilt around them. The provider is the only witness to
+    membership, and this asks it.
+
+    ## IT NEVER CONFIRMS A PERSON IT CANNOT SHOW
+
+    `find_lead_by_email` searches the whole provider estate, which spans
+    every workspace we run there. A client channel asking about an address
+    that belongs to ANOTHER client's campaign must learn nothing - not the
+    lead's name, not that a lead exists, not that the search found
+    something. So the only thing carried out of that search is the numeric
+    id, it is asked about THIS workspace's campaign ids and no others, and
+    an empty result reads "in none of your campaigns" in both cases. The
+    two situations are indistinguishable in the answer because they have to
+    be.
+
+    ## ONE READ PER CAMPAIGN, AND THAT IS WHY IT IS CAPPED
+
+    `membership(campaign_id, lead_ids=[id])` asks the lead about itself,
+    which is exact whatever page of a twenty-thousand-lead campaign the
+    person is on. There is no route that asks the other direction, so a
+    workspace with twelve campaigns costs twelve reads. Capped at
+    `MEMBERSHIP_CAMPAIGN_CAP`, and the answer says how many it checked
+    rather than implying it checked everything.
+    """
+    address = str(argument or "").strip().lower()
+    if "@" not in address:
+        return {"read_at": _now(),
+                "_error": "lead_in_campaign needs an email address"}
+    slug = _workspace_for(scope, None)
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    mine = [str(i) for i in (entry.get("provider_campaign_ids") or [])][
+        :MEMBERSHIP_CAMPAIGN_CAP]
+    out = {"read_at": _now(), "workspace": slug, "address": address,
+           "campaigns_checked": len(mine), "source": "provider"}
+    #: The one sentence for both "no such lead" and "not one of yours".
+    absent = ("the provider has no lead with that address in any of this "
+              "workspace's campaigns")
+
+    try:
+        from .providers import bison
+        lead = bison.find_lead_by_email(address)
+    except Exception as exc:                                    # noqa: BLE001
+        return dict(out, _error="the provider could not be asked: %s: %s"
+                                % (type(exc).__name__, str(exc)[:200]))
+    lead_id = (lead or {}).get("id")
+    if lead_id is None:
+        return dict(out, in_campaigns=[], found=False, note=absent)
+
+    found, unreadable = [], 0
+    for campaign_id in mine:
+        try:
+            status = bison.membership(campaign_id, lead_ids=[lead_id])
+        except Exception:                                       # noqa: BLE001
+            unreadable += 1
+            continue
+        state = (status or {}).get(int(lead_id))
+        if state is not None:
+            found.append({"campaign_id": campaign_id, "status": state})
+    out["in_campaigns"] = found
+    out["found"] = bool(found)
+    if unreadable:
+        out["campaigns_unreadable"] = unreadable
+        out["warning"] = ("%d campaign(s) could not be read, so an empty or "
+                          "short list here is a floor" % unreadable)
+    if not found:
+        # THE SAME SENTENCE AS THE NO-SUCH-LEAD CASE. Saying "the lead
+        # exists but is in none of your campaigns" tells a client that we
+        # hold that person for somebody else.
+        out["note"] = absent
+    else:
+        out["note"] = ("membership as the provider states it, per campaign. "
+                       "Being in a campaign is not having been emailed - "
+                       "ask lead_counts or campaign_detail for sends.")
+    return out
+
+
 def replies(scope, argument=None):
     """What has come back: the provider's counters and the reply feed.
 
@@ -1072,6 +1359,17 @@ REGISTRY = {
         lead_lookup,
         "one contact's state by address",
         _INTERNAL_CLIENT, "an email address"),
+    "lead_counts": (
+        lead_counts,
+        "how many leads: enrolled per campaign from the provider, how many "
+        "PEOPLE were emailed in the last 7 days and how many emails that "
+        "was, replies and bounces",
+        _INTERNAL_CLIENT, "a campaign id (optional; default all of them)"),
+    "lead_in_campaign": (
+        lead_in_campaign,
+        "whether one address is in any of this workspace's campaigns, as "
+        "the provider states it, with its status per campaign",
+        _INTERNAL_CLIENT, "an email address"),
     "account_lookup": (
         account_lookup,
         "one account's state by domain, with its contact counts",
@@ -1388,6 +1686,13 @@ def _find_contacts(slug, needle, limit=5):
                 # up rather than read off the contact - a contact carrying a
                 # `bison_lead_id` was STAGED, which is not the same thing.
                 "in_campaigns": campaigns_of_record(slug, record.get("id")),
+                # AND WHERE THAT CAME FROM. Our campaign rows record what we
+                # STAGED; the provider records what it holds. They agree
+                # until a push is refused or a lead is stopped, and the one
+                # moment somebody asks is the moment they disagree.
+                "in_campaigns_source": "our store, not the provider - ask "
+                                       "lead_in_campaign for the provider's "
+                                       "own membership",
                 "contact": address,
                 "name": contact.get("name"),
             })
