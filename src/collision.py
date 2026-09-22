@@ -798,6 +798,38 @@ def _excludable(entry, evidence):
                       f"this lead's own row on it reads emails_sent 0 "
                       f"({state!r})")
 
+    # PATH 3: OUR CAMPAIGN HAS SENT - TO SOMEBODY ELSE.
+    #
+    # ISSUE-018, and it is ISSUE-014 one step later. Path 2 requires the whole
+    # campaign to be silent, so the FIRST send a standing campaign makes locks
+    # it for every remaining lead on it. Campaign 495 sent one email at
+    # 13:02:46Z on 2026-09-22 and its next top-up was refused at 26 accounts,
+    # every one of them our own `in_sequence` rows with zero sends.
+    #
+    # THE "A ROW READING ZERO MAY LAG" OBJECTION IS NOW MEASURED, AND IT IS
+    # FALSE FOR THIS PROVIDER. Seventeen minutes after that send, read back
+    # live at the same account:
+    #
+    #     dan@thinknectar.com    camp 495  in_sequence  emails_sent 1
+    #     jason@thinknectar.com  camp 495  in_sequence  emails_sent 0
+    #
+    # The per-lead counter updated, and it discriminated between two leads at
+    # one account. So the lead's own row is not an aggregate that trails the
+    # campaign; it is the per-lead fact, and it is strictly better evidence
+    # than the campaign counter that Path 2 leans on.
+    #
+    # NARROWED TO `in_sequence` DELIBERATELY. A `stopped` or `sending_paused`
+    # row means somebody stopped THIS lead and the reason is not recorded -
+    # that keeps Path 2's campaign-level proof, and with it
+    # `test_a_campaign_that_starts_sending_stops_being_an_artifact`, whose
+    # caution is right for a stop nobody can explain. `in_sequence` with zero
+    # sends means the opposite and says so plainly: the lead is queued behind
+    # our own first step and has been reached by nobody.
+    if ours and ours[0] and state == IN_SEQUENCE:
+        return True, (f"our own campaign, and this lead's own row on it reads "
+                      f"emails_sent 0 while queued ({state!r}); the campaign "
+                      f"has sent to somebody else, not to them")
+
     if not evidence.get("proven"):
         return False, "not proven to be our own silent staging"
     return False, (f"membership reads {state!r}, which our own zero-send "

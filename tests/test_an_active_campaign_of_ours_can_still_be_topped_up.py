@@ -65,18 +65,57 @@ class AnActiveCampaignOfOursDoesNotCollideWithItself(StagingTest):
         self.assertEqual(found["our_staging_excluded"], [])
         self.assertTrue(found["people"][0]["in_sequence"])
 
-    def test_a_campaign_that_has_emailed_ANYBODY_is_disqualified_for_everybody(self):
-        """A row reading zero on a campaign that has sent may simply lag.
+    def test_a_queued_lead_survives_the_campaign_sending_to_somebody_else(self):
+        """ISSUE-018. This assertion was the OPPOSITE this morning, and the
+        evidence changed it.
 
-        So one send by the campaign stops the per-lead path for every lead on
-        it, not merely for the lead it sent to.
+        It used to read "a campaign that has emailed ANYBODY is disqualified
+        for everybody", on the stated worry that a row reading zero may simply
+        lag behind the campaign counter. Measured live on 2026-09-22,
+        seventeen minutes after campaign 495's first send, at one account:
+
+            dan@thinknectar.com    camp 495  in_sequence  emails_sent 1
+            jason@thinknectar.com  camp 495  in_sequence  emails_sent 0
+
+        The per-lead counter updated AND discriminated between two leads at
+        the same account, so it is the per-lead fact rather than a trailing
+        aggregate. Keeping the old rule meant the first send a standing
+        campaign made locked it against every remaining lead - 495's next
+        top-up was refused at 26 accounts, all of them our own queued rows.
         """
         found = self.account(
             [lead("a@example.test", memberships=[
                 membership(OURS, "in_sequence")])],
             campaigns={OURS: self.ACTIVE(emails_sent=1,
                                          total_leads_contacted=1)})
+        self.assertEqual(len(found["our_staging_excluded"]), 1)
+        self.assertFalse(found["people"][0]["in_sequence"])
+
+    def test_a_STOPPED_row_still_needs_the_whole_campaign_to_be_silent(self):
+        """The caution is kept exactly where it belongs.
+
+        A `stopped` or `sending_paused` row means somebody stopped THIS lead
+        and the reason is not recorded. That is the case
+        `test_a_campaign_that_starts_sending_stops_being_an_artifact` guards,
+        and it still requires campaign-level proof - unchanged by ISSUE-018,
+        which narrows only the `in_sequence` case.
+        """
+        found = self.account(
+            [lead("a@example.test", memberships=[
+                membership(OURS, "stopped")])],
+            campaigns={OURS: self.ACTIVE(emails_sent=1,
+                                         total_leads_contacted=1)})
         self.assertEqual(found["our_staging_excluded"], [])
+
+    def test_a_lead_the_campaign_DID_email_still_collides(self):
+        """The guard that matters, on the lead's own row."""
+        found = self.account(
+            [lead("a@example.test", sent=1, memberships=[
+                membership(OURS, "in_sequence", sent=1)])],
+            campaigns={OURS: self.ACTIVE(emails_sent=1,
+                                         total_leads_contacted=1)})
+        self.assertEqual(found["our_staging_excluded"], [])
+        self.assertTrue(found["people"][0]["in_sequence"])
 
     def test_a_campaign_that_is_not_ours_is_never_excluded(self):
         found = self.account(
