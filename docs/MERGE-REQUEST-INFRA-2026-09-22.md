@@ -1,0 +1,308 @@
+# Merge request — `infra`, 2026-09-22: store design, test baseline, history runbook
+
+**For the main session.** Branch `infra`, pushed to `origin/infra`. Worktree
+`../resonate-infra`. Created off master `c75b4b60` this session; master has
+since moved to `7ccc2cfc` under me, which is fine — nothing here conflicts
+with it, and the two code changes are in files no other branch touches.
+
+The GLM harness fix is a **separate** merge request:
+`docs/MERGE-REQUEST-GLM-HARNESS-2026-09-22.md`. This one covers everything
+else.
+
+    006a8be8  GLM harness — separate MR
+    e6847102  that MR
+    a3ceb50d  git history runbook + scripts/history_pii_scan.py
+    85867a9b  suite baseline, test_invariants fix, 7 bounded tasks
+
+## Overlap check, per the three-session rule
+
+Checked `git log master..<branch>` for every branch, per file, before
+starting:
+
+    src/store.py          qwen-worker-2-task-243, qwen-worker-4-task-245
+                          — both STATE_OVERRIDES additions, both already on
+                          master. NOT TOUCHED by this branch anyway.
+    src/queuejournal.py   qwen-worker-8-r28 (TASK-226, offset index for O(M)
+                          replay). Adjacent to the SQLite design; NOT
+                          superseded — see below. NOT TOUCHED here.
+    scripts/glm_*.py      no overlap
+    tests/test_invariants.py  no overlap
+
+Nothing under `config/.env`, `src/providers/`, `scripts/*_watch_loop.py` or
+`work/` was read-modified or written. `work/queue.jsonl` was read once,
+read-only, for the measurement in section 1.
+
+---
+
+## 1. THE STORE — design and five tasks, nothing wired
+
+`docs/STORE-SQLITE-DESIGN-2026-09-22.md`, and `TASK-251` … `TASK-255` in
+`docs/qwen-tasks/TODO/`.
+
+**Nothing is wired and no behaviour changed.** The tasks land in an order that
+keeps the storage engine and the change to the only file holding real client
+state as separate reviewable things — the shape `queuejournal.py` was
+deliberately landed in, for the reason its own docstring gives.
+
+### The measurement corrects two numbers you are planning against
+
+Measured on the live queue today:
+
+    records                 1,027
+    total                  19.41 MB
+    mean per record        19,819 bytes
+    largest                162,117 bytes
+
+- **The brief's "~31 KB per record" is high.** 31 KB is inside the range but
+  the mean is 19.8 KB, so every projection in the design is the conservative
+  version. (The 31.8 KB figure is still live inside
+  `scripts/glm_review.py`'s `STORAGE_QUESTION`, stated to GLM as "measured on
+  the real estate today" — it was measured on 550 records. Worth a correction
+  when you touch that file.)
+- **`queuejournal.py`'s headline benchmark under-states production by
+  22.7x.** Its table — 4,369.1 MB at 5,000 records, 1,000 checkpoints — works
+  out to 874 bytes per record, matching its own "~900-byte record". Production
+  is 19,819. Every byte and wall-clock figure in that table is low by that
+  factor.
+
+At the measured mean, one pass over 20,000 records writes **1.48 TB**, with an
+O(N) read per checkpoint on top.
+
+### Why this is feasible at all
+
+`queue_path()` has 97 callers, which looked fatal. It is not: **36 of them
+want `os.path.dirname(...)`**, and **no module under `src/` parses the queue
+file itself.** The only direct readers are `scripts/profile_scale.py`,
+`scripts/task191_funnel.py` and `store`'s own `queuejournal`. TASK-254 turns
+that survey into a test so it stays true.
+
+### TASK-226 is NOT superseded
+
+The journal stays the default until SQLite is proven in shadow, so the offset
+index on `qwen-worker-8-r28` is still worth having. Do not close it on the
+strength of this design.
+
+### Two decisions that are yours
+
+1. **`digest()` changes meaning on the SQLite backend** — a revision counter,
+   not a content hash. It refuses slightly more often (a change-and-change-back
+   now refuses). That is the safe direction and the task asserts the stricter
+   behaviour rather than shimming the old one. Flagging it because
+   `expect_digest` is a concurrency guard.
+2. **Shadow-mode divergence does NOT raise in production**, against this
+   repository's default. Reasoning is in design §7 and task 253: JSONL is
+   canonical throughout, the SQLite half is an observer with no vote, and a
+   divergence that raises would take the trusted half down to protect the
+   untrusted one. `SHADOW_STRICT=1` raises, and tests run with it on.
+
+---
+
+## 2. TEST DEBT — the baseline is a list now
+
+`docs/state/SUITE-BASELINE-2026-09-22.md` and its `.json`.
+
+**The diff asked for could not be done.** No name-level record of the 83 was
+ever written — `docs/`, `docs/state/` and `../pool-logs` all searched; the
+sweep logs are 71-byte dispatch records. A scalar can only be subtracted, and
+subtraction hides an equal number of fixes and regressions. The suite also grew
+427 tests between the two measurements, so those deltas never compared the same
+suite.
+
+So the artifact is the fix: every failure by fully-qualified name, regenerable,
+diffable as a set.
+
+    measured   11,098 tests · 80 F · 36 E · 116 entries · 112 distinct
+    stable     110 of 115 reproduce identically when run alone
+    fixed      -5, all test_invariants, all run-order
+
+### The 5 were the production-state barrier
+
+`spendledger` and `observability` resolve their own path beside
+`store.queue_path()`. With `QUEUE` left pointing at an earlier module's temp
+directory they write there, the barrier correctly does not fire, and the test
+fails with "ProductionStateUnderTest not raised" **while the barrier is in
+perfect health**.
+
+Reproduced rather than inferred: `QUEUE=<tmp>` → 4 failures, `SPEND_LEDGER=<tmp>`
+→ exactly the `spendledger` subtest, clean env → 5/5.
+
+Fixed by pinning the environment in `setUp` and restoring in `tearDown`, so the
+class tests the real paths its docstring already claimed. **Verified not
+vacuous:** with `refuse_production_write` stubbed to a no-op it produces 10
+failures across all nine writers plus the dedicated barrier test.
+
+Nothing retired, no assertion loosened, no guard widened.
+
+### The number for the register
+
+    2026-09-22   11,098 tests   111 entries   107 distinct tests
+
+A floor to work down from. ~47 of the 111 are two known contract changes —
+TASK-256 (28) and TASK-250 (~19, already written, never started) — both
+fixture work with a stated rule.
+
+### THE ONE THAT IS YOURS: the PII guard is red
+
+`test_fixture_hygiene.TestNoRealDataAnywhereInGit`, 3 of 13. **REAL DEFECT,
+not test debt.** ISSUE-006 closed at `cecd4223` on 09-20 reporting 13/13 with
+the finding *"a red guard catches nothing"*. 132 commits later it is red
+again, and every flagged file landed 09-21/22 — after that fix:
+
+    docs/HEYREACH-CADENCES-2026-09-21.md
+    docs/SLACK-AGENT-HANDOFF-2026-09-22.md
+    docs/qwen-tasks/TODO/TASK-249-...
+    scripts/batch1_build.py
+    src/clientapproval.py
+    tests/test_a_client_can_never_reach_another_client.py
+    tests/test_client_approval_is_a_gate.py
+
+None is mine; checked against every commit on this branch. **Not fixed here**
+— they are your active files and redacting identifiers out of
+`src/clientapproval.py` touches live client semantics.
+
+It is red in plain sight, which is the argument for the baseline work: a guard
+hidden among 112 failing tests is ISSUE-006's own mechanism one level up.
+
+### And a latent defect the cluster was hiding
+
+The 28-test threading cluster is a changed contract (TASK-219, `4c9d63d3`).
+But the shipped ladder default
+
+    THREAD_REPLY_PATTERNS["email_five"] = (False, True, False, True, False)
+
+has steps 3 and 5 unthreaded, which TASK-219's invariant refuses whenever
+follow-ups carry their own subjects. **The default configuration cannot build
+a sequence.** Production is unaffected and I checked rather than assumed —
+both real client configs override with all-threaded patterns, which is why
+491-498 built against a six-day-old guard. A client added without that override
+inherits the break. TASK-256, and it asks a question about the copy contract
+that may be yours to answer.
+
+---
+
+## 3. GIT HISTORY — runbook, not a rewrite
+
+`docs/GIT-HISTORY-REWRITE-RUNBOOK-2026-09-22.md` and
+`scripts/history_pii_scan.py`. **Nothing has been run.**
+
+### The cutoff in the brief does not work
+
+Scanned every blob in the object database against the guard's three lists and
+attributed to master's first-parent history:
+
+    commits carrying an identifier (excl. guard file)   595 of 874
+      before 2026-09-15                                 217
+      on or after                                       378
+    earliest                              2026-09-09  (first commit)
+    latest                                2026-09-22  (today)
+    distinct identifiers                       97
+
+**A rewrite scoped to 09-15 leaves 217 commits behind** — full disruption,
+data still there. It has to start at the root.
+
+### Sequencing
+
+The latest identifier is dated **today**, and the guard is red. **Fix the
+guard first or the rewrite is stale the moment it finishes**, and you do not
+get to run this twice cheaply.
+
+### The decision the runbook cannot make for you
+
+`tests/test_fixture_hygiene.py` holds all **117 values in clear and is in
+every commit** — the largest single concentration in the repository. Redact it
+and the guard has nothing to match; leave it and the rewrite is close to
+pointless. Recommendation: move the lists to a gitignored sidecar first, the
+way `config/suppress.local.txt` already works. That is a merge request with a
+test, not a runbook step.
+
+### Blast radius
+
+10 worktrees, ~90 branches, 3 sessions, and **59 real commit SHAs cited across
+tracked markdown** — the register names a commit in every FIXED row, and a
+rewrite dangles all of them. Section 5.4 rewrites them from filter-repo's
+commit map.
+
+Neither `git-filter-repo` nor BFG is installed here (no Java). The runbook
+says so and picks filter-repo.
+
+---
+
+## 4. LINKEDIN PER-SEAT LEDGER — TASK-257
+
+The design point worth your attention: **our action ledger is a LOWER BOUND on
+a seat's use**, because the client works the same seats on a workspace-wide key
+and their actions are not in it. So the verdict vocabulary mirrors
+`senderheadroom` — FULL / ROOM / REFUSED — with one difference that must not be
+smoothed over:
+
+    ours >= 40              FULL. A lower bound at the ceiling is still at it.
+    seat exclusively ours   ROOM is computable.
+    seat SHARED             REFUSED, permanently.
+
+In `senderheadroom`, REFUSED means *not yet proven* and a better walk fixes it.
+Here it is **permanent**: no walk of our own ledger can prove room on a seat
+somebody else works, because the missing quantity is unobservable rather than
+unwalked. The task says so in the module docstring, because a future session
+will try to infer it from HeyReach campaign counters and a guessed denominator
+is worse than a missing one.
+
+`client` is the literal string `"UNKNOWN"` on a shared seat — never `None`,
+never absent, never 0 — because an absent field reads as zero to the next
+person who writes a sum.
+
+It reads `actionledger.count_on` rather than adding a second counter, and it
+never writes.
+
+---
+
+## 5. WHAT I DID NOT DO
+
+- **Did not fix the PII guard** — §2, your files.
+- **Did not root-cause the long tail**, ~54 entries across 28 modules. Several
+  look like TASK-250's verification-role change, but "looks like" is not a
+  classification and this register's first rule is a reproduction. Named in
+  the JSON.
+- **Did not dispatch any Qwen worker.** The tasks are written and queued; the
+  store migration is five tasks of real work and I would rather you saw the
+  design before eight workers started on it.
+- **Did not run the rewrite, touch a worktree, or fetch/push anything but
+  `infra`.**
+
+---
+
+## 6. SUGGESTED REGISTER ROWS
+
+```
+### ISSUE-015 · The PII guard is red again, 132 commits after it was fixed · HIGH
+
+3 of 13 in `test_fixture_hygiene.TestNoRealDataAnywhereInGit`. ISSUE-006
+closed at `cecd4223` reporting 13/13; every file now flagged landed 09-21/22,
+after that fix. It is invisible because it is one of 112 failing tests - the
+ISSUE-006 mechanism one level up, a guard hiding in a failing baseline rather
+than in silence.
+- **Evidence** `docs/state/SUITE-BASELINE-2026-09-22.md` §3.2
+- **Status** OPEN. Files belong to the production session.
+
+### ISSUE-016 · The default email ladder cannot build a sequence · MEDIUM
+
+`THREAD_REPLY_PATTERNS["email_five"]` is (F,T,F,T,F); TASK-219's invariant
+refuses an unthreaded follow-up carrying its own subject. The shipped default
+is refused by the shipped guard. NOT affecting production: both client configs
+override with all-threaded patterns, verified, which is why 491-498 built
+against a six-day-old guard. A client added without the override inherits it.
+- **Evidence** 28 suite failures; `config/clients/{productive,demo}.yaml`
+- **Status** OPEN · TASK-256
+
+### ISSUE-017 · The journal's benchmark was measured on 874-byte records · MEDIUM
+
+`queuejournal.py`'s table works out to 874 bytes/record against a production
+mean of 19,819 - low by 22.7x, and five days of capacity planning rest on it.
+The register's own recurring shape, arriving in a benchmark.
+- **Evidence** `docs/STORE-SQLITE-DESIGN-2026-09-22.md` §1
+- **Status** OPEN · TASK-255 re-measures at production record size
+
+### A RULE FOR THIS FILE: a baseline is a LIST, not a count.
+
+"113 against 83" was unanswerable because the 83 had no members. Regenerate
+`docs/state/SUITE-BASELINE-<date>.json` on every measurement and diff sets.
+```
