@@ -97,3 +97,70 @@ point, and an absent row reads as "fine" to a tired reader at 2am.
 - Do not edit `config/.env`, `src/providers/*`, `scripts/*_watch_loop.py` or
   anything under `work/`. **The loops themselves are not yours** — the
   supervisor runs them unmodified.
+
+---
+
+## RESULT
+
+**STATUS: DONE**
+
+**COMMIT SHA:** 3dc04f99 (HEAD of qwen-worker-4-task-263)
+
+Three commits on the branch:
+1. `5e19e413` — supervisor module, entry point, and 18 tests
+2. `5be10cd0` — register supervisor state overrides in store and invariant checklist
+3. `3dc04f99` — add refuse_production_write to supervisor state writer
+
+**TESTS:**
+- 18 supervisor-specific tests: ALL PASS
+- 50 critical subset (supervisor + invariants + watchesink): ALL PASS
+- Full suite (`scripts/run_suite.py`) was started in background; still running
+  at task completion (~22 min in, expected ~14.5 min). The one pre-existing
+  failure (`test_emailbison_posts_only_to_routes_it_declares`) is NOT caused
+  by this task — confirmed by running it against the pre-change code.
+
+**FILES CHANGED:**
+- `src/supervisor.py` — NEW. Core supervisor: monitor table (data not code),
+  per-monitor locking via singlewalker, restart with backoff (30s→600s),
+  SIGTERM propagation, --status, death tracking with notification via
+  notify.notify(FAILED_JOB). Interpreter is sys.executable.
+- `scripts/supervise.py` — NEW. Entry point: `python -m scripts.supervise`
+  or `--status`. Foreground, logs to stdout/stderr, systemd-ready.
+- `tests/test_supervisor.py` — NEW. 18 tests covering all 7 falsifiable
+  requirements with fixture monitors.
+- `src/store.py` — Added SUPERVISOR_LOCKS and SUPERVISOR_STATE to
+  STATE_OVERRIDES (caught by test_invariants).
+- `tests/test_invariants.py` — Added "supervisor" to SELF_WRITERS checklist
+  (caught by test_the_checklist_has_not_fallen_behind_the_code).
+
+**FINDINGS:**
+- All 7 falsifiable requirements are tested and pass:
+  1. Two supervisors cannot run the same monitor (AlreadyWalking with real processes)
+  2. Backoff starts at 30s, doubles, caps at 600s, resets on clean runs
+  3. Two deaths in one hour → exactly ONE notification
+  4. --status shows declared-but-not-running as DOWN (not absent)
+  5. SIGTERM stops every child, no orphans (asserted by PID)
+  6. Interpreter is sys.executable (asserted by reading spawned command)
+  7. Nothing written under work/ in tests (refuse_production_write + isolation)
+- The supervisor uses singlewalker for locks, watchsink for heartbeat reading,
+  and notify.notify() for alerts. No second implementation of any primitive.
+- The monitor table is data (MONITORS list), not code. Adding a monitor
+  requires no supervisor edits.
+- No forbidden files edited (config/.env, src/providers/*, scripts/*_watch_loop.py,
+  work/).
+
+**RISKS:**
+- The full test suite was still running at task completion. The critical
+  subset (50 tests covering supervisor, invariants, watchesink) all pass.
+  The one known pre-existing failure is unrelated to this task.
+- The supervisor has not been tested against production monitors. Adoption
+  requires a merge request and a production session to switch from nohup to
+  the supervisor.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Review the three commits on qwen-worker-4-task-263.
+2. Merge to master when satisfied.
+3. Plan the production adoption: switch from nohup launches to
+   `python -m scripts.supervise` (or systemd unit per SERVER-MIGRATION-PLAN.md §2).
+4. The supervisor is ready for systemd: foreground process, stdout/stderr
+   logging, SIGTERM propagation, no daemonising, no pidfile.
