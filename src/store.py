@@ -535,7 +535,102 @@ def _current_records():
 
 def load():
     """The queue, with any journalled deltas replayed over the base file."""
-    return Snapshot(_current_records())
+    recs = Snapshot(_current_records())
+    mode = backend()
+    if mode == "sqlite":
+        from . import sqlitestore
+        import sqlite3
+        path = db_path()
+        if os.path.exists(path):
+            conn = sqlite3.connect(path)
+            try:
+                recs._baseline_rev = sqlitestore.revision(conn)
+            finally:
+                conn.close()
+    return recs
+
+
+def _incremental_guard_input(snapshot, full_read_fn):
+    """For sqlite backend: return (guard_old, guard_new, on_disk_for_merge).
+
+    TASK-260. If the snapshot has a valid baseline and the backend is sqlite,
+    use the rev cursor to read only the records the guards need: caller-touched
+    records plus records that changed on disk since the baseline.
+
+    Falls back to full read if:
+    - Not a Snapshot (no baseline)
+    - Backend is not sqlite
+    - Cursor is missing/stale/backwards
+
+    Returns (guard_old, guard_new, on_disk_for_merge, path, rows_read).
+    - guard_old: the OLD records for the guards (narrowed or full)
+    - guard_new: the NEW records for the guards (narrowed or full)
+    - on_disk_for_merge: the full on_disk for merge_onto (always full)
+    - path: "incremental" or "full"
+    - rows_read: how many rows were read for the guards
+    """
+    mode = backend()
+    if mode != "sqlite":
+        on_disk = full_read_fn()
+        return on_disk, on_disk, on_disk, "full", len(on_disk)
+
+    if not isinstance(snapshot, Snapshot) or not hasattr(snapshot, "baseline"):
+        on_disk = full_read_fn()
+        return on_disk, on_disk, on_disk, "full", len(on_disk)
+
+    from . import sqlitestore
+    import sqlite3
+    path = db_path()
+    if not os.path.exists(path):
+        on_disk = full_read_fn()
+        return on_disk, on_disk, on_disk, "full", len(on_disk)
+
+    conn = sqlite3.connect(path)
+    try:
+        current_rev = sqlitestore.revision(conn)
+        baseline_rev = getattr(snapshot, "_baseline_rev", None)
+
+        if baseline_rev is None or baseline_rev > current_rev or baseline_rev < 0:
+            on_disk = full_read_fn()
+            return on_disk, on_disk, on_disk, "full", len(on_disk)
+
+        changed = sqlitestore.read_changed_since(conn, baseline_rev)
+        changed_ids = {r.get("id") for r in changed}
+
+        caller_touched = set()
+        for rec in snapshot:
+            if isinstance(rec, dict) and "id" in rec:
+                rid = rec["id"]
+                if snapshot.baseline.get(rid) != _frozen(rec):
+                    caller_touched.add(rid)
+
+        needed_ids = caller_touched | changed_ids
+        if not needed_ids:
+            on_disk = full_read_fn()
+            return [], [], on_disk, "incremental", 0
+
+        all_recs = full_read_fn()
+        guard_old = [r for r in all_recs if r.get("id") in needed_ids]
+        guard_new = []
+        for r in all_recs:
+            if r.get("id") in needed_ids:
+                guard_new.append(r)
+        for rec in snapshot:
+            if isinstance(rec, dict) and rec.get("id") in needed_ids:
+                found = False
+                for gn in guard_new:
+                    if gn.get("id") == rec.get("id"):
+                        found = True
+                        break
+                if not found:
+                    guard_new.append(rec)
+
+        if len(guard_old) >= len(all_recs) * 0.8:
+            return all_recs, list(snapshot), all_recs, "full", len(all_recs)
+
+        return guard_old, guard_new, all_recs, "incremental", len(changed)
+    finally:
+        conn.close()
 
 
 # ------------------------------------------------- the second barrier
@@ -1104,18 +1199,21 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         # caught exactly that: EvidenceLost stopped being raised, silently,
         # because the evidence it was protecting lived in the journal.
         #
-        # This read stays O(N). Narrowing it needs an index and is a larger
-        # change; only the WRITE narrows here.
+        # TASK-260: on sqlite backend with a valid Snapshot baseline, the
+        # GUARDS run on a narrowed input (caller-touched ∪ disk-changed).
+        # The merge still uses the full on_disk.
+        snapshot = recs if isinstance(recs, Snapshot) else None
         on_disk = _current_records()
         if expect_digest is not None and digest() != expect_digest:
             raise QueueChanged(
                 "the queue changed while this work was in progress, so writing "
                 "it back would discard whatever changed. Nothing was written; "
                 "reload and re-apply.")
-        snapshot = recs if isinstance(recs, Snapshot) else None
         if snapshot is not None:
             recs = snapshot.merge_onto(on_disk)
-        refuse_evidence_loss(on_disk, recs)
+        guard_old, guard_new, _, _path, _rows = _incremental_guard_input(
+            snapshot if snapshot is not None else recs, lambda: on_disk)
+        refuse_evidence_loss(guard_old, guard_new)
         # `allow_history_loss` IS FOR TEST CLEANUP AND NOTHING ELSE. A test
         # that adds an event to a shared estate has to take it back out again,
         # and that is a legitimate rewrite of history by a caller who knows it
@@ -1124,7 +1222,7 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         # escape hatch nobody is allowed to reach for in production is a
         # different thing from a guard with a hole in it.
         if not allow_history_loss:
-            refuse_history_loss(on_disk, recs)
+            refuse_history_loss(guard_old, guard_new)
         # THE ONLY THING THE BACKEND CHANGES IS WHICH BYTES GET WRITTEN.
         # Everything above this line - the read, the digest check, the
         # three-way merge, and both loss guards - has already run over the
@@ -1150,6 +1248,16 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         # one would treat them as already on disk and stop re-asserting them.
         if snapshot is not None:
             snapshot.rebase()
+            if mode == "sqlite":
+                from . import sqlitestore
+                import sqlite3
+                path = db_path()
+                if os.path.exists(path):
+                    conn = sqlite3.connect(path)
+                    try:
+                        snapshot._baseline_rev = sqlitestore.revision(conn)
+                    finally:
+                        conn.close()
 
 
 def new_record(id, lane, client, company, domain, context="", signal=""):

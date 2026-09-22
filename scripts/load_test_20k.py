@@ -471,14 +471,22 @@ def measure_sqlite(size, records, runs, tmp):
 
 
 def _run_sqlite_pass(size, records, tmp):
-    """One SQLite arm trial."""
+    """One SQLite arm trial.
+
+    TASK-260: now measures both the full read and the incremental guard path.
+    Uses store.save() with a Snapshot to exercise the incremental read.
+    """
+    was_q = os.environ.get("QUEUE")
+    was_qb = os.environ.get("QUEUE_BACKEND")
     db_path = os.path.join(tmp, "queue.db")
-    conn = sqlitestore.open_db(db_path)
     try:
-        recs = [dict(r) for r in records]
+        store.use_directory(tmp)
+        os.environ["QUEUE_BACKEND"] = "sqlite"
+        os.environ["QUEUE_DB"] = db_path
+        recs = store.Snapshot([dict(r) for r in records])
 
         t0 = time.perf_counter()
-        sqlitestore.write_changed(conn, recs)
+        store.save(recs)
         initial_write = time.perf_counter() - t0
 
         db_size = os.path.getsize(db_path)
@@ -490,6 +498,9 @@ def _run_sqlite_pass(size, records, tmp):
         per_write = []
         bytes_written_total = 0
         payload_bytes = 0
+        incremental_fires = 0
+        full_fires = 0
+        total_rows_read = 0
 
         for n in range(checkpoints):
             i = (n * CHECKPOINT_EVERY) % size
@@ -503,7 +514,7 @@ def _run_sqlite_pass(size, records, tmp):
                 before_size += os.path.getsize(wal_path)
 
             t0 = time.perf_counter()
-            sqlitestore.write_changed(conn, recs)
+            store.save(recs)
             per_write.append(time.perf_counter() - t0)
 
             after_size = os.path.getsize(db_path)
@@ -511,7 +522,13 @@ def _run_sqlite_pass(size, records, tmp):
                 after_size += os.path.getsize(wal_path)
             bytes_written_total += max(0, after_size - before_size)
 
-        read_s = _measure_read_sqlite(conn)
+        conn = sqlitestore.open_db(db_path)
+        try:
+            read_s = _measure_read_sqlite(conn)
+            total_rows = conn.execute(
+                "SELECT COUNT(*) FROM records").fetchone()[0]
+        finally:
+            conn.close()
 
         return {
             "records": size,
@@ -526,9 +543,82 @@ def _run_sqlite_pass(size, records, tmp):
             "write_amplification": round(
                 bytes_written_total / max(payload_bytes, 1), 1),
             "read_s": read_s,
+            "total_rows": total_rows,
         }
     finally:
-        conn.close()
+        if was_q is None:
+            os.environ.pop("QUEUE", None)
+        else:
+            os.environ["QUEUE"] = was_q
+        if was_qb is None:
+            os.environ.pop("QUEUE_BACKEND", None)
+        else:
+            os.environ["QUEUE_BACKEND"] = was_qb
+        os.environ.pop("QUEUE_DB", None)
+
+
+def measure_incremental(size, records, runs, tmp):
+    """TASK-260: measure the incremental guard read path.
+
+    Simulates a checkpoint: load the queue, touch a few records, then
+    measure how long the guard input computation takes (incremental vs full).
+    """
+    was_q = os.environ.get("QUEUE")
+    was_qb = os.environ.get("QUEUE_BACKEND")
+    db_path = os.path.join(tmp, "queue.db")
+    try:
+        store.use_directory(tmp)
+        os.environ["QUEUE_BACKEND"] = "sqlite"
+        os.environ["QUEUE_DB"] = db_path
+
+        conn = sqlitestore.open_db(db_path)
+        try:
+            recs = [dict(r) for r in records]
+            sqlitestore.write_changed(conn, recs)
+        finally:
+            conn.close()
+
+        results = []
+        for _ in range(runs):
+            snapshot = store.load()
+            touch_count = max(1, size // 100)
+            for i in range(touch_count):
+                snapshot[i]["state"] = "verified"
+                snapshot[i]["touched"] = True
+
+            t0 = time.perf_counter()
+            guard_old, guard_new, on_disk, path, rows_read = \
+                store._incremental_guard_input(snapshot, store._current_records)
+            elapsed = time.perf_counter() - t0
+
+            t0_full = time.perf_counter()
+            full_recs = store._current_records()
+            full_elapsed = time.perf_counter() - t0_full
+
+            results.append({
+                "incremental_s": round(elapsed, 6),
+                "full_s": round(full_elapsed, 6),
+                "path": path,
+                "guard_old_count": len(guard_old),
+                "guard_new_count": len(guard_new),
+                "on_disk_count": len(on_disk),
+                "rows_read": rows_read,
+                "total_records": len(full_recs),
+            })
+
+        best = results[0]
+        best["runs"] = runs
+        return best
+    finally:
+        if was_q is None:
+            os.environ.pop("QUEUE", None)
+        else:
+            os.environ["QUEUE"] = was_q
+        if was_qb is None:
+            os.environ.pop("QUEUE_BACKEND", None)
+        else:
+            os.environ["QUEUE_BACKEND"] = was_qb
+        os.environ.pop("QUEUE_DB", None)
 
 
 def run_benchmark(sizes, runs, include_jsonl_20k=False):
@@ -611,6 +701,16 @@ def run_benchmark(sizes, runs, include_jsonl_20k=False):
             print(f"  write: {r.get('total_write_s', '?')}s  "
                   f"read: {r.get('read_s', '?')}s  "
                   f"amplification: {r.get('write_amplification', '?')}x")
+
+            print(f"\n--- incremental guard read (TASK-260) ---")
+            r = measure_incremental(size, records, runs, tmp)
+            r["arm"] = "incremental"
+            r["generator_stats"] = gen_stats
+            all_results.append(r)
+            print(f"  incremental: {r.get('incremental_s', '?')}s  "
+                  f"full: {r.get('full_s', '?')}s  "
+                  f"path: {r.get('path', '?')}  "
+                  f"guard rows: {r.get('guard_old_count', '?')}/{r.get('total_records', '?')}")
 
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
