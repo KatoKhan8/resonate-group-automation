@@ -411,6 +411,24 @@ def standing_campaigns():
     The cap moves with the mailboxes the campaign names: wave 2 bound 154
     attested inboxes across the eight, so `cap` is 15 x named x 3 days rather
     than the 45 that applied when each named one.
+
+    ## ROOM IS ALSO CAPPED BY THE FORWARD BOOK, AND THAT IS THE TIGHTER NUMBER
+
+    The pacing cap says how much BACKLOG a campaign may carry. It does not say
+    whether the campaign's mailboxes can actually send anything, and those are
+    different questions the moment a mailbox is shared with the client's own
+    campaigns.
+
+    Measured 2026-09-22: under the pacing cap alone, bojan/jakov/luka had room
+    for 216/83/32 leads. Their forward-book room that day, and on every day
+    through the 25th, was ZERO - 327/328/352 hold every one of those eight
+    mailboxes at 15/day. Enrolling there would have built backlog that cannot
+    send, which is the exact outcome the pacing rule exists to prevent.
+
+    So room is `min(pacing room, free first-step slots today)`. The forward
+    book must be COMPLETE, FRESH and COVERING or `senderheadroom` refuses per
+    mailbox, and REFUSED IS NOT ROOM - a campaign whose book cannot be proven
+    contributes nothing rather than its cap.
     """
     from src.providers import bison as _bison
     out = {}
@@ -439,11 +457,45 @@ def standing_campaigns():
         for name, spec in COHORTS.items():
             if spec["window"]["timezone"] == timezone:
                 cohort = name
+        pacing_room = max(cap - max(enrolled - sent, 0), 0)
+        book_room = _forward_book_room(row)
         out[human] = {"slug": slug, "cohort": cohort, "cap": cap,
-                      "room": max(cap - max(enrolled - sent, 0), 0),
+                      "room": min(pacing_room, book_room),
+                      "pacing_room": pacing_room, "book_room": book_room,
                       "enrolled": enrolled, "sent": sent,
                       "mailboxes": named}
     return out
+
+
+def _forward_book_room(row):
+    """Free first-step slots TODAY across this campaign's named mailboxes.
+
+    Zero when the book cannot answer. `senderheadroom.verdict` returns ROOM
+    only from a walk that is complete, fresh and covering; FULL and REFUSED
+    both contribute nothing, and REFUSED IS NOT ROOM.
+    """
+    import datetime
+    from src import senderheadroom as _sh
+
+    state = _sh.load_state()
+    active = tuple(sorted(int(c) for c in _sh.walked_campaigns(state)))
+    if not active:
+        return 0
+    day = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    total = 0
+    for entry in (row.get("senders") or {}).get("email") or []:
+        # Each entry is `{"provider_account_id": "2769", "account_id":
+        # "eb-2769"}`. The provider's own id is the one the forward book is
+        # keyed by; `account_id` is ours and would match nothing.
+        try:
+            sid = int((entry or {}).get("provider_account_id"))
+        except (TypeError, ValueError):
+            continue
+        verdict, _why, free = _sh.verdict(state, sid, day, PER_MAILBOX_DAY,
+                                          active_campaign_ids=active)
+        if verdict == _sh.ROOM:
+            total += int(free or 0)
+    return total
 
 
 def assign_to_existing(selection):
@@ -456,7 +508,8 @@ def assign_to_existing(selection):
                        "mailboxes": spec["mailboxes"]}
         print(f"    {human:10s} mailboxes {spec['mailboxes']:>3}  "
               f"cap {spec['cap']:>5}  enrolled {spec['enrolled']:>3}  "
-              f"sent {spec['sent']:>3}  room {spec['room']:>5}")
+              f"sent {spec['sent']:>3}  pacing {spec.get('pacing_room', 0):>5}"
+              f"  book {spec.get('book_room', 0):>5}  room {spec['room']:>5}")
     by_account = collections.OrderedDict()
     for cohort, entries in selection.items():
         for email, _variables, _country in entries:
