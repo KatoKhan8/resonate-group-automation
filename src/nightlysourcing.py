@@ -22,6 +22,7 @@ back off and continue, never halt.
 import argparse
 import datetime
 import json
+import os
 import time
 
 from . import (candidatelist, clients, geo, icp, mx, store,
@@ -31,6 +32,10 @@ from .providers import aiark, ProviderError
 # The pipeline stages, named for the state they produce.
 STAGE_SOURCE = "source"
 STAGE_ICP = "icp"
+
+#: Where a REVIEW record goes instead of the candidate list. It is undecided,
+#: so it is an enrichment task; it is not a rejection and must not read as one.
+ROUTE_ENRICHMENT = "enrichment"
 STAGE_MX = "mx"
 STAGE_COLLISION = "collision"
 STAGE_CANDIDATE = "candidate"
@@ -45,9 +50,36 @@ EXPORT_MINUTE = 0
 EXPORT_WEEKDAY = 1          # Monday, ISO
 TIMEZONE = "Europe/Zagreb"
 
-# Minimum headcount for sourcing. Applied AT THE SOURCE, not filtered after:
-# filtering after is paid-for rows thrown away.
+# Minimum headcount for sourcing. Enforced by S3 per domain rather than at the
+# source - see POST_FILTER_AUTHORIZED for why, and for what was measured.
 MIN_HEADCOUNT = 20
+
+#: OPERATOR AMENDMENT, Zvonimir, 2026-09-22: post-filtering after the AI Ark
+#: fetch is authorized, "because S3 re-verifies headcount and country per
+#: domain for free and only IN domains proceed."
+#:
+#: The original rule - geos and headcount applied AT THE SOURCE - rested on a
+#: COST argument: filtering after is paid-for rows thrown away. It was not
+#: achievable here at all. `size` is the page size rather than a headcount
+#: filter, ten candidate parameter names were probed live and every one is
+#: silently ignored, and `companyLocation` is accepted but not reliably
+#: honoured. The choice was never source-filtering versus post-filtering; it
+#: was post-filtering versus no sourcing.
+#:
+#: Recorded in full in the task file. The pipeline still STOPS AT CANDIDATES.
+POST_FILTER_AUTHORIZED = True
+
+#: Rows per company_search page. 100 is the MAXIMUM this endpoint serves:
+#: measured 2026-09-22, size=25/50/100 return exactly that many and size=200
+#: and 500 return ZERO rows with no error - an over-large page is dropped, not
+#: clamped, which is the same "silently ignored" behaviour every unknown
+#: filter name showed.
+#:
+#: This is also what fixes paging. The walk used to stop on `len(rows) < 30`
+#: while the endpoint's default page is 25, so EVERY run ended after one page
+#: no matter how much was available - 24 companies out of a stated
+#: totalElements of 72,657,969.
+PAGE_SIZE = 100
 
 
 def nightly_utc_moment(on_date=None):
@@ -83,32 +115,143 @@ def is_export_day(on_date=None):
 # --------------------------------------------------------- stage 1: source
 
 def _source_companies(search_fn=None, icp_config=None, known_domains=None,
-                      page_limit=None):
+                      page_limit=None, max_domains=None,
+                      allow_unfiltered_headcount=POST_FILTER_AUTHORIZED,
+                      problems=None):
     """AI-ARK company search on the Productive ICP.
 
-    Geos applied AT THE SOURCE via companyLocation. Headcount >= 20 via size.
+    Geos are passed via companyLocation, after resolving each one through
+    location_search - it is a strict enum - but the provider does not honour
+    them reliably, and headcount cannot be filtered at the source at all. Both
+    are re-derived per domain by S3, for free, under the operator's 2026-09-22
+    amendment. See POST_FILTER_AUTHORIZED.
     Walk to last=true (page_limit caps for tests). DIFF against known domains;
     NEVER delete from the known set.
 
     search_fn is injectable for tests. Defaults to aiark.company_search.
     """
+    # THE HEADCOUNT FILTER IS NOT APPLIED AT THE SOURCE, AND THAT IS NOW
+    # AUTHORIZED RATHER THAN REFUSED.
+    #
+    # `size` is company_search's PAGE SIZE, not a headcount filter - `">=20"`
+    # was rejected outright and returned zero rows, which is a large part of
+    # why this pipeline never produced a candidate. The parameter that really
+    # filters headcount does not appear to exist: companySize, companyStaff,
+    # staff, staffRange, employeeCount, companyEmployees, headcount,
+    # companyHeadcount, minStaff and staffCount were all probed live on
+    # 2026-09-22 and every one is SILENTLY IGNORED - identical totalElements
+    # (72,657,969) and byte-identical rows with and without each. An unknown
+    # filter name is dropped, not rejected.
+    #
+    # `POST_FILTER_AUTHORIZED` is the operator's answer to that, recorded
+    # above and in the task file: S3 re-derives headcount and country per
+    # domain for free, and only an ICP verdict of `in` proceeds to anything
+    # that spends. So the rows this discards cost one search page each rather
+    # than one enrichment each.
+    #
+    # The refusal is KEPT, not deleted, because the reasoning behind it is
+    # still true and the authorization is a decision that can be revisited. It
+    # fires only when the real provider is being called AND the amendment is
+    # switched off - an injected `search_fn` never reaches AI Ark, and
+    # asserting something about a provider this function does not call would
+    # be wrong.
+    if search_fn is None and not allow_unfiltered_headcount:
+        raise ProviderError(
+            f"nightly sourcing: no AI Ark parameter is known that filters "
+            f"headcount >= {MIN_HEADCOUNT} at the source. Ten candidate names "
+            f"were probed live and every one was silently ignored. The task "
+            f"requires the filter AT THE SOURCE, so this refuses rather than "
+            f"sourcing unfiltered and discarding the client's ICP minimum. "
+            f"Pass allow_unfiltered_headcount=True only for a deliberate "
+            f"measurement run")
+
+    problems = [] if problems is None else problems
     search_fn = search_fn or aiark.company_search
     known = known_domains or candidatelist.domains_already_known()
-    markets = (icp_config or {}).get("markets") or []
-    location_filter = ",".join(markets) if markets else None
 
+    # THE GEOS LIVE UNDER `icp`, AND THIS READ THE TOP LEVEL.
+    #
+    # `config["markets"]` does not exist on any client config. The markets are
+    # at `config["icp"]["markets"]` and the same list is at
+    # `config["market"]["geos"]`, so `location_filter` was None on every run
+    # this has ever made and the geo half of the task - "applied AT THE
+    # SOURCE, not filtered after" - was silently not applied at all.
+    config = icp_config or {}
+    markets = (config.get("icp") or {}).get("markets") \
+        or (config.get("market") or {}).get("geos") \
+        or config.get("markets") or []
+
+    # A STRICT ENUM HAS TO BE LOOKED UP BEFORE IT CAN BE USED, and a value the
+    # lookup does not return is refused rather than sent. `location_search`
+    # itself returned nothing for every term until 2026-09-22, because
+    # `_lookup` read the singular catalogue key while the tool answers under
+    # the plural one - so this filter was unusable even when it was passed.
+    # Resolved only when the REAL provider is being called, for the same
+    # reason the headcount refusal is: `location_search` is AI Ark's enum, and
+    # an injected `search_fn` never reaches it. Injected, the markets are
+    # passed through as given.
+    resolved = list(markets) if search_fn is not aiark.company_search else []
+    for market in (markets if search_fn is aiark.company_search else ()):
+        try:
+            found = aiark.location_search(market)
+        except ProviderError as exc:
+            raise ProviderError(
+                f"nightly sourcing: location_search({market!r}) failed "
+                f"({exc}). The geos are applied AT THE SOURCE and a run that "
+                f"cannot resolve them would source the whole world") from exc
+        match = [v for v in found if v.lower() == str(market).lower()]
+        if match:
+            resolved.append(match[0])
+    if markets and not resolved and search_fn is aiark.company_search:
+        raise ProviderError(
+            f"nightly sourcing: none of {markets!r} was returned by "
+            f"location_search, so no geo filter can be applied. Sourcing the "
+            f"whole world and filtering afterwards is what this task "
+            f"forbids - it is paid-for rows thrown away")
+    location_filter = ",".join(resolved) if resolved else None
+
+    # SUCCESSIVE RUNS MUST NOT RE-WALK PAGE ONE.
+    #
+    # `domains_already_known()` removes what we hold, so a run that always
+    # starts at page 1 re-fetches the same companies, discards every one as
+    # already known, and adds NOTHING. Measured 2026-09-22: the loop reached
+    # 1,508 candidates and then ran eleven further rounds adding zero, because
+    # AI Ark returns the same first pages each time - it sorts by staff
+    # descending and the order is stable.
+    #
+    # So the position is persisted beside the candidate list and each run
+    # continues from it. It is a page number rather than a cursor because this
+    # endpoint pages by number; if the underlying order shifts, the cost is a
+    # few repeated or skipped rows, which the known-domain diff absorbs.
     sourced = []
-    page = 1
+    page = _next_page()
     while True:
         if page_limit and page > page_limit:
             break
         try:
             rows = search_fn(
                 companyLocation=location_filter,
-                size=f">={MIN_HEADCOUNT}",
+                size=PAGE_SIZE,
                 page=page,
             )
-        except ProviderError:
+        except ProviderError as exc:
+            # A PROVIDER FAILURE IS NOT AN EMPTY CATALOGUE - BUT IT DOES NOT
+            # HALT THE RUN EITHER.
+            #
+            # This used to `break` and record nothing, so an unusable filter,
+            # an auth failure, a rate limit and a genuinely empty result were
+            # all reported identically: stage `source` with in=0 out=0 drop=0
+            # and a run that says it succeeded. That is how this pipeline
+            # reported success while having sourced nothing since it merged.
+            #
+            # Raising instead would break the other half of the contract: the
+            # standing order says a rate limit is a reason to back off and
+            # continue, never to halt, and TASK-245 says the same. So sourcing
+            # STOPS and the failure is RECORDED on the stage, where `run` puts
+            # it in the report and the caller can see it. Silence is the only
+            # option that is wrong.
+            problems.append({"page": page, "rows_before": len(sourced),
+                             "error": f"{type(exc).__name__}: {exc}"})
             break
         if not rows:
             break
@@ -126,8 +269,15 @@ def _source_companies(search_fn=None, icp_config=None, known_domains=None,
                 if field not in row:
                     row[field] = []
             sourced.append(row)
-        # AI Ark pagination: if fewer rows returned than a page, we are done.
-        if len(rows) < 30:
+        # A SHORT PAGE IS THE END OF THE WALK, and the length it is compared
+        # against has to be the length we ASKED for. It was hardcoded to 30
+        # while the endpoint's default page is 25, so every walk ended after
+        # page one.
+        if len(rows) < PAGE_SIZE:
+            _remember_page(page + 1)
+            break
+        if max_domains and len(sourced) >= max_domains:
+            _remember_page(page + 1)
             break
         page += 1
     return sourced
@@ -135,8 +285,53 @@ def _source_companies(search_fn=None, icp_config=None, known_domains=None,
 
 # --------------------------------------------------------- stage 2: ICP
 
+_PAGE_STATE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "work",
+    "sourcing-page.json")
+
+
+def _next_page():
+    """The page the last run stopped on, or 1."""
+    try:
+        with open(_PAGE_STATE, encoding="utf-8") as handle:
+            return int(json.load(handle).get("next_page") or 1)
+    except Exception:                                           # noqa: BLE001
+        return 1
+
+
+def _remember_page(page):
+    """Where the next run starts. Written even on a failed walk, because a
+    page that errored is not a page worth repeating forever."""
+    path = os.path.abspath(_PAGE_STATE)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump({"next_page": int(page)}, handle)
+    os.replace(tmp, path)
+
+
 def _icp_verdict(companies, config=None):
-    """S3 ICP verdict. Only qualified/review survive."""
+    """S3 ICP verdict. **Only QUALIFIED survives into the candidate list.**
+
+    REVIEW USED TO SURVIVE HERE AND IT IS WHY THE FIRST CLIENT EXPORT WAS
+    STOPPED (ISSUE-019). REVIEW means "not enough evidence to decide", which
+    REFUTED-002 already settled: those records carry no criterion at `fail`
+    and are an enrichment task, not a verdict. Passing them wrote undecided
+    accounts into the list as though they had qualified, and the result had a
+    median headcount of 16,745, nothing under 20 staff, a 130,377-employee
+    bank at `icp_score 0.0` and a national education ministry - against a
+    client who sells to 20+ person agencies. `why_matched` read "scored above
+    threshold" on every one of those rows, and that column is what the client
+    reads.
+
+    REVIEW IS ROUTED, NOT DISCARDED. It leaves with `_route = "enrichment"`
+    and its own drop reason, so the enrichment path can pick it up and a later
+    export can carry it once it has been decided. A record that is merely
+    undecided must not be silently thrown away either - that would trade one
+    wrong answer for a different one.
+
+    Operator ruling, 2026-09-22: QUALIFIED only; REVIEW to further enrichment.
+    """
     survived = []
     for company in companies:
         rec = {"domain": company["domain"],
@@ -154,14 +349,19 @@ def _icp_verdict(companies, config=None):
                }}
         verdict = icp.score(rec, config=config)
         status = verdict.get("icp_status")
-        if status in (icp.QUALIFIED, icp.REVIEW):
+        if status == icp.QUALIFIED:
             company["_icp_status"] = status
             company["_icp_score"] = verdict.get("icp_score")
             company["_icp_why"] = _icp_evidence_text(verdict)
             survived.append(company)
         else:
+            company["_icp_status"] = status
+            company["_icp_score"] = verdict.get("icp_score")
             company["_dropped_at"] = STAGE_ICP
             company["_drop_reason"] = f"icp_{status}"
+            if status == icp.REVIEW:
+                # Undecided, not rejected. The enrichment path owns it next.
+                company["_route"] = ROUTE_ENRICHMENT
     return survived
 
 
@@ -318,7 +518,8 @@ def _to_candidate(companies):
 # --------------------------------------------------------- the pipeline
 
 def run(config=None, search_fn=None, resolve_fn=None, live=False,
-        page_limit=None):
+        page_limit=None, max_domains=None,
+        allow_unfiltered_headcount=POST_FILTER_AUTHORIZED):
     """The full nightly pipeline. Returns a report dict.
 
     search_fn and resolve_fn are injectable for tests.
@@ -335,17 +536,31 @@ def run(config=None, search_fn=None, resolve_fn=None, live=False,
 
     # Stage 1: source
     known = candidatelist.domains_already_known()
-    sourced = _source_companies(search_fn=search_fn, icp_config=config,
-                                known_domains=known, page_limit=page_limit)
+    source_problems = []
+    sourced = _source_companies(
+        search_fn=search_fn, icp_config=config, known_domains=known,
+        page_limit=page_limit, max_domains=max_domains,
+        allow_unfiltered_headcount=allow_unfiltered_headcount,
+        problems=source_problems)
     report["stages"][STAGE_SOURCE] = {"input": 0, "output": len(sourced),
                                       "dropped": 0}
+    # A ZERO WITH A REASON IS NOT THE SAME FACT AS A ZERO WITHOUT ONE.
+    if source_problems:
+        report["stages"][STAGE_SOURCE]["problems"] = source_problems
+        report["source_failed"] = True
 
     # Stage 2: ICP
     after_icp = _icp_verdict(sourced, config=config)
     icp_dropped = len(sourced) - len(after_icp)
+    # REVIEW is reported on its own line. Folded into `dropped` it reads as a
+    # rejection, and it is the opposite: an account we could not yet decide.
+    to_enrichment = sum(1 for c in sourced
+                        if c.get("_route") == ROUTE_ENRICHMENT)
     report["stages"][STAGE_ICP] = {"input": len(sourced),
                                    "output": len(after_icp),
-                                   "dropped": icp_dropped}
+                                   "dropped": icp_dropped,
+                                   "review_to_enrichment": to_enrichment,
+                                   "rejected": icp_dropped - to_enrichment}
 
     # Stage 3: MX
     after_mx = _mx_classify(after_icp, config=config, resolve_fn=resolve_fn)
@@ -409,6 +624,21 @@ def main(argv=None):
     p.add_argument("--client", default="productive",
                    help="client config name")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--max-domains", type=int, default=None,
+                   help="stop sourcing once this many companies are held")
+    # DEFAULTS TO THE OPERATOR'S AMENDMENT, and the opposite flag is the one
+    # that has to be typed. Post-filtering is authorized as of 2026-09-22, so
+    # a plain run sources; `--refuse-unfiltered-headcount` restores the older
+    # behaviour for anybody re-testing the decision.
+    p.add_argument("--allow-unfiltered-headcount",
+                   dest="allow_unfiltered_headcount", action="store_true",
+                   default=POST_FILTER_AUTHORIZED,
+                   help="source and let S3 re-derive headcount per domain "
+                        "(the default, per the 2026-09-22 amendment)")
+    p.add_argument("--refuse-unfiltered-headcount",
+                   dest="allow_unfiltered_headcount", action="store_false",
+                   help="refuse unless headcount can be filtered AT THE "
+                        "SOURCE, which is the pre-amendment behaviour")
     a = p.parse_args(argv)
 
     config = None
@@ -417,13 +647,34 @@ def main(argv=None):
     except Exception:
         pass
 
-    report = run(config=config, live=a.live)
+    # A REFUSAL IS AN ANSWER, NOT A CRASH. This is operator-facing, and a
+    # traceback for "the provider cannot do what the task requires" reads as a
+    # bug in us rather than as the finding it is.
+    try:
+        report = run(config=config, live=a.live,
+                     max_domains=a.max_domains,
+                     allow_unfiltered_headcount=a.allow_unfiltered_headcount)
+    except ProviderError as exc:
+        print("")
+        print(f"  REFUSED: {exc}")
+        print("")
+        return 2
     if a.json:
         print(json.dumps(report, indent=2, default=str))
     else:
+        if report.get("source_failed"):
+            print("  SOURCE FAILED - the zero below has a reason:")
+            for problem in report["stages"][STAGE_SOURCE].get("problems") or []:
+                print(f"    page {problem['page']} after "
+                      f"{problem['rows_before']} row(s): {problem['error']}")
         for stage, counts in report["stages"].items():
-            print(f"  {stage:<12} in={counts['input']:<5} "
-                  f"out={counts['output']:<5} drop={counts['dropped']}")
+            # A STAGE REPORT WITH NO `dropped` KEY IS NOT A CRASH.
+            # `candidate` does not drop anything, so it carries no such key,
+            # and printing the report raised KeyError - which is how a run
+            # that had already done nothing also ended in a traceback.
+            print(f"  {stage:<12} in={counts.get('input', 0):<5} "
+                  f"out={counts.get('output', 0):<5} "
+                  f"drop={counts.get('dropped', 0)}")
         print(f"  candidates added: {report['candidates_added']}")
         print(f"  credits spent: {report['credits_spent']}")
     return 0

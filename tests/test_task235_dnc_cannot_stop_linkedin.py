@@ -17,7 +17,7 @@ from unittest import mock
 
 from src import (campaigns, eligibility, events, leadstop, providerwrites,
                  store)
-from src.providers import ProviderError
+from src import providers
 from tests.base import QueueTest
 
 
@@ -44,7 +44,7 @@ class FakeHeyReach:
         held = self.leads.get(int(campaign_id), {})
         mid = str(member_id)
         if mid not in held:
-            raise ProviderError(
+            raise providers.ProviderError(
                 f"heyreach stop_lead_in_campaign: lead {mid} not in "
                 f"campaign {campaign_id}")
         self.writes += 1
@@ -300,7 +300,7 @@ class UnconfirmedLinkedInStopFails(QueueTest):
         original_stop = self.heyreach.stop_lead_in_campaign
 
         def _failing_stop(campaign_id, member_id, profile_url):
-            raise ProviderError(
+            raise providers.ProviderError(
                 "heyreach stop_lead_in_campaign: the write returned 2xx and "
                 "the provider still reports this lead as InSequence")
 

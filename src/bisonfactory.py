@@ -540,15 +540,43 @@ def _refuse_bad_greetings(plan):
                         f"greeting contains literal {bad!r} - "
                         f"{first_line[:50]!r}")
 
-            # Check 3: planted cohort name.
+            # Check 3: planted cohort name, IN A SALUTATION POSITION.
+            #
+            # ISSUE-015. This used to flag any occurrence of another cohort
+            # member's first name anywhere in the body, and that is not the
+            # defect it names. Measured 2026-09-22 across the five campaigns
+            # carrying batch 3: 275 flags, every one a false positive.
+            #
+            #   269 of them on the single name 'Will', which is a first name
+            #     AND an ordinary English auxiliary verb - so one cohort
+            #     member named Will made every body containing the word
+            #     "will" a defect
+            #   the rest were company names carrying a person's name:
+            #     russellherder.com, terrisandy.com, bigstarbranding.com,
+            #     wearerichlifestyle.com, sobepromos.com
+            #
+            # The hi-jacob defect is a MIS-PERSONALISED GREETING - a letter to
+            # Michael that opens by addressing Jacob. Checks 1 and 2 above
+            # already read only the greeting line, for exactly that reason.
+            # So this looks where a greeting puts a name and nowhere else:
+            # after a salutation word, or opening a line as a bare vocative,
+            # which is the form the approved Productive copy actually uses
+            # ("Janie, I work with ...").
+            #
+            # NARROWED TO THE DEFECT, NOT WIDENED PAST IT. A planted name in a
+            # salutation still fails, on any step and anywhere in the body -
+            # the suite asserts that on a second-step follow-up. What no
+            # longer fails is the word "will" inside a sentence.
             for name in cohort_names:
                 if name == own_first:
                     continue
-                if _re.search(r'\b' + _re.escape(name) + r'\b', body,
-                              _re.IGNORECASE):
+                planted = (r'^\s*(?:(?:Hi|Hey|Hello|Dear)\s+)?'
+                           + _re.escape(name) + r'\s*[,.!:]')
+                if _re.search(planted, body,
+                              _re.IGNORECASE | _re.MULTILINE):
                     problems.append(
                         f"{record_id}/{contact_key} step {step_key}: "
-                        f"body contains cohort name {name!r} "
+                        f"body greets cohort name {name!r} "
                         f"(hi-jacob defect class)")
 
     if problems:
@@ -1283,8 +1311,47 @@ def _stale_clearances(sequence):
     return entries
 
 
-def _refuse_colliding_leads(wanted, workspace_id):
+def _already_on_campaign(provider_id):
+    """Addresses this campaign ALREADY holds, lowercased.
+
+    Read from the campaign's own queue, which carries `lead.email` per row and
+    is one paginated read. A lead enrolled but with no queue row yet is not in
+    this set and is therefore still collision-checked - the safe direction, and
+    the reason this returns a set of what is KNOWN present rather than a claim
+    about what is absent.
+
+    An unreadable queue returns the empty set, so every lead is checked. That
+    is the same direction: it can only add checks, never skip one.
+    """
+    if not provider_id:
+        return set()
+    try:
+        rows = bison.scheduled_emails(provider_id)
+    except Exception:                                           # noqa: BLE001
+        return set()
+    return {str(((row.get("lead") or {}).get("email") or "")).strip().lower()
+            for row in rows} - {""}
+
+
+def _refuse_colliding_leads(wanted, workspace_id, already_on=()):
     """Refuse leads whose account the client's estate says STOP or HOLD.
+
+    ## RE-STAGING AN EXISTING MEMBER IS NOT A NEW TOUCH
+
+    ISSUE-021. `stage` re-submits every lead on the campaign, not only the new
+    ones, so once a campaign has emailed somebody that lead collides with ITS
+    OWN sent state - and this refuses the WHOLE stage rather than one lead, so
+    two already-contacted people blocked 34 good ones on 2026-09-22.
+
+    The account gate exists to stop us ADDING somebody to an account that is
+    already in play. A lead that is already on this campaign is not being
+    added; it is being re-described. Whether it should have been added was
+    decided when it was, and re-deciding it now on a state OUR OWN send
+    created is the circular reading that blocked batch 3.
+
+    `already_on` is what the campaign already holds. It never widens the check
+    to a lead that is not there: an unreadable queue yields an empty set and
+    everything is checked, which is the safe direction.
 
     Uses `collision.check_account` and `collision.account_policy` - the same
     gates `executionguard` runs at send time. Fetched per domain and cached
@@ -1308,9 +1375,15 @@ def _refuse_colliding_leads(wanted, workspace_id):
     """
     from . import collision
 
+    on_campaign = {str(a).strip().lower() for a in (already_on or ())}
+
     by_domain = {}
     for lead in wanted:
-        domain = str(lead["email"]).rsplit("@", 1)[-1].strip().lower()
+        address = str(lead["email"]).strip().lower()
+        if address in on_campaign:
+            # Already a member: being re-described, not added. See ISSUE-021.
+            continue
+        domain = address.rsplit("@", 1)[-1]
         if domain:
             by_domain.setdefault(domain, []).append(lead)
 
@@ -1400,7 +1473,8 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     # The cache lives for the duration of this call only.
     workspace_id = (report.get("workspace") or {}).get("id")
     if workspace_id:
-        _refuse_colliding_leads(wanted, workspace_id)
+        _refuse_colliding_leads(wanted, workspace_id,
+                                already_on=_already_on_campaign(provider_id))
     # The variables must exist on the workspace before a lead may carry one:
     # the provider refuses an undeclared name outright. Idempotent, and it
     # creates nothing that can reach a person.

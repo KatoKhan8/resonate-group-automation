@@ -13,7 +13,7 @@ import unittest
 from unittest import mock
 
 from src.providers import aiark
-from src.providers import ProviderError
+from src import providers
 
 
 class TheLookupReadsThePluralKey(unittest.TestCase):
@@ -57,7 +57,7 @@ class TheLookupReadsThePluralKey(unittest.TestCase):
         Returning [] for it is exactly what hid the defect: an empty catalogue
         and a renamed key are indistinguishable to every caller.
         """
-        with self.assertRaises(ProviderError):
+        with self.assertRaises(providers.ProviderError):
             self._lookup_returning({"matched": 4, "total": 5101,
                                     "somethingElse": ["United Kingdom"]})
 

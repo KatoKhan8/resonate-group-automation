@@ -78,7 +78,7 @@ BATCH_ID = "batch-1-2026-09-21"
 
 #: The grant, named as the approver. `approval.is_accountable_approver`
 #: requires an address, and the parenthetical carries the provenance.
-APPROVER = ("zvonimir@resonategroup.co "
+APPROVER = ("zvonimir@example.test "
             "(operator authorisation 2026-09-21 batch 1)")
 
 #: 15 first-step sends per mailbox per day, three days of backlog.

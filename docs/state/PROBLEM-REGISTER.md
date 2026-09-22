@@ -175,7 +175,49 @@ per-branch check before merging, not a bulk merge.
   is the per-workspace ids and the NOWHERE-routes decision, both operator
   calls. Global-destination notifications now have somewhere to go.
 
-### ISSUE-006 · The PII guard was red · HIGH · **FIXED `cecd4223`**
+### ISSUE-006 · The PII guard was red · HIGH · **REOPENED 2026-09-22, green again**
+
+**REOPENED, and the reason is worth more than the fix.** On 2026-09-22 the
+guard was red again - 3 of 13 - on files that landed 2026-09-21 and 09-22.
+
+**A RED GUARD WAS CLOSED AS "CATCHES NOTHING" WHILE IT WAS CATCHING THESE.**
+That is the sentence this row exists for now. The original entry reasoned that
+a red guard catches nothing, so every leak after it went red was invisible -
+correct, and it is exactly what happened the second time. The guard was not
+silent. It was red, and red was read as noise.
+
+**What it was catching this time**, all of it in TRACKED files on master:
+
+    docs/state/PROBLEM-REGISTER.md      2 prospect addresses on live domains
+    src/collision.py                    a prospect address and account domain
+    tests/test_an_active_campaign...py  the same, in a docstring
+    docs/SLACK-AGENT-HANDOFF-2026-09-22 the client's own mail domain
+    docs/HEYREACH-CADENCES-2026-09-21   an agency name and a seat-holder
+    docs/MERGE-REQUEST-...-PHASE-C1     a live sending domain
+    scripts/slack_question_catalogue.py two agency names
+    src/slackagenttools.py              a live sending domain stem
+    src/slackconversation.py            the same
+    tests/test_a_client_can_never...py  a sending domain and a seat-holder
+    scripts/batch1_build.py             our own mail domain
+    src/clientapproval.py               a real agency domain
+    tests/test_client_approval...py     the same
+
+**FOUR OF THEM WERE MINE, WRITTEN TODAY.** Documenting ISSUE-014 and ISSUE-018
+in this very register meant quoting the live rows that proved them, and the
+quotes carried real prospect addresses into git. The register's own rule -
+"every row names its evidence" - is what did it. Evidence can be named without
+being identifying, and from now on it is: `<prospect-a>@example.test`,
+`<account-c>.example.test`, which read the same and resolve nowhere.
+
+Everything is redacted to reserved domains and placeholder names. 13/13 green,
+and 218 tests across the suites that use those fixtures pass with the renames.
+
+**Git history still holds the identifiers**, as it did after the 09-17 and
+09-18 redactions. Rewriting a pushed history is the operator's decision.
+
+---
+
+### ISSUE-006 (original) · The PII guard was red · HIGH · **FIXED `cecd4223`**
 
 - Red since ~2026-09-18, reported green on the 16th, never triaged. **A red
   guard catches nothing**, so every leak after that date was invisible.
@@ -253,6 +295,357 @@ per-branch check before merging, not a bulk merge.
   `glm-5.3` verified live at 200 in 1840ms.
 - **Fix** smaller review targets, or a raised output budget.
 - **Status** NEW
+
+### ISSUE-014 · An ACTIVATED campaign can never be topped up — the continuous-cohort model is deadlocked · CRITICAL
+
+**Found 2026-09-22 by batch 3's push being refused. Nothing unsafe happened;
+the guard refused, which is the safe direction. But it refuses forever.**
+
+`batch1_push --live --only ivan` returned:
+
+    FactoryRefused: 20 contact(s) collided with the client's own estate:
+    leo-santizo (<prospect-a>@example.test): stop - somebody at this account is
+    mid-sequence right now
+
+**The mid-sequence campaign is OURS.** Read per lead at the provider:
+
+    <prospect-b>@example.test  274 sequence_finished 8 · 327 sequence_finished 8
+                            352 sequence_finished 5 · 495 in_sequence 0
+
+The client's three campaigns are all FINISHED - which `account_policy` calls
+ALLOW, "history, not a live conflict". The only `in_sequence` row is campaign
+495, which this system created and activated last night, and which has sent
+**zero** emails.
+
+`without_our_staging` exists precisely to remove our own rows, and it excluded
+**nothing**. `staging_artifact_evidence(495)` says why:
+
+    ours       true   "claimed by productive/productive-email-batch1-tomislav
+                       on both sides"
+    zero_send  FALSE  "campaign 495 reads status 'active', which is not a
+                       state this system has verified means `not sending`;
+                       a campaign that started a moment ago also reports zero"
+
+That reasoning is CORRECT as written. A campaign that started a moment ago
+does report zero, and treating `active` as inert would be the unsafe read.
+
+**But it makes the CONTINUOUS grant unsatisfiable.** That grant's whole shape
+is batches 2..N filling the eight standing campaigns. The moment those
+campaigns were activated, every account they hold began reading `in_sequence`
+from our own membership, so every subsequent batch is refused at every
+account already enrolled - and the factory refuses the WHOLE stage rather
+than skipping the lead, by design.
+
+Measured across the four campaigns sending today: **95 of 95 accounts read
+STOP**, and a sampled check found **zero** client-side `in_sequence` rows on
+any of them. Every stop is ours.
+
+**THE 13:02Z SENDS ARE NOT AFFECTED and must not be paused over this.** They
+are already scheduled, the client's sequences at those accounts are finished,
+and nothing here is evidence of a real collision.
+
+**The narrow fix, not yet applied.** The campaign-level `zero_send` arm is the
+wrong granularity. The per-lead membership row carries that lead's OWN
+`emails_sent` for that campaign, and it reads 0 - which is strictly stronger
+evidence than the campaign counter and immune to the "started a moment ago"
+objection, because it is the lead's own row rather than an aggregate. So a
+membership row may be excluded as our staging when the campaign is ours AND
+that row's own `emails_sent` is 0. A lead we have actually emailed still
+counts, which is what the guard is for.
+
+Deliberately NOT applied under time pressure an hour before the first
+provider-confirmed batch send in this project's history. It is a collision
+safety path and it gets tests first.
+
+- **Status** OPEN · blocks every batch after activation · batch 3 is written
+  to canonical state (515 records, 1,719 steps approved) and waiting on it
+
+### ISSUE-015 · The planted-cohort-name guard flags ordinary English · HIGH
+
+**Measured 2026-09-22 while pushing batch 3. It is a guard PRECISION defect,
+not a copy defect, and it blocks three of five campaigns.**
+
+`bisonfactory._check_greetings` check 3 flags a lead whose BODY contains any
+other cohort member's first name, as a whole word, case-insensitively. Across
+the five campaigns carrying batch 3:
+
+    kresimir   269 record/name pairs, overwhelmingly name='Will'
+    bernarda     4   'Rich', 'Terri', 'Sandy', 'Sobe'
+    tomislav     2   'Russell', 'Star'
+    ivan, fran, bojan, jakov, luka   clean
+
+**`Will` is a first name and an ordinary English auxiliary verb.** One cohort
+member named Will makes every body containing the word "will" a defect. The
+rest are company names that contain a person's name: `<account-e>.example.test`,
+`<account-f>.example.test`, `<account-g>.example.test`, `<account-h>.example.test`,
+`<account-i>.example.test`. Every one of the 275 is a false positive.
+
+Checks 1 and 2 in the same function scan `first_line` - the greeting. Check 3
+scans the whole body, and that is where the imprecision comes from: the
+hi-jacob defect is a MIS-PERSONALISED GREETING, and a body legitimately
+contains ordinary prose and the recipient's own company name.
+
+**The guard is not wrong to exist and must not be widened to pass a draft.**
+The rule in CLAUDE.md is explicit, and dropping 269 records from kresimir to
+satisfy an imprecise check would destroy a batch for no safety gain. The fix
+is precision - flag a name where a greeting would put it, not anywhere in
+prose - and it is a copy-safety path, so it gets tests and it does not get
+written an hour before the first provider-confirmed batch send.
+
+- **Status** OPEN · blocks batch 3 on kresimir, bernarda, tomislav · ivan and
+  fran pushed clean
+
+### ISSUE-016 · `attach_leads` reports REFUSED on a write that succeeded · MEDIUM
+
+Pushing batch 3 into campaign 493 raised:
+
+    emailbison attach_leads: the provider answered 200 but 2 of 22 leads are
+    not in campaign 493 on readback: [204342, 204343]
+
+The provider had applied it. Read immediately afterwards, 493 holds **22
+leads and 22 scheduled rows** - up from 20 - and both named leads resolve to
+the two batch-3 contacts at `admarketplace.com`. The membership readback was
+simply taken before the provider made them visible on that route.
+
+The docstring already records one fix for this exact symptom - the readback
+used to list the campaign's members, which serves fifteen rows whatever it is
+asked for, and now asks about the named leads instead. This is the remaining
+half: the named-lead read is exact but not immediately consistent, and there
+is no retry.
+
+**The failure direction is the expensive one.** A refusal on a successful
+write invites a re-run, and it leaves canonical state unwritten while the
+provider holds the leads - so the campaign row does not record record_ids the
+provider already has. `attach_leads` is idempotent on both sides, so a re-run
+is safe, but "safe to re-run" is not the same as "reported correctly".
+
+- **Fix** a bounded retry on the after-read, the same shape `stop_lead`
+  already uses, and only then raise.
+- **Status** OPEN · worked around by reading the provider after every push
+
+### ISSUE-017 · The re-engagement inventory stores a lane that goes stale with campaign status · HIGH
+
+**Found 2026-09-22 while acting on the operator's approval of the
+re-engagement copy. I reported the supply as missing, and it was not - the
+stored value was.**
+
+`work/stage/reengagement-inventory.jsonl` carries a `lane` per lead, written
+at walk time. Read today it says:
+
+    NEVER 1360 · UNKNOWN 38 · ACTIVE 17 · REENGAGE 0 · REVIVE 0
+
+The morning handoff recorded 973 REENGAGE / 37 REVIVE / 379 UNKNOWN / 17
+ACTIVE / 9 NEVER, and the file has not been rewritten since 09-21 21:53, so
+one of the two had to be wrong.
+
+**Neither was. The lane is DERIVED FROM CAMPAIGN STATUS and was cached.**
+`lane_for` reads:
+
+    if state in STOPPED_STATES:
+        if campaign_live:
+            return NEVER, "... an unknown stop is a NEVER by the rule"
+        ... else classify on age -> REENGAGE
+
+So the same lead is NEVER while its campaign is running and REENGAGE once that
+campaign is archived. Recomputed against the campaigns' CURRENT statuses -
+3 archived, 1 draft, 1 completed, 1 paused, 10 active:
+
+    NEVER 89 · ACTIVE 17 · REENGAGE 985 · UNKNOWN 287 · REVIVE 37
+
+which matches the handoff's shape and its REVIVE count exactly. The supply is
+real; the stored lane is a cached value on a decision path, which is the
+recurring defect this register's closing section already names.
+
+**What it nearly cost.** I told the operator the 973 REENGAGE leads did not
+exist and that there was nothing to enroll against copy they had just
+approved. That was wrong, and it was wrong in the direction of inaction rather
+than of sending - but a session that believed it would have idled the largest
+untouched supply in the estate.
+
+**The geography is the real constraint, and it is not what anybody assumed:**
+
+    262  480  PRODUCTIVE - MARKETING AGENCY - AUSTRALIA   archived
+    263  214  v2 PRODUCTIVE - MARKETING AGENCY - AUSTRALIA archived
+    264  289  PRODUCTIVE - MARKETING AGENCY - USA          archived
+    481    2  RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS paused
+
+**694 of the 985 are Australian**, and Australia has no campaign window - the
+same constraint that held 46 Australians out of batch 3. The actionable
+US-first supply is **289**, not 973.
+
+### RESOLVED, and the diagnosis was narrower than the first write-up
+
+**`report()` was never wrong.** It already fetched live campaign statuses and
+recomputed every lane, and it has always answered REENGAGE 985 / REVIVE 37 /
+NEVER 89 / UNKNOWN 287 / ACTIVE 17. The canonical path was correct the whole
+time.
+
+**`walk()` was writing a lane it had no basis for.** The line was
+`row["lane"], row["why"] = lane_for(row)` — called with NO campaign status. So
+every stored lane was computed as though no campaign were live, and the stored
+text does not even match the current classifier's wording, which means the
+file also predates a change to it. A field that is stale, unbasis'd and
+authoritative-looking, that the only correct consumer ignores.
+
+So the defect was never a wrong count. It was a decorative field that invited
+exactly one misreading, and got it — mine.
+
+**Fixed:**
+
+- `walk()` now passes the campaign's status, and writes `lane_at_walk`,
+  `why_at_walk` and `campaign_status_at_walk`. The bare `lane` key is gone: it
+  read as current truth and was not.
+- `lanes_now(statuses=None, path=None)` is the one way to read the inventory.
+  It recomputes every lane against current status and deliberately does not
+  consult what was stored. `report()` is now a thin caller of it.
+- `live_statuses()` REFUSES rather than returning a partial map. A campaign
+  missing from that map reads as not-running, which reclassifies its stopped
+  leads — so a partial map silently moves leads between lanes.
+- The unreadable-statuses path used to print a warning and carry on, and its
+  own warning said what that costs: "every stop will be read as the lead's
+  own, which OVER-counts NEVER". It now raises `StatusesUnreadable`. A count
+  nobody can trust is worse than a refusal, because it looks like an answer.
+- 7 tests, including the defect in one assertion — the identical row is NEVER
+  with its campaign live and REENGAGE with it archived — and one proving a
+  stored lane that disagrees is not believed in either direction.
+
+- **Status** FIXED · `--report` output unchanged before and after, which is
+  the point: the canonical answer never moved
+
+### ISSUE-019 · The candidate pipeline passes ICP REVIEW as though it were IN · CRITICAL
+
+**Found 2026-09-22 while producing the first candidate export the operator
+asked to send Productive. The export was stopped. Nothing was sent.**
+
+`_icp_verdict` survives on `QUALIFIED` **or** `REVIEW`:
+
+    if status in (icp.QUALIFIED, icp.REVIEW): survived.append(company)
+
+REVIEW means "not enough evidence to decide", which this register already
+settled in REFUTED-002 - those records carry no criterion at `fail` and are an
+enrichment task rather than a verdict. Passing them writes undecided accounts
+into the candidate list as though they had qualified.
+
+**What 1,508 candidates actually contain:**
+
+    median headcount 16,745 · min 9,620 · max 130,377
+    under 20 staff   0 of 1,508
+    countries        US 416 · India 133 · Brazil 117 · France 86 · UK 77
+    industries       retail 138 · banking 109 · government administration 100
+
+    <large-bank>.example.test      Santander, 130,377 staff, Spain, banking
+                       icp_score 0.0, icp_status "review"
+    <a national education ministry>  the French Ministry of Education
+
+Productive sells to 20+ person marketing and creative agencies in eight named
+markets. A zero-scored bank is in the list.
+
+**IT BREAKS THE PREMISE OF THE 2026-09-22 AMENDMENT.** The operator authorized
+post-filtering explicitly "because S3 re-verifies headcount and country per
+domain for free and only IN domains proceed". S3 does not restrict to IN, and
+with no headcount or geo filter available at the source there is nothing else
+between AI Ark's 72.6m-row index and the candidate list.
+
+`why_matched` reads "scored above threshold" on every row including the 0.0
+ones. That column is the evidence a client reads.
+
+**The harder question underneath.** AI Ark sorts by headcount DESCENDING and
+its headcount filter does not exist, so reaching agencies of 20-200 people
+means walking a very long way down 726,580 pages. 40-50k qualified agency
+domains may not be reachable through `company_search` at all - a provider
+question rather than a tuning one.
+
+- **Status** OPEN · export STOPPED and nothing sent to the client · the fix
+  (QUALIFIED only) is one line but changes what "supply" means, so it is the
+  operator's call
+
+### ISSUE-023 · QUALIFIED is as wrong as REVIEW was, and the export still cannot ship · CRITICAL
+
+**Found 2026-09-22 while implementing the operator's QUALIFIED-only ruling for
+ISSUE-019. The ruling is implemented and correct. It does not rescue this
+export, because the QUALIFIED bucket is defective in the same direction.**
+
+Of the 1,508 candidates, **114 are QUALIFIED and 1,394 are REVIEW.** The 114:
+
+    median headcount 16,996 · min 9,620 · max 121,205
+    under 20 staff        0 of 114
+    in the 20-200 range   0 of 114
+    industries            software development 62 · telecommunications 24
+                          advertising services 11
+    icp_score             0.0 on 58 of them, 8.0 on 55, 16.0 on one
+                          median 0.0
+
+The top rows by headcount are a Spanish telecom at 121,205 staff, a Swedish
+one at 107,286, a Finnish one at 101,120 and a US cable operator at 96,438 -
+all four **QUALIFIED at `icp_score` 0.0**. Productive sells to 20+ person
+marketing and creative agencies in eight named markets.
+
+**A ZERO SCORE THAT READS QUALIFIED IS THE DEFECT.** `score()` returns a
+`structural` verdict alongside the numeric one, and a record can take
+`icp_pass` structurally while scoring nothing. Geography contributes
+`"status": "not_required"`, which is how `why_matched` comes to say **"Other
+is a market this client sells to"** - a sentence that passes every country.
+`why_matched` still reads "scored above threshold" on eight rows that scored
+0.0, and that column is what the client reads.
+
+**So the ISSUE-019 fix was necessary and is not sufficient.** Dropping REVIEW
+removes 1,394 undecided rows; it does not remove a 121,205-employee telecom
+that the scorer affirmatively qualified. Shipping the 114 would send a client
+who sells to small agencies a list of 62 enterprise software companies and 24
+telecoms, which is worse than shipping nothing.
+
+- **Status** OPEN · the export is STOPPED for the second time and nothing has
+  been sent · the QUALIFIED-only ruling is implemented (`4afb54d5`) and stands
+- **Not a tuning question.** Two separate gates - the REVIEW pass and the
+  structural-pass-at-zero-score - both admitted enterprise accounts. The
+  scorer's threshold semantics are the thing to settle, and that is the
+  operator's call, not a weight to nudge.
+
+### ISSUE-020 · Successive sourcing runs re-walked page one and added nothing · MEDIUM · **FIXED**
+
+`domains_already_known()` removes what is held, so a run that always starts at
+page 1 re-fetches the same companies, discards every one as already known, and
+adds NOTHING. Measured 2026-09-22: the loop reached 1,508 candidates and then
+ran eleven further rounds adding zero, because AI Ark's order is stable -
+sorted by staff descending - so every round saw the same first pages.
+
+Fixed: the page position is persisted beside the candidate list and each run
+continues from it. Verified - a fresh run resumed at page 17 and sourced 319
+companies none of which were already held.
+
+### ISSUE-022 · The store's atomic write loses to a concurrent reader on Windows · HIGH
+
+**Found 2026-09-22 pushing batch 3, and it is not a batch-3 quirk.**
+
+    productive-email-batch1-tomislav  REFUSED PermissionError: [WinError 5]
+    Access is denied: 'work/queue.jsonl.122688.tmp' -> 'work/queue.jsonl'
+
+The 23MB temp file wrote perfectly. The `os.replace` that makes it live was
+denied. On Windows a rename over an open file fails, and this estate runs
+ELEVEN python processes that read `work/` continuously - six bison watchers,
+the heyreach watcher, reply watch, notify-deliver, digest and the Slack agent.
+
+So the store's atomic-write contract holds on POSIX and is probabilistic here,
+and the moment it is most likely to lose is a batch push: the one write that
+matters, taken while every watcher is polling.
+
+**The failure direction is the good one and that is why it needs recording.**
+The replace failing means the OLD file survives intact - no partial write, no
+corruption. What is lost is the WRITE, and the caller reported REFUSED, so
+nothing believed it had succeeded. A retry a minute later succeeded and
+campaign 495 went 26 -> 60 leads. But "retry until the readers blink" is not a
+durability model, and a write that silently needed three attempts would look
+identical to one that needed none.
+
+**It also leaves litter that looks like state.** Three abandoned temp files sit
+in `work/` right now - 23MB from today, 9MB from 2026-09-14, and one from
+09-15. A future session reading the directory sees files named like the queue.
+
+- **Fix** retry the replace with a short backoff and raise only after, the same
+  shape `attach_leads` now uses for its readback (ISSUE-016); and sweep stale
+  `*.tmp` on startup. The stronger answer is the SQLite store infra landed
+  today, which is inert by design and takes a lock rather than a rename.
+- **Status** OPEN · worked around by retrying · no data was lost
 
 ### ISSUE-011 · The forward book's COVERING property decays silently as campaigns are created · HIGH
 

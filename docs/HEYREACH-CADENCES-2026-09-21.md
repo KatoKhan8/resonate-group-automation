@@ -500,7 +500,7 @@ Graph: 3 node(s)
 
     1. CONNECTION_REQUEST   delay 0 HOUR
        variant 1:
-         | hi Brooke, i work with Design Services teams on utilisation. curious how Nineyards handles it at your size. ha
+         | hi <seat-holder>, i work with Design Services teams on utilisation. curious how <agency-a> handles it at your size. ha
        withdraw after 21 days
       2. END   delay 1 DAY   [if the previous step's condition is met]
     3. END   delay 5 DAY   [otherwise]

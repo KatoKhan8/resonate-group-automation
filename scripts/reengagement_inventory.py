@@ -261,7 +261,22 @@ def walk(cap=None):
                             row[flag] = lead.get(flag)
                     if row["last_touch"]:
                         index[lead_id] = [row["last_touch"], 0]
-                row["lane"], row["why"] = lane_for(row)
+                # THE LANE IS NOT A PROPERTY OF THE ROW. It is a function
+                # of the row AND the campaign's CURRENT status: a stopped
+                # lead inside a running campaign is NEVER, and the same lead
+                # is REENGAGE once that campaign is archived. So what is
+                # written here is stamped as derived-at-walk, beside the
+                # status it was derived from, and the bare `lane` key is gone
+                # - it read as current truth and was not.
+                #
+                # ISSUE-017: this was written by `lane_for(row)` with NO
+                # campaign status, and a reader who trusted it saw REENGAGE 0
+                # against a live answer of 985. `report()` never trusted it;
+                # everybody else did.
+                status_now = campaign.get("status")
+                row["campaign_status_at_walk"] = status_now
+                row["lane_at_walk"], row["why_at_walk"] = lane_for(
+                    row, campaign_status=status_now)
                 handle.write(json.dumps(row) + "\n")
                 done_leads.add(lead_id)
                 walked += 1
@@ -287,25 +302,50 @@ def _finish(handle, progress, index, done_leads):
     return 0
 
 
-def report():
-    if not os.path.exists(INVENTORY):
-        print("no inventory yet - run --walk")
-        return 1
-    load_env()
-    statuses = {}
-    try:
-        rows, _total = bison._paged(
-            "campaigns", lambda page: bison.query(
-                f"{bison.base()}/campaigns", {"page": page}))
-        statuses = {str(r.get("id")): r.get("status") for r in rows}
-    except Exception as exc:                                    # noqa: BLE001
-        print(f"  campaign statuses unreadable ({type(exc).__name__}); "
-              f"every stop will be read as the lead's own, which OVER-counts "
-              f"NEVER")
-    lanes = collections.Counter()
-    reasons = collections.Counter()
-    per_campaign = collections.Counter()
-    with open(INVENTORY, encoding="utf-8") as handle:
+class StatusesUnreadable(RuntimeError):
+    """The campaign statuses could not be read, so no lane can be current."""
+
+
+def live_statuses():
+    """`{campaign_id: status}` from the provider, or a refusal.
+
+    REFUSES rather than returning what it managed to get. Every lane depends
+    on this, and a partial map silently reclassifies every campaign it is
+    missing - which reads as NEVER, the most conservative-looking and most
+    wrong answer.
+    """
+    rows, _total = bison._paged(
+        "campaigns", lambda page: bison.query(
+            f"{bison.base()}/campaigns", {"page": page}))
+    return {str(r.get("id")): r.get("status") for r in rows}
+
+
+def lanes_now(statuses=None, path=None):
+    """Every row with its lane RECOMPUTED against current campaign status.
+
+    Returns `(rows, counter)`. This is the only correct way to read the
+    inventory, and the stored `lane_at_walk` is deliberately not consulted:
+    it is a cached value on a decision path and campaigns archive underneath
+    it.
+
+    Raises `StatusesUnreadable` rather than guessing. The previous behaviour
+    printed a warning and carried on, and its own warning said what that
+    costs - "every stop will be read as the lead's own, which OVER-counts
+    NEVER". A count nobody can trust is worse than a refusal, because it
+    looks like an answer.
+    """
+    path = path or INVENTORY
+    if statuses is None:
+        try:
+            statuses = live_statuses()
+        except Exception as exc:                                # noqa: BLE001
+            raise StatusesUnreadable(
+                f"campaign statuses could not be read ({type(exc).__name__}: "
+                f"{exc}). Every lane depends on them and a stop read without "
+                f"one becomes NEVER, so this refuses rather than over-counting"
+            ) from exc
+    out, lanes = [], collections.Counter()
+    with open(path, encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
             if not line:
@@ -313,9 +353,29 @@ def report():
             row = json.loads(line)
             lane, why = lane_for(
                 row, campaign_status=statuses.get(str(row.get("campaign_id"))))
+            row["lane"], row["why"] = lane, why
+            out.append(row)
             lanes[lane] += 1
-            reasons[str(why)[:60]] += 1
-            per_campaign[row.get("campaign_id")] += 1
+    return out, lanes
+
+
+def report():
+    if not os.path.exists(INVENTORY):
+        print("no inventory yet - run --walk")
+        return 1
+    load_env()
+    try:
+        rows, lanes = lanes_now()
+    except StatusesUnreadable as exc:
+        print("")
+        print(f"  REFUSED: {exc}")
+        print("")
+        return 1
+    reasons = collections.Counter()
+    per_campaign = collections.Counter()
+    for row in rows:
+        reasons[str(row.get("why"))[:60]] += 1
+        per_campaign[row.get("campaign_id")] += 1
     print("\nRE-ENGAGEMENT BUCKETS\n")
     for lane in (NEVER, ACTIVE, REVIVE, REENGAGE, UNKNOWN):
         print(f"  {lane:9s} {lanes.get(lane, 0):>6}")

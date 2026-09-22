@@ -129,12 +129,22 @@ def answered_already():
 
 # --------------------------------------------------------------- one turn
 
+#: Said in the thread when a relay is asked for and the parent cannot be
+#: read. Naming the scope is the point: this is a fixable configuration
+#: problem and the person who can fix it is the one reading.
+RELAY_UNREADABLE = (
+    "I can't read the question at the top of this thread, so I won't guess "
+    "at it. That usually means my Slack app is missing `channels:history` "
+    "(public) or `groups:history` (private) for this channel.")
+
+
 def answer_for(text, channel=None, user=None, channel_type=None,
-               thread_ts=None, model=None):
+               thread_ts=None, model=None, relay_of=None):
     """The whole decision for one message. Returns the `respond` dict."""
     return conversation.respond(text, channel=channel, user=user,
                                 channel_type=channel_type,
-                                thread_ts=thread_ts, model=model)
+                                thread_ts=thread_ts, model=model,
+                                relay_of=relay_of)
 
 
 def _is_operator_decision(event):
@@ -147,6 +157,34 @@ def _is_operator_decision(event):
     if not requests.parse_decision(event.get("text") or ""):
         return False
     return (event.get("channel") or "") in slackscope.internal_channels()
+
+
+def _is_relay(event):
+    """A Resonate person telling the agent to take a question in a thread.
+
+    OPERATOR, 2026-09-22. The agent is SILENT on a message that does not
+    mention it - a bot that answers a question addressed to two named
+    colleagues has answered for them. This is the one way that silence is
+    broken, and it takes a person at Resonate to break it.
+
+    It is checked here, on the raw event, because the agent has to decide
+    whether to look at the message at all before it has resolved anything.
+    """
+    if not event.get("thread_ts"):
+        return False
+    return conversation.is_relay_request(
+        event.get("text"), event.get("user"), None)
+
+
+def _relay_parent(event):
+    """The question a relay is about: the first message of the thread.
+
+    `None` if Slack will not give it up - a missing `channels:history` or
+    `groups:history` scope is the likeliest reason, and the caller says so
+    rather than answering the trigger phrase as though it were the
+    question.
+    """
+    return slack.thread_parent(event.get("channel"), event.get("thread_ts"))
 
 
 def handle(event, seen, dry_run=False, model=None):
@@ -166,7 +204,7 @@ def handle(event, seen, dry_run=False, model=None):
         # bot to approve something, and the pattern is specific enough that
         # nothing else can match it - a well-formed ticket id or nothing.
         # A client channel gets no exception at all.
-        if not _is_operator_decision(event):
+        if not _is_operator_decision(event) and not _is_relay(event):
             return False
     channel = event.get("channel")
     ts = event.get("ts")
@@ -180,9 +218,30 @@ def handle(event, seen, dry_run=False, model=None):
     log({"kind": "question", "message_id": message_id, "channel": channel,
          "user": user, "thread": thread, "text": text[:1000]})
 
+    relay_of = None
+    if _is_relay(event):
+        parent = _relay_parent(event)
+        if not parent or not (parent.get("text") or "").strip():
+            emit("RELAY-REFUSED %s: could not read the thread parent. "
+                 "Check the bot has channels:history / groups:history."
+                 % message_id)
+            log({"kind": "relay_refused", "message_id": message_id,
+                 "channel": channel, "user": user,
+                 "why": "thread parent unreadable"})
+            if dry_run:
+                return True
+            slack.post({"kind": "slack_agent_answer", "channel": channel,
+                        "text": RELAY_UNREADABLE, "thread_ts": thread})
+            seen.add(message_id)
+            return True
+        relay_of = parent["text"]
+        log({"kind": "relay", "message_id": message_id, "channel": channel,
+             "asked_by": parent.get("user"), "relayed_by": user,
+             "question": relay_of[:500]})
+
     result = answer_for(text, channel=channel, user=user,
                         channel_type=event.get("channel_type"),
-                        thread_ts=thread, model=model)
+                        thread_ts=thread, model=model, relay_of=relay_of)
     reply = result.get("reply") or ""
 
     if dry_run:
@@ -210,6 +269,8 @@ def handle(event, seen, dry_run=False, model=None):
          "scope": result.get("scope"), "workspace": result.get("workspace"),
          "scope_source": result.get("scope_source"),
          "planned": result.get("planned"),
+         "language": result.get("language"),
+         "relayed": result.get("relayed"),
          "tools": result.get("tools"), "how": result.get("how"),
          "guard": result.get("guard"), "ticket": result.get("ticket"),
          # The text a guard REJECTED, so a trip can be diagnosed. Recorded

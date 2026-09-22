@@ -33,7 +33,7 @@ choice of what to read, and do not add a query that writes.
 **Lead lookup is DM-only.** A channel is a room with an audience; a lead's
 status is about one identifiable person. In a channel the answer is one line
 saying it is DM-only, and it must not leak the answer while refusing - "I
-cannot look up jane@acme.com here" has already said who was asked about.
+cannot look up jane@example.test here" has already said who was asked about.
 
 **The answer never echoes the identifier.** Asked "status of <email>", the
 reply says "that lead is enrolled in campaign 491, step 1, last touched
