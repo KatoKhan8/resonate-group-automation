@@ -318,6 +318,69 @@ safety path and it gets tests first.
 - **Status** OPEN · blocks every batch after activation · batch 3 is written
   to canonical state (515 records, 1,719 steps approved) and waiting on it
 
+### ISSUE-015 · The planted-cohort-name guard flags ordinary English · HIGH
+
+**Measured 2026-09-22 while pushing batch 3. It is a guard PRECISION defect,
+not a copy defect, and it blocks three of five campaigns.**
+
+`bisonfactory._check_greetings` check 3 flags a lead whose BODY contains any
+other cohort member's first name, as a whole word, case-insensitively. Across
+the five campaigns carrying batch 3:
+
+    kresimir   269 record/name pairs, overwhelmingly name='Will'
+    bernarda     4   'Rich', 'Terri', 'Sandy', 'Sobe'
+    tomislav     2   'Russell', 'Star'
+    ivan, fran, bojan, jakov, luka   clean
+
+**`Will` is a first name and an ordinary English auxiliary verb.** One cohort
+member named Will makes every body containing the word "will" a defect. The
+rest are company names that contain a person's name: `russellherder.com`,
+`terrisandy.com`, `bigstarbranding.com`, `wearerichlifestyle.com`,
+`sobepromos.com`. Every one of the 275 is a false positive.
+
+Checks 1 and 2 in the same function scan `first_line` - the greeting. Check 3
+scans the whole body, and that is where the imprecision comes from: the
+hi-jacob defect is a MIS-PERSONALISED GREETING, and a body legitimately
+contains ordinary prose and the recipient's own company name.
+
+**The guard is not wrong to exist and must not be widened to pass a draft.**
+The rule in CLAUDE.md is explicit, and dropping 269 records from kresimir to
+satisfy an imprecise check would destroy a batch for no safety gain. The fix
+is precision - flag a name where a greeting would put it, not anywhere in
+prose - and it is a copy-safety path, so it gets tests and it does not get
+written an hour before the first provider-confirmed batch send.
+
+- **Status** OPEN · blocks batch 3 on kresimir, bernarda, tomislav · ivan and
+  fran pushed clean
+
+### ISSUE-016 · `attach_leads` reports REFUSED on a write that succeeded · MEDIUM
+
+Pushing batch 3 into campaign 493 raised:
+
+    emailbison attach_leads: the provider answered 200 but 2 of 22 leads are
+    not in campaign 493 on readback: [204342, 204343]
+
+The provider had applied it. Read immediately afterwards, 493 holds **22
+leads and 22 scheduled rows** - up from 20 - and both named leads resolve to
+the two batch-3 contacts at `admarketplace.com`. The membership readback was
+simply taken before the provider made them visible on that route.
+
+The docstring already records one fix for this exact symptom - the readback
+used to list the campaign's members, which serves fifteen rows whatever it is
+asked for, and now asks about the named leads instead. This is the remaining
+half: the named-lead read is exact but not immediately consistent, and there
+is no retry.
+
+**The failure direction is the expensive one.** A refusal on a successful
+write invites a re-run, and it leaves canonical state unwritten while the
+provider holds the leads - so the campaign row does not record record_ids the
+provider already has. `attach_leads` is idempotent on both sides, so a re-run
+is safe, but "safe to re-run" is not the same as "reported correctly".
+
+- **Fix** a bounded retry on the after-read, the same shape `stop_lead`
+  already uses, and only then raise.
+- **Status** OPEN · worked around by reading the provider after every push
+
 ### ISSUE-011 · The forward book's COVERING property decays silently as campaigns are created · HIGH
 
 **Found and worked around 2026-09-22. The census is not wrong; its state file
