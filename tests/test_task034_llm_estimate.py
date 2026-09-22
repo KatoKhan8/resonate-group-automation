@@ -19,7 +19,19 @@ from src import cadence, cadencelibrary, costsim, plan, benchmark
 class TestGeneratedKeysDerivesFromCadence(unittest.TestCase):
     """generated_keys() reads the sequence, not a module constant."""
 
-    def test_li_heavy_has_five_emails_and_six_linkedin(self):
+    def test_li_heavy_has_five_emails_and_five_linkedin(self):
+        """FIVE LinkedIn steps, not six. li6 never existed outside this test.
+
+        `ff8949c2` (TASK-179, 2026-09-16) removed li6 from the cadence because
+        the cadence declared six LinkedIn steps while the graph had positions
+        for five: li6 existed on paper and never fired. This test kept
+        asserting the paper number and has been red ever since.
+
+        Operator decision, 2026-09-22: five is the design. The test is what was
+        wrong; the cadence is not touched.
+        `tests/test_cadence_graph_agreement.py` is what now fails if the
+        cadence and the graph ever disagree on step count again.
+        """
         seq = cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
         keys = cadence.generated_keys(seq)
         emails = [k for k, s in zip(
@@ -29,8 +41,8 @@ class TestGeneratedKeysDerivesFromCadence(unittest.TestCase):
             (s["key"] for s in seq), seq)
             if k in keys and s.get("channel") == "linkedin"]
         self.assertEqual(len(emails), 5)
-        self.assertEqual(len(linkedin), 6)
-        self.assertEqual(len(keys), 11)
+        self.assertEqual(len(linkedin), 5)
+        self.assertEqual(len(keys), 10)
 
     def test_alternative_generated_counts(self):
         """li1 is not generated but its alternative is - it still counts."""
@@ -125,7 +137,7 @@ class TestEstimateMovesWithCadence(unittest.TestCase):
         li_est = counts_li["llm_calls_if_regenerated"]
         two_est = counts_two["llm_calls_if_regenerated"]
         if li_est > 0:
-            self.assertEqual(li_est / two_est, 11 / 2)
+            self.assertEqual(li_est / two_est, 10 / 2)
         else:
             # No contacts selected - both are zero, which is still correct
             self.assertEqual(li_est, 0)
@@ -133,8 +145,10 @@ class TestEstimateMovesWithCadence(unittest.TestCase):
 
     def test_costsim_derives_from_named_cadence(self):
         """costsim derives llm_calls_per_contact from the cadence name."""
+        # TEN generated steps, not eleven: five emails and FIVE LinkedIn.
+        # li6 was removed by ff8949c2 (TASK-179) because it never fired.
         result_li = costsim.simulate(cadence_name="productive_li_heavy_v1")
-        self.assertEqual(result_li["assumptions"]["llm_calls_per_contact"], 11)
+        self.assertEqual(result_li["assumptions"]["llm_calls_per_contact"], 10)
 
         result_balanced = costsim.simulate(
             cadence_name="productive_balanced_v1")
@@ -159,7 +173,7 @@ class TestEstimateMovesWithCadence(unittest.TestCase):
                       "steps": list(cadencelibrary.PRODUCTIVE_LI_HEAVY_V1)}}}
         result = benchmark.measure(10, config)
         selected = result["counters"]["contacts_selected"]
-        expected = selected * 11
+        expected = selected * 10   # ten generated steps, not eleven
         self.assertEqual(result["counters"]["llm_calls_would_be"], expected)
 
 

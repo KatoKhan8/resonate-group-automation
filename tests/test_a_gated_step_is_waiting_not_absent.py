@@ -20,6 +20,12 @@ from tests.campaignbase import CampaignTest
 WS = "productive"
 KEY = "pat"
 
+#: The LinkedIn steps gated behind the connection. FOUR, because
+#: `productive_li_heavy_v1` has five LinkedIn steps and li1 is the request
+#: itself. Named once so the next cadence change edits one line rather than
+#: leaving a stale li6 in two tuples, which is exactly what happened here.
+GATED_LINKEDIN_STEPS = ("li2", "li3", "li4", "li5")
+
 
 class GatedStepsAppearInTheTimeline(CampaignTest):
     """`cadence.build` surfaces every step whose requires is unmet."""
@@ -49,18 +55,26 @@ class GatedStepsAppearInTheTimeline(CampaignTest):
     def steps(self, rec):
         return cadence.build(rec, self.config)["contacts"][KEY]
 
-    def test_li2_through_li6_appear_for_an_unconnected_contact(self):
-        """The whole point. Five steps that were invisible are now waiting."""
+    def test_li2_through_li5_appear_for_an_unconnected_contact(self):
+        """The whole point. Four steps that were invisible are now waiting.
+
+        li6 was in this tuple until 2026-09-22 and there is no li6:
+        `ff8949c2` (TASK-179) removed it because the cadence declared six
+        LinkedIn steps while the graph had five positions, so li6 existed on
+        paper and never fired. Asserting it here kept this test red.
+
+        Operator decision, 2026-09-22: five LinkedIn steps is the design.
+        """
         rec = self.record()
         timeline = self.steps(rec)
-        for step_key in ("li2", "li3", "li4", "li5", "li6"):
+        for step_key in GATED_LINKEDIN_STEPS:
             self.assertIn(step_key, timeline,
                           f"{step_key} is missing from the timeline")
 
     def test_each_gated_step_names_the_unmet_requirement(self):
         rec = self.record()
         timeline = self.steps(rec)
-        for step_key in ("li2", "li3", "li4", "li5", "li6"):
+        for step_key in GATED_LINKEDIN_STEPS:
             step = timeline[step_key]
             self.assertEqual(step["status"], "waiting",
                              f"{step_key} status is {step['status']!r}, "
@@ -77,13 +91,13 @@ class GatedStepsAppearInTheTimeline(CampaignTest):
         self.assertIn("connection request is skipped", step["skipped_reason"])
 
     def test_the_acceptance_releases_the_waiting_steps(self):
-        """Once connected, li2..li6 are no longer waiting."""
+        """Once connected, li2..li5 are no longer waiting."""
         rec = self.record()
         events.record(rec, events.LINKEDIN_CONNECTED, contact_key=KEY,
                       at="2026-09-02T09:00:00+00:00")
         store.save([rec])
         timeline = self.steps(rec)
-        for step_key in ("li2", "li3", "li4", "li5", "li6"):
+        for step_key in GATED_LINKEDIN_STEPS:
             self.assertNotEqual(timeline[step_key]["status"], "waiting",
                                 f"{step_key} is still waiting after acceptance")
 
@@ -232,7 +246,7 @@ class WaitingStepsAreNotExposures(CampaignTest):
         rec = self.record()
         timeline = cadence.build(rec, self.config)
         steps = timeline["contacts"][KEY]
-        for step_key in ("li2", "li3", "li4", "li5", "li6"):
+        for step_key in GATED_LINKEDIN_STEPS:
             self.assertEqual(steps[step_key]["status"], "waiting")
             self.assertNotIn(steps[step_key]["status"],
                              touch.CONFIRMED_STATES)
@@ -243,7 +257,7 @@ class WaitingStepsAreNotExposures(CampaignTest):
         rec = self.record()
         timeline = cadence.build(rec, self.config)
         steps = timeline["contacts"][KEY]
-        for step_key in ("li2", "li3", "li4", "li5", "li6"):
+        for step_key in GATED_LINKEDIN_STEPS:
             self.assertNotEqual(steps[step_key]["status"], "eligible")
 
 
