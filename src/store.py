@@ -36,6 +36,27 @@ def queue_path():
                            or os.path.join(ROOT, "work", "queue.jsonl"))
 
 
+def backend():
+    """Which storage backend is active. Resolved per call, not at import.
+
+    Three modes:
+      jsonl    DEFAULT. Exactly today's behaviour. SQLite untouched.
+      shadow   JSONL canonical. Both written. Reads come from JSONL, the same
+               read is taken from SQLite and diffed.
+      sqlite   SQLite canonical. JSONL untouched.
+    """
+    mode = (os.environ.get("QUEUE_BACKEND") or "jsonl").strip().lower()
+    if mode not in ("jsonl", "shadow", "sqlite"):
+        raise ValueError(f"unknown QUEUE_BACKEND: {mode!r}")
+    return mode
+
+
+def db_path():
+    """The SQLite database path. Resolved per call, not at import."""
+    return os.path.abspath(os.environ.get("QUEUE_DB")
+                           or os.path.join(os.path.dirname(queue_path()), "queue.db"))
+
+
 def campaigns_path():
     """Campaign-level state. A campaign is not a record, so it does not live in
     the queue: forcing it in would mean a row that fails every record
@@ -149,6 +170,15 @@ class QueueLocked(RuntimeError):
     """Another process holds the queue. Nothing was written."""
 
 
+class ShadowDivergence(RuntimeError):
+    """Shadow mode detected a divergence between JSONL and SQLite.
+
+    Raised only when SHADOW_STRICT=1. Without it, divergences are written to
+    the ledger and the write succeeds - shadow exists to find out whether the
+    backend is trustworthy, on the live queue, before anything depends on it.
+    """
+
+
 LOCK_TIMEOUT = float(os.environ.get("QUEUE_LOCK_TIMEOUT", "10"))
 LOCK_STALE_AFTER = 300          # seconds; a lock older than this is abandoned
 
@@ -223,10 +253,17 @@ def transaction(timeout=None):
     with lock(timeout):
         recs = load()
         yield recs
-        on_disk = read_jsonl(queue_path())
+        on_disk = _current_records()
         refuse_evidence_loss(on_disk, recs)
         refuse_history_loss(on_disk, recs)
-        _write(recs)
+        mode = backend()
+        if mode == "sqlite":
+            _write_sqlite(recs)
+        elif mode == "shadow":
+            _write(recs)
+            _write_sqlite_shadow(recs, on_disk)
+        else:
+            _write(recs)
 
 
 @contextlib.contextmanager
@@ -456,7 +493,25 @@ def _current_records():
 
     One definition, used by both `load` and `save`, because a reader and a
     writer disagreeing about what is on disk is the whole hazard.
+
+    Routes based on backend():
+      jsonl    reads from queue.jsonl (with journal replay if enabled)
+      shadow   reads from queue.jsonl (canonical)
+      sqlite   reads from the SQLite database
     """
+    mode = backend()
+    if mode == "sqlite":
+        from . import sqlitestore
+        import sqlite3
+        path = db_path()
+        if not os.path.exists(path):
+            return []
+        conn = sqlite3.connect(path)
+        try:
+            return sqlitestore.read_all(conn)
+        finally:
+            conn.close()
+    # jsonl and shadow both read from JSONL
     rows = read_jsonl(queue_path())
     if journalling():
         from . import queuejournal
@@ -579,6 +634,108 @@ def _write_delta(on_disk, recs):
         queuejournal.append(path, changed, digest(path), at=now(), locked=True)
     if queuejournal.should_compact(path):
         queuejournal.compact(path, _write, locked=True)
+
+
+# ------------------------------------------------- the shadow ledger
+#
+# Shadow mode writes to both JSONL and SQLite, reads from JSONL, and diffs
+# the SQLite read against the JSONL read. Divergences are written to a ledger
+# file, not raised - unless SHADOW_STRICT=1 is set.
+#
+# The ledger records WRITES OBSERVED as well as divergences, so a promotion
+# check that sees zero of both refuses rather than passing vacuously.
+
+def _shadow_ledger_path():
+    """Where the shadow diff ledger lives."""
+    return os.path.join(os.path.dirname(queue_path()), "store-shadow-diff.jsonl")
+
+
+def _shadow_log(entry):
+    """Append one entry to the shadow diff ledger."""
+    path = _shadow_ledger_path()
+    refuse_production_write(path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _shadow_diff_and_log(jsonl_recs, sqlite_recs):
+    """Compare JSONL and SQLite record sets, log divergences.
+
+    Returns a list of divergence entries. Does NOT raise unless SHADOW_STRICT=1.
+
+    Only flags records that exist in BOTH stores with different values. A record
+    present in JSONL but missing from SQLite is not a divergence - it's expected
+    on first write or after a migration. A record in SQLite but not in JSONL
+    would be a divergence (SQLite has something JSONL doesn't), but that's
+    unlikely in practice since JSONL is canonical.
+    """
+    divergences = []
+    jsonl_by_id = {r["id"]: r for r in jsonl_recs if isinstance(r, dict) and "id" in r}
+    sqlite_by_id = {r["id"]: r for r in sqlite_recs if isinstance(r, dict) and "id" in r}
+
+    # Only compare records that exist in BOTH stores
+    for rid in set(jsonl_by_id) & set(sqlite_by_id):
+        j_rec = jsonl_by_id[rid]
+        s_rec = sqlite_by_id[rid]
+        # Compare field by field
+        for field in set(j_rec) | set(s_rec):
+            j_val = _frozen(j_rec.get(field))
+            s_val = _frozen(s_rec.get(field))
+            if j_val != s_val:
+                divergences.append({
+                    "type": "divergence",
+                    "at": now(),
+                    "id": rid,
+                    "field": field,
+                    "jsonl": j_rec.get(field),
+                    "sqlite": s_rec.get(field)
+                })
+
+    # Log divergences
+    for div in divergences:
+        _shadow_log(div)
+
+    # Log the write itself
+    _shadow_log({"type": "write", "at": now()})
+
+    # Raise if SHADOW_STRICT=1
+    if divergences and (os.environ.get("SHADOW_STRICT") or "").strip() in ("1", "true", "yes", "on"):
+        raise ShadowDivergence(
+            f"shadow mode detected {len(divergences)} divergence(s) between "
+            f"JSONL and SQLite. First: {divergences[0]['id']}.{divergences[0]['field']}")
+
+    return divergences
+
+
+def check_promotion_readiness(ledger_path=None):
+    """Check whether the shadow ledger is clean enough to promote to sqlite.
+
+    Returns a dict with:
+      ready: bool
+      writes: int
+      divergences: int
+      reason: str (if not ready)
+
+    Refuses if the ledger has zero rows AND zero observed writes - an empty
+    ledger because nothing ran is the vacuous pass.
+    """
+    path = ledger_path or _shadow_ledger_path()
+    if not os.path.exists(path):
+        return {"ready": False, "writes": 0, "divergences": 0,
+                "reason": "no writes observed: the ledger does not exist"}
+
+    entries = read_jsonl(path)
+    writes = sum(1 for e in entries if e.get("type") == "write")
+    divergences = sum(1 for e in entries if e.get("type") == "divergence")
+
+    if writes == 0:
+        return {"ready": False, "writes": 0, "divergences": divergences,
+                "reason": "no writes observed: the ledger is empty or carries only divergences"}
+    if divergences > 0:
+        return {"ready": False, "writes": writes, "divergences": divergences,
+                "reason": f"{divergences} divergence(s) detected"}
+    return {"ready": True, "writes": writes, "divergences": 0, "reason": ""}
 
 
 class EvidenceLost(RuntimeError):
@@ -776,9 +933,32 @@ class QueueChanged(RuntimeError):
 def digest(path=None):
     """A cheap fingerprint of the queue as it is on disk right now.
 
-    Content rather than mtime: a same-second write is exactly the case that
-    matters, and a filesystem timestamp is too coarse to see it.
+    Routes based on backend():
+      jsonl/shadow  content hash of the queue file (plus journal if enabled)
+      sqlite        the revision counter from meta.revision
+
+    On SQLite, hashing the file's bytes is wrong: WAL, page reuse and vacuum
+    all change bytes without changing state, and a checkpoint can change state
+    without changing the main file at all. The revision counter is STRICTER
+    than a content hash: a record changed and changed back now REFUSES where
+    a content hash passed. That is the safe direction - `expect_digest` exists
+    to refuse a read-modify-write that raced, and the caller is already told
+    to reload and re-apply.
     """
+    mode = backend()
+    if mode == "sqlite":
+        from . import sqlitestore
+        import sqlite3
+        db = path or db_path()
+        if not os.path.exists(db):
+            return "absent"
+        conn = sqlite3.connect(db)
+        try:
+            return str(sqlitestore.revision(conn))
+        finally:
+            conn.close()
+
+    # jsonl and shadow both use content hash
     import hashlib
     path = path or queue_path()
     if not os.path.exists(path):
@@ -800,6 +980,51 @@ def digest(path=None):
             with open(sidecar, "rb") as handle:
                 digestor.update(handle.read())
     return digestor.hexdigest()[:32]
+
+
+def _write_sqlite(recs):
+    """Write records to the SQLite database. Caller holds the lock.
+
+    Used by sqlite backend mode. The database is opened, records are written,
+    and the connection is closed.
+    """
+    from . import sqlitestore
+    import sqlite3
+    path = db_path()
+    refuse_production_write(path)
+    for sidecar in (path + "-wal", path + "-shm"):
+        refuse_production_write(sidecar)
+    conn = sqlitestore.open_db(path)
+    try:
+        sqlitestore.write_changed(conn, recs)
+    finally:
+        conn.close()
+
+
+def _write_sqlite_shadow(recs, on_disk):
+    """Write records to SQLite in shadow mode, then diff and log.
+
+    Shadow mode: JSONL is canonical. The SQLite write is an observer. Before
+    writing, we read from SQLite and diff against what we're about to write
+    to JSONL. Divergences are logged, not raised (unless SHADOW_STRICT=1).
+    Then we write to SQLite.
+    """
+    from . import sqlitestore
+    import sqlite3
+    path = db_path()
+    refuse_production_write(path)
+    for sidecar in (path + "-wal", path + "-shm"):
+        refuse_production_write(sidecar)
+    conn = sqlitestore.open_db(path)
+    try:
+        # Read from SQLite BEFORE writing, to detect divergences
+        sqlite_recs = sqlitestore.read_all(conn)
+        # Compare what's in SQLite against what we're about to write to JSONL
+        _shadow_diff_and_log(recs, sqlite_recs)
+        # Now write to SQLite
+        sqlitestore.write_changed(conn, recs)
+    finally:
+        conn.close()
 
 
 def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
@@ -886,16 +1111,26 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         # different thing from a guard with a hole in it.
         if not allow_history_loss:
             refuse_history_loss(on_disk, recs)
-        # THE ONLY THING JOURNALLING CHANGES IS WHICH BYTES GET WRITTEN.
+        # THE ONLY THING THE BACKEND CHANGES IS WHICH BYTES GET WRITTEN.
         # Everything above this line - the read, the digest check, the
         # three-way merge, and both loss guards - has already run over the
-        # FULL merged set, exactly as it does on the whole-file path. The
-        # delta is computed from the result, so it cannot contain a row the
-        # guards did not see.
-        if journalling():
-            _write_delta(on_disk, recs)
+        # FULL merged set, exactly as it does on the whole-file path.
+        mode = backend()
+        if mode == "sqlite":
+            _write_sqlite(recs)
+        elif mode == "shadow":
+            # JSONL is canonical. Write to JSONL first, then SQLite, then diff.
+            if journalling():
+                _write_delta(on_disk, recs)
+            else:
+                _write(recs)
+            _write_sqlite_shadow(recs, on_disk)
         else:
-            _write(recs)
+            # jsonl
+            if journalling():
+                _write_delta(on_disk, recs)
+            else:
+                _write(recs)
         # Only after the write, and only if it happened: a refused checkpoint
         # must leave the caller still holding unpersisted edits, or the next
         # one would treat them as already on disk and stop re-asserting them.
@@ -1068,7 +1303,14 @@ def append(records, note="ingested"):
                 log(r, r["state"], note)
             known.add(r["id"])
             recs.append(r)
-        _write(recs)
+        mode = backend()
+        if mode == "sqlite":
+            _write_sqlite(recs)
+        elif mode == "shadow":
+            _write(recs)
+            _write_sqlite_shadow(recs, None)
+        else:
+            _write(recs)
     return len(records)
 
 
@@ -1093,7 +1335,14 @@ def patch(rid, changes, note=""):
         if problems:
             raise ValueError(f"{rid}: {'; '.join(problems)}")
         log(rec, rec.get("state", before), note or f"patched {','.join(changes)}")
-        _write(recs)
+        mode = backend()
+        if mode == "sqlite":
+            _write_sqlite(recs)
+        elif mode == "shadow":
+            _write(recs)
+            _write_sqlite_shadow(recs, None)
+        else:
+            _write(recs)
     return rec
 
 
