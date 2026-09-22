@@ -196,6 +196,22 @@ QUEUE_NOT_SENT = frozenset({"scheduled", "stopped", "cancelled", "canceled",
 #: campaign that has sent nothing, so seeing one means the evidence is wrong.
 EXCLUDABLE_MEMBERSHIP = frozenset({STOPPED, SENDING_PAUSED})
 
+#: Membership statuses that mean "this lead is on the campaign and has not
+#: been contacted through it". `in_sequence` joins the two above ONLY on the
+#: per-lead path in `_excludable`, and only for a campaign of ours whose own
+#: counters are all zero - see ISSUE-014. `bounced`, `replied` and
+#: `sequence_finished` are deliberately absent: each asserts that something
+#: reached the person, and a row asserting that on a campaign that has sent
+#: nothing is a contradiction to be kept and looked at, never resolved in
+#: favour of sending.
+UNCONTACTED_MEMBERSHIP = frozenset(EXCLUDABLE_MEMBERSHIP | {IN_SEQUENCE})
+
+#: The campaign counters that together mean "this campaign has reached
+#: nobody". Checked instead of, not as well as, a verified not-sending status.
+SILENCE_COUNTERS = ("emails_sent", "total_leads_contacted", "opened",
+                    "unique_opens", "replied", "unique_replies", "bounced",
+                    "unsubscribed", "interested")
+
 #: Action-ledger states that mean one of our own sends may have reached a
 #: person on this campaign. `failed` (the provider refused before acting) and
 #: `abandoned` (a human called it off) are the only two that prove it did not,
@@ -691,8 +707,15 @@ def staging_artifacts(campaign_ids, bindings=None):
             continue                      # not ours: never read, never excluded
         if key not in _EVIDENCE:
             _EVIDENCE[key] = staging_artifact_evidence(key, bindings)
-        if _EVIDENCE[key].get("proven"):
-            found[key] = _EVIDENCE[key]
+        # EVERY CAMPAIGN OF OURS IS RETURNED, PROVEN OR NOT.
+        #
+        # It used to return only the proven ones, so an unproven campaign of
+        # ours never reached `_excludable` at all and could not be judged on
+        # the lead's own row. `_excludable` is where the two cases are told
+        # apart, and it still refuses everything it refused before - a
+        # campaign that is not ours never gets here, because the `bindings`
+        # check above already dropped it.
+        found[key] = _EVIDENCE[key]
     return found
 
 
@@ -705,20 +728,80 @@ def _excludable(entry, evidence):
     system has misread, and a misreading must not be resolved in favour of
     sending.
     """
-    if not evidence.get("proven"):
-        return False, "not proven to be our own silent staging"
-    state = _norm(entry.get("status"))
-    if state not in EXCLUDABLE_MEMBERSHIP:
-        return False, (f"membership reads {state!r}, which our own zero-send "
-                       f"staging does not leave behind")
+    # THE ROW'S OWN COUNTERS COME FIRST, because both paths below need them
+    # and neither may drop a row that shows contact. A row that disagrees with
+    # the campaign it belongs to is a row this system has misread, and a
+    # misreading must not be resolved in favour of sending.
     for field in ("emails_sent", "replies", "opens"):
         if _int(entry.get(field)) != 0:
             return False, (f"membership reports {field}="
-                           f"{entry.get(field)!r}, which contradicts a "
-                           f"campaign that has sent nothing")
+                           f"{entry.get(field)!r}, so this lead has been "
+                           f"contacted on this campaign")
     if entry.get("interested"):
         return False, "membership is marked interested"
-    return True, evidence.get("why") or "our own proven-zero-send staging"
+
+    state = _norm(entry.get("status"))
+
+    # PATH 1, unchanged: the whole campaign is proven to have sent nothing to
+    # anybody, and the row reads a status that kind of staging leaves behind.
+    if evidence.get("proven") and state in EXCLUDABLE_MEMBERSHIP:
+        return True, evidence.get("why") or "our own proven-zero-send staging"
+
+    # PATH 2: OUR OWN CAMPAIGN HAS NOT CONTACTED *THIS* LEAD.
+    #
+    # ISSUE-014. The campaign-level `zero_send` arm cannot be proven for an
+    # ACTIVE campaign - correctly, since one that started a moment ago also
+    # reports zero - so once this system activates a campaign, every account
+    # it holds reads `in_sequence` from OUR OWN membership and every later
+    # batch is refused at it. That made the continuous-cohort grant, whose
+    # whole shape is batches 2..N filling eight standing campaigns,
+    # unsatisfiable: 95 of 95 accounts across the campaigns sending on
+    # 2026-09-22 read STOP, with zero client-side `in_sequence` rows among
+    # them.
+    #
+    # The per-lead row answers the question the aggregate cannot. It carries
+    # THIS lead's `emails_sent` FOR THIS CAMPAIGN, checked above and zero, so
+    # the "it may have sent a moment ago" objection does not apply - it is the
+    # lead's own row, not a counter that lags. A lead we have actually emailed
+    # keeps its row and still collides, which is what the guard is for.
+    #
+    # This module answers "what has somebody ELSE already done at this
+    # account". A membership in our own campaign that has reached nobody is
+    # not something anybody has done to them. How soon WE may approach a
+    # second person at an account is a different question with its own
+    # answer: the client's `fatigue.account` policy - max_active_contacts and
+    # min_hours_between_first_touches - which the batch builder enforces.
+    # THREE CONDITIONS, and each one is a test that already existed:
+    #
+    #   the campaign is OURS on both sides of the binding
+    #   the campaign's OWN counters are all zero - it has sent to NOBODY, not
+    #     merely to nobody we have looked at. A campaign that has sent one
+    #     email stops being excludable for every lead on it, because a row
+    #     reading zero may simply lag
+    #     (test_a_campaign_that_starts_sending_stops_being_an_artifact)
+    #   the row reads a status consistent with "enrolled, not yet contacted".
+    #     `bounced` and `sequence_finished` are NOT, and they stay - a bounce
+    #     is a fact, and a campaign that sent nothing cannot have finished a
+    #     sequence, so such a row contradicts itself and is a misreading
+    #     (test_a_bounced_membership_of_ours_is_kept_in_the_answer,
+    #      test_a_sequence_finished_membership_of_ours_is_kept)
+    #
+    # What this adds over PATH 1 is exactly one thing: it does not require the
+    # campaign's STATUS to be a verified not-sending one. That is the single
+    # condition ISSUE-014 turns on, and it is the only one the lead's own row
+    # can replace.
+    ours = (evidence.get("arms") or {}).get("ours") or ()
+    counters = evidence.get("counters") or {}
+    silent = all(_int(counters.get(field)) == 0 for field in SILENCE_COUNTERS)
+    if ours and ours[0] and silent and state in UNCONTACTED_MEMBERSHIP:
+        return True, (f"our own campaign, which has contacted nobody, and "
+                      f"this lead's own row on it reads emails_sent 0 "
+                      f"({state!r})")
+
+    if not evidence.get("proven"):
+        return False, "not proven to be our own silent staging"
+    return False, (f"membership reads {state!r}, which our own zero-send "
+                   f"staging does not leave behind")
 
 
 def without_our_staging(person, bindings=None):
