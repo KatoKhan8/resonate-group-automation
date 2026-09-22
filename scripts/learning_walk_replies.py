@@ -32,6 +32,7 @@ import argparse
 import collections
 import json
 import os
+import subprocess
 import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -41,6 +42,64 @@ from src.providers import bison, load_env                       # noqa: E402
 
 OUT = os.path.join(ROOT, "work", "learning-replies.jsonl")
 STATE = os.path.join(ROOT, "work", "learning-replies.state.json")
+LOCK = os.path.join(ROOT, "work", "learning-replies.lock")
+
+
+class AlreadyWalking(RuntimeError):
+    """A second walker refused. It is not an error condition to recover from."""
+
+
+def acquire_lock():
+    """Refuse to start when another walker holds the lock.
+
+    Two walkers share one cursor and one append-mode OUT, so the second does
+    not walk twice as fast - it re-walks the same pages and writes every row a
+    second time. On 2026-09-22 that put 32,025 rows in a 16,650-row file, and
+    the duplication is invisible in `state["rows"]`, which counts only what
+    that process fetched. The file is the thing analysis reads, so the file is
+    the thing that has to be right.
+
+    O_EXCL is the whole mechanism: the create succeeds for exactly one process.
+    A lock whose pid is gone is stale - a killed walker never unlinks - so that
+    case reclaims it rather than blocking the estate on a dead process.
+    """
+    while True:
+        try:
+            fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                with open(LOCK, encoding="utf-8") as handle:
+                    pid = int((handle.read() or "0").strip() or 0)
+            except (OSError, ValueError):
+                pid = 0
+            if pid and _alive(pid):
+                raise AlreadyWalking(
+                    f"another walker holds {LOCK} (pid {pid}). One walker only: "
+                    "a second re-walks the same pages into the same file.")
+            os.unlink(LOCK)
+            continue
+        with os.fdopen(fd, "w") as handle:
+            handle.write(str(os.getpid()))
+        return
+
+
+def _alive(pid):
+    if os.name == "nt":
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"],
+                             capture_output=True, text=True).stdout
+        return str(pid) in out
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def release_lock():
+    try:
+        os.unlink(LOCK)
+    except OSError:
+        pass
 
 
 def load_state():
@@ -74,6 +133,14 @@ def trim(row):
 
 def walk(cap_pages=None):
     load_env()
+    acquire_lock()
+    try:
+        return _walk(cap_pages)
+    finally:
+        release_lock()
+
+
+def _walk(cap_pages=None):
     state = load_state()
     if state.get("complete"):
         print(f"  already complete: {state['rows']} replies in "
