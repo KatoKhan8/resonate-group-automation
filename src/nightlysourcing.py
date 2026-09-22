@@ -32,6 +32,10 @@ from .providers import aiark, ProviderError
 # The pipeline stages, named for the state they produce.
 STAGE_SOURCE = "source"
 STAGE_ICP = "icp"
+
+#: Where a REVIEW record goes instead of the candidate list. It is undecided,
+#: so it is an enrichment task; it is not a rejection and must not read as one.
+ROUTE_ENRICHMENT = "enrichment"
 STAGE_MX = "mx"
 STAGE_COLLISION = "collision"
 STAGE_CANDIDATE = "candidate"
@@ -307,7 +311,27 @@ def _remember_page(page):
 
 
 def _icp_verdict(companies, config=None):
-    """S3 ICP verdict. Only qualified/review survive."""
+    """S3 ICP verdict. **Only QUALIFIED survives into the candidate list.**
+
+    REVIEW USED TO SURVIVE HERE AND IT IS WHY THE FIRST CLIENT EXPORT WAS
+    STOPPED (ISSUE-019). REVIEW means "not enough evidence to decide", which
+    REFUTED-002 already settled: those records carry no criterion at `fail`
+    and are an enrichment task, not a verdict. Passing them wrote undecided
+    accounts into the list as though they had qualified, and the result had a
+    median headcount of 16,745, nothing under 20 staff, a 130,377-employee
+    bank at `icp_score 0.0` and a national education ministry - against a
+    client who sells to 20+ person agencies. `why_matched` read "scored above
+    threshold" on every one of those rows, and that column is what the client
+    reads.
+
+    REVIEW IS ROUTED, NOT DISCARDED. It leaves with `_route = "enrichment"`
+    and its own drop reason, so the enrichment path can pick it up and a later
+    export can carry it once it has been decided. A record that is merely
+    undecided must not be silently thrown away either - that would trade one
+    wrong answer for a different one.
+
+    Operator ruling, 2026-09-22: QUALIFIED only; REVIEW to further enrichment.
+    """
     survived = []
     for company in companies:
         rec = {"domain": company["domain"],
@@ -325,14 +349,19 @@ def _icp_verdict(companies, config=None):
                }}
         verdict = icp.score(rec, config=config)
         status = verdict.get("icp_status")
-        if status in (icp.QUALIFIED, icp.REVIEW):
+        if status == icp.QUALIFIED:
             company["_icp_status"] = status
             company["_icp_score"] = verdict.get("icp_score")
             company["_icp_why"] = _icp_evidence_text(verdict)
             survived.append(company)
         else:
+            company["_icp_status"] = status
+            company["_icp_score"] = verdict.get("icp_score")
             company["_dropped_at"] = STAGE_ICP
             company["_drop_reason"] = f"icp_{status}"
+            if status == icp.REVIEW:
+                # Undecided, not rejected. The enrichment path owns it next.
+                company["_route"] = ROUTE_ENRICHMENT
     return survived
 
 
@@ -523,9 +552,15 @@ def run(config=None, search_fn=None, resolve_fn=None, live=False,
     # Stage 2: ICP
     after_icp = _icp_verdict(sourced, config=config)
     icp_dropped = len(sourced) - len(after_icp)
+    # REVIEW is reported on its own line. Folded into `dropped` it reads as a
+    # rejection, and it is the opposite: an account we could not yet decide.
+    to_enrichment = sum(1 for c in sourced
+                        if c.get("_route") == ROUTE_ENRICHMENT)
     report["stages"][STAGE_ICP] = {"input": len(sourced),
                                    "output": len(after_icp),
-                                   "dropped": icp_dropped}
+                                   "dropped": icp_dropped,
+                                   "review_to_enrichment": to_enrichment,
+                                   "rejected": icp_dropped - to_enrichment}
 
     # Stage 3: MX
     after_mx = _mx_classify(after_icp, config=config, resolve_fn=resolve_fn)

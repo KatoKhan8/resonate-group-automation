@@ -14,7 +14,7 @@ import shutil
 import tempfile
 import unittest
 
-from src import (candidatelist, candidateexport, geo, store,
+from src import (candidatelist, candidateexport, geo, icp, store,
                  nightlysourcing)
 from src.providers import aiark
 
@@ -338,7 +338,26 @@ class TestDSTScheduling(_TempDir, unittest.TestCase):
 
 
 class TestMXStageDiscipline(_TempDir, unittest.TestCase):
-    """S4b MX: known_allowed and unknown_provider survive; others do not."""
+    """S4b MX: known_allowed and unknown_provider survive; others do not.
+
+    THE ICP VERDICT IS STUBBED TO QUALIFIED HERE, DELIBERATELY. These tests are
+    about the MX stage, and MX only ever sees what ICP passed. Under the real
+    default config the fixture agency scores 44.0 and lands on REVIEW, which
+    since ISSUE-019 no longer survives S3 - so without this stub nothing would
+    reach MX and every assertion below would pass or fail for the wrong reason.
+    Stubbing the upstream verdict keeps these tests measuring MX rather than
+    silently measuring the ICP threshold.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._real_score = icp.score
+        icp.score = lambda rec, config=None: {
+            "icp_status": icp.QUALIFIED, "icp_score": 90.0, "criteria": {}}
+
+    def tearDown(self):
+        icp.score = self._real_score
+        super().tearDown()
 
     def test_known_allowed_survives(self):
         search = _fake_search([
@@ -380,7 +399,11 @@ class TestMXStageDiscipline(_TempDir, unittest.TestCase):
 
 
 class TestICPStageDiscipline(_TempDir, unittest.TestCase):
-    """S3 ICP: only qualified/review survive."""
+    """S3 ICP: **only QUALIFIED survives.** REVIEW is routed to enrichment.
+
+    Was "only qualified/review survive" until ISSUE-019, where passing REVIEW
+    put a 130,377-employee bank at `icp_score 0.0` into a client export.
+    """
 
     def test_small_company_rejected(self):
         """Headcount < 20 should be rejected by ICP."""
