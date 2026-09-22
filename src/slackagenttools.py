@@ -134,8 +134,8 @@ def _sender_domain(row):
     `scheduled_emails` returns the provider's rows untrimmed, and
     `sender_email` on them is an OBJECT rather than an address:
 
-        {"id": 3392, "name": "...", "email": "k.s@useproductive.live",
-         "email_signature": "<p>... @Productive</p>", "daily_limit": 15}
+        {"id": 3392, "name": "...", "email": "sender.one@sending-domain-a.example.test",
+         "email_signature": "<p>... @ExampleCo</p>", "daily_limit": 15}
 
     Both domain walks used to do `str(row.get("sender_email") or "")` and
     then `rsplit("@", 1)`. THE GUARD IN FRONT OF THAT IS WHAT MADE IT

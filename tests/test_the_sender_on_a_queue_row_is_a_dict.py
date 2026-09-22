@@ -12,9 +12,9 @@ that day from those very mailboxes.
 `sender_email` on them is an OBJECT, not an address:
 
     {"id": 3392,
-     "name": "Kresimir Simicic",
-     "email": "kresimir.simicic@useproductive.live",
-     "email_signature": "<p>...VP of Business Development @Productive</p>",
+     "name": "Sender One",
+     "email": "sender.one@sending-domain-a.example.test",
+     "email_signature": "<p>...VP of Business Development @ExampleCo</p>",
      "daily_limit": 15, ...}
 
 `_recent_send_domains` and `_week_for_domain` both did:
@@ -27,7 +27,7 @@ that day from those very mailboxes.
 ## AND THE GUARD IS WHAT MADE IT SILENT
 
 `str(a_dict)` is the whole repr, and the repr CONTAINS an `@` - from
-`@Productive` inside the HTML signature. So `"@" not in address` was False,
+`@ExampleCo` inside the HTML signature. So `"@" not in address` was False,
 the row was not skipped, and `rsplit("@", 1)[-1]` returned the tail of a
 mangled signature. Never a domain, never a match, never an error.
 
@@ -65,8 +65,8 @@ PACK = {"workspaces": {"alpha": {"provider_campaign_ids": ["491"]}}}
 
 #: A signature with an `@` in it, because that is the character that made
 #: the guard pass. Trimmed from the live row.
-SIGNATURE = ("<p>Kresimir Simicic</p><p>VP of Business Development "
-             "@Productive</p>")
+SIGNATURE = ("<p>Sender One</p><p>VP of Business Development "
+             "@ExampleCo</p>")
 
 
 def _now_iso(minutes_ago=30):
@@ -75,12 +75,12 @@ def _now_iso(minutes_ago=30):
     return when.strftime("%Y-%m-%dT%H:%M:%S.000000Z")
 
 
-def row(domain="useproductive.live", local="kresimir.simicic",
+def row(domain="sending-domain-a.example.test", local="sender.one",
         lead_id=1, minutes_ago=30, status="sent"):
     """One queue row in the provider's real shape."""
     return {"id": lead_id, "status": status, "sent_at": _now_iso(minutes_ago),
             "lead": {"id": lead_id},
-            "sender_email": {"id": 3392, "name": "Kresimir Simicic",
+            "sender_email": {"id": 3392, "name": "Sender One",
                              "email": "%s@%s" % (local, domain),
                              "email_signature": SIGNATURE,
                              "daily_limit": 15}}
@@ -103,7 +103,7 @@ class TheDomainIsReadOffTheSenderObject(unittest.TestCase):
         """The live finding, as one assertion."""
         with self.queue([row()]):
             found, unreadable, capped = tools._recent_send_domains("alpha")
-        self.assertEqual(found, {"useproductive.live"})
+        self.assertEqual(found, {"sending-domain-a.example.test"})
         self.assertEqual(unreadable, 0)
 
     def test_the_signature_does_not_become_a_domain(self):
@@ -112,26 +112,28 @@ class TheDomainIsReadOffTheSenderObject(unittest.TestCase):
         with self.queue([row()]):
             found, _unreadable, _capped = tools._recent_send_domains("alpha")
         for domain in found:
-            self.assertNotIn("productive</p>", domain)
+            self.assertNotIn("exampleco", domain)
+            self.assertNotIn("</p>", domain)
             self.assertNotIn("<", domain)
             self.assertNotIn(" ", domain)
+            self.assertNotIn("'", domain)
 
     def test_several_senders_give_several_domains(self):
-        rows = [row(domain="useproductive.live"),
-                row(domain="goproductivelab.shop", local="bernarda.vrbat",
+        rows = [row(domain="sending-domain-a.example.test"),
+                row(domain="sending-domain-b.example.test", local="sender.two",
                     lead_id=2)]
         with self.queue(rows):
             found, _u, _c = tools._recent_send_domains("alpha")
-        self.assertEqual(found, {"useproductive.live", "goproductivelab.shop"})
+        self.assertEqual(found, {"sending-domain-a.example.test", "sending-domain-b.example.test"})
 
     def test_a_sender_that_is_a_plain_string_still_works(self):
         """The provider is not the only caller shape, and a string address
         was what this code was written against."""
         plain = row()
-        plain["sender_email"] = "kresimir.simicic@useproductive.live"
+        plain["sender_email"] = "sender.one@sending-domain-a.example.test"
         with self.queue([plain]):
             found, _u, _c = tools._recent_send_domains("alpha")
-        self.assertEqual(found, {"useproductive.live"})
+        self.assertEqual(found, {"sending-domain-a.example.test"})
 
     def test_a_row_with_no_sender_is_skipped_not_guessed(self):
         blank = row()
@@ -159,17 +161,17 @@ class TheDomainIsReadOffTheSenderObject(unittest.TestCase):
         rows = [row(lead_id=1), row(lead_id=2), row(lead_id=2, minutes_ago=90)]
         with self.queue(rows):
             emails, people, unreadable, capped = tools._week_for_domain(
-                "alpha", "useproductive.live")
+                "alpha", "sending-domain-a.example.test")
         self.assertEqual(emails, 3)
         self.assertEqual(people, 2)
         self.assertEqual(unreadable, 0)
 
     def test_another_domains_sends_are_not_counted_for_this_one(self):
-        rows = [row(domain="useproductive.live"),
-                row(domain="goproductivelab.shop", lead_id=2)]
+        rows = [row(domain="sending-domain-a.example.test"),
+                row(domain="sending-domain-b.example.test", lead_id=2)]
         with self.queue(rows):
             emails, people, _u, _c = tools._week_for_domain(
-                "alpha", "useproductive.live")
+                "alpha", "sending-domain-a.example.test")
         self.assertEqual(emails, 1)
         self.assertEqual(people, 1)
 
@@ -186,7 +188,7 @@ class TheDomainIsReadOffTheSenderObject(unittest.TestCase):
         domain that sent thirty minutes ago."""
         with self.queue([row()]):
             found, _u, _c = tools._recent_send_domains("alpha")
-        self.assertIn("useproductive.live", found,
+        self.assertIn("sending-domain-a.example.test", found,
                       "a domain that sent today read as quiet")
 
 
