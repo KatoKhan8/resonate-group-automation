@@ -307,14 +307,20 @@ TASK-256 were deliberately NOT dispatched** — 253 depends on 252 and 256 on
 258, and both touch the same files as their dependency. qwen-7 and qwen-8 are
 held for them. `resonate-qwen-worker` was left alone; it is mid-TASK-250.
 
-    TASK-254  qwen-3  INTEGRATED   the caller survey is an AST test
+    TASK-251  (me)    INTEGRATED   sqlitestore, no caller
     TASK-252  qwen-2  INTEGRATED   one-shot migration + verifier
+    TASK-253  qwen-7  INTEGRATED   QUEUE_BACKEND + shadow path
+    TASK-254  qwen-3  INTEGRATED   the caller survey is an AST test
+    TASK-255  qwen-4  INTEGRATED   20k load test at production record size
+    TASK-256  qwen-8  INTEGRATED   the threading fixtures
     TASK-257  qwen-5  INTEGRATED   LinkedIn seat ledger
-    TASK-255  qwen-4  running
-    TASK-258  qwen-6  running
+    TASK-258  qwen-6  INTEGRATED   the default ladder
 
-158 of 160 green across the merged suites. The 2 failures are the known
-pre-existing `test_invariants` pair, unchanged.
+**All eight DONE.** 300 tests across every suite this branch added or touched:
+298 green, 2 failures — the known pre-existing `test_invariants` pair, which
+is genuine test debt and predates this branch.
+
+TASK-259 is written and NOT dispatched — see §4d.
 
 ### Every one was attacked before it was accepted
 
@@ -379,6 +385,43 @@ is exactly what ISSUE-010 says is true.
 "the instruction is incomplete" and exited 0 having done nothing — the
 README's "a worker that has done nothing" failure, from a cause it does not
 name. Single-line prompts work. Worth adding to `docs/qwen-tasks/README.md`.
+
+---
+
+## 4d. THE TWO THINGS TO READ BEFORE PROMOTING ANYTHING
+
+**1. SQLite is a very large win and NOT the finish line.** TASK-255 measured
+all three arms at production record size:
+
+    ARM              RECORDS  CHECKPOINTS  TIME_S  MB_WRITTEN  AMPLIFICATION
+    jsonl              1,000          200    65.4     3,981.8       1108.1x
+    jsonl+journal      1,000          200   123.9         3.6          1.0x
+    sqlite             1,000          200    43.3         0.2          0.1x
+
+O(changed) is demonstrated across three sizes, not asserted at one. But **all
+three arms are O(N²) in wall clock** — 2x records, 4x time — because the read
+per checkpoint is O(N) and there are N/5 of them. Projected at 20,000: jsonl
+~7 hours, journal ~52 minutes, sqlite ~23 minutes. The design doc now carries
+this, with a line asking that "SQLite fixes the storage problem" not be the
+sentence that survives from it.
+
+**2. TASK-259 is the gate, and it is not dispatched.** The reproduced-incident
+tests — the ones encoding the 2026-09-12 batch that erased a reply, an
+unsubscribe, a drop reason and three purchased decision-makers — structurally
+cannot run against the sqlite backend, because they simulate a second writer
+with `store._write()`, which is not on that path. So the three-way merge and
+both loss guards are exercised **only on JSONL**. Do not promote
+`QUEUE_BACKEND=sqlite` until that is closed.
+
+### One more defect the regression caught, after every task was merged
+
+`QUEUE_DB` — added by TASK-253 — was never registered in
+`store.STATE_OVERRIDES`. `use_directory()` works by clearing that tuple, so a
+stale `QUEUE_DB` pointing at the real `work/queue.db` would have **survived
+isolation**: the queue moves to the temp directory, the database does not, and
+a test writes the real SQLite store believing it is isolated. Fixed, and
+verified by reproducing it. Found by `test_every_state_override_is_in_the_move
+_together_set`, which is that invariant pair doing exactly its job.
 
 ---
 
