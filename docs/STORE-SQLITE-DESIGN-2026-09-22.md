@@ -369,9 +369,17 @@ passing test suite. Until every one holds, JSONL stays live.**
                          this, the three-way merge and both guards are
                          proven on JSONL only.
 
-    2. TASK-260 green    the checkpoint read is O(changed). Without it a 20k
-                         pass is ~23 minutes and still O(N-squared); SQLite
-                         has solved the write half and not the read half.
+    2. TASK-260 green    the checkpoint read is O(changed).
+                         **NOT MET as of 2026-09-22, and 260 is merged.**
+                         Measured after it landed: 1,000 records 60.53s,
+                         5,000 records 1,522.58s - a ratio of 25.2x for 5x
+                         the records, where 5 squared is 25. A pass is still
+                         quadratic to two significant figures.
+                         The cause is NOT the storage backend: `Snapshot`
+                         re-serialises every record TWICE per checkpoint to
+                         re-derive which the caller edited, on every arm.
+                         TASK-261 owns it.
+                         `docs/BENCHMARK-PASS-WALL-CLOCK-2026-09-22.md`.
 
     3. 48 HOURS OF SHADOW WITH A ZERO DIFF
                          `QUEUE_BACKEND=shadow` on the live queue, for two
