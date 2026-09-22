@@ -28,10 +28,12 @@ def record(*entries):
 
 def contact(key="ck-1", email="dana@acme.test"):
     """A contact that would otherwise be sendable."""
+    # The productive policy (2026-09-21) uses deliverable+reoon for
+    # verification, and this test's record has client="productive".
     return {"key": key, "email": email, "name": "Dana Reed",
             "sendable": True, "verdict": "valid",
             "verification": {"evidence": [
-                {"provider": "contactout", "status": "valid", "email": email},
+                {"provider": "deliverable", "status": "valid", "email": email},
                 {"provider": "reoon", "status": "valid", "email": email}]}}
 
 

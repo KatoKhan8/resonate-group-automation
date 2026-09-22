@@ -27,6 +27,9 @@ class EnrichTest(ProviderTest):
         shutil.copyfile(os.path.join(FIXTURES, "phase4.jsonl"), self.queue)
         self._queue_env = os.environ.get("QUEUE"), os.environ.get("OUT")
         os.environ["QUEUE"], os.environ["OUT"] = self.queue, self.out
+        # The productive policy now requires deliverable as primary verifier,
+        # so the contract must be confirmed for the waterfall to call it.
+        self.confirm_deliverable_contract()
         # These fixtures are the *waterfall* under test - which call runs
         # first, what a fallback costs, how a collision is excluded. Person-
         # level enrichment is gated on an ICP verdict, so without one they
