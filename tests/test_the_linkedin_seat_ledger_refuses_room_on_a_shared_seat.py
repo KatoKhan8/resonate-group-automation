@@ -346,8 +346,8 @@ class LedgerReturnsEveryAttestedSeat(unittest.TestCase):
         ]
         truth = exclusive_truth([42, 43])
         result = seatledger.ledger(DAY, rows=rows, provider_truth=truth)
-        self.assertIn(42, result)
-        self.assertIn(43, result)
+        self.assertIn("42", result)
+        self.assertIn("43", result)
 
     def test_report_returns_a_list(self):
         rows = [row("k1", actionledger.SENT, 42, DAY)]
@@ -355,7 +355,7 @@ class LedgerReturnsEveryAttestedSeat(unittest.TestCase):
                                    provider_truth=exclusive_truth([42]))
         self.assertIsInstance(result, list)
         self.assertTrue(len(result) >= 1)
-        self.assertEqual(result[0]["seat_id"], 42)
+        self.assertEqual(result[0]["seat_id"], "42")
 
 
 class FullOnExclusiveSeat(unittest.TestCase):
@@ -372,3 +372,40 @@ class FullOnExclusiveSeat(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ASeatIdIsAnIdentityAndIsNeverCoerced(unittest.TestCase):
+    """`daily` used to do `int(seat_id)`. It raised on a non-numeric provider
+    id and collapsed distinct seats where it did not raise. Neither case was
+    covered, because every fixture above builds seat ids with `int(s)`."""
+
+    def test_a_non_numeric_seat_id_does_not_raise(self):
+        """`int("acc-7")` was an uncaught ValueError. A traceback is not a
+        classification, and this module's whole job is classifying."""
+        result = seatledger.daily("acc-7", DAY, rows=[], provider_truth=None)
+        self.assertEqual(result["verdict"], seatledger.REFUSED)
+        self.assertEqual(result["client"], "UNKNOWN")
+
+    def test_two_distinct_seats_do_not_collapse_onto_one(self):
+        """THE DANGEROUS HALF. `int(True)` is 1 and `int("1_0")` is 10, so a
+        seat could be handed another seat's usage - and on the ROOM branch
+        that is a confident wrong number rather than a refusal."""
+        for a, b in ((True, 1), ("1_0", 10), (7.9, 7), ("٧", 7)):
+            with self.subTest(pair=(a, b)):
+                self.assertNotEqual(seatledger._seat_key(a),
+                                    seatledger._seat_key(b))
+
+    def test_the_key_matches_how_the_action_ledger_compares(self):
+        """`count_on` compares `str(...)` on both sides, so a seat stored as
+        an int and asked for as a string must still match."""
+        rows = [row("k1", actionledger.SENT, 42, DAY)]
+        as_int = seatledger.daily(42, DAY, rows=rows,
+                                  provider_truth=shared_truth([42]))
+        as_str = seatledger.daily("42", DAY, rows=rows,
+                                  provider_truth=shared_truth([42]))
+        self.assertEqual(as_int["ours"], 1)
+        self.assertEqual(as_int["ours"], as_str["ours"])
+
+    def test_surrounding_whitespace_is_not_a_different_seat(self):
+        self.assertEqual(seatledger._seat_key(" 42 "),
+                         seatledger._seat_key("42"))

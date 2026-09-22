@@ -104,6 +104,33 @@ def _load_provider_truth(path=None):
     return data
 
 
+def _seat_key(value):
+    """A seat id compared as TEXT. Never coerced, never parsed.
+
+    THIS WAS `int(seat_id)` AND A SEAT ID IS AN IDENTITY, NOT A NUMBER.
+    `int()` failed in both directions at once:
+
+      it RAISED on anything non-numeric, so a provider id like `acc-7` was an
+      uncaught ValueError rather than a classified refusal - and "no silent
+      fallbacks on a safety path... classify explicitly and fail closed" means
+      a traceback is not an answer either;
+
+      and where it did not raise it COLLAPSED distinct seats onto one:
+      `int(True)` is 1, `int(7.9)` is 7, `int("1_0")` is 10, and `int("٧")`
+      is 7. Two seats becoming one seat is how one seat's usage is attributed
+      to another, and on the ROOM branch that is a confident wrong number.
+
+    Text is also what the matching actually needs: `actionledger.count_on`
+    compares `str(row["sender_id"]) != str(sender_id)`, so it was converting
+    to int here only to have it converted back to str there.
+
+    The same coercion class the GLM attribution review raised against
+    `int(seat)` in `inbound`, arriving in a new module - which is the reason
+    to write the reasoning down rather than just the fix.
+    """
+    return None if value is None else str(value).strip()
+
+
 def _attested_seats(provider_truth):
     """Every seat that appears in our campaigns' sender lists.
 
@@ -116,9 +143,9 @@ def _attested_seats(provider_truth):
     seats = set()
     for campaign in (heyreach.get("resonate_campaigns") or []):
         for sender in (campaign.get("senders") or []):
-            sid = sender.get("id")
+            sid = _seat_key(sender.get("id"))
             if sid is not None:
-                seats.add(int(sid))
+                seats.add(sid)
     return seats
 
 
@@ -153,7 +180,7 @@ def daily(seat_id, day, rows=None, workspace=None, provider_truth=None):
     if provider_truth is None:
         provider_truth = _load_provider_truth()
 
-    seat_id = int(seat_id)
+    seat_id = _seat_key(seat_id)
     exclusive = _is_exclusive(provider_truth) and seat_id in _attested_seats(
         provider_truth)
 
