@@ -840,10 +840,55 @@ def _priority_tier(bounded, thresholds):
     return TIER_C
 
 
+def _geography_established(structural):
+    """True when the geography criterion actually settled the question.
+
+    `not_required` is honest for a client with no geography rule, and stays a
+    pass for them. For a client that HAS one, only an affirmative `pass` counts
+    - `unknown` means we could not place the company, which ISSUE-023 showed
+    reading as though we had.
+    """
+    criteria = (structural.get("criteria") or {})
+    answer = criteria.get("geography") or {}
+    status = answer.get("status")
+    if status == icpstructural.NOT_REQUIRED:
+        return True
+    return status in (icpstructural.PASS, icpstructural.PASS_WITH_TOLERANCE)
+
+
 def _structural_verdict(structural, bounded, thresholds):
-    """(status, tier, why) from the client's structural criteria."""
+    """(status, tier, why) from the client's structural criteria.
+
+    TWO THINGS A STRUCTURAL PASS MAY NOT DO, both added for ISSUE-023.
+
+    IT MAY NOT PASS ON A ZERO SCORE. The structural criteria are deliberately
+    a pool rather than a gate, and the numeric score is deliberately a priority
+    inside that pool. But a record that scores NOTHING has no positive evidence
+    at all, and calling it qualified is an assertion the evidence does not
+    support. This is how a 121,205-employee telecom reached a client who sells
+    to 20+ person agencies, carrying `why_matched: "scored above threshold"`
+    while scoring 0.0 - a sentence that was false on its face and that the
+    client reads.
+
+    IT MAY NOT PASS ON AN UNESTABLISHED GEOGRAPHY. Operator decision,
+    2026-09-22: geography is a REQUIRED criterion. A client that declares no
+    geography rule still gets `not_required`, but where a rule exists the
+    country has to be established - `unknown` is not a pass, and absence of a
+    country is not evidence of an allowed one.
+    """
     verdict = structural["verdict"]
     status = FROM_STRUCTURAL[verdict]
+    if status == QUALIFIED and bounded <= 0:
+        return (REVIEW, TIER_REVIEW,
+                "the client's structural criteria are satisfied "
+                f"({verdict}) but the record scored {bounded:.0f} - no "
+                "positive evidence, so this is undecided rather than "
+                "qualified (ISSUE-023)")
+    if status == QUALIFIED and not _geography_established(structural):
+        return (REVIEW, TIER_REVIEW,
+                "the client's structural criteria are satisfied "
+                f"({verdict}) but the geography is not established, and "
+                "geography is a required criterion (ISSUE-023)")
     if status == QUALIFIED:
         tier = _priority_tier(bounded, thresholds)
         return (status, tier,
