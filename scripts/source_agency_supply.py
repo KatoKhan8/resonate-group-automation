@@ -72,7 +72,21 @@ INDUSTRIES = (
 #: 20-50 / 51-200 / 201-500 / 501-1000, in ContactOut's bucket codes. There is
 #: no `20_50`: the provider's band is `11_50`, so it STRADDLES the 20 floor and
 #: the floor is enforced on `employees` per row instead.
-BUCKETS = ("11_50", "51_200", "201_500", "501_1000")
+#:
+#: **THE BANDS THAT CANNOT WASTE A CREDIT COME FIRST.** Operator decision,
+#: 2026-09-22. Every company in `51_200` and above already clears the client's
+#: 20 floor, so every credit spent there buys a domain that survives the
+#: filter. `11_50` is the only band where we pay for companies the floor then
+#: discards, and the first 6,474 credits - spent almost entirely inside it -
+#: returned about 20% yield and falling.
+PRIMARY_BUCKETS = ("51_200", "201_500", "501_1000")
+
+#: Walked LAST, and only if the target has not already been met. Whether it is
+#: worth buying at all is tomorrow's decision, and the per-bucket yield report
+#: is what that decision is made on.
+DEFERRED_BUCKETS = ("11_50",)
+
+BUCKETS = PRIMARY_BUCKETS + DEFERRED_BUCKETS
 
 #: The client's own include list, minus `Nordics` - which is a region in the
 #: ICP config, not a country ContactOut can filter on. Its four members are
@@ -111,8 +125,16 @@ def slice_key(industry, bucket, geo):
 
 
 def slices():
-    for industry in INDUSTRIES:
-        for bucket in BUCKETS:
+    """Bucket-major, primary bands first.
+
+    The ORDER is the decision: iterating bucket-major means every slice of
+    `51_200`, `201_500` and `501_1000` across every industry and geo is walked
+    before a single credit goes into `11_50`, where the 20 floor discards part
+    of what we pay for. Industry-major would interleave them and spend on the
+    straddling band from the first minute.
+    """
+    for bucket in BUCKETS:
+        for industry in INDUSTRIES:
             for geo in GEOS:
                 yield industry, bucket, geo
 
@@ -316,6 +338,46 @@ def run():
     return 0
 
 
+def by_bucket(state):
+    """Yield and cost per size band. **The number tomorrow's decision needs.**
+
+    `credits per qualified domain` is the whole question about `11_50`: every
+    other band clears the 20 floor by construction, so its credits and its
+    domains are the same event. In `11_50` we pay for companies the floor then
+    discards, and this is where that shows up as a price.
+    """
+    rows = {}
+    for key, slice_state in state["slices"].items():
+        bucket = key.split("|")[1]
+        agg = rows.setdefault(bucket, {"credits": 0, "new": 0, "slices": 0,
+                                       "done": 0})
+        agg["credits"] += slice_state.get("credits") or 0
+        agg["new"] += slice_state.get("new") or 0
+        agg["slices"] += 1
+        agg["done"] += 1 if slice_state.get("done") else 0
+    return rows
+
+
+def print_by_bucket(state):
+    rows = by_bucket(state)
+    if not rows:
+        return
+    print("\n  PER BUCKET - yield, and what a qualified domain costs:")
+    print(f"    {'bucket':<10} {'credits':>9} {'new':>8} {'yield':>7} "
+          f"{'cr/domain':>10}  slices")
+    order = [b for b in BUCKETS if b in rows] + \
+            [b for b in rows if b not in BUCKETS]
+    for bucket in order:
+        agg = rows[bucket]
+        pct = (agg["new"] / agg["credits"] * 100) if agg["credits"] else 0
+        per = (agg["credits"] / agg["new"]) if agg["new"] else 0
+        note = "  <- straddles the 20 floor" if bucket in DEFERRED_BUCKETS \
+            else ""
+        print(f"    {bucket:<10} {agg['credits']:>9,} {agg['new']:>8,} "
+              f"{pct:>6.1f}% {per:>10.1f}  "
+              f"{agg['done']}/{agg['slices']}{note}")
+
+
 def report(state=None):
     state = state or load_state()
     done = sum(1 for s in state["slices"].values() if s["done"])
@@ -324,6 +386,7 @@ def report(state=None):
     print(f"  credits      {state['credits']:,}  (reported, never gated)")
     print(f"  slices       {done} done of {len(state['slices'])} touched, "
           f"{empty} empty")
+    print_by_bucket(state)
     top = sorted(state["slices"].items(), key=lambda kv: -kv[1]["new"])[:12]
     print("\n  best slices:")
     for key, s in top:
