@@ -108,3 +108,43 @@ and concludes the floor was dropped has read the wrong artifact.
 Per the baseline rule, the diff is on the SET of domains, not on the counts:
 regenerate the JSON and diff the domain sets, because two runs can agree on a
 count and disagree on every member.
+
+---
+
+## E. PACING — operator decision, Zvonimir, 2026-09-22, additive
+
+    1. Email pacing: enrolled-but-not-sent backlog per campaign may reach
+       7 days of first-step capacity (was 3), because the provider's own
+       scheduler paces sends and copy is not time-sensitive within a week.
+       Target 100 to 200 leads per campaign where the human's mailboxes
+       support it; small-estate humans (luka, jakov, bojan) stay small
+       until Productive adds mailboxes.
+    2. HeyReach: raise to 25 connection requests per seat per day on seats
+       whose own ledger (TASK-257) shows room, 10 where the client's usage
+       on that seat is UNKNOWN. Lists sized to 7 days at that rate, so
+       100+ leads per campaign where room exists.
+    3. Per-mailbox daily send cap stays at 15. Hard stops unchanged.
+    4. Re-size open batches to the new rules today and report per
+       campaign: leads, backlog days, first-step capacity, and for
+       HeyReach the daily request rate used.
+
+### What this replaces
+
+The CONTINUOUS grant's pacing rule read "3 days of that campaign's first-step
+capacity". **It now reads 7 days.** Nothing else in that grant moves: the
+per-mailbox cap is still 15, the stats-and-veto gate is still per batch, and
+any hard stop still halts all further batches.
+
+### The arithmetic the re-size runs on
+
+    first-step capacity/day  =  (mailboxes NAMED on the campaign) x 15
+    permitted backlog        =  capacity/day x 7
+    backlog now              =  leads - sent
+
+**Capacity is per MAILBOX NAMED, not per human attested.** A human with 20
+attested mailboxes of which the campaign names 4 has a capacity of 60/day, not
+300. Read the names off the campaign, never off the roster.
+
+**25 requests/seat/day is licensed by the seat's OWN ledger, not by the
+absence of evidence.** Where the client's usage on a shared seat is UNKNOWN,
+the rate is 10 — unknown is not room.
