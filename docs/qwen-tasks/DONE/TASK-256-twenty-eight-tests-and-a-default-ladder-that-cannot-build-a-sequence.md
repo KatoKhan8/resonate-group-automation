@@ -93,3 +93,57 @@ Per test, the same two shapes TASK-250 uses:
   decisions about live copy.
 - Do not touch `src/providers/` — the production session owns it.
 - Do not touch `src/cadencelibrary.py`. TASK-258 owns it.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** a290823c
+- **TESTS:**
+  - `test_bison_campaign_write`: 15/15 pass (was 4/15, 11 failures fixed)
+  - `test_render_preview`: 29/29 pass (was 25/29, 4 failures fixed)
+  - `test_task081_thread_reply`: 26/26 pass (was already 26/26 after TASK-258)
+  - Total scope was 15 tests, not 28: TASK-258 cleared 13 before this task
+    started (test_task081_thread_reply 6→0, test_render_preview 11→4,
+    test_bison_campaign_write unchanged at 11).
+  - Broader run: 251 tests across 9 related modules, 249 pass. The 2 failures
+    in test_invariants are pre-existing (ProviderError import invariant and
+    bison route invariant) and unrelated to this task's changes.
+- **FILES CHANGED:**
+  - `tests/test_bison_campaign_write.py`: thread_reply_pattern changed from
+    `[False, True, False]` to `[False, True, True]`. Three assertion sites
+    updated (test_threading_is_false_true_true, readback in
+    test_write_three_steps_readback_matches, module docstring). The fixture
+    now satisfies the invariant: opener owns the subject, both follow-ups are
+    thread replies.
+  - `scripts/render_preview.py`: 14 email fixture approvals updated across
+    three fixtures (_fixture_rec_email, _fixture_rec_email_second,
+    _fixture_rec_email_missing). Each approval now carries a real fingerprint
+    computed by `approval.fingerprint()` over the actual step content, and
+    `"by": "operator"` so `is_accountable_approver` passes. The placeholder
+    fingerprints ("fixture-approve-emN") never matched the computed hash and
+    had no "by" field, so `_certified_copy` returned None for every step,
+    making the preview report MISSING COPY for all emails.
+- **FINDINGS:**
+  - `git diff src/bisonfactory.py` is empty: the threading invariant at
+    lines ~288-308 is unchanged.
+  - Attack verified: restoring the pre-fix pattern `[False, True, False]`
+    causes `_sequence_steps` to refuse with the original error message
+    ("step 3 is not a thread reply but carries a distinct subject"). The
+    guard is load-bearing and was not loosened.
+  - The render_preview failures were NOT about threading. They were about
+    email fixture approvals that could never certify: placeholder
+    fingerprints that were never computed from the content, and no `by`
+    field for `is_accountable_approver`. The HeyReach fixtures have the
+    same placeholder pattern but go through a different code path
+    (`heyreachfactory.custom_fields_for`) that does not call
+    `_certified_copy`, which is why those tests passed.
+- **RISKS:**
+  - The edge-case email fixtures in render_preview.py (lines ~1400-1735)
+    still carry placeholder fingerprints ("edge-approve-emN") without "by"
+    fields. These are not among the 15 failing tests and the edge-case
+    tests pass because they test structural properties (greeting rendering,
+    name extraction) rather than approved copy content. A future task that
+    asserts on approved copy in edge-case previews will hit the same wall.
+- **RECOMMENDED CLAUDE ACTION:** Integrate. The invariant is unchanged, the
+  fixtures satisfy it, and the attack confirms the guard still refuses the
+  pre-fix shape.
