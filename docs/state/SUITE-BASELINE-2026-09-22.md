@@ -6,8 +6,31 @@ failing test by name; this file says what they are.
 
     runner      py -3 -m tests.offline
     branch      infra, off master c75b4b60
-    measured    11,098 tests · 80 failures · 36 errors · 116 entries
-    distinct    112 test methods (115 detail blocks; subTests inflate entries)
+
+    BEFORE      11,098 tests · 80 F · 36 E · 116 entries · 112 distinct
+    AFTER       11,109 tests · 75 F · 36 E · 111 entries · 111 distinct
+
+Two full runs, not one and an estimate. The second was taken after the
+`test_invariants` fix in section 2 and **confirms the predicted −5 exactly**,
+with the JSON beside this file regenerated from it.
+
+**The diff this file exists to make possible, performed:**
+
+    gone   test_invariants.TestTheBarrierCoversEveryWriter
+             .test_every_self_writer_refuses_the_real_work_directory
+           — one method, five subTest entries, hence −5 entries and −1 distinct
+    new    (none)
+
+Zero regressions, stated as a set difference rather than inferred from two
+totals being five apart. That is the whole argument of section 1 in one line:
+116 → 111 could have been eleven fixes and six new failures, and nothing in
+the old format could have told you.
+
+The +11 tests are this branch's new GLM harness tests, which landed between
+the two runs. A further **−1** landed after the second run
+(`TestValidationCannotSpendByAccident`, the same environment leak, found *by*
+this diff) and is not yet reflected in a full measurement; expect 110.
+The 26 `sqlitestore` tests also postdate it.
 
 ---
 
@@ -78,6 +101,14 @@ the barrier that stops a test writing real client state.
 Verified not vacuous: with `refuse_production_write` stubbed to a no-op the
 class produces **10 failures** across all nine writers plus the dedicated
 `test_the_barrier_actually_refuses_under_test`.
+
+**And the diff found a second one.** `TestValidationCannotSpendByAccident`
+has the identical mechanism — `validate.output_dir()` also resolves beside
+`store.queue_path()`, and the test asserts `"work"` is in it. Green alone, red
+with `QUEUE=<tmp>`. Both classes now share a `PinsTheRealStatePaths` mixin
+rather than two copies of the same setUp, and both were re-attacked after the
+refactor: stubbing `refuse_production_write` gives 10 failures, moving
+`validate.output_dir` off `work/` gives 1.
 
 ---
 
@@ -181,10 +212,14 @@ assertion loosened, no guard widened.
 
 ## 5. THE NUMBER THE REGISTER SHOULD CARRY
 
-    2026-09-22   11,098 tests   111 failure/error entries   107 distinct tests
+    2026-09-22   11,109 tests   111 failure/error entries   111 distinct
 
-That is the measured 116 less the 5 order-dependent barrier entries, and it is
-**a floor to work down from, not an achievement**. Two thirds of it is two
+**Measured, not derived** — the second full run, and the JSON beside this file
+is generated from it. Expect **110** on the next measurement: one more
+order-dependent failure was fixed after that run, and it was found by the
+diff above rather than by looking.
+
+It is **a floor to work down from, not an achievement**. Two thirds of it is two
 known contract changes:
 
     threading invariant (TASK-219)   28
