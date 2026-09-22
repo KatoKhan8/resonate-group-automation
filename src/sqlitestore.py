@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+"""The record store as SQLite. NOT WIRED — nothing in this repository calls it.
+
+TASK-251, design `docs/STORE-SQLITE-DESIGN-2026-09-22.md` section 4.
+
+`src/store.py` is untouched and `work/queue.jsonl` remains the canonical
+store. That separation is deliberate and it is the shape `src/queuejournal.py`
+was landed in, for the reason its own docstring gives: the storage engine and
+the change to the only file holding real client state are two reviewable
+things rather than one.
+
+## Why this exists
+
+Measured on the live queue 2026-09-22: 1,027 records, 19.41 MB, **mean 19,819
+bytes per record**, largest 162,117. `store.save` rewrites the whole file and
+`run.CHECKPOINT_EVERY` is 5, so one pass over N records performs N/5
+whole-file writes each costing O(N). At the 20,000-record target that is
+**1.48 TB written per pass**, with an O(N) read per checkpoint on top.
+
+`queuejournal` narrows the write and says in its own docstring that the read
+stays O(N) and "needs an index to fix". This is that index.
+
+Note for anyone re-reading that module's benchmark: its table works out to 874
+bytes per record against a production mean of 19,819, so it under-states by
+22.7x. TASK-255 re-measures at production record size.
+
+## The document is not normalised, on purpose
+
+Contacts, events, cadence and evidence stay inside the JSON document. Every
+consumer, both loss guards (`refuse_evidence_loss`, `refuse_history_loss`) and
+`store.validate` operate on the record dict; splitting them into tables would
+be a rewrite of the repository disguised as a storage change, and CLAUDE.md's
+"smallest robust solution" points the other way.
+
+## `seq` IS THE FILE ORDER AND IT IS LOAD-BEARING
+
+`store.Snapshot.merge_onto` writes rows "in the order every other reader sees"
+and puts rows with no baseline on the end. A backend that returns key-sorted
+rows changes what the whole repository iterates over and nothing raises. So
+the order is stored, not derived, and an update must never move a row — an
+upsert written as delete-then-insert silently reorders the file.
+
+## The three filter columns are GENERATED
+
+`list_records` filters on state, lane and client. A plain column holding a
+copy of the document's state would be a second representation of the same
+truth, which is how the two drift — the exact thing CLAUDE.md warns about. A
+generated column is derived by SQLite on read and cannot disagree.
+
+Verified available here: SQLite 3.50.4 under Python 3.14.3. Note
+`sqlite3.version` was REMOVED in 3.14; use `sqlite3.sqlite_version`.
+"""
+import json
+import os
+import sqlite3
+import datetime
+
+from . import store
+
+SCHEMA_VERSION = "1"
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS records (
+    seq        INTEGER PRIMARY KEY AUTOINCREMENT,
+    id         TEXT    NOT NULL UNIQUE,
+    doc        TEXT    NOT NULL,
+    updated_at TEXT    NOT NULL,
+    state  TEXT GENERATED ALWAYS AS (json_extract(doc,'$.state'))  VIRTUAL,
+    lane   TEXT GENERATED ALWAYS AS (json_extract(doc,'$.lane'))   VIRTUAL,
+    client TEXT GENERATED ALWAYS AS (json_extract(doc,'$.client')) VIRTUAL
+);
+CREATE INDEX IF NOT EXISTS records_state  ON records(state);
+CREATE INDEX IF NOT EXISTS records_lane   ON records(lane);
+CREATE INDEX IF NOT EXISTS records_client ON records(client);
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+"""
+
+
+class DuplicateRecord(RuntimeError):
+    """Two records in one write carry the same id. Nothing was written."""
+
+
+def _frozen(doc):
+    """One serialisation, used for both storage and change detection.
+
+    `sort_keys` so a dict whose insertion order differs does not read as a
+    change - that would make every checkpoint rewrite every row and undo the
+    entire point of this module.
+    """
+    return json.dumps(doc, sort_keys=True, ensure_ascii=False)
+
+
+def _now():
+    return (datetime.datetime.now(datetime.timezone.utc)
+            .replace(microsecond=0).isoformat())
+
+
+def open_db(path):
+    """Open or create the database, schema applied and pragmas set.
+
+    THE BARRIER IS ASKED FIRST, before `makedirs` and before sqlite is allowed
+    to touch anything. `store.refuse_production_write`'s docstring says the
+    refusal must land before any filesystem mutation, and a database brings
+    two sidecars - `-wal` and `-shm` - that a test forgetting to isolate would
+    otherwise create in the real `work/`. The journal path had to learn this
+    same lesson through a file that "did not exist when it was written".
+    """
+    path = os.path.abspath(path)
+    store.refuse_production_write(path)
+    for sidecar in (path + "-wal", path + "-shm"):
+        store.refuse_production_write(sidecar)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    conn = sqlite3.connect(path)
+    conn.execute("PRAGMA journal_mode=WAL")
+    # FULL rather than NORMAL: this is the only file holding real client
+    # state, and `store._write`'s whole contract is that a crash leaves the
+    # previous queue readable.
+    conn.execute("PRAGMA synchronous=FULL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.executescript(SCHEMA)
+    conn.execute(
+        "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)",
+        (SCHEMA_VERSION,))
+    conn.execute(
+        "INSERT OR IGNORE INTO meta(key, value) VALUES ('revision', '0')")
+    conn.commit()
+    return conn
+
+
+def read_all(conn):
+    """Every record, in `seq` order. A missing table is an empty list."""
+    return [json.loads(row[0]) for row in
+            conn.execute("SELECT doc FROM records ORDER BY seq")]
+
+
+def rows_with_stamps(conn):
+    """id, updated_at and seq per row. For tests and for the shadow diff.
+
+    Separate from `read_all` because `updated_at` and `seq` are storage
+    bookkeeping and have no business appearing inside a record dict that a
+    caller might write back.
+    """
+    return [{"id": r[0], "updated_at": r[1], "seq": r[2]} for r in
+            conn.execute("SELECT id, updated_at, seq FROM records ORDER BY seq")]
+
+
+def revision(conn):
+    """The monotonic write counter. This is what `digest()` becomes.
+
+    A content hash of the file would be wrong: WAL, page reuse and vacuum all
+    change bytes without changing state, and a checkpoint can change state
+    without changing the main file at all.
+
+    It is STRICTER than a content hash, not equivalent, and the difference is
+    deliberate: a record changed and changed back hashes the same and gets a
+    different revision here, so an `expect_digest` caller refuses where it
+    once passed. `expect_digest` exists to refuse a read-modify-write that
+    raced, and the caller is already told to reload and re-apply, so refusing
+    a race that happened to converge is the safe direction.
+    """
+    row = conn.execute("SELECT value FROM meta WHERE key='revision'").fetchone()
+    return int(row[0]) if row else 0
+
+
+def write_changed(conn, records, _fail_after=None, _failure=RuntimeError):
+    """Insert or update only the rows whose document differs. One transaction.
+
+    Returns the number of rows written. **Do not assert on that number in a
+    test** - it is the writer's own account of itself. Read the table.
+
+    AN UPDATE MUST NOT MOVE A ROW. `seq` is the file order every other reader
+    depends on, so an existing id is UPDATEd in place and never
+    deleted-and-reinserted.
+
+    A record absent from `records` is left alone. Removal is not this module's
+    to do: records are never deleted, `drop` is a state change, and that rule
+    lives in `store`.
+
+    `_fail_after` and `_failure` exist for the crash test and nothing else:
+    they raise partway through so the rollback can be asserted rather than
+    assumed.
+    """
+    rows = [r for r in records if isinstance(r, dict) and "id" in r]
+
+    seen = set()
+    duplicates = set()
+    for rec in rows:
+        if rec["id"] in seen:
+            duplicates.add(rec["id"])
+        seen.add(rec["id"])
+    if duplicates:
+        # Refused before the transaction opens, so "nothing was written" is
+        # true by construction rather than by rollback.
+        raise DuplicateRecord(
+            "two records carry the same id and cannot both be written: "
+            + ", ".join(sorted(duplicates)) + ". Nothing was written.")
+
+    existing = {r[0]: r[1] for r in
+                conn.execute("SELECT id, doc FROM records")}
+    stamp = _now()
+    written = 0
+    try:
+        with conn:                      # commits on success, rolls back on raise
+            for n, rec in enumerate(rows):
+                doc = _frozen(rec)
+                if existing.get(rec["id"]) == doc:
+                    continue
+                if _fail_after is not None and written >= _fail_after:
+                    raise _failure("deliberate failure mid-write")
+                if rec["id"] in existing:
+                    conn.execute(
+                        "UPDATE records SET doc=?, updated_at=? WHERE id=?",
+                        (doc, stamp, rec["id"]))
+                else:
+                    conn.execute(
+                        "INSERT INTO records(id, doc, updated_at) "
+                        "VALUES (?,?,?)", (rec["id"], doc, stamp))
+                written += 1
+            if written:
+                conn.execute(
+                    "UPDATE meta SET value=? WHERE key='revision'",
+                    (str(revision(conn) + 1),))
+    except sqlite3.IntegrityError as exc:
+        raise DuplicateRecord(
+            f"the write was refused by the database and rolled back: {exc}. "
+            f"Nothing was written.") from exc
+    return written
+
+
+def meta_get(conn, key, default=None):
+    row = conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+    return row[0] if row else default
+
+
+def meta_set(conn, key, value):
+    with conn:
+        conn.execute("INSERT INTO meta(key, value) VALUES (?,?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                     (key, str(value)))
+
+
+def close(conn):
+    conn.close()
