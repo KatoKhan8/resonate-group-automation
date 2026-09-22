@@ -212,6 +212,11 @@ def handle(event, seen, dry_run=False, model=None):
          "planned": result.get("planned"),
          "tools": result.get("tools"), "how": result.get("how"),
          "guard": result.get("guard"), "ticket": result.get("ticket"),
+         # The text a guard REJECTED, so a trip can be diagnosed. Recorded
+         # in the agent's own log and never posted.
+         "rejected": result.get("rejected"),
+         "guard_retry": result.get("guard_retry"),
+         "rejected_retry": result.get("rejected_retry"),
          "reply": reply[:2000]})
     emit("ANSWERED %s scope=%s via=%s tools=%s"
          % (message_id, result.get("scope"), result.get("how"),
