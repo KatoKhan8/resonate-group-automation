@@ -13,7 +13,7 @@ import contextlib
 import unittest
 
 from src import eligibility, lint, push, store, verification as v
-from tests.base import FIXTURES, ProviderTest, pin_client_config
+from tests.base import FIXTURES, ProviderTest, install_fixture, pin_client_config, write_as_another_process
 
 
 @contextlib.contextmanager
@@ -32,7 +32,7 @@ def degraded_fixture():
     """
     recs = store.load()
     yield recs
-    store._write(recs)
+    write_as_another_process(recs)
 
 
 EMAIL = "someone@example.test"
@@ -313,9 +313,9 @@ class TestTheEmailBisonGate(ProviderTest):
         self.tmp = tempfile.mkdtemp(prefix="rga-dv-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase7.jsonl"), self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
+        install_fixture("phase7.jsonl", self.queue)
         self._shutil = shutil
         from tests.base import approve_everything
         approve_everything()
@@ -446,9 +446,9 @@ class TestTheReasonCodeReachesTheCaller(ProviderTest):
         self.tmp = tempfile.mkdtemp(prefix="rga-dv-reason-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase7.jsonl"), self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
+        install_fixture("phase7.jsonl", self.queue)
         self._shutil = shutil
 
     def tearDown(self):
@@ -518,9 +518,9 @@ class TestTheLaunchChecklist(ProviderTest):
         self.tmp = tempfile.mkdtemp(prefix="rga-dv-launch-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase7.jsonl"), self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
+        install_fixture("phase7.jsonl", self.queue)
         self._shutil = shutil
         from tests.base import approve_everything
         approve_everything()
