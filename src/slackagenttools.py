@@ -105,8 +105,13 @@ def lead_lookup(scope, argument=None):
         return {"read_at": _now(), "matches": 0,
                 "note": "nothing in %s's store matches that" % slug}
     if not scope.is_client:
+        # A NAME IS AS IDENTIFYING AS AN ADDRESS. The first version stripped
+        # only `contact`, which left "Jacob Faertz" in an internal answer -
+        # and `notify._status_payload` refuses a person's name for the same
+        # reason it refuses a mailbox.
         for row in found:
             row.pop("contact", None)
+            row.pop("name", None)
     return {"read_at": _now(), "workspace": slug, "matches": len(found),
             "leads": found}
 
@@ -124,16 +129,204 @@ def account_lookup(scope, argument=None):
                 "note": "no account in %s's store matches %s" % (slug, domain)}
     out = []
     for record in hits[:5]:
-        contacts = record.get("contacts") or []
+        contacts = _contacts_of(record)
         out.append({
             "domain": record.get("domain"),
             "state": record.get("state"),
             "icp_verdict": (record.get("icp") or {}).get("verdict"),
             "contacts": len(contacts),
-            "contact_states": _count(c.get("state") for c in contacts),
+            "sendable_contacts": len([c for c in contacts
+                                      if c.get("sendable")]),
+            "contact_states": _count(c.get("state") or c.get("verdict")
+                                     for c in contacts),
+            "in_campaigns": campaigns_of_record(slug, record.get("id")),
         })
     return {"read_at": _now(), "workspace": slug, "matches": len(hits),
             "accounts": out}
+
+
+def sender_summary(scope, argument=None):
+    """How many sending accounts are working this client's campaigns.
+
+    COUNTS AND PROVIDER IDS ONLY. The people behind the estate are real
+    humans whose names live in a gitignored file, and a client is owed the
+    answer to "how many senders are sending for us" without being owed the
+    roster. The campaign rows carry `provider_account_id`, which is exactly
+    that: a count of distinct sending accounts, no name and no address.
+    """
+    slug = _workspace_for(scope, argument)
+    rows = _campaign_rows(slug)
+    email, linkedin = set(), set()
+    volume = {"email": 0, "linkedin": 0}
+    live = 0
+    for row in rows:
+        senders = row.get("senders") or {}
+        for entry in senders.get("email") or []:
+            email.add(str(entry.get("provider_account_id")
+                          or entry.get("account_id")))
+        for entry in senders.get("linkedin") or []:
+            linkedin.add(str(entry.get("provider_account_id")
+                             or entry.get("account_id")))
+        if (row.get("status") or "").lower() in ("approved", "launched",
+                                                 "active"):
+            live += 1
+            for channel in ("email", "linkedin"):
+                value = (row.get("daily_volume") or {}).get(channel)
+                if isinstance(value, int):
+                    volume[channel] += value
+    out = {"read_at": _now(), "workspace": slug,
+           "email_sending_accounts": len(email),
+           "linkedin_sending_accounts": len(linkedin),
+           "campaigns_they_serve": len(rows),
+           "campaigns_approved_or_live": live,
+           "combined_daily_volume": volume}
+    if not email and not linkedin:
+        out["note"] = ("no sending account is bound to any campaign for "
+                       "this workspace yet")
+    else:
+        out["note"] = ("a sending account is bound to a campaign; bound is "
+                       "not the same as sending, and sends_today is the "
+                       "figure that says what actually went out")
+    return out
+
+
+#: A week, in seconds. The window "this week" means, and it is a rolling
+#: seven days rather than a calendar week on purpose: a client asking on a
+#: Monday means the last seven days, not the four hours since midnight.
+WEEK_SECONDS = 7 * 24 * 3600
+
+
+def activity_this_week(scope, argument=None):
+    """What actually went out in the last seven days, per campaign.
+
+    THE PROVIDER'S `emails_sent` IS A LIFETIME COUNTER, not a weekly one.
+    Reporting it as "this week" would be the same class of error as reading
+    `active` as a send, which is the error this project's register exists
+    for. The weekly figure is counted from the QUEUE ROWS, each of which
+    carries its own `sent_at`, and the lifetime counter is reported beside
+    it so the two are never confused.
+    """
+    import datetime
+    slug = _workspace_for(scope, argument)
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    ids = entry.get("provider_campaign_ids") or []
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - \
+        datetime.timedelta(seconds=WEEK_SECONDS)
+
+    rows, sent_week, lifetime, unreadable = [], 0, 0, 0
+    for campaign_id in ids[:10]:
+        detail = readback.campaign_by_id(campaign_id)
+        if detail.get("_error"):
+            unreadable += 1
+            rows.append({"campaign_id": campaign_id,
+                         "_error": detail["_error"]})
+            continue
+        week = _sent_since(campaign_id, cutoff)
+        counter = detail.get("emails_sent")
+        if isinstance(counter, int):
+            lifetime += counter
+        if isinstance(week, int):
+            sent_week += week
+        rows.append({"campaign_id": campaign_id,
+                     "name": detail.get("name"),
+                     "status": detail.get("status"),
+                     "sent_last_7_days": week,
+                     "sent_lifetime": counter,
+                     "replied_lifetime": detail.get("replied"),
+                     "bounced_lifetime": detail.get("bounced"),
+                     "queue_rows": detail.get("queue_rows")})
+    out = {"read_at": _now(), "workspace": slug,
+           "campaigns_read": len(rows),
+           "campaigns_unreadable": unreadable,
+           "sent_last_7_days": sent_week,
+           "sent_lifetime": lifetime,
+           "campaigns": rows,
+           "note": "sent_last_7_days is counted from queue rows carrying a "
+                   "sent_at inside the window. sent_lifetime is the "
+                   "provider's own counter and is NOT a weekly figure."}
+    if unreadable:
+        out["warning"] = ("%d campaign(s) could not be read, so this total "
+                          "is a floor and not the whole picture" % unreadable)
+    return out
+
+
+def _sent_since(campaign_id, cutoff):
+    """Queue rows sent since `cutoff`, or None if the queue cannot be read.
+
+    None rather than 0. A queue that refused and a week with no sends are
+    different answers, and returning 0 for both is how "nothing went out"
+    gets reported for a campaign nobody could read.
+    """
+    import datetime
+    try:
+        from .providers import bison
+        queue = bison.scheduled_emails(campaign_id) or []
+    except Exception:                                           # noqa: BLE001
+        return None
+    count = 0
+    for row in queue:
+        stamp = row.get("sent_at")
+        if not stamp:
+            continue
+        try:
+            when = datetime.datetime.fromisoformat(
+                str(stamp).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=datetime.timezone.utc)
+        if when >= cutoff:
+            count += 1
+    return count
+
+
+def replies(scope, argument=None):
+    """What has come back: the provider's counters and the reply feed.
+
+    Two sources that answer different halves. The provider counts replies
+    per campaign and knows nothing about what they said; the notification
+    feed carries the classified ones and is the only place a positive reply
+    is recorded. Both are reported, labelled, and an empty feed says it is
+    empty rather than implying nobody replied.
+    """
+    slug = _workspace_for(scope, argument)
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    out = {"read_at": _now(), "workspace": slug}
+
+    counted, unreadable = 0, 0
+    for campaign_id in (entry.get("provider_campaign_ids") or [])[:10]:
+        detail = readback.campaign_by_id(campaign_id)
+        if detail.get("_error"):
+            unreadable += 1
+            continue
+        if isinstance(detail.get("replied"), int):
+            counted += detail["replied"]
+    out["replies_counted_by_provider"] = counted
+    if unreadable:
+        out["campaigns_unreadable"] = unreadable
+
+    try:
+        from . import notify
+        rows = notify.history(workspace=slug, limit=50)
+    except Exception as exc:                                    # noqa: BLE001
+        out["feed_error"] = type(exc).__name__
+        return out
+
+    kinds = {}
+    recent = []
+    for row in rows:
+        kind = row.get("type") or "unknown"
+        kinds[kind] = kinds.get(kind, 0) + 1
+        if kind in ("positive_reply", "neutral_reply", "negative_reply"):
+            recent.append({"at": row.get("at"), "type": kind,
+                           "campaign": (row.get("ids") or {}).get("campaign")})
+    out["reply_feed_by_kind"] = kinds
+    out["classified_replies"] = recent[:10]
+    if not rows:
+        out["note"] = ("nothing is recorded in this workspace's "
+                       "notification feed yet - that is an empty feed, not "
+                       "a proven zero")
+    return out
 
 
 def batch_state(scope, argument=None):
@@ -169,24 +362,21 @@ def _batch_state_local(scope):
 
 
 def next_actions(scope, argument=None):
-    """What happens next, and what it is waiting on."""
-    pack = knowledge.pack()
-    text = knowledge._read(
-        "docs/PRODUCTION-HANDOFF-2026-09-21-EVENING.md") or ""
-    actions = []
-    import re
-    block = re.search(r"^## 11\. TOMORROW'S FIRST THREE ACTIONS"
-                      r"([\s\S]*?)^## ", text, re.M)
-    if block:
-        for match in re.finditer(r"^\d+\.\s+(.+?)(?=^\d+\.|\Z)",
-                                 block.group(1).strip(), re.M | re.S):
-            actions.append(" ".join(match.group(1).split())[:400])
+    """What happens next, and what it is waiting on.
+
+    Reads `knowledge.current_state`, which follows the NEWEST handoff. An
+    earlier version named the evening handoff and its section number
+    directly; a night handoff landed the same day with different headings,
+    and this tool went on reporting the superseded list as what was next.
+    """
     if not scope.is_internal:
         return {"read_at": _now(),
                 "note": "the next actions list is internal"}
+    state = knowledge.pack().get("current_state") or knowledge.current_state()
     return {"read_at": _now(),
-            "source": "docs/PRODUCTION-HANDOFF-2026-09-21-EVENING.md",
-            "next_actions": actions,
+            "source": state.get("waiting_source") or state.get("source"),
+            "headline": state.get("headline"),
+            "waiting_on_operator": state.get("waiting_on_operator") or [],
             "problem_register": open_issues(),
             "campaigns_awaiting_decision": _awaiting_decision()}
 
@@ -334,6 +524,18 @@ REGISTRY = {
         account_lookup,
         "one account's state by domain, with its contact counts",
         _INTERNAL_CLIENT, "a domain"),
+    "sender_summary": (
+        sender_summary,
+        "how many sending accounts are working this client's campaigns",
+        _INTERNAL_CLIENT, None),
+    "activity_this_week": (
+        activity_this_week,
+        "what actually went out in the last seven days, per campaign",
+        _INTERNAL_CLIENT, None),
+    "replies": (
+        replies,
+        "what has come back: provider reply counts and the classified feed",
+        _INTERNAL_CLIENT, None),
     "batch_state": (
         batch_state,
         "where the current batch stands: campaigns, accounts, enrolled",
@@ -410,8 +612,17 @@ def run(scope, name, argument=None):
     try:
         return function(scope, argument)
     except Exception as exc:                                    # noqa: BLE001
+        # THE MESSAGE, NOT JUST THE TYPE. A bare "sender_summary failed:
+        # NameError" is what this returned when two tools called a helper
+        # that did not exist in this module - and because the model is
+        # handed the readback and asked for prose, what a person SAW was a
+        # polite "I don't have a confirmed sender count in front of me".
+        # A broken tool read as a cautious agent. The exception text is our
+        # own code's, carries no credential, and is what makes the
+        # difference between a fault and a hedge visible in one line.
         return {"read_at": _now(),
-                "_error": "%s failed: %s" % (name, type(exc).__name__)}
+                "_error": "%s failed: %s: %s"
+                          % (name, type(exc).__name__, str(exc)[:200])}
 
 
 def run_all(scope, calls):
@@ -493,6 +704,22 @@ def _campaign_is_visible(scope, campaign_id):
     return str(campaign_id) in (entry.get("provider_campaign_ids") or [])
 
 
+def _campaign_rows(slug):
+    """This workspace's campaign rows, and no other's.
+
+    A row with no client is EXCLUDED, for the same reason `_records`
+    excludes an unattributed record: an unattributed row must never reach a
+    client channel, and defaulting it into one is how it would.
+    """
+    try:
+        from . import campaigns
+        rows = campaigns.load()
+    except Exception:                                           # noqa: BLE001
+        return []
+    return [r for r in rows
+            if (r.get("client") or r.get("workspace")) == slug]
+
+
 def _records(slug):
     """This workspace's records, and no other's.
 
@@ -510,25 +737,58 @@ def _records(slug):
             if (r.get("client") or r.get("workspace")) == slug]
 
 
+def _contacts_of(record):
+    """The contact dicts of a record, whichever shape it carries.
+
+    The production queue stores a LIST; some fixtures and older rows store a
+    dict keyed by address. Reading only one shape would make a real person
+    look absent, and "no, they are not in a campaign" is exactly the answer
+    that must not be given wrongly.
+    """
+    contacts = record.get("contacts")
+    if isinstance(contacts, dict):
+        return [c for c in contacts.values() if isinstance(c, dict)]
+    return [c for c in (contacts or []) if isinstance(c, dict)]
+
+
+def campaigns_of_record(slug, record_id):
+    """Which of this client's campaigns hold a given record."""
+    out = []
+    for row in _campaign_rows(slug):
+        if record_id in (row.get("record_ids") or []):
+            out.append({"campaign_id": row.get("campaign_id"),
+                        "name": row.get("name"),
+                        "status": row.get("status"),
+                        "provider_campaign_id": row.get("bison_campaign_id")})
+    return out
+
+
 def _find_contacts(slug, needle, limit=5):
     out = []
     for record in _records(slug):
-        for key, contact in (record.get("contacts") or {}).items() \
-                if isinstance(record.get("contacts"), dict) \
-                else enumerate(record.get("contacts") or []):
-            if not isinstance(contact, dict):
-                continue
+        domain = str(record.get("domain") or "").lower()
+        for contact in _contacts_of(record):
             address = str(contact.get("email") or "").lower()
-            if needle not in address and needle not in str(
-                    record.get("domain") or "").lower():
+            name = str(contact.get("name") or "").lower()
+            if needle not in address and needle not in domain \
+                    and needle not in name:
                 continue
-            row = {"domain": record.get("domain"),
-                   "state": contact.get("state"),
-                   "verification": (contact.get("verification") or {}).get(
-                       "state"),
-                   "channel_states": contact.get("channels"),
-                   "contact": address}
-            out.append(row)
+            out.append({
+                "domain": record.get("domain"),
+                "record_state": record.get("state"),
+                "state": contact.get("state"),
+                "sendable": contact.get("sendable"),
+                "verification": (contact.get("verification") or {}).get(
+                    "state") or contact.get("verdict"),
+                "channel_states": contact.get("channels"),
+                # THE ANSWER TO "is this person in a campaign". Membership is
+                # a campaign-row fact, not a contact field, so it is looked
+                # up rather than read off the contact - a contact carrying a
+                # `bison_lead_id` was STAGED, which is not the same thing.
+                "in_campaigns": campaigns_of_record(slug, record.get("id")),
+                "contact": address,
+                "name": contact.get("name"),
+            })
             if len(out) >= limit:
                 return out
     return out
