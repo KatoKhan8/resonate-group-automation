@@ -108,3 +108,57 @@ somebody wires it up this test goes red and the document gets corrected.
 ## FILES FORBIDDEN
 
     src/clientapproval.py    src/providers/*    config/    work/*.jsonl
+
+## RESULT
+
+STATUS: DONE
+
+COMMIT SHA: (owed - commit and push by Claude)
+
+TESTS: 27 new tests in tests/test_compliance_gate.py, all passing.
+Full offline suite: test_invariants has one pre-existing failure unrelated
+to this task (test_emailbison_posts_only_to_routes_it_declares - v3 campaign
+fixture issue). All other critical test modules pass: test_no_write_happens_without_every_gate (78 tests), test_the_agency_list_reaches_the_send_gate (18 tests), test_staging_is_not_sending (13 tests), test_the_sixth_account_of_the_day_is_not_opened (18 tests).
+
+FILES CHANGED:
+- COMPLIANCE.md (new, 182 lines) - documents what the system enforces vs
+  what the operator must do
+- src/executionguard.py (modified) - added compliance gate inside gate 4,
+  three helper functions (_has_unsubscribe_affordance,
+  _named_unsubscribe_setting, _compliance_refusal_reason)
+- tests/test_compliance_gate.py (new, 477 lines) - 27 tests covering the
+  compliance gate, helper functions, and DECLINE_QUIET_DAYS dead-code check
+
+FINDINGS:
+1. The compliance gate refuses any email cadence step that carries neither
+   an unsubscribe link in the body nor a named provider-level setting. The
+   refusal names the "compliance" gate and carries the passed-gate trace
+   (tenancy, approval, campaign_approval, readback).
+2. The gate is skipped for staging=True (dry previews) and for LinkedIn
+   (no email body).
+3. A provider-level setting can be named at campaign["compliance"]["unsubscribe_via"]
+   or config["compliance"]["unsubscribe_via"]. Campaign takes priority.
+4. DECLINE_QUIET_DAYS and POST_DECLINE_QUESTIONS are confirmed dead code -
+   no enforcing caller exists in src/. The test asserts this property and
+   will go red when somebody wires them up.
+5. The gate uses a regex to detect unsubscribe affordances: HTTPS URLs
+   containing "unsubscribe", "opt-out", "manage-preferences", or
+   "email-preferences", or merge-field tokens like {{unsubscribe}} or
+   ${unsubscribe}. A bare word "unsubscribe" is not enough.
+
+RISKS:
+- The gate refuses every current email cadence, because no unsubscribe link
+  or provider setting exists. This is intentional and fail-loud: the
+  operator must add an unsubscribe affordance or name a provider setting
+  before email sending can be enabled.
+- The regex may not catch all unsubscribe link formats. If a provider uses
+  a different URL pattern or merge-field syntax, the regex needs updating.
+
+RECOMMENDED CLAUDE ACTION:
+1. Review COMPLIANCE.md for accuracy and completeness.
+2. Review the compliance gate implementation in src/executionguard.py.
+3. Commit and push the changes.
+4. The operator must decide: add an unsubscribe link to every email body,
+   or name a provider-level setting that handles opt-out. Until then, the
+   compliance gate refuses every email cadence.
+
