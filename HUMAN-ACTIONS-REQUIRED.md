@@ -9,6 +9,87 @@ No secret values appear in this file, and none should ever be added to it.
 
 ---
 
+# WHAT IS ACTUALLY OPEN — 2026-09-23
+
+**Read this section and stop.** Everything below it is the historical record,
+kept deliberately because a disproven or resolved finding that gets deleted is
+one that gets rediscovered. Several of those sections are RESOLVED and say so
+in their own headings, but the file had grown to the point where "open" and
+"kept as evidence" could not be told apart at a glance. This section is the
+answer to "what do you need from me".
+
+Each line says what was measured, so a stale entry can be caught the same way.
+
+## Open
+
+1. **`prompts/reply_handling.md`, and Productive's written confirmation**
+   before `SENDING_ENABLED` is flipped. `replyengine.compose()` raises
+   `NoRegister` until the register exists. The flag is a module constant, so
+   flipping it is an edit plus a deploy, deliberately.
+
+2. **Approve or reject the 32,951 QUALIFIED** from the 48,017 export. Two
+   flags stand against it: `code.seat` scores ICP 5.0, and 4,051 rows are
+   `unknown_provider` on MX.
+
+3. **The geo scope of the 2026-09-07 file.** NEW, 2026-09-23. The headcount
+   amendment was applied and recovered 10,849 domains, but the IN rate is
+   65.3%, not the expected ~90%, and the criterion that cuts the remainder is
+   GEO, not headcount: 4,629 domains carry no country, 3,741 sit in countries
+   outside the client's eight configured `geos`, 2,519 do not resolve at all.
+   The 3,741 are led by Canada 1,085, Poland 535, Switzerland 352, Belgium
+   238, Austria 231, Czechia 220. They are FLAGGED, not OUT, so nothing is
+   lost. Whether Productive sells into those markets is a business decision
+   and no code can answer it.
+
+4. **Sourcing (ISSUE-012): whether to subdivide slices, and how to reach
+   Canada.** A single ContactOut company-search query surfaces ~400 pages
+   however large the population, so three slices with 273k-326k people behind
+   them are unreachable in their current shape. Subdivision is a spend
+   decision. Canada is the same lesson from the other end - `location=Canada`
+   is not honoured - and item 3 above is now a second reason to care.
+
+5. **Record the re-engagement approval artifact**, or say that the verbatim
+   quote already given ("approve reengagement copy", #resonate-os 14:53
+   2026-09-22) is itself enough. REENGAGE holds 986 and 289 US leads wait on
+   this and nothing else - the bounce stop that also blocked them is cleared.
+
+6. **Auto-logon (ARSO) decision**, and the reboot test. Two questions in
+   order: did the machine sign itself in, and once signed in did the monitors
+   return. The second owns the four-hour gap on 2026-09-23 and can be tested
+   by logging out and back in.
+
+7. **The workforce and account-based directives** need their own session.
+
+8. **A test address reply.** No reply from `zvonimir@resonate.co` exists
+   anywhere in the estate - checked against 180 rows across 12 pages of the
+   EmailBison reply feed on 2026-09-23. The send-path verification needs one
+   inbound reply from that address to reply TO.
+
+## Closed since this file last claimed otherwise
+
+- **Deliverable (§2 below) is ARMED.** `DELIVERABLE_RESULT_SHAPE=confirmed`
+  has been in `config/.env` since 2026-09-22 13:03. §2 still reads as
+  BLOCKING and is wrong; the gate it describes is open. Left in place below
+  because its reasoning about why only an operator may open that gate is the
+  part worth keeping.
+
+- **The LinkedIn connection request is answered.** Measured 2026-09-23
+  against the provider: campaign 613744, `https://www.linkedin.com/in/zbeslic`
+  is `state=replied`, created 2026-09-23T10:58:13Z. Previous handoffs list
+  this as waiting on the operator. It is not.
+
+## Open, but NOT on the operator — named here so it is not mistaken for one
+
+- **The LinkedIn push halt stands, and correctly.** The second reply across
+  the 33 B1 campaigns is Megan Ward on 613761 - the SAME reply as the
+  2026-09-23 cross-channel incident, which was stopped BY HAND. The automated
+  15-minute stop test the halt waits on has still never run. The stale
+  `OWNED_SEATS`/`OWNED_CAMPAIGNS` literals are a FLOOR only: the live
+  readback resolves 33 seats and 37 campaigns and does include 613761, so a
+  reply to our own campaign is not dropped as "not ours".
+
+---
+
 ## 1. WITHDRAWN 2026-09-09 by operator decision - do not rotate
 
 The operator has instructed, explicitly and more than once, that no provider
