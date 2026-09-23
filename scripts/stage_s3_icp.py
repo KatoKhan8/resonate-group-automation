@@ -94,27 +94,66 @@ def _shape(raw):
     }
 
 
-def judge(info, icp):
-    """(verdict, reason). `flagged` whenever the evidence cannot decide."""
+#: OPERATOR AMENDMENT, Zvonimir Beslic, 2026-09-22.
+#: `docs/OPERATOR-AUTHORIZATION-2026-09-22-BOUNCE-DENOMINATOR-AND-HEADCOUNT.md`
+#: section D: "Remove the headcount criterion from the S3 ICP verdict for the
+#: 2026-09-07 Productive file (24,404 domains). Geo and industry rules
+#: unchanged; unknown country stays FLAGGED."
+#:
+#: IT IS BOUND TO THE SNAPSHOT BY NAME AND REFUSES ANY OTHER, because the
+#: authorisation's own scope line is that `config/clients/productive.yaml` is
+#: NOT edited and the 20+ floor still applies to every sourced account and
+#: every future export. A flag that could be passed to another file would be
+#: exactly the config edit the operator declined to make.
+HEADCOUNT_AMENDMENT = "PRODUCTIVE-2026-09-07"
+
+#: OPERATOR DECISION, Zvonimir Beslic, 2026-09-23. Second amendment, same
+#: snapshot. A domain the CLIENT supplied on their own list is IN even when
+#: its country is outside the configured allow list, "because the client
+#: supplied these domains on their own list" - the client naming a company is
+#: itself the market signal the allow list exists to approximate.
+#:
+#: IT DOES NOT TOUCH THE BLOCK LIST. `exclude_geos` still returns OUT, because
+#: a block is a refusal and not a default, and the operator said so in as many
+#: words: "The block list (IN, PK, AE and the rest) stays OUT."
+#:
+#: IT IS NOT A WIDER ALLOW LIST, and the difference is the whole point. SOURCED
+#: supply from Canada, Poland or Czechia stays FLAGGED pending Productive's
+#: answer; only client-supplied rows get this. A judge that could not tell the
+#: two apart would have quietly turned a question for the client into a policy.
+CLIENT_SUPPLIED_AMENDMENT = "PRODUCTIVE-2026-09-07"
+
+
+def judge(info, icp, headcount=True, client_supplied=False):
+    """(verdict, reason). `flagged` whenever the evidence cannot decide.
+
+    `headcount=False` applies the 2026-09-22 amendment: size is not judged at
+    all. It is NOT the same as widening the band - a company whose headcount
+    is unknown stops being FLAGGED for that reason, which is most of what the
+    amendment recovers.
+    """
     if not info or not info.get("domain"):
         return "flagged", "provider returned no company for this domain"
 
-    emp = info.get("employees")
-    try:
-        emp = int(emp) if emp not in (None, "") else None
-    except (TypeError, ValueError):
-        emp = None
+    if headcount:
+        emp = info.get("employees")
+        try:
+            emp = int(emp) if emp not in (None, "") else None
+        except (TypeError, ValueError):
+            emp = None
 
-    lo = icp.get("size_min_employees") or 0
-    hi = icp.get("size_max_employees") or 1000
-    if emp is None:
-        size = ("flagged", "headcount unknown")
-    elif emp < lo:
-        size = ("out", f"headcount {emp} below {lo}")
-    elif emp > hi:
-        size = ("out", f"headcount {emp} above {hi}")
+        lo = icp.get("size_min_employees") or 0
+        hi = icp.get("size_max_employees") or 1000
+        if emp is None:
+            size = ("flagged", "headcount unknown")
+        elif emp < lo:
+            size = ("out", f"headcount {emp} below {lo}")
+        elif emp > hi:
+            size = ("out", f"headcount {emp} above {hi}")
+        else:
+            size = ("in", f"headcount {emp}")
     else:
-        size = ("in", f"headcount {emp}")
+        size = ("in", "headcount not judged (2026-09-22 amendment)")
 
     country = (info.get("country") or "").strip().lower()
     for bad in (icp.get("exclude_geos") or []):
@@ -137,6 +176,13 @@ def judge(info, icp):
     if size[0] == "flagged":
         return "flagged", size[1]
     if not geo_hit:
+        # A country we could not read at all is NOT the same as a country
+        # outside the list, and the 2026-09-23 amendment covers only the
+        # second. `country` is empty for the first, and it stays flagged so it
+        # reaches the resolution chain instead of being waved through.
+        if client_supplied and country:
+            return "in", (f"{size[1]}, geo {country} outside the allow list "
+                          f"but client-supplied (2026-09-23 amendment)")
         # flag_dont_drop: absence of a named geo is not a disqualifier.
         return "flagged", f"{size[1]}, geo not confirmed"
     return "in", f"{size[1]}, geo matched"

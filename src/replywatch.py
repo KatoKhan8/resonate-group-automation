@@ -52,7 +52,7 @@ import os
 import sys
 import threading
 
-from . import poller, providers, store
+from . import inbound, poller, providers, store
 
 PROVIDERS = ("emailbison", "heyreach")
 
@@ -259,6 +259,13 @@ def poll_once(provider, max_pages=DEFAULT_MAX_PAGES, live=True, env=None,
             "consecutive_failures": fails + 1, "healthy": False})
 
     outcomes = result.get("outcomes") or []
+    # WHAT THE STOPS ACTUALLY DID. The watcher used to print "the lead is
+    # stopped on both channels" from nothing but a non-zero ingest count, so a
+    # lead that was never stopped reported as stopped. These two fields are
+    # the evidence that line is now built from, and `stop_refusals` is what
+    # raises the alert: a refused stop means somebody may still be written to
+    # after they answered.
+    stop_line, refusals = inbound.summarise_stops(outcomes)
     return _write_status(provider, {
         "provider": provider,
         "last_started": started,
@@ -270,6 +277,8 @@ def poll_once(provider, max_pages=DEFAULT_MAX_PAGES, live=True, env=None,
         "duplicates_ignored": result.get("duplicates"),
         "ambiguous_identities": result.get("unmatched"),
         "workspaces": _workspaces_touched(outcomes),
+        "stops": stop_line,
+        "stop_refusals": refusals,
         "last_error": None,
         "consecutive_failures": 0,
         "healthy": True})

@@ -89,7 +89,7 @@ def report(state):
         print(f"    {str(name):10s} {count}")
     allowed = [d for d, e in state["accounts"].items()
                if e.get("policy") == collision.ALLOW]
-    print(f"\n  CLEAR accounts: {len(clear)}")
+    print(f"\n  CLEAR accounts: {len(allowed)}")
     return allowed
 
 

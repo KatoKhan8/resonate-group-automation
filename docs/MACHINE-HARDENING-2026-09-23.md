@@ -1,8 +1,10 @@
 # Machine hardening — 2026-09-23
 
 Why the laptop restarted at 05:29 and killed every production loop, what was
-changed to stop it recurring, and **what is still open because this session
-does not hold administrator rights.**
+changed to stop it recurring, and what is still open.
+
+**Updated the same day**: the elevated half was applied by the operator and
+independently read back — see §7. The remaining open item is auto-logon, §8.
 
 Measured on `ZVONIMIR`, Acer Nitro AN16-41, Windows 11 Pro build 26200.
 Session user `ZVONIMIR\Zvonimir` — a member of `Administrators` but running
@@ -95,9 +97,9 @@ was verified directly in the registry:
       \381b4222-.../4f971e89-.../5ca83367-...
         ACSettingIndex : 0      DCSettingIndex : 0      (0 = Do nothing)
 
-**Fast startup is still ON** — `HiberbootEnabled = 1`. That key is under
-`HKLM\SYSTEM\...\Session Manager\Power` and is **not writable unelevated**.
-See §7.
+**Fast startup was ON** — `HiberbootEnabled = 1`, under
+`HKLM\SYSTEM\...\Session Manager\Power`, not writable unelevated. It is now
+**0**: the operator ran the elevated script the same morning. See §7.
 
 Note for honesty: on AC, sleep and hibernate were *already* never. **Nothing
 in this section would have prevented the outage.** It closes a hole that was
@@ -264,43 +266,103 @@ claim "no sleep is possible while the monitors run" is, as of now,
 
 ---
 
-## 7. STILL OPEN — needs an elevated shell
+## 7. APPLIED ELEVATED — 2026-09-23 morning, operator ran the script
 
-This session is not elevated. `scripts/harden_machine_elevated.ps1` contains
-everything below, prints BEFORE/AFTER for each change, supports `-WhatIf`, and
-refuses to run unelevated:
+`scripts/harden_machine_elevated.ps1` was run elevated by the operator.
+**Verified independently afterwards rather than taken on report** — every
+value below was read back from the live machine:
 
-    powershell -ExecutionPolicy Bypass -File scripts\harden_machine_elevated.ps1
-
-| # | Change | Why it is blocked |
+| Value | Before | After (read back) |
 | --- | --- | --- |
-| 1 | `NoAutoRebootWithLoggedOnUsers = 1`, `AUPowerManagement = 0`, `AUOptions = 3` under `...\Policies\Microsoft\Windows\WindowsUpdate\AU` | key not writable; `OpenSubKey` → *Requested registry access is not allowed* |
-| 2 | `HiberbootEnabled = 0` (fast startup off) | `...\Session Manager\Power` not writable |
-| 3 | Disable `Schedule Wake To Work`; confirm no `Reboot*` task exists | `UpdateOrchestrator` not enumerable unelevated |
-| 4 | Wake timers off (`SUB_SLEEP RTCWAKE = 0`) on AC and DC | included in the same script |
-| 5 | `powercfg /requests` — the §6 proof | *requires administrator privileges* |
+| `NoAutoRebootWithLoggedOnUsers` | *(key absent)* | **1** |
+| `AUOptions` | *(key absent)* | **3** — notify before install |
+| `AUPowerManagement` | *(key absent)* | **0** — WU may not wake the machine |
+| `NoAutoUpdate` | *(key absent)* | **0** — updates stay ON |
+| `HiberbootEnabled` (fast startup) | **1** | **0** |
+| Wake timers `RTCWAKE` | *(default on)* | **AC=0, DC=0** |
 
-**Item 1 is the one that matters.** Active hours and a 7-day pause are timing
-tricks; `NoAutoRebootWithLoggedOnUsers` is the setting that says no.
+The §3 values are all still in place and were not disturbed: active hours
+20→14, `SmartActiveHoursState=0`, `IsContinuousInnovationOptedIn=0`, pause to
+2026-09-30.
 
-### Then verify
+**`NoAutoRebootWithLoggedOnUsers=1` is the line that closes the 05:29 hole.**
+Everything else moves the odds; this one refuses.
 
-    powercfg /requests                     # expect a SYSTEM: row naming python.exe
-    reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
-    reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power" /v HiberbootEnabled
+`powercfg /requests` still cannot be run from the unelevated production
+session, so the §6 keep-awake claim remains verified only at the API level
+(`acquire` returns non-zero against the real `kernel32`) and not at the OS
+level. Run `powercfg /requests` elevated while a monitor is up to close it.
 
 ---
 
-## 8. WHAT THIS DOES AND DOES NOT BUY
+## 8. AUTO-LOGON AND THE REBOOT TEST — read before tonight
+
+The operator is enabling *Settings → Accounts → Sign-in options → "Use my
+sign-in info to automatically finish setting up after an update"* (ARSO), and
+has declined `netplwiz`. That is the right trade for a laptop: `netplwiz`
+stores the password and would cover a power cut too, but it weakens physical
+security on a machine that leaves the desk.
+
+**ARSO is not disabled by policy here** — `DisableAutomaticRestartSignOn` is
+unset, so the toggle is free to work.
+
+### The thing that could make tonight's test read falsely
+
+**ARSO is designed for restarts Windows itself initiates.** A manual
+`shutdown /r` is not obviously in scope: the feature's wording has changed
+across builds ("after an update" vs "after an update or restart") and this
+build says *after an update*. So a controlled reboot tonight may land at the
+lock screen **even though ARSO would have signed in after a real Windows
+Update restart.**
+
+That outcome is data, not a verdict. If the machine sits at the lock screen:
+
+- it does NOT prove ARSO is off, and
+- it does NOT prove the autostart is broken — log in and check whether
+  `work/autostart.out` shows the monitors coming up 60 seconds later.
+
+Two separate questions, and the test answers them in order:
+
+    1. did the machine sign itself in?        -> ARSO
+    2. once signed in, did the monitors come  -> scripts/start_monitors.py
+       back without anybody typing a command?    and the Startup .cmd
+
+Question 2 is the one that owns the four-hour gap, and it can be tested
+independently right now by logging out and back in.
+
+### The autostart is the Startup folder, not a task
+
+`schtasks /Create` was refused unelevated this morning and **the elevated run
+did not create it either** — `harden_machine_elevated.ps1` does not register
+it, `--install-task` does. Verified: `schtasks /query /tn ResonateMonitors`
+answers *The system cannot find the file specified.*
+
+So what actually fires at logon is:
+
+    %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
+esonate-monitors.cmd
+
+It waits 60 seconds for the network, then runs
+`scripts/start_monitors.py --live`, which starts only what is DOWN. It works;
+it is simply less discoverable than a task. Now that elevation is available,
+`py -3 scripts/start_monitors.py --install-task` from an elevated shell would
+register the task properly — **do not do both**, or two things race at logon
+and the heartbeat guard is the only thing stopping a double start.
+
+---
+
+## 9. WHAT THIS DOES AND DOES NOT BUY
 
 **Does:** the machine will not idle-sleep, spin down its disk, hybrid-sleep,
 suspend USB, or act on a lid close. It will not take optional preview builds.
 For seven days it will not install quality updates at all. Its restart window
 has moved off the overnight run and into the working afternoon.
 
-**Does not:** stop a Windows Update restart. Until §7 item 1 is applied, the
-Update Orchestrator may still restart this machine outside active hours — the
-window has moved, not closed. And on 2026-09-30 the pause expires.
+**Does not, any more:** as of the elevated run, `NoAutoRebootWithLoggedOnUsers
+= 1` refuses an automatic restart while somebody is signed in. That is the one
+that closes 05:29 rather than merely moving it. The pause still expires on
+2026-09-30, and the active-hours gap is still 14:00-20:00 — both now second
+lines of defence rather than the only ones.
 
 **Does not, and is the bigger gap:** bring the monitors back. The machine
 rebooted in four minutes and sat idle for four hours. Every control in this

@@ -789,6 +789,29 @@ RESUMABLE_STATES = ("in_sequence", "sending_paused", "never_contacted")
 PAGE_CAP = 40
 PAGE_SIZE = 15
 
+#: Pages ONE reader will walk over ONE campaign's scheduled-email queue.
+#:
+#: THE HOME OF A NUMBER THAT WAS ALREADY COPIED TWICE. `slackagentreadback`
+#: and `scripts/hard_stop_check.py` each carried their own `QUEUE_PAGE_CAP =
+#: 400`, and the comment beside one of them says exactly why that is
+#: dangerous: "two readers that disagree about how much of a campaign they
+#: can see will disagree about what was sent." A constant duplicated across
+#: three files to prevent drift is the drift.
+#:
+#: MEASURED 2026-09-23. `bison_watch_loop` was the third reader and had no
+#: cap at all, so it took the 40-page default. Campaign 491 reached 647 rows
+#: - 44 pages - and `scheduled_emails` refused, correctly. The watcher had no
+#: guard around that one read, so the refusal took down the WHOLE snapshot:
+#: `work/heartbeat/bison-491.json` read `READ-ERROR 122x PartialInventory`
+#: and the campaign's sends, replies, bounces and membership - every one of
+#: which reads fine - were invisible for hours on the largest campaign in the
+#: estate.
+#:
+#: THE NUMBER IS NOT THE PROPERTY. THE REFUSAL IS. A queue past this still
+#: raises rather than returning a prefix as though it were the whole, and
+#: every caller must report itself blind rather than short.
+CAMPAIGN_QUEUE_PAGE_CAP = 400
+
 
 def _paged(what, url_of, cap=PAGE_CAP):
     """Every row behind a paginated route, or a refusal. Never a page.

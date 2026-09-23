@@ -82,7 +82,7 @@ class CountingTest(unittest.TestCase):
 
     def counts(self, scope, queues, enrolled=None, argument=None):
         """`lead_counts` over a fixed provider. `queues` is per campaign."""
-        def queue(campaign_id):
+        def queue(campaign_id, cap=None):
             value = queues.get(str(campaign_id))
             if isinstance(value, Exception):
                 raise value

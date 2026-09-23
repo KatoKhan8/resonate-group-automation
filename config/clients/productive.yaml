@@ -16,9 +16,22 @@ sender:
 market:
   must: services business that tracks time
   size_min_employees: 20
+  # OPERATOR DECISION, Zvonimir Beslic, 2026-09-23: align this list to
+  # Productive's ICP as recorded in the client's structural criteria
+  # (docs/FREE-GEOGRAPHY-AND-TYPE-2026-09-16.md). The eight entries that stood
+  # here were NARROWER than the client's own ICP, which is why the 2026-09-07
+  # file read 65.3% IN with geo - not headcount - as the binding criterion.
+  # Seventeen entries, `Nordics` counted as one; it expands to Sweden, Norway,
+  # Denmark, Finland and Iceland in the judge.
   geos: [United Kingdom, Ireland, Netherlands, Germany, France, Nordics,
-         Australia, United States]
-  exclude_geos: [India, Pakistan, United Arab Emirates]
+         Belgium, Austria, Switzerland, Spain, Italy, Portugal, Poland,
+         Australia, New Zealand, United States, Canada]
+  # Also from the same reference, and widened from three. Widening a BLOCK
+  # list only ever refuses more, so it is the safe direction to take on the
+  # reference's authority.
+  exclude_geos: [India, Pakistan, United Arab Emirates, Bangladesh, Sri Lanka,
+                 Philippines, Indonesia, Vietnam, Thailand, Malaysia, China,
+                 Singapore, Hong Kong, Japan, South Korea, Taiwan]
   flag_dont_drop: true      # out-of-geo gets flagged for human call, not dropped
 # The same list again, under the key the scorer reads.
 #
@@ -28,8 +41,13 @@ market:
 # was skipped for every company and Productive's stated markets counted for
 # nothing in the verdict. This is a transcription of the line above, not a new
 # policy: country names match `segment["country"]` exactly and "Nordics"
-# matches the region, so nothing is widened. Belgium does not become a target
-# by way of Benelux, nor Austria by way of DACH.
+# matches the region, so nothing is widened RELATIVE TO THE LINE ABOVE.
+#
+# CORRECTED 2026-09-23: this comment used to end "Belgium does not become a
+# target by way of Benelux, nor Austria by way of DACH." Both ARE targets now
+# - they are named on the client's own ICP - and they were reached by naming
+# them, not by a region expanding. The warning it was making is still the
+# right one, so it is kept in that form rather than deleted.
 #
 # Deliberately absent: `thresholds.min_employees`. `size_min_employees: 20`
 # above is a real number, but setting it here makes "under twenty" a decisive
@@ -40,7 +58,8 @@ market:
 # reviewed them.
 icp:
   markets: [United Kingdom, Ireland, Netherlands, Germany, France, Nordics,
-            Australia, United States]
+            Belgium, Austria, Switzerland, Spain, Italy, Portugal, Poland,
+            Australia, New Zealand, United States, Canada]
 
   # ---------------------------------------------------------------- V2
   #

@@ -227,6 +227,11 @@ class TheVerbsExistAndTheSealHolds(unittest.TestCase):
         self.assertEqual(
             providerwrites.SUPPORTED,
             (pw.LINKEDIN_PAUSE, pw.EMAIL_PAUSE, pw.EMAIL_STOP_LEAD,
+             # Added 2026-09-23 by operator decision, not prospect-facing:
+             # it can only reduce what somebody receives. The email->LinkedIn
+             # half of the cross-channel stop could not run while it was
+             # sealed, which is what enrolling 33 LinkedIn seats depends on.
+             pw.LINKEDIN_STOP_LEAD,
              pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE,
              # Added 2026-09-14, not prospect-facing.
              pw.LINKEDIN_SET_SEQUENCE,

@@ -74,7 +74,7 @@ import json
 import re
 import os
 
-from . import store, workspaces as ws
+from . import store, testidentity, workspaces as ws
 from .providers import slack
 
 # ------------------------------------------------------------ destinations
@@ -126,6 +126,17 @@ CAMPAIGN_REJECTED = "campaign_rejected"
 CAMPAIGN_HELD = "campaign_held"
 CAMPAIGN_QA_FAILED = "campaign_qa_failed"
 CAMPAIGN_PAUSED = "campaign_paused"
+#: A campaign stopped and THIS SYSTEM CANNOT SHOW IT DID IT.
+#:
+#: Its own type rather than a louder CAMPAIGN_PAUSED, because that one also
+#: covers our own deliberate pauses and raising its severity would make every
+#: routine pause critical - which is how a critical channel stops being read.
+#:
+#: MEASURED 2026-09-23: campaign 495 went active -> archived at 15:57:22Z
+#: with 59 of 60 leads stopped, nothing in this system did it, and nobody was
+#: told. A campaign stopping is the difference between sending and not
+#: sending, and it was the one state change with no alert on it.
+CAMPAIGN_STOPPED_EXTERNALLY = "campaign_stopped_externally"
 CAMPAIGN_COMPLETED = "campaign_completed"
 WORKSPACE_CREATED = "workspace_created"
 WORKSPACE_CONFIG_ISSUE = "workspace_configuration_issue"
@@ -181,6 +192,7 @@ ROUTES = {
     CAMPAIGN_HELD: (GLOBAL, WARNING),
     CAMPAIGN_QA_FAILED: (GLOBAL, WARNING),
     CAMPAIGN_PAUSED: (GLOBAL, WARNING),
+    CAMPAIGN_STOPPED_EXTERNALLY: (GLOBAL, CRITICAL),
     CAMPAIGN_COMPLETED: (GLOBAL, INFO),
     WORKSPACE_CREATED: (GLOBAL, INFO),
     WORKSPACE_CONFIG_ISSUE: (GLOBAL, WARNING),
@@ -627,6 +639,18 @@ def plan(event_type, workspace=None, fields=None, ids=None, actions=(),
     ids = dict(ids or {})
     decision = destination_for(event_type, workspace, rows)
     identifier = notification_id(event_type, workspace, **ids)
+
+    # THE OPERATOR'S TEST IDENTITY NEVER REACHES A CLIENT CHANNEL.
+    #
+    # 2026-09-23: a `positive_reply` for `/in/zbeslic` was routed to
+    # C0BFUF4JRK9, Productive's own channel. It was suppressed by hand, and a
+    # hand-edit is not a mechanism - the next reply from that profile would
+    # have planned another one. Suppressed rather than dropped: the row is
+    # still written, so an audit can see the decision was made deliberately.
+    # See `src/testidentity.py` for why the match is on any binding.
+    if testidentity.matches(ids):
+        decision = dict(decision, destination=NOWHERE, channel=None,
+                        status=SUPPRESSED, why=testidentity.WHY)
 
     # The duplicate check is inside the transaction below, and only there.
     # A second check up here would be free to write but impossible to test:

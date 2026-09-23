@@ -71,6 +71,10 @@ UNKNOWN = "unknown"
 INTERESTED = "interested"
 MEETING_INTENT = "meeting_intent"
 OBJECTION = "objection"
+#: Added 2026-09-23: the reply-engine brief named both as answerable
+#: classes and neither existed, so the engine refused them as UNAVAILABLE.
+QUESTION = "question"
+SEND_INFO = "send_info"
 
 # OPERATOR DECISION, Zvonimir Bešlić, 2026-09-22.
 #
@@ -99,6 +103,7 @@ ASSISTANT_REDIRECT = "assistant_redirect"
 CATEGORIES = (POSITIVE, NEUTRAL, NEGATIVE, UNSUBSCRIBE, ACCOUNT_DNC,
               OUT_OF_OFFICE, NOT_NOW, REFERRAL, NOT_RELEVANT,
               UNKNOWN, INTERESTED, MEETING_INTENT, OBJECTION,
+              QUESTION, SEND_INFO,
               AUTOMATED, ASSISTANT_REDIRECT)
 
 #: Every classification that means "no human chose to write this to us",
@@ -241,8 +246,28 @@ NOT_NOW_PATTERNS = (
 NEGATIVE_PATTERNS = (
     r"\bnot interested\b", r"\bno thanks?\b", r"\bno,? thank you\b",
     r"\bwe(?:'re| are) (?:all )?(?:set|sorted|covered)\b",
-    r"\bplease stop\b", r"\bnot a (?:good )?fit\b", r"\bpass\b",
-    r"\bwe already (?:have|use)\b", r"\bhappy with (?:our|the) current\b",
+    r"\bplease stop\b", r"\bnot a (?:good )?fit\b",
+    # "pass" is a decline ONLY when nothing is being passed ALONG.
+    #
+    # 2026-09-23: this was a bare `\bpass\b`, and it read "I'll pass this
+    # along to him" - an assistant FORWARDING to the buyer - as a refusal at
+    # 0.8. NEGATIVE outranks ASSISTANT_REDIRECT by design, because a refusal
+    # written by an assistant stays a refusal - so the broader pattern won
+    # and the redirect never got a chance to match.
+    #
+    # Word order carries the whole meaning, and the lookaheads follow it:
+    #     "I'll pass this on"    -> forward, excluded here
+    #     "I'll pass on this"    -> decline, still matches
+    #     "I'll pass"            -> decline, still matches
+    #     "we'll pass for now"   -> decline, still matches
+    r"\bpass\b(?!\s+(?:this|it|that|these|them|the\s+\w+)\s+"
+    r"(?:along|on|over|to)\b)(?!\s+along\b)",
+    # "we already use X" and "happy with our current Y" moved to
+    # OBJECTION_PATTERNS on 2026-09-23, on the operator's instruction. They
+    # are a conversation, not a door closing. Paired with an explicit decline
+    # ("we already use Harvest, no thanks") the decline still wins, because
+    # NEGATIVE ranks above OBJECTION in RULES - which is the whole mechanism.
+    r"\bhappy with (?:our|the) current (?:setup|process|way|arrangement)\b",
     # TASK-020: short refusals common on both email and LinkedIn.
     r"\bnot for me\b", r"\bno need\b", r"\bwe(?:'re| are) good\b",
     r"\b(?:don'?t|do not) need (?:this|that|your)\b",
@@ -271,7 +296,9 @@ NEGATIVE_PATTERNS = (
     # the tense shift: "we are no longer interested" did not match "not
     # interested." ~5 replies. "Not for us" is the plural of the existing
     # "not for me" - 5+ replies, especially LinkedIn.
-    r"\bnot (?:a |the )?priority\b",
+    # "not a priority" -> OBJECTION_PATTERNS, 2026-09-23. Same reasoning:
+    # a priority can change, and "not a priority, remove me" still reads
+    # unsubscribe because UNSUBSCRIBE ranks above both.
     r"\bnot interesting for\b",
     r"\bno longer interested\b",
     r"\bnot for us\b",
@@ -380,6 +407,28 @@ ASSISTANT_REDIRECT_PATTERNS = (
     r"personal assistant)\b",
     r"\bcopying (?:in )?[^.\n]{0,30}assistant\b",
     r"\bplease (?:go through|liaise with|coordinate with) me\b",
+    # THE FORWARDING ASSISTANT. Added 2026-09-23 after measurement.
+    #
+    # Every pattern above requires the writer to IDENTIFY as an assistant
+    # ("I'm the EA to..."). Most of them never do. They just forward - and
+    # those replies were landing in three different wrong places:
+    #
+    #     "I'll pass this along to him."          -> negative   0.80
+    #     "Forwarded to our CEO."                 -> unclassified
+    #     "I've forwarded your email to our CEO,
+    #      he'll be in touch if interested."      -> POSITIVE   0.75
+    #
+    # The third is the one that matters. POSITIVE fires the first-human-reply
+    # client trigger, so a secretary forwarding an email would have announced
+    # a buying signal to the client. ASSISTANT_REDIRECT is in
+    # AUTOMATED_CATEGORIES, so `is_automated()` is true and that trigger
+    # cannot fire from here - which is the operator's stated requirement.
+    r"\b(?:i(?:'|’)?(?:ll|ve)|i (?:will|have)|we(?:'|’)?(?:ll|ve)"
+    r"|we (?:will|have))\s+(?:just\s+)?(?:pass(?:ed)?|forward(?:ed)?|sen[dt])"
+    r"\s+(?:this|it|that|these|your\s+\w+)\s+(?:along|on|over|to)\b",
+    r"\bpass(?:ed|ing)?\s+(?:this|it|that|these|them)\s+(?:along|on|over|to)\b",
+    r"\bforward(?:ed|ing)?\s+(?:this|it|that|your\s+\w+)\s+(?:along|on|over|to)\b",
+    r"\bforwarded\s+to\b",
 )
 
 # Machine-written acknowledgements. Nobody chose to send these to us.
@@ -567,6 +616,63 @@ def _positive_carries_intent(body):
     return _carries_intent(body)
 
 
+#: A real question about the product, the company or the claim. Answerable by
+#: the reply engine. Added 2026-09-23: the brief named `question` as one of
+#: six answerable classes and `CATEGORIES` did not contain it, so the engine
+#: refused it as UNAVAILABLE rather than acting on a class it could not see.
+QUESTION_PATTERNS = (
+    r"\b(?:how|what|which|where|who|why|when) (?:do(?:es)?|is|are|can|could|"
+    r"would|will|exactly)\b[^.?!]{0,80}\?",
+    r"\bcan (?:you|it|this) (?:do|handle|support|manage|track|cope)\b",
+    r"\bdoes (?:it|this|productive) (?:do|handle|support|work|integrate)\b",
+    r"\bhow does (?:it|this|that) work\b",
+    r"\bwhat (?:exactly )?(?:is|does) (?:it|this|productive)\b",
+    r"\btell me more about\b",
+    r"\bcurious (?:how|what|about)\b",
+)
+
+#: An explicit request to be SENT something. Distinct from a question: the
+#: answer is an attachment or a link rather than a sentence, which is why the
+#: engine routes them differently.
+SEND_INFO_PATTERNS = (
+    r"\b(?:send|share|forward|email) (?:me |us |over |through )?"
+    r"(?:some |more |the |a |any )?(?:info|information|details|detail|deck|"
+    r"one[- ]?pager|overview|brochure|case stud(?:y|ies)|material|materials|"
+    r"documentation|docs)\b",
+    r"\b(?:can|could) (?:you|we) (?:get|have|see|send) (?:me |us )?"
+    r"(?:some |more |a )?(?:info|information|details|deck|overview)\b",
+    r"\bmore (?:info|information|details)\b",
+    r"\bsend (?:it |that )?(?:over|across|through|along)\b",
+)
+
+#: Moved out of NEGATIVE_PATTERNS 2026-09-23 on the operator's instruction:
+#: "we already use X", "we have a tool for this" and "not a priority right
+#: now" are OBJECTIONS, not declines. "We already use Harvest" is a
+#: conversation; "We already use Harvest, no thanks" is a door closing, and
+#: the second still reads NEGATIVE because NEGATIVE ranks above OBJECTION in
+#: `RULES`. That position IS the rule "the decline patterns win only when
+#: present" - it needs no extra logic.
+OBJECTION_PATTERNS = (
+    # budget and capacity objections
+    r"\btoo (?:expensive|costly|pricey|cheap)\b",
+    r"\b(?:no|not enough) budget\b",
+    r"\b(?:no|not enough) (?:time|resources|bandwidth)\b",
+    r"\b(?:too|too many|too few) (?:people|staff|team members)\b",
+    r"\bour team is too (?:small|large)\b",
+    r"\b(?:we|I) (?:do not|don'?t) have (?:the |a )?(?:budget|time|resources)\b",
+    r"\bnot (?:in |within )?(?:our |the )?budget\b",
+    r"\b(?:above|beyond|outside) (?:our |the )?budget\b",
+    r"\bwe(?:'re| are) (?:too small|too big|not big enough)\b",
+    # the soft objections moved out of NEGATIVE, 2026-09-23
+    r"\bwe already (?:have|use|got)\b",
+    r"\bhappy with (?:our|the|my) current\b",
+    r"\bwe (?:have|use|run|are on) (?:a|another|an existing) (?:tool|system|"
+    r"platform|solution|vendor|provider)\b",
+    r"\b(?:we|I) (?:have|use) (?:something|a tool) for (?:this|that)\b",
+    r"\bnot a priority (?:right now|at the moment|for us|this quarter)\b",
+)
+
+
 RULES = (
     (ACCOUNT_DNC, ACCOUNT_DNC_PATTERNS, 0.95),
     (UNSUBSCRIBE, UNSUBSCRIBE_PATTERNS, 0.95),
@@ -600,6 +706,21 @@ RULES = (
     (ASSISTANT_REDIRECT, ASSISTANT_REDIRECT_PATTERNS, 0.85),
     (AUTOMATED, AUTOMATED_PATTERNS, 0.85),
     (POSITIVE, POSITIVE_PATTERNS, 0.75),
+    # SEND_INFO and QUESTION sit BELOW POSITIVE, and the choice was measured
+    # rather than assumed. Ranked above it they took six replies off the
+    # positive signal that genuinely carried one - "Interested - what does it
+    # cost?", "Send me the details please" - and the positive count is a
+    # number the client reads. So POSITIVE keeps anything carrying explicit
+    # interest, and these two catch the requests that carry none.
+    #
+    # The cost of that choice, stated because it is real: a warm reply that
+    # ALSO asks a question is routed as positive, and the engine answers
+    # positive with a booking link. Where the question is about price, terms
+    # or dates the commitment gate catches it first and raises a ticket, so
+    # the dangerous half is covered; the rest is a judgement the operator can
+    # reverse by moving these two lines up.
+    (SEND_INFO, SEND_INFO_PATTERNS, 0.8),
+    (QUESTION, QUESTION_PATTERNS, 0.75),
     # Last, and that is the whole design of it. `reply.on_referral` holds
     # the replier where `on_negative` and `on_wrong_person` stop them, so a
     # referral winning over either of those would leave somebody who
@@ -613,6 +734,18 @@ RULES = (
     # a cadence; the mention is a note for a person, and a reply can be one
     # thing and carry the other.
     (REFERRAL, REFERRAL_PATTERNS, 0.8),
+    # 2026-09-23. All three sit BELOW every stop above them, deliberately.
+    #
+    # OBJECTION carries the shapes moved out of NEGATIVE - "we already use
+    # X", "not a priority right now". An objection paired with an explicit
+    # decline ("we already use Harvest, no thanks") still reads NEGATIVE,
+    # because NEGATIVE matched higher up. That ordering IS the operator's
+    # rule "the decline patterns win only when present", and it needs no
+    # extra logic - only this position.
+    #
+    # SEND_INFO before QUESTION: "can you send me more details" is both, and
+    # the answer to it is a document rather than a sentence.
+    (OBJECTION, OBJECTION_PATTERNS, 0.75),
 )
 
 # ---------------------------------------------------------------------------
@@ -1048,7 +1181,92 @@ def _excerpt(text, limit=200):
     return body if len(body) <= limit else body[:limit - 1] + "…"
 
 
-def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD):
+#: Out-of-office markers in the SUBJECT LINE, which is where every mail
+#: client in every language announces an autoresponder plainly while the body
+#: is free prose in a language our patterns do not read.
+#:
+#: 2026-09-23: nine of nine unclassified replies on 2026-09-22 were
+#: autoresponders in German, Danish, Czech, Hungarian and English. One of them
+#: - "Sehr geehrte Damen und Herren... In dringenden Faellen wenden Sie sich
+#: bitte an buero@..." - classified as REFERRAL at 0.8 off its emergency
+#: contact line, and referral is an ANSWERABLE class. The body could not be
+#: read; the subject said "Automatische Antwort" in plain sight.
+#:
+#: Matched case-insensitively as substrings against the subject, because
+#: clients prefix and suffix them freely ("Automatische Antwort: [EXTERN] ...").
+OUT_OF_OFFICE_SUBJECTS = (
+    # English
+    "out of office", "out-of-office", "automatic reply", "auto-reply",
+    "auto reply", "autoreply", "away from", "on leave", "on holiday",
+    "on annual leave", "maternity leave", "paternity leave",
+    # German
+    "automatische antwort", "abwesenheitsnotiz", "abwesend",
+    "nicht im buero", "nicht im büro", "urlaub",
+    # Danish / Norwegian
+    "autosvar", "fravaer", "fravær", "ferie", "ikke på kontoret",
+    # Czech / Slovak
+    "automatická odpověď", "automaticka odpoved",
+    "mimo kancelář", "mimo kancelar", "dovolená", "dovolena",
+    # Hungarian
+    "szabadság", "szabadsag", "automatikus válasz",
+    "automatikus valasz", "távollét",
+    # Croatian / Serbian / Bosnian
+    "automatski odgovor", "odsutnost", "odsutan", "godišnji odmor",
+    "godisnji odmor", "izvan ureda",
+)
+
+
+#: Mailboxes that belong to a company rather than a person. A referral to
+#: one of these is not a referral to somebody - it is an autoresponder's
+#: emergency contact, a website footer, or a switchboard.
+#:
+#: 2026-09-23: a German out-of-office naming `buero@erlebnismarketing.com`
+#: classified as REFERRAL at 0.8. Under the reply-engine brief a referral
+#: writes to the referred person via a NEW SEQUENCE, so the engine would have
+#: enrolled a company's general office inbox because their autoresponder
+#: listed it. Local part only, matched exactly after stripping +tags.
+GENERIC_MAILBOXES = frozenset((
+    "info", "office", "buero", "bureau", "kontakt", "contact", "hello",
+    "hallo", "sales", "support", "admin", "team", "mail", "email", "post",
+    "enquiries", "inquiries", "general", "reception", "help", "desk",
+    "helpdesk", "service", "customerservice", "accounts", "accounting",
+    "billing", "invoice", "invoices", "finance", "hr", "jobs", "careers",
+    "recruitment", "marketing", "press", "media", "privacy", "legal",
+    "noreply", "no-reply", "donotreply", "webmaster", "postmaster",
+    "abuse", "security", "newsletter", "subscribe", "unsubscribe",
+))
+
+
+def is_generic_mailbox(address):
+    """True when an address belongs to a company rather than to a person."""
+    local = str(address or "").strip().lower().split("@")[0]
+    local = local.split("+")[0]
+    if not local:
+        return False
+    if local in GENERIC_MAILBOXES:
+        return True
+    # `info.uk`, `sales-eu`, `office_2` - a generic name with a suffix is
+    # still generic. Split on the usual separators and test the head.
+    head = re.split(r"[._-]", local)[0]
+    return head in GENERIC_MAILBOXES
+
+
+def subject_says_out_of_office(subject):
+    """True when the SUBJECT plainly announces an autoresponder.
+
+    The subject is the one part of an autoresponder that is reliably
+    formulaic across languages: the mail client writes it, not the person.
+    """
+    # `.lower()` explicitly: `normalise` collapses whitespace but does NOT
+    # change case, and every marker below is lowercase. Relying on normalise
+    # for it matched nothing and looked exactly like "no autoresponders
+    # today" - caught only because the test asserted a real subject line.
+    text = normalise(str(subject or "")).lower()
+    return any(marker in text for marker in OUT_OF_OFFICE_SUBJECTS)
+
+
+def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD,
+             subject=None):
     """Classify one reply. Rules first, a model only for what they cannot call.
 
     `model` is any callable taking the text and returning a dict with at least
@@ -1066,6 +1284,29 @@ def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD):
     cleaned = extracted["text"]
 
     verdict = classify_rules(cleaned)
+
+    # THE SUBJECT OUTRANKS A BODY NOBODY CAN READ - but never a stop.
+    #
+    # An autoresponder in a language these patterns do not speak lands as
+    # `unknown` at best and, on 2026-09-22, as REFERRAL at 0.8 at worst: a
+    # German out-of-office naming an emergency contact matched a referral
+    # phrase, and referral is a class the reply engine may act on.
+    #
+    # So a subject that plainly says "Automatische Antwort" or "Szabadsag"
+    # settles it. The exception is the rule this module already enforces
+    # everywhere else: a classification may never SOFTEN a stop. If the body
+    # independently reads as an unsubscribe or a refusal, that wins - a
+    # person who writes "remove me" inside an autoresponder still means it.
+    if subject is not None and subject_says_out_of_office(subject):
+        found = (verdict or {}).get("classification")
+        if found not in (UNSUBSCRIBE, NEGATIVE, ACCOUNT_DNC):
+            return {"classification": OUT_OF_OFFICE, "confidence": 0.9,
+                    "reason": "the subject line announces an autoresponder",
+                    "evidence": [str(subject)[:120]],
+                    "classifier": VERSION,
+                    "extract_method": extracted.get("method"),
+                    "subject_detected": True,
+                    "body_would_have_been": found}
     # TASK-074: the analysis taxonomy runs after production rules and
     # before the model.  It sub-classifies UNKNOWN into INTERESTED,
     # MEETING_INTENT, or OBJECTION for the learning dataset.  Every new

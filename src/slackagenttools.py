@@ -39,6 +39,7 @@ from . import slackagentreadback as readback
 from . import slackclientview as clientview
 from . import slackknowledge as knowledge
 from . import slackscope
+from . import testidentity
 
 MAX_CALLS_PER_TURN = 5
 
@@ -413,6 +414,627 @@ def account_lookup(scope, argument=None):
         })
     return {"read_at": _now(), "workspace": slug, "matches": len(hits),
             "accounts": out}
+
+
+# ------------------------------------------------- what is happening here
+#
+# OPERATOR, 2026-09-23: "'what is happening with <domain>' returns the
+# account status (untouched / sequenced / engaged / replied / meeting / won /
+# lost / do_not_contact), the personas in play with their step, last touch,
+# replies by class, and next planned touch; client-scoped in client channels.
+# Build it on the account status object as production lands it; until then
+# derive from provider truth and the ledgers and label the source."
+#
+# THIS VOCABULARY IS NOT `account.py`'S AND IS NOT MAPPED ONTO IT SILENTLY.
+# `src/account.py` already carries ACTIVE / ENGAGED / PAUSED / SUPPRESSED /
+# STOPPED / NOT_STARTED, which is a different question: where one CONTACT
+# stands for the purposes of whether we may write to them. The operator's
+# list is a commercial progression for a whole account. They overlap in two
+# words and mean different things by both, and quietly aliasing them is how
+# a screen comes to say `engaged` about an account nobody may contact.
+#
+# So this is a PROJECTION, declared as one, and it reads `account.graph()`
+# rather than walking the event log again - that module's own docstring says
+# it is "the canonical answer to every account-level question, and every
+# screen, claim resolver and fatigue check reads it rather than walking the
+# event log again with its own idea of what counts."
+
+#: The operator's account states, weakest first. The order is the
+#: progression; `_account_state` walks it from the strong end.
+UNTOUCHED = "untouched"
+SEQUENCED = "sequenced"
+ENGAGED = "engaged"
+REPLIED = "replied"
+MEETING = "meeting"
+WON = "won"
+LOST = "lost"
+DO_NOT_CONTACT = "do_not_contact"
+
+ACCOUNT_STATES = (UNTOUCHED, SEQUENCED, ENGAGED, REPLIED, MEETING,
+                  WON, LOST, DO_NOT_CONTACT)
+
+#: TWO OF THE EIGHT HAVE NO SOURCE IN THIS REPOSITORY, and that is reported
+#: rather than left to look like "it never happens". Nothing here records a
+#: deal. The meetings ledger is hand-fed and stops at the meeting; there is
+#: no CRM in this tree and no won/lost field on any record. An answer that
+#: silently never returns two of the states it advertises is worse than one
+#: that names the gap, because the gap is invisible from the outside.
+STATES_WITHOUT_A_SOURCE = (WON, LOST)
+
+
+def _reply_classes(rows):
+    """`{classification: n}` over REPLIES, not over reply EVENTS.
+
+    ## ONE REPLY IS SEVERAL EVENTS, AND COUNTING EVENTS DOUBLES IT
+
+    `account.replies()` returns `reply_received`, `reply_classified` AND
+    `positive_reply_detected` as separate rows, because it is answering
+    "what is on this record" rather than "how many replies were there".
+    One real reply therefore appears twice: once as the receipt, carrying no
+    classification, and once as the verdict.
+
+    Counted naively this produced, live on 2026-09-23:
+
+        olv.global    {'unclassified': 1, 'out_of_office': 1}
+
+    for a single out-of-office. A client reading that has been told they
+    have two replies, one of which nobody has looked at. Both halves of that
+    are false.
+
+    So the receipt is only counted when nothing classified it. `unclassified`
+    stays its own key and is never folded into a class - a reply nobody has
+    classified is not a neutral one - but it now means what it says.
+    """
+    ## AND IT SURVIVES THE SOURCE FIX, WHICH IS THE POINT OF THE SHAPE TEST
+
+    # The operator has asked production to fix this at source: one row per
+    # reply, with the classified state as a FIELD. When that lands, the
+    # compensation below stops being needed - and the naive version of it
+    # would start UNDER-counting, silently, which is the worse direction.
+    #
+    # Concretely: a contact with two classified replies and one nobody has
+    # looked at would compute `spare = 1 - 2 = -1` and drop the unclassified
+    # one on the floor. A count that is wrong after somebody else's correct
+    # fix is a trap laid for them, so the shape is DETECTED rather than
+    # assumed.
+    #
+    # The discriminator is the verdict row itself. Today `reply_classified`
+    # arrives as its OWN row beside the receipt; under the fixed shape there
+    # is no separate verdict row, so its absence means every row is already
+    # one reply and is counted once.
+    rows = list(rows or [])
+    paired = any(str(row.get("type") or "") in (
+        "reply_classified", "positive_reply_detected") for row in rows)
+
+    out = {}
+    if not paired:
+        # ONE ROW PER REPLY. Count each, classified or not.
+        for row in rows:
+            name = str(row.get("classification") or "").strip() or "unclassified"
+            out[name] = out.get(name, 0) + 1
+        return out
+
+    classified, received = {}, {}
+    for row in rows:
+        key = row.get("contact_key")
+        name = str(row.get("classification") or "").strip()
+        if name:
+            classified.setdefault(key, []).append(name)
+        else:
+            received[key] = received.get(key, 0) + 1
+
+    for names in classified.values():
+        for name in names:
+            out[name] = out.get(name, 0) + 1
+    for key, count in received.items():
+        # Only the receipts this contact has BEYOND their verdicts. A reply
+        # with both is one reply; a reply with only a receipt is one nobody
+        # has classified yet, and that is worth saying out loud.
+        spare = count - len(classified.get(key) or [])
+        if spare > 0:
+            out["unclassified"] = out.get("unclassified", 0) + spare
+    return out
+
+
+# ---------------------------------------------- is the ledger trustworthy
+#
+# OPERATOR DECISION, 2026-09-23, recorded verbatim because it is an
+# architecture and not a preference:
+#
+#   "Provider-confirmed sends, bounces, replies and HeyReach
+#   requests/accepts are written back into the local event ledger by the
+#   watchers on every readback (idempotent per provider row id), so account
+#   status and accounts-first reporting are computed locally from the
+#   ledger, with the provider as a periodic second witness, never as a
+#   per-account call. Production owns the write-back; the agent reads the
+#   ledger."
+#
+# SO THE PER-ACCOUNT PROVIDER CALL IS GONE. An earlier version of
+# `account_status` matched each account's addresses against the campaign
+# queues, which answered correctly and is exactly the shape this decision
+# rules out: it does not survive contact with a report over a whole
+# workspace, and a tool that is affordable for one domain and ruinous for
+# fifty is a tool that will be used for fifty.
+#
+# WHAT REPLACES IT IS ONE QUESTION, ASKED PERIODICALLY, FOR THE WHOLE
+# WORKSPACE: does the ledger actually carry the sends yet? Until production's
+# write-back lands the answer is no, and the honest behaviour then is to
+# WITHHOLD `untouched` rather than to assert it - measured on the live store
+# on 2026-09-23, the ledger held 1 push_marked and 0 email_delivered against
+# 494 provider-confirmed sends the day before.
+
+#: How long one workspace's ledger verdict stands before it is re-measured.
+#: Ten minutes: long enough that a burst of account questions costs one
+#: provider read rather than fifty, short enough that the day the write-back
+#: starts working the agent notices inside a coffee break.
+LEDGER_WITNESS_TTL = 600
+
+#: `{slug: (checked_epoch, verdict)}`. Process-local and deliberately not
+#: persisted: a cached "the ledger is fine" surviving a restart is how a
+#: stale reassurance outlives the thing it was measuring.
+_LEDGER_WITNESS = {}
+
+
+def _ledger_carries_sends(slug, now=None):
+    """Does this workspace's ledger carry the provider's sends? Periodic.
+
+    ONE provider read per workspace per `LEDGER_WITNESS_TTL`, shared by
+    every account question in that window - the "periodic second witness"
+    of the operator's decision, never a per-account call.
+
+    Returns True, False, or None when it could not be established. None is
+    NOT False: a witness that could not be asked has not reported a problem,
+    and treating it as one would degrade every answer on a transient outage.
+    """
+    now = time.time() if now is None else now
+    cached = _LEDGER_WITNESS.get(slug)
+    if cached and (now - cached[0]) < LEDGER_WITNESS_TTL:
+        return cached[1]
+
+    verdict = None
+    try:
+        entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+        ids, _hidden = _campaigns_to_read(entry, SENDS_TODAY_CAP)
+        provider_sent = 0
+        for campaign_id in ids:
+            row = readback.campaign_by_id(campaign_id) or {}
+            value = row.get("emails_sent")
+            if isinstance(value, int):
+                provider_sent += value
+        if provider_sent:
+            ledger_touches = 0
+            for record in _records(slug):
+                for event in record.get("events") or []:
+                    if event.get("type") in _CONFIRMING_TYPES:
+                        ledger_touches += 1
+            # NOT AN EQUALITY. The ledger counts touches on this
+            # workspace's records and the provider counts sends on its
+            # campaigns; they are close relatives, not the same number.
+            # What is being detected is the ledger being EMPTY against a
+            # provider that is plainly sending - 1 against 494, not 480
+            # against 494.
+            verdict = ledger_touches >= max(1, provider_sent // 10)
+        # provider_sent == 0 leaves the verdict None: a workspace that has
+        # sent nothing tells us nothing about whether the ledger would
+        # record a send if there were one.
+    except Exception:                                           # noqa: BLE001
+        verdict = None
+
+    _LEDGER_WITNESS[slug] = (now, verdict)
+    return verdict
+
+
+def _confirming_types():
+    try:
+        from . import touch
+        return frozenset(touch.CONFIRMING_EVENTS)
+    except Exception:                                           # noqa: BLE001
+        return frozenset()
+
+
+_CONFIRMING_TYPES = _confirming_types()
+
+
+def _account_state(record, detail, meetings_for_domain, ledger_ok=None):
+    """One of `ACCOUNT_STATES`, with the evidence that decided it.
+
+    PRECEDENCE, strongest first, and every step of it is a judgement worth
+    arguing with rather than a lookup:
+
+    `do_not_contact` OUTRANKS EVERYTHING, including `meeting`. It is the one
+    state that answers "what may we do next" rather than "how far did this
+    get", and an account that met us and then asked to be left alone is an
+    account we may not write to. Ranking a meeting above it is how a good
+    outcome becomes a reason to ignore a refusal.
+
+    Then `meeting`, `replied`, `engaged`, `sequenced`, `untouched` - the
+    operator's own order, which is the commercial progression.
+
+    `engaged` MEANS SOMETHING SHORT OF A REPLY: a connection accepted, an
+    interaction recorded, nobody having written back yet. Without that
+    distinction it collapses into `replied` and one of the two words stops
+    meaning anything.
+    """
+    evidence = []
+    # `graph()["contacts"]` IS A LIST, not a mapping - `by_contact` is the
+    # mapping. Reading the wrong one raises on `.values()` and every account
+    # comes back unreadable, so the shape is taken off the real return.
+    contacts = (detail or {}).get("contacts") or []
+    states = [str((c or {}).get("state") or "") for c in contacts]
+
+    suppressed = [s for s in states if s in ("suppressed", "stopped")]
+    if str(record.get("state") or "") == "do_not_contact" \
+            or record.get("do_not_contact") \
+            or (states and len(suppressed) == len(states)):
+        evidence.append("every contact is suppressed or stopped"
+                        if states else "the record carries do_not_contact")
+        return DO_NOT_CONTACT, evidence
+
+    if meetings_for_domain:
+        evidence.append("%d meeting(s) in the hand-fed ledger"
+                        % meetings_for_domain)
+        return MEETING, evidence
+
+    replied = len((detail or {}).get("replies") or [])
+    if replied:
+        evidence.append("%d reply event(s) on the account" % replied)
+        return REPLIED, evidence
+
+    # ENGAGED IS SHORT OF A REPLY. `account._contact_state` calls a contact
+    # `engaged` when they have replied, so by the time we are here that
+    # branch is already spent - what is left is a confirmed touch on a
+    # channel that carries an acceptance. Reached deliberately and rarely;
+    # it is not a synonym for `replied` and must never become one.
+    if any(s == ENGAGED for s in states) \
+            or any(t.get("channel") == "linkedin" and t.get("confirmed")
+                   for t in ((detail or {}).get("touches") or [])):
+        evidence.append("a LinkedIn touch landed and nobody has written back")
+        return ENGAGED, evidence
+
+    confirmed = len((detail or {}).get("confirmed_touches") or [])
+    if confirmed:
+        evidence.append("%d confirmed touch(es) in the ledger" % confirmed)
+        return SEQUENCED, evidence
+
+    if ledger_ok is False:
+        # THE ONE CASE THAT IS NOT A STATE, and it is the whole reason this
+        # function takes the witness. The ledger says nobody has been
+        # touched AND the ledger is known not to be recording touches, so
+        # `untouched` would be a guess dressed as an answer - in a client
+        # channel, about an account we may well have emailed yesterday.
+        evidence.append("the ledger carries no touch for this account AND "
+                        "is not recording this workspace's sends, so "
+                        "`untouched` cannot be asserted")
+        return None, evidence
+
+    evidence.append("no confirmed touch in the ledger")
+    return UNTOUCHED, evidence
+
+
+def account_status(scope, argument=None):
+    """WHAT IS HAPPENING WITH ONE ACCOUNT. The whole question, one answer.
+
+    DERIVED, AND IT SAYS SO. Production's account-status object does not
+    exist yet; every field here carries where it came from, so the day that
+    object lands the difference is visible rather than silent.
+
+    Client-scoped like every other tool here: `_workspace_for` pins a client
+    channel to its own workspace before the lookup happens, so a
+    prompt-injected domain from another client's estate reads exactly like a
+    domain nobody has.
+    """
+    domain = str(argument or "").strip().lower().lstrip("@")
+    if not domain:
+        return {"read_at": _now(),
+                "_error": "account_status needs a domain"}
+    slug = _workspace_for(scope, None)
+    rows = _records(slug)
+    hits = [r for r in rows
+            if domain in str(r.get("domain") or "").lower()]
+    if not hits:
+        # THE SAME ANSWER AS A DOMAIN THAT IS NOT THIS CLIENT'S, which is
+        # the disclosure property `lead_in_campaign` established: telling
+        # "not yours" apart from "nobody's" IS the leak.
+        return {"read_at": _now(), "workspace": slug, "domain": domain,
+                "matches": 0,
+                "note": "no account matching %s in this workspace" % domain}
+
+    record = hits[0]
+    out = {"read_at": _now(), "workspace": slug,
+           "domain": record.get("domain"), "matches": len(hits)}
+    if len(hits) > 1:
+        out["note_matches"] = ("%d accounts match that domain; this is the "
+                               "first. Ask with the exact domain for another."
+                               % len(hits))
+
+    try:
+        from . import account as accountgraph
+        detail = accountgraph.graph(record, workspace=slug)
+    except Exception as exc:                                    # noqa: BLE001
+        # NO SILENT FALLBACK ONTO A SECOND WALK. If the canonical reader
+        # cannot answer, this says so; deriving the same fields another way
+        # here is how two representations of one account start to disagree.
+        return dict(out, _error="account graph unreadable: %s"
+                                % type(exc).__name__)
+
+    meetings_here = 0
+    meetings_source = "the hand-fed meetings ledger"
+    try:
+        from . import slackmeetings
+        # ONE ROW PER MEETING, not a count keyed by domain. Reading it as a
+        # mapping raises, the raise is caught below, and `meeting` then
+        # becomes a state this function can never return - silently, on the
+        # happy path. Written out because that is precisely the shape of
+        # defect this session has reported three times today.
+        ledger = slackmeetings.by_domain(workspace=slug) or []
+        here = str(record.get("domain") or "").lower()
+        meetings_here = len([row for row in ledger
+                             if str(row.get("domain") or "").lower() == here])
+    except Exception as exc:                                    # noqa: BLE001
+        meetings_source = ("the meetings ledger could not be read (%s), so "
+                           "`meeting` could not be reached"
+                           % type(exc).__name__)
+
+    ledger_ok = _ledger_carries_sends(slug)
+    out["ledger_carries_sends"] = ledger_ok
+
+    state, evidence = _account_state(record, detail, meetings_here, ledger_ok)
+    if state is None:
+        return dict(
+            out, status=None, status_evidence=evidence,
+            _error="account status is not answerable for this workspace "
+                   "yet: the ledger is not recording provider-confirmed "
+                   "sends, so an account with no touch in it cannot be "
+                   "called untouched. This resolves when the watchers' "
+                   "write-back is live.")
+    out["status_evidence"] = evidence
+    out["status"] = state
+
+    personas = []
+    for entry in (detail or {}).get("contacts") or []:
+        entry = entry or {}
+        confirmed = entry.get("confirmed_touches") or []
+        last = confirmed[-1] if confirmed else None
+        personas.append({
+            "contact": entry.get("key"),
+            "persona": entry.get("persona"),
+            "role": entry.get("title"),
+            "priority": entry.get("priority"),
+            "state": entry.get("state"),
+            # THE STEP THEY ARE ON, off the last CONFIRMED touch. An
+            # attempted step is not a step somebody received, and this
+            # number is read as "how far into the sequence are they".
+            "step": (last or {}).get("step"),
+            "channel": (last or {}).get("channel"),
+            "last_touch_at": entry.get("last_touch_at"),
+            "touches_confirmed": len(confirmed),
+            "replies": len(entry.get("replies") or []),
+        })
+    out["personas"] = personas
+    out["personas_in_play"] = len([p for p in personas
+                                   if p["state"] not in ("suppressed",
+                                                         "stopped")])
+
+    every_reply = (detail or {}).get("replies") or []
+    confirmed_touches = (detail or {}).get("confirmed_touches") or []
+    out["last_touch"] = (dict(confirmed_touches[-1])
+                         if confirmed_touches else None)
+    if not confirmed_touches:
+        out["last_touch_note"] = "no confirmed touch on this account"
+    # WHAT THIS ANSWER CANNOT SEE, said once rather than implied by an
+    # absence. `account.touches()` is built from `touch.CONFIRMING_EVENTS`
+    # and every one of those maps to a CONFIRMED state, so an attempt that
+    # was planned, approved, held, blocked or failed produces no touch here
+    # at all. "How far into the sequence are they" therefore answers from
+    # what LANDED, and a person sitting on a held step reads identically to
+    # a person whose sequence simply has not reached them.
+    out["touches_are_confirmed_only"] = True
+    out["touch_coverage_note"] = (
+        "steps and counts here are CONFIRMED touches only - planned, held, "
+        "blocked and failed attempts are not visible through this reader, "
+        "so a held step and a step not yet due look the same")
+    out["replies_by_class"] = _reply_classes(every_reply)
+
+    out["next_planned_touch"] = None
+    out["next_planned_touch_note"] = (
+        "not derivable from local state: the plan lives in the provider's "
+        "queue and is answered by `weekly_plan`, whose horizon is three "
+        "days because that is as far as the provider answers")
+
+    out["states_without_a_source"] = list(STATES_WITHOUT_A_SOURCE)
+    out["source"] = {
+        "status": ("computed from the local ledger via account.graph(), "
+                   "plus " + meetings_source),
+        "provider": ("a periodic workspace-level witness on whether the "
+                     "ledger is recording sends - never a per-account call"),
+        "personas": "account.graph(), confirmed touches only",
+        "replies_by_class": "reply events on the record, as classified",
+        "not_production_account_status_object": True,
+    }
+    out["note"] = (
+        "DERIVED, not read from an account-status object - production's does "
+        "not exist yet. `won` and `lost` have no source in this tree and are "
+        "never returned; absence of them is not evidence of neither.")
+    return out
+
+
+# ------------------------------------------------ the report, accounts first
+#
+# OPERATOR, 2026-09-23: "Client report and weekly report count accounts
+# first (accounts in flight, engaged, replied, meetings), then emails."
+#
+# WHY THE ORDER IS THE FEATURE. Every number this system has ever put in
+# front of this client has been an email number - sent, replied, bounced -
+# and a client does not buy emails. They buy accounts worked. Leading with
+# 502 sent and burying "eight companies have written back" tells them how
+# busy we were, not what they got.
+#
+# So accounts come first, and the email figures follow as the activity that
+# produced them.
+
+#: The account states that count as IN FLIGHT: worked, not finished, not
+#: closed. `untouched` is not in flight - nothing has happened to it - and
+#: neither is `do_not_contact`, which is finished in the only direction that
+#: matters.
+IN_FLIGHT = (SEQUENCED, ENGAGED, REPLIED, MEETING)
+
+
+def _account_rollup(slug):
+    """Accounts by state for one workspace, from the LEDGER.
+
+    Returns `(counts, unanswerable, ledger_ok)`. One pass over the records,
+    one witness read for the whole workspace - never a provider call per
+    account, per the operator's decision of 2026-09-23.
+
+    `unanswerable` is its own number and is never folded into `untouched`.
+    While the write-back is missing that IS the report: "we cannot currently
+    tell you how many accounts are untouched" is a true sentence, and
+    "1,530 untouched" is a false one.
+    """
+    ledger_ok = _ledger_carries_sends(slug)
+    counts, unanswerable = {}, 0
+    try:
+        from . import account as accountgraph
+        from . import slackmeetings
+        ledger = slackmeetings.by_domain(workspace=slug) or []
+    except Exception:                                           # noqa: BLE001
+        accountgraph, ledger = None, []
+    met = {str(row.get("domain") or "").lower() for row in ledger}
+
+    if accountgraph is None:
+        return counts, unanswerable, ledger_ok
+
+    for record in _records(slug):
+        try:
+            detail = accountgraph.graph(record, workspace=slug)
+        except Exception:                                       # noqa: BLE001
+            unanswerable += 1
+            continue
+        here = 1 if str(record.get("domain") or "").lower() in met else 0
+        state, _evidence = _account_state(record, detail, here, ledger_ok)
+        if state is None:
+            unanswerable += 1
+            continue
+        counts[state] = counts.get(state, 0) + 1
+    return counts, unanswerable, ledger_ok
+
+
+def _ledger_replies(slug):
+    """Replies in the ledger for this workspace, by class, human and
+    positive counted apart.
+
+    HUMAN IS `replies.is_automated`, the one definition - the operator's
+    rule of 2026-09-22, which the never-positive guarantee and the 18:00
+    summary both read. An out-of-office is not a reply a client should be
+    told they received.
+    """
+    try:
+        from . import account as accountgraph
+        from . import replies as replyclass
+    except Exception:                                           # noqa: BLE001
+        return None
+    by_class, human, positive = {}, 0, 0
+    for record in _records(slug):
+        rows = accountgraph.replies(record)
+        counted = _reply_classes(rows)
+        for name, count in counted.items():
+            by_class[name] = by_class.get(name, 0) + count
+            if name == "unclassified":
+                # NOT COUNTED AS HUMAN. Nobody has looked at it, so calling
+                # it a human reply is a guess in the flattering direction.
+                continue
+            if not replyclass.is_automated(name):
+                human += count
+            if name == replyclass.POSITIVE:
+                positive += count
+    out = {"by_class": by_class, "human": human, "positive": positive}
+
+    # ## THE STORED VERDICT MAY PREDATE THE CURRENT RULES, AND NOTHING SAYS SO
+    #
+    # MEASURED 2026-09-23. The ledger's single `positive` for this estate is
+    # the executive-assistant reply from campaign 491 - "Jennifer's inbox can
+    # get a little extra at times, so her amazing Executive Assistant Rose is
+    # helping keep things running smoothly". Stored `positive` by classifier
+    # `rules-3` at 18:35 on 09-22. Re-classified by the CURRENT code it is
+    # `assistant_redirect`, which is automated; the provider's own
+    # `automated_reply` flag on that row is true as well.
+    #
+    # The operator's re-run of 2026-09-22 reached the same answer - 0
+    # positive of 14 - and its verdicts were never written back, so the
+    # ledger still carries the old one.
+    #
+    # AND THE OBVIOUS GUARD DOES NOT WORK: `replies.VERSION` is still
+    # "rules-3", the same string the stale event carries. The rules changed
+    # and the version did not, so a stored verdict is indistinguishable from
+    # a fresh one by inspection. Until that is fixed there is no local way to
+    # tell them apart, so the count is reported WITH the caveat rather than
+    # as fact.
+    #
+    # THIS MATTERS MOST WHERE IT IS NOT USED YET: a feature that posts
+    # positive replies into a client channel must not read this field, or it
+    # will announce an autoresponder as a buying signal - the exact outcome
+    # the reply-classification work existed to prevent.
+    if positive:
+        out["positive_caveat"] = (
+            "stored classifications may predate the current rules and "
+            "cannot be told apart by version - `replies.VERSION` did not "
+            "change when the rules did. Measured today, this estate's only "
+            "stored `positive` re-classifies as `assistant_redirect`. Do "
+            "not put this figure in front of a client without re-running "
+            "the classifier over the replies behind it.")
+    return out
+
+
+def weekly_report(scope, argument=None):
+    """The weekly report, ACCOUNTS FIRST and emails second.
+
+    Answers "@Resonate OS send me the weekly report". Client-scoped like
+    every other tool here.
+    """
+    slug = _workspace_for(scope, argument)
+    out = {"read_at": _now(), "workspace": slug}
+
+    counts, unanswerable, ledger_ok = _account_rollup(slug)
+    in_flight = sum(counts.get(state, 0) for state in IN_FLIGHT)
+    out["accounts"] = {
+        "in_flight": in_flight,
+        "engaged": counts.get(ENGAGED, 0),
+        "replied": counts.get(REPLIED, 0),
+        "meetings": counts.get(MEETING, 0),
+        "untouched": counts.get(UNTOUCHED, 0),
+        "do_not_contact": counts.get(DO_NOT_CONTACT, 0),
+        "unanswerable": unanswerable,
+    }
+    out["accounts_order"] = ["in_flight", "engaged", "replied", "meetings"]
+    if unanswerable:
+        out["accounts_warning"] = (
+            "%d account(s) could not be placed because the ledger is not "
+            "recording this workspace's sends yet. That is not a count of "
+            "untouched accounts and must not be read as one."
+            % unanswerable)
+    out["ledger_carries_sends"] = ledger_ok
+
+    replies_here = _ledger_replies(slug)
+    if replies_here is None:
+        out["replies_error"] = "the reply ledger could not be read"
+    else:
+        out["replies"] = replies_here
+        out["replies_note"] = (
+            "human replies exclude out-of-office, automated "
+            "acknowledgements and assistant redirects; unclassified replies "
+            "are counted apart and never as human")
+
+    # THE EMAIL FIGURES COME LAST, and from the provider's own counters -
+    # a workspace-level read, not a per-account one.
+    try:
+        out["emails"] = sends_today(scope, argument)
+    except Exception as exc:                                    # noqa: BLE001
+        out["emails_error"] = type(exc).__name__
+
+    out["note"] = (
+        "accounts first: a client buys accounts worked, not emails sent. "
+        "The email figures are the activity that produced them.")
+    return out
 
 
 def sender_summary(scope, argument=None):
@@ -925,8 +1547,7 @@ def _week_for_domain(slug, domain):
     emails, people, unreadable, read_any = 0, set(), 0, False
     for campaign_id in ids:
         try:
-            from .providers import bison
-            queue = bison.scheduled_emails(campaign_id) or []
+            queue = readback.queue(campaign_id)
         except Exception:                                       # noqa: BLE001
             unreadable += 1
             continue
@@ -972,8 +1593,7 @@ def _recent_send_domains(slug):
     found, unreadable, read_any = set(), 0, False
     for campaign_id in ids:
         try:
-            from .providers import bison
-            queue = bison.scheduled_emails(campaign_id) or []
+            queue = readback.queue(campaign_id)
         except Exception:                                       # noqa: BLE001
             unreadable += 1
             continue
@@ -1221,8 +1841,7 @@ def _sent_since(campaign_id, cutoff):
     """
     import datetime
     try:
-        from .providers import bison
-        queue = bison.scheduled_emails(campaign_id) or []
+        queue = readback.queue(campaign_id)
     except Exception:                                           # noqa: BLE001
         return None
     count = 0
@@ -1408,8 +2027,7 @@ def _week_activity(campaign_id, cutoff):
     """
     import datetime
     try:
-        from .providers import bison
-        queue = bison.scheduled_emails(campaign_id) or []
+        queue = readback.queue(campaign_id)
     except Exception:                                           # noqa: BLE001
         return None
     emails, people = 0, set()
@@ -1647,7 +2265,19 @@ def replies(scope, argument=None):
 
     kinds = {}
     recent = []
+    excluded_test_rows = 0
     for row in rows:
+        # THE OPERATOR'S TEST IDENTITY IS NOT A REPLY.
+        #
+        # Suppressing at the WRITE (`notify.plan`) stops the next one; it does
+        # nothing about the rows already in the feed, and the 15:57:01Z
+        # `positive_reply` for `/in/zbeslic` is one of them. Counting it would
+        # tell the client a prospect was interested when the "prospect" was
+        # the operator exercising a cross-channel stop. Excluded here at the
+        # READ so history cannot reach a figure either.
+        if testidentity.matches(row.get("ids")):
+            excluded_test_rows += 1
+            continue
         kind = row.get("type") or "unknown"
         kinds[kind] = kinds.get(kind, 0) + 1
         if kind in ("positive_reply", "neutral_reply", "negative_reply"):
@@ -1655,6 +2285,32 @@ def replies(scope, argument=None):
                            "campaign": (row.get("ids") or {}).get("campaign")})
     out["reply_feed_by_kind"] = kinds
     out["classified_replies"] = recent[:10]
+    if excluded_test_rows:
+        out["excluded_test_identity_rows"] = excluded_test_rows
+        out["excluded_test_identity_why"] = testidentity.WHY
+
+    # THE POSITIVE COUNT, AND ONLY FROM OUR CLASSIFIER.
+    #
+    # 2026-09-23: the agent told the client "three positive" when
+    # `replies.classify` says zero. The material handed to the model carried
+    # `replies_counted_by_provider` - the provider's own `replied` counter -
+    # beside a feed of classified ones, and "replies" beside "positive" is a
+    # short walk for a sentence generator.
+    #
+    # The provider's counter includes autoresponders, and its `interested`
+    # flag is set by a human clicking a star in its UI on rows nobody here
+    # classified. Neither is a positive reply. So the number is stated
+    # explicitly, derived from the feed our own classifier writes, and the
+    # provider's counter is renamed to say what it is not.
+    out["positive_replies_our_classifier"] = int(kinds.get("positive_reply", 0))
+    out["positive_count_source"] = (
+        "src/replies.classify via the notification feed - NOT the provider's "
+        "`replied` counter and NOT its `interested` flag, both of which count "
+        "autoresponders")
+    out["provider_counter_is_not_positive"] = (
+        "`replies_counted_by_provider` counts every inbound row including "
+        "out-of-office and bounces; it may never be reported as positive, "
+        "interested, or a buying signal")
     if not rows:
         out["note"] = ("nothing is recorded in this workspace's "
                        "notification feed yet - that is an empty feed, not "
@@ -2170,6 +2826,16 @@ REGISTRY = {
     "account_lookup": (
         account_lookup,
         "one account's state by domain, with its contact counts",
+        _INTERNAL_CLIENT, "a domain"),
+    "weekly_report": (
+        weekly_report,
+        "the weekly report: accounts in flight, engaged, replied and "
+        "meetings first, then the email figures",
+        _INTERNAL_CLIENT, None),
+    "account_status": (
+        account_status,
+        "what is happening with one account: status, the personas in play "
+        "with their step, last touch, replies by class",
         _INTERNAL_CLIENT, "a domain"),
     "sender_summary": (
         sender_summary,

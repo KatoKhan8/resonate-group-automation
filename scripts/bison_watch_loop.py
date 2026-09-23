@@ -113,9 +113,38 @@ def milestone(campaign_id, kind, **fields):
 def snapshot(provider_id=None):
     provider_id = PROVIDER_ID if provider_id is None else provider_id
     row = bison.campaign(provider_id) or {}
-    queue = bison.scheduled_emails(provider_id) or []
-    sent_rows = 0
-    for entry in queue:
+    # ONE REFUSED READ MUST NOT BLIND THE WHOLE WATCHER.
+    #
+    # MEASURED 2026-09-23. This call took the 40-page default while
+    # `slackagentreadback` and `hard_stop_check` both walked 400. Campaign 491
+    # reached 647 rows - 44 pages - so it raised `PartialInventory`, correctly:
+    # the queue really could not be read whole. But it was raising from the
+    # top of `snapshot()` with nothing around it, so the refusal took down
+    # every OTHER field too. `bison-491.json` read `READ-ERROR 122x` while
+    # `emails_sent`, `replied`, `bounced` and `membership` all answered fine,
+    # on the largest campaign in the estate, for hours.
+    #
+    # Two changes, and the second is the one that matters:
+    #   - walk as far as the other two readers do, so three readers cannot
+    #     disagree about what was sent;
+    #   - and when even that refuses, record the queue as UNKNOWN and keep
+    #     the rest. `_membership_states` and `_provider_sending_plan` in this
+    #     same file already do exactly this; the queue read was the one that
+    #     never got the treatment.
+    #
+    # UNKNOWN IS `None`, NEVER `0`. `queue = []` on a failed read would report
+    # 647 rows -> 0 and fire QUEUED as though the provider had emptied the
+    # queue. An absence read off a short list is the failure this provider
+    # module is most careful about, and a false zero on the send-detection
+    # path is the expensive direction.
+    try:
+        queue = bison.scheduled_emails(
+            provider_id, cap=bison.CAMPAIGN_QUEUE_PAGE_CAP) or []
+    except bison.PartialInventory as exc:
+        emit(f"QUEUE-UNREADABLE {provider_id}: {str(exc)[:160]}")
+        queue = None
+    sent_rows = None if queue is None else 0
+    for entry in queue or []:
         state = str(entry.get("status") or entry.get("state") or "").lower()
         if state in SENT_WORDS or entry.get("sent_at"):
             sent_rows += 1
@@ -137,7 +166,9 @@ def snapshot(provider_id=None):
         "bounced": int(row.get("bounced") or 0),
         "unsubscribed": int(row.get("unsubscribed") or 0),
         "leads": int(row.get("total_leads") or 0),
-        "queue_rows": len(queue),
+        # None when the queue could not be read whole. Distinct from 0, which
+        # means the provider has nothing queued.
+        "queue_rows": None if queue is None else len(queue),
         "sent_rows": sent_rows,
         # Carried verbatim and compared for movement, never parsed: a format
         # this system has not seen still reports a touch rather than raising.
@@ -149,7 +180,9 @@ def snapshot(provider_id=None):
         # it carries is another, and only the first was being watched.
         # `min` because the question this answers is "when does the first
         # prospect hear from us", and it is the number an operator plans on.
-        "first_scheduled": min(
+        # "unknown" rather than "none" when the queue was unreadable: "none"
+        # asserts nothing is planned, which is a claim this read cannot make.
+        "first_scheduled": "unknown" if queue is None else min(
             [str(e.get("scheduled_date")) for e in queue
              if e.get("scheduled_date")] or ["none"]),
         # WHAT THE CAMPAIGN SAYS IS NOT WHAT THE LEADS SAY, measured
@@ -192,6 +225,129 @@ def _provider_sending_plan(provider_id):
         except Exception:
             out[day] = "error"
     return out
+
+
+#: Statuses that mean the campaign has stopped working through its sequence.
+#: A transition INTO one of these is the event this alerts on.
+STOPPED_STATUSES = ("archived", "paused", "stopped")
+
+#: Log STEPS this system writes when IT stops a campaign. Matched exactly,
+#: never as a substring of a free-text note - see `_we_did_it`.
+OUR_STOP_STEPS = frozenset({"pause", "paused", "archive", "archived",
+                            "stop", "stopped", "hard_stop", "kill"})
+
+#: How recently one of those must have been logged to explain a transition.
+RECENT_HOURS = 6
+
+
+def _we_did_it(provider_id, rows=None):
+    """Does canonical state record US stopping this campaign, recently?
+
+    Returns `(ours, why)`. `ours` is True only on POSITIVE evidence - a log
+    line on our own campaign row naming a pause or an archive. Absence is
+    never read as proof that somebody else did it; it is read as "we cannot
+    show that we did", which is what the alert says.
+
+    That asymmetry is the point. The register's standing rule is that missing
+    evidence is never positive evidence, and the expensive mistake here would
+    be telling an operator a third party archived their campaign when our own
+    process did it four minutes earlier.
+    """
+    try:
+        import datetime
+        from src import campaigns
+        rows = campaigns.load() if rows is None else rows
+        row = next((r for r in rows
+                    if str(r.get("bison_campaign_id")) == str(provider_id)),
+                   None)
+        if row is None:
+            return False, "no local campaign row names this provider campaign"
+        # THE STEP, NOT THE NOTE, AND RECENT.
+        #
+        # This matched any log entry whose NOTE contained "stop", and 495's
+        # row carries "0 held by the 2% bounce stop" from 09-21 - an
+        # unrelated sentence about a mailbox re-point. So the campaign this
+        # alert was built for would have been attributed to us and silenced.
+        # Caught by its own test before it ever ran.
+        #
+        # `step` is a structured verb this system writes; a note is prose and
+        # prose about stopping is not a record of having stopped. Recency
+        # matters for the same reason: a deliberate pause two days ago does
+        # not explain a status change four minutes ago.
+        cutoff = (datetime.datetime.now(datetime.UTC)
+                  - datetime.timedelta(hours=RECENT_HOURS)).isoformat()
+        for entry in reversed(row.get("log") or []):
+            step = str(entry.get("step") or "").strip().lower()
+            if step not in OUR_STOP_STEPS:
+                continue
+            when = str(entry.get("at") or "")
+            if when < cutoff:
+                return False, (f"our campaign row logs {step!r} but at "
+                               f"{when}, more than {RECENT_HOURS}h ago")
+            return True, (f"our campaign row logs {step!r} at {when}")
+        return False, ("our campaign row logs no recent pause, archive or "
+                       "stop step")
+    except Exception as exc:                                    # noqa: BLE001
+        return False, f"canonical state unreadable: {type(exc).__name__}"
+
+
+def _alert_if_stopped_by_someone_else(provider_id, watched, was, current,
+                                      emit):
+    """A campaign we did not stop has stopped. CRITICAL, by operator decision.
+
+    MEASURED 2026-09-23. EmailBison 495 went `active` -> `archived` at
+    15:57:22Z with 59 of its 60 leads reading `stopped` and 42 of 60 ever
+    contacted. Nothing in this system did it: no action-ledger row, no write
+    refusal, and our own campaign row's last entry is from 09-21. Nobody was
+    told. It was found hours later by reading a heartbeat file by hand while
+    looking at something else.
+
+    A campaign stopping is the loudest possible fact about an outbound
+    system - it is the difference between sending and not sending - and it
+    was the one state change with no alert on it.
+
+    THE PROVIDER NAMES NO ACTOR. Its event feed carries delivery events only
+    and holds zero rows mentioning an archive, so "who" is not answerable
+    from the API. This therefore reports what it can prove: the transition,
+    and whether OUR OWN canonical state can account for it. It never asserts
+    a third party.
+
+    Does not un-archive anything. Nothing here writes to the provider.
+    """
+    if str(current.get("status") or "").lower() not in STOPPED_STATUSES:
+        return
+    ours, why = _we_did_it(provider_id)
+    emit(f"CAMPAIGN-STOPPED {watched} {was} -> {current['status']} "
+         f"({'ours' if ours else 'NOT ATTRIBUTABLE TO US'}: {why})")
+    if ours:
+        return
+    try:
+        from src import notify
+        notify.notify(
+            notify.CAMPAIGN_STOPPED_EXTERNALLY, None,
+            fields={"campaign": str(provider_id),
+                    "was": was, "now": current.get("status"),
+                    "emails_sent": current.get("emails_sent"),
+                    "leads": current.get("leads"),
+                    "why": why,
+                    "action": "a campaign stopped and this system cannot show "
+                              "it did it. The provider names no actor. Do NOT "
+                              "un-archive: find out who first"},
+            ids={"campaign_id": str(provider_id), "status": current.get("status")})
+    except Exception as exc:                                    # noqa: BLE001
+        emit(f"ALERT-FAILED {watched}: {type(exc).__name__}")
+
+
+def _known(*values):
+    """True when every value is a real reading rather than an UNKNOWN.
+
+    The queue fields are `None` when `scheduled_emails` refused, and a
+    comparison against an unknown is neither true nor false - it is not a
+    question. Guarding with this rather than `or 0` on purpose: a default of
+    zero turns "we could not read it" into "there is nothing there", which is
+    the exact substitution this watcher exists to catch at the provider.
+    """
+    return all(v is not None for v in values)
 
 
 def _membership_states(provider_id):
@@ -302,6 +458,8 @@ def main(argv=None):
                 milestone(PROVIDER_ID, "sequence_finished",
                           status=current["status"],
                           emails_sent=current["emails_sent"])
+            _alert_if_stopped_by_someone_else(
+                PROVIDER_ID, watched, previous["status"], current, emit)
         if current["leads"] != previous["leads"]:
             emit(f"COHORT {watched} leads {previous['leads']} -> {current['leads']}")
         if current["emails_sent"] > previous["emails_sent"]:
@@ -315,7 +473,13 @@ def main(argv=None):
                 milestone(PROVIDER_ID, "first_send",
                           emails_sent=current["emails_sent"],
                           queue_rows=current["queue_rows"])
-        if current["sent_rows"] > previous["sent_rows"]:
+        # `_known` on both sides before every queue-derived comparison. An
+        # unreadable queue is None, and `None > 0` is a TypeError in this
+        # language - the watcher would die on the campaign it most needs to
+        # watch. Comparing against an unknown also cannot report movement:
+        # the difference between 647 and unknown is not a send.
+        if _known(current["sent_rows"], previous["sent_rows"]) \
+                and current["sent_rows"] > previous["sent_rows"]:
             emit(f"SEND {watched} queue rows sent {previous['sent_rows']} -> "
                  f"{current['sent_rows']} of {current['queue_rows']}")
         if current["replied"] > previous["replied"]:
@@ -338,7 +502,8 @@ def main(argv=None):
         # grew because something was sent is already reported above; this is
         # the other case - the provider planning work it has not done yet,
         # which is the first observable sign it has looked at this campaign.
-        if (current["queue_rows"] != previous["queue_rows"]
+        if (_known(current["queue_rows"], previous["queue_rows"])
+                and current["queue_rows"] != previous["queue_rows"]
                 and current["sent_rows"] == previous["sent_rows"]):
             emit(f"QUEUED {watched} scheduled rows {previous['queue_rows']} -> "
                  f"{current['queue_rows']} (none sent)")

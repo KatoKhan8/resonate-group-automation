@@ -48,6 +48,7 @@ import re
 import time
 
 from . import llm, slackagenttools as tools, slackknowledge as knowledge
+from . import slackagentreadback as readback
 from . import slackclientview as clientview
 from . import slackfollowup as followup
 from . import slackmeetings as meetings
@@ -328,6 +329,24 @@ REFUSAL_INTERNAL = (
     "decisions, and who is working on what. For a lead, an account, a "
     "cadence step, a campaign pause or a sending window, say so plainly and "
     "I will raise it as a change request for you to approve.")
+
+#: OPERATOR GAG on client channels, set 2026-09-23 after three client-facing
+#: defects in one exchange (13:28-13:51). Set to None to lift it - and only
+#: the operator lifts it, once the reply-count source, the awaiting-approval
+#: scope and the latency are all live. A falsy value here is the ONLY thing
+#: that lets `respond` produce client-visible text.
+#:
+#: Deliberately a module constant rather than an env var: an env var is unset
+#: by a restart and this must survive one. A merge is not a deploy either -
+#: the loop has to be restarted for a change here to take effect, which is
+#: why lifting it is a deploy step and not an edit.
+CLIENT_CHANNEL_GAG = (
+    "client channel answering is paused by the operator, 2026-09-23: the "
+    "agent reported three positive replies where our own classifier says "
+    "zero, answered 'awaiting your approval' for an operator decision, and "
+    "took seven minutes. Nothing is posted to a client channel until all "
+    "three are live."
+)
 
 REFUSAL_CLIENT = (
     "I can't make that change myself - I can read and report, not act. I'll "
@@ -662,12 +681,17 @@ you still invent none."""
 
 #: The one offer the agent may make, because it is the one it can keep.
 OFFER_NOTICE = """YOU MAY MAKE EXACTLY ONE OFFER, and only this one: that you
-will post once in this thread when the first email from this batch is
-confirmed sent by the provider. That is real - saying yes registers a watch
-and the message is posted automatically.
+will post in this thread when the first email from this batch is confirmed
+sent by the provider, and once more when the first reply written by a person
+comes in - and then stop. That is real: saying yes registers a watch and both
+messages are posted automatically.
 
-Offer it in one short sentence at the end, in their language. Promise no
-time, because you do not know one. Make no other offer of any kind."""
+TWO MESSAGES, NEVER MORE, and say so - "then I'll stop" is part of the offer,
+because a client agreeing to updates is not agreeing to be narrated at.
+
+Do not promise a time, because you do not know one, and do not promise what
+the reply will say. Offer it in one short sentence at the end, in their
+language. Make no other offer of any kind."""
 
 
 def offer_is_available(scope, results):
@@ -1122,11 +1146,17 @@ def _record_meeting(booking, user, scope, question, rows=None):
 def _register_followup(offer, scope, channel, thread_ts, user):
     """Open the watch. This is what makes the offer honest."""
     try:
+        # THE REPLY MARKER IS READ AT THE MOMENT OF THE YES, not when the
+        # offer was made. Between the two the client reads, thinks and
+        # types, and a reply arriving in that gap belongs to the watch.
+        # Unreadable is None and stays None: the watch then keeps its
+        # promise about the send and never makes one about a reply.
         watch = followup.register(
             channel=channel, thread_ts=thread_ts, workspace=scope.workspace,
             campaign_ids=offer.get("campaign_ids") or [],
             baseline=offer.get("baseline") or {},
-            language=offer.get("language"), asked_by=user)
+            language=offer.get("language"), asked_by=user,
+            reply_marker=readback.newest_reply_id())
     except Exception as exc:                                    # noqa: BLE001
         return {"reply": FOLLOWUP_FAILED.get(offer.get("language") or "en",
                                              FOLLOWUP_FAILED["en"]),
@@ -1206,6 +1236,28 @@ def respond(question, channel=None, user=None, channel_type=None,
     but the thread memory."""
     scope = slackscope.resolve(channel=channel, user=user,
                                channel_type=channel_type, rows=rows)
+
+    # OPERATOR GAG, 2026-09-23. Before anything else, because a defect that
+    # reaches a client is not fixed by answering more carefully.
+    #
+    # At 13:28-13:51 the agent told the client "three positive" replies. The
+    # true count from `replies.classify` is ZERO - it had read the provider's
+    # `interested` flag, which is set on autoresponders. It also answered
+    # "what is waiting on your approval" with the fallback twice, while the
+    # fallback text promises exactly that answer, and the three campaigns it
+    # would have named are `awaiting_approval` on the OPERATOR, not on the
+    # client. Seven minutes of latency on top.
+    #
+    # `CLIENT_CHANNEL_GAG` is lifted by the operator once those are live. It
+    # is checked here rather than at the poster because every path below this
+    # line can produce client-visible text.
+    if scope.is_client and CLIENT_CHANNEL_GAG:
+        out = {"at": _now(), "scope": scope.kind, "workspace": scope.workspace,
+               "scope_source": scope.source, "user": user, "channel": channel,
+               "relayed": bool(relay_of), "reply": None, "how": "gagged",
+               "tools": [], "gag_reason": CLIENT_CHANNEL_GAG}
+        return out
+
     # A RELAY ANSWERS THE PARENT, not the sentence that asked for a relay.
     # "@Resonate OS answer this" is an instruction about which question to
     # take, and taking it literally would answer "answer this".

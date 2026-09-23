@@ -132,6 +132,24 @@ PAGE_PAUSE = 1.5
 RATE_LIMIT_BACKOFF = (20, 45, 90, 180, 300)
 #: A slice the provider says is enormous is still walked, but the provider
 #: stops paging somewhere; this bounds a runaway rather than the spend.
+#:
+#: 2026-09-23, MEASURED: "somewhere" is page 400, exactly. Probed directly
+#: against Software Development|51_200|United States -
+#:
+#:     page 399  OK, 11 companies        page 401  HTTP 500
+#:     page 400  OK, 11 companies        page 402  HTTP 500
+#:                                       page 450  HTTP 500
+#:
+#: so this constant coincidentally equals ContactOut's own ceiling and
+#: RAISING IT BUYS NOTHING. The five slices left at page 401 by the
+#: 2026-09-22 run are not resumable by paging, and three of them have
+#: 273k-326k people behind them on the free count.
+#:
+#: THE CONSEQUENCE IS THE STRATEGY, NOT THE CAP. One company-search query
+#: can surface at most ~400 pages of companies however large the population
+#: is. Reaching the rest means SUBDIVIDING the slice - narrower industry,
+#: tighter size band, region instead of country - so each sub-query lands
+#: inside 400 pages. A bigger number here cannot do it.
 MAX_PAGES_PER_SLICE = 400
 
 #: A slice whose free people-count is at least this and which returned NO
@@ -297,7 +315,7 @@ def plan():
     return rows
 
 
-def run():
+def run(max_pages=MAX_PAGES_PER_SLICE):
     load_env()
     state = load_state()
     held = already_held()
@@ -324,7 +342,7 @@ def run():
                 save_state(state)
                 continue
 
-            while record["page"] <= MAX_PAGES_PER_SLICE:
+            while record["page"] <= max_pages:
                 page = fetch_page(industry, bucket, geo, record["page"], key)
                 if page is None:
                     broke.append(key)
@@ -479,6 +497,17 @@ def main(argv=None):
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--report", action="store_true")
+    parser.add_argument(
+        "--max-pages", type=int, default=MAX_PAGES_PER_SLICE,
+        help=("pages per slice before the walk gives up on it. The DEFAULT "
+              "stays %(default)s: five slices ended the 2026-09-22 run sitting "
+              "at page 401 against this cap, and a resume at the default walks "
+              "ZERO pages for them and reports a clean finish - the exact "
+              "false-completion shape 4854964b fixed elsewhere in this file. "
+              "Raising it is a SPEND decision and belongs on the command line, "
+              "not in a constant somebody edits and forgets. NOTE, measured "
+              "2026-09-23: ContactOut itself 500s past page 400, so raising "
+              "this above %(default)s buys nothing - see the constant."))
     args = parser.parse_args(argv)
     if args.report:
         return report()
@@ -487,8 +516,11 @@ def main(argv=None):
         return 0
     if not args.run:
         parser.error("one of --plan, --run or --report")
+    if args.max_pages != MAX_PAGES_PER_SLICE:
+        print(f"  MAX PAGES PER SLICE RAISED: {MAX_PAGES_PER_SLICE} -> "
+              f"{args.max_pages}. This buys pages, and pages cost credits.")
     with singlewalker.held(LOCK):
-        return run()
+        return run(max_pages=args.max_pages)
 
 
 if __name__ == "__main__":

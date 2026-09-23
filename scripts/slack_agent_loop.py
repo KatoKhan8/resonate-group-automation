@@ -244,6 +244,23 @@ def handle(event, seen, dry_run=False, model=None):
                         thread_ts=thread, model=model, relay_of=relay_of)
     reply = result.get("reply") or ""
 
+    # A GAGGED TURN POSTS NOTHING. `reply` is None when
+    # `slackconversation.CLIENT_CHANNEL_GAG` is set and the scope is a client
+    # channel, and the `or ""` above would have turned that into an EMPTY
+    # message in the client's thread - which is worse than the wrong answer
+    # it was meant to prevent, because it looks like the bot broke in front
+    # of them. Checked on `how` rather than on the empty string so a genuine
+    # empty answer from some future path is still a bug rather than silence.
+    if result.get("how") == "gagged":
+        emit("GAGGED %s [%s/%s] - client channel paused: %s"
+             % (message_id, result.get("scope"), result.get("workspace"),
+                str(result.get("gag_reason"))[:120]))
+        seen.add(message_id)
+        log({"kind": "gagged", "message_id": message_id, "channel": channel,
+             "user": user, "thread": thread,
+             "reason": result.get("gag_reason")})
+        return True
+
     if dry_run:
         emit("DRY-RUN %s [%s/%s via %s] tools=%s\n%s"
              % (message_id, result.get("scope"), result.get("workspace"),

@@ -21,10 +21,14 @@ positively identified machine reply may skip the pause.
   python -m src.inbound show
 """
 import argparse
+import contextlib
+import datetime
 import json
+import os
 import sys
 
 from . import (accountpolicy, adapters, campaigns, clients, events, leadstop,
+               providers,
                notify, ooo,
                observability, orchestrator, replies, store)
 
@@ -34,8 +38,101 @@ from . import (accountpolicy, adapters, campaigns, clients, events, leadstop,
 # notification is suppressed. An event on THIS seat with no record match is
 # kept - it might be ours and absence of evidence is never proof.
 # Source: docs/state/PROVIDER-CAMPAIGNS.json (2026-09-20 readback).
+#
+# 2026-09-23: THESE TWO LITERALS WENT STALE AND NOTHING REPORTED IT.
+#
+# They were read back on 2026-09-20, when the account held 86 campaigns and 4
+# were ours. On 2026-09-23 the provider says 119 and 37: the 33 "RESONATE
+# PRODUCTIVE LI B1 SEAT <n>" campaigns (613724-613761) run on 33 DISTINCT
+# seats, none of them 174892 and none of them in the set below. So the first
+# unattributable reply to one of our own B1 campaigns would be dropped here as
+# "positively not ours" and nobody would be told.
+#
+# It has not fired yet - 75 connection requests, 3 accepted, 0 replies - which
+# is luck, not a design. This is the register's own recurring shape: a value
+# that was true when it was written, cached where nothing could notice it had
+# gone stale. The structural answer it prescribes is that such a value carries
+# the date and source it came from and REFUSES rather than answers when it
+# cannot prove it is current. That is what `_owned()` below does.
 OWNED_SEATS = {174892}
 OWNED_CAMPAIGNS = {605732, 605487, 604869, 599020}
+
+#: How old the readback may be before it stops licensing a drop. A campaign
+#: can be created and started inside an hour, so this is short on purpose.
+OWNERSHIP_MAX_AGE_HOURS = 24
+
+#: The ONLY provider routes the reply path may write to. Fragments, matched
+#: case-insensitively against the URL, so a host change cannot void them.
+#:
+#: A reply stops a lead. It does not enrol, pause, resume, create, attach or
+#: set a schedule, and `allow_writes(only=STOP_ROUTES)` is what makes that a
+#: property of the code rather than a claim about it.
+STOP_ROUTES = (
+    "stop-future-emails",     # EmailBison /campaigns/{id}/leads/stop-future-emails
+    "stopleadincampaign",     # HeyReach  /campaign/StopLeadInCampaign
+)
+
+_OWNERSHIP_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "docs", "state", "PROVIDER-CAMPAIGNS.json")
+
+
+def _readback(path=None, now=None):
+    """Seats and campaigns the PROVIDER says are ours, with its own age.
+
+    Returns `(seats, campaigns, fresh, why)`. `fresh` is False whenever the
+    file is missing, unreadable, undated or older than
+    `OWNERSHIP_MAX_AGE_HOURS` - and `why` says which, because "we could not
+    prove ownership" and "this is not ours" must never print the same.
+    """
+    path = path or _OWNERSHIP_FILE
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError) as exc:
+        return set(), set(), False, f"readback unreadable: {exc}"
+
+    block = (data or {}).get("heyreach") or {}
+    seats, camps = set(), set()
+    for row in block.get("resonate_campaigns") or []:
+        cid = row.get("heyreach_campaign_id")
+        if cid is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                camps.add(int(cid))
+        for sender in row.get("senders") or []:
+            sid = sender.get("id")
+            if sid is not None:
+                with contextlib.suppress(TypeError, ValueError):
+                    seats.add(int(sid))
+
+    stamp = (data or {}).get("generated_at")
+    if not stamp:
+        return seats, camps, False, "readback carries no generated_at"
+    try:
+        at = datetime.datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return seats, camps, False, f"unparseable generated_at: {stamp!r}"
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=datetime.timezone.utc)
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    age = (now - at).total_seconds() / 3600.0
+    if age > OWNERSHIP_MAX_AGE_HOURS:
+        return seats, camps, False, (
+            f"readback is {age:.0f}h old (limit {OWNERSHIP_MAX_AGE_HOURS}h); "
+            f"run scripts/provider_truth.py")
+    return seats, camps, True, None
+
+
+def _owned(path=None, now=None):
+    """The sets a drop may be decided against, or `None` meaning REFUSE.
+
+    The literals above are a FLOOR, never a ceiling: they are unioned in so a
+    readback that has lost a campaign cannot make us disown one we know about.
+    """
+    seats, camps, fresh, why = _readback(path=path, now=now)
+    if not fresh:
+        return None, why
+    return (seats | OWNED_SEATS, camps | OWNED_CAMPAIGNS), None
 
 
 def _positively_not_ours(event):
@@ -49,18 +146,29 @@ def _positively_not_ours(event):
     Returns True ONLY when at least one field positively places this event
     on a seat or campaign that is not ours. Returns False for every other
     case: no field, our seat, our campaign, or an unknown value.
+
+    2026-09-23: and False whenever the ownership readback cannot be PROVEN
+    CURRENT. A stale allowlist cannot distinguish "another operator's seat"
+    from "a seat of ours created since the readback", and on 2026-09-23 it
+    held one seat against 33 live ones. Refusing to drop costs a notification
+    nobody needed; dropping wrongly costs a reply nobody saw.
     """
+    owned, _why = _owned()
+    if owned is None:
+        return False
+    owned_seats, owned_campaigns = owned
+
     seat = event.get("linkedin_account_id")
     if seat is not None:
         try:
-            if int(seat) not in OWNED_SEATS:
+            if int(seat) not in owned_seats:
                 return True
         except (TypeError, ValueError):
             pass
     cid = event.get("external_campaign_id")
     if cid is not None:
         try:
-            if int(cid) not in OWNED_CAMPAIGNS:
+            if int(cid) not in owned_campaigns:
                 return True
         except (TypeError, ValueError):
             pass
@@ -83,12 +191,114 @@ def _stop_at_provider(rec, contact, rows=None):
     trade a queued email for a lost one, and the queued email is the thing a
     person can still be told about.
 
-    What it returns is the audit trail: `None` when there was nothing to
-    stop, otherwise the outcome or the reason it could not be done.
+    What it returns is the audit trail: a dict keyed by channel (`email`,
+    `linkedin`), each entry carrying `attempted`, `stopped` and - when it
+    could not be done - the reason. `summarise_stops` turns it into the line
+    a watcher prints.
     """
-    if not contact or not (contact or {}).get("bison_lead_id"):
-        return None
+    # PER CHANNEL, AND "NOT ATTEMPTED" IS AN OUTCOME.
+    #
+    # OPERATOR DECISION 2026-09-23. `reply_watch_loop` printed "the lead is
+    # stopped on both channels" unconditionally, so a lead that was never
+    # stopped reported as stopped - twice, on the safety path. The line is now
+    # built from this return value, so it can only say what happened.
+    #
+    # It returns one entry per channel rather than a single verdict, because
+    # the three outcomes a caller has to tell apart are:
+    #
+    #     stopped       the provider confirmed it on readback
+    #     refused       we tried and could not - somebody may still be written
+    #                   to, and this is the one that raises an alert
+    #     no lead here  this contact was never staged on that channel, which
+    #                   is not a failure and must not read as one
+    #
+    # BOTH CHANNELS ARE NOW ATTEMPTED. Only the EmailBison half was ever
+    # called from here, while `STOP_ROUTES` above has authorised the HeyReach
+    # route the whole time and `leadstop.sweep` has stopped both channels
+    # since TASK-235. So the guarantee in ACCOUNT-OUTREACH.md - a confirmed
+    # reply stops that lead on BOTH channels - was true of the sweep and not
+    # of the live reply path, which is the path that matters. A reply
+    # arriving on LinkedIn has to stop the email sequence and vice versa, and
+    # the operator's 2026-09-23 test is exactly the case that was broken.
+    out = {}
+    for channel, binding, stopper in (
+            ("email", "bison_lead_id", leadstop.stop_contact),
+            ("linkedin", "heyreach_lead_id", leadstop.stop_linkedin_contact)):
+        if not contact or not (contact or {}).get(binding):
+            out[channel] = {"attempted": False, "stopped": False,
+                            "why": f"this contact carries no {binding}, so "
+                                   f"there is nobody to stop on {channel}"}
+            continue
+        out[channel] = _stop_one(rec, contact, rows, channel, stopper)
+    return out
+
+
+#: Channel order in every summary line, so two reads of the same event are
+#: comparable by eye.
+STOP_CHANNELS = ("email", "linkedin")
+
+
+def summarise_stops(outcomes):
+    """One line saying what the stops actually did, and whether any refused.
+
+    Returns `(line, refusals)`. `refusals` is the list a caller alerts on -
+    a stop that was REFUSED means somebody may still be written to after they
+    answered, which is the only outcome here worth waking anybody for.
+
+    "no lead on that channel" is reported and is NOT a refusal. Most contacts
+    are staged on one channel only, and an alert on every single-channel
+    contact is an alert nobody reads by the end of the week.
+    """
+    parts, refusals = [], []
+    for outcome in outcomes or []:
+        stops = (outcome or {}).get("provider_stop") or {}
+        if not isinstance(stops, dict):
+            continue
+        for channel in STOP_CHANNELS:
+            entry = stops.get(channel)
+            if not isinstance(entry, dict):
+                continue
+            if not entry.get("attempted"):
+                parts.append(f"{channel}: no lead")
+            elif entry.get("already"):
+                parts.append(f"{channel}: already stopped")
+            elif entry.get("stopped"):
+                parts.append(f"{channel}: stopped")
+            else:
+                reason = entry.get("why") or entry.get("error") or "unknown"
+                parts.append(f"{channel}: REFUSED ({str(reason)[:120]})")
+                refusals.append({"channel": channel,
+                                 "record": ((outcome or {}).get("applied")
+                                            or {}).get("record_id"),
+                                 "why": str(reason)[:300]})
+    return ("; ".join(parts) if parts else "no provider binding to stop"), \
+        refusals
+
+
+def _stop_one(rec, contact, rows, channel, stopper):
+    """One channel's stop attempt, never raising. See `_stop_at_provider`."""
     try:
+        # THE SCOPE THAT WAS MISSING, 2026-09-23.
+        #
+        # `reply_watch_loop` opts into no write scope. It sets
+        # REPLY_POLL_ENABLED and nothing else, so every stop this function
+        # attempted was refused by `refuse_unauthorized_write` and caught
+        # below as an error nobody read. Megan Ward replied "no thank you" on
+        # LinkedIn at 11:12:33Z; the stop was refused at 11:19:35Z and she
+        # stayed `in_sequence` in EmailBison 491 for 2h07m.
+        #
+        # It hid because EmailBison marks a lead `replied` by itself when the
+        # reply arrives BY EMAIL. Four of five locally-stopped contacts read
+        # `replied` at the provider for that reason alone. The cross-channel
+        # case - a LinkedIn reply stopping an email sequence - is the only
+        # one that depends on this call, and it is the one that was broken.
+        #
+        # `only=STOP_ROUTES` and not a bare scope: this path may stop a lead
+        # and may do nothing else. A future refactor that adds a pause, a
+        # resume or an enrolment here is refused rather than silently
+        # authorised, which is the whole point of the guard the 487 incident
+        # bought.
+        #
         # `persist=False`: INGEST OWNS THE SAVE. See PROBLEM-REGISTER
         # ISSUE-001 and `leadstop._record`. This call sits between
         # `base = store.digest()` and `store.save(recs, expect_digest=base)`,
@@ -97,13 +307,22 @@ def _stop_at_provider(rec, contact, rows=None):
         # the REPLY_RECEIVED event, its classification, the account pause -
         # is discarded. The stop event is written onto the in-memory record
         # instead and rides ingest's single save, like everything else here.
-        return leadstop.stop_contact(rec, contact, events.REPLY_RECEIVED,
-                                     rows=rows, live=True, persist=False)
+        with providers.allow_writes(
+                "reply received: stop this lead on the other channel "
+                "(ACCOUNT-OUTREACH.md). Scoped to stop routes only.",
+                only=STOP_ROUTES):
+            report = stopper(rec, contact, events.REPLY_RECEIVED,
+                             rows=rows, live=True, persist=False)
+        return {"attempted": True, "stopped": bool(report.get("stopped")),
+                "already": bool(report.get("already")),
+                "status_after": report.get("status_after"),
+                "campaign": report.get("campaign"),
+                "lead_id": report.get("lead_id")}
     except Exception as e:
         # Explicitly classified, never swallowed: an unstopped person is the
         # thing somebody has to go and look at.
-        return {"stopped": False, "error": type(e).__name__,
-                "why": str(e)[:200]}
+        return {"attempted": True, "stopped": False,
+                "error": type(e).__name__, "why": str(e)[:200]}
 
 
 def _campaign_for(rec, rows=None):

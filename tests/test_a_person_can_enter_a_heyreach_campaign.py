@@ -897,6 +897,12 @@ class TheSealStillHolds(unittest.TestCase):
             providerwrites.SUPPORTED,
             (providerwrites.LINKEDIN_PAUSE, providerwrites.EMAIL_PAUSE,
              providerwrites.EMAIL_STOP_LEAD,
+             # Added 2026-09-23 by operator decision. NOT prospect-facing:
+             # a stop can only reduce what somebody receives, which is the
+             # opposite direction from every entry below that needed a
+             # CONDITIONAL. The email->LinkedIn half of the cross-channel
+             # stop could not run at all while this was sealed.
+             providerwrites.LINKEDIN_STOP_LEAD,
              providerwrites.EMAIL_CREATE_CAMPAIGN,
              providerwrites.EMAIL_SET_SEQUENCE,
              providerwrites.LINKEDIN_SET_SEQUENCE,

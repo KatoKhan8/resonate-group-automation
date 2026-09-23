@@ -1,15 +1,23 @@
 """Read-only system state for the Slack agent.
 
-Every value here is gathered from local canonical state and heartbeat files.
-No provider API call is made; no write is performed. A readback that fails
+Most values here are gathered from local canonical state and heartbeat
+files. NO WRITE IS PERFORMED anywhere in this module. A readback that fails
 says so rather than returning a cached or invented number.
 
-THE IMPORT CONTRACT. This module imports only from ``store``, ``report``,
-``watchsink``, ``campaigns``, ``events``, and the standard library. It does
-not import ``providerwrites``, ``orchestrator``, ``providers.bison``,
-``providers.heyreach``, or any module that reaches ``store.save``. The Slack
-agent loop imports this module and nothing else for data; the import graph
-is asserted by ``tests.test_slack_agent``.
+TWO FUNCTIONS DO REACH THE PROVIDER, both GETs and both for the same
+reason: canonical state has said ``active`` for weeks on a campaign that
+sent nothing, so "what was sent" has to be asked of the provider rather
+than of us. ``campaign_by_id`` reads the campaign row and ``queue`` reads
+the pre-send queue. They import ``providers.bison`` inside the function,
+which is where the rest of the agent reads a provider from, and they are
+the ONLY provider calls here.
+
+THE IMPORT CONTRACT, which is about writes and is unchanged. This module
+does not import ``providerwrites``, ``orchestrator``, ``push``,
+``leadstop``, or any module that reaches ``store.save``. The Slack agent
+loop imports this module and nothing else for data; the forbidden set is
+asserted against every agent source by
+``tests.test_slack_agent_cannot_act``.
 """
 import json
 import os
@@ -25,6 +33,79 @@ from . import store as _store
 from . import watchsink as _watchesink
 
 UNKNOWN = "UNKNOWN"
+
+#: Pages ONE agent-side queue read will walk for ONE campaign.
+#:
+#: MEASURED 2026-09-23. The provider's default page cap is 40. Campaign 491
+#: reached 645 rows - 43 pages - so `scheduled_emails` REFUSED it, correctly
+#: and completely, on every agent-side read. The agent then reported 491 as
+#: unreadable and answered out of the campaigns it could see: 241 of the
+#: day's 494 sends. The largest campaign in the estate was invisible to every
+#: client answer, and the honest floor the answer carried made that look like
+#: a small omission rather than half the day.
+#:
+#: The number is not the property. THE REFUSAL IS. A queue past this cap
+#: still raises rather than returning a prefix as the whole, and the callers
+#: below still count that campaign unreadable rather than silently short.
+#: `scripts/hard_stop_check.py` took the same decision on the same campaign
+#: the day before, for the same reason, and this is deliberately the same
+#: number: two readers that disagree about how much of a campaign they can
+#: see will disagree about what was sent.
+#: 2026-09-23: the canonical value now lives at
+#: `bison.CAMPAIGN_QUEUE_PAGE_CAP`, and there were THREE readers by then -
+#: this one, `scripts/hard_stop_check.py`, and `bison_watch_loop`, which had
+#: no cap at all and went blind on 491 for hours. It is repeated here rather
+#: than referenced because this module imports `providers.bison` inside its
+#: functions on purpose (see the module docstring), so a module-level
+#: reference would break that. The agreement is enforced by
+#: `tests/test_the_queue_cap_is_one_number.py`, which fails if any of the
+#: three drifts - a test being the only anti-drift mechanism that does not
+#: cost the lazy import.
+QUEUE_PAGE_CAP = 400
+
+
+def queue(campaign_id):
+    """The provider's pre-send queue for one campaign, walked far enough.
+
+    THE ONE PLACE the agent reads a queue. Four functions in
+    `slackagenttools` reached `bison.scheduled_emails` directly and got the
+    40-page default; this module's own contract is that provider reads come
+    through here, and the cap is why that contract is worth keeping - four
+    call sites is four places to forget it.
+
+    Raises whatever the provider raises. A caller that cannot read a queue
+    must report that campaign unreadable; it must never treat the refusal as
+    an empty queue, because a campaign nobody could read is not a campaign
+    that sent nothing.
+    """
+    from .providers import bison
+    return bison.scheduled_emails(campaign_id, cap=QUEUE_PAGE_CAP) or []
+
+
+def newest_reply_id():
+    """The provider's highest reply id right now, or None if unreadable.
+
+    The marker a follow-up watch opens with, so that a reply which arrived
+    BEFORE the client opted in can never be announced as the batch's first.
+    Read here rather than in the deliverer because registration is its only
+    caller and this is where the agent's provider reads live.
+
+    **None is not zero.** Zero is a workspace whose replies all lie ahead;
+    None is a feed that could not be read, and a watch that cannot
+    establish its marker is never promised the reply half at all -
+    `slackfollowup.advance_to_reply` closes it instead of advancing it.
+
+    One page. The feed is newest-first, so the highest id is on it, and a
+    walk would buy nothing.
+    """
+    from .providers import bison
+    try:
+        rows, _cursor = bison.fetch_replies(per_page=25)
+    except Exception:                                           # noqa: BLE001
+        return None
+    ids = [row["id"] for row in (rows or [])
+           if isinstance(row, dict) and isinstance(row.get("id"), int)]
+    return max(ids) if ids else 0
 
 
 def _now_iso():
@@ -311,16 +392,16 @@ def campaign_by_id(campaign_id):
         "updated_at": row.get("updated_at"),
     })
     try:
-        queue = bison.scheduled_emails(campaign_id) or []
+        queue_rows = queue(campaign_id)
     except Exception as exc:                                    # noqa: BLE001
         out["queue_error"] = f"{type(exc).__name__}"
         return out
-    sent_rows = [r for r in queue
+    sent_rows = [r for r in queue_rows
                  if str(r.get("status") or "").lower() in ("sent", "delivered")
                  or r.get("sent_at")]
-    dates = sorted(str(r.get("scheduled_date") or "") for r in queue
+    dates = sorted(str(r.get("scheduled_date") or "") for r in queue_rows
                    if r.get("scheduled_date"))
-    out["queue_rows"] = len(queue)
+    out["queue_rows"] = len(queue_rows)
     out["queue_sent_rows"] = len(sent_rows)
     out["first_scheduled"] = dates[0] if dates else None
     return out
