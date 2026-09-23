@@ -452,9 +452,8 @@ class TestNothingCanSend(unittest.TestCase):
         """
         from src.providers import contactout
         posted = {p for m, p in contactout.ROUTES.values() if m == "POST"}
-        self.assertTrue(posted <= {"/people/count", "/people/search",
-                                   "/domain/enrich", "/company/search"},
-                        posted)
+        from tests.base import CONTACTOUT_READ_ONLY_ROUTES
+        self.assertTrue(posted <= CONTACTOUT_READ_ONLY_ROUTES, posted)
 
     def test_the_push_module_cannot_reach_the_transport(self):
         source = inspect.getsource(push)

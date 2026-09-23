@@ -110,6 +110,24 @@ CASSETTES = os.path.join(FIXTURES, "cassettes")
 FIXTURE_WORKSPACE = {"id": 99, "name": "Fixture Workspace"}
 FIXTURE_SCOPE = "ws%d" % FIXTURE_WORKSPACE["id"]
 
+# The ContactOut routes that may be reached with POST. ONE definition, read by
+# both guards that assert it - `test_providers.TestNoSendPathExists` and
+# `test_invariants.TestNothingCanSend`.
+#
+# It lives HERE, in the test tree, and deliberately not beside
+# `contactout.ROUTES`: a guard that reads its allowlist from the module it is
+# guarding passes whatever that module does, which is not a guard. But two
+# independent COPIES are not the answer either. On 2026-09-22 `c56800ae`
+# established that `POST /company/search` is a paid search rather than a write
+# and added it to the `test_invariants` copy. The `test_providers` copy was
+# not touched, and that guard has been RED ever since - on master as well as
+# here. Two places that know one fact are two places that can disagree, and
+# this pair did, for a day, with a "nothing can send" test carrying the
+# disagreement.
+CONTACTOUT_READ_ONLY_ROUTES = frozenset({
+    "/people/count", "/people/search", "/domain/enrich", "/company/search",
+})
+
 KEY_VARS = ("CONTACTOUT_TOKEN", "BLITZ_API_KEY", "AIARK_KEY", "REOON_KEY", "DELIVERABLE_KEY",
             "BISON_KEY", "BISON_BASE", "HEYREACH_KEY", "APIFY_TOKEN")
 
