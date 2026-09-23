@@ -28,6 +28,60 @@ _9 open at creation. ISSUE-001, 002, 003 and 006 are now closed._
 
 _ ISSUE-010 added 2026-09-20 from the sender-utilisation review._
 
+_ISSUE-011 and REFUTED-006 added 2026-09-23 from the post-reboot reply-stop sweep._
+
+---
+
+### ISSUE-011 · the LinkedIn ownership allowlist went stale and nothing said so
+
+**Status: FIXED in code 2026-09-23, NOT production-verified** — the stop path
+it guards has still never run live. See REFUTED-006 for what this is *not*.
+
+`src/inbound.OWNED_SEATS` held the single literal `{174892}` and
+`OWNED_CAMPAIGNS` four ids, both read back from the provider on 2026-09-20,
+when the account held 86 campaigns of which 4 were ours. Measured 2026-09-23:
+the account holds **119 campaigns and 37 are ours** — the 33 `RESONATE
+PRODUCTIVE LI B1 SEAT <n>` campaigns, ids 613724-613761, on **33 distinct
+seats**, none of them 174892.
+
+So `_positively_not_ours()` answered **True for our own campaigns**, and the
+unmatched-reply notification for a reply to one of them would have been
+dropped as "positively not ours" with nobody told.
+
+**Why it had not fired.** Provider truth, 2026-09-23: across all 33 B1
+campaigns, **75 connection requests, 3 accepted, 0 messages, 0 replies**. The
+window was open; nothing had walked through it. Three connections are already
+accepted, so the first real reply is imminent.
+
+    was         OWNED_SEATS {174892}            1 seat,   4 campaigns
+    provider    613724-613761 + the four       33 seats, 37 campaigns
+    readback    docs/state/PROVIDER-CAMPAIGNS.json, 2026-09-20 → 63h stale
+
+**Fix.** `inbound._readback()` / `_owned()` derive both sets from
+`docs/state/PROVIDER-CAMPAIGNS.json`, union the literals in as a floor so a
+lossy readback cannot make us disown a campaign, and **return `None` — refuse
+— when the file is missing, undated, unparseable or older than
+`OWNERSHIP_MAX_AGE_HOURS` (24)**. On a refusal `_positively_not_ours` drops
+nothing. Refusing costs a notification nobody needed; dropping wrongly costs a
+reply nobody saw, and those are not symmetric.
+
+This is the register's own recurring shape — a value true when written, cached
+where nothing could notice it had gone stale — and the structural answer it
+already prescribes: carry the date and the source, and refuse rather than
+answer when currency cannot be proven. `senderheadroom` was the model.
+
+Tests: `tests/test_ownership_readback_staleness.py`, 13 cases including the
+2026-09-23 case in both directions. `tests/test_task238_attribution.py` now
+pins a fresh readback in `setUp` — its 35 cases are about the drop logic, not
+about staleness. Readback refreshed live: 33 seats, 37 campaigns, our B1 reply
+kept, a foreign seat still dropped.
+
+**Still open on this:** LinkedIn pushes are HALTED in
+`scripts/batch_linkedin_push.py` (`HALT`), and the halt is not lifted by this
+fix. The cross-channel stop has never been exercised on HeyReach. Clear it
+only when a real reply is shown to stop the email side within 15 minutes.
+
+
 ### ISSUE-001 · Reply ingestion discarded the reply event · CRITICAL · **FIXED `0379958d`**
 
 - **Mechanism confirmed by reading, consequence narrower than first claimed,
@@ -864,6 +918,7 @@ engineering judgement that the mailboxes look healthy.
 | REFUTED-003 | Cohort expansion is blocked on an unauthenticated ContactOut | Four credential names were invented. Real names verified, ~36,700 credits remain. `docs/THE-CREDENTIAL-WAS-THERE-ALL-ALONG-2026-09-20.md` |
 | REFUTED-004 | HeyReach 605732 has stalled — no connection request in two days | The graph spends 3h + 3h + 1 day before `CONNECTION_REQUEST`, and 09-19/09-20 were the weekend on a Mon-Fri campaign. `error_code` is null on all three leads and every one reads `InSequence`. The falsifier can only run on Monday |
 | REFUTED-005 | 487 was paused by the provider, or by a decision about the campaign | An audit agent's throwaway probe paused it at 2026-09-20T12:44:45Z by passing a bare dict to `orchestrator.pause`. Nobody decided anything about 487, which is why resuming it overrides no judgement. **12:44:45Z is correct and stands** - it is the campaign's own `updated_at` at the provider. A 2026-09-21 forensic note gave 12:47:36Z; that is the WATCHER's observation time, the moment `bison_watch_loop` next polled and printed `STATUS 487 active -> paused`, and it is 171 seconds later because the loop runs at `--interval 180`. Provider time and observation time are different clocks and the provider's is the one this row records |
+| REFUTED-006 | HeyReach replies were never ingested, so the reply-stop has been failing live and email stops were missed | **No stop was missed, because no reply arrived.** The 33 conversations behind `replywatch.json`'s `ambiguous_identities: 33` are the CLIENT's traffic on seats we share with them — the HeyReach key is workspace-wide and the inbox holds 26,973 conversations. Of the 400 most recent, 12 end with a correspondent message and **none matches any record in our store**. Provider truth: our 33 B1 campaigns have sent 75 connection requests, 0 messages, and received **0 replies**. Separately, `inbound._positively_not_ours` was misread as gating the stop — it gates the unmatched-reply NOTIFICATION only, inside the `unmatched`/`unknown` branch, and the `applied` stop path never consults it. The real defect is ISSUE-011, which is visibility, not a missed stop |
 
 ---
 

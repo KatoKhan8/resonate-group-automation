@@ -213,6 +213,44 @@ def allocate(leads, seats):
     return {seat: rows for seat, rows in plan.items() if rows}
 
 
+# ---------------------------------------------------------------------------
+# HALT, 2026-09-23. Operator instruction during the reply-stop sweep.
+#
+# WHAT WAS AND WAS NOT FOUND, because the first reading of this was wrong and
+# the correction matters more than the alarm:
+#
+#   NOT a missed stop. `inbound._positively_not_ours` gates the unmatched-reply
+#   NOTIFICATION only, and it sits inside the `unmatched`/`unknown` branch. The
+#   stop path never consults it. A reply that matches a record takes the
+#   `applied` branch and stops both channels regardless of seat.
+#
+#   The reply-stop on LinkedIn has NEVER RUN. Provider truth, 2026-09-23:
+#   across all 33 B1 campaigns (613724-613761), 75 connection requests, 3
+#   accepted, 0 messages sent, 0 replies. The 33 conversations the poller
+#   inspected and reported `ambiguous_identities: 33` are the CLIENT's traffic
+#   on seats we share with them, not ours. Nothing was missed because nothing
+#   arrived.
+#
+#   The allowlist IS stale. OWNED_SEATS is {174892} and OWNED_CAMPAIGNS holds
+#   none of 613724-613761, while the 33 live B1 campaigns run on 33 distinct
+#   seats. So the first unattributable reply to one of OUR OWN campaigns will
+#   have its notification silently dropped as "positively not ours". That is a
+#   visibility defect on a safety path, not a missed stop.
+#
+# The halt stands on the narrow ground the operator asked for: three
+# connections are already accepted, so messages - and the first real reply -
+# are imminent, and the cross-channel stop has not once been exercised live on
+# this channel. Clear this constant when the 15-minute stop test passes
+# against a real HeyReach reply. See docs/state/PROBLEM-REGISTER.md.
+HALT = ("LinkedIn pushes are halted: the HeyReach reply-stop has never run "
+        "live (75 connection requests, 3 accepted, 0 replies across the 33 B1 "
+        "campaigns), and inbound.OWNED_SEATS/OWNED_CAMPAIGNS are stale, so an "
+        "unattributable reply to our own campaign would have its notification "
+        "dropped as 'not ours'. No stop has been missed. Clear this when the "
+        "15-minute stop test passes against a real reply.")
+# ---------------------------------------------------------------------------
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--plan", action="store_true")
@@ -253,6 +291,13 @@ def main(argv=None):
     if not args.live:
         print("\n  PLAN ONLY. Nothing was written to HeyReach.")
         return 0
+    if HALT:
+        # Placed BEFORE the veto check on purpose: a waiver is the operator
+        # accepting the copy and the pacing, and it is not an answer to a
+        # reply-stop that does not stop.
+        print("\n  REFUSED: LinkedIn pushes are HALTED.\n")
+        print(f"  {HALT}")
+        return 1
     if not args.veto_waived:
         print("\n  REFUSED: --live needs --veto-waived with the operator's "
               "own words, or the stats post and its fifteen minutes.")

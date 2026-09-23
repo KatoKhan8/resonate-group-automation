@@ -1,10 +1,2122 @@
 {
-  "generated_at": "2026-09-20T19:04:25+00:00",
+  "generated_at": "2026-09-23T10:02:24+00:00",
   "source": "HeyReach public API, read-only. Credential env var: HEYREACH_KEY.",
   "heyreach": {
-    "campaigns_total_in_account": 86,
-    "campaigns_created_by_resonate": 4,
+    "campaigns_total_in_account": 119,
+    "campaigns_created_by_resonate": 37,
     "resonate_campaigns": [
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613761,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 174845",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:28:17.050874Z",
+        "started_at": "2026-09-22T09:11:03.63019Z",
+        "lead_list_id": 956329,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 174845",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956329,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 174845",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174845,
+            "name_hash": "4b7ea684062e",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613757,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 212356",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:27:21.847982Z",
+        "started_at": "2026-09-22T09:11:02.622908Z",
+        "lead_list_id": 956342,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 212356",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956342,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 212356",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 212356,
+            "name_hash": "3248357a4d3e",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613756,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 208253",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:27:19.042957Z",
+        "started_at": "2026-09-22T09:11:01.739151Z",
+        "lead_list_id": 956341,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 208253",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956341,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 208253",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 208253,
+            "name_hash": "388b46b896c4",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613755,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 208242",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:27:16.19363Z",
+        "started_at": "2026-09-22T09:11:00.103092Z",
+        "lead_list_id": 956340,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 208242",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956340,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 208242",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 208242,
+            "name_hash": "165a02b63af7",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613754,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 201978",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:27:12.584643Z",
+        "started_at": "2026-09-22T09:10:59.072084Z",
+        "lead_list_id": 956339,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 201978",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956339,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 201978",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 201978,
+            "name_hash": "4b3ec378bfb9",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613753,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 201959",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:27:09.713461Z",
+        "started_at": "2026-09-22T09:10:57.929754Z",
+        "lead_list_id": 956338,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 201959",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956338,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 201959",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 201959,
+            "name_hash": "618ac60b96e3",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613752,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 191848",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:27:06.846844Z",
+        "started_at": "2026-09-22T09:10:56.73045Z",
+        "lead_list_id": 956337,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 191848",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956337,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 191848",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 191848,
+            "name_hash": "40d908e1069c",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613751,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 181658",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:27:03.160309Z",
+        "started_at": "2026-09-22T09:10:55.173205Z",
+        "lead_list_id": 956336,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 181658",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956336,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 181658",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 181658,
+            "name_hash": "0e8779efd5c6",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613750,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 181653",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:27:00.169626Z",
+        "started_at": "2026-09-22T09:10:54.207826Z",
+        "lead_list_id": 956335,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 181653",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956335,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 181653",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 181653,
+            "name_hash": "b0dd0bf603c0",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613749,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 179527",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:26:56.814199Z",
+        "started_at": "2026-09-22T09:10:53.15323Z",
+        "lead_list_id": 956334,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 179527",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956334,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 179527",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 179527,
+            "name_hash": "479a8940a199",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613748,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 177751",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:26:54.146552Z",
+        "started_at": "2026-09-22T09:10:51.849924Z",
+        "lead_list_id": 956333,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 177751",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956333,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 177751",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 177751,
+            "name_hash": "1ba930be9311",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613747,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 175552",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:26:51.1031Z",
+        "started_at": "2026-09-22T09:10:50.264076Z",
+        "lead_list_id": 956332,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 175552",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956332,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 175552",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 175552,
+            "name_hash": "c564c46018e9",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613746,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 175455",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:26:48.106693Z",
+        "started_at": "2026-09-22T09:10:49.309718Z",
+        "lead_list_id": 956331,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 175455",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956331,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 175455",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 175455,
+            "name_hash": "3b38ee19a1b8",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613744,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 174892",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:26:34.454581Z",
+        "started_at": "2026-09-22T09:10:48.227556Z",
+        "lead_list_id": 956330,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 174892",
+        "lead_count": 4,
+        "list_detail": {
+          "id": 956330,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 174892",
+          "count": 4,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174892,
+            "name_hash": "d7b929fb95a5",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613742,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 174822",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:26:05.333701Z",
+        "started_at": "2026-09-22T09:10:46.991842Z",
+        "lead_list_id": 956328,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 174822",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956328,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 174822",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174822,
+            "name_hash": "39f05f90f56f",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613741,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 174810",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:26:02.320718Z",
+        "started_at": "2026-09-22T09:10:46.113017Z",
+        "lead_list_id": 956327,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 174810",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956327,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 174810",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174810,
+            "name_hash": "5ed6be298e23",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613740,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 174803",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:58.868792Z",
+        "started_at": "2026-09-22T09:10:44.734229Z",
+        "lead_list_id": 956326,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 174803",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956326,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 174803",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174803,
+            "name_hash": "9e43475b3b85",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613739,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 174797",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:55.133001Z",
+        "started_at": "2026-09-22T09:10:43.505214Z",
+        "lead_list_id": 956325,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 174797",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956325,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 174797",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174797,
+            "name_hash": "ddf3257c8492",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613738,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 174748",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:51.819745Z",
+        "started_at": "2026-09-22T09:10:41.686101Z",
+        "lead_list_id": 956324,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 174748",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956324,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 174748",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174748,
+            "name_hash": "7cc85aecf642",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613737,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 174742",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:49.296475Z",
+        "started_at": "2026-09-22T09:10:39.664199Z",
+        "lead_list_id": 956323,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 174742",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956323,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 174742",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174742,
+            "name_hash": "c62bbb200b21",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613736,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 174332",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:46.644307Z",
+        "started_at": "2026-09-22T09:10:37.824732Z",
+        "lead_list_id": 956322,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 174332",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956322,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 174332",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 174332,
+            "name_hash": "9e58861fb87e",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613735,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 169600",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:43.815174Z",
+        "started_at": "2026-09-22T09:10:36.3955Z",
+        "lead_list_id": 956321,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 169600",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956321,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 169600",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 169600,
+            "name_hash": "6a9f3b2f7db3",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613734,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 159259",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:41.184572Z",
+        "started_at": "2026-09-22T09:10:35.772093Z",
+        "lead_list_id": 956320,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 159259",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956320,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 159259",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 159259,
+            "name_hash": "0af5fa68e431",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613733,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 143105",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:38.557724Z",
+        "started_at": "2026-09-22T09:10:35.130403Z",
+        "lead_list_id": 956319,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 143105",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956319,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 143105",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 143105,
+            "name_hash": "174130483158",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613732,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 139699",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:35.489221Z",
+        "started_at": "2026-09-22T09:10:32.754189Z",
+        "lead_list_id": 956318,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 139699",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956318,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 139699",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 139699,
+            "name_hash": "5a2429140c70",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613731,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 129082",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:32.876162Z",
+        "started_at": "2026-09-22T09:10:31.489883Z",
+        "lead_list_id": 956317,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 129082",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956317,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 129082",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 129082,
+            "name_hash": "9cad4ad7c67d",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613730,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 125775",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:30.258166Z",
+        "started_at": "2026-09-22T09:10:29.708856Z",
+        "lead_list_id": 956316,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 125775",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956316,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 125775",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 125775,
+            "name_hash": "2501b1cbf143",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613729,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 125748",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:27.84745Z",
+        "started_at": "2026-09-22T09:10:28.564708Z",
+        "lead_list_id": 956315,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 125748",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956315,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 125748",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 125748,
+            "name_hash": "c2a7b14ccc3e",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613728,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 119588",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:25.121066Z",
+        "started_at": "2026-09-22T09:10:27.14311Z",
+        "lead_list_id": 956314,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 119588",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956314,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 119588",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 119588,
+            "name_hash": "de163884cd4e",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613727,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 116989",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:21.915838Z",
+        "started_at": "2026-09-22T09:10:26.068019Z",
+        "lead_list_id": 956313,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 116989",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956313,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 116989",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 116989,
+            "name_hash": "c7ad25d068ff",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613726,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 116988",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:17.218589Z",
+        "started_at": "2026-09-22T09:10:23.799762Z",
+        "lead_list_id": 956312,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 116988",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956312,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 116988",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 116988,
+            "name_hash": "fe49874b761b",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613725,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 116973",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:14.1804Z",
+        "started_at": "2026-09-22T09:10:22.219001Z",
+        "lead_list_id": 956311,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 116973",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956311,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 116973",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 116973,
+            "name_hash": "c4b8c5c7fd26",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
+      {
+        "internal_campaign_id": null,
+        "heyreach_campaign_id": 613724,
+        "name": "RESONATE PRODUCTIVE LI B1 SEAT 116968",
+        "status": "IN_PROGRESS",
+        "classification": "LIVE",
+        "created": "2026-09-21T21:25:11.349106Z",
+        "started_at": "2026-09-22T09:10:21.299776Z",
+        "lead_list_id": 956310,
+        "lead_list_name": "RESONATE PRODUCTIVE LI B1 SEAT 116968",
+        "lead_count": 5,
+        "list_detail": {
+          "id": 956310,
+          "name": "RESONATE PRODUCTIVE LI B1 SEAT 116968",
+          "count": 5,
+          "type": "USER_LIST"
+        },
+        "senders": [
+          {
+            "id": 116968,
+            "name_hash": "bfb06aace99a",
+            "active": true,
+            "resolves": true
+          }
+        ],
+        "organization_unit_id": 118832,
+        "sequence": {
+          "readable": true,
+          "truncated": false,
+          "unique_nodes": 20,
+          "node_types": {
+            "CHECK_IS_CONNECTION": 1,
+            "MESSAGE": 6,
+            "FOLLOW": 1,
+            "END": 9,
+            "CONNECTION_REQUEST": 1,
+            "VIEW_PROFILE": 2
+          },
+          "distinct_types": [
+            "CHECK_IS_CONNECTION",
+            "CONNECTION_REQUEST",
+            "END",
+            "FOLLOW",
+            "MESSAGE",
+            "VIEW_PROFILE"
+          ],
+          "nodes_carrying_copy": 7,
+          "messages_per_node_by_type": {
+            "MESSAGE": [
+              3,
+              2,
+              4,
+              3,
+              2,
+              4
+            ],
+            "CONNECTION_REQUEST": [
+              1
+            ]
+          },
+          "sequence_hash": "2f7bb33ee7f6ce5a"
+        },
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
+      },
       {
         "internal_campaign_id": null,
         "heyreach_campaign_id": 605732,
@@ -68,7 +2180,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-20T19:04:25+00:00"
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -133,7 +2245,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-20T19:04:25+00:00"
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
       },
       {
         "internal_campaign_id": null,
@@ -198,7 +2310,7 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-20T19:04:25+00:00"
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
       },
       {
         "internal_campaign_id": "productive-linkedin-production-v1",
@@ -263,11 +2375,11 @@
           },
           "sequence_hash": "32f8dde79bfa0f27"
         },
-        "last_provider_readback": "2026-09-20T19:04:25+00:00"
+        "last_provider_readback": "2026-09-23T10:02:24+00:00"
       }
     ],
     "status_totals": {
-      "IN_PROGRESS": 13,
+      "IN_PROGRESS": 46,
       "DRAFT": 9,
       "FINISHED": 32,
       "PAUSED": 32
@@ -275,7 +2387,7 @@
     "linkedin_accounts_available": 41
   },
   "internal_vs_provider": {
-    "internal_records": 18,
+    "internal_records": 26,
     "internal_heyreach_ids": [
       "594061",
       "599020",
