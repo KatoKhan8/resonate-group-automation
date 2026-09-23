@@ -77,11 +77,199 @@ from . import keepawake, notify, singlewalker, store
 #   `None` is therefore a DECLARATION, not a default. A new monitor with no
 #   `heartbeat` key fails `test_every_monitor_declares_where_its_beat_lands`.
 
-MONITORS = [
-    {"name": "bison_mailbox_utilisation",
-     "module": "scripts.bison_mailbox_utilisation",
-     "args": ["--interval", "300"], "interval": 300,
-     "heartbeat": None},
+# ---------------------------------------------------------- the one table
+#
+# OPERATOR DECISION 2026-09-23. There is ONE monitor table and it is here.
+# `scripts/start_monitors.py` carried a second, hand-written one; it read
+# 12 monitors where this read 8, and they disagreed in both directions - the
+# hand-written list had the four LIVE campaign watchers (491, 492, 494, 495)
+# and this one had 487 and 489, which are finished. Units generated from the
+# wrong one would have watched two dead campaigns and none of the sending
+# ones, and `cold_start --verify` would have called that healthy.
+#
+# THE CAMPAIGN WATCHERS ARE DERIVED, NOT LISTED. A hand-written campaign list
+# is a list somebody has to remember to edit the day a campaign goes live,
+# and the cost of forgetting is a campaign that sends unwatched. The rule:
+#
+#     running or paused                           -> watched, always
+#     finished, inside the grace window           -> watched
+#     finished, past it, leads still in sequence  -> watched
+#     finished, past it, none in sequence         -> retired
+#
+# That covers 491-498 today, including 493/496/497/498 whose first sends are
+# tomorrow; it keeps 495 watched while it holds leads that were stopped but
+# are not finished; and it retires 487 and 489 without anyone editing a list.
+
+RETIRE_AFTER_DAYS = 7
+
+#: This system's words for the provider's "active" and "paused". A PAUSED
+#: campaign is watched precisely BECAUSE it is paused: the provider's
+#: scheduler has resumed one by itself before - 489 re-planned itself three
+#: days earlier with no write from us.
+LIVE_STATUSES = ("running", "paused")
+
+#: It is over, and the retirement clock may start.
+FINISHED_STATUSES = ("completed", "rejected", "failed")
+
+
+class RegistryUnreadable(Exception):
+    """The campaign registry could not be read. NOT the same as no campaigns."""
+
+
+class UnknownSequenceState(Exception):
+    """Raised by a leads-in-sequence source that cannot answer."""
+
+
+def _no_sequence_source(provider, campaign_id):
+    """The default, and it REFUSES rather than answering zero.
+
+    Whether a finished campaign still holds leads in sequence is provider
+    lead state. This module does not call providers - a table consulted on
+    every supervisor tick must not make network calls - so the answer is
+    injected. Until it is, this raises, and `campaign_monitors` reads a raise
+    as "keep watching".
+
+    IT MUST NOT DEFAULT TO ZERO. Zero retires the watcher, and a campaign
+    unwatched because we could not tell is the exact state this table exists
+    to prevent. An extra watcher costs provider calls. A missing one costs
+    the thing the watcher was for.
+    """
+    raise UnknownSequenceState(
+        "no leads-in-sequence source configured for %s %s" % (provider, campaign_id))
+
+
+def _finished_at(row):
+    """When the retirement clock started, or None if it has not.
+
+    Read from the CAMPAIGN ROW, never from the watcher's own heartbeat. A
+    watcher that has died writes no beat, and a retirement rule reading the
+    beat would conclude the campaign was quiet and retire the watcher that
+    was supposed to notice - a self-confirming failure that gets quieter the
+    worse it gets.
+    """
+    return row.get("completed_at") or None
+
+
+def _age_days(stamp, now):
+    if not stamp:
+        return None
+    try:
+        when = datetime.datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=datetime.timezone.utc)
+    return (now - when).total_seconds() / 86400.0
+
+
+def _watch_campaign(row, provider, campaign_id, now, sequence_source):
+    """Does this campaign get a watcher? Returns (watch, why)."""
+    status = str(row.get("status") or "").strip().lower()
+    if status in LIVE_STATUSES:
+        return True, status
+    if status not in FINISHED_STATUSES:
+        # An unrecognised status is NOT "not running". Same literal-set trap
+        # `collision` documents: every word this system does not know
+        # answered False and silently meant "safe".
+        return True, "unknown status %r" % (status,)
+    age = _age_days(_finished_at(row), now)
+    if age is None:
+        return True, "finished with no completed_at to age from"
+    if age < RETIRE_AFTER_DAYS:
+        return True, "finished %.1fd ago, inside the %dd grace" % (age, RETIRE_AFTER_DAYS)
+    try:
+        in_sequence = sequence_source(provider, campaign_id)
+    except UnknownSequenceState as exc:
+        return True, "cannot prove it is empty: %s" % (exc,)
+    if in_sequence:
+        return True, "finished but %s leads still in sequence" % (in_sequence,)
+    return False, "finished %.1fd ago, none in sequence" % (age,)
+
+
+def campaign_monitors(rows=None, now=None, sequence_source=None):
+    """One watcher per campaign the rule above says to watch.
+
+    `rows` defaults to the canonical campaign registry and is a PARAMETER so
+    this stays a pure function of its inputs.
+    """
+    if rows is None:
+        import os as _os
+
+        from . import campaigns
+
+        # MEASURED 2026-09-23, and the reason this is not a one-liner.
+        # `campaigns.load()` returns an EMPTY SNAPSHOT when the registry file
+        # is absent - it does not raise. Reading it straight would therefore
+        # turn "I cannot see the registry" into "there are no campaigns", the
+        # derived half of the table would vanish, and the supervisor would
+        # come up with five static loops, watch nothing, and report itself
+        # healthy. That is the precise failure this whole table exists to
+        # prevent, arriving through the reader instead of the list.
+        #
+        # An empty registry that IS readable is a different answer and is
+        # allowed through: a host with a real, empty campaign file has no
+        # campaigns to watch.
+        path = campaigns.path()
+        if not _os.path.exists(path):
+            raise RegistryUnreadable(
+                "campaign registry not found at %s - refusing to report an "
+                "empty monitor table, which would unwatch every campaign"
+                % (path,))
+        rows = list(campaigns.load())
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    source = sequence_source or _no_sequence_source
+    out = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        for provider, key, module, interval in (
+                ("bison", "bison_campaign_id", "scripts.bison_watch_loop", 180),
+                ("heyreach", "heyreach_campaign_id",
+                 "scripts.heyreach_watch_loop", 300)):
+            raw = row.get(key)
+            if raw in (None, ""):
+                continue
+            campaign_id = str(raw).strip()
+            watch, why = _watch_campaign(row, provider, campaign_id, now, source)
+            if not watch:
+                continue
+            # `heyreach_watch_loop` takes NO --campaign: it watches the
+            # campaigns it finds itself, and passing one made argparse exit 2
+            # before the first beat. Measured 2026-09-23.
+            args = ([] if provider == "heyreach"
+                    else ["--campaign", campaign_id, "--interval", str(interval)])
+            out.append({
+                "name": "%s_watch_%s" % (provider, campaign_id),
+                "module": module,
+                "args": args,
+                "interval": interval,
+                "heartbeat": {"source": provider, "campaign": campaign_id},
+                "derived": why,
+            })
+    # One heyreach loop however many campaigns are bound to it, because it
+    # takes no --campaign. Keep the first by campaign id so the choice is
+    # deterministic rather than file-order.
+    kept, seen = [], set()
+    for entry in sorted(out, key=lambda m: m["name"]):
+        key = ("heyreach" if entry["module"].endswith("heyreach_watch_loop")
+               else entry["name"])
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(entry)
+    return kept
+
+
+#: The loops that are not per-campaign, listed once with where each beat
+#: actually lands.
+#:
+#: `bison_mailbox_utilisation` IS DELIBERATELY ABSENT. It writes no heartbeat,
+#: so it can never have a second witness and can never be verified; counting
+#: it UP on a pid alone is the claim a reused pid forges across a reboot.
+#: Whether it is a loop or a nightly job is production's decision, filed in
+#: docs/QUESTIONS-FOR-PRODUCTION-2026-09-23.md. Until it is answered it is
+#: not in this table and nothing starts it.
+STATIC_MONITORS = [
     {"name": "reply_watch",
      "module": "scripts.reply_watch_loop",
      "args": ["--interval", "300"], "interval": 300,
@@ -90,18 +278,6 @@ MONITORS = [
      "module": "scripts.notify_deliver_loop",
      "args": ["--interval", "60"], "interval": 60,
      "heartbeat": {"file": "notify-deliver.json"}},
-    {"name": "bison_watch_487",
-     "module": "scripts.bison_watch_loop",
-     "args": ["--campaign", "487", "--interval", "180"], "interval": 180,
-     "heartbeat": {"source": "bison", "campaign": "487"}},
-    {"name": "bison_watch_489",
-     "module": "scripts.bison_watch_loop",
-     "args": ["--campaign", "489", "--interval", "180"], "interval": 180,
-     "heartbeat": {"source": "bison", "campaign": "489"}},
-    {"name": "heyreach_watch",
-     "module": "scripts.heyreach_watch_loop",
-     "args": ["--interval", "300"], "interval": 300,
-     "heartbeat": {"source": "heyreach", "campaign": 605732}},
     {"name": "digest",
      "module": "scripts.digest_loop",
      "args": ["--interval", "300"], "interval": 300,
@@ -110,7 +286,24 @@ MONITORS = [
      "module": "scripts.slack_agent_loop",
      "args": [], "interval": None,
      "heartbeat": {"file": "slack-agent.json"}},
+    {"name": "slack_followup",
+     "module": "scripts.slack_followup_loop",
+     "args": ["--interval", "60"], "interval": 60,
+     "heartbeat": {"file": "slack-followup.json"}},
 ]
+
+
+def monitors(rows=None, now=None, sequence_source=None):
+    """THE table: the listed loops plus the campaigns the rule says to watch.
+
+    A function and not a constant, deliberately. `MONITORS` used to be a
+    module-level list, and a DERIVED table computed at import would freeze at
+    process start - this estate has loops that import once and run for days,
+    so a campaign launched at noon would go unwatched until the next restart.
+    `test_the_table_is_not_frozen_at_import` pins that.
+    """
+    return list(STATIC_MONITORS) + campaign_monitors(
+        rows=rows, now=now, sequence_source=sequence_source)
 
 
 def heartbeat_file(mon):
@@ -572,13 +765,17 @@ def format_status(monitors, lock_dir=None, state_dir=None):
 
 # --------------------------------------------------------- main loop
 
-def _run(monitors=None, lock_dir=None, state_dir=None):
+def _run(table=None, lock_dir=None, state_dir=None):
     """The supervisor main loop. Foreground, logs to stdout/stderr.
 
     Starts every declared monitor, polls for exits, restarts crashed ones
     with backoff, notifies on repeated deaths, propagates SIGTERM.
     """
-    monitors = monitors if monitors is not None else MONITORS
+    # `table`, not `monitors`: the module-level `monitors()` is now a
+    # function, and a parameter of the same name would shadow it here -
+    # the supervisor would then run whatever it was handed and never be
+    # able to ask for the current table at all.
+    monitors = table if table is not None else monitors()
     tracker = _DeathTracker()
     children = {}           # name -> Popen
     failures = {}           # name -> consecutive failure count

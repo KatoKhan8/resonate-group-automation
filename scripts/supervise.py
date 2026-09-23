@@ -29,7 +29,7 @@ def main():
     args = parser.parse_args()
 
     if args.status:
-        print(supervisor.format_status(supervisor.MONITORS))
+        print(supervisor.format_status(supervisor.monitors()))
         return
 
     supervisor._run()

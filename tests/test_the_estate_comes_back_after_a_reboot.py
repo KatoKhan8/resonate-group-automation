@@ -36,6 +36,24 @@ MON_NO_BEAT = {"name": "probe_silent", "module": "scripts.probe_silent",
 BOOT = 1_000_000.0
 
 
+#: Injected registry for the derived half of the table, so these tests assert
+#: the heartbeat CONTRACT and not which campaigns happen to be live today.
+TABLE_ROWS = [
+    {"campaign_id": "c491", "status": "running", "bison_campaign_id": 491},
+    {"campaign_id": "hr", "status": "running", "heyreach_campaign_id": 605732},
+]
+
+
+def _table():
+    """The real table over an injected registry.
+
+    Built from `STATIC_MONITORS` + `campaign_monitors` rather than by calling
+    `supervisor.monitors()`, because tests below PATCH `supervisor.monitors`
+    with this function - calling it here would recurse into the patch."""
+    return list(supervisor.STATIC_MONITORS) + supervisor.campaign_monitors(
+        rows=TABLE_ROWS, sequence_source=lambda p, c: 0)
+
+
 class _ColdStartTest(unittest.TestCase):
     """A fake estate: its own state dir, lock dir and heartbeat dir."""
 
@@ -267,6 +285,7 @@ class ThePlanTouchesNothing(_ColdStartTest):
     def test_a_plain_run_starts_nothing_and_removes_nothing(self):
         old = self.write_lock("reply_watch.lock", BOOT - 100)
         with mock.patch.object(cold_start, "boot_time", lambda: BOOT), \
+             mock.patch.object(supervisor, "monitors", _table), \
              mock.patch.object(supervisor, "_run") as run:
             rc = cold_start.main([])
 
@@ -274,6 +293,32 @@ class ThePlanTouchesNothing(_ColdStartTest):
         run.assert_not_called()
         self.assertTrue(os.path.exists(old),
                         "the default run deleted a lock")
+
+    def test_an_unreadable_registry_refuses_instead_of_reporting_an_estate(self):
+        """The derived half of the table comes from the campaign registry,
+        and `campaigns.load()` answers an ABSENT file with an empty snapshot
+        rather than an error.
+
+        Read straight, that turns "I cannot see the registry" into "there are
+        no campaigns": cold start would come up, find the five static loops,
+        find them healthy, and report the estate recovered while every
+        campaign watcher was missing. Measured 2026-09-23 - this is why
+        `campaign_monitors` checks the file exists before trusting the load.
+        """
+        old = self.write_lock("reply_watch.lock", BOOT - 100)
+
+        def refuse():
+            raise supervisor.RegistryUnreadable("no registry in this test")
+
+        with mock.patch.object(cold_start, "boot_time", lambda: BOOT), \
+             mock.patch.object(supervisor, "monitors", refuse), \
+             mock.patch.object(supervisor, "_run") as run:
+            rc = cold_start.main([])
+
+        self.assertEqual(rc, 2, "an unreadable registry must not exit 0")
+        run.assert_not_called()
+        self.assertTrue(os.path.exists(old),
+                        "the refusal deleted a lock")
 
 
 class TheAutostartCommandSurvivesTheMigration(unittest.TestCase):
@@ -332,7 +377,7 @@ class TheSupervisorHoldsThePowerRequest(unittest.TestCase):
                                lambda: {"error": None}),              mock.patch.object(supervisor, "_supervise",
                                lambda *a, **k: order.append("loop")
                                or "loop ran"):
-            result = supervisor._run(monitors=[])
+            result = supervisor._run(table=[])
 
         self.assertEqual(result, "loop ran")
         self.assertEqual(order, ["acquire", "loop", "release"])
@@ -350,7 +395,7 @@ class TheSupervisorHoldsThePowerRequest(unittest.TestCase):
                                lambda **k: released.append(1)),              mock.patch.object(keepawake, "status",
                                lambda: {"error": None}),              mock.patch.object(supervisor, "_supervise", boom):
             with self.assertRaises(RuntimeError):
-                supervisor._run(monitors=[])
+                supervisor._run(table=[])
 
         self.assertEqual(released, [1],
                          "a crash left the power request held")
@@ -363,7 +408,7 @@ class TheSupervisorHoldsThePowerRequest(unittest.TestCase):
         with mock.patch.object(keepawake, "acquire",
                                lambda **k: False),              mock.patch.object(supervisor, "_supervise",
                                lambda *a, **k: "loop ran anyway"):
-            result = supervisor._run(monitors=[])
+            result = supervisor._run(table=[])
 
         self.assertEqual(result, "loop ran anyway")
 
@@ -381,7 +426,7 @@ class EveryMonitorSaysWhereItsBeatLands(unittest.TestCase):
     """
 
     def test_every_monitor_declares_where_its_beat_lands(self):
-        missing = [m["name"] for m in supervisor.MONITORS
+        missing = [m["name"] for m in _table()
                    if "heartbeat" not in m]
         self.assertEqual(
             missing, [],
@@ -390,7 +435,7 @@ class EveryMonitorSaysWhereItsBeatLands(unittest.TestCase):
             "second witness', which is a finding, not a default." % (missing,))
 
     def test_a_declared_beat_resolves_to_a_path(self):
-        for mon in supervisor.MONITORS:
+        for mon in _table():
             path = supervisor.heartbeat_file(mon)
             if mon["heartbeat"] is None:
                 self.assertIsNone(path, mon["name"])
@@ -422,15 +467,16 @@ class EveryMonitorSaysWhereItsBeatLands(unittest.TestCase):
         every monitor down."""
         expected = {
             "reply_watch": "replies.json",
-            "bison_watch_487": "bison-487.json",
-            "bison_watch_489": "bison-489.json",
-            "heyreach_watch": "heyreach-605732.json",
             "notify_deliver": "notify-deliver.json",
             "digest": "digest.json",
             "slack_agent": "slack-agent.json",
-            "bison_mailbox_utilisation": None,
+            "slack_followup": "slack-followup.json",
+            # DERIVED, from TABLE_ROWS above - the campaign watchers are no
+            # longer hand-listed, but where their beat lands is still pinned.
+            "bison_watch_491": "bison-491.json",
+            "heyreach_watch_605732": "heyreach-605732.json",
         }
-        for mon in supervisor.MONITORS:
+        for mon in _table():
             path = supervisor.heartbeat_file(mon)
             want = expected[mon["name"]]
             got = os.path.basename(path) if path else None

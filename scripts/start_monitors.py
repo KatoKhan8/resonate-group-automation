@@ -79,38 +79,66 @@ BEATS = os.path.join(WORK, "heartbeat")
 STALE_SECONDS = 1200
 
 #: watcher name in work/heartbeat/<name>.json  ->  argv after `py -3`
-MONITORS = [
-    ("replies",          ["scripts/reply_watch_loop.py", "--interval", "300"]),
-    ("notify-deliver",   ["scripts/notify_deliver_loop.py"]),
-    ("digest",           ["scripts/digest_loop.py"]),
-    ("bison-487",        ["scripts/bison_watch_loop.py", "--campaign", "487", "--interval", "180"]),
-    ("bison-489",        ["scripts/bison_watch_loop.py", "--campaign", "489", "--interval", "180"]),
-    ("bison-491",        ["scripts/bison_watch_loop.py", "--campaign", "491", "--interval", "180"]),
-    ("bison-492",        ["scripts/bison_watch_loop.py", "--campaign", "492", "--interval", "180"]),
-    ("bison-494",        ["scripts/bison_watch_loop.py", "--campaign", "494", "--interval", "180"]),
-    ("bison-495",        ["scripts/bison_watch_loop.py", "--campaign", "495", "--interval", "180"]),
-    # `heyreach_watch_loop` takes NO --campaign: it watches the campaigns it
-    # finds itself. Passing one made argparse exit 2 before the first beat,
-    # which is exactly the failure --status is meant to surface. It did.
-    ("heyreach-605732",  ["scripts/heyreach_watch_loop.py", "--interval", "300"]),
-    ("slack-agent",      ["scripts/slack_agent_loop.py"]),
-    # `slack_followup_loop` was NOT in this table and was NOT running, so the
-    # "restart it after D3" in the afternoon plan was a START, not a restart,
-    # and a reboot would have killed it with nothing to bring it back - the
-    # same gap §8 records for the 90k walk. It belongs here because
-    # `slackfollowup.deliverer_is_running()` reads its heartbeat to decide
-    # whether the agent may offer the follow-up at all: an absent loop is not
-    # a quiet loop, and the offer must not be made on a heartbeat that no
-    # process is writing.
-    ("slack-followup",   ["scripts/slack_followup_loop.py", "--interval", "60"]),
-]
+#: OPERATOR DECISION 2026-09-23: there is ONE monitor table and it lives in
+#: `src/supervisor.py`. The hand-written list that used to sit here carried
+#: 12 monitors where the supervisor carried 8, and they disagreed in both
+#: directions - this one had the four LIVE campaign watchers and the
+#: supervisor had 487 and 489, which are finished. Two tables is how the
+#: thing that starts the estate and the thing that verifies it came to
+#: disagree about what the estate IS.
+#:
+#: This file's own docstring predicted the merge and said the table would
+#: move into the supervisor. It has. What is left here is the Windows-side
+#: starting and the two-witness check, which the supervisor does not do.
+
+
+def _script_of(mon):
+    """`scripts.bison_watch_loop` -> `scripts/bison_watch_loop.py`.
+
+    The supervisor spawns `python -m scripts.x`; this file matches and starts
+    command lines like `python scripts/x.py`. One table, two spellings of the
+    same entry point, converted in ONE place so they cannot drift.
+    """
+    return mon["module"].replace(".", "/") + ".py"
+
+
+def monitors():
+    """(name, argv) for every monitor, from the one table.
+
+    A FUNCTION, not a constant, because the campaign half of the table is
+    derived from the registry: a campaign launched at noon has a watcher
+    immediately rather than at the next restart.
+    """
+    from src import supervisor
+
+    return [(mon["name"], [_script_of(mon)] + list(mon.get("args") or []))
+            for mon in supervisor.monitors()]
+
+
+def beat_path(name):
+    """Where this monitor's beat lands, ASKED OF THE SUPERVISOR.
+
+    This file used to compute `work/heartbeat/<name>.json` itself. That was
+    the second copy of a liveness rule, and the supervisor's own table
+    comment names the drift it causes: three loops write their beat directly
+    and do not follow that pattern at all, so the guess was wrong for them.
+    """
+    from src import supervisor
+
+    for mon in supervisor.monitors():
+        if mon["name"] == name:
+            return supervisor.heartbeat_file(mon)
+    return None
+
 
 TASK_NAME = "ResonateMonitors"
 
 
 def beat_age(name, now=None):
     """Seconds since this watcher last beat, or None if it never has."""
-    path = os.path.join(BEATS, f"{name}.json")
+    path = beat_path(name)
+    if not path:
+        return None
     try:
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
@@ -190,7 +218,7 @@ def status(out=print):
     down = 0
     out(f"{'watcher':<20} {'state':<7} {'last beat':>12}  witness")
     out("-" * 56)
-    for name, argv in MONITORS:
+    for name, argv in monitors():
         st, age = state(name, now=now, argv=argv, procs=procs)
         if st != "UP":
             down += 1
@@ -201,7 +229,7 @@ def status(out=print):
             [w for w, on in (("beat", fresh), ("process", alive)) if on]) or "-"
         out(f"{name:<20} {st:<7} {shown:>12}  {witness}")
     out("-" * 56)
-    out(f"{len(MONITORS) - down} UP, {down} not UP "
+    out(f"{len(monitors()) - down} UP, {down} not UP "
         f"(stale after {STALE_SECONDS//60} min)")
     return down
 
@@ -224,7 +252,7 @@ def start(live=False, only=None, out=print):
     now = time.time()
     procs = all_python_processes()
     started, skipped = [], []
-    for name, argv in MONITORS:
+    for name, argv in monitors():
         if only and name not in only:
             continue
         st, age = state(name, now=now, argv=argv, procs=procs)
@@ -284,7 +312,7 @@ def restart(names, out=print):
     heartbeat, which is exactly right for a crash recovery and exactly wrong
     after a merge. A merge is not a deploy, and this is the deploy.
     """
-    table = dict(MONITORS)
+    table = dict(monitors())
     rc = 0
     for name in names:
         argv = table.get(name)

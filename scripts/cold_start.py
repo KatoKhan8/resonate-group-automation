@@ -136,7 +136,7 @@ def cursors():
 
 def build_plan(booted_at=None):
     booted_at = boot_time() if booted_at is None else booted_at
-    monitors = [witnesses(m, booted_at) for m in supervisor.MONITORS]
+    monitors = [witnesses(m, booted_at) for m in supervisor.monitors()]
     return {
         "at": datetime.datetime.now(
             datetime.timezone.utc).replace(microsecond=0).isoformat(),
@@ -289,7 +289,18 @@ def main(argv=None):
                    help="Emit the plan as JSON.")
     args = p.parse_args(argv)
 
-    plan = build_plan()
+    # The monitor table's campaign half is DERIVED from the campaign
+    # registry, and an unreadable registry is refused rather than reported as
+    # "no campaigns" - see `supervisor.campaign_monitors`. Catch it here so
+    # the operator gets the sentence instead of a traceback, and so a cold
+    # start that cannot see the estate FAILS rather than announcing that the
+    # five static loops are the whole estate and they are fine.
+    try:
+        plan = build_plan()
+    except supervisor.RegistryUnreadable as exc:
+        print("REFUSING to build a cold-start plan: %s" % (exc,))
+        print("Nothing was started and nothing was removed.")
+        return 2
     print(json.dumps(plan, indent=2, sort_keys=True) if args.json
           else format_plan(plan))
 
