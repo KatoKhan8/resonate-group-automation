@@ -30,8 +30,9 @@ shutdown interrupted; it is a task that never ran, and it is increment 2.
 
 **TASK-262's worker was not killed by the shutdown either.** Its two logs end
 in `turn_tool_call_cap` and `Repetitive tool calls detected` — it looped and
-was halted at 20:32, three hours before the machine went down. Worth knowing
-before it is redispatched unchanged.
+was halted. Last write from that worker is 20:40; master's last commit is
+00:54, so it stopped **more than four hours before the machine went down**.
+Worth knowing before it is redispatched unchanged.
 
 **No worktree holds uncommitted source.** Every untracked file across qwen-2
 to qwen-8 and qwen-worker is a dead worker's stdout/stderr, plus qwen-2's six
