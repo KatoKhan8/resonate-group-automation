@@ -857,6 +857,185 @@ def account_status(scope, argument=None):
     return out
 
 
+# ------------------------------------------------ the report, accounts first
+#
+# OPERATOR, 2026-09-23: "Client report and weekly report count accounts
+# first (accounts in flight, engaged, replied, meetings), then emails."
+#
+# WHY THE ORDER IS THE FEATURE. Every number this system has ever put in
+# front of this client has been an email number - sent, replied, bounced -
+# and a client does not buy emails. They buy accounts worked. Leading with
+# 502 sent and burying "eight companies have written back" tells them how
+# busy we were, not what they got.
+#
+# So accounts come first, and the email figures follow as the activity that
+# produced them.
+
+#: The account states that count as IN FLIGHT: worked, not finished, not
+#: closed. `untouched` is not in flight - nothing has happened to it - and
+#: neither is `do_not_contact`, which is finished in the only direction that
+#: matters.
+IN_FLIGHT = (SEQUENCED, ENGAGED, REPLIED, MEETING)
+
+
+def _account_rollup(slug):
+    """Accounts by state for one workspace, from the LEDGER.
+
+    Returns `(counts, unanswerable, ledger_ok)`. One pass over the records,
+    one witness read for the whole workspace - never a provider call per
+    account, per the operator's decision of 2026-09-23.
+
+    `unanswerable` is its own number and is never folded into `untouched`.
+    While the write-back is missing that IS the report: "we cannot currently
+    tell you how many accounts are untouched" is a true sentence, and
+    "1,530 untouched" is a false one.
+    """
+    ledger_ok = _ledger_carries_sends(slug)
+    counts, unanswerable = {}, 0
+    try:
+        from . import account as accountgraph
+        from . import slackmeetings
+        ledger = slackmeetings.by_domain(workspace=slug) or []
+    except Exception:                                           # noqa: BLE001
+        accountgraph, ledger = None, []
+    met = {str(row.get("domain") or "").lower() for row in ledger}
+
+    if accountgraph is None:
+        return counts, unanswerable, ledger_ok
+
+    for record in _records(slug):
+        try:
+            detail = accountgraph.graph(record, workspace=slug)
+        except Exception:                                       # noqa: BLE001
+            unanswerable += 1
+            continue
+        here = 1 if str(record.get("domain") or "").lower() in met else 0
+        state, _evidence = _account_state(record, detail, here, ledger_ok)
+        if state is None:
+            unanswerable += 1
+            continue
+        counts[state] = counts.get(state, 0) + 1
+    return counts, unanswerable, ledger_ok
+
+
+def _ledger_replies(slug):
+    """Replies in the ledger for this workspace, by class, human and
+    positive counted apart.
+
+    HUMAN IS `replies.is_automated`, the one definition - the operator's
+    rule of 2026-09-22, which the never-positive guarantee and the 18:00
+    summary both read. An out-of-office is not a reply a client should be
+    told they received.
+    """
+    try:
+        from . import account as accountgraph
+        from . import replies as replyclass
+    except Exception:                                           # noqa: BLE001
+        return None
+    by_class, human, positive = {}, 0, 0
+    for record in _records(slug):
+        rows = accountgraph.replies(record)
+        counted = _reply_classes(rows)
+        for name, count in counted.items():
+            by_class[name] = by_class.get(name, 0) + count
+            if name == "unclassified":
+                # NOT COUNTED AS HUMAN. Nobody has looked at it, so calling
+                # it a human reply is a guess in the flattering direction.
+                continue
+            if not replyclass.is_automated(name):
+                human += count
+            if name == replyclass.POSITIVE:
+                positive += count
+    out = {"by_class": by_class, "human": human, "positive": positive}
+
+    # ## THE STORED VERDICT MAY PREDATE THE CURRENT RULES, AND NOTHING SAYS SO
+    #
+    # MEASURED 2026-09-23. The ledger's single `positive` for this estate is
+    # the executive-assistant reply from campaign 491 - "Jennifer's inbox can
+    # get a little extra at times, so her amazing Executive Assistant Rose is
+    # helping keep things running smoothly". Stored `positive` by classifier
+    # `rules-3` at 18:35 on 09-22. Re-classified by the CURRENT code it is
+    # `assistant_redirect`, which is automated; the provider's own
+    # `automated_reply` flag on that row is true as well.
+    #
+    # The operator's re-run of 2026-09-22 reached the same answer - 0
+    # positive of 14 - and its verdicts were never written back, so the
+    # ledger still carries the old one.
+    #
+    # AND THE OBVIOUS GUARD DOES NOT WORK: `replies.VERSION` is still
+    # "rules-3", the same string the stale event carries. The rules changed
+    # and the version did not, so a stored verdict is indistinguishable from
+    # a fresh one by inspection. Until that is fixed there is no local way to
+    # tell them apart, so the count is reported WITH the caveat rather than
+    # as fact.
+    #
+    # THIS MATTERS MOST WHERE IT IS NOT USED YET: a feature that posts
+    # positive replies into a client channel must not read this field, or it
+    # will announce an autoresponder as a buying signal - the exact outcome
+    # the reply-classification work existed to prevent.
+    if positive:
+        out["positive_caveat"] = (
+            "stored classifications may predate the current rules and "
+            "cannot be told apart by version - `replies.VERSION` did not "
+            "change when the rules did. Measured today, this estate's only "
+            "stored `positive` re-classifies as `assistant_redirect`. Do "
+            "not put this figure in front of a client without re-running "
+            "the classifier over the replies behind it.")
+    return out
+
+
+def weekly_report(scope, argument=None):
+    """The weekly report, ACCOUNTS FIRST and emails second.
+
+    Answers "@Resonate OS send me the weekly report". Client-scoped like
+    every other tool here.
+    """
+    slug = _workspace_for(scope, argument)
+    out = {"read_at": _now(), "workspace": slug}
+
+    counts, unanswerable, ledger_ok = _account_rollup(slug)
+    in_flight = sum(counts.get(state, 0) for state in IN_FLIGHT)
+    out["accounts"] = {
+        "in_flight": in_flight,
+        "engaged": counts.get(ENGAGED, 0),
+        "replied": counts.get(REPLIED, 0),
+        "meetings": counts.get(MEETING, 0),
+        "untouched": counts.get(UNTOUCHED, 0),
+        "do_not_contact": counts.get(DO_NOT_CONTACT, 0),
+        "unanswerable": unanswerable,
+    }
+    out["accounts_order"] = ["in_flight", "engaged", "replied", "meetings"]
+    if unanswerable:
+        out["accounts_warning"] = (
+            "%d account(s) could not be placed because the ledger is not "
+            "recording this workspace's sends yet. That is not a count of "
+            "untouched accounts and must not be read as one."
+            % unanswerable)
+    out["ledger_carries_sends"] = ledger_ok
+
+    replies_here = _ledger_replies(slug)
+    if replies_here is None:
+        out["replies_error"] = "the reply ledger could not be read"
+    else:
+        out["replies"] = replies_here
+        out["replies_note"] = (
+            "human replies exclude out-of-office, automated "
+            "acknowledgements and assistant redirects; unclassified replies "
+            "are counted apart and never as human")
+
+    # THE EMAIL FIGURES COME LAST, and from the provider's own counters -
+    # a workspace-level read, not a per-account one.
+    try:
+        out["emails"] = sends_today(scope, argument)
+    except Exception as exc:                                    # noqa: BLE001
+        out["emails_error"] = type(exc).__name__
+
+    out["note"] = (
+        "accounts first: a client buys accounts worked, not emails sent. "
+        "The email figures are the activity that produced them.")
+    return out
+
+
 def sender_summary(scope, argument=None):
     """How many sending accounts are working this client's campaigns.
 
@@ -2609,6 +2788,11 @@ REGISTRY = {
         account_lookup,
         "one account's state by domain, with its contact counts",
         _INTERNAL_CLIENT, "a domain"),
+    "weekly_report": (
+        weekly_report,
+        "the weekly report: accounts in flight, engaged, replied and "
+        "meetings first, then the email figures",
+        _INTERNAL_CLIENT, None),
     "account_status": (
         account_status,
         "what is happening with one account: status, the personas in play "
