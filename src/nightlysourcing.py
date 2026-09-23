@@ -381,13 +381,12 @@ def _coerce_headcount(value):
 
 
 def _icp_evidence_text(verdict):
-    """The ICP evidence in words a client can read. From positive signals."""
-    parts = []
-    for sig in verdict.get("positive_signals") or []:
-        why = sig.get("why")
-        if why:
-            parts.append(why)
-    return "; ".join(parts[:3]) if parts else "scored above threshold"
+    """The ICP evidence in words a client can read. From positive signals.
+
+    TASK-272: delegates to `icp.evidence_text`.  No fallback to a verdict-
+    restating sentence - a row with no positive evidence produces no reason.
+    """
+    return icp.evidence_text(verdict)
 
 
 # --------------------------------------------------------- stage 3: MX

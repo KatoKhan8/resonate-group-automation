@@ -138,6 +138,7 @@ def run():
 
         row["_icp_status"] = status
         row["_icp_score"] = verdict.get("icp_score")
+        row["_icp_why"] = icp.evidence_text(verdict)
         qualified.append(row)
 
     for path, data in ((OUT, qualified), (REVIEW_OUT, review)):

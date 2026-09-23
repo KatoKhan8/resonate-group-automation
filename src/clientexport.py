@@ -6,7 +6,8 @@ THE EXPORT / CLEAN / IMPORT CYCLE, the export half.
     1. Select domains that passed S3 ICP, S4b MX and local collision.
     2. Remove everything this client has suppressed or already approved.
     3. Write a CSV with exactly: domain, company, headcount, industry,
-       country, website.  NO contacts, NO emails, NO person names.
+       country, website, why it matched.  NO contacts, NO emails, NO person
+       names.
     4. Record the snapshot so the return file can be diffed.
 
 The columns are the client's own vocabulary for deciding about a domain.
@@ -14,6 +15,8 @@ Headcount is the provider's estimate, industry is what the provider stated,
 country is where the company is.  Website is the domain itself - the client
 knows their own customers by domain, and a URL column would invite the
 LinkedIn-profile mistake `client_snapshot.NOT_AN_ACCOUNT` guards against.
+"why it matched" is assembled from the ICP positive signals - evidence, not
+the verdict - and a row with no positive evidence exports an empty reason.
 
 TARGET SIZE.  40,000-50,000 domains when supply allows.  A 4,000-row snapshot
 is a supply finding, not a failure to pad.  The export reports its count
@@ -35,7 +38,7 @@ from . import icp, mx, segments, store
 #: header reads, and the client's cleaned return must be parseable by
 #: `client_snapshot.domains_from` against these same names.
 EXPORT_COLUMNS = ("domain", "company", "headcount", "industry", "country",
-                  "website")
+                  "website", "why it matched")
 
 #: MX statuses that say "we can email this domain".  `known_blocked` and
 #: `dns_failure` are not candidates: one is a gateway we must not hit, the
@@ -81,6 +84,17 @@ def _locally_clear(domain, history):
     return True
 
 
+def _reason_for(rec):
+    """The reason string from the stored verdict's positive signals.
+
+    TASK-272.  Built from evidence, not from the verdict - a row with no
+    positive signals produces an empty string rather than a sentence that
+    restates its own conclusion.
+    """
+    verdict = (rec.get("qualification") or {}).get("verdict") or {}
+    return icp.evidence_text(verdict)
+
+
 def _row_for(rec, segment):
     """One export row from a record and its segment.  Company-level only."""
     facts = (rec or {}).get("company_facts") or {}
@@ -92,6 +106,7 @@ def _row_for(rec, segment):
         "industry": facts.get("industry") or "",
         "country": segment.get("country") or "",
         "website": rec.get("domain", ""),
+        "why it matched": _reason_for(rec),
     }
 
 

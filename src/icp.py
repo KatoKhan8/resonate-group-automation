@@ -744,6 +744,26 @@ def grade(verdict):
     return BORDERLINE_ICP if score >= 30 else WEAK_ICP
 
 
+def evidence_text(verdict):
+    """Plain-language reason from the evidence a verdict actually carries.
+
+    TASK-272.  Assembled from `positive_signals` only - the concrete facts
+    the scorer found.  A verdict with no positive signals produces an empty
+    string rather than a sentence restating the verdict, because a reason
+    generated from the verdict rather than from the evidence is the defect
+    ISSUE-019 / ISSUE-023 pinned: "scored above threshold" on rows that
+    scored 0.0.
+
+    No person-level field.  Every signal `why` describes the company.
+    """
+    parts = []
+    for sig in (verdict.get("positive_signals") or []):
+        why = sig.get("why")
+        if why:
+            parts.append(why)
+    return "; ".join(parts[:3])
+
+
 def _decisive(negative):
     return [s for s in negative
             if s["dimension"] in DECISIVE_NEGATIVES
