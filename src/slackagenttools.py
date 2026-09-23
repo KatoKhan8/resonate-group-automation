@@ -849,9 +849,20 @@ def _ledger_replies(slug):
         from . import replies as replyclass
     except Exception:                                           # noqa: BLE001
         return None
+    from . import replyverdict
     by_class, human, positive = {}, 0, 0
+    confirmed_positive = unconfirmed_positive = 0
     for record in _records(slug):
         rows = accountgraph.replies(record)
+        # POSITIVES SPLIT BY WHETHER THE VERDICT IS PROVABLY CURRENT.
+        # `account.replies` now projects `classifier`, so the question can
+        # be asked; `replyverdict` answers it, and today it answers no for
+        # every row because nothing identifies the RULE SET as opposed to
+        # the release. See `replyverdict` for why VERSION is not allowed to
+        # stand in for that.
+        yes, no = replyverdict.split_positives(rows)
+        confirmed_positive += yes
+        unconfirmed_positive += no
         counted = _reply_classes(rows)
         for name, count in counted.items():
             by_class[name] = by_class.get(name, 0) + count
@@ -863,7 +874,15 @@ def _ledger_replies(slug):
                 human += count
             if name == replyclass.POSITIVE:
                 positive += count
-    out = {"by_class": by_class, "human": human, "positive": positive}
+    out = {"by_class": by_class, "human": human, "positive": positive,
+           # THE FIELD A CLIENT-FACING FEATURE READS. `positive` is what the
+           # ledger stores; `positive_confirmed` is what we can stand
+           # behind. Phase D item 4 must read the second one - reading the
+           # first is how an executive assistant's "Rose is helping keep
+           # things running smoothly" gets announced as a buying signal.
+           "positive_confirmed": confirmed_positive,
+           "positive_unconfirmed": unconfirmed_positive,
+           "positive_confirmable": replyverdict.rules_are_identifiable()}
 
     # ## THE STORED VERDICT MAY PREDATE THE CURRENT RULES, AND NOTHING SAYS SO
     #
@@ -890,6 +909,8 @@ def _ledger_replies(slug):
     # positive replies into a client channel must not read this field, or it
     # will announce an autoresponder as a buying signal - the exact outcome
     # the reply-classification work existed to prevent.
+    if unconfirmed_positive:
+        out["positive_unconfirmed_why"] = replyverdict.WHY_UNCONFIRMED
     if positive:
         out["positive_caveat"] = (
             "stored classifications may predate the current rules and "
