@@ -83,3 +83,62 @@ no artifact did not happen.
 - Do not restore over `work/`. Ever. The drill is read-only with respect to
   live state.
 - Do not touch `src/providers/*`, `scripts/*_watch_loop.py` or `work/`.
+
+## RESULT
+
+**STATUS: DONE**
+
+**COMMIT SHA:** b92c385f
+
+**TESTS:** 8/8 pass in `tests.test_the_backup_restores_what_it_claimed`.
+`test_invariants` has 2 pre-existing failures (ContactOut routes, EmailBison
+v3) unrelated to this change.
+
+**FILES CHANGED:**
+- `scripts/backup_state.py` (new) — collects state files, creates zip archive,
+  prunes by retention, asserts .env absence
+- `scripts/restore_drill.py` (new) — extracts to mkdtemp, diffs stats against
+  live and manifest, reports timing, deletes temp dir
+- `tests/test_the_backup_restores_what_it_claimed.py` (new) — 8 tests
+- `docs/RESTORE-DRILL-2026-09-22.md` (new) — drill run report with timing
+
+**FINDINGS:**
+
+1. **Encryption blocked by zero-dep rule.** Python stdlib has no encryption.
+   Options: `cryptography` (~3MB wheel, C extension) or `pyage` (pure Python,
+   age format). Both are third-party. The archive is unencrypted and local-only
+   until Claude decides. An unencrypted archive shipped off-machine is worse
+   than no off-machine copy, so local-only is the correct default.
+
+2. **No off-machine destination configured.** No S3 bucket, no Storage Box,
+   no credential exists. The archive writes to `backups/` locally. Claude
+   needs to provision a destination before the server migration.
+
+3. **This worktree has no production state.** The drill ran and correctly
+   reported `ok: false` — 0 records restored vs manifest's 550. The live
+   estate is in Claude's worktree. The drill must be re-run from there for
+   a meaningful `ok: true`. The drill is structurally proven by the 8 tests.
+
+4. **Lock file excluded from archive.** The first run failed because
+   `collect_state_files` listed `queue.jsonl.lock` (created by the lock
+   context manager). Fixed by filtering `.lock` files — they are
+   coordination primitives, not state.
+
+**Drill timing:**
+- Backup: 0.21s for 7 files, 2.1 MB archive
+- Restore: 0.067s extraction and verification
+- Temp dir cleaned: confirmed
+
+**RISKS:**
+- The backup is unencrypted. Anyone with access to the archive has full
+  prospect data. Mitigated by local-only storage.
+- The drill cannot verify production data from this worktree. Claude must
+  re-run from his worktree.
+
+**RECOMMENDED CLAUDE ACTION:**
+1. Decide on encryption: accept `cryptography` or `pyage` as a dep, or
+   defer until the server migration provides OS-level encryption.
+2. Provision an off-machine backup destination (Hetzner Storage Box or
+   S3-compatible, EU region, per SERVER-MIGRATION-PLAN.md §5).
+3. Re-run the drill from Claude's worktree against the live 550-record
+   estate to get a meaningful `ok: true`.
