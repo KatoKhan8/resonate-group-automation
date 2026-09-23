@@ -75,6 +75,72 @@ SYSTEM = (
 )
 
 QUESTIONS = {
+    # ADDED 2026-09-23 night, operator instruction, after 76 blank emails
+    # reached real prospects: subject `''`, body `'<p></p>'`, recorded that
+    # way BY THE PROVIDER. `bison_variable_rendering` is root-cause support
+    # for the incident and is the one to run first.
+    "bison_variable_rendering": """EmailBison (emailbison.com) cold email
+platform API, the SEQUENCE STEP RENDERING path specifically.
+Context we can state as fact from our own estate: a campaign's sequence steps
+hold placeholders such as `{{BODY_1}}` / `{SUBJECT_1}`, each LEAD carries
+per-lead CUSTOM VARIABLES, and the provider substitutes them when it builds
+the `scheduled-emails` queue. On 2026-09-23 a step rendered to an EMPTY
+subject and a body of `<p></p>` for 76 leads and the provider SENT them.
+1. How exactly are per-lead custom variables injected into a sequence step -
+   at enrollment, at queue build, or at send? What is the documented
+   substitution syntax and is it case-sensitive?
+2. What does the provider do when a referenced variable is MISSING, NULL, or
+   an empty string on a lead? Does it leave the placeholder literal, drop it,
+   substitute empty, or skip the step? Is that behaviour configurable?
+3. Is there any documented guard that refuses to SEND a step whose rendered
+   subject or body is empty? If a step renders empty, does the provider send
+   it, skip it, or error?
+4. Which API endpoint returns the RENDERED content of a queued email BEFORE
+   it is sent - subject and body with variables already substituted - and
+   what are its fields? We currently read `GET /api/campaigns/{id}/
+   scheduled-emails` and use `email_subject` / `email_body`. Confirm whether
+   that is the documented route for rendered content and whether any other
+   route exposes it earlier (at enrollment, or a preview/test-render route).
+5. Is there a documented way to set a DEFAULT or fallback value for a custom
+   variable, so a missing value cannot render empty?
+Cite documentation URLs for every claim. If a behaviour is undocumented, say
+UNKNOWN rather than inferring it.""",
+
+    "heyreach_ai_replies": """HeyReach (heyreach.io) LinkedIn automation,
+the AUTOMATIC and AI-generated reply features specifically.
+1. Where in the product are AI or automatic replies configured, and is the
+   setting PER SEAT (per LinkedIn account), per campaign, or per workspace?
+2. Does the API expose whether AI/auto-reply is enabled for a given seat or
+   campaign - on which endpoint and which field? Can it be read, and can it
+   be turned off through the API?
+3. If AI replies are on, are the messages it sends visible in the inbox /
+   conversations API, and can they be distinguished from messages a human or
+   a campaign step sent? Which field distinguishes them?
+4. Can an AI reply fire on a conversation whose lead has been STOPPED in its
+   campaign, or does stopping the lead also stop automatic replies?
+Cite documentation URLs. Question 4 matters most: we share seats with a
+client, and an automatic reply sent on our behalf after we stopped a lead is
+a message to a prospect that nobody chose to send.""",
+
+    "oss_outbound_comparables": """Open-source comparables survey, for a
+Friday design review. No code, no installation instructions.
+Find and describe OPEN-SOURCE projects in two groups:
+(a) outbound sales/prospecting agents or sequencers, especially any with
+    ACCOUNT-BASED orchestration - multiple contacts at one company sequenced
+    together, with a shared company hook and an ordered persona plan;
+(b) Slack bots that act as a CLIENT-FACING assistant over a business system,
+    especially any with a REPLY ENGINE - classifying inbound replies and
+    deciding what stops or escalates.
+For EACH project: name, repository URL, licence, whether it is actively
+maintained (last release or commit date), and ONE PARAGRAPH on what it does
+BETTER than a system that already has: per-lead copy rendering, provider
+readback before send, cross-channel reply stops, and a learning loop that
+proposes rules a human promotes.
+Be specific about the "better" - an honest "nothing, it is a thinner
+wrapper" is a useful answer and preferred to a generous one. Name at least
+six projects across the two groups if six exist; if fewer exist, say so and
+say what that implies. Cite a URL for every project.""",
+
     # ADDED 2026-09-22. Four questions whose answers this estate currently
     # GUESSES. Each is durable - the answer stays true next week - and each
     # names a decision it unblocks, because a research answer nobody needed

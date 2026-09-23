@@ -182,6 +182,20 @@ HYGIENE_EXEMPT = (
 )
 
 
+def names_the_test_identity_on_purpose(path):
+    """Is this one of the two files the operator allowed the name in?
+
+    The slack-agent branch reached the same exemption independently and
+    called the tuple `TEST_IDENTITY_FILES`; master called it
+    `HYGIENE_EXEMPT`. One decision, two names, merged 2026-09-23 - and the
+    merge keeps master's tuple because its three tests assert against it,
+    while this helper keeps the branch's call sites working rather than
+    rewriting checks that were already green. A second name for the same
+    tuple would be the thing worth avoiding, so there is exactly one.
+    """
+    return path in HYGIENE_EXEMPT
+
+
 def tracked_files():
     """Every file git actually tracks. Untracked local state is not our problem.
 
@@ -218,6 +232,8 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
         """
         hits = []
         for path, text in corpus():
+            if names_the_test_identity_on_purpose(path):
+                continue           # see TEST_IDENTITY_FILES
             for domain in sorted(set(EMAIL.findall(text))):
                 low = domain.lower()
                 if not any(low == s or low.endswith(s) for s in SAFE_SUFFIXES):
@@ -237,6 +253,8 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
     def test_no_real_person_or_client_named(self):
         hits = []
         for path, text in corpus():
+            if names_the_test_identity_on_purpose(path):
+                continue           # see TEST_IDENTITY_FILES
             low = text.lower()
             for name in FORBIDDEN_NAMES:
                 if name in low:
@@ -333,6 +351,8 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
                        "jesse-hollis", "nikola-feric", "unknown-0", "unknown-"}
         hits = []
         for path, text in corpus():
+            if names_the_test_identity_on_purpose(path):
+                continue           # see TEST_IDENTITY_FILES
             if path.startswith("tests/"):
                 continue
             for match in LINKEDIN.finditer(text):

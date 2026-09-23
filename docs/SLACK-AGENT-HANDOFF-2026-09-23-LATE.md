@@ -102,7 +102,8 @@ That module arrived with the master merge. It exists because the operator
 replied to their own LinkedIn three times to exercise the cross-channel
 stop, and the first reply routed a `positive_reply` to **Productive's own
 channel** — a client nearly told the operator was an interested prospect. To
-suppress that, the module must name `<the-test-identity>` in `LINKEDIN_SLUGS`.
+suppress that, the module must name the test identity in
+`LINKEDIN_SLUGS`.
 
 So a **safety mechanism requires the exact value the PII guard forbids.**
 `tests/test_fixture_hygiene.py` is now red in three assertions.

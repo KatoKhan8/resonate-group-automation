@@ -110,7 +110,7 @@ def _shape(raw):
 #: exactly the config edit the operator declined to make.
 HEADCOUNT_AMENDMENT = "PRODUCTIVE-2026-09-07"
 
-#: OPERATOR DECISION, the operator, 2026-09-23. Second amendment, same
+#: OPERATOR DECISION, 2026-09-23. Second amendment, same
 #: snapshot. A domain the CLIENT supplied on their own list is IN even when
 #: its country is outside the configured allow list, "because the client
 #: supplied these domains on their own list" - the client naming a company is
