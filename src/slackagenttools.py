@@ -484,8 +484,37 @@ def _reply_classes(rows):
     stays its own key and is never folded into a class - a reply nobody has
     classified is not a neutral one - but it now means what it says.
     """
+    ## AND IT SURVIVES THE SOURCE FIX, WHICH IS THE POINT OF THE SHAPE TEST
+
+    # The operator has asked production to fix this at source: one row per
+    # reply, with the classified state as a FIELD. When that lands, the
+    # compensation below stops being needed - and the naive version of it
+    # would start UNDER-counting, silently, which is the worse direction.
+    #
+    # Concretely: a contact with two classified replies and one nobody has
+    # looked at would compute `spare = 1 - 2 = -1` and drop the unclassified
+    # one on the floor. A count that is wrong after somebody else's correct
+    # fix is a trap laid for them, so the shape is DETECTED rather than
+    # assumed.
+    #
+    # The discriminator is the verdict row itself. Today `reply_classified`
+    # arrives as its OWN row beside the receipt; under the fixed shape there
+    # is no separate verdict row, so its absence means every row is already
+    # one reply and is counted once.
+    rows = list(rows or [])
+    paired = any(str(row.get("type") or "") in (
+        "reply_classified", "positive_reply_detected") for row in rows)
+
+    out = {}
+    if not paired:
+        # ONE ROW PER REPLY. Count each, classified or not.
+        for row in rows:
+            name = str(row.get("classification") or "").strip() or "unclassified"
+            out[name] = out.get(name, 0) + 1
+        return out
+
     classified, received = {}, {}
-    for row in rows or []:
+    for row in rows:
         key = row.get("contact_key")
         name = str(row.get("classification") or "").strip()
         if name:
@@ -493,8 +522,7 @@ def _reply_classes(rows):
         else:
             received[key] = received.get(key, 0) + 1
 
-    out = {}
-    for key, names in classified.items():
+    for names in classified.values():
         for name in names:
             out[name] = out.get(name, 0) + 1
     for key, count in received.items():

@@ -538,6 +538,49 @@ class PersonasStepsTouchesAndReplies(AccountStatus):
         self.assertEqual(out["replies_by_class"],
                          {"out_of_office": 1, "unclassified": 1})
 
+    def test_it_still_counts_right_after_production_fixes_the_source(self):
+        """THE HANDOVER TEST, and it is the one that matters here.
+
+        The operator has asked production to fix `account.replies()` at
+        source: one row per reply, classified state as a FIELD. The moment
+        that lands, the pairing compensation above stops being needed - and
+        the naive form of it would start UNDER-counting silently. A contact
+        with two classified replies and one nobody has looked at computes
+        `spare = 1 - 2 = -1` and drops the unclassified one.
+
+        Under-counting after somebody else's correct fix is a trap laid for
+        them, so the shape is detected rather than assumed. This asserts the
+        FIXED shape directly.
+        """
+        fixed_shape = [
+            {"contact_key": "ada", "type": "reply_received",
+             "classification": "out_of_office", "at": "2026-09-22T10:00:00Z"},
+            {"contact_key": "ada", "type": "reply_received",
+             "classification": "not_relevant", "at": "2026-09-22T11:00:00Z"},
+            {"contact_key": "ada", "type": "reply_received",
+             "classification": None, "at": "2026-09-22T12:00:00Z"},
+        ]
+        self.assertEqual(
+            tools._reply_classes(fixed_shape),
+            {"out_of_office": 1, "not_relevant": 1, "unclassified": 1})
+
+    def test_the_naive_pairing_would_have_lost_that_unclassified_reply(self):
+        """Names the failure the test above prevents, so nobody 'simplifies'
+        the shape check away later."""
+        paired_shape = [
+            {"contact_key": "ada", "type": "reply_received",
+             "classification": None, "at": "2026-09-22T10:00:00Z"},
+            {"contact_key": "ada", "type": "reply_classified",
+             "classification": "out_of_office", "at": "2026-09-22T10:00:05Z"},
+            {"contact_key": "ada", "type": "reply_received",
+             "classification": None, "at": "2026-09-22T11:00:00Z"},
+            {"contact_key": "ada", "type": "reply_classified",
+             "classification": "not_relevant", "at": "2026-09-22T11:00:05Z"},
+        ]
+        # Today's shape: two replies, both classified, no phantom.
+        self.assertEqual(tools._reply_classes(paired_shape),
+                         {"out_of_office": 1, "not_relevant": 1})
+
     def test_two_people_replying_are_two_replies(self):
         out = self.ask([record(
             contacts=[contact(key="ada"), contact(key="ben")],
