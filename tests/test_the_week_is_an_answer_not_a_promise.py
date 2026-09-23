@@ -77,7 +77,7 @@ class PlanningTest(unittest.TestCase):
                 raise bison.SendingScheduleEmpty("nothing for %s" % day)
             return {"emails_being_sent": value, "day": day}
 
-        def scheduled_emails(campaign_id):
+        def scheduled_emails(campaign_id, cap=None):
             return (queue or {}).get(str(campaign_id)) or []
 
         with mock.patch.object(bison, "sending_schedule", sending_schedule), \
@@ -99,7 +99,7 @@ class TheForwardHalfIsThreeDaysAndSaysSo(PlanningTest):
 
         with mock.patch.object(bison, "sending_schedule", sending_schedule), \
                 mock.patch.object(bison, "scheduled_emails",
-                                  lambda c: []):
+                                  lambda c, cap=None: []):
             out = tools.weekly_plan(internal())
         self.assertEqual(sorted(set(asked)),
                          sorted(set(tools.FORWARD_DAYS)))
@@ -140,7 +140,7 @@ class NothingScheduledIsNotZeroAndNeitherIsUnreadable(PlanningTest):
         with mock.patch.object(
                 bison, "sending_schedule",
                 lambda c, d: {"emails_being_sent": "lots"}), \
-                mock.patch.object(bison, "scheduled_emails", lambda c: []):
+                mock.patch.object(bison, "scheduled_emails", lambda c, cap=None: []):
             out = tools.weekly_plan(internal())
         self.assertEqual(out["forward"]["today"]["491"], "unreadable")
 
@@ -200,7 +200,7 @@ class AClientGetsTheWeekWithoutOurMachinery(PlanningTest):
             "name": "RESONATE - ALPHA - EMAIL - US-HOURS - CONTROL"}
         with mock.patch.object(bison, "sending_schedule",
                                side_effect=bison.SendingScheduleEmpty("x")), \
-                mock.patch.object(bison, "scheduled_emails", lambda c: []):
+                mock.patch.object(bison, "scheduled_emails", lambda c, cap=None: []):
             out = tools.run(client(), "weekly_plan")
         for row in out["campaigns"]:
             self.assertNotIn("CONTROL", row["name"])

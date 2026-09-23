@@ -95,7 +95,7 @@ class TheDomainIsReadOffTheSenderObject(unittest.TestCase):
 
     def queue(self, rows):
         return mock.patch.object(bison, "scheduled_emails",
-                                 lambda cid: list(rows))
+                                 lambda cid, cap=None: list(rows))
 
     # ------------------------------------------- _recent_send_domains
 

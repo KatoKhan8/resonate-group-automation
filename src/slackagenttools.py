@@ -925,8 +925,7 @@ def _week_for_domain(slug, domain):
     emails, people, unreadable, read_any = 0, set(), 0, False
     for campaign_id in ids:
         try:
-            from .providers import bison
-            queue = bison.scheduled_emails(campaign_id) or []
+            queue = readback.queue(campaign_id)
         except Exception:                                       # noqa: BLE001
             unreadable += 1
             continue
@@ -972,8 +971,7 @@ def _recent_send_domains(slug):
     found, unreadable, read_any = set(), 0, False
     for campaign_id in ids:
         try:
-            from .providers import bison
-            queue = bison.scheduled_emails(campaign_id) or []
+            queue = readback.queue(campaign_id)
         except Exception:                                       # noqa: BLE001
             unreadable += 1
             continue
@@ -1221,8 +1219,7 @@ def _sent_since(campaign_id, cutoff):
     """
     import datetime
     try:
-        from .providers import bison
-        queue = bison.scheduled_emails(campaign_id) or []
+        queue = readback.queue(campaign_id)
     except Exception:                                           # noqa: BLE001
         return None
     count = 0
@@ -1408,8 +1405,7 @@ def _week_activity(campaign_id, cutoff):
     """
     import datetime
     try:
-        from .providers import bison
-        queue = bison.scheduled_emails(campaign_id) or []
+        queue = readback.queue(campaign_id)
     except Exception:                                           # noqa: BLE001
         return None
     emails, people = 0, set()
