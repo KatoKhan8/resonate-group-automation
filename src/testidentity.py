@@ -44,15 +44,24 @@ RECORD_IDS = frozenset({"crosschannel-stop-test-2026-09-23"})
 #: The contact key that record carries.
 CONTACT_KEYS = frozenset({"zvonimir-beslic"})
 
-#: EmailBison lead id, created 2026-09-23 and attached to campaign 491.
-LEAD_IDS = frozenset({204966})
+#: EmailBison lead ids, both created 2026-09-23 for the stop test.
+#:
+#: 204966 is the FIRST test lead. It was stopped in 491 once the first test
+#: concluded, and there is no un-stop route - `stop_contact` correctly treats
+#: an already-stopped lead as a no-op, so it can never again be the subject of
+#: a measurable stop. 204967 is the second, created and attached to 491 for
+#: the operator's re-run. Both stay here permanently: the exclusion is about
+#: who this is, not about which test is current.
+LEAD_IDS = frozenset({204966, 204967})
 
 #: The LinkedIn profile, matched case-insensitively on the vanity segment so
 #: `/in/zbeslic`, the full https URL and a trailing slash all resolve.
 LINKEDIN_SLUGS = frozenset({"zbeslic"})
 
-#: The address on the EmailBison lead.
-EMAILS = frozenset({"zvonimir@resonate.co"})
+#: The addresses on the EmailBison leads. The second is plus-addressed
+#: because the provider holds 204966 against the bare address already.
+EMAILS = frozenset({"zvonimir@resonate.co",
+                    "zvonimir+stoptest2@resonate.co"})
 
 WHY = ("operator instruction 2026-09-23: /in/zbeslic and lead 204966 are the "
        "cross-channel stop TEST identity and are excluded from every reply "

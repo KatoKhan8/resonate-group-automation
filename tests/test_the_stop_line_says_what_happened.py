@@ -26,7 +26,7 @@ What these pin:
 """
 import unittest
 
-from src import inbound
+from src import inbound, leadstop
 
 
 def _outcome(email=None, linkedin=None, record="rec-1"):
@@ -136,6 +136,57 @@ class TestBothChannelsAreAttempted(unittest.TestCase):
         result = inbound._stop_at_provider({"id": "r"}, {"key": "c"}, [])
         self.assertIn("bison_lead_id", result["email"]["why"])
         self.assertIn("heyreach_lead_id", result["linkedin"]["why"])
+
+
+class TestAnUnknownClassificationStillStops(unittest.TestCase):
+    """OPERATOR REQUIREMENT 2026-09-23: "A reply of class unknown must still
+    stop the other channel."
+
+    The 17:54 test reply classified `unknown` - rules-3, confidence 0.0, "no
+    rule matched and no classifier was available". If the stop were gated
+    behind a positive or negative verdict, the whole cross-channel guarantee
+    would rest on a classifier whose DEFAULT answer is `unknown`.
+
+    Driven through `inbound.handle` rather than asserted against the source:
+    a test that greps for the ordering passes the day somebody keeps the
+    comment and moves the call.
+    """
+
+    def setUp(self):
+        self.calls = []
+        real = leadstop.stop_contact
+
+        def recording(rec, contact, why, **kw):
+            self.calls.append({"record": rec.get("id"),
+                               "contact": contact.get("key"), "why": why})
+            return {"stopped": True, "already": False,
+                    "status_after": "stopped", "lead_id": 1,
+                    "campaign": "c-1"}
+
+        leadstop.stop_contact = recording
+        self.addCleanup(setattr, leadstop, "stop_contact", real)
+
+    def _record(self):
+        return {"id": "rec-unknown", "client": "productive", "state": "queued",
+                "domain": "example.test", "company": "Example",
+                "contacts": [{"key": "ck-1", "email": "a@example.test",
+                              "bison_lead_id": 1, "sendable": True}]}
+
+    def test_a_reply_that_classifies_unknown_still_reaches_the_stop(self):
+        rec = self._record()
+        event = {"type": "reply_received", "provider": "emailbison",
+                 "channel": "email", "email": "a@example.test",
+                 "record_id": "rec-unknown", "at": "2026-09-23T15:54:54Z",
+                 "provider_event_id": "test:unknown:1",
+                 "text": "\u4f60\u597d"}
+        outcome = inbound.handle(event, [rec])
+        verdict = (outcome.get("classification") or {}).get("classification")
+        self.assertEqual(
+            len(self.calls), 1,
+            f"a reply classified {verdict!r} did not reach the stop at all")
+        self.assertEqual(self.calls[0]["record"], "rec-unknown")
+        stops = outcome.get("provider_stop") or {}
+        self.assertTrue((stops.get("email") or {}).get("stopped"))
 
 
 if __name__ == "__main__":
