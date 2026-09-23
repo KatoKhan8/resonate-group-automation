@@ -63,3 +63,61 @@ def install():
 
 
 INSTALLED = install()
+
+
+# --------------------------------------------------------------------------
+# EVERY MODULE IS HANDED THE ENVIRONMENT THE LAST ONE WAS HANDED.
+#
+# `load_tests` is the documented hook for assembling a package's suite, and
+# assembling it here is what lets every module be wrapped without editing 522
+# modules. See `tests/envisolation.py` for the measurement that produced this
+# and for what it deliberately does not cover.
+#
+# The modules are loaded BY NAME rather than by re-running `loader.discover`:
+# discover would re-enter this function, and a recursion guard that returns
+# early would silently assemble an EMPTY suite. A suite that runs no tests and
+# reports success is the failure this repository has shipped twice, and it is
+# not being introduced by the file that exists to stop things being dishonest.
+#
+# `unittest discover` and `python -m tests.offline` both go through here.
+# `python -m unittest tests.test_one_module` does NOT - it addresses a module
+# directly - which is correct: one module has nothing to leak into.
+
+_GUARD_MODULE = "tests.test_no_test_leaves_the_environment_changed"
+
+
+def load_tests(loader, standard_tests, pattern):
+    import fnmatch
+    import unittest as _unittest
+
+    from . import envisolation
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    match = pattern or "test*.py"
+    names = sorted(fn[:-3] for fn in os.listdir(here)
+                   if fn.endswith(".py") and fnmatch.fnmatch(fn, match))
+
+    # The guard runs LAST, by construction rather than by hoping its filename
+    # sorts that way: it reports which modules leaked, and it can only see the
+    # ones that have already run.
+    ordered = [n for n in names if "tests." + n != _GUARD_MODULE]
+    if any("tests." + n == _GUARD_MODULE for n in names):
+        ordered.append(_GUARD_MODULE.split(".", 1)[1])
+
+    pairs = []
+    for name in ordered:
+        dotted = "tests." + name
+        try:
+            pairs.append((dotted, loader.loadTestsFromName(dotted)))
+        except Exception:                                       # noqa: BLE001
+            # A module that cannot even be imported is a real failure and must
+            # not be swallowed. `loadTestsFromName` builds a _FailedTest for
+            # that case; this branch is for the loader itself raising.
+            pairs.append((dotted, loader.suiteClass(
+                [_unittest.loader._make_failed_import_test(
+                    dotted, loader.suiteClass)])))
+
+    suite = envisolation.wrap(pairs)
+    if standard_tests.countTestCases():
+        suite.addTest(standard_tests)
+    return suite
