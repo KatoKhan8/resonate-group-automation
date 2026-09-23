@@ -241,7 +241,22 @@ NOT_NOW_PATTERNS = (
 NEGATIVE_PATTERNS = (
     r"\bnot interested\b", r"\bno thanks?\b", r"\bno,? thank you\b",
     r"\bwe(?:'re| are) (?:all )?(?:set|sorted|covered)\b",
-    r"\bplease stop\b", r"\bnot a (?:good )?fit\b", r"\bpass\b",
+    r"\bplease stop\b", r"\bnot a (?:good )?fit\b",
+    # "pass" is a decline ONLY when nothing is being passed ALONG.
+    #
+    # 2026-09-23: this was a bare `\bpass\b`, and it read "I'll pass this
+    # along to him" - an assistant FORWARDING to the buyer - as a refusal at
+    # 0.8. NEGATIVE outranks ASSISTANT_REDIRECT by design, because a refusal
+    # written by an assistant stays a refusal - so the broader pattern won
+    # and the redirect never got a chance to match.
+    #
+    # Word order carries the whole meaning, and the lookaheads follow it:
+    #     "I'll pass this on"    -> forward, excluded here
+    #     "I'll pass on this"    -> decline, still matches
+    #     "I'll pass"            -> decline, still matches
+    #     "we'll pass for now"   -> decline, still matches
+    r"\bpass\b(?!\s+(?:this|it|that|these|them|the\s+\w+)\s+"
+    r"(?:along|on|over|to)\b)(?!\s+along\b)",
     r"\bwe already (?:have|use)\b", r"\bhappy with (?:our|the) current\b",
     # TASK-020: short refusals common on both email and LinkedIn.
     r"\bnot for me\b", r"\bno need\b", r"\bwe(?:'re| are) good\b",
@@ -380,6 +395,28 @@ ASSISTANT_REDIRECT_PATTERNS = (
     r"personal assistant)\b",
     r"\bcopying (?:in )?[^.\n]{0,30}assistant\b",
     r"\bplease (?:go through|liaise with|coordinate with) me\b",
+    # THE FORWARDING ASSISTANT. Added 2026-09-23 after measurement.
+    #
+    # Every pattern above requires the writer to IDENTIFY as an assistant
+    # ("I'm the EA to..."). Most of them never do. They just forward - and
+    # those replies were landing in three different wrong places:
+    #
+    #     "I'll pass this along to him."          -> negative   0.80
+    #     "Forwarded to our CEO."                 -> unclassified
+    #     "I've forwarded your email to our CEO,
+    #      he'll be in touch if interested."      -> POSITIVE   0.75
+    #
+    # The third is the one that matters. POSITIVE fires the first-human-reply
+    # client trigger, so a secretary forwarding an email would have announced
+    # a buying signal to the client. ASSISTANT_REDIRECT is in
+    # AUTOMATED_CATEGORIES, so `is_automated()` is true and that trigger
+    # cannot fire from here - which is the operator's stated requirement.
+    r"\b(?:i(?:'|’)?(?:ll|ve)|i (?:will|have)|we(?:'|’)?(?:ll|ve)"
+    r"|we (?:will|have))\s+(?:just\s+)?(?:pass(?:ed)?|forward(?:ed)?|sen[dt])"
+    r"\s+(?:this|it|that|these|your\s+\w+)\s+(?:along|on|over|to)\b",
+    r"\bpass(?:ed|ing)?\s+(?:this|it|that|these|them)\s+(?:along|on|over|to)\b",
+    r"\bforward(?:ed|ing)?\s+(?:this|it|that|your\s+\w+)\s+(?:along|on|over|to)\b",
+    r"\bforwarded\s+to\b",
 )
 
 # Machine-written acknowledgements. Nobody chose to send these to us.
