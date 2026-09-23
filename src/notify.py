@@ -74,7 +74,7 @@ import json
 import re
 import os
 
-from . import store, workspaces as ws
+from . import store, testidentity, workspaces as ws
 from .providers import slack
 
 # ------------------------------------------------------------ destinations
@@ -627,6 +627,18 @@ def plan(event_type, workspace=None, fields=None, ids=None, actions=(),
     ids = dict(ids or {})
     decision = destination_for(event_type, workspace, rows)
     identifier = notification_id(event_type, workspace, **ids)
+
+    # THE OPERATOR'S TEST IDENTITY NEVER REACHES A CLIENT CHANNEL.
+    #
+    # 2026-09-23: a `positive_reply` for `/in/zbeslic` was routed to
+    # C0BFUF4JRK9, Productive's own channel. It was suppressed by hand, and a
+    # hand-edit is not a mechanism - the next reply from that profile would
+    # have planned another one. Suppressed rather than dropped: the row is
+    # still written, so an audit can see the decision was made deliberately.
+    # See `src/testidentity.py` for why the match is on any binding.
+    if testidentity.matches(ids):
+        decision = dict(decision, destination=NOWHERE, channel=None,
+                        status=SUPPRESSED, why=testidentity.WHY)
 
     # The duplicate check is inside the transaction below, and only there.
     # A second check up here would be free to write but impossible to test:

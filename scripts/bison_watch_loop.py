@@ -113,9 +113,38 @@ def milestone(campaign_id, kind, **fields):
 def snapshot(provider_id=None):
     provider_id = PROVIDER_ID if provider_id is None else provider_id
     row = bison.campaign(provider_id) or {}
-    queue = bison.scheduled_emails(provider_id) or []
-    sent_rows = 0
-    for entry in queue:
+    # ONE REFUSED READ MUST NOT BLIND THE WHOLE WATCHER.
+    #
+    # MEASURED 2026-09-23. This call took the 40-page default while
+    # `slackagentreadback` and `hard_stop_check` both walked 400. Campaign 491
+    # reached 647 rows - 44 pages - so it raised `PartialInventory`, correctly:
+    # the queue really could not be read whole. But it was raising from the
+    # top of `snapshot()` with nothing around it, so the refusal took down
+    # every OTHER field too. `bison-491.json` read `READ-ERROR 122x` while
+    # `emails_sent`, `replied`, `bounced` and `membership` all answered fine,
+    # on the largest campaign in the estate, for hours.
+    #
+    # Two changes, and the second is the one that matters:
+    #   - walk as far as the other two readers do, so three readers cannot
+    #     disagree about what was sent;
+    #   - and when even that refuses, record the queue as UNKNOWN and keep
+    #     the rest. `_membership_states` and `_provider_sending_plan` in this
+    #     same file already do exactly this; the queue read was the one that
+    #     never got the treatment.
+    #
+    # UNKNOWN IS `None`, NEVER `0`. `queue = []` on a failed read would report
+    # 647 rows -> 0 and fire QUEUED as though the provider had emptied the
+    # queue. An absence read off a short list is the failure this provider
+    # module is most careful about, and a false zero on the send-detection
+    # path is the expensive direction.
+    try:
+        queue = bison.scheduled_emails(
+            provider_id, cap=bison.CAMPAIGN_QUEUE_PAGE_CAP) or []
+    except bison.PartialInventory as exc:
+        emit(f"QUEUE-UNREADABLE {provider_id}: {str(exc)[:160]}")
+        queue = None
+    sent_rows = None if queue is None else 0
+    for entry in queue or []:
         state = str(entry.get("status") or entry.get("state") or "").lower()
         if state in SENT_WORDS or entry.get("sent_at"):
             sent_rows += 1
@@ -137,7 +166,9 @@ def snapshot(provider_id=None):
         "bounced": int(row.get("bounced") or 0),
         "unsubscribed": int(row.get("unsubscribed") or 0),
         "leads": int(row.get("total_leads") or 0),
-        "queue_rows": len(queue),
+        # None when the queue could not be read whole. Distinct from 0, which
+        # means the provider has nothing queued.
+        "queue_rows": None if queue is None else len(queue),
         "sent_rows": sent_rows,
         # Carried verbatim and compared for movement, never parsed: a format
         # this system has not seen still reports a touch rather than raising.
@@ -149,7 +180,9 @@ def snapshot(provider_id=None):
         # it carries is another, and only the first was being watched.
         # `min` because the question this answers is "when does the first
         # prospect hear from us", and it is the number an operator plans on.
-        "first_scheduled": min(
+        # "unknown" rather than "none" when the queue was unreadable: "none"
+        # asserts nothing is planned, which is a claim this read cannot make.
+        "first_scheduled": "unknown" if queue is None else min(
             [str(e.get("scheduled_date")) for e in queue
              if e.get("scheduled_date")] or ["none"]),
         # WHAT THE CAMPAIGN SAYS IS NOT WHAT THE LEADS SAY, measured
@@ -192,6 +225,18 @@ def _provider_sending_plan(provider_id):
         except Exception:
             out[day] = "error"
     return out
+
+
+def _known(*values):
+    """True when every value is a real reading rather than an UNKNOWN.
+
+    The queue fields are `None` when `scheduled_emails` refused, and a
+    comparison against an unknown is neither true nor false - it is not a
+    question. Guarding with this rather than `or 0` on purpose: a default of
+    zero turns "we could not read it" into "there is nothing there", which is
+    the exact substitution this watcher exists to catch at the provider.
+    """
+    return all(v is not None for v in values)
 
 
 def _membership_states(provider_id):
@@ -315,7 +360,13 @@ def main(argv=None):
                 milestone(PROVIDER_ID, "first_send",
                           emails_sent=current["emails_sent"],
                           queue_rows=current["queue_rows"])
-        if current["sent_rows"] > previous["sent_rows"]:
+        # `_known` on both sides before every queue-derived comparison. An
+        # unreadable queue is None, and `None > 0` is a TypeError in this
+        # language - the watcher would die on the campaign it most needs to
+        # watch. Comparing against an unknown also cannot report movement:
+        # the difference between 647 and unknown is not a send.
+        if _known(current["sent_rows"], previous["sent_rows"]) \
+                and current["sent_rows"] > previous["sent_rows"]:
             emit(f"SEND {watched} queue rows sent {previous['sent_rows']} -> "
                  f"{current['sent_rows']} of {current['queue_rows']}")
         if current["replied"] > previous["replied"]:
@@ -338,7 +389,8 @@ def main(argv=None):
         # grew because something was sent is already reported above; this is
         # the other case - the provider planning work it has not done yet,
         # which is the first observable sign it has looked at this campaign.
-        if (current["queue_rows"] != previous["queue_rows"]
+        if (_known(current["queue_rows"], previous["queue_rows"])
+                and current["queue_rows"] != previous["queue_rows"]
                 and current["sent_rows"] == previous["sent_rows"]):
             emit(f"QUEUED {watched} scheduled rows {previous['queue_rows']} -> "
                  f"{current['queue_rows']} (none sent)")

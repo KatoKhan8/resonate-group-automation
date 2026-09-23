@@ -39,6 +39,7 @@ from . import slackagentreadback as readback
 from . import slackclientview as clientview
 from . import slackknowledge as knowledge
 from . import slackscope
+from . import testidentity
 
 MAX_CALLS_PER_TURN = 5
 
@@ -2249,7 +2250,19 @@ def replies(scope, argument=None):
 
     kinds = {}
     recent = []
+    excluded_test_rows = 0
     for row in rows:
+        # THE OPERATOR'S TEST IDENTITY IS NOT A REPLY.
+        #
+        # Suppressing at the WRITE (`notify.plan`) stops the next one; it does
+        # nothing about the rows already in the feed, and the 15:57:01Z
+        # `positive_reply` for `/in/zbeslic` is one of them. Counting it would
+        # tell the client a prospect was interested when the "prospect" was
+        # the operator exercising a cross-channel stop. Excluded here at the
+        # READ so history cannot reach a figure either.
+        if testidentity.matches(row.get("ids")):
+            excluded_test_rows += 1
+            continue
         kind = row.get("type") or "unknown"
         kinds[kind] = kinds.get(kind, 0) + 1
         if kind in ("positive_reply", "neutral_reply", "negative_reply"):
@@ -2257,6 +2270,9 @@ def replies(scope, argument=None):
                            "campaign": (row.get("ids") or {}).get("campaign")})
     out["reply_feed_by_kind"] = kinds
     out["classified_replies"] = recent[:10]
+    if excluded_test_rows:
+        out["excluded_test_identity_rows"] = excluded_test_rows
+        out["excluded_test_identity_why"] = testidentity.WHY
 
     # THE POSITIVE COUNT, AND ONLY FROM OUR CLASSIFIER.
     #

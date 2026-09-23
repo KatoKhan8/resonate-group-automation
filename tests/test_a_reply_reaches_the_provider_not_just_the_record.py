@@ -67,14 +67,29 @@ class AReplyReachesTheProvider(QueueTest):
         rid, key, why = self.recorder.stopped[0]
         self.assertEqual((rid, key), ("rec-1", "ck-1"))
         self.assertEqual(why, events.REPLY_RECEIVED)
-        self.assertTrue((outcome.get("provider_stop") or {}).get("stopped"))
+        # PER CHANNEL since 2026-09-23. `provider_stop` is keyed by channel
+        # so a reader can tell "stopped on email, no LinkedIn lead" from
+        # "stopped on both" - the distinction the watcher line was eliding.
+        self.assertTrue(
+            ((outcome.get("provider_stop") or {}).get("email") or {})
+            .get("stopped"))
 
     def test_a_contact_with_no_provider_binding_is_a_no_op(self):
-        """Every record staged before this existed has no lead id."""
+        """Every record staged before this existed has no lead id.
+
+        It now returns an entry PER CHANNEL saying it was not attempted,
+        rather than a bare None. "there was nothing to stop" and "we did not
+        look" used to print the same, and the second is a defect.
+        """
         store.save([record(lead_id=None)])
         outcome = inbound.handle(reply_event(), store.load())
         self.assertEqual(self.recorder.stopped, [])
-        self.assertIsNone(outcome.get("provider_stop"))
+        stops = outcome.get("provider_stop") or {}
+        self.assertEqual(set(stops), {"email", "linkedin"})
+        for channel, entry in stops.items():
+            with self.subTest(channel=channel):
+                self.assertFalse(entry["attempted"])
+                self.assertFalse(entry["stopped"])
 
     def test_a_failed_stop_does_not_lose_the_reply(self):
         """The reply is the thing a person can still act on.
@@ -87,8 +102,11 @@ class AReplyReachesTheProvider(QueueTest):
         outcome = inbound.handle(reply_event(), store.load())
         self.assertEqual(outcome["applied"]["status"], "applied")
         self.assertIsNotNone(outcome.get("classification"))
-        stop = outcome.get("provider_stop") or {}
+        stop = (outcome.get("provider_stop") or {}).get("email") or {}
         self.assertFalse(stop.get("stopped"))
+        self.assertTrue(stop.get("attempted"),
+                        "a stop that was tried and failed must not read the "
+                        "same as one that was never tried")
         self.assertEqual(stop.get("error"), "StopUnverified",
                          "a failed stop was swallowed instead of reported")
 

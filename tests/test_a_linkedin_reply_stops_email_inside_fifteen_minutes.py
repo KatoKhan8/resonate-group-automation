@@ -198,29 +198,40 @@ class TheGuaranteeIsBothChannels(TheReplyStopClock):
         self.assertTrue(outcome["paused"],
                         "a 'not interested, please stop' did not pause")
 
-    def test_provider_stop_is_none_here_and_that_is_not_a_pass(self):
+    def test_no_provider_stop_is_attempted_here_and_that_is_not_a_pass(self):
         """WHAT THIS FILE DOES NOT PROVE, asserted so it cannot be forgotten.
 
-        `provider_stop` comes back **None**: the test contact has no
-        EmailBison lead id, so there is nothing at the provider to stop. The
-        local pause is real and is what `paused` above asserts; the provider
-        write is NOT exercised anywhere in this file.
+        REWRITTEN 2026-09-23, on this test's own instruction. It used to
+        assert `provider_stop is None` and warn that if a real provider write
+        were ever wired into this path, the caveat would be stale. Both
+        channels ARE attempted from the reply path now, so the shape changed -
+        but the caveat itself did NOT: the test contact carries neither a
+        `bison_lead_id` nor a `heyreach_lead_id`, so both channels come back
+        `attempted: False` and no provider write happens in this file either
+        way.
 
-        So the 15-minute gate has two unmeasured terms, not one:
+        So the 15-minute gate still has two unmeasured terms, not one:
 
             provider visibility   reply sent -> row in the inbox feed
             provider stop write   bison.stop_lead against a real lead
 
-        Both need the live test. This assertion exists so a future reader
-        cannot mistake a green run here for a verified cross-channel stop.
+        Both need the live test, and the live test on 2026-09-23 FAILED - the
+        stop was refused because the record was in no campaign's
+        `record_ids`, and the lead stayed `in_sequence` for half an hour. A
+        green run here has never meant a verified cross-channel stop, and
+        that gap is exactly where the failure lived.
         """
         rec = self.dual_channel_record()
         outcome = inbound.handle(self.a_linkedin_reply(rec), [rec])
-        self.assertIsNone(
-            outcome["provider_stop"],
-            "provider_stop is populated now - if a real provider write has "
-            "been wired into this path, this file's caveats are stale and "
-            "the docstring above needs rewriting")
+        stops = outcome["provider_stop"] or {}
+        self.assertEqual(set(stops), {"email", "linkedin"})
+        for channel, entry in stops.items():
+            with self.subTest(channel=channel):
+                self.assertFalse(
+                    entry["attempted"],
+                    f"a provider write on {channel} is exercised now - this "
+                    f"file's caveats are stale and the docstring above needs "
+                    f"rewriting")
 
     def test_leadstop_exposes_both_directions(self):
         """Both halves of the cross-channel guarantee exist as code."""

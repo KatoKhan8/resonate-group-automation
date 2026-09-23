@@ -110,8 +110,24 @@ def _shape(raw):
 #: exactly the config edit the operator declined to make.
 HEADCOUNT_AMENDMENT = "PRODUCTIVE-2026-09-07"
 
+#: OPERATOR DECISION, Zvonimir Beslic, 2026-09-23. Second amendment, same
+#: snapshot. A domain the CLIENT supplied on their own list is IN even when
+#: its country is outside the configured allow list, "because the client
+#: supplied these domains on their own list" - the client naming a company is
+#: itself the market signal the allow list exists to approximate.
+#:
+#: IT DOES NOT TOUCH THE BLOCK LIST. `exclude_geos` still returns OUT, because
+#: a block is a refusal and not a default, and the operator said so in as many
+#: words: "The block list (IN, PK, AE and the rest) stays OUT."
+#:
+#: IT IS NOT A WIDER ALLOW LIST, and the difference is the whole point. SOURCED
+#: supply from Canada, Poland or Czechia stays FLAGGED pending Productive's
+#: answer; only client-supplied rows get this. A judge that could not tell the
+#: two apart would have quietly turned a question for the client into a policy.
+CLIENT_SUPPLIED_AMENDMENT = "PRODUCTIVE-2026-09-07"
 
-def judge(info, icp, headcount=True):
+
+def judge(info, icp, headcount=True, client_supplied=False):
     """(verdict, reason). `flagged` whenever the evidence cannot decide.
 
     `headcount=False` applies the 2026-09-22 amendment: size is not judged at
@@ -163,6 +179,13 @@ def judge(info, icp, headcount=True):
     if size[0] == "flagged":
         return "flagged", size[1]
     if not geo_hit:
+        # A country we could not read at all is NOT the same as a country
+        # outside the list, and the 2026-09-23 amendment covers only the
+        # second. `country` is empty for the first, and it stays flagged so it
+        # reaches the resolution chain instead of being waved through.
+        if client_supplied and country:
+            return "in", (f"{size[1]}, geo {country} outside the allow list "
+                          f"but client-supplied (2026-09-23 amendment)")
         # flag_dont_drop: absence of a named geo is not a disqualifier.
         return "flagged", f"{size[1]}, geo not confirmed"
     return "in", f"{size[1]}, geo matched"

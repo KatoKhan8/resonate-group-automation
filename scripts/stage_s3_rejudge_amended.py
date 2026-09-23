@@ -67,7 +67,8 @@ def main():
         if r.get("reason") == "provider returned no company for this domain":
             verdict, reason = "flagged", r["reason"]
         else:
-            verdict, reason = s3.judge(info, icp, headcount=False)
+            verdict, reason = s3.judge(info, icp, headcount=False,
+                                       client_supplied=True)
         after[verdict] += 1
         if verdict != r["verdict"]:
             moves[f"{r['verdict']} -> {verdict}"] += 1

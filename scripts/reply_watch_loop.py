@@ -23,9 +23,17 @@ default that reaches a provider is a default that surprises somebody.
 WHAT IT EMITS. Silence means "inspected, nothing new", which is the normal
 case and not worth a notification. A line means something happened:
 
-    REPLY       a reply was ingested - the lead is stopped on both channels
-    POLL-ERROR  a provider could not be polled, after it repeats
-    SKIPPED     the cross-process lock was held, twice running
+    REPLY        a reply was ingested, followed by WHAT THE STOP DID on each
+                 channel - stopped / already stopped / REFUSED with the
+                 reason / no lead on that channel. This line used to be the
+                 constant "the lead is stopped on both channels", printed on
+                 any non-zero count and consulting nothing, and it said that
+                 twice about leads that were never stopped.
+    STOP-REFUSED a reply arrived and the stop was refused. The person may
+                 still receive the next step. Also raised as a CRITICAL
+                 notification to the ops channel.
+    POLL-ERROR   a provider could not be polled, after it repeats
+    SKIPPED      the cross-process lock was held, twice running
 
 A watcher that only reported replies would be indistinguishable from one whose
 credentials expired an hour ago, so failures get their own lines.
@@ -47,6 +55,42 @@ def emit(line):
     """Stdout only. The DURABLE emitter is built in `main` - see
     `src/watchsink.py` for why printing alone was not a monitor."""
     print(line, flush=True)
+
+
+def _alert_refusals(provider, refusals, emit):
+    """A refused stop goes to #resonate-notifications. OPERATOR DECISION.
+
+    `REPLY_PROTECTION_FAILED` is the existing event for this and it routes
+    GLOBAL at CRITICAL, which is exactly right: a stop that was refused means
+    somebody may still be written to after they answered. It is the same verb
+    `replywatch._alert` raises when polling itself dies, and the two failures
+    have the same consequence.
+
+    Only REFUSALS. "no lead on that channel" is the ordinary state of a
+    single-channel contact and alerting on it would bury this one.
+
+    `notify.notify` cannot raise, which is what makes it safe to call from
+    the watcher: a notification that cannot be built must not stop the next
+    poll.
+    """
+    if not refusals:
+        return
+    from src import notify
+    for refusal in refusals:
+        notify.notify(
+            notify.REPLY_PROTECTION_FAILED, None,
+            fields={"provider": provider,
+                    "channel": refusal.get("channel"),
+                    "record": refusal.get("record"),
+                    "why": refusal.get("why"),
+                    "action": "this person replied and the stop was REFUSED - "
+                              "they may still receive the next step. Stop "
+                              "them by hand and read provider truth"},
+            ids={"record_id": refusal.get("record"),
+                 "channel": refusal.get("channel"),
+                 "provider": provider})
+        emit(f"STOP-REFUSED {provider} {refusal.get('channel')} "
+             f"record={refusal.get('record')}: {refusal.get('why')}")
 
 
 def main(argv=None):
@@ -117,8 +161,18 @@ def main(argv=None):
 
             count = int(report.get("new_replies_ingested") or 0)
             if count:
-                emit(f"REPLY {provider} ingested={count} - the lead is "
-                     f"stopped on both channels")
+                # WHAT HAPPENED, NOT WHAT WAS SUPPOSED TO HAPPEN.
+                #
+                # This line read "the lead is stopped on both channels" and
+                # was a constant - printed on any non-zero ingest, consulting
+                # nothing. It said that twice about leads that were never
+                # stopped, on the safety path, and both times the failure
+                # looked exactly like the success. It is now built from
+                # `inbound.summarise_stops`, so it can only say what the
+                # provider actually confirmed.
+                emit(f"REPLY {provider} ingested={count} - "
+                     f"{report.get('stops') or 'no stop outcome recorded'}")
+                _alert_refusals(provider, report.get("stop_refusals") or [], emit)
         # EVERY sweep, after both providers. Reply protection going quiet and
         # reply protection dying look identical from the outside.
         watchsink.beat("replies",
