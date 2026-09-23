@@ -28,6 +28,7 @@ import os
 import sys
 
 from . import (accountpolicy, adapters, campaigns, clients, events, leadstop,
+               providers,
                notify, ooo,
                observability, orchestrator, replies, store)
 
@@ -59,6 +60,17 @@ OWNED_CAMPAIGNS = {605732, 605487, 604869, 599020}
 #: How old the readback may be before it stops licensing a drop. A campaign
 #: can be created and started inside an hour, so this is short on purpose.
 OWNERSHIP_MAX_AGE_HOURS = 24
+
+#: The ONLY provider routes the reply path may write to. Fragments, matched
+#: case-insensitively against the URL, so a host change cannot void them.
+#:
+#: A reply stops a lead. It does not enrol, pause, resume, create, attach or
+#: set a schedule, and `allow_writes(only=STOP_ROUTES)` is what makes that a
+#: property of the code rather than a claim about it.
+STOP_ROUTES = (
+    "stop-future-emails",     # EmailBison /campaigns/{id}/leads/stop-future-emails
+    "stopleadincampaign",     # HeyReach  /campaign/StopLeadInCampaign
+)
 
 _OWNERSHIP_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -185,6 +197,27 @@ def _stop_at_provider(rec, contact, rows=None):
     if not contact or not (contact or {}).get("bison_lead_id"):
         return None
     try:
+        # THE SCOPE THAT WAS MISSING, 2026-09-23.
+        #
+        # `reply_watch_loop` opts into no write scope. It sets
+        # REPLY_POLL_ENABLED and nothing else, so every stop this function
+        # attempted was refused by `refuse_unauthorized_write` and caught
+        # below as an error nobody read. Megan Ward replied "no thank you" on
+        # LinkedIn at 11:12:33Z; the stop was refused at 11:19:35Z and she
+        # stayed `in_sequence` in EmailBison 491 for 2h07m.
+        #
+        # It hid because EmailBison marks a lead `replied` by itself when the
+        # reply arrives BY EMAIL. Four of five locally-stopped contacts read
+        # `replied` at the provider for that reason alone. The cross-channel
+        # case - a LinkedIn reply stopping an email sequence - is the only
+        # one that depends on this call, and it is the one that was broken.
+        #
+        # `only=STOP_ROUTES` and not a bare scope: this path may stop a lead
+        # and may do nothing else. A future refactor that adds a pause, a
+        # resume or an enrolment here is refused rather than silently
+        # authorised, which is the whole point of the guard the 487 incident
+        # bought.
+        #
         # `persist=False`: INGEST OWNS THE SAVE. See PROBLEM-REGISTER
         # ISSUE-001 and `leadstop._record`. This call sits between
         # `base = store.digest()` and `store.save(recs, expect_digest=base)`,
@@ -193,8 +226,12 @@ def _stop_at_provider(rec, contact, rows=None):
         # the REPLY_RECEIVED event, its classification, the account pause -
         # is discarded. The stop event is written onto the in-memory record
         # instead and rides ingest's single save, like everything else here.
-        return leadstop.stop_contact(rec, contact, events.REPLY_RECEIVED,
-                                     rows=rows, live=True, persist=False)
+        with providers.allow_writes(
+                "reply received: stop this lead on the other channel "
+                "(ACCOUNT-OUTREACH.md). Scoped to stop routes only.",
+                only=STOP_ROUTES):
+            return leadstop.stop_contact(rec, contact, events.REPLY_RECEIVED,
+                                         rows=rows, live=True, persist=False)
     except Exception as e:
         # Explicitly classified, never swallowed: an unstopped person is the
         # thing somebody has to go and look at.

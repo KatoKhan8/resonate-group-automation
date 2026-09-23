@@ -54,3 +54,45 @@ TASK-251 built, and proves the two agree before reporting success.
 
 Reading from SQLite in anger, `QUEUE_BACKEND`, shadow mode, any change to
 `store.py`. This produces a database and proves it faithful. Nothing reads it.
+
+## RESULT
+
+- **STATUS**: DONE
+- **COMMIT SHA**: cb232b8d
+- **TESTS**: 9/9 pass in `tests.test_the_one_shot_migration`; 26/26 pass in
+  `tests.test_the_sqlite_store_keeps_the_order_it_was_given` (TASK-251
+  dependency, unchanged). 35/35 green across both modules.
+- **FILES CHANGED**:
+  - `scripts/migrate_store_sqlite.py` (new) — the migration script
+  - `tests/test_the_one_shot_migration.py` (new) — 9 tests covering every
+    falsifiable requirement
+- **FINDINGS**:
+  1. All seven falsifiable requirements from the task are covered by tests:
+     500-record round-trip, journal replay with genuinely differing base vs
+     current, corrupted read-back rollback, idempotent no-op, changed-source
+     refusal, production-write barrier, and concurrent lock refusal.
+  2. The journal replay test constructs a fixture where `_current_records()`
+     and `read_jsonl(queue_path())` genuinely differ (two records changed via
+     `queuejournal.append` without compaction) and asserts the difference is
+     what was migrated. A test where they happen to be equal would prove
+     nothing.
+  3. The barrier test runs in-process (not as a subprocess) because
+     `refuse_production_write` checks `under_test()` which requires
+     `unittest` in `sys.modules` — a subprocess would not detect itself as a
+     test run.
+  4. The lock test uses a subprocess blocker that holds the queue lock for 8
+     seconds while the migration attempts with a 1-second timeout, proving
+     the lock is held across read and write.
+  5. `src/store.py` is untouched (TASK-253 territory). The migration script
+     imports `store` only for `lock()`, `digest()`, `_current_records()`,
+     `refuse_production_write()`, and `ProductionStateUnderTest`.
+- **RISKS**:
+  - The migration script has a `_MIGRATE_CORRUPT_HOOK` env var for the
+    corruption test. This is a test seam, not production functionality. It
+    is undocumented outside the test and should not be relied on.
+  - The migration does not handle the case where the database file exists
+    but has no `migrated_from` meta key (e.g., a partially-written database
+    from a crashed migration). It deletes and re-creates, which is the safe
+    direction but could lose work if the crash happened after verification.
+- **RECOMMENDED CLAUDE ACTION**: Review and integrate. The migration is
+  ready for TASK-253 (QUEUE_BACKEND and shadow path) to wire it in.

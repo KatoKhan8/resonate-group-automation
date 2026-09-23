@@ -161,6 +161,19 @@ def block():
     return replaced
 
 
+def build_suite(loader=None):
+    """The suite this runner runs: discovered, then per-module isolated.
+
+    Wrapping happens HERE rather than in `tests/__init__.py`'s `load_tests`
+    because `discover("tests")` makes `tests` the top level and never consults
+    it. See `tests/envisolation.wrap_discovered`.
+    """
+    from . import envisolation
+
+    loader = loader or unittest.TestLoader()
+    return envisolation.wrap_discovered(loader.discover("tests"))
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     verbosity = 2 if "-v" in argv else 1
@@ -171,8 +184,7 @@ def main(argv=None):
     print("ephemeral port, and that traffic never leaves this machine")
     print("running the full suite offline\n")
 
-    loader = unittest.TestLoader()
-    suite = loader.discover("tests")
+    suite = build_suite()
     runner = unittest.TextTestRunner(verbosity=verbosity)
     result = runner.run(suite)
 

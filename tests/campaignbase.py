@@ -90,20 +90,23 @@ class CampaignTest(ProviderTest):
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         self.campaign_file = os.path.join(self.tmp, "work", "campaigns.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
+
+        # `addCleanup` where the state is captured, NOT `tearDown` - the same
+        # reason `ProviderTest` gives one class up, and this class is the
+        # instance it was warning about. `unittest` does not call `tearDown`
+        # when a `setUp` raises, and `clients.load(CLIENT)` below can raise:
+        # the three variables were then left pointing at a temp directory that
+        # the cleanup went on to delete. Measured 2026-09-23 as
+        # `test_replywatch` leaving OUT at `rga-campaign-<tmp>\out`, inherited
+        # by every module after it.
         self._env = {k: os.environ.get(k) for k in ("QUEUE", "CAMPAIGNS", "OUT")}
+        self.addCleanup(self._restore_env, self._env)
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
         os.environ["QUEUE"] = self.queue
         os.environ["CAMPAIGNS"] = self.campaign_file
         os.environ["OUT"] = os.path.join(self.tmp, "out")
         self.config = clients.load(CLIENT)
-
-    def tearDown(self):
-        for key, value in self._env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-        shutil.rmtree(self.tmp, ignore_errors=True)
-        super().tearDown()
 
     # ------------------------------------------------------------ fixtures
 

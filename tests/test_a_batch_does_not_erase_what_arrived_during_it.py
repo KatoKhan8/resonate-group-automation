@@ -45,7 +45,7 @@ import unittest
 from unittest import mock
 
 from src import actionledger, campaigns, enrich, identity, push, run, store
-from tests.base import QueueTest
+from tests.base import QueueTest, refuse_writes, write_as_another_process
 
 
 def a_record(rid="acct-one", domain="one.example"):
@@ -109,7 +109,7 @@ class WhatArrivedDuringTheBatch(QueueTest):
                  "email": "sam@one.example", "title": "Director"},
                 {"key": "ali-example", "name": "Ali Example",
                  "email": "ali@one.example", "title": "Director"}])
-            store._write(live)
+            write_as_another_process(live)
 
         store.save(snapshot)
 
@@ -172,17 +172,12 @@ class ABatchCheckpointsMoreThanOnce(QueueTest):
         held = store.load()
         store.get("r0", held)["state"] = "enriched"
 
-        real = store._write
-
-        def refuse(recs):
-            raise store.QueueLocked("another process has the queue")
-
-        store._write = refuse
+        restore = refuse_writes()
         try:
             with self.assertRaises(store.QueueLocked):
                 store.save(held)
         finally:
-            store._write = real
+            restore()
 
         store.save(held)                          # the next checkpoint retries
         self.assertEqual(store.get("r0")["state"], "enriched",
@@ -215,17 +210,12 @@ class ABatchCheckpointsMoreThanOnce(QueueTest):
         held = store.load()
         store.get("r0", held)["state"] = "enriched"
 
-        real = store._write
-
-        def refuse(recs):
-            raise store.QueueLocked("another process has the queue")
-
-        store._write = refuse
+        restore = refuse_writes()
         try:
             with self.assertRaises(store.QueueLocked):
                 store.save(held)
         finally:
-            store._write = real
+            restore()
 
         store.save(held)
         self.assertEqual(store.get("r0")["state"], "enriched",

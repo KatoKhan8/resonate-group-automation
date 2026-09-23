@@ -1,0 +1,302 @@
+[
+  {
+    "call": "deliverable-submit-clean-1",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single",
+      "body_contains": "cuk.simic@clean.test"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "task_id": "task-clean-1"
+      }
+    }
+  },
+  {
+    "call": "deliverable-status-clean-1",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single/status",
+      "body_contains": "task-clean-1"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "processing_status": "completed",
+        "status": "valid",
+        "email": "cuk.simic@clean.test"
+      }
+    }
+  },
+  {
+    "call": "deliverable-submit-clean-2",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single",
+      "body_contains": "ana.novak@clean.test"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "task_id": "task-clean-2"
+      }
+    }
+  },
+  {
+    "call": "deliverable-status-clean-2",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single/status",
+      "body_contains": "task-clean-2"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "processing_status": "completed",
+        "status": "valid",
+        "email": "ana.novak@clean.test"
+      }
+    }
+  },
+  {
+    "call": "deliverable-submit-clean-3",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single",
+      "body_contains": "petra.jelic@clean.test"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "task_id": "task-clean-3"
+      }
+    }
+  },
+  {
+    "call": "deliverable-status-clean-3",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single/status",
+      "body_contains": "task-clean-3"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "processing_status": "completed",
+        "status": "valid",
+        "email": "petra.jelic@clean.test"
+      }
+    }
+  },
+  {
+    "call": "deliverable-submit-clean-4",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single",
+      "body_contains": "md@clean.test"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "task_id": "task-clean-4"
+      }
+    }
+  },
+  {
+    "call": "deliverable-status-clean-4",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single/status",
+      "body_contains": "task-clean-4"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "processing_status": "completed",
+        "status": "valid",
+        "email": "md@clean.test"
+      }
+    }
+  },
+  {
+    "call": "deliverable-submit-safe",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single",
+      "body_contains": "iris.hallow@catchall-safe.test"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "task_id": "task-safe"
+      }
+    }
+  },
+  {
+    "call": "deliverable-status-safe",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single/status",
+      "body_contains": "task-safe"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "processing_status": "completed",
+        "status": "accept_all",
+        "email": "iris.hallow@catchall-safe.test"
+      }
+    }
+  },
+  {
+    "call": "deliverable-submit-unsafe",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single",
+      "body_contains": "otto.lindqvist@catchall-unsafe.test"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "task_id": "task-unsafe"
+      }
+    }
+  },
+  {
+    "call": "deliverable-status-unsafe",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single/status",
+      "body_contains": "task-unsafe"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "processing_status": "completed",
+        "status": "accept_all",
+        "email": "otto.lindqvist@catchall-unsafe.test"
+      }
+    }
+  },
+  {
+    "call": "deliverable-submit-invalid",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single",
+      "body_contains": "hugo.bramley@deadletter.test"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "task_id": "task-invalid"
+      }
+    }
+  },
+  {
+    "call": "deliverable-status-invalid",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single/status",
+      "body_contains": "task-invalid"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "processing_status": "completed",
+        "status": "invalid",
+        "email": "hugo.bramley@deadletter.test"
+      }
+    }
+  },
+  {
+    "call": "deliverable-submit-fallback",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single",
+      "body_contains": "sanne.devries@fallback.test"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "task_id": "task-fallback"
+      }
+    }
+  },
+  {
+    "call": "deliverable-status-fallback",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single/status",
+      "body_contains": "task-fallback"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "processing_status": "completed",
+        "status": "valid",
+        "email": "sanne.devries@fallback.test"
+      }
+    }
+  },
+  {
+    "call": "deliverable-submit-revive",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single",
+      "body_contains": "frank.merrow@redwood.test"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "task_id": "task-revive"
+      }
+    }
+  },
+  {
+    "call": "deliverable-status-revive",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single/status",
+      "body_contains": "task-revive"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "processing_status": "completed",
+        "status": "valid",
+        "email": "frank.merrow@redwood.test"
+      }
+    }
+  },
+  {
+    "call": "deliverable-submit-cold",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single",
+      "body_contains": "mira.kovacs@skyline.test"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "task_id": "task-cold"
+      }
+    }
+  },
+  {
+    "call": "deliverable-status-cold",
+    "match": {
+      "method": "POST",
+      "url_contains": "/verify/single/status",
+      "body_contains": "task-cold"
+    },
+    "status": 200,
+    "response": {
+      "data": {
+        "processing_status": "completed",
+        "status": "valid",
+        "email": "mira.kovacs@skyline.test"
+      }
+    }
+  }
+]

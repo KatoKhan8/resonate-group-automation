@@ -46,10 +46,17 @@ class TestEm5OfFiveStepCadenceIsUnchanged(unittest.TestCase):
 
     def test_step_block_em5_resolves_to_breakup(self):
         """The actual call path: step_block computes ordinal from the
-        sequence and calls purpose_for with it."""
+        sequence and calls purpose_for with it.
+
+        TASK-258: em5 is now a same-thread follow-up, so its purpose carries
+        the FOLLOWUP_ADDENDUM after the rung's own words. The rung text is
+        asserted as a prefix - the addendum is the channel mechanism, not a
+        change to the rung's job."""
         seq = cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
         block = generate.step_block(seq, "em5")
-        self.assertEqual(block["purpose"], BREAKUP_RUNG)
+        self.assertTrue(block["purpose"].startswith(BREAKUP_RUNG),
+                        f"em5 purpose no longer starts with the breakup rung")
+        self.assertTrue(block["thread_reply"])
         self.assertEqual(block["number"], 5)
         self.assertEqual(block["channel"], "email")
 

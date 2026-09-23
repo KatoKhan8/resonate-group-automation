@@ -94,27 +94,50 @@ def _shape(raw):
     }
 
 
-def judge(info, icp):
-    """(verdict, reason). `flagged` whenever the evidence cannot decide."""
+#: OPERATOR AMENDMENT, Zvonimir Beslic, 2026-09-22.
+#: `docs/OPERATOR-AUTHORIZATION-2026-09-22-BOUNCE-DENOMINATOR-AND-HEADCOUNT.md`
+#: section D: "Remove the headcount criterion from the S3 ICP verdict for the
+#: 2026-09-07 Productive file (24,404 domains). Geo and industry rules
+#: unchanged; unknown country stays FLAGGED."
+#:
+#: IT IS BOUND TO THE SNAPSHOT BY NAME AND REFUSES ANY OTHER, because the
+#: authorisation's own scope line is that `config/clients/productive.yaml` is
+#: NOT edited and the 20+ floor still applies to every sourced account and
+#: every future export. A flag that could be passed to another file would be
+#: exactly the config edit the operator declined to make.
+HEADCOUNT_AMENDMENT = "PRODUCTIVE-2026-09-07"
+
+
+def judge(info, icp, headcount=True):
+    """(verdict, reason). `flagged` whenever the evidence cannot decide.
+
+    `headcount=False` applies the 2026-09-22 amendment: size is not judged at
+    all. It is NOT the same as widening the band - a company whose headcount
+    is unknown stops being FLAGGED for that reason, which is most of what the
+    amendment recovers.
+    """
     if not info or not info.get("domain"):
         return "flagged", "provider returned no company for this domain"
 
-    emp = info.get("employees")
-    try:
-        emp = int(emp) if emp not in (None, "") else None
-    except (TypeError, ValueError):
-        emp = None
+    if headcount:
+        emp = info.get("employees")
+        try:
+            emp = int(emp) if emp not in (None, "") else None
+        except (TypeError, ValueError):
+            emp = None
 
-    lo = icp.get("size_min_employees") or 0
-    hi = icp.get("size_max_employees") or 1000
-    if emp is None:
-        size = ("flagged", "headcount unknown")
-    elif emp < lo:
-        size = ("out", f"headcount {emp} below {lo}")
-    elif emp > hi:
-        size = ("out", f"headcount {emp} above {hi}")
+        lo = icp.get("size_min_employees") or 0
+        hi = icp.get("size_max_employees") or 1000
+        if emp is None:
+            size = ("flagged", "headcount unknown")
+        elif emp < lo:
+            size = ("out", f"headcount {emp} below {lo}")
+        elif emp > hi:
+            size = ("out", f"headcount {emp} above {hi}")
+        else:
+            size = ("in", f"headcount {emp}")
     else:
-        size = ("in", f"headcount {emp}")
+        size = ("in", "headcount not judged (2026-09-22 amendment)")
 
     country = (info.get("country") or "").strip().lower()
     for bad in (icp.get("exclude_geos") or []):

@@ -26,6 +26,26 @@ import unittest
 from src import config, store, workspaces
 from src.web import app, demodata
 
+
+# This module exercises code that writes `os.environ` ITSELF - `src/web/demoslack.py` calls `os.environ.setdefault(OPS_CHANNEL_VAR, ...)` - so
+# restoring only what the tests set is not enough. Measured 2026-09-23: it
+# left SLACK_OPS_CHANNEL set for every module that ran afterwards.
+#
+# Module-level, because the writes happen inside the code under test rather
+# than in any one setUp, and a module is responsible for the side effects of
+# what it exercises.
+_ENV_BEFORE_MODULE = None
+
+
+def setUpModule():
+    global _ENV_BEFORE_MODULE
+    _ENV_BEFORE_MODULE = dict(os.environ)
+
+
+def tearDownModule():
+    from tests.envisolation import restore
+    restore(_ENV_BEFORE_MODULE)
+
 # What a Railway volume mount looks like. The path is not special - what
 # matters is that it is somewhere the repository is not.
 MOUNT = "data"

@@ -539,13 +539,28 @@ class ProviderWriteRefused(RuntimeError):
     """
 
 
-def writes_allowed():
-    """(allowed, why). `why` is quotable in a refusal or an audit line."""
+def writes_allowed(url=None):
+    """(allowed, why). `why` is quotable in a refusal or an audit line.
+
+    `url` is what decides whether a ROUTE-SCOPED `allow_writes(only=...)`
+    covers this particular call. Omitting it asks the weaker question "is any
+    scope open at all", which is what a caller wanting a status line means.
+    """
     scopes = _write_scopes.get()
-    if scopes:
-        return True, "allow_writes(%s)" % scopes[-1]
+    for scope in reversed(scopes):
+        reason = getattr(scope, "reason", scope)
+        if url is None or getattr(scope, "permits", lambda _u: True)(url):
+            return True, "allow_writes(%s)" % reason
     if os.environ.get(WRITES_ENV) == "1":
         return True, "%s=1" % WRITES_ENV
+    if scopes:
+        # A scope IS open and does not cover this route. Said separately,
+        # because "nobody authorised any write" and "this write is outside
+        # what was authorised" send an investigator to different places.
+        names = "; ".join(sorted({
+            ",".join(getattr(s, "only", None) or ("*",)) for s in scopes}))
+        return False, ("a scope is open but does not cover this route "
+                       "(authorised: %s)" % names)
     return False, "no %s and no allow_writes() scope" % WRITES_ENV
 
 
@@ -559,17 +574,61 @@ class allow_writes:
     `writes_allowed()`, because "who authorised this write and for what" is
     the question an incident asks first and the one the 487 pause could not
     answer.
+
+    ## `only=` - narrow by ROUTE, not only by time
+
+        with providers.allow_writes("stop on reply", only=STOP_ROUTES):
+            leadstop.stop_contact(...)
+
+    Without `only`, a scope authorises EVERY mutating route for the duration
+    of the block. That is narrow in time and wide in power: a function you
+    believe only stops a lead is one refactor away from also pausing the
+    campaign, and the scope would have permitted it silently.
+
+    2026-09-23 is why this exists. `reply_watch_loop` could not stop a lead
+    at all - it opts into no scope, so a LinkedIn reply never reached
+    EmailBison and one prospect sat `in_sequence` for 2h07m after saying "no
+    thank you". The fix is to give that path a scope; the fix must not also
+    hand the reply path the power to enrol, pause, resume or create, because
+    the whole point of the 487 guard is that a process holds only what its
+    job needs.
+
+    A URL is inside `only` when any entry appears in it, matched
+    case-insensitively on the path. An entry is a route fragment
+    (`"stop-future-emails"`, `"StopLeadInCampaign"`), never a whole URL, so a
+    host change does not silently widen or void it.
     """
 
-    def __init__(self, reason):
+    def __init__(self, reason, only=None):
         if not str(reason or "").strip():
             raise ValueError(
                 "allow_writes needs a reason: an unattributable authorization "
                 "is the thing this guard exists to prevent")
         self.reason = str(reason).strip()
+        if only is None:
+            self.only = None
+        else:
+            entries = tuple(str(o).strip().lower() for o in only
+                            if str(o or "").strip())
+            if not entries:
+                # An empty allowlist is almost certainly a bug at the call
+                # site - a filter that was meant to be computed and came
+                # back empty. Authorising everything would be the dangerous
+                # reading, and authorising nothing silently would be a
+                # mystery refusal, so it says so.
+                raise ValueError(
+                    "allow_writes(only=...) was given an empty allowlist; "
+                    "pass None to authorise every route, or name the routes")
+            self.only = entries
+
+    def permits(self, url):
+        """Does this scope cover that URL? `None` means every route."""
+        if self.only is None:
+            return True
+        return any(entry in str(url or "").lower() for entry in self.only)
 
     def __enter__(self):
-        self._token = _write_scopes.set(_write_scopes.get() + (self.reason,))
+        self._token = _write_scopes.set(_write_scopes.get() + (self,))
         return self
 
     def __exit__(self, *exc):
@@ -622,7 +681,7 @@ def refuse_unauthorized_write(method, url):
     # authority it does not want in order to read.
     if is_declared_read(method, url):
         return
-    allowed, why = writes_allowed()
+    allowed, why = writes_allowed(url)
     if allowed:
         return
     _log_refusal(method, url, why)

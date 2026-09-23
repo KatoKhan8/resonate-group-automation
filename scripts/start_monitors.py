@@ -94,6 +94,15 @@ MONITORS = [
     # which is exactly the failure --status is meant to surface. It did.
     ("heyreach-605732",  ["scripts/heyreach_watch_loop.py", "--interval", "300"]),
     ("slack-agent",      ["scripts/slack_agent_loop.py"]),
+    # `slack_followup_loop` was NOT in this table and was NOT running, so the
+    # "restart it after D3" in the afternoon plan was a START, not a restart,
+    # and a reboot would have killed it with nothing to bring it back - the
+    # same gap §8 records for the 90k walk. It belongs here because
+    # `slackfollowup.deliverer_is_running()` reads its heartbeat to decide
+    # whether the agent may offer the follow-up at all: an absent loop is not
+    # a quiet loop, and the offer must not be made on a heartbeat that no
+    # process is writing.
+    ("slack-followup",   ["scripts/slack_followup_loop.py", "--interval", "60"]),
 ]
 
 TASK_NAME = "ResonateMonitors"

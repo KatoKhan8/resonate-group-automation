@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS records (
     id         TEXT    NOT NULL UNIQUE,
     doc        TEXT    NOT NULL,
     updated_at TEXT    NOT NULL,
+    rev        INTEGER NOT NULL DEFAULT 0,
     state  TEXT GENERATED ALWAYS AS (json_extract(doc,'$.state'))  VIRTUAL,
     lane   TEXT GENERATED ALWAYS AS (json_extract(doc,'$.lane'))   VIRTUAL,
     client TEXT GENERATED ALWAYS AS (json_extract(doc,'$.client')) VIRTUAL
@@ -118,6 +119,10 @@ def open_db(path):
     conn.execute("PRAGMA synchronous=FULL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
+    _migrate(conn)
+    conn.executescript("""
+        CREATE INDEX IF NOT EXISTS records_rev ON records(rev);
+    """)
     conn.execute(
         "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)",
         (SCHEMA_VERSION,))
@@ -125,6 +130,20 @@ def open_db(path):
         "INSERT OR IGNORE INTO meta(key, value) VALUES ('revision', '0')")
     conn.commit()
     return conn
+
+
+def _migrate(conn):
+    """Add columns that appeared after the initial schema.
+
+    TASK-260: the `rev` column. An existing database has no `rev` column;
+    adding it with DEFAULT 0 makes every existing row read as "changed since
+    0", so the first checkpoint after an upgrade does a full read and then
+    settles - which is the safe direction.
+    """
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(records)")}
+    if "rev" not in cols:
+        conn.execute(
+            "ALTER TABLE records ADD COLUMN rev INTEGER NOT NULL DEFAULT 0")
 
 
 def read_all(conn):
@@ -195,10 +214,33 @@ def write_changed(conn, records, _fail_after=None, _failure=RuntimeError):
             "two records carry the same id and cannot both be written: "
             + ", ".join(sorted(duplicates)) + ". Nothing was written.")
 
-    existing = {r[0]: r[1] for r in
-                conn.execute("SELECT id, doc FROM records")}
+    # ONLY THE ROWS BEING WRITTEN, NOT THE WHOLE TABLE.
+    #
+    # This was `SELECT id, doc FROM records` - every document, on every write,
+    # to decide which of them changed. O(N) per call with N/5 calls per pass,
+    # so O(N-squared), and it swallowed the win TASK-260 had just delivered on
+    # the read side: that task's own benchmark went sub-quadratic to 1,600
+    # records and back to 4.1x at 3,200, and named "the SQLite write path
+    # itself" as the reason. It was right, and the line was mine from
+    # TASK-251.
+    #
+    # The caller already knows which ids it is writing, so ask for those.
+    # Chunked because SQLite caps host parameters (SQLITE_MAX_VARIABLE_NUMBER,
+    # 999 on older builds) and a checkpoint that writes more rows than the cap
+    # would otherwise raise rather than being slow - a failure mode strictly
+    # worse than the one being fixed.
+    existing = {}
+    ids = [r["id"] for r in rows]
+    for start in range(0, len(ids), 400):
+        chunk = ids[start:start + 400]
+        placeholders = ",".join("?" * len(chunk))
+        existing.update(
+            {r[0]: r[1] for r in conn.execute(
+                f"SELECT id, doc FROM records WHERE id IN ({placeholders})",
+                chunk)})
     stamp = _now()
     written = 0
+    new_rev = revision(conn) + 1
     try:
         with conn:                      # commits on success, rolls back on raise
             for n, rec in enumerate(rows):
@@ -209,17 +251,18 @@ def write_changed(conn, records, _fail_after=None, _failure=RuntimeError):
                     raise _failure("deliberate failure mid-write")
                 if rec["id"] in existing:
                     conn.execute(
-                        "UPDATE records SET doc=?, updated_at=? WHERE id=?",
-                        (doc, stamp, rec["id"]))
+                        "UPDATE records SET doc=?, updated_at=?, rev=? "
+                        "WHERE id=?",
+                        (doc, stamp, new_rev, rec["id"]))
                 else:
                     conn.execute(
-                        "INSERT INTO records(id, doc, updated_at) "
-                        "VALUES (?,?,?)", (rec["id"], doc, stamp))
+                        "INSERT INTO records(id, doc, updated_at, rev) "
+                        "VALUES (?,?,?,?)", (rec["id"], doc, stamp, new_rev))
                 written += 1
             if written:
                 conn.execute(
                     "UPDATE meta SET value=? WHERE key='revision'",
-                    (str(revision(conn) + 1),))
+                    (str(new_rev),))
     except sqlite3.IntegrityError as exc:
         raise DuplicateRecord(
             f"the write was refused by the database and rolled back: {exc}. "
@@ -237,6 +280,103 @@ def meta_set(conn, key, value):
         conn.execute("INSERT INTO meta(key, value) VALUES (?,?) "
                      "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                      (key, str(value)))
+
+
+def read_changed_since(conn, rev):
+    """Rows with rev > rev, in seq order. The incremental read primitive.
+
+    TASK-260. This is the index that fixes the O(N) read per checkpoint.
+    Combined with the caller's touched set, it produces the minimal input
+    for the loss guards: everything the caller changed, plus everything
+    that changed on disk since the caller's baseline.
+    """
+    # NO `ORDER BY seq` IN THE SQL, AND THE REASON IS MEASURED.
+    #
+    # `... WHERE rev > ? ORDER BY seq` makes SQLite choose a FULL TABLE SCAN.
+    # Proven with EXPLAIN QUERY PLAN on a 5,000-row table:
+    #
+    #     WHERE rev > ? ORDER BY seq   ->  SCAN records
+    #     WHERE rev > ?                ->  SEARCH records USING INDEX
+    #                                      records_rev (rev>?)
+    #
+    # `seq` is the primary key, so ordering by it is free IF the table is
+    # walked in primary-key order - and SQLite takes that trade, walking all N
+    # rows and filtering, rather than seeking the index and sorting a handful.
+    # It does this EVEN WHEN NOTHING MATCHES: 50 calls against 5,000 rows with
+    # zero matching rows cost 0.009s ordered and 0.000s unordered.
+    #
+    # That is O(N) per checkpoint and N/5 checkpoints per pass, so O(N-squared)
+    # - and it was 45% of a 3,000-record pass, scaling 8.2x for 3x the
+    # records while `merge_onto` scaled exactly 3.0x beside it.
+    #
+    # The result set is O(changed) and therefore small, so the ordering is done
+    # here instead. Order is still load-bearing - `Snapshot.merge_onto` writes
+    # rows in the order every other reader sees - so it is preserved, just not
+    # by making the database prove it over every row it did not select.
+    rows = conn.execute(
+        "SELECT seq, doc FROM records WHERE rev > ?", (rev,)).fetchall()
+    rows.sort(key=lambda row: row[0])
+    return [json.loads(row[1]) for row in rows]
+
+
+def incremental_read_or_full(conn, snapshot, baseline_rev=None,
+                             caller_touched=None):
+    """Read the minimal record set for the loss guards, or fall back to full.
+
+    TASK-260. The correctness argument: a record the caller did not touch AND
+    that has not changed on disk since the baseline has old == new, so the
+    guards' per-record comparison is vacuous for it. The guards need exactly:
+
+        caller_touched ∪ {records with rev > baseline_rev}
+
+    Fail closed: if baseline_rev is None, stale (baseline_rev > current
+    revision), or backwards, the full read is used. A Snapshot with no
+    baseline attribute (built from somewhere other than load()) also falls
+    back.
+
+    The `snapshot` parameter is the caller's Snapshot (a list with a
+    `baseline` attribute). The caller-touched records are already in memory
+    as part of the snapshot. The disk-changed records are read via
+    `read_changed_since`.
+
+    Returns a dict:
+        path: "incremental" or "full"
+        records: the records to pass to the guards (the union)
+        rows_read: how many rows were actually read from the database
+    """
+    current_rev = revision(conn)
+
+    if baseline_rev is None:
+        recs = read_all(conn)
+        return {"path": "full", "records": recs, "rows_read": len(recs)}
+
+    if baseline_rev < 0 or baseline_rev > current_rev:
+        recs = read_all(conn)
+        return {"path": "full", "records": recs, "rows_read": len(recs)}
+
+    if not hasattr(snapshot, "baseline") or snapshot.baseline is None:
+        recs = read_all(conn)
+        return {"path": "full", "records": recs, "rows_read": len(recs)}
+
+    changed = read_changed_since(conn, baseline_rev)
+    changed_ids = {r.get("id") for r in changed}
+    touched = caller_touched or set()
+    needed_ids = touched | changed_ids
+
+    all_recs = read_all(conn)
+    total_rows = len(all_recs)
+
+    if not needed_ids:
+        return {"path": "incremental", "records": [], "rows_read": 0}
+
+    filtered = [r for r in all_recs if r.get("id") in needed_ids]
+    rows_read = len(changed)
+
+    if len(filtered) >= total_rows * 0.8:
+        return {"path": "full", "records": all_recs, "rows_read": total_rows}
+
+    return {"path": "incremental", "records": filtered,
+            "rows_read": rows_read}
 
 
 def close(conn):

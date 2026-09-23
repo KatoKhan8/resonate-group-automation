@@ -299,6 +299,306 @@ reproduced within the hour.
 
 ---
 
+## 4c. QWEN POOL — DISPATCHED, REVIEWED, INTEGRATED
+
+Operator asked for 252-257 queued to the pool. Dispatched on branches off
+`infra` (252/255 depend on TASK-251, which is only here). **TASK-253 and
+TASK-256 were deliberately NOT dispatched** — 253 depends on 252 and 256 on
+258, and both touch the same files as their dependency. qwen-7 and qwen-8 are
+held for them. `resonate-qwen-worker` was left alone; it is mid-TASK-250.
+
+    TASK-251  (me)    INTEGRATED   sqlitestore, no caller
+    TASK-252  qwen-2  INTEGRATED   one-shot migration + verifier
+    TASK-253  qwen-7  INTEGRATED   QUEUE_BACKEND + shadow path
+    TASK-254  qwen-3  INTEGRATED   the caller survey is an AST test
+    TASK-255  qwen-4  INTEGRATED   20k load test at production record size
+    TASK-256  qwen-8  INTEGRATED   the threading fixtures
+    TASK-257  qwen-5  INTEGRATED   LinkedIn seat ledger
+    TASK-258  qwen-6  INTEGRATED   the default ladder
+
+**All eight DONE.** 300 tests across every suite this branch added or touched:
+298 green, 2 failures — the known pre-existing `test_invariants` pair, which
+is genuine test debt and predates this branch.
+
+TASK-259 is written and NOT dispatched — see §4d.
+
+### Every one was attacked before it was accepted
+
+    TASK-254   3 synthetic violations (bare, dotted, nested in os.path.join)
+               -> all caught; a COMMENT mentioning the pattern does not fire
+    TASK-252   verifier stubbed to pass -> 1 failure; records reversed
+               -> 2 failures; base file read instead of _current_records
+               -> 1 failure
+    TASK-257   swept ours=0..59 on a shared seat -> no ROOM, no numeric
+               remaining, no client of 0, at any count
+
+My first attack on TASK-252 was the flawed one: patching `_verify` in-process
+caught nothing because those tests drive the script as a subprocess. Re-run
+against the script file itself, it catches everything. Worth recording because
+the same mistake would have passed a broken verifier.
+
+### Three review fixes I made on integration
+
+1. **`task191_funnel.py` called `store.use_directory()`** — documented "Demo
+   mode and tests only", and it `makedirs` its target and CLEARS every
+   `STATE_OVERRIDE`. The script's default target is the production `work/`
+   directory and it is a read-only report. Now sets `QUEUE` alone. It is also
+   the same helper behind the env leak that caused the five order-dependent
+   failures fixed earlier today.
+
+2. **The migration had an environment-named code path.** `migrate` read
+   `_MIGRATE_CORRUPT_HOOK` and ran whatever file it named as a subprocess,
+   unguarded, on the path that migrates the only file holding real client
+   state. Not a privilege escalation — but this repo has a convention for
+   test-only escape hatches (`allow_history_loss` is a keyword argument
+   `test_invariants` forbids `src/` from passing) and an environment variable
+   is not it. Now an `_after_insert` parameter, matching
+   `sqlitestore._fail_after`. A test asserts no `os.environ` read and no
+   run/Popen/exec/eval in the module.
+
+3. **`seatledger` called `int()` on a seat id.** It raised on a non-numeric
+   provider id — and in a module whose job is classifying FULL/ROOM/REFUSED,
+   a traceback is not one of the three. Where it did not raise it collapsed
+   distinct seats: `int(True)` is 1, `int("1_0")` is 10, `int("٧")` is 7.
+   Two seats becoming one is one seat handed another's usage, and on the ROOM
+   branch that is the confident wrong number the module exists to prevent.
+   **None of it was covered**, because every fixture built ids with `int(s)`.
+   Four tests added; verified by restoring `int()` — 1 error, 5 failures.
+
+   This is the coercion class the GLM attribution review raised against
+   `int(seat)` in `inbound` — the review that turned out to have been run with
+   no code in the prompt. The finding was right anyway, and it has now turned
+   up in a second module. **Worth checking `inbound` for it directly.**
+
+### One design call I want to endorse rather than flag
+
+`seatledger._is_exclusive` is ACCOUNT-WIDE, not per-seat, and that looks wrong
+until you read its reasoning: we cannot enumerate the client's campaigns'
+sender lists, so we cannot prove any INDIVIDUAL seat is absent from them.
+Exclusivity is establishable for the whole account or not at all. In
+production — 86 campaigns against our 4 — every seat comes back REFUSED, which
+is exactly what ISSUE-010 says is true.
+
+### A pool note that cost three workers
+
+**`qwen.cmd` truncates a multi-line prompt.** Three of five workers replied
+"the instruction is incomplete" and exited 0 having done nothing — the
+README's "a worker that has done nothing" failure, from a cause it does not
+name. Single-line prompts work. Worth adding to `docs/qwen-tasks/README.md`.
+
+---
+
+## 4d. THE TWO THINGS TO READ BEFORE PROMOTING ANYTHING
+
+**1. SQLite is a very large win and NOT the finish line.** TASK-255 measured
+all three arms at production record size:
+
+    ARM              RECORDS  CHECKPOINTS  TIME_S  MB_WRITTEN  AMPLIFICATION
+    jsonl              1,000          200    65.4     3,981.8       1108.1x
+    jsonl+journal      1,000          200   123.9         3.6          1.0x
+    sqlite             1,000          200    43.3         0.2          0.1x
+
+O(changed) is demonstrated across three sizes, not asserted at one. But **all
+three arms are O(N²) in wall clock** — 2x records, 4x time — because the read
+per checkpoint is O(N) and there are N/5 of them. Projected at 20,000: jsonl
+~7 hours, journal ~52 minutes, sqlite ~23 minutes. The design doc now carries
+this, with a line asking that "SQLite fixes the storage problem" not be the
+sentence that survives from it.
+
+**2. TASK-259 is the gate, and it is not dispatched.** The reproduced-incident
+tests — the ones encoding the 2026-09-12 batch that erased a reply, an
+unsubscribe, a drop reason and three purchased decision-makers — structurally
+cannot run against the sqlite backend, because they simulate a second writer
+with `store._write()`, which is not on that path. So the three-way merge and
+both loss guards are exercised **only on JSONL**. Do not promote
+`QUEUE_BACKEND=sqlite` until that is closed.
+
+### One more defect the regression caught, after every task was merged
+
+`QUEUE_DB` — added by TASK-253 — was never registered in
+`store.STATE_OVERRIDES`. `use_directory()` works by clearing that tuple, so a
+stale `QUEUE_DB` pointing at the real `work/queue.db` would have **survived
+isolation**: the queue moves to the temp directory, the database does not, and
+a test writes the real SQLite store believing it is isolated. Fixed, and
+verified by reproducing it. Found by `test_every_state_override_is_in_the_move
+_together_set`, which is that invariant pair doing exactly its job.
+
+---
+
+## 4e. THE PROMOTION RULE, AND THE TWO TASKS IT GATES ON
+
+**Operator, Zvonimir, 2026-09-22. Recorded in full as
+`docs/STORE-SQLITE-DESIGN-2026-09-22.md` §11** — put there rather than only
+here, because §11 is where somebody reaching for the flag will actually look.
+
+    QUEUE_BACKEND=sqlite goes live ONLY when all four hold:
+      1. TASK-259 green   both loss guards exercised on BOTH backends
+      2. TASK-260 green   the checkpoint read is O(changed)
+      3. 48 hours of shadow on the live queue with a ZERO diff
+      4. the PRODUCTION SESSION flips it, in a window with no sends
+
+    Until then, JSONL stays live.
+
+Condition 3 has a trap written next to it. **An empty diff ledger is not the
+same as a clean one** — zero rows because nothing ran looks identical to zero
+rows because everything agreed, and this repository has shipped that exact
+vacuous pass twice (F-003's `coverage()` passing against nothing, and
+`leadstop.sweep` reporting clean because it never incremented its counter).
+TASK-253's ledger records **writes observed** as well as divergences, so the
+check is `writes_observed > 0 AND divergences == 0`, not "the file is empty".
+
+§11 also records what promotion does **not** require, so nobody adds it later:
+not a full-suite green (the baseline carries ~111 known failures, none about
+storage), and not the jsonl 20k arm being performed (it writes ~1.59 TB and is
+projected by design).
+
+And it is reversible: `QUEUE_BACKEND=jsonl` restores the old path, because the
+migration never deletes or modifies `queue.jsonl` and JSONL keeps being
+written throughout shadow. That is the reason shadow comes first, and the
+reason it is 48 hours rather than an afternoon.
+
+### TASK-260 — dispatched, and it is a safety task wearing a performance hat
+
+`docs/qwen-tasks/TODO/TASK-260-...md`. It leads with the hazard rather than
+the optimisation, because the optimisation is easy:
+
+**Both loss guards fail open on absence.** `refuse_evidence_loss` and
+`refuse_history_loss` each `continue` past a record id missing from the new
+set — correct today, because removal is a different rule with a different
+guard. The moment the read narrows, every record outside the subset *is*
+absent, so both guards skip it. Silently. **A narrowed read converts both into
+no-ops for everything they did not read**, and these are the guards that exist
+because a 2026-09-11 checkpoint erased a prospect's request to be removed and
+left `eligibility` answering with an approval gate rather than a stop.
+
+So the task forbids touching either guard, and requires the correctness to
+come from the input being provably sufficient — the records the caller
+touched, union the records changed on disk since its baseline — proven by a
+200-round randomised property test that the narrowed input gives the identical
+verdict to the full set, for the same ids. Plus a fail-closed fallback to the
+full read whenever the cursor cannot be trusted.
+
+It also tells the worker the thing that would otherwise cost it a day:
+**`updated_at` cannot be the cursor.** Second-resolution from `store.now()`,
+`CHECKPOINT_EVERY` is 5, so a cursor built on it would skip every change
+landing in the same second. TASK-251 measured that. It specifies a real
+per-row `rev` column fed from `meta.revision`.
+
+---
+
+## 4f. FINAL STATE — 251-260, PII guard green, and what is NOT met
+
+**The PII guard is GREEN on this branch, 13/13**, which was the gate on
+opening this merge request. Three failures, two causes:
+
+- **One was mine.** TASK-260's tests used an address on the real `test.com` domain in four places.
+  `test.com` is a real, registered, resolvable domain — exactly what
+  `test_every_email_address_is_on_a_reserved_domain` refuses, and its
+  docstring is the argument: "an address on a domain that can resolve is an
+  address somebody could actually be mailed at." No real identifier was
+  involved. Moved to `.test`.
+- **Two were inherited.** This branch forked at `c75b4b60`, when the guard was
+  already red, and you fixed it in `9a77028e` after this session flagged it.
+  **I merged master and took your redaction rather than writing a second,
+  different one** — two placeholder choices for the same identifiers would
+  conflict at merge time, and yours is the one master carries. Zero files were
+  touched on both sides, so it was conflict-free by construction.
+
+Merging master in also makes this branch reviewable: `git diff master..infra`
+now shows what infra adds, rather than that plus the reversal of 30 commits of
+your work.
+
+### PROMOTION CONDITION 2 IS NOT MET, AND THE NUMBERS SAY SO
+
+`docs/BENCHMARK-PASS-WALL-CLOCK-2026-09-22.md`. Run detached, no timeout
+wrapper:
+
+    size    backend   seconds   ratio
+    1,000   sqlite      60.53   -
+    5,000   sqlite   1,522.58   25.2x
+    1,000   jsonl       88.36   -
+
+**5² = 25; the measured ratio is 25.2.** Quadratic to two significant figures,
+*with* TASK-260's incremental read in place. I stopped the 20,000 arm rather
+than run it — ~6.8 hours at this shape, and it would add nothing the ratio has
+not settled.
+
+**The cause is not the storage backend.** `Snapshot` re-serialises every
+record **twice per checkpoint** — `store.py:470` in `merge_onto`, `store.py:604`
+in `_incremental_guard_input` — to re-derive which rows the caller edited. At
+5,000 records that is ~198 GB of in-memory JSON to change 5,000 records, and it
+happens on **every** arm. It retrospectively explains TASK-255: three backends
+with wildly different I/O had identical shape because the quadratic was never
+in the I/O. **TASK-261** owns it.
+
+What SQLite has actually bought is **write volume** — 1.59 TB projected against
+188 KB, four orders of magnitude of write endurance, and the reason
+`queue.jsonl` will not survive 20k whatever else is true. It has not yet bought
+wall clock. `QUEUE_BACKEND=sqlite` stays blocked, as recorded in §11.
+
+### TASK-250: I tried it, it regressed, I reverted it
+
+It was **claimed and stalled** on `qwen-worker-r57` — two commits, still in
+`RUNNING/`, no result block. I merged it to preserve your work rather than
+duplicate it, measured, and reverted:
+
+    before   11,226 tests    82 distinct failures
+    after    11,346 tests   123 distinct failures     +41
+
+**The phase fixtures are shared, and neither the brief nor I knew it.**
+`phase7.jsonl` alone is read by `test_approve`, `test_cadence`,
+`test_double_verification` and `test_events`, so moving its evidence from
+contactout to deliverable fixed `test_e2e` — the target — and broke 47 tests
+across 8 modules with `'blocked' != 'eligible'`. That is why the work was
+abandoned mid-flight.
+
+Merging it was my call and my mistake; the set-difference diff caught it,
+which is the third time today that artifact has paid for itself. `126dcfa1` is
+preserved unmerged — the approach was right — and the diagnosis is written
+into TASK-250 for attempt 2, including the instruction to enumerate every
+consumer of a shared fixture *before* editing it.
+
+**Baseline stands at 82.**
+
+---
+
+## 4g. WHAT IS QUEUED AND RUNNING, AND THE TWO DOCS TO REVIEW WITH IT
+
+    docs/BENCHMARK-PASS-WALL-CLOCK-2026-09-22.md    the measurement
+    TASK-261  qwen-2  RUNNING   Snapshot stops re-serialising everything
+    TASK-262  qwen-3  RUNNING   verification roles, attempt 2
+    TASK-250          SUPERSEDED by 262
+
+**`docs/BENCHMARK-PASS-WALL-CLOCK-2026-09-22.md` is the document to read
+before anything else in this merge request.** It is the only measurement here
+that says no.
+
+**TASK-261** carries an unusual acceptance criterion, set by the operator, and
+it is worth knowing why: *the benchmark is the acceptance, not the test
+suite.* TASK-260 shipped 18 green tests and moved the ratio by nothing. So 261
+passes only if 5k/1k comes down near 5x from 25.2x, and its brief says that if
+tracking cannot be done without weakening `Snapshot`'s merge contract, the
+worker must **report a failed acceptance with the measurement rather than a
+success with a nice-looking speedup**.
+
+Its brief also names the trap, because the obvious implementation is dangerous
+rather than merely incomplete: callers mutate record dicts **in place**, and
+two of the three shapes are nested — `rec["contacts"].append(...)` and
+`rec["cadence"]["day1"]["body"] = ...`. A tracker catching only top-level
+assignment passes a casual test, produces a beautiful benchmark, and silently
+stops detecting the edits that carry contacts, events and cadence — which is
+to say it silently starves both loss guards of the records that matter most,
+invisibly, until somebody loses a reply.
+
+**TASK-262** is TASK-250 with the rule that makes it survivable: never mutate
+a shared fixture. Requirement 2 is the first thing to check at review —
+`git diff` must show **zero** changes to `phase2/5/6/7.jsonl`. Attempt 1's
+`126dcfa1` is preserved unmerged and 262 is told to recover it rather than
+reinvent it; its 302-line deliverable cassette is not shared state and should
+be taken as-is.
+
+---
+
 ## 5. WHAT I DID NOT DO
 
 - **Did not fix the PII guard** — §2, your files.

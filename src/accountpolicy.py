@@ -159,6 +159,11 @@ CLASSIFIER_OUTCOME = {
     "interested": UNKNOWN,
     "meeting_intent": UNKNOWN,
     "objection": UNKNOWN,
+    # Added 2026-09-23 with the classes themselves. UNKNOWN for the same
+    # reason as the three above: a finer CLASS must not widen what automation
+    # may do. The reply engine routes them; the account policy still pauses.
+    "question": UNKNOWN,
+    "send_info": UNKNOWN,
     # OPERATOR DECISION, Zvonimir Bešlić, 2026-09-22.
     #
     # `automated` maps to NOT_NOW, exactly as `out_of_office` does: nobody

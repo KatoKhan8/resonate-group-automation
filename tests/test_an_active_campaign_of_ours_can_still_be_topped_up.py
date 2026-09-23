@@ -18,9 +18,14 @@ halves.
 import unittest
 
 from src import collision
+# `tearDownModule` as well as `setUpModule`: importing half of a module
+# fixture pair sets BISON_KEY and BISON_BASE and never puts them back.
+# Measured 2026-09-23 - this module was one of twelve leaving the environment
+# changed, and the only one whose leak was an import list rather than a
+# missing teardown.
 from tests.test_our_own_staging_is_not_their_history import (   # noqa: F401
     OURS, THEIRS, WS, StagingTest, campaign_row, lead, membership,
-    setUpModule)
+    setUpModule, tearDownModule)
 
 
 class AnActiveCampaignOfOursDoesNotCollideWithItself(StagingTest):

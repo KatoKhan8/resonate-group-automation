@@ -264,8 +264,8 @@ LADDER_REGISTRY = {
 # changed. `FOLLOWUP_ADDENDUM` is appended to the rung's purpose in the
 # prompt when `thread_reply` is True.
 THREAD_REPLY_PATTERNS = {
-    "email_five": (False, True, False, True, False),
-    "email_eight": (False, True, False, True, False, True, False, True),
+    "email_five": (False, True, True, True, True),
+    "email_eight": (False, True, True, True, True, True, True, True),
 }
 
 # "Be short." WAS HERE AND IS DELIBERATELY GONE. TASK-080 measured the

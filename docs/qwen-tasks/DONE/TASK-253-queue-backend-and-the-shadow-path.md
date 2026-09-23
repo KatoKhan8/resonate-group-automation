@@ -88,3 +88,59 @@ Fail-closed is served twice instead:
 
 Promotion to `QUEUE_BACKEND=sqlite`. That is an operator decision against a
 clean ledger over a stated window, and it belongs to the production session.
+
+---
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** 917228de
+
+**TESTS:**
+- 30 new tests in `tests/test_queue_backend_and_shadow.py` - all pass
+- 12 existing tests in `tests/test_store.py` - all pass (backward compatibility)
+- 25 tests in `tests/test_the_sqlite_store_keeps_the_order_it_was_given.py` - all pass
+- 10 tests in `tests/test_the_one_shot_migration.py` - all pass
+
+**FILES CHANGED:**
+- `src/store.py` - Added backend routing, shadow mode, SQLite integration
+- `tests/test_queue_backend_and_shadow.py` - New test file (30 tests)
+- `tests/test_the_sqlite_store_keeps_the_order_it_was_given.py` - Removed `test_store_does_not_import_sqlitestore` (TASK-253 is the wiring)
+
+**FINDINGS:**
+
+1. **Backend resolution works per call, not at import.** `backend()` reads `QUEUE_BACKEND` each time, so tests can move it. Three modes: `jsonl` (default, byte-identical to today), `shadow` (JSONL canonical, both written, reads from JSONL, diffs to SQLite), `sqlite` (SQLite canonical).
+
+2. **Shadow divergence detection compares BEFORE writing.** The divergence is detected by reading from SQLite before the write and comparing against what we're about to write to JSONL. This catches injected divergences (patching SQLite behind the store's back) and logs them to the ledger.
+
+3. **Shadow mode does NOT raise by default.** Divergences are written to `work/store-shadow-diff.jsonl` and the write succeeds. This is deliberate: shadow exists to find out whether the backend is trustworthy on the live queue before anything depends on it. A divergence that raises turns a bug in the UNTRUSTED half into an outage of the TRUSTED half.
+
+4. **SHADOW_STRICT=1 raises on divergence.** Tests run with it on, so a divergence is a hard failure everywhere it can be without risking the live queue.
+
+5. **Ledger records writes observed AND divergences.** A promotion check that sees zero of both refuses rather than passing vacuously. An empty ledger because nothing ran is the vacuous pass, and this repository has shipped that twice.
+
+6. **digest() on sqlite is STRICTER than content hash.** It returns `meta.revision`, not a content hash. A record changed and changed back now REFUSES where a content hash passed. That is the safe direction - `expect_digest` exists to refuse a read-modify-write that raced, and the caller is already told to reload and re-apply. The test asserts the refusal.
+
+7. **Order is preserved through a full cycle on every backend.** The `seq` column in SQLite stores the file order, and an update must never move a row.
+
+8. **QUEUE_BACKEND unset behaves byte-identically to today.** The existing store suite runs unchanged against the default and stays green.
+
+9. **The loss guards are untouched.** `refuse_evidence_loss` and `refuse_history_loss` are not edited. Everything above the write in `store.save` runs unchanged and over the FULL merged set. Only which bytes get written narrows.
+
+10. **store.lock() stays exactly as it is.** Taken FIRST everywhere, with SQLite's transaction nested inside.
+
+**RISKS:**
+
+1. **Shadow mode adds I/O overhead.** Every write now goes to both JSONL and SQLite, plus a read from SQLite for the diff. This is acceptable for shadow mode (it's a validation step, not production), but should be monitored before promoting to sqlite.
+
+2. **The divergence detection only flags records in BOTH stores.** A record present in JSONL but missing from SQLite is not flagged as a divergence. This is deliberate - it's expected on first write or after a migration. A record in SQLite but not in JSONL would be a divergence, but that's unlikely since JSONL is canonical.
+
+3. **The promotion check is not automated.** It's a function that can be called, but the decision to promote is an operator decision against a clean ledger over a stated window. That belongs to the production session, not this task.
+
+**RECOMMENDED CLAUDE ACTION:**
+
+1. Review the implementation, especially the shadow divergence detection logic and the promotion check.
+2. Run the full test suite to ensure no regressions.
+3. Consider running shadow mode on the live queue for a stated window to validate the SQLite backend before promoting.
+4. TASK-254 (the caller survey becomes a test) and TASK-255 (the 20k load test) are next in the sequence.

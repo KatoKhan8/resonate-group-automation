@@ -36,6 +36,27 @@ def queue_path():
                            or os.path.join(ROOT, "work", "queue.jsonl"))
 
 
+def backend():
+    """Which storage backend is active. Resolved per call, not at import.
+
+    Three modes:
+      jsonl    DEFAULT. Exactly today's behaviour. SQLite untouched.
+      shadow   JSONL canonical. Both written. Reads come from JSONL, the same
+               read is taken from SQLite and diffed.
+      sqlite   SQLite canonical. JSONL untouched.
+    """
+    mode = (os.environ.get("QUEUE_BACKEND") or "jsonl").strip().lower()
+    if mode not in ("jsonl", "shadow", "sqlite"):
+        raise ValueError(f"unknown QUEUE_BACKEND: {mode!r}")
+    return mode
+
+
+def db_path():
+    """The SQLite database path. Resolved per call, not at import."""
+    return os.path.abspath(os.environ.get("QUEUE_DB")
+                           or os.path.join(os.path.dirname(queue_path()), "queue.db"))
+
+
 def campaigns_path():
     """Campaign-level state. A campaign is not a record, so it does not live in
     the queue: forcing it in would mean a row that fails every record
@@ -57,7 +78,21 @@ def campaigns_path():
 #
 # `tests/test_invariants.py` walks `src/` for `os.environ.get("...")` state
 # lookups and fails if one is missing from this tuple.
-STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
+STATE_OVERRIDES = (
+                   # The SQLite record store. Added 2026-09-22 with TASK-253,
+                   # and `test_every_state_override_is_in_the_move_together_set`
+                   # caught its absence within the hour - which is the half of
+                   # that pair doing exactly what it is for.
+                   #
+                   # It defaults beside `queue_path()`, so it already moves
+                   # when QUEUE moves. The hazard is the other direction: a
+                   # stale `QUEUE_DB` pointing at the real `work/queue.db`
+                   # would SURVIVE `use_directory()`, because that function
+                   # works by clearing this tuple. The queue would move to the
+                   # temp directory and the database would not, which is the
+                   # failure this comment's own paragraph above describes.
+                   "QUEUE_DB",
+                   "CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    "NOTIFICATIONS", "REPORTS", "REPORT_DRAFTS",
                    # Not row state, but written beside the queue and just as
                    # able to be left pointing at a real directory by a stale
@@ -119,7 +154,12 @@ STATE_OVERRIDES = ("CAMPAIGNS", "JOBS", "WORKSPACES", "AUDIT", "SENDERS",
                    # The nightly sourcing candidate list. Not queue state,
                    # but written beside the queue and must move with it in
                    # tests or a fixture would append to the real list.
-                   "CANDIDATES")
+                   "CANDIDATES",
+                   # The supervisor's per-monitor lock files and state files.
+                   # Not queue state, but written beside the queue and must
+                   # move with it in tests or a fixture lock would block the
+                   # real supervisor. Added 2026-09-22 with TASK-263.
+                   "SUPERVISOR_LOCKS", "SUPERVISOR_STATE")
 
 def use_directory(path):
     """Point every state file at one directory. Demo mode and tests only.
@@ -130,12 +170,44 @@ def use_directory(path):
     that can disagree with it. Everything except the queue already defaults to
     the queue's directory, so clearing the specific overrides is what makes
     the whole set move together.
+
+    RETURNS A CALLABLE THAT PUTS THE ENVIRONMENT BACK, absence included:
+
+        self.addCleanup(store.use_directory(tmp))
+
+    It used to return `queue_path()`, and two modules had already written
+
+        restore = store.use_directory(self.tmp.name)
+        if callable(restore):
+            self.addCleanup(restore)
+
+    - a restore wrapped in a check that could never be true, so it never
+    registered and never complained. Measured 2026-09-23: both of them leaked
+    a `QUEUE` pointing at their own deleted temp directory into every module
+    that ran afterwards, and `test_slack_agent_cannot_act` failed on it while
+    the guard it tests was in perfect health. Returning the restore makes that
+    code correct exactly where it stands.
+
+    Nothing used the old return value: of a hundred call sites, those two are
+    the only ones that bind it at all, and both expect a callable.
     """
+    saved = {name: os.environ.get(name)
+             for name in ("QUEUE",) + STATE_OVERRIDES}
+
     os.makedirs(path, exist_ok=True)
     os.environ["QUEUE"] = os.path.join(path, "queue.jsonl")
     for override in STATE_OVERRIDES:
         os.environ.pop(override, None)
-    return queue_path()
+
+    def restore():
+        """Put back exactly what was there, absence included."""
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    return restore
 
 
 def out_dir():
@@ -149,6 +221,15 @@ def now():
 
 class QueueLocked(RuntimeError):
     """Another process holds the queue. Nothing was written."""
+
+
+class ShadowDivergence(RuntimeError):
+    """Shadow mode detected a divergence between JSONL and SQLite.
+
+    Raised only when SHADOW_STRICT=1. Without it, divergences are written to
+    the ledger and the write succeeds - shadow exists to find out whether the
+    backend is trustworthy, on the live queue, before anything depends on it.
+    """
 
 
 LOCK_TIMEOUT = float(os.environ.get("QUEUE_LOCK_TIMEOUT", "10"))
@@ -225,10 +306,17 @@ def transaction(timeout=None):
     with lock(timeout):
         recs = load()
         yield recs
-        on_disk = read_jsonl(queue_path())
+        on_disk = _current_records()
         refuse_evidence_loss(on_disk, recs)
         refuse_history_loss(on_disk, recs)
-        _write(recs)
+        mode = backend()
+        if mode == "sqlite":
+            _write_sqlite(recs)
+        elif mode == "shadow":
+            _write(recs)
+            _write_sqlite_shadow(recs, on_disk)
+        else:
+            _write(recs)
 
 
 @contextlib.contextmanager
@@ -270,6 +358,188 @@ MISSING = object()
 def _frozen(value):
     """A comparable, hashable form of one field's value."""
     return json.dumps(value, sort_keys=True, ensure_ascii=False)
+
+
+class _TrackingRoot:
+    """Mixin: marks the root record dirty on any mutation.
+
+    The root is the top-level TrackingDict for this record. Every nested
+    TrackingDict and TrackingList holds a reference to it, so a mutation at
+    any depth - ``rec["contacts"].append(person)``,
+    ``rec["cadence"]["day1"]["body"] = "..."`` - propagates to the same
+    dirty set.
+    """
+    __slots__ = ()
+
+    def _mark(self):
+        self._root._dirty.add(self._key)
+
+
+class _TrackingDict(_TrackingRoot, dict):
+    """A dict subclass that marks its root record dirty on mutation.
+
+    Replaces every nested dict and list with a tracking wrapper at
+    construction time, so mutations at any depth propagate. The underlying
+    dict data IS the record data: ``json.dumps`` reads it directly through
+    the C encoder's dict-subclass path, and the output is identical to a
+    plain dict because the wrappers subclass dict/list and compare equal.
+
+    THE TRAP THIS PREVENTS: callers do not replace rows, they mutate them
+    in place. A tracker that catches only ``__setitem__`` on the top-level
+    dict silently stops detecting ``rec["contacts"].append(person)`` and
+    ``rec["cadence"]["day1"]["body"] = "..."`` - the edits that carry
+    contacts, events and cadence.
+    """
+    __slots__ = ("_root", "_key", "_dirty")
+
+    def __init__(self, data=None, _root=None, _key=None):
+        if isinstance(data, _TrackingDict):
+            dict.__init__(self, data)
+            self._root = _root or data._root
+            self._key = _key if _key is not None else data._key
+            return
+        dict.__init__(self)
+        self._root = self if _root is None else _root
+        self._key = _key
+        if data:
+            for k, v in data.items():
+                if isinstance(v, dict) and not isinstance(v, _TrackingDict):
+                    v = _TrackingDict(v, _root=self._root, _key=self._key)
+                    dict.__setitem__(self, k, v)
+                elif isinstance(v, list) and not isinstance(v, _TrackingList):
+                    v = _TrackingList(v, _root=self._root, _key=self._key)
+                    dict.__setitem__(self, k, v)
+                else:
+                    dict.__setitem__(self, k, v)
+
+    def _wrap_value(self, value):
+        if isinstance(value, dict) and not isinstance(value, _TrackingDict):
+            return _TrackingDict(value, _root=self._root, _key=self._key)
+        if isinstance(value, list) and not isinstance(value, _TrackingList):
+            return _TrackingList(value, _root=self._root, _key=self._key)
+        return value
+
+    def __setitem__(self, key, value):
+        self._mark()
+        dict.__setitem__(self, key, self._wrap_value(value))
+
+    def __delitem__(self, key):
+        self._mark()
+        dict.__delitem__(self, key)
+
+    def clear(self):
+        self._mark()
+        dict.clear(self)
+
+    def pop(self, *args):
+        self._mark()
+        return dict.pop(self, *args)
+
+    def popitem(self):
+        self._mark()
+        return dict.popitem(self)
+
+    def setdefault(self, key, default=None):
+        if key not in self:
+            self._mark()
+            wrapped = self._wrap_value(default)
+            dict.__setitem__(self, key, wrapped)
+            return wrapped
+        return self[key]
+
+    def update(self, *args, **kwargs):
+        self._mark()
+        if args:
+            other = dict(args[0])
+            for k, v in other.items():
+                dict.__setitem__(self, k, self._wrap_value(v))
+        for k, v in kwargs.items():
+            dict.__setitem__(self, k, self._wrap_value(v))
+
+    def __ior__(self, other):
+        self._mark()
+        for k, v in other.items():
+            dict.__setitem__(self, k, self._wrap_value(v))
+        return self
+
+
+class _TrackingList(_TrackingRoot, list):
+    """A list subclass that marks its root record dirty on mutation.
+
+    Replaces every nested dict and list with a tracking wrapper at
+    construction time, so mutations at any depth propagate.
+    """
+    __slots__ = ("_root", "_key")
+
+    def __init__(self, data=None, _root=None, _key=None):
+        if isinstance(data, _TrackingList):
+            list.__init__(self, data)
+            self._root = _root or data._root
+            self._key = _key if _key is not None else data._key
+            return
+        list.__init__(self)
+        self._root = self if _root is None else _root
+        self._key = _key
+        if data:
+            for i, item in enumerate(data):
+                if isinstance(item, dict) and not isinstance(item, _TrackingDict):
+                    list.append(self, _TrackingDict(item, _root=self._root,
+                                                    _key=self._key))
+                elif isinstance(item, list) and not isinstance(item, _TrackingList):
+                    list.append(self, _TrackingList(item, _root=self._root,
+                                                    _key=self._key))
+                else:
+                    list.append(self, item)
+
+    def _wrap_value(self, value):
+        if isinstance(value, dict) and not isinstance(value, _TrackingDict):
+            return _TrackingDict(value, _root=self._root, _key=self._key)
+        if isinstance(value, list) and not isinstance(value, _TrackingList):
+            return _TrackingList(value, _root=self._root, _key=self._key)
+        return value
+
+    def __setitem__(self, index, value):
+        self._mark()
+        list.__setitem__(self, index, self._wrap_value(value))
+
+    def __delitem__(self, index):
+        self._mark()
+        list.__delitem__(self, index)
+
+    def append(self, value):
+        self._mark()
+        list.append(self, self._wrap_value(value))
+
+    def extend(self, values):
+        self._mark()
+        for v in values:
+            list.append(self, self._wrap_value(v))
+
+    def insert(self, index, value):
+        self._mark()
+        list.insert(self, index, self._wrap_value(value))
+
+    def pop(self, *args):
+        self._mark()
+        return list.pop(self, *args)
+
+    def remove(self, value):
+        self._mark()
+        list.remove(self, value)
+
+    def reverse(self):
+        self._mark()
+        list.reverse(self)
+
+    def sort(self, *args, **kwargs):
+        self._mark()
+        list.sort(self, *args, **kwargs)
+
+    def __iadd__(self, other):
+        self._mark()
+        for v in other:
+            list.append(self, self._wrap_value(v))
+        return self
 
 
 class Snapshot(list):
@@ -321,10 +591,66 @@ class Snapshot(list):
     """
 
     def __init__(self, rows, key="id"):
-        super().__init__(rows)
         self.key = key
         self._serialised = None
+        self._dirty = set()
+        self._by_id = {}
+        self._keyless_count = 0
+        wrapped = []
+        for row in rows:
+            if isinstance(row, dict) and not isinstance(row, _TrackingDict):
+                if key not in row:
+                    self._keyless_count += 1
+                    wrapped.append(row)
+                    continue
+                td = _TrackingDict(row, _key=row[key])
+                # The root TrackingDict carries _dirty so nested wrappers
+                # can reach it via self._root._dirty. It IS the Snapshot's
+                # dirty set - same object, not a copy.
+                td._dirty = self._dirty
+                wrapped.append(td)
+                self._by_id[row[key]] = td
+            else:
+                if not (isinstance(row, dict) and key in row):
+                    self._keyless_count += 1
+                wrapped.append(row)
+        super().__init__(wrapped)
         self.rebase()
+
+    def append(self, row):
+        if isinstance(row, dict) and self.key not in row:
+            self._keyless_count += 1
+        elif not isinstance(row, dict):
+            self._keyless_count += 1
+        if isinstance(row, dict) and not isinstance(row, _TrackingDict) \
+                and self.key in row:
+            td = _TrackingDict(row, _key=row[self.key])
+            td._dirty = self._dirty
+            self._by_id[row[self.key]] = td
+            # AN APPENDED ROW IS DIRTY BY DEFINITION, AND SAYING SO IS NOT
+            # OPTIONAL NOW THAT `merge_onto` READS `_dirty` RATHER THAN
+            # RE-DERIVING IT.
+            #
+            # Before this task the edit set was recomputed by serialising
+            # every row and comparing to the baseline, and a row with NO
+            # baseline fell out of that comparison as changed for free. With
+            # an explicit dirty set it does not: the row is wrapped, indexed
+            # and appended, and then never written, because nothing put its
+            # id in `_dirty`.
+            #
+            # `test_a_stop_survives_a_concurrent_run.test_adding_a_record_
+            # passes` caught it - a record added to the snapshot simply did
+            # not reach the disk. That is silent record loss, which is the
+            # exact failure class `Snapshot` exists to prevent, arriving
+            # through the optimisation meant to make it cheaper.
+            self._dirty.add(row[self.key])
+            list.append(self, td)
+        else:
+            list.append(self, row)
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield list.__getitem__(self, i)
 
     def rebase(self):
         """The baseline becomes what these rows are now. Called after a write.
@@ -355,10 +681,15 @@ class Snapshot(list):
         """
         handed_over, self._serialised = self._serialised, None
         if handed_over is not None:
-            self.baseline = handed_over
+            # TASK-261: handover contains only dirty rows' serialised forms.
+            # Update the baseline for those rows; clean rows' entries are
+            # already correct (nothing changed since the last rebase).
+            self.baseline.update(handed_over)
+            self._dirty.clear()
             return
         self.baseline = {row[self.key]: _frozen(row) for row in self
                          if isinstance(row, dict) and self.key in row}
+        self._dirty.clear()
 
     def _base_row(self, rec):
         """The row as it was read, or None if this caller introduced it."""
@@ -374,7 +705,10 @@ class Snapshot(list):
         because a checkpoint every five records over a long batch walks the
         whole file each time, and most of the file is untouched.
         """
-        known = self.baseline.get(rec.get(self.key))
+        rid = rec.get(self.key)
+        if rid not in self._dirty:
+            return self.baseline.get(rid) is not None
+        known = self.baseline.get(rid)
         return known is not None and known == _frozen(rec)
 
     def _merge_row(self, rec, on_disk_row):
@@ -405,24 +739,24 @@ class Snapshot(list):
         where an append would have put them.
         """
         # A ROW WITH NO KEY CANNOT BE MERGED, SO IT IS REFUSED RATHER THAN
-        # SKIPPED. The comprehension below can only match rows it can address;
-        # one without the key silently matched nothing, was written nowhere,
-        # and raised nothing - the caller held two rows and one reached the
-        # disk. That is the failure mode this whole class exists to remove,
-        # so it fails closed here instead.
-        keyless = [row for row in self
-                   if not (isinstance(row, dict) and self.key in row)]
-        if keyless:
+        # SKIPPED. Counted at construction time, not here, to avoid an O(N)
+        # walk on every checkpoint.
+        if self._keyless_count:
             raise ValueError(
-                f"{len(keyless)} row(s) carry no {self.key!r} and cannot be "
-                f"merged onto what is on disk. Nothing was written.")
-        # One pass, one serialisation per row: `unchanged` needs it to decide,
-        # and `rebase` needs the same answer immediately afterwards.
-        frozen = {row[self.key]: _frozen(row) for row in self}
-        edits = {key: row for row in self
-                 for key in (row[self.key],)
-                 if self.baseline.get(key) != frozen[key]}
-        self._serialised = frozen
+                f"{self._keyless_count} row(s) carry no {self.key!r} and "
+                f"cannot be merged onto what is on disk. Nothing was written.")
+        # TASK-261: only serialise dirty rows, not every row. The dirty set
+        # tracks which records were mutated in place (including nested
+        # mutations to contacts, events, cadence, log). Using _by_id makes
+        # this O(|dirty|) rather than O(N), which is the whole point.
+        frozen_dirty = {}
+        edits = {}
+        for rid in self._dirty:
+            row = self._by_id.get(rid)
+            if row is not None:
+                frozen_dirty[rid] = _frozen(row)
+                edits[rid] = row
+        self._serialised = frozen_dirty
         out = []
         for row in on_disk:
             if not (isinstance(row, dict) and self.key in row):
@@ -458,7 +792,25 @@ def _current_records():
 
     One definition, used by both `load` and `save`, because a reader and a
     writer disagreeing about what is on disk is the whole hazard.
+
+    Routes based on backend():
+      jsonl    reads from queue.jsonl (with journal replay if enabled)
+      shadow   reads from queue.jsonl (canonical)
+      sqlite   reads from the SQLite database
     """
+    mode = backend()
+    if mode == "sqlite":
+        from . import sqlitestore
+        import sqlite3
+        path = db_path()
+        if not os.path.exists(path):
+            return []
+        conn = sqlite3.connect(path)
+        try:
+            return sqlitestore.read_all(conn)
+        finally:
+            conn.close()
+    # jsonl and shadow both read from JSONL
     rows = read_jsonl(queue_path())
     if journalling():
         from . import queuejournal
@@ -468,7 +820,105 @@ def _current_records():
 
 def load():
     """The queue, with any journalled deltas replayed over the base file."""
-    return Snapshot(_current_records())
+    recs = Snapshot(_current_records())
+    mode = backend()
+    if mode == "sqlite":
+        from . import sqlitestore
+        import sqlite3
+        path = db_path()
+        if os.path.exists(path):
+            conn = sqlite3.connect(path)
+            try:
+                recs._baseline_rev = sqlitestore.revision(conn)
+            finally:
+                conn.close()
+    return recs
+
+
+def _incremental_guard_input(snapshot, full_read_fn):
+    """For sqlite backend: return (guard_old, on_disk_for_merge, path, rows).
+
+    TASK-260. If the snapshot has a valid baseline and the backend is sqlite,
+    use the rev cursor to read only the records the guards need: caller-touched
+    records plus records that changed on disk since the baseline.
+
+    The key insight: we do NOT need a full read. The caller-touched records
+    are in the Snapshot (in memory). The disk-changed records come from
+    read_changed_since. The merge and guards only need these records.
+
+    Falls back to full read if:
+    - Not a Snapshot (no baseline)
+    - Backend is not sqlite
+    - Cursor is missing/stale/backwards
+
+    Returns (guard_old, on_disk_for_merge, path, rows_read). `guard_new`
+    is NOT returned: it is the MERGED result and only `save` has that.
+    """
+    mode = backend()
+    if mode != "sqlite":
+        on_disk = full_read_fn()
+        return on_disk, on_disk, "full", len(on_disk)
+
+    if not isinstance(snapshot, Snapshot) or not hasattr(snapshot, "baseline"):
+        on_disk = full_read_fn()
+        return on_disk, on_disk, "full", len(on_disk)
+
+    from . import sqlitestore
+    import sqlite3
+    path = db_path()
+    if not os.path.exists(path):
+        on_disk = full_read_fn()
+        return on_disk, on_disk, "full", len(on_disk)
+
+    conn = sqlite3.connect(path)
+    try:
+        current_rev = sqlitestore.revision(conn)
+        baseline_rev = getattr(snapshot, "_baseline_rev", None)
+
+        if baseline_rev is None or baseline_rev > current_rev or baseline_rev < 0:
+            on_disk = full_read_fn()
+            return on_disk, on_disk, "full", len(on_disk)
+
+        changed = sqlitestore.read_changed_since(conn, baseline_rev)
+        changed_by_id = {r.get("id"): r for r in changed}
+
+        caller_touched = {}
+        for rid in snapshot._dirty:
+            rec = snapshot._by_id.get(rid)
+            if rec is not None:
+                caller_touched[rid] = rec
+
+        needed_ids = set(caller_touched) | set(changed_by_id)
+        if not needed_ids:
+            return [], [], "incremental", 0
+
+        guard_old = []
+        for rid in needed_ids:
+            old_rec = changed_by_id.get(rid)
+            if old_rec is None:
+                for r in snapshot:
+                    if isinstance(r, dict) and r.get("id") == rid:
+                        old_rec = json.loads(snapshot.baseline.get(rid, "null"))
+                        break
+            if old_rec is not None:
+                guard_old.append(old_rec)
+
+        # NO `guard_new` IS BUILT HERE, deliberately. This loop used to set it
+        # from `caller_touched[rid]` - the caller's RAW row - and that is the
+        # stale pre-merge copy. For a record BOTH the caller and a second
+        # writer touched, the merge keeps the second writer's field (the
+        # caller did not change it) while the raw row does not have it, so
+        # `refuse_history_loss` read a stop as lifted and raised on a write
+        # the merge was about to make safe. Two tests in
+        # `test_a_stop_survives_a_concurrent_run` caught it.
+        #
+        # The merged result IS the narrowed set - `merge_onto` appends only
+        # rows the caller actually edited - so `save` passes `recs` straight
+        # to the guards on this path exactly as it does on the whole-file one.
+        on_disk_narrowed = guard_old
+        return guard_old, on_disk_narrowed, "incremental", len(changed)
+    finally:
+        conn.close()
 
 
 # ------------------------------------------------- the second barrier
@@ -581,6 +1031,108 @@ def _write_delta(on_disk, recs):
         queuejournal.append(path, changed, digest(path), at=now(), locked=True)
     if queuejournal.should_compact(path):
         queuejournal.compact(path, _write, locked=True)
+
+
+# ------------------------------------------------- the shadow ledger
+#
+# Shadow mode writes to both JSONL and SQLite, reads from JSONL, and diffs
+# the SQLite read against the JSONL read. Divergences are written to a ledger
+# file, not raised - unless SHADOW_STRICT=1 is set.
+#
+# The ledger records WRITES OBSERVED as well as divergences, so a promotion
+# check that sees zero of both refuses rather than passing vacuously.
+
+def _shadow_ledger_path():
+    """Where the shadow diff ledger lives."""
+    return os.path.join(os.path.dirname(queue_path()), "store-shadow-diff.jsonl")
+
+
+def _shadow_log(entry):
+    """Append one entry to the shadow diff ledger."""
+    path = _shadow_ledger_path()
+    refuse_production_write(path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _shadow_diff_and_log(jsonl_recs, sqlite_recs):
+    """Compare JSONL and SQLite record sets, log divergences.
+
+    Returns a list of divergence entries. Does NOT raise unless SHADOW_STRICT=1.
+
+    Only flags records that exist in BOTH stores with different values. A record
+    present in JSONL but missing from SQLite is not a divergence - it's expected
+    on first write or after a migration. A record in SQLite but not in JSONL
+    would be a divergence (SQLite has something JSONL doesn't), but that's
+    unlikely in practice since JSONL is canonical.
+    """
+    divergences = []
+    jsonl_by_id = {r["id"]: r for r in jsonl_recs if isinstance(r, dict) and "id" in r}
+    sqlite_by_id = {r["id"]: r for r in sqlite_recs if isinstance(r, dict) and "id" in r}
+
+    # Only compare records that exist in BOTH stores
+    for rid in set(jsonl_by_id) & set(sqlite_by_id):
+        j_rec = jsonl_by_id[rid]
+        s_rec = sqlite_by_id[rid]
+        # Compare field by field
+        for field in set(j_rec) | set(s_rec):
+            j_val = _frozen(j_rec.get(field))
+            s_val = _frozen(s_rec.get(field))
+            if j_val != s_val:
+                divergences.append({
+                    "type": "divergence",
+                    "at": now(),
+                    "id": rid,
+                    "field": field,
+                    "jsonl": j_rec.get(field),
+                    "sqlite": s_rec.get(field)
+                })
+
+    # Log divergences
+    for div in divergences:
+        _shadow_log(div)
+
+    # Log the write itself
+    _shadow_log({"type": "write", "at": now()})
+
+    # Raise if SHADOW_STRICT=1
+    if divergences and (os.environ.get("SHADOW_STRICT") or "").strip() in ("1", "true", "yes", "on"):
+        raise ShadowDivergence(
+            f"shadow mode detected {len(divergences)} divergence(s) between "
+            f"JSONL and SQLite. First: {divergences[0]['id']}.{divergences[0]['field']}")
+
+    return divergences
+
+
+def check_promotion_readiness(ledger_path=None):
+    """Check whether the shadow ledger is clean enough to promote to sqlite.
+
+    Returns a dict with:
+      ready: bool
+      writes: int
+      divergences: int
+      reason: str (if not ready)
+
+    Refuses if the ledger has zero rows AND zero observed writes - an empty
+    ledger because nothing ran is the vacuous pass.
+    """
+    path = ledger_path or _shadow_ledger_path()
+    if not os.path.exists(path):
+        return {"ready": False, "writes": 0, "divergences": 0,
+                "reason": "no writes observed: the ledger does not exist"}
+
+    entries = read_jsonl(path)
+    writes = sum(1 for e in entries if e.get("type") == "write")
+    divergences = sum(1 for e in entries if e.get("type") == "divergence")
+
+    if writes == 0:
+        return {"ready": False, "writes": 0, "divergences": divergences,
+                "reason": "no writes observed: the ledger is empty or carries only divergences"}
+    if divergences > 0:
+        return {"ready": False, "writes": writes, "divergences": divergences,
+                "reason": f"{divergences} divergence(s) detected"}
+    return {"ready": True, "writes": writes, "divergences": 0, "reason": ""}
 
 
 class EvidenceLost(RuntimeError):
@@ -778,9 +1330,32 @@ class QueueChanged(RuntimeError):
 def digest(path=None):
     """A cheap fingerprint of the queue as it is on disk right now.
 
-    Content rather than mtime: a same-second write is exactly the case that
-    matters, and a filesystem timestamp is too coarse to see it.
+    Routes based on backend():
+      jsonl/shadow  content hash of the queue file (plus journal if enabled)
+      sqlite        the revision counter from meta.revision
+
+    On SQLite, hashing the file's bytes is wrong: WAL, page reuse and vacuum
+    all change bytes without changing state, and a checkpoint can change state
+    without changing the main file at all. The revision counter is STRICTER
+    than a content hash: a record changed and changed back now REFUSES where
+    a content hash passed. That is the safe direction - `expect_digest` exists
+    to refuse a read-modify-write that raced, and the caller is already told
+    to reload and re-apply.
     """
+    mode = backend()
+    if mode == "sqlite":
+        from . import sqlitestore
+        import sqlite3
+        db = path or db_path()
+        if not os.path.exists(db):
+            return "absent"
+        conn = sqlite3.connect(db)
+        try:
+            return str(sqlitestore.revision(conn))
+        finally:
+            conn.close()
+
+    # jsonl and shadow both use content hash
     import hashlib
     path = path or queue_path()
     if not os.path.exists(path):
@@ -802,6 +1377,51 @@ def digest(path=None):
             with open(sidecar, "rb") as handle:
                 digestor.update(handle.read())
     return digestor.hexdigest()[:32]
+
+
+def _write_sqlite(recs):
+    """Write records to the SQLite database. Caller holds the lock.
+
+    Used by sqlite backend mode. The database is opened, records are written,
+    and the connection is closed.
+    """
+    from . import sqlitestore
+    import sqlite3
+    path = db_path()
+    refuse_production_write(path)
+    for sidecar in (path + "-wal", path + "-shm"):
+        refuse_production_write(sidecar)
+    conn = sqlitestore.open_db(path)
+    try:
+        sqlitestore.write_changed(conn, recs)
+    finally:
+        conn.close()
+
+
+def _write_sqlite_shadow(recs, on_disk):
+    """Write records to SQLite in shadow mode, then diff and log.
+
+    Shadow mode: JSONL is canonical. The SQLite write is an observer. Before
+    writing, we read from SQLite and diff against what we're about to write
+    to JSONL. Divergences are logged, not raised (unless SHADOW_STRICT=1).
+    Then we write to SQLite.
+    """
+    from . import sqlitestore
+    import sqlite3
+    path = db_path()
+    refuse_production_write(path)
+    for sidecar in (path + "-wal", path + "-shm"):
+        refuse_production_write(sidecar)
+    conn = sqlitestore.open_db(path)
+    try:
+        # Read from SQLite BEFORE writing, to detect divergences
+        sqlite_recs = sqlitestore.read_all(conn)
+        # Compare what's in SQLite against what we're about to write to JSONL
+        _shadow_diff_and_log(recs, sqlite_recs)
+        # Now write to SQLite
+        sqlitestore.write_changed(conn, recs)
+    finally:
+        conn.close()
 
 
 def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
@@ -867,18 +1487,45 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         # caught exactly that: EvidenceLost stopped being raised, silently,
         # because the evidence it was protecting lived in the journal.
         #
-        # This read stays O(N). Narrowing it needs an index and is a larger
-        # change; only the WRITE narrows here.
-        on_disk = _current_records()
+        # TASK-260: on sqlite backend with a valid Snapshot baseline, the
+        # merge AND the guards run on a narrowed input (caller-touched ∪
+        # disk-changed). Records outside this set have old == new, so the
+        # merge and guards are vacuous for them.
+        snapshot = recs if isinstance(recs, Snapshot) else None
+        mode = backend()
+        if mode == "sqlite" and snapshot is not None:
+            guard_old, on_disk, _path, _rows = \
+                _incremental_guard_input(snapshot, _current_records)
+        else:
+            on_disk = _current_records()
+            guard_old = on_disk
         if expect_digest is not None and digest() != expect_digest:
             raise QueueChanged(
                 "the queue changed while this work was in progress, so writing "
                 "it back would discard whatever changed. Nothing was written; "
                 "reload and re-apply.")
-        snapshot = recs if isinstance(recs, Snapshot) else None
         if snapshot is not None:
             recs = snapshot.merge_onto(on_disk)
-        refuse_evidence_loss(on_disk, recs)
+        # THE GUARDS SEE THE MERGED RESULT, NEVER THE CALLER'S SNAPSHOT.
+        #
+        # TASK-260 set `guard_new = list(snapshot)` here, which is the stale
+        # pre-merge copy. That is a FALSE POSITIVE FACTORY on the safety path:
+        # a concurrent run sets a stop, the caller's snapshot predates it, and
+        # `refuse_history_loss` sees the stop present in `on_disk` and absent
+        # in the snapshot - so it raises `HistoryLost` on a write that the
+        # merge was about to make perfectly safe. Six tests in
+        # `test_a_stop_survives_a_concurrent_run` and `test_approve` caught it.
+        #
+        # `_evidence_index`'s docstring already names why this is worse than
+        # it sounds: "a false positive on a safety guard ... appears
+        # intermittently, it blocks a legitimate write, and the quickest way to
+        # make it stop is to weaken the guard."
+        #
+        # The merged result is what is about to be written, so it is the only
+        # thing worth asking the guards about. The sqlite branch above is
+        # different only in that it narrows BOTH sides consistently.
+        guard_new = recs
+        refuse_evidence_loss(guard_old, guard_new)
         # `allow_history_loss` IS FOR TEST CLEANUP AND NOTHING ELSE. A test
         # that adds an event to a shared estate has to take it back out again,
         # and that is a legitimate rewrite of history by a caller who knows it
@@ -887,22 +1534,41 @@ def save(recs, timeout=None, expect_digest=None, allow_history_loss=False):
         # escape hatch nobody is allowed to reach for in production is a
         # different thing from a guard with a hole in it.
         if not allow_history_loss:
-            refuse_history_loss(on_disk, recs)
-        # THE ONLY THING JOURNALLING CHANGES IS WHICH BYTES GET WRITTEN.
+            refuse_history_loss(guard_old, guard_new)
+        # THE ONLY THING THE BACKEND CHANGES IS WHICH BYTES GET WRITTEN.
         # Everything above this line - the read, the digest check, the
         # three-way merge, and both loss guards - has already run over the
-        # FULL merged set, exactly as it does on the whole-file path. The
-        # delta is computed from the result, so it cannot contain a row the
-        # guards did not see.
-        if journalling():
-            _write_delta(on_disk, recs)
+        # FULL merged set, exactly as it does on the whole-file path.
+        if mode == "sqlite":
+            _write_sqlite(recs)
+        elif mode == "shadow":
+            # JSONL is canonical. Write to JSONL first, then SQLite, then diff.
+            if journalling():
+                _write_delta(on_disk, recs)
+            else:
+                _write(recs)
+            _write_sqlite_shadow(recs, on_disk)
         else:
-            _write(recs)
+            # jsonl
+            if journalling():
+                _write_delta(on_disk, recs)
+            else:
+                _write(recs)
         # Only after the write, and only if it happened: a refused checkpoint
         # must leave the caller still holding unpersisted edits, or the next
         # one would treat them as already on disk and stop re-asserting them.
         if snapshot is not None:
             snapshot.rebase()
+            if mode == "sqlite":
+                from . import sqlitestore
+                import sqlite3
+                path = db_path()
+                if os.path.exists(path):
+                    conn = sqlite3.connect(path)
+                    try:
+                        snapshot._baseline_rev = sqlitestore.revision(conn)
+                    finally:
+                        conn.close()
 
 
 def new_record(id, lane, client, company, domain, context="", signal=""):
@@ -1070,7 +1736,14 @@ def append(records, note="ingested"):
                 log(r, r["state"], note)
             known.add(r["id"])
             recs.append(r)
-        _write(recs)
+        mode = backend()
+        if mode == "sqlite":
+            _write_sqlite(recs)
+        elif mode == "shadow":
+            _write(recs)
+            _write_sqlite_shadow(recs, None)
+        else:
+            _write(recs)
     return len(records)
 
 
@@ -1095,7 +1768,14 @@ def patch(rid, changes, note=""):
         if problems:
             raise ValueError(f"{rid}: {'; '.join(problems)}")
         log(rec, rec.get("state", before), note or f"patched {','.join(changes)}")
-        _write(recs)
+        mode = backend()
+        if mode == "sqlite":
+            _write_sqlite(recs)
+        elif mode == "shadow":
+            _write(recs)
+            _write_sqlite_shadow(recs, None)
+        else:
+            _write(recs)
     return rec
 
 
