@@ -1651,6 +1651,29 @@ def replies(scope, argument=None):
                            "campaign": (row.get("ids") or {}).get("campaign")})
     out["reply_feed_by_kind"] = kinds
     out["classified_replies"] = recent[:10]
+
+    # THE POSITIVE COUNT, AND ONLY FROM OUR CLASSIFIER.
+    #
+    # 2026-09-23: the agent told the client "three positive" when
+    # `replies.classify` says zero. The material handed to the model carried
+    # `replies_counted_by_provider` - the provider's own `replied` counter -
+    # beside a feed of classified ones, and "replies" beside "positive" is a
+    # short walk for a sentence generator.
+    #
+    # The provider's counter includes autoresponders, and its `interested`
+    # flag is set by a human clicking a star in its UI on rows nobody here
+    # classified. Neither is a positive reply. So the number is stated
+    # explicitly, derived from the feed our own classifier writes, and the
+    # provider's counter is renamed to say what it is not.
+    out["positive_replies_our_classifier"] = int(kinds.get("positive_reply", 0))
+    out["positive_count_source"] = (
+        "src/replies.classify via the notification feed - NOT the provider's "
+        "`replied` counter and NOT its `interested` flag, both of which count "
+        "autoresponders")
+    out["provider_counter_is_not_positive"] = (
+        "`replies_counted_by_provider` counts every inbound row including "
+        "out-of-office and bounces; it may never be reported as positive, "
+        "interested, or a buying signal")
     if not rows:
         out["note"] = ("nothing is recorded in this workspace's "
                        "notification feed yet - that is an empty feed, not "
