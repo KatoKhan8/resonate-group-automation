@@ -148,10 +148,37 @@ class LinkedInStopLeadVerbExists(QueueTest):
         self.assertIn(providerwrites.LINKEDIN_STOP_LEAD,
                       providerwrites.OPERATIONS)
 
-    def test_it_is_not_in_supported(self):
-        """The door is shut. Enabling is Claude's decision."""
-        self.assertNotIn(providerwrites.LINKEDIN_STOP_LEAD,
-                         providerwrites.SUPPORTED)
+    def test_it_is_in_supported(self):
+        """ENABLED 2026-09-23 BY OPERATOR DECISION.
+
+        This asserted the opposite - "the door is shut, enabling is Claude's
+        decision" - which was correct for TASK-235 and is the condition the
+        OPERATIONS entry set for itself.
+
+        It was enabled the evening the cross-channel stop was measured. The
+        LinkedIn->email direction passed at 7.7 minutes; the email->LinkedIn
+        direction could not run AT ALL, because this verb was sealed, and
+        enrolling 33 seats with only one direction working means a prospect
+        who says no by email keeps receiving LinkedIn messages.
+
+        The safety argument is unchanged and is below: not prospect-facing,
+        repeatable, and a readback that raises rather than believing a stop
+        the provider has not confirmed.
+        """
+        self.assertIn(providerwrites.LINKEDIN_STOP_LEAD,
+                      providerwrites.SUPPORTED)
+
+    def test_enabling_it_moved_nothing_else(self):
+        """One verb, not a channel-wide licence.
+
+        The register's standing lesson is that a gate opened for one reason
+        gets read as opened generally. LINKEDIN_ADD_LEAD is the prospect-
+        facing one next to it and it stays conditional.
+        """
+        self.assertEqual(len(providerwrites.SUPPORTED), 15)
+        self.assertFalse(providerwrites.CAMPAIGN_LEVEL_STAGING_IS_PROVEN)
+        self.assertIn(providerwrites.LINKEDIN_ADD_LEAD,
+                      providerwrites.CONDITIONAL)
 
     def test_it_is_in_repeatable(self):
         """A repeat stop can only mean somebody receives less."""
@@ -170,16 +197,25 @@ class LinkedInStopLeadVerbExists(QueueTest):
         self.assertEqual(channel, "linkedin")
 
     def test_perform_refuses_without_supported(self):
-        """The door is shut: perform refuses the operation."""
+        """The REFUSAL MECHANISM, still pinned now that the verb is enabled.
+
+        This used to rest on the real `SUPPORTED` not containing the verb, so
+        enabling it would have deleted the test's meaning while leaving it
+        green. It now removes the verb explicitly, which tests the door
+        rather than the current setting of the door.
+        """
+        without = tuple(v for v in providerwrites.SUPPORTED
+                        if v != providerwrites.LINKEDIN_STOP_LEAD)
         spy_calls = []
-        with self.assertRaises(providerwrites.WriteRefused):
-            providerwrites.perform(
-                providerwrites.LINKEDIN_STOP_LEAD,
-                campaign="camp-1", tenant="productive",
-                payload={"lead_id": "42"},
-                transport=lambda p: spy_calls.append(p) or {"ok": True},
-                readback=lambda: {"stopped": True},
-                expected={"stopped": True})
+        with mock.patch.object(providerwrites, "SUPPORTED", without):
+            with self.assertRaises(providerwrites.WriteRefused):
+                providerwrites.perform(
+                    providerwrites.LINKEDIN_STOP_LEAD,
+                    campaign="camp-1", tenant="productive",
+                    payload={"lead_id": "42"},
+                    transport=lambda p: spy_calls.append(p) or {"ok": True},
+                    readback=lambda: {"stopped": True},
+                    expected={"stopped": True})
         self.assertEqual(spy_calls, [],
                          "the transport was reached despite the verb being "
                          "unsupported")

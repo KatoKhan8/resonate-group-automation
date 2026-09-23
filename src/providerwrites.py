@@ -225,7 +225,10 @@ OPERATIONS = {
         "lead is not found in the list, so the verdict is UNKNOWN and "
         "`stage_lead` raises `ListStagingUnverified`"),
     LINKEDIN_STOP_LEAD: ("linkedin", False,
-        "DEFINED BUT NOT ENABLED. TASK-235. The LinkedIn counterpart of "
+        "ENABLED 2026-09-23 by operator decision, after the cross-channel "
+        "stop was measured live in the LinkedIn->email direction at 7.7 "
+        "minutes and the email->LinkedIn direction could not run because "
+        "this verb was sealed. TASK-235. The LinkedIn counterpart of "
         "EMAIL_STOP_LEAD: stops ONE person's progression through a HeyReach "
         "campaign after a DNC, unsubscribe, reply or suppression. The route "
         "/campaign/StopLeadInCampaign is on heyreach.WRITE_ROUTES and "
@@ -474,6 +477,30 @@ OPERATIONS = {
 # fixture is never a live-validated integration, and one live-validated verb
 # does not validate its neighbours.
 SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
+             # ENABLED 2026-09-23 BY OPERATOR DECISION. The entry in
+             # OPERATIONS set the condition in one line - "enabling is an
+             # operator decision and this task does not have it" - and this
+             # is that decision, recorded here so it survives a context reset.
+             #
+             # WHY IT WAS ASKED FOR. The cross-channel stop was measured live
+             # the same evening: a LinkedIn reply stopped the EmailBison
+             # sequence in 7.7 minutes, inside the 15-minute gate. That
+             # measured ONE direction. The reverse - an EMAIL reply stopping
+             # a LinkedIn sequence - could not run at all, because this verb
+             # was sealed, and `inbound._stop_at_provider` reported it
+             # honestly as a refusal. Enrolling the 33 seats with only one
+             # direction working would mean a prospect who says no by email
+             # keeps receiving LinkedIn messages.
+             #
+             # IT CAN ONLY EVER REDUCE WHAT SOMEBODY RECEIVES. That is what
+             # separates it from every prospect-facing verb above: there is
+             # no argument about blast radius, because the blast radius is
+             # negative. `heyreach.stop_lead_in_campaign` reads back per lead
+             # and RAISES when the provider still reports the lead in a
+             # running status, so a stop that cannot be confirmed is never
+             # reported as a stop. It is in REPEATABLE for the same reason -
+             # a second call can only mean somebody receives less.
+             LINKEDIN_STOP_LEAD,
              EMAIL_CREATE_CAMPAIGN, EMAIL_SET_SEQUENCE,
              # Enabled 2026-09-14. Not prospect-facing: a sequence written
              # onto a campaign holding nobody reaches nobody, and no wired

@@ -152,7 +152,28 @@ def stop_linkedin_contact(rec, contact, why, *, campaign=None, rows=None,
             f"campaign {campaign.get('campaign_id')!r} names no HeyReach "
             f"campaign, so this lead's membership cannot be addressed")
 
-    profile_url = (contact or {}).get("linkedin_url", "")
+    # THE FIELD IS `linkedin`. IT HAS NEVER BEEN `linkedin_url`.
+    #
+    # MEASURED 2026-09-23, the evening LINKEDIN_STOP_LEAD was enabled: 1,014
+    # contacts in the store carry `linkedin` and ZERO carry `linkedin_url`.
+    # This line read the second, so `profile_url` was ALWAYS the empty
+    # string, and `heyreach.stop_lead_in_campaign` refuses an empty leadUrl -
+    # correctly, because "the provider matches on them and a partial body is
+    # a call that stops nobody while returning success".
+    #
+    # So the email->LinkedIn stop could never have succeeded. Not sometimes:
+    # never. It was invisible because the verb was sealed - `perform` refused
+    # before the transport ran, so the empty URL never reached the provider -
+    # and enabling the verb is exactly what would have made it live. This is
+    # the register's "existence is not function" in its purest form: wired,
+    # tested, sealed, and incapable.
+    #
+    # `linkedin_url` is kept as a fallback rather than replaced outright:
+    # `heyreachfactory` builds ENRICHED ROWS under that key, and a caller
+    # passing one of those instead of a contact should keep working rather
+    # than start failing closed for a new reason.
+    profile_url = ((contact or {}).get("linkedin")
+                   or (contact or {}).get("linkedin_url") or "")
 
     report = {"record": rec.get("id"), "contact": contact.get("key"),
               "lead_id": lead_id, "campaign": campaign.get("campaign_id"),
