@@ -30,6 +30,51 @@ _ ISSUE-010 added 2026-09-20 from the sender-utilisation review._
 
 _ISSUE-011 and REFUTED-006 added 2026-09-23 from the post-reboot reply-stop sweep._
 
+_ISSUE-012 added 2026-09-23: the sourcing ceiling is the provider's, not ours._
+
+---
+
+### ISSUE-012 · a company-search slice can never yield more than 400 pages
+
+**Status: MEASURED, not fixed. It is not a bug — it is a ceiling, and the
+strategy above it was built without knowing where it was.**
+
+The 2026-09-22 sourcing run left five slices at page 401, recorded as
+"hit `MAX_PAGES_PER_SLICE`, not exhaustion. Resumable." **They are not
+resumable.** Probed directly on 2026-09-23 against
+`Software Development|51_200|United States`:
+
+    page 399   OK, 11 companies        page 401   HTTP 500
+    page 400   OK, 11 companies        page 402   HTTP 500
+                                       page 450   HTTP 500
+
+`MAX_PAGES_PER_SLICE = 400` coincidentally equals **ContactOut's own
+ceiling**. Raising it to 800 and re-running spent zero credits and added
+zero domains: all five slices broke on the first request, and the walk
+correctly reported *"stopped: slices exhausted EXCEPT 5 that BROKE and were
+not walked to the end"* — `4854964b`'s false-completion fix doing its job.
+
+**What this costs.** Three of the five have 273k–326k people behind them on
+the free count and are unreachable through that query shape. More generally:
+
+    a single company-search query surfaces at most ~400 pages of companies,
+    however large the population behind it is
+
+So "walk the slice until it is exhausted" is not a thing that can happen for
+any large slice, and the 48,017 domains are not a partial walk of a reachable
+larger set — for the big slices they are at the provider's hard limit.
+
+**The fix is subdivision, not a bigger number.** Narrower industry, tighter
+size band, region rather than country — each sub-query landing inside 400
+pages. That is a sourcing-design change and an operator spend decision, not a
+constant to edit.
+
+Filed beside the Canada finding (`PRODUCTION-HANDOFF-2026-09-23-OVERNIGHT.md`
+§1), which is the same lesson from the other end: **what the provider will
+not give you is not visible in what it returns.** Canada returned two Spanish
+companies and read as done; these slices returned a 500 and read as a cap.
+
+
 ---
 
 ### ISSUE-011 · the LinkedIn ownership allowlist went stale and nothing said so
