@@ -14,6 +14,27 @@ import unittest
 from tests.webbase import WebTest
 
 from src import replywatch
+import os
+
+
+# This module exercises code that writes `os.environ` ITSELF - `providers.load_env()` calls `os.environ.setdefault` - so
+# restoring only what the tests set is not enough.
+#
+# Found by `test_no_test_leaves_the_environment_changed` on the run AFTER the
+# first twelve were fixed, and that is the point of the guard: while an
+# earlier module set BISON_KEY and never put it back, this one never CHANGED it and
+# so never looked like a leak. Fixing the first one revealed the next.
+_ENV_BEFORE_MODULE = None
+
+
+def setUpModule():
+    global _ENV_BEFORE_MODULE
+    _ENV_BEFORE_MODULE = dict(os.environ)
+
+
+def tearDownModule():
+    from tests.envisolation import restore
+    restore(_ENV_BEFORE_MODULE)
 
 
 NOW = "2026-09-03T12:00:00+00:00"

@@ -20,6 +20,27 @@ import unittest
 
 from src import account, accountpolicy as ap, events, store, variants as V
 from tests.campaignbase import CampaignTest
+import os
+
+
+# This module exercises code that writes `os.environ` ITSELF - `src/web/demoslack.py` calls `os.environ.setdefault` - so
+# restoring only what the tests set is not enough.
+#
+# Found by `test_no_test_leaves_the_environment_changed` on the run AFTER the
+# first twelve were fixed, and that is the point of the guard: while an
+# earlier module set SLACK_OPS_CHANNEL and never put it back, this one never CHANGED it and
+# so never looked like a leak. Fixing the first one revealed the next.
+_ENV_BEFORE_MODULE = None
+
+
+def setUpModule():
+    global _ENV_BEFORE_MODULE
+    _ENV_BEFORE_MODULE = dict(os.environ)
+
+
+def tearDownModule():
+    from tests.envisolation import restore
+    restore(_ENV_BEFORE_MODULE)
 
 WS = "productive"
 CAMPAIGN = "camp-1"
