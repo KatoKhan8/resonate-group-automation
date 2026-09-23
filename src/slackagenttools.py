@@ -981,6 +981,109 @@ def weekly_report(scope, argument=None):
     return out
 
 
+def working_on(scope, argument=None):
+    """WHAT WE ARE DOING FOR THIS CLIENT RIGHT NOW. The whole question.
+
+    OPERATOR, 2026-09-23: "what are we working on" as a CLIENT answer.
+
+    ## IT IS NOT `next_actions` WITH A FILTER, AND THAT IS THE DESIGN
+
+    `next_actions` answers the same words for a different reader. It reads
+    Resonate's own handoff: the headline, what waits on the operator, the
+    problem register, campaigns awaiting an internal decision. It is
+    `_INTERNAL` and it self-guards on top of that, because a client asking
+    "what are we working on" is not asking which branch is unmerged.
+
+    Filtering that answer down would have been the wrong shape twice over -
+    it would leak by omission-failure the day a new field is added, and it
+    answers a question the client did not ask. **So this composes
+    client-safe readbacks instead**, and every number in it is one this
+    channel could already have asked for separately.
+
+    ## THREE PARTS, AND THE SECOND IS THE ONE PEOPLE ACTUALLY WANT
+
+        running     which campaigns are live, from the provider's counters
+        accounts    where their accounts stand, in the operator's eight
+                    states - the vocabulary decision of 2026-09-23
+        waiting     what is waiting ON THEM, named, because that is the
+                    only part they can act on
+
+    ## WHAT IT REFUSES TO SAY
+
+    **It never reports what is waiting on RESONATE.** Not because it is
+    secret, but because the honest client-facing answer to "and what are you
+    doing?" is the running work above - and a list of our own open
+    engineering items in a client channel is an invitation to manage it.
+    `waiting_on_us` is reported as a COUNT with no detail, so the client can
+    see there is work without being handed the backlog.
+
+    **And it states no forward plan beyond the provider's horizon.** The
+    provider answers today, tomorrow and the day after and nothing further
+    (`docs/GROK-SCHEDULING-2026-09-20.md`); anything past that would be our
+    inference dressed as a schedule.
+    """
+    slug = _workspace_for(scope, argument)
+    out = {"read_at": _now(), "workspace": slug}
+
+    # 1. WHAT IS RUNNING. The provider's own counters, not our status field.
+    try:
+        live = sends_today(scope, argument)
+        out["campaigns_running"] = [
+            {"campaign_id": row.get("campaign_id"),
+             "status": row.get("status"),
+             "emails_sent": row.get("emails_sent")}
+            for row in (live.get("campaigns") or [])]
+        if live.get("campaigns_not_read"):
+            out["campaigns_not_read"] = live["campaigns_not_read"]
+            out["campaigns_note"] = live.get("note")
+    except Exception as exc:                                    # noqa: BLE001
+        out["campaigns_error"] = type(exc).__name__
+
+    # 2. WHERE THE ACCOUNTS STAND. The operator's eight states.
+    counts, unanswerable, ledger_ok = _account_rollup(slug)
+    out["accounts"] = {state: counts.get(state, 0)
+                       for state in ACCOUNT_STATES}
+    out["accounts"]["unanswerable"] = unanswerable
+    out["accounts"]["in_flight"] = sum(counts.get(s, 0) for s in IN_FLIGHT)
+    out["accounts_order"] = list(ACCOUNT_STATES)
+    out["accounts_without_a_source"] = list(STATES_WITHOUT_A_SOURCE)
+    if unanswerable:
+        out["accounts_warning"] = (
+            "%d account(s) could not be placed because our own record of "
+            "what was sent is not recording this workspace yet. That is not "
+            "a count of untouched accounts." % unanswerable)
+    out["ledger_carries_sends"] = ledger_ok
+
+    # 3. WHAT IS WAITING ON THEM. Named, because it is theirs to move.
+    try:
+        from . import clientapproval
+        tally = clientapproval.counts(slug) or {}
+        pending = int(tally.get("pending") or 0)
+        out["waiting_on_you"] = {
+            "accounts_awaiting_your_approval": pending,
+            "note": ("nothing is spent on an account until you approve it"
+                     if pending else "nothing is waiting on you"),
+        }
+    except Exception as exc:                                    # noqa: BLE001
+        out["waiting_on_you_error"] = type(exc).__name__
+
+    # A COUNT AND NO DETAIL. See the docstring: the client can see there is
+    # work without being handed our backlog to manage.
+    if not scope.is_internal:
+        out["waiting_on_us"] = len(_awaiting_decision())
+        out["waiting_on_us_note"] = (
+            "work on our side, in progress; we raise anything that needs "
+            "you as its own question")
+    else:
+        out["waiting_on_us"] = _awaiting_decision()
+
+    out["horizon_note"] = (
+        "what is running and what has been sent are the provider's own "
+        "counters. We do not state a plan beyond the day after tomorrow, "
+        "which is as far as the provider schedules.")
+    return out
+
+
 def sender_summary(scope, argument=None):
     """How many sending accounts are working this client's campaigns.
 
@@ -2823,6 +2926,11 @@ REGISTRY = {
         "what is happening with one account: status, the personas in play "
         "with their step, last touch, replies by class",
         _INTERNAL_CLIENT, "a domain"),
+    "working_on": (
+        working_on,
+        "what we are doing for you right now: which campaigns are running, "
+        "where your accounts stand, and what is waiting on you",
+        _INTERNAL_CLIENT, None),
     "sender_summary": (
         sender_summary,
         "how many sending accounts are working this client's campaigns",
