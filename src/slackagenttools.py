@@ -1048,16 +1048,18 @@ def sender_summary(scope, argument=None):
     slug = _workspace_for(scope, argument)
     rows = _campaign_rows(slug)
     email, linkedin = set(), set()
+    unidentified = 0
     volume = {"email": 0, "linkedin": 0}
     live = 0
     for row in rows:
         senders = row.get("senders") or {}
-        for entry in senders.get("email") or []:
-            email.add(str(entry.get("provider_account_id")
-                          or entry.get("account_id")))
-        for entry in senders.get("linkedin") or []:
-            linkedin.add(str(entry.get("provider_account_id")
-                             or entry.get("account_id")))
+        for channel, bucket in (("email", email), ("linkedin", linkedin)):
+            for entry in senders.get(channel) or []:
+                account = _sending_account_id(entry)
+                if account is None:
+                    unidentified += 1
+                    continue
+                bucket.add(account)
         if (row.get("status") or "").lower() in ("approved", "launched",
                                                  "active"):
             live += 1
@@ -1071,6 +1073,11 @@ def sender_summary(scope, argument=None):
            "campaigns_they_serve": len(rows),
            "campaigns_approved_or_live": live,
            "combined_daily_volume": volume}
+    if unidentified:
+        # NAMED, NOT FOLDED IN. See `_sending_account_id`: an entry with no
+        # id at all is a row we cannot count, and adding it to either total
+        # would be inventing a distinct account out of a missing field.
+        out["sender_entries_without_an_id"] = unidentified
     if not email and not linkedin:
         out["note"] = ("no sending account is bound to any campaign for "
                        "this workspace yet")
@@ -1079,6 +1086,40 @@ def sender_summary(scope, argument=None):
                        "not the same as sending, and sends_today is the "
                        "figure that says what actually went out")
     return out
+
+
+def _sending_account_id(entry):
+    """What identifies one sending account on a campaign row, or None.
+
+    THE STORE HOLDS TWO SHAPES AND THIS READ ONLY KNEW ONE. Counted on the
+    live campaign store, 2026-09-23: 164 sender entries carry
+    `provider_account_id`, 159 carry `account_id`, and **13 carry neither -
+    only `id`**, in the shape `{"id": "bison-a", "daily_limit": 50}`.
+
+    The old read was `provider_account_id or account_id`, stringified. On an
+    entry carrying only `id` that evaluates to the STRING `"None"`, and
+    every such entry across every campaign lands in that one bucket. So they
+    did not go uncounted, which would at least have been visible - they
+    counted as ONE sending account, shared.
+
+    Live, before this:
+
+        productive   156 email sending accounts, of which one is the
+                     "None" bucket standing for 3 real entries
+        contactout     1 email sending account - and that 1 IS the bucket.
+                       Both of its entries carry only `id`, so the answer
+                       to "how many senders are sending for us" was the
+                       number of shapes this function could not read.
+
+    `id` is read as the third fallback, and an entry with no identifier at
+    all returns None so the caller can count it apart and SAY so rather than
+    inventing a distinct account from a missing field.
+    """
+    for field in ("provider_account_id", "account_id", "id"):
+        value = (entry or {}).get(field)
+        if value not in (None, ""):
+            return str(value)
+    return None
 
 
 #: The bounce rate at which sending stops. A client is owed this number
