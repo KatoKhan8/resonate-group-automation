@@ -40,6 +40,10 @@ UNDROP_PENDING_REENRICHMENT = "undrop:pending_reenrichment"
 # evidence that check_evidence will later need. TASK-205.
 ENRICH_EVIDENCE_REQUIRED = "enrich:evidence_required"
 
+# Identity holds: LinkedIn profile match could not be verified before
+# enrollment. TASK-268.
+IDENTITY_PROFILE_UNVERIFIED = "identity:profile_unverified"
+
 
 def classify(reason_code):
     """Map a reason code to its taxonomy class.
@@ -65,6 +69,8 @@ def classify(reason_code):
         return ACTIONABLE
     if reason_code == ENRICH_EVIDENCE_REQUIRED:
         return ACTIONABLE
+    if reason_code == IDENTITY_PROFILE_UNVERIFIED:
+        return HUMAN_REVIEW
     return HUMAN_REVIEW
 
 
