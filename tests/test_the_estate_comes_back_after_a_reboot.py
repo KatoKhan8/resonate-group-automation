@@ -299,5 +299,64 @@ class TheAutostartCommandSurvivesTheMigration(unittest.TestCase):
         self.assertIn("-m scripts.cold_start --start", unit)
 
 
+class TheSupervisorHoldsThePowerRequest(unittest.TestCase):
+    """`docs/MACHINE-HARDENING-2026-09-23.md` 6 specified this one line and
+    could not write it, because `src/supervisor.py` lives on `infra`.
+
+    Without it `powercfg /requests` names nothing, and the adoption checklist
+    asks for it to name python.exe - a step that would simply fail, with the
+    keep-awake module sitting on master with no caller and every test in
+    `test_keepawake.py` green. Existence is not function.
+    """
+
+    def test_run_acquires_the_request_around_the_loop(self):
+        """Order matters: acquired BEFORE the monitors start, released AFTER
+        they stop. A request taken after the loop returns holds nothing."""
+        from src import keepawake, supervisor
+
+        order = []
+
+        with mock.patch.object(keepawake, "acquire",
+                               lambda **k: order.append("acquire") or True),              mock.patch.object(keepawake, "release",
+                               lambda **k: order.append("release")),              mock.patch.object(keepawake, "status",
+                               lambda: {"error": None}),              mock.patch.object(supervisor, "_supervise",
+                               lambda *a, **k: order.append("loop")
+                               or "loop ran"):
+            result = supervisor._run(monitors=[])
+
+        self.assertEqual(result, "loop ran")
+        self.assertEqual(order, ["acquire", "loop", "release"])
+
+    def test_the_request_is_released_even_when_the_loop_raises(self):
+        """The supervisor crashing must not leave the machine pinned awake."""
+        from src import keepawake, supervisor
+
+        released = []
+
+        def boom(*a, **k):
+            raise RuntimeError("loop blew up")
+
+        with mock.patch.object(keepawake, "acquire", lambda **k: True),              mock.patch.object(keepawake, "release",
+                               lambda **k: released.append(1)),              mock.patch.object(keepawake, "status",
+                               lambda: {"error": None}),              mock.patch.object(supervisor, "_supervise", boom):
+            with self.assertRaises(RuntimeError):
+                supervisor._run(monitors=[])
+
+        self.assertEqual(released, [1],
+                         "a crash left the power request held")
+
+    def test_a_refused_request_does_not_stop_the_supervisor(self):
+        """A supervisor that cannot take a power request must still
+        supervise - loudly, not not-at-all."""
+        from src import keepawake, supervisor
+
+        with mock.patch.object(keepawake, "acquire",
+                               lambda **k: False),              mock.patch.object(supervisor, "_supervise",
+                               lambda *a, **k: "loop ran anyway"):
+            result = supervisor._run(monitors=[])
+
+        self.assertEqual(result, "loop ran anyway")
+
+
 if __name__ == "__main__":
     unittest.main()

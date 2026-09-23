@@ -66,6 +66,28 @@ One Scheduled Task, at logon, as the current user. **No elevation** — that is
 deliberate, because §7 of the hardening doc is still waiting on an elevated
 shell and this must not join that queue.
 
+### Step 2b — the keep-awake request, now that it has a caller
+
+`src/keepawake.py` landed on master with **no caller**: hardening §6 says
+*"Where it is wired: nowhere yet, on purpose"*, because the supervisor lives
+on `infra` and the production session does not edit another session's
+in-flight files. That one line is now written, on the side of the rule that
+owns the file — `supervisor._run` holds the request around the whole loop and
+releases it on every exit, including a crash.
+
+So **`powercfg /requests` will only name a process once the supervisor is
+running** (step 3). Checking it before that names nothing, correctly.
+
+**And `powercfg /requests` itself requires elevation** — hardening §6 records
+that it could not be run for exactly this reason, and §7 is still waiting on
+an elevated shell. In a normal shell it prints an access-denied error, not an
+empty list, and the two look nothing alike: if you get an empty list you have
+a real finding, if you get an error you have the known one.
+
+If the request is refused, the supervisor says so on stdout
+(`SUPERVISOR KEEP-AWAKE REFUSED …`) and **keeps supervising**. That line is
+the cheaper check, and it needs no elevation.
+
 ### Step 3 — start the supervisor under the cold start
 
     py -3 -m scripts.cold_start --start

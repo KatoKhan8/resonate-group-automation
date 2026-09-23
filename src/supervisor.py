@@ -29,7 +29,7 @@ import subprocess
 import sys
 import time
 
-from . import notify, singlewalker, store
+from . import keepawake, notify, singlewalker, store
 
 # --------------------------------------------------------- monitor table
 #
@@ -374,6 +374,33 @@ def _run(monitors=None, lock_dir=None, state_dir=None):
 
     old_handler = signal.signal(signal.SIGTERM, _handle_sigterm)
 
+    # THE POWER REQUEST, held on the main thread for as long as the
+    # supervisor runs. `docs/MACHINE-HARDENING-2026-09-23.md` 6 specifies
+    # exactly this and records why it was not done there: `keepawake` landed
+    # on master with no caller because this file lives on `infra`, and the
+    # production session does not edit another session's in-flight files.
+    # This is that one line, on the side of the rule that owns the file.
+    #
+    # It does NOT raise when refused. A supervisor that cannot take a power
+    # request should still supervise - loudly, so that
+    # `powercfg /requests` showing nothing is a known state rather than a
+    # mystery at 2am.
+    with keepawake.KeepAwake() as awake:
+        if not awake.entered_ok:
+            print("SUPERVISOR KEEP-AWAKE REFUSED %s - the machine may sleep "
+                  "while the monitors run" % (awake.error,), flush=True)
+        else:
+            print("SUPERVISOR keep-awake held; powercfg /requests should now "
+                  "name this process", flush=True)
+        return _supervise(monitors, lock_dir, state_dir, tracker, children,
+                          failures, started_at, pending_restart, stopping,
+                          old_handler)
+
+
+def _supervise(monitors, lock_dir, state_dir, tracker, children, failures,
+               started_at, pending_restart, stopping, old_handler):
+    """The loop itself, so `_run` reads as what it guarantees: the power
+    request is held around everything below and released on every exit."""
     try:
         # Start every monitor
         for mon in monitors:
