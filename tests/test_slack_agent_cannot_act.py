@@ -88,6 +88,26 @@ PROVIDER_READ_VERBS = {
     # provider's own forward window, and the only forward number here that
     # is not our inference.
     "sending_schedule",
+    # GET /replies?pagination_type=cursor. Added 2026-09-23 for the
+    # follow-up watch's second post, which has to tell a reply a PERSON
+    # wrote from an autoresponder - a question the provider's `replied`
+    # COUNTER cannot answer, because it counts both.
+    #
+    # VERIFIED A GET, not assumed: `bison.fetch_replies` is
+    # `request("GET", query(...))` and its own docstring says "Read-only:
+    # this endpoint creates nothing". This guard caught it the moment the
+    # agent first touched it, which is the same service it did for
+    # ContactOut's `company-search` POST on 2026-09-22 - and that one
+    # turned out to need the allow-list too. Adding a verb here is a
+    # deliberate act and this comment is the argument for it.
+    "fetch_replies",
+    # NOT A CALL AT ALL. `classify_reply_row` is a pure function over a row
+    # the caller already has - reply | bounce | delivered | outgoing |
+    # unknown - and it reaches no network. It is named here because this
+    # guard reads attribute ACCESS rather than requests, which is the right
+    # way round: a verb that is safe for a reason still has to be argued
+    # for once, in writing, rather than slipping in as noise.
+    "classify_reply_row",
     "campaign_senders", "base", "headers", "scope", "bound_workspace",
     "ProviderError",
     # HeyReach reads.

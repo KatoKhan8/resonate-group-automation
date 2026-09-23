@@ -55,9 +55,9 @@ import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import (slackagentreadback as readback,                # noqa: E402
+from src import (replies, slackagentreadback as readback,       # noqa: E402
                  slackfollowup as followup, slackscope, watchsink)
-from src.providers import load_env, slack                       # noqa: E402
+from src.providers import bison, load_env, slack                # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -109,6 +109,97 @@ def read_counts(campaign_ids):
     return out
 
 
+#: Pages of the reply feed one tick will walk. The walk is newest-first and
+#: STOPS at the watch's own marker, so in steady state it reads one page;
+#: this bounds the pathological case - a watch opened a week ago against an
+#: estate that has since taken thousands of replies - rather than the normal
+#: one. Past it the read is UNREADABLE, never "no replies".
+REPLY_PAGE_CAP = 40
+
+
+def _campaign_of(row):
+    value = row.get("campaign_id")
+    return str(value) if value is not None else None
+
+
+def _is_human(row):
+    """Did a PERSON write this? Two witnesses, and they must agree.
+
+    OPERATOR, 2026-09-22: automated is never positive, and an out-of-office,
+    a ticketing acknowledgement and an assistant writing on somebody else's
+    behalf are all things nobody chose to say to us. `replies.is_automated`
+    is the one definition of that - the 18:00 summary, the client-facing
+    counts and the never-positive guarantee all read it.
+
+    The provider offers a second witness on the row itself,
+    `automated_reply`, and this trusts NEITHER alone. A reply is human only
+    when our classifier says it is and the provider does not contradict it.
+    FAIL-CLOSED ON DISAGREEMENT, because the two errors are not symmetrical:
+    a missed human reply delays one message by a tick, and a false one tells
+    a client an autoresponder was their first real answer - in a thread they
+    opted into, in the direction that sounds like good news.
+    """
+    if row.get("automated_reply"):
+        return False
+    text = row.get("text_body") or row.get("subject") or ""
+    try:
+        verdict = replies.classify(str(text))
+    except Exception:                                           # noqa: BLE001
+        # A classifier that cannot answer is not a licence to call it human.
+        return False
+    classification = (verdict.get("classification")
+                      if isinstance(verdict, dict) else verdict)
+    return not replies.is_automated(classification)
+
+
+def read_human_replies(watch):
+    """How many replies a PERSON wrote to this watch's campaigns since it
+    opened. `None` means the feed could not be read.
+
+    Walks newest-first and stops at the watch's marker, so it reads what has
+    arrived since the client opted in and nothing older. A row for another
+    campaign is skipped rather than stopping the walk - the feed is the
+    whole workspace's.
+    """
+    marker = watch.get("reply_marker")
+    if not isinstance(marker, int):
+        return None
+    wanted = {str(i) for i in (watch.get("campaign_ids") or [])}
+    if not wanted:
+        return None
+    seen, cursor, pages = 0, None, 0
+    while True:
+        try:
+            rows, cursor = bison.fetch_replies(cursor=cursor)
+        except Exception as exc:                                # noqa: BLE001
+            emit("REPLY-FEED-UNREADABLE %s %s: %s"
+                 % (watch.get("id"), type(exc).__name__, str(exc)[:160]))
+            return None
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            ident = row.get("id")
+            if isinstance(ident, int) and ident <= marker:
+                # EVERYTHING FROM HERE IS OLDER THAN THE WATCH. The feed is
+                # ordered, so this is the end of the walk and not a skip.
+                return seen
+            if bison.classify_reply_row(row) != "reply":
+                continue
+            if _campaign_of(row) not in wanted:
+                continue
+            if _is_human(row):
+                seen += 1
+        pages += 1
+        if not cursor:
+            return seen
+        if pages >= REPLY_PAGE_CAP:
+            # A PREFIX IS NOT AN ANSWER, and the same rule the queue read
+            # follows: refuse rather than return part of it as the whole.
+            emit("REPLY-FEED-TOO-LONG %s: stopped at %d pages without "
+                 "reaching the watch's marker" % (watch.get("id"), pages))
+            return None
+
+
 def still_bound(watch):
     """Does this watch's channel still belong to the workspace it was for?"""
     scope = slackscope.resolve(channel=watch.get("channel"))
@@ -116,15 +207,23 @@ def still_bound(watch):
                 and scope.workspace == watch.get("workspace"))
 
 
-def deliver(watch, moved, dry_run=False):
-    """One watch: post once, then close it. Closing FOLLOWS the post.
+def deliver(watch, moved, dry_run=False, stage=None):
+    """One watch, one post, then move it on. The write FOLLOWS the post.
 
-    The order matters. Closing first and posting second loses the message
-    when the post fails, and leaves the client waiting on a watch that says
-    it fired. Posting first and closing second can at worst repeat, and the
+    The order matters. Writing first and posting second loses the message
+    when the post fails, and leaves the client on a watch that says it
+    fired. Posting first and writing second can at worst repeat, and the
     thread is the one place a repeat is visible and harmless.
+
+    TWO POSTS PER THREAD AND NEVER THREE. The send post ADVANCES the watch
+    to the reply half rather than closing it; the reply post closes it. An
+    expiry at either stage closes it, having said so once.
     """
-    text = followup.message_for(watch, moved)
+    stage = stage or followup.stage_of(watch)
+    if stage == followup.AWAITING_REPLY:
+        text = followup.reply_message_for(watch, moved)
+    else:
+        text = followup.message_for(watch, moved)
     status = followup.FIRED if moved is not None else followup.EXPIRED
     if not still_bound(watch):
         followup.close(watch, followup.CANCELLED,
@@ -151,10 +250,25 @@ def deliver(watch, moved, dry_run=False):
         log({"kind": "followup_post_failed", "watch": watch["id"],
              "error": type(exc).__name__, "detail": str(exc)[:300]})
         return False
-    followup.close(watch, status, "posted to %s" % watch.get("channel"))
-    emit("POSTED %s -> %s in %s" % (watch["id"], status, watch["channel"]))
+    detail = "posted to %s" % watch.get("channel")
+    if stage == followup.AWAITING_SEND and moved is not None:
+        # THE SEND IS ANNOUNCED AND THE THREAD IS NOT FINISHED. Advancing
+        # rather than closing is what makes the second half a promise the
+        # client was actually given; `advance_to_reply` closes it instead
+        # when no marker could be established, because then there is no
+        # honest second post to make.
+        after = followup.advance_to_reply(watch, detail)
+        moved_to = followup.stage_of(after)
+        emit("POSTED %s -> %s in %s" % (watch["id"], moved_to, watch["channel"]))
+        log({"kind": "followup_posted", "watch": watch["id"],
+             "stage": followup.AWAITING_SEND, "now": moved_to,
+             "channel": watch["channel"], "moved": moved})
+        return True
+    followup.close(watch, status, detail)
+    emit("POSTED %s -> %s in %s (%s)"
+         % (watch["id"], status, watch["channel"], stage))
     log({"kind": "followup_posted", "watch": watch["id"], "status": status,
-         "channel": watch["channel"], "moved": moved})
+         "stage": stage, "channel": watch["channel"], "moved": moved})
     return True
 
 
@@ -168,9 +282,26 @@ def tick(dry_run=False):
         log({"kind": "followup_due_failed", "error": type(exc).__name__,
              "detail": traceback.format_exc()[:1000]})
         pending = []
+    try:
+        pending_replies = followup.due_replies(read_human_replies)
+    except Exception as exc:                                    # noqa: BLE001
+        # SEPARATE FROM `due`'s FAILURE, deliberately. The two halves read
+        # different feeds and one being down is not the other being down;
+        # collapsing them would let a reply-feed outage stop a send from
+        # ever being announced.
+        emit("DUE-REPLIES-FAILED %s: %s" % (type(exc).__name__, str(exc)[:200]))
+        log({"kind": "followup_due_replies_failed",
+             "error": type(exc).__name__,
+             "detail": traceback.format_exc()[:1000]})
+        pending_replies = []
     delivered = 0
     for watch, moved in pending:
-        if deliver(watch, moved, dry_run=dry_run):
+        if deliver(watch, moved, dry_run=dry_run,
+                   stage=followup.AWAITING_SEND):
+            delivered += 1
+    for watch, count in pending_replies:
+        if deliver(watch, count, dry_run=dry_run,
+                   stage=followup.AWAITING_REPLY):
             delivered += 1
     # THE BEAT IS WRITTEN LAST AND UNCONDITIONALLY. It is what licenses the
     # agent to make the offer at all, so it has to mean "a pass completed",

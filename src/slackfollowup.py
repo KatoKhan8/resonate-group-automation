@@ -19,14 +19,38 @@ stops asking.
 
 ## WHAT THIS IS
 
-A registered WATCH. A client says yes; a row is written; a loop asks the
-provider whether any campaign in the batch has a non-zero `emails_sent`;
-the first time one does, the agent posts once into the same thread, in the
-language the conversation was in, and the watch is closed.
+A registered WATCH, in two halves and TWO POSTS, never three.
 
-    registered -> fired      the send happened, one message posted
-    registered -> expired    nothing sent inside the window; says so once
-    registered -> cancelled  somebody withdrew it
+OPERATOR, 2026-09-23: "post once when that batch's first provider-confirmed
+send lands and once on first human reply, then stop."
+
+A client says yes; a row is written; a loop asks the provider whether any
+campaign in the batch has a non-zero `emails_sent`. The first time one
+does, the agent posts into that thread in the language the conversation was
+in, and the watch ADVANCES rather than closing. It then waits for the first
+reply a PERSON wrote to those campaigns, posts once more, and closes.
+
+    awaiting_send  -> awaiting_reply   the send happened, announced once
+                   -> expired          nothing sent in 24h; says so once
+    awaiting_reply -> fired            a person replied, announced once
+                   -> expired          nobody did in 7 days; says so once
+    either         -> cancelled        somebody withdrew it, or the channel
+                                       was rebound to another workspace
+
+A watch that could not establish a reply marker when it opened is CLOSED at
+the first post instead of advancing: the reply half was never promised to
+that client, so it is not owed to them.
+
+## A PERSON, NOT A COUNTER
+
+The provider's `replied` counter includes autoresponders, and the operator's
+rule of 2026-09-22 is that an out-of-office, a ticket acknowledgement and an
+assistant writing on somebody else's behalf are all things nobody chose to
+say to us. So the reply half reads the reply feed, where each row carries
+its own campaign, and counts one only when `replies.is_automated` says it is
+not automated AND the provider's own `automated_reply` flag agrees. On
+disagreement it does not count - telling a client an autoresponder was their
+first real answer is the failure that sounds like good news.
 
 ## PROVIDER-CONFIRMED MEANS THE COUNTER MOVED
 
