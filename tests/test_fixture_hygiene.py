@@ -144,6 +144,52 @@ TEXT_SUFFIXES = (".py", ".json", ".jsonl", ".csv", ".txt", ".md", ".yaml",
 
 SELF = "tests/test_fixture_hygiene.py"
 
+#: THE ONE EXEMPTION, AND IT IS NARROW ON PURPOSE.
+#:
+#: OPERATOR DECISION, 2026-09-23: the test identity may be named in these two
+#: files and nowhere else.
+#:
+#: `src/testidentity.py` exists because a `positive_reply` for the operator's
+#: own test identity was routed to A CLIENT'S OWN CHANNEL - the client would
+#: have been told a prospect was interested when the "prospect" was the
+#: operator exercising a cross-channel stop. The module suppresses that at
+#: the write (`notify.plan`) and at the read (the reply counts).
+#:
+#: **AN EXCLUSION HAS TO BE ABLE TO NAME WHAT IT EXCLUDES.** So a safety
+#: mechanism needs exactly the value this guard forbids, and the two cannot
+#: both be satisfied by argument. One of them has to give, deliberately.
+#:
+#: The alternative was moving the value into gitignored config. Rejected, on
+#: the rule this repository already has about safety paths: a config read
+#: that fails would leave the exclusion silently not working, and a
+#: suppression that quietly stops suppressing is worse than a name in a
+#: tracked file we chose to put there.
+#:
+#: SCOPED TO THE THREE IDENTITY CHECKS - the name, the LinkedIn handle and
+#: the ADDRESS. All three for the same reason and no others: the module
+#: holds `CONTACT_KEYS`, `LINKEDIN_SLUGS` and `EMAILS`, and an exclusion
+#: cannot match on a value it is not allowed to hold. These files are
+#: still checked for phone numbers, live account figures, client domains
+#: and CRM narrative - `tracked_files` does not skip them, so a real
+#: PROSPECT reaching either file still fails. Compare `SELF` just above,
+#: exempt for the same structural reason: this file has to name what it
+#: forbids in order to forbid it.
+#:
+#: **AND THE WRONG FIX IS ONE SCREEN AWAY.** `FAKE_VANITY` below is an
+#: allowlist of INVENTED handles. Putting a real one there would turn the
+#: assertion green by retiring the guard for exactly the person it protects.
+#: If a real name appears in a file not listed here, REMOVE THE NAME - never
+#: widen this tuple to match the file.
+TEST_IDENTITY_FILES = (
+    "src/testidentity.py",
+    "tests/test_the_test_identity_is_never_counted.py",
+)
+
+
+def names_the_test_identity_on_purpose(path):
+    """Is this one of the two files the operator allowed it in?"""
+    return path in TEST_IDENTITY_FILES
+
 
 def tracked_files():
     """Every file git actually tracks. Untracked local state is not our problem.
@@ -180,6 +226,8 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
         """
         hits = []
         for path, text in corpus():
+            if names_the_test_identity_on_purpose(path):
+                continue           # see TEST_IDENTITY_FILES
             for domain in sorted(set(EMAIL.findall(text))):
                 low = domain.lower()
                 if not any(low == s or low.endswith(s) for s in SAFE_SUFFIXES):
@@ -199,6 +247,8 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
     def test_no_real_person_or_client_named(self):
         hits = []
         for path, text in corpus():
+            if names_the_test_identity_on_purpose(path):
+                continue           # see TEST_IDENTITY_FILES
             low = text.lower()
             for name in FORBIDDEN_NAMES:
                 if name in low:
@@ -295,6 +345,8 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
                        "jesse-hollis", "nikola-feric", "unknown-0", "unknown-"}
         hits = []
         for path, text in corpus():
+            if names_the_test_identity_on_purpose(path):
+                continue           # see TEST_IDENTITY_FILES
             if path.startswith("tests/"):
                 continue
             for match in LINKEDIN.finditer(text):

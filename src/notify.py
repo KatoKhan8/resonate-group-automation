@@ -630,7 +630,8 @@ def plan(event_type, workspace=None, fields=None, ids=None, actions=(),
 
     # THE OPERATOR'S TEST IDENTITY NEVER REACHES A CLIENT CHANNEL.
     #
-    # 2026-09-23: a `positive_reply` for `/in/zbeslic` was routed to
+    # 2026-09-23: a `positive_reply` for THE TEST IDENTITY (named once,
+    # in `testidentity`) was routed to
     # C0BFUF4JRK9, Productive's own channel. It was suppressed by hand, and a
     # hand-edit is not a mechanism - the next reply from that profile would
     # have planned another one. Suppressed rather than dropped: the row is

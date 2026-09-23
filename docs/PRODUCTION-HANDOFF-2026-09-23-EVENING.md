@@ -74,7 +74,7 @@ the enforcement point for the 5-step floor above.
 The controlled test was set up and run today. **It failed, and the failure
 looked exactly like success.**
 
-    15:57:01Z  reply matched to the record       contact zvonimir-beslic
+    15:57:01Z  reply matched to the record       contact <the test identity>
     15:57:01Z  record paused locally             reason positive, linkedin
     15:57:01Z  classified                        unknown
                contact.stopped                   null
@@ -101,12 +101,12 @@ unchanged. It lifts on a measured sub-15-minute stop both ways.
 
 ### Test-lead state
 
-    EmailBison lead 204966   zvonimir@resonate.co, attached to campaign 491,
+    EmailBison lead 204966   the operator's own address, attached to campaign 491,
                              reads in_sequence
     local record             crosschannel-stop-test-2026-09-23, state=held,
-                             contact carries email, /in/zbeslic,
+                             contact carries email, the test identity's profile,
                              bison_lead_id 204966
-    HeyReach                 campaign 613744, /in/zbeslic, state=replied
+    HeyReach                 campaign 613744, the test identity's profile, state=replied
 
 **Still `in_sequence` in a live campaign and can receive a step.** The
 operator's instruction is to remove it and mark it `do_not_contact` once
@@ -123,7 +123,7 @@ and reported this lead absent for minutes after it had in fact attached.
 ## 3. TEST IDENTITY EXCLUDED PERMANENTLY - AND BRUNO REPLIED BY HAND
 
 The LinkedIn replies in 613744 (14:34, 16:16, 17:54) are **the operator's own
-test**. `/in/zbeslic` and lead 204966 are excluded from **every reply count,
+test**. the test identity's profile and lead 204966 are excluded from **every reply count,
 report and client figure, now and permanently.**
 
 **Done:** one notification existed - a `positive_reply` planned to
@@ -138,7 +138,7 @@ from that profile plans another notification to the client's channel.**
 
 ### The finding that outranks it
 
-**Bruno Gudelj answered manually at 16:10 from the seat inbox.** Productive's
+**A Productive seat holder answered manually at 16:10 from the seat inbox.** Productive's
 own seat holders reply on LinkedIn themselves, in the same threads, so an
 automated reply can collide mid-conversation with a human one at the client.
 **The reply-ownership policy must be settled with Productive before the reply
@@ -316,7 +316,7 @@ Current truth is at the TOP of `HUMAN-ACTIONS-REQUIRED.md`, rewritten today.
 Two entries there were false and are corrected with measurements: Deliverable
 reads BLOCKING when `DELIVERABLE_RESULT_SHAPE=confirmed` has been set since
 2026-09-22 13:03, and the LinkedIn connection request is listed as waiting
-when `/in/zbeslic` is `state=replied` since 2026-09-23T10:58:13Z.
+when the test identity's profile is `state=replied` since 2026-09-23T10:58:13Z.
 
 1. **Approve steps 4-5 copy** - new-campaign pushes are HELD until then.
 2. **Reply-ownership policy with Productive** (section 3).
