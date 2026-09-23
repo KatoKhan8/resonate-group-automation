@@ -138,7 +138,7 @@ clears.
 ## RESULT
 
 - STATUS: BLOCKED
-- COMMIT SHA: (pending — this commit)
+- COMMIT SHA: 7526ab4f
 - TESTS: not run (no code written)
 - FILES CHANGED: task file moved TODO → RUNNING, FINDINGS added
 - FINDINGS: TASK-247 still in TODO; `lane_for` not in `src/`; cannot build
