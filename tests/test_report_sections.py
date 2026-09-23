@@ -143,6 +143,20 @@ class ThePipeline(Sections):
 
 
 class TheAccountCounts(Sections):
+    """The PDF's account section, in THE OPERATOR'S VOCABULARY.
+
+    OPERATOR, 2026-09-23: `_accounts` takes `untouched / sequenced /
+    engaged / replied / meeting / won / lost / do_not_contact`, plus
+    `unanswerable` as its own tile. The old `targeted / contacted /
+    engaged / positive` keys are RETIRED, not aliased.
+
+    The reason they could not be aliased is the third test below. Under the
+    old vocabulary an account that replied counted as `engaged`, because
+    `engaged` meant "at least one reply". Under the operator's it counts as
+    `replied`, because `engaged` means something deliberately SHORT of a
+    reply. One word, two meanings, in a document a client receives - so the
+    word had to stop being ambiguous rather than be forwarded.
+    """
 
     def test_it_counts_companies_not_contacts(self):
         """Two people at one company is one account."""
@@ -151,7 +165,7 @@ class TheAccountCounts(Sections):
         self.touch("acme-ops", "email", "day1")
         store.save([self.rec])
         found = self.data()["accounts"]
-        self.assertEqual(found["contacted"], 1)
+        self.assertEqual(found["sequenced"], 1)
         self.assertEqual(found["multi_dm"], 1)
 
     def test_one_person_worked_is_not_a_multi_contact_account(self):
@@ -160,17 +174,36 @@ class TheAccountCounts(Sections):
         store.save([self.rec])
         self.assertEqual(self.data()["accounts"]["multi_dm"], 0)
 
-    def test_engaged_and_positive_are_different_questions(self):
+    def test_a_reply_is_replied_and_not_engaged(self):
+        """THE COLLISION, pinned. This is the test that would have failed
+        silently under an alias: the number would have moved from one tile
+        to another and no assertion would have noticed."""
         self.seeded()
         self.reply("acme-champ", "email")
         store.save([self.rec])
         found = self.data()["accounts"]
-        self.assertEqual(found["engaged"], 1)
-        self.assertEqual(found["positive"], 0)
+        self.assertEqual(found["replied"], 1)
+        self.assertEqual(found["engaged"], 0)
 
-    def test_targeted_is_every_record(self):
+    def test_the_eight_states_account_for_every_record(self):
+        """Every record sits in exactly one state, so the eight sum to the
+        estate. A key that silently went missing would break this before it
+        reached a client as a section of zeros."""
+        from src import accountstate
+
         recs = self.seeded()
-        self.assertEqual(self.data()["accounts"]["targeted"], len(recs))
+        found = self.data()["accounts"]
+        for state in accountstate.ACCOUNT_STATES:
+            self.assertIn(state, found)
+        total = sum(found[s] for s in accountstate.ACCOUNT_STATES)
+        self.assertEqual(total + found["unanswerable"], len(recs))
+
+    def test_the_retired_keys_are_gone_rather_than_aliased(self):
+        """An alias would be the same collision with a forwarding address."""
+        found = self.data()["accounts"]
+        self.seeded()
+        for retired in ("targeted", "contacted", "positive"):
+            self.assertNotIn(retired, found)
 
 
 class TheMonths(Sections):
@@ -262,7 +295,8 @@ class OnThePage(Sections):
         data = self.data()
         self.assertTrue(data["linkedin"]["requests"])
         self.assertTrue(data["pipeline"])
-        self.assertTrue(data["accounts"]["targeted"])
+        # This record replied, so it is `replied` - not `sequenced`.
+        self.assertTrue(data["accounts"]["replied"])
         self.assertTrue(data["months"])
         # And the renderer takes them without falling into its excuse.
         raw = clientreport.build(

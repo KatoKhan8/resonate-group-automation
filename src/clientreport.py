@@ -1069,18 +1069,59 @@ def _accounts(canvas, data, meta=None):
         "makers approached by several people. These count companies, not "
         "contacts.")
     canvas.space(6)
+    # THE OPERATOR'S EIGHT STATES, in the operator's order, one tile each.
+    # Every account sits in exactly one of them, so the eight sum to the
+    # estate - which is why `in_flight` is NOT a tile here. It is a sum of
+    # four of them and printing it alongside would invite adding it in.
     canvas.metrics([
-        ("Accounts targeted", _n(accounts.get("targeted")), "companies"),
-        ("Accounts contacted", _n(accounts.get("contacted")), ""),
-        ("Accounts engaged", _n(accounts.get("engaged")), "at least one reply"),
-        ("Positive accounts", _n(accounts.get("positive")), ""),
+        ("Untouched", _n(accounts.get("untouched")), "nothing sent yet"),
+        ("Sequenced", _n(accounts.get("sequenced")), "in a live sequence"),
+        ("Engaged", _n(accounts.get("engaged")),
+         "a touch landed, no reply yet"),
+        ("Replied", _n(accounts.get("replied")), "somebody wrote back"),
     ])
     canvas.metrics([
+        ("Meetings", _n(accounts.get("meeting")), "a meeting happened"),
+        ("Won", _n(accounts.get("won")), ""),
+        ("Lost", _n(accounts.get("lost")), ""),
+        ("Do not contact", _n(accounts.get("do_not_contact")),
+         "asked to be left alone"),
+    ])
+    canvas.space(4)
+    # UNANSWERABLE GETS ITS OWN TILE AND ITS OWN SENTENCE. It is not a
+    # state and it is never folded into `untouched` - that fold is the one
+    # specific falsehood this section was rebuilt to stop, because "1,530
+    # untouched" and "we cannot currently tell you" are different claims
+    # and only one of them is true. A tile that appeared only when the
+    # number was non-zero would be a tile nobody notices has appeared, so
+    # it renders at zero too.
+    canvas.metrics([
+        ("Cannot be placed", _n(accounts.get("unanswerable")),
+         "see the note below"),
         ("Multi-contact accounts", _n(accounts.get("multi_dm")),
          "more than one decision maker worked"),
         ("Referrals", _n(accounts.get("referrals")),
          "one contact pointing to another"),
     ], per_row=3)
+    if accounts.get("unanswerable"):
+        canvas.note(
+            "%d account(s) could not be placed in a state: our own record of "
+            "what was sent is not recording this client's sends yet, so we "
+            "will not assert that nobody has been contacted. This is NOT a "
+            "count of untouched accounts and must not be read as one."
+            % accounts["unanswerable"])
+    # WHY TWO OF THE EIGHT ARE ZERO, said out loud. Nothing in this system
+    # records a deal; the meetings ledger is hand-fed and stops at the
+    # meeting. A client reading "0 won" as a measurement rather than as an
+    # absence of any source for the number is the failure this prevents.
+    without = [str(s) for s in (data.get("accounts_without_a_source") or [])]
+    if without:
+        canvas.note(
+            "%s: this system has no source for %s. The figure above is the "
+            "absence of a record, not a measurement of the outcome - deals "
+            "are tracked outside this report."
+            % (" and ".join(w.replace("_", " ").title() for w in without),
+               "them" if len(without) > 1 else "it"))
 
 
 def _geography(canvas, data, meta=None):

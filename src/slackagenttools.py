@@ -438,27 +438,15 @@ def account_lookup(scope, argument=None):
 # screen, claim resolver and fatigue check reads it rather than walking the
 # event log again with its own idea of what counts."
 
-#: The operator's account states, weakest first. The order is the
-#: progression; `_account_state` walks it from the strong end.
-UNTOUCHED = "untouched"
-SEQUENCED = "sequenced"
-ENGAGED = "engaged"
-REPLIED = "replied"
-MEETING = "meeting"
-WON = "won"
-LOST = "lost"
-DO_NOT_CONTACT = "do_not_contact"
-
-ACCOUNT_STATES = (UNTOUCHED, SEQUENCED, ENGAGED, REPLIED, MEETING,
-                  WON, LOST, DO_NOT_CONTACT)
-
-#: TWO OF THE EIGHT HAVE NO SOURCE IN THIS REPOSITORY, and that is reported
-#: rather than left to look like "it never happens". Nothing here records a
-#: deal. The meetings ledger is hand-fed and stops at the meeting; there is
-#: no CRM in this tree and no won/lost field on any record. An answer that
-#: silently never returns two of the states it advertises is worse than one
-#: that names the gap, because the gap is invisible from the outside.
-STATES_WITHOUT_A_SOURCE = (WON, LOST)
+# THE VOCABULARY LIVES IN `accountstate`, not here. It was defined in this
+# module and the PDF's producer defined a different one, and the two shared
+# the word `engaged` while meaning different things by it. One definition,
+# imported by every reader - the operator's decision of 2026-09-23.
+from .accountstate import (                                     # noqa: E402
+    UNTOUCHED, SEQUENCED, ENGAGED, REPLIED, MEETING, WON, LOST,
+    DO_NOT_CONTACT, ACCOUNT_STATES, STATES_WITHOUT_A_SOURCE,
+    state_of as _account_state,
+)
 
 
 def _reply_classes(rows):
@@ -634,80 +622,9 @@ def _confirming_types():
 _CONFIRMING_TYPES = _confirming_types()
 
 
-def _account_state(record, detail, meetings_for_domain, ledger_ok=None):
-    """One of `ACCOUNT_STATES`, with the evidence that decided it.
-
-    PRECEDENCE, strongest first, and every step of it is a judgement worth
-    arguing with rather than a lookup:
-
-    `do_not_contact` OUTRANKS EVERYTHING, including `meeting`. It is the one
-    state that answers "what may we do next" rather than "how far did this
-    get", and an account that met us and then asked to be left alone is an
-    account we may not write to. Ranking a meeting above it is how a good
-    outcome becomes a reason to ignore a refusal.
-
-    Then `meeting`, `replied`, `engaged`, `sequenced`, `untouched` - the
-    operator's own order, which is the commercial progression.
-
-    `engaged` MEANS SOMETHING SHORT OF A REPLY: a connection accepted, an
-    interaction recorded, nobody having written back yet. Without that
-    distinction it collapses into `replied` and one of the two words stops
-    meaning anything.
-    """
-    evidence = []
-    # `graph()["contacts"]` IS A LIST, not a mapping - `by_contact` is the
-    # mapping. Reading the wrong one raises on `.values()` and every account
-    # comes back unreadable, so the shape is taken off the real return.
-    contacts = (detail or {}).get("contacts") or []
-    states = [str((c or {}).get("state") or "") for c in contacts]
-
-    suppressed = [s for s in states if s in ("suppressed", "stopped")]
-    if str(record.get("state") or "") == "do_not_contact" \
-            or record.get("do_not_contact") \
-            or (states and len(suppressed) == len(states)):
-        evidence.append("every contact is suppressed or stopped"
-                        if states else "the record carries do_not_contact")
-        return DO_NOT_CONTACT, evidence
-
-    if meetings_for_domain:
-        evidence.append("%d meeting(s) in the hand-fed ledger"
-                        % meetings_for_domain)
-        return MEETING, evidence
-
-    replied = len((detail or {}).get("replies") or [])
-    if replied:
-        evidence.append("%d reply event(s) on the account" % replied)
-        return REPLIED, evidence
-
-    # ENGAGED IS SHORT OF A REPLY. `account._contact_state` calls a contact
-    # `engaged` when they have replied, so by the time we are here that
-    # branch is already spent - what is left is a confirmed touch on a
-    # channel that carries an acceptance. Reached deliberately and rarely;
-    # it is not a synonym for `replied` and must never become one.
-    if any(s == ENGAGED for s in states) \
-            or any(t.get("channel") == "linkedin" and t.get("confirmed")
-                   for t in ((detail or {}).get("touches") or [])):
-        evidence.append("a LinkedIn touch landed and nobody has written back")
-        return ENGAGED, evidence
-
-    confirmed = len((detail or {}).get("confirmed_touches") or [])
-    if confirmed:
-        evidence.append("%d confirmed touch(es) in the ledger" % confirmed)
-        return SEQUENCED, evidence
-
-    if ledger_ok is False:
-        # THE ONE CASE THAT IS NOT A STATE, and it is the whole reason this
-        # function takes the witness. The ledger says nobody has been
-        # touched AND the ledger is known not to be recording touches, so
-        # `untouched` would be a guess dressed as an answer - in a client
-        # channel, about an account we may well have emailed yesterday.
-        evidence.append("the ledger carries no touch for this account AND "
-                        "is not recording this workspace's sends, so "
-                        "`untouched` cannot be asserted")
-        return None, evidence
-
-    evidence.append("no confirmed touch in the ledger")
-    return UNTOUCHED, evidence
+# `_account_state` IS `accountstate.state_of`, imported above. The body
+# that stood here moved out whole so the PDF's producer could call the
+# same one; nothing about the precedence changed in the move.
 
 
 def account_status(scope, argument=None):
@@ -875,7 +792,7 @@ def account_status(scope, argument=None):
 #: closed. `untouched` is not in flight - nothing has happened to it - and
 #: neither is `do_not_contact`, which is finished in the only direction that
 #: matters.
-IN_FLIGHT = (SEQUENCED, ENGAGED, REPLIED, MEETING)
+from .accountstate import IN_FLIGHT             # noqa: E402,F401
 
 
 def _account_rollup(slug):
@@ -995,16 +912,22 @@ def weekly_report(scope, argument=None):
 
     counts, unanswerable, ledger_ok = _account_rollup(slug)
     in_flight = sum(counts.get(state, 0) for state in IN_FLIGHT)
-    out["accounts"] = {
-        "in_flight": in_flight,
-        "engaged": counts.get(ENGAGED, 0),
-        "replied": counts.get(REPLIED, 0),
-        "meetings": counts.get(MEETING, 0),
-        "untouched": counts.get(UNTOUCHED, 0),
-        "do_not_contact": counts.get(DO_NOT_CONTACT, 0),
-        "unanswerable": unanswerable,
-    }
-    out["accounts_order"] = ["in_flight", "engaged", "replied", "meetings"]
+    # ALL EIGHT STATES BY NAME, because this dict is now also what the PDF
+    # renders. OPERATOR, 2026-09-23: one vocabulary for the Monday post, the
+    # PDF and later the portal. The previous shape emitted `meetings` (plural)
+    # and folded SEQUENCED into `in_flight`, so `sequenced`, `won` and `lost`
+    # had no key at all - and a renderer cannot show a tile for a key it is
+    # never handed. `in_flight` stays, below the states and documented as a
+    # SUM of four of them, so nobody adds it to the eight and double-counts.
+    out["accounts"] = {state: counts.get(state, 0) for state in ACCOUNT_STATES}
+    out["accounts"]["unanswerable"] = unanswerable
+    out["accounts"]["in_flight"] = in_flight
+    out["accounts_order"] = list(ACCOUNT_STATES)
+    out["accounts_in_flight_is_a_sum_of"] = list(IN_FLIGHT)
+    # The two states nothing in this tree can source. Carried so the PDF can
+    # say WHY they are zero instead of letting a client read "0 won" as a
+    # measurement. `STATES_WITHOUT_A_SOURCE` is the single definition.
+    out["accounts_without_a_source"] = list(STATES_WITHOUT_A_SOURCE)
     if unanswerable:
         out["accounts_warning"] = (
             "%d account(s) could not be placed because the ledger is not "
