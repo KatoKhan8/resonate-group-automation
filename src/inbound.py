@@ -21,7 +21,10 @@ positively identified machine reply may skip the pause.
   python -m src.inbound show
 """
 import argparse
+import contextlib
+import datetime
 import json
+import os
 import sys
 
 from . import (accountpolicy, adapters, campaigns, clients, events, leadstop,
@@ -34,8 +37,90 @@ from . import (accountpolicy, adapters, campaigns, clients, events, leadstop,
 # notification is suppressed. An event on THIS seat with no record match is
 # kept - it might be ours and absence of evidence is never proof.
 # Source: docs/state/PROVIDER-CAMPAIGNS.json (2026-09-20 readback).
+#
+# 2026-09-23: THESE TWO LITERALS WENT STALE AND NOTHING REPORTED IT.
+#
+# They were read back on 2026-09-20, when the account held 86 campaigns and 4
+# were ours. On 2026-09-23 the provider says 119 and 37: the 33 "RESONATE
+# PRODUCTIVE LI B1 SEAT <n>" campaigns (613724-613761) run on 33 DISTINCT
+# seats, none of them 174892 and none of them in the set below. So the first
+# unattributable reply to one of our own B1 campaigns would be dropped here as
+# "positively not ours" and nobody would be told.
+#
+# It has not fired yet - 75 connection requests, 3 accepted, 0 replies - which
+# is luck, not a design. This is the register's own recurring shape: a value
+# that was true when it was written, cached where nothing could notice it had
+# gone stale. The structural answer it prescribes is that such a value carries
+# the date and source it came from and REFUSES rather than answers when it
+# cannot prove it is current. That is what `_owned()` below does.
 OWNED_SEATS = {174892}
 OWNED_CAMPAIGNS = {605732, 605487, 604869, 599020}
+
+#: How old the readback may be before it stops licensing a drop. A campaign
+#: can be created and started inside an hour, so this is short on purpose.
+OWNERSHIP_MAX_AGE_HOURS = 24
+
+_OWNERSHIP_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "docs", "state", "PROVIDER-CAMPAIGNS.json")
+
+
+def _readback(path=None, now=None):
+    """Seats and campaigns the PROVIDER says are ours, with its own age.
+
+    Returns `(seats, campaigns, fresh, why)`. `fresh` is False whenever the
+    file is missing, unreadable, undated or older than
+    `OWNERSHIP_MAX_AGE_HOURS` - and `why` says which, because "we could not
+    prove ownership" and "this is not ours" must never print the same.
+    """
+    path = path or _OWNERSHIP_FILE
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError) as exc:
+        return set(), set(), False, f"readback unreadable: {exc}"
+
+    block = (data or {}).get("heyreach") or {}
+    seats, camps = set(), set()
+    for row in block.get("resonate_campaigns") or []:
+        cid = row.get("heyreach_campaign_id")
+        if cid is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                camps.add(int(cid))
+        for sender in row.get("senders") or []:
+            sid = sender.get("id")
+            if sid is not None:
+                with contextlib.suppress(TypeError, ValueError):
+                    seats.add(int(sid))
+
+    stamp = (data or {}).get("generated_at")
+    if not stamp:
+        return seats, camps, False, "readback carries no generated_at"
+    try:
+        at = datetime.datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return seats, camps, False, f"unparseable generated_at: {stamp!r}"
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=datetime.timezone.utc)
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    age = (now - at).total_seconds() / 3600.0
+    if age > OWNERSHIP_MAX_AGE_HOURS:
+        return seats, camps, False, (
+            f"readback is {age:.0f}h old (limit {OWNERSHIP_MAX_AGE_HOURS}h); "
+            f"run scripts/provider_truth.py")
+    return seats, camps, True, None
+
+
+def _owned(path=None, now=None):
+    """The sets a drop may be decided against, or `None` meaning REFUSE.
+
+    The literals above are a FLOOR, never a ceiling: they are unioned in so a
+    readback that has lost a campaign cannot make us disown one we know about.
+    """
+    seats, camps, fresh, why = _readback(path=path, now=now)
+    if not fresh:
+        return None, why
+    return (seats | OWNED_SEATS, camps | OWNED_CAMPAIGNS), None
 
 
 def _positively_not_ours(event):
@@ -49,18 +134,29 @@ def _positively_not_ours(event):
     Returns True ONLY when at least one field positively places this event
     on a seat or campaign that is not ours. Returns False for every other
     case: no field, our seat, our campaign, or an unknown value.
+
+    2026-09-23: and False whenever the ownership readback cannot be PROVEN
+    CURRENT. A stale allowlist cannot distinguish "another operator's seat"
+    from "a seat of ours created since the readback", and on 2026-09-23 it
+    held one seat against 33 live ones. Refusing to drop costs a notification
+    nobody needed; dropping wrongly costs a reply nobody saw.
     """
+    owned, _why = _owned()
+    if owned is None:
+        return False
+    owned_seats, owned_campaigns = owned
+
     seat = event.get("linkedin_account_id")
     if seat is not None:
         try:
-            if int(seat) not in OWNED_SEATS:
+            if int(seat) not in owned_seats:
                 return True
         except (TypeError, ValueError):
             pass
     cid = event.get("external_campaign_id")
     if cid is not None:
         try:
-            if int(cid) not in OWNED_CAMPAIGNS:
+            if int(cid) not in owned_campaigns:
                 return True
         except (TypeError, ValueError):
             pass

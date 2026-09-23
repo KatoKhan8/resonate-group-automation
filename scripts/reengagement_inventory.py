@@ -62,9 +62,11 @@ import datetime
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src import singlewalker                                     # noqa: E402
 from src.providers import bison, heyreach, load_env              # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -90,6 +92,70 @@ STOPPED_STATES = {"stopped", "paused", "sending_paused"}
 FINISHED_STATES = {"finished", "completed", "sequence_finished"}
 
 REENGAGE_AFTER_DAYS = 90
+
+LOCK = os.path.join(ROOT, "work", "reengagement-inventory.lock")
+
+#: OPERATOR, 2026-09-23: "pauses during sending windows, runs after 18:00
+#: Zagreb". This walk is one `lead()` call per lead across ~90,000 leads in
+#: campaigns 327, 328 and 352, and the provider it hammers is the same one
+#: that has to deliver the day's sends. Sharing a rate limit with the
+#: scheduler is how a background walk becomes a delivery incident.
+NOT_BEFORE_HOUR_LOCAL = 18
+ZAGREB = datetime.timezone(datetime.timedelta(hours=2))   # CEST, Sep 2026
+
+#: The union of our live campaigns' provider windows, in UTC. 487 is
+#: Mon-Fri 07:00-15:00Z and 489 Mon-Fri 13:00-21:00Z, so sending spans
+#: 07:00-21:00Z on weekdays. Checked per batch rather than once, because a
+#: walk that starts at 21:30 runs into the next morning.
+SENDING_START_UTC = 7
+SENDING_END_UTC = 21
+
+
+def local_now():
+    return datetime.datetime.now(ZAGREB)
+
+
+def inside_sending_window(now=None):
+    """True while the estate may be sending. Weekends are never sending."""
+    now = (now or datetime.datetime.now(datetime.timezone.utc))
+    now = now.astimezone(datetime.timezone.utc)
+    if now.weekday() >= 5:
+        return False
+    return SENDING_START_UTC <= now.hour < SENDING_END_UTC
+
+
+def too_early(now=None):
+    """True before 18:00 Zagreb. Weekends are fair game at any hour."""
+    now = now or local_now()
+    if now.weekday() >= 5:
+        return False
+    return now.hour < NOT_BEFORE_HOUR_LOCAL
+
+
+def wait_for_a_window(sleep=time.sleep, now_fn=None, emit=print):
+    """Block until it is both late enough and outside a sending window.
+
+    Returns False if it gave up. It sleeps in five-minute steps rather than
+    computing the gap in one jump so that a wrong clock costs five minutes
+    rather than the night.
+    """
+    waited = 0
+    while True:
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        if now_fn is not None:
+            now_utc = now_fn()
+        local = now_utc.astimezone(ZAGREB)
+        if not too_early(local) and not inside_sending_window(now_utc):
+            return True
+        if waited == 0 or waited % 1800 == 0:
+            why = "before 18:00 Zagreb" if too_early(local) else                   "inside the sending window"
+            emit(f"    HOLDING - {why} (local {local:%H:%M}, "
+                 f"{now_utc:%H:%M}Z). Waited {waited//60} min.")
+        if waited > 16 * 3600:
+            emit("    GIVING UP after 16 hours of waiting for a window")
+            return False
+        sleep(300)
+        waited += 300
 
 
 def _now():
@@ -219,6 +285,10 @@ def walk(cap=None):
     handle = open(INVENTORY, "a", encoding="utf-8")
     try:
         for campaign in campaigns:
+            if not wait_for_a_window():
+                print("    STOPPING: no window reached. Progress is saved; "
+                      "re-run and it resumes.")
+                break
             campaign_id = campaign.get("id")
             name = str(campaign.get("name") or "")[:48]
             try:
@@ -394,11 +464,23 @@ def main(argv=None):
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--cap", type=int)
+    parser.add_argument("--ignore-window", action="store_true",
+                        help="walk regardless of the hour. For a bounded "
+                             "--cap probe, not for the 90k walk.")
     args = parser.parse_args(argv)
     if args.report:
         return report()
     if args.walk:
-        return walk(cap=args.cap)
+        if args.ignore_window:
+            print("  --ignore-window: the 18:00 and sending-window gates are "
+                  "OFF. This walk shares a rate limit with the scheduler.")
+            globals()["wait_for_a_window"] = lambda *a, **k: True
+        # One walker. Two processes against one progress file and one
+        # append-mode inventory is the defect `src/singlewalker` exists for:
+        # the second does not walk faster, it re-walks and re-appends, and
+        # the duplication is invisible in the job's own counters.
+        with singlewalker.held(LOCK):
+            return walk(cap=args.cap)
     load_env()
     rows = bison_campaigns()
     print(f"\n{len(rows)} campaigns in the bound workspace. "

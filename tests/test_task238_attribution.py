@@ -38,6 +38,15 @@ class _AttributionTest(CampaignTest):
         self._prev = os.environ.get(notify.OPS_CHANNEL_VAR)
         os.environ[notify.OPS_CHANNEL_VAR] = OPS
         ws.ensure("productive", "Productive", client="productive")
+        # 2026-09-23: a drop now needs an ownership readback it can prove is
+        # current, and the real one on disk went 63 hours stale while 33 live
+        # campaigns were created behind it. These cases are about the drop
+        # LOGIC, so they are handed a fresh readback; the staleness refusal
+        # has its own class below.
+        self._owned = inbound._owned
+        inbound._owned = lambda *a, **k: (
+            (set(inbound.OWNED_SEATS), set(inbound.OWNED_CAMPAIGNS)), None)
+        self.addCleanup(setattr, inbound, "_owned", self._owned)
 
     def tearDown(self):
         if self._prev is None:
