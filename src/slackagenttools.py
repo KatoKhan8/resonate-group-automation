@@ -415,6 +415,359 @@ def account_lookup(scope, argument=None):
             "accounts": out}
 
 
+# ------------------------------------------------- what is happening here
+#
+# OPERATOR, 2026-09-23: "'what is happening with <domain>' returns the
+# account status (untouched / sequenced / engaged / replied / meeting / won /
+# lost / do_not_contact), the personas in play with their step, last touch,
+# replies by class, and next planned touch; client-scoped in client channels.
+# Build it on the account status object as production lands it; until then
+# derive from provider truth and the ledgers and label the source."
+#
+# THIS VOCABULARY IS NOT `account.py`'S AND IS NOT MAPPED ONTO IT SILENTLY.
+# `src/account.py` already carries ACTIVE / ENGAGED / PAUSED / SUPPRESSED /
+# STOPPED / NOT_STARTED, which is a different question: where one CONTACT
+# stands for the purposes of whether we may write to them. The operator's
+# list is a commercial progression for a whole account. They overlap in two
+# words and mean different things by both, and quietly aliasing them is how
+# a screen comes to say `engaged` about an account nobody may contact.
+#
+# So this is a PROJECTION, declared as one, and it reads `account.graph()`
+# rather than walking the event log again - that module's own docstring says
+# it is "the canonical answer to every account-level question, and every
+# screen, claim resolver and fatigue check reads it rather than walking the
+# event log again with its own idea of what counts."
+
+#: The operator's account states, weakest first. The order is the
+#: progression; `_account_state` walks it from the strong end.
+UNTOUCHED = "untouched"
+SEQUENCED = "sequenced"
+ENGAGED = "engaged"
+REPLIED = "replied"
+MEETING = "meeting"
+WON = "won"
+LOST = "lost"
+DO_NOT_CONTACT = "do_not_contact"
+
+ACCOUNT_STATES = (UNTOUCHED, SEQUENCED, ENGAGED, REPLIED, MEETING,
+                  WON, LOST, DO_NOT_CONTACT)
+
+#: TWO OF THE EIGHT HAVE NO SOURCE IN THIS REPOSITORY, and that is reported
+#: rather than left to look like "it never happens". Nothing here records a
+#: deal. The meetings ledger is hand-fed and stops at the meeting; there is
+#: no CRM in this tree and no won/lost field on any record. An answer that
+#: silently never returns two of the states it advertises is worse than one
+#: that names the gap, because the gap is invisible from the outside.
+STATES_WITHOUT_A_SOURCE = (WON, LOST)
+
+
+def _reply_classes(rows):
+    """`{classification: n}` over reply events, unclassified counted apart.
+
+    `unclassified` is its own key and never folded into a class. A reply
+    nobody has classified is not a neutral one, and this figure reaches a
+    client channel.
+    """
+    out = {}
+    for row in rows or []:
+        name = str(row.get("classification") or "").strip() or "unclassified"
+        out[name] = out.get(name, 0) + 1
+    return out
+
+
+def _provider_touches(slug, emails):
+    """Sends the PROVIDER confirms to these addresses. `None` if unreadable.
+
+    ## WHY THIS LEG EXISTS, MEASURED
+
+    The local event log does not carry this estate's sends. Counted over the
+    live store on 2026-09-23, against 494 provider-confirmed sends the day
+    before:
+
+        push_marked           1
+        email_delivered       0
+        linkedin_connected    0
+        reply_received       11
+
+    `account.graph()` is built from `touch.CONFIRMING_EVENTS`, which is
+    exactly those three, so it reports `untouched` for every account this
+    workspace has emailed. Deriving an account's status from it alone would
+    tell a client nothing has happened on an account we wrote to yesterday -
+    the same confidently-empty failure this session has now hit three times,
+    and the first one that would have reached a client channel.
+
+    So the provider is asked as well, which is what "derive from provider
+    truth" means. An unreadable queue is `None` and NEVER an empty list: a
+    campaign nobody could read is not a campaign that sent nothing.
+    """
+    if not emails:
+        return []
+    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+    ids, _hidden = _campaigns_to_read(entry, WEEK_CAMPAIGN_CAP)
+    wanted = {str(e).strip().lower() for e in emails if e}
+    found, unreadable = [], 0
+    for campaign_id in ids:
+        try:
+            queue = readback.queue(campaign_id)
+        except Exception:                                       # noqa: BLE001
+            unreadable += 1
+            continue
+        for row in queue:
+            lead = row.get("lead") if isinstance(row.get("lead"), dict) else {}
+            address = str(lead.get("email") or "").strip().lower()
+            if address and address in wanted and row.get("sent_at"):
+                found.append({"campaign_id": str(campaign_id),
+                              "email": address,
+                              "sent_at": row.get("sent_at"),
+                              "status": row.get("status")})
+    if unreadable and not found:
+        # NOTHING FOUND AND SOMETHING UNREADABLE is not "no sends". It is
+        # the one combination that must not be reported as a clean zero.
+        return None
+    found.sort(key=lambda r: str(r.get("sent_at") or ""))
+    return found
+
+
+def _account_state(record, detail, meetings_for_domain, provider_sends=None):
+    """One of `ACCOUNT_STATES`, with the evidence that decided it.
+
+    PRECEDENCE, strongest first, and every step of it is a judgement worth
+    arguing with rather than a lookup:
+
+    `do_not_contact` OUTRANKS EVERYTHING, including `meeting`. It is the one
+    state that answers "what may we do next" rather than "how far did this
+    get", and an account that met us and then asked to be left alone is an
+    account we may not write to. Ranking a meeting above it is how a good
+    outcome becomes a reason to ignore a refusal.
+
+    Then `meeting`, `replied`, `engaged`, `sequenced`, `untouched` - the
+    operator's own order, which is the commercial progression.
+
+    `engaged` MEANS SOMETHING SHORT OF A REPLY: a connection accepted, an
+    interaction recorded, nobody having written back yet. Without that
+    distinction it collapses into `replied` and one of the two words stops
+    meaning anything.
+    """
+    evidence = []
+    # `graph()["contacts"]` IS A LIST, not a mapping - `by_contact` is the
+    # mapping. Reading the wrong one raises on `.values()` and every account
+    # comes back unreadable, so the shape is taken off the real return.
+    contacts = (detail or {}).get("contacts") or []
+    states = [str((c or {}).get("state") or "") for c in contacts]
+
+    suppressed = [s for s in states if s in ("suppressed", "stopped")]
+    if str(record.get("state") or "") == "do_not_contact" \
+            or record.get("do_not_contact") \
+            or (states and len(suppressed) == len(states)):
+        evidence.append("every contact is suppressed or stopped"
+                        if states else "the record carries do_not_contact")
+        return DO_NOT_CONTACT, evidence
+
+    if meetings_for_domain:
+        evidence.append("%d meeting(s) in the hand-fed ledger"
+                        % meetings_for_domain)
+        return MEETING, evidence
+
+    replied = len((detail or {}).get("replies") or [])
+    if replied:
+        evidence.append("%d reply event(s) on the account" % replied)
+        return REPLIED, evidence
+
+    # ENGAGED IS SHORT OF A REPLY. `account._contact_state` calls a contact
+    # `engaged` when they have replied, so by the time we are here that
+    # branch is already spent - what is left is a confirmed touch on a
+    # channel that carries an acceptance. Reached deliberately and rarely;
+    # it is not a synonym for `replied` and must never become one.
+    if any(s == ENGAGED for s in states) \
+            or any(t.get("channel") == "linkedin" and t.get("confirmed")
+                   for t in ((detail or {}).get("touches") or [])):
+        evidence.append("a LinkedIn touch landed and nobody has written back")
+        return ENGAGED, evidence
+
+    confirmed = len((detail or {}).get("confirmed_touches") or [])
+    if confirmed:
+        evidence.append("%d confirmed touch(es) in the event log" % confirmed)
+        return SEQUENCED, evidence
+
+    if provider_sends:
+        evidence.append(
+            "%d send(s) confirmed by the provider, and NONE of them in the "
+            "local event log" % len(provider_sends))
+        return SEQUENCED, evidence
+
+    if provider_sends is None:
+        # THE ONE CASE THAT IS NOT A STATE. The local log says nothing and
+        # the provider could not be asked, so "untouched" would be a guess
+        # dressed as an answer, and it is the guess that reads as good news
+        # to nobody and as bad news to a client.
+        evidence.append("the local log has no touch and the provider queue "
+                        "could not be read")
+        return None, evidence
+
+    evidence.append("no confirmed touch in the event log and no send "
+                    "confirmed by the provider")
+    return UNTOUCHED, evidence
+
+
+def account_status(scope, argument=None):
+    """WHAT IS HAPPENING WITH ONE ACCOUNT. The whole question, one answer.
+
+    DERIVED, AND IT SAYS SO. Production's account-status object does not
+    exist yet; every field here carries where it came from, so the day that
+    object lands the difference is visible rather than silent.
+
+    Client-scoped like every other tool here: `_workspace_for` pins a client
+    channel to its own workspace before the lookup happens, so a
+    prompt-injected domain from another client's estate reads exactly like a
+    domain nobody has.
+    """
+    domain = str(argument or "").strip().lower().lstrip("@")
+    if not domain:
+        return {"read_at": _now(),
+                "_error": "account_status needs a domain"}
+    slug = _workspace_for(scope, None)
+    rows = _records(slug)
+    hits = [r for r in rows
+            if domain in str(r.get("domain") or "").lower()]
+    if not hits:
+        # THE SAME ANSWER AS A DOMAIN THAT IS NOT THIS CLIENT'S, which is
+        # the disclosure property `lead_in_campaign` established: telling
+        # "not yours" apart from "nobody's" IS the leak.
+        return {"read_at": _now(), "workspace": slug, "domain": domain,
+                "matches": 0,
+                "note": "no account matching %s in this workspace" % domain}
+
+    record = hits[0]
+    out = {"read_at": _now(), "workspace": slug,
+           "domain": record.get("domain"), "matches": len(hits)}
+    if len(hits) > 1:
+        out["note_matches"] = ("%d accounts match that domain; this is the "
+                               "first. Ask with the exact domain for another."
+                               % len(hits))
+
+    try:
+        from . import account as accountgraph
+        detail = accountgraph.graph(record, workspace=slug)
+    except Exception as exc:                                    # noqa: BLE001
+        # NO SILENT FALLBACK ONTO A SECOND WALK. If the canonical reader
+        # cannot answer, this says so; deriving the same fields another way
+        # here is how two representations of one account start to disagree.
+        return dict(out, _error="account graph unreadable: %s"
+                                % type(exc).__name__)
+
+    meetings_here = 0
+    meetings_source = "the hand-fed meetings ledger"
+    try:
+        from . import slackmeetings
+        # ONE ROW PER MEETING, not a count keyed by domain. Reading it as a
+        # mapping raises, the raise is caught below, and `meeting` then
+        # becomes a state this function can never return - silently, on the
+        # happy path. Written out because that is precisely the shape of
+        # defect this session has reported three times today.
+        ledger = slackmeetings.by_domain(workspace=slug) or []
+        here = str(record.get("domain") or "").lower()
+        meetings_here = len([row for row in ledger
+                             if str(row.get("domain") or "").lower() == here])
+    except Exception as exc:                                    # noqa: BLE001
+        meetings_source = ("the meetings ledger could not be read (%s), so "
+                           "`meeting` could not be reached"
+                           % type(exc).__name__)
+
+    emails = [c.get("email") for c in (record.get("contacts") or [])
+              if isinstance(c, dict) and c.get("email")]
+    provider_sends = _provider_touches(slug, emails)
+
+    state, evidence = _account_state(record, detail, meetings_here,
+                                     provider_sends)
+    if state is None:
+        return dict(out, status=None, status_evidence=evidence,
+                    _error="account status is not answerable right now: "
+                           "the local event log carries no touch and the "
+                           "provider queue could not be read")
+    out["status"] = state
+    out["status_evidence"] = evidence
+    out["provider_confirmed_sends"] = (
+        None if provider_sends is None else len(provider_sends))
+    if provider_sends:
+        out["provider_last_send_at"] = provider_sends[-1].get("sent_at")
+        out["provider_campaigns"] = sorted(
+            {r["campaign_id"] for r in provider_sends})
+        if not (detail or {}).get("confirmed_touches"):
+            # THE DISAGREEMENT, REPORTED RATHER THAN RESOLVED QUIETLY. Two
+            # witnesses to the same account say different things, and the
+            # one that says more is the provider. Somebody should know the
+            # local log is not being written.
+            out["witness_disagreement"] = (
+                "the provider confirms %d send(s) to this account and the "
+                "local event log carries none - the log is not recording "
+                "sends for this estate" % len(provider_sends))
+
+    personas = []
+    for entry in (detail or {}).get("contacts") or []:
+        entry = entry or {}
+        confirmed = entry.get("confirmed_touches") or []
+        last = confirmed[-1] if confirmed else None
+        personas.append({
+            "contact": entry.get("key"),
+            "persona": entry.get("persona"),
+            "role": entry.get("title"),
+            "priority": entry.get("priority"),
+            "state": entry.get("state"),
+            # THE STEP THEY ARE ON, off the last CONFIRMED touch. An
+            # attempted step is not a step somebody received, and this
+            # number is read as "how far into the sequence are they".
+            "step": (last or {}).get("step"),
+            "channel": (last or {}).get("channel"),
+            "last_touch_at": entry.get("last_touch_at"),
+            "touches_confirmed": len(confirmed),
+            "replies": len(entry.get("replies") or []),
+        })
+    out["personas"] = personas
+    out["personas_in_play"] = len([p for p in personas
+                                   if p["state"] not in ("suppressed",
+                                                         "stopped")])
+
+    every_reply = (detail or {}).get("replies") or []
+    confirmed_touches = (detail or {}).get("confirmed_touches") or []
+    out["last_touch"] = (dict(confirmed_touches[-1])
+                         if confirmed_touches else None)
+    if not confirmed_touches:
+        out["last_touch_note"] = "no confirmed touch on this account"
+    # WHAT THIS ANSWER CANNOT SEE, said once rather than implied by an
+    # absence. `account.touches()` is built from `touch.CONFIRMING_EVENTS`
+    # and every one of those maps to a CONFIRMED state, so an attempt that
+    # was planned, approved, held, blocked or failed produces no touch here
+    # at all. "How far into the sequence are they" therefore answers from
+    # what LANDED, and a person sitting on a held step reads identically to
+    # a person whose sequence simply has not reached them.
+    out["touches_are_confirmed_only"] = True
+    out["touch_coverage_note"] = (
+        "steps and counts here are CONFIRMED touches only - planned, held, "
+        "blocked and failed attempts are not visible through this reader, "
+        "so a held step and a step not yet due look the same")
+    out["replies_by_class"] = _reply_classes(every_reply)
+
+    out["next_planned_touch"] = None
+    out["next_planned_touch_note"] = (
+        "not derivable from local state: the plan lives in the provider's "
+        "queue and is answered by `weekly_plan`, whose horizon is three "
+        "days because that is as far as the provider answers")
+
+    out["states_without_a_source"] = list(STATES_WITHOUT_A_SOURCE)
+    out["source"] = {
+        "status": ("derived from account.graph(), the provider queue and "
+                   + meetings_source),
+        "personas": "account.graph(), confirmed touches only",
+        "replies_by_class": "reply events on the record, as classified",
+        "not_production_account_status_object": True,
+    }
+    out["note"] = (
+        "DERIVED, not read from an account-status object - production's does "
+        "not exist yet. `won` and `lost` have no source in this tree and are "
+        "never returned; absence of them is not evidence of neither.")
+    return out
+
+
 def sender_summary(scope, argument=None):
     """How many sending accounts are working this client's campaigns.
 
@@ -2166,6 +2519,11 @@ REGISTRY = {
     "account_lookup": (
         account_lookup,
         "one account's state by domain, with its contact counts",
+        _INTERNAL_CLIENT, "a domain"),
+    "account_status": (
+        account_status,
+        "what is happening with one account: status, the personas in play "
+        "with their step, last touch, replies by class",
         _INTERNAL_CLIENT, "a domain"),
     "sender_summary": (
         sender_summary,
