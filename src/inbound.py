@@ -191,11 +191,92 @@ def _stop_at_provider(rec, contact, rows=None):
     trade a queued email for a lost one, and the queued email is the thing a
     person can still be told about.
 
-    What it returns is the audit trail: `None` when there was nothing to
-    stop, otherwise the outcome or the reason it could not be done.
+    What it returns is the audit trail: a dict keyed by channel (`email`,
+    `linkedin`), each entry carrying `attempted`, `stopped` and - when it
+    could not be done - the reason. `summarise_stops` turns it into the line
+    a watcher prints.
     """
-    if not contact or not (contact or {}).get("bison_lead_id"):
-        return None
+    # PER CHANNEL, AND "NOT ATTEMPTED" IS AN OUTCOME.
+    #
+    # OPERATOR DECISION 2026-09-23. `reply_watch_loop` printed "the lead is
+    # stopped on both channels" unconditionally, so a lead that was never
+    # stopped reported as stopped - twice, on the safety path. The line is now
+    # built from this return value, so it can only say what happened.
+    #
+    # It returns one entry per channel rather than a single verdict, because
+    # the three outcomes a caller has to tell apart are:
+    #
+    #     stopped       the provider confirmed it on readback
+    #     refused       we tried and could not - somebody may still be written
+    #                   to, and this is the one that raises an alert
+    #     no lead here  this contact was never staged on that channel, which
+    #                   is not a failure and must not read as one
+    #
+    # BOTH CHANNELS ARE NOW ATTEMPTED. Only the EmailBison half was ever
+    # called from here, while `STOP_ROUTES` above has authorised the HeyReach
+    # route the whole time and `leadstop.sweep` has stopped both channels
+    # since TASK-235. So the guarantee in ACCOUNT-OUTREACH.md - a confirmed
+    # reply stops that lead on BOTH channels - was true of the sweep and not
+    # of the live reply path, which is the path that matters. A reply
+    # arriving on LinkedIn has to stop the email sequence and vice versa, and
+    # the operator's 2026-09-23 test is exactly the case that was broken.
+    out = {}
+    for channel, binding, stopper in (
+            ("email", "bison_lead_id", leadstop.stop_contact),
+            ("linkedin", "heyreach_lead_id", leadstop.stop_linkedin_contact)):
+        if not contact or not (contact or {}).get(binding):
+            out[channel] = {"attempted": False, "stopped": False,
+                            "why": f"this contact carries no {binding}, so "
+                                   f"there is nobody to stop on {channel}"}
+            continue
+        out[channel] = _stop_one(rec, contact, rows, channel, stopper)
+    return out
+
+
+#: Channel order in every summary line, so two reads of the same event are
+#: comparable by eye.
+STOP_CHANNELS = ("email", "linkedin")
+
+
+def summarise_stops(outcomes):
+    """One line saying what the stops actually did, and whether any refused.
+
+    Returns `(line, refusals)`. `refusals` is the list a caller alerts on -
+    a stop that was REFUSED means somebody may still be written to after they
+    answered, which is the only outcome here worth waking anybody for.
+
+    "no lead on that channel" is reported and is NOT a refusal. Most contacts
+    are staged on one channel only, and an alert on every single-channel
+    contact is an alert nobody reads by the end of the week.
+    """
+    parts, refusals = [], []
+    for outcome in outcomes or []:
+        stops = (outcome or {}).get("provider_stop") or {}
+        if not isinstance(stops, dict):
+            continue
+        for channel in STOP_CHANNELS:
+            entry = stops.get(channel)
+            if not isinstance(entry, dict):
+                continue
+            if not entry.get("attempted"):
+                parts.append(f"{channel}: no lead")
+            elif entry.get("already"):
+                parts.append(f"{channel}: already stopped")
+            elif entry.get("stopped"):
+                parts.append(f"{channel}: stopped")
+            else:
+                reason = entry.get("why") or entry.get("error") or "unknown"
+                parts.append(f"{channel}: REFUSED ({str(reason)[:120]})")
+                refusals.append({"channel": channel,
+                                 "record": ((outcome or {}).get("applied")
+                                            or {}).get("record_id"),
+                                 "why": str(reason)[:300]})
+    return ("; ".join(parts) if parts else "no provider binding to stop"), \
+        refusals
+
+
+def _stop_one(rec, contact, rows, channel, stopper):
+    """One channel's stop attempt, never raising. See `_stop_at_provider`."""
     try:
         # THE SCOPE THAT WAS MISSING, 2026-09-23.
         #
@@ -230,13 +311,18 @@ def _stop_at_provider(rec, contact, rows=None):
                 "reply received: stop this lead on the other channel "
                 "(ACCOUNT-OUTREACH.md). Scoped to stop routes only.",
                 only=STOP_ROUTES):
-            return leadstop.stop_contact(rec, contact, events.REPLY_RECEIVED,
-                                         rows=rows, live=True, persist=False)
+            report = stopper(rec, contact, events.REPLY_RECEIVED,
+                             rows=rows, live=True, persist=False)
+        return {"attempted": True, "stopped": bool(report.get("stopped")),
+                "already": bool(report.get("already")),
+                "status_after": report.get("status_after"),
+                "campaign": report.get("campaign"),
+                "lead_id": report.get("lead_id")}
     except Exception as e:
         # Explicitly classified, never swallowed: an unstopped person is the
         # thing somebody has to go and look at.
-        return {"stopped": False, "error": type(e).__name__,
-                "why": str(e)[:200]}
+        return {"attempted": True, "stopped": False,
+                "error": type(e).__name__, "why": str(e)[:200]}
 
 
 def _campaign_for(rec, rows=None):
