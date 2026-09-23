@@ -150,6 +150,38 @@ class TheIsolationItselfWorks(unittest.TestCase):
             unittest.TestResult())
         self.assertEqual(len(envisolation.LEAKS), before)
 
+    def test_class_teardown_runs_before_the_snapshot_is_compared(self):
+        """The defect the first version of the harness shipped.
+
+        `unittest` defers `tearDownClass` to the start of the NEXT module. A
+        wrapper that compares and restores without flushing it would record
+        this module as clean, and then run its teardown inside the following
+        module's window - attributing this module's restore to that one, and
+        stopping `webbase`'s live HTTP server a module late.
+        """
+        os.environ.pop("RGA_ENV_GUARD_PROBE", None)
+
+        class TearsDownLate(unittest.TestCase):
+            @classmethod
+            def tearDownClass(cls):
+                os.environ["RGA_ENV_GUARD_PROBE"] = "set-in-teardown"
+
+            def runTest(inner):                      # noqa: N805
+                pass
+
+        suite = envisolation.Isolated([TearsDownLate()],
+                                      "tests.fake_late_teardown_module")
+        result = unittest.TestResult()
+        suite.run(result)
+
+        self.assertEqual(result.errors, [])
+        self.assertIsNone(
+            os.environ.get("RGA_ENV_GUARD_PROBE"),
+            "tearDownClass ran after the restore, so its write survived")
+        self.assertEqual(
+            envisolation.LEAKS[-1]["module"], "tests.fake_late_teardown_module",
+            "the teardown's write was attributed to the wrong module")
+
     def test_the_environment_is_restored_even_when_the_test_errors(self):
         """The module most likely to leak is the one that blew up."""
         class Explodes(unittest.TestCase):

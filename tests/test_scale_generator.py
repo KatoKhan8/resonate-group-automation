@@ -23,7 +23,10 @@ class TestScaleGeneratorInvariants(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        store.use_directory(self.tmp)
+        # `use_directory` returns the restore. Without it this module
+        # left QUEUE at self.tmp and test_slack_agent_cannot_act then
+        # failed asserting the agent writes only under work\.
+        self.addCleanup(store.use_directory(self.tmp))
 
     def tearDown(self):
         import shutil

@@ -170,12 +170,44 @@ def use_directory(path):
     that can disagree with it. Everything except the queue already defaults to
     the queue's directory, so clearing the specific overrides is what makes
     the whole set move together.
+
+    RETURNS A CALLABLE THAT PUTS THE ENVIRONMENT BACK, absence included:
+
+        self.addCleanup(store.use_directory(tmp))
+
+    It used to return `queue_path()`, and two modules had already written
+
+        restore = store.use_directory(self.tmp.name)
+        if callable(restore):
+            self.addCleanup(restore)
+
+    - a restore wrapped in a check that could never be true, so it never
+    registered and never complained. Measured 2026-09-23: both of them leaked
+    a `QUEUE` pointing at their own deleted temp directory into every module
+    that ran afterwards, and `test_slack_agent_cannot_act` failed on it while
+    the guard it tests was in perfect health. Returning the restore makes that
+    code correct exactly where it stands.
+
+    Nothing used the old return value: of a hundred call sites, those two are
+    the only ones that bind it at all, and both expect a callable.
     """
+    saved = {name: os.environ.get(name)
+             for name in ("QUEUE",) + STATE_OVERRIDES}
+
     os.makedirs(path, exist_ok=True)
     os.environ["QUEUE"] = os.path.join(path, "queue.jsonl")
     for override in STATE_OVERRIDES:
         os.environ.pop(override, None)
-    return queue_path()
+
+    def restore():
+        """Put back exactly what was there, absence included."""
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    return restore
 
 
 def out_dir():

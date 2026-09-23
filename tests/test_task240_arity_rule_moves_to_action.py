@@ -20,7 +20,7 @@ class OwnerForTests(unittest.TestCase):
         import tempfile, os
         from src import store
         self._tmpdir = tempfile.mkdtemp()
-        store.use_directory(self._tmpdir)
+        self.addCleanup(store.use_directory(self._tmpdir))
 
     def tearDown(self):
         import shutil

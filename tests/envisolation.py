@@ -102,7 +102,30 @@ def restore(snapshot):
 
 
 class Isolated(unittest.TestSuite):
-    """One module's tests, with the environment handed back afterwards."""
+    """One module's tests, with the environment handed back afterwards.
+
+    THE ORDERING THAT MAKES THIS CORRECT, and it was wrong in the first
+    version. `unittest` DEFERS `tearDownClass` and `tearDownModule`: they do
+    not run when a module's last test finishes, they run when the NEXT
+    module's first test starts, from `TestSuite._handleModuleFixture`. So a
+    naive wrapper compares its snapshot and restores while the module it just
+    ran still has a class torn halfway down - and `tests/webbase.py`'s
+    `tearDownClass`, which stops a live HTTP server and restores four
+    variables, would then execute inside the NEXT module's window. Its
+    restore would be recorded as that module's leak, and the server would be
+    stopped one module late.
+
+    Clearing `result._testRunEntered` makes this suite believe it is the top
+    level, which is exactly true of it: `TestSuite.run` then finishes every
+    pending class and module teardown before returning. The module behaves as
+    it would if it had been run alone, which is the whole definition of
+    isolation being asked for here.
+
+    `_testRunEntered` is private. It has been in `unittest` since 3.2 and
+    there is no public way to wrap a suite without it; the alternative is
+    calling `_tearDownPreviousClass` and `_handleModuleTearDown` directly,
+    which is three private names instead of one.
+    """
 
     def __init__(self, tests, module):
         super().__init__(tests)
@@ -110,12 +133,15 @@ class Isolated(unittest.TestSuite):
 
     def run(self, result, debug=False):
         before = dict(os.environ)
+        entered = getattr(result, "_testRunEntered", False)
+        result._testRunEntered = False
         try:
             return super().run(result, debug)
         finally:
             # `finally`, not after the return: a module whose tests error out,
             # or whose setUpModule raises, is exactly the module most likely
             # to have left something set.
+            result._testRunEntered = entered
             changed = diff(before, dict(os.environ))
             if changed:
                 LEAKS.append({"module": self.module, "changed": changed})
