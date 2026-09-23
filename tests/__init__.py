@@ -79,9 +79,15 @@ INSTALLED = install()
 # reports success is the failure this repository has shipped twice, and it is
 # not being introduced by the file that exists to stop things being dishonest.
 #
-# `unittest discover` and `python -m tests.offline` both go through here.
-# `python -m unittest tests.test_one_module` does NOT - it addresses a module
-# directly - which is correct: one module has nothing to leak into.
+# THIS HOOK IS NOT THE MAIN PATH, and believing it was cost a whole
+# measurement. `unittest` consults `load_tests` only when `tests` is
+# discovered as a PACKAGE - `python -m unittest discover -t . -s tests`.
+# `tests/offline.py`, which is the runner the baseline is measured with,
+# calls `loader.discover("tests")` with no `top_level_dir`, making `tests`
+# itself the top level: its modules import as top-level names and this
+# function is never called. `tests/offline.py:build_suite` does the wrapping
+# for that path, and both delegate to `envisolation.wrap_discovered` so there
+# is one implementation rather than two that can disagree.
 
 _GUARD_MODULE = "tests.test_no_test_leaves_the_environment_changed"
 

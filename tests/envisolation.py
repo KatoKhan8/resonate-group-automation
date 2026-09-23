@@ -62,6 +62,9 @@ import unittest
 #: it would be forgotten, until something needed the environment to be honest.
 LEAKS = []
 
+#: The guard that reads `LEAKS`. Assembled last; see `wrap_discovered`.
+GUARD_MODULE = "test_no_test_leaves_the_environment_changed"
+
 
 def diff(before, after):
     """What changed between two environment snapshots.
@@ -154,3 +157,55 @@ def wrap(suite_by_module):
     for module, tests in suite_by_module:
         out.addTest(Isolated(tests, module))
     return out
+
+
+def group_by_module(suite):
+    """Every leaf test in `suite`, grouped into contiguous runs by module.
+
+    Discovery order is preserved exactly: the groups come out in the order the
+    modules were first seen, and tests stay in the order they were loaded.
+    """
+    order, groups = [], {}
+
+    def walk(node):
+        if hasattr(node, "__iter__"):
+            for child in node:
+                walk(child)
+            return
+        module = type(node).__module__ or "<unknown>"
+        if module not in groups:
+            groups[module] = []
+            order.append(module)
+        groups[module].append(node)
+
+    walk(suite)
+    return [(module, groups[module]) for module in order]
+
+
+def wrap_discovered(suite):
+    """Wrap an already-discovered suite so each module is isolated.
+
+    THIS IS THE FUNCTION THE RUNNER MUST CALL, and the first version of this
+    file did not have it. Isolation was installed as `load_tests` in
+    `tests/__init__.py`, which `unittest` consults only when the tests package
+    is discovered as a PACKAGE. `tests/offline.py` - the runner the baseline
+    is measured with - calls `loader.discover("tests")` with no
+    `top_level_dir`, so `tests` becomes the top level, its modules import as
+    top-level names, and `load_tests` is never called.
+
+    The harness was therefore inert in the runner that matters, while a test
+    asserting `load_tests` wraps everything passed happily, because it called
+    `load_tests` itself rather than the path the runner takes. Existence is
+    not function; `tests/test_no_test_leaves_the_environment_changed.py` now
+    asserts on `offline.build_suite()` instead.
+    """
+    groups = group_by_module(suite)
+
+    # The guard reports which modules leaked and can only see the ones that
+    # have already run, so it goes last - by construction, not by hoping its
+    # filename sorts that way. Matched by suffix because discovery names it
+    # `tests.test_no_...` as a package and `test_no_...` as a top level, and
+    # this file is called from both.
+    head = [g for g in groups if not g[0].endswith(GUARD_MODULE)]
+    tail = [g for g in groups if g[0].endswith(GUARD_MODULE)]
+    return wrap(head + tail)

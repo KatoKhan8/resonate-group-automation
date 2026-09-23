@@ -18,9 +18,8 @@ consequences, stated rather than discovered later:
   * Run on its own (`python -m unittest tests.test_no_...`) it sees an empty
     record and passes. That is a pass about nothing. `test_the_record_is_only
     _meaningful_after_a_full_run` says so in the output.
-  * Run under `python -m unittest tests.test_a tests.test_b`, the package's
-    `load_tests` is not used at all, so neither the isolation nor this guard
-    is in play.
+  * Run under `python -m unittest tests.test_a tests.test_b`, nothing wraps
+    the suite, so neither the isolation nor this guard is in play.
 
 WHAT IT DOES NOT COVER, said out loud so a green run is not read as more than
 it is. TASK-264 names three kinds of leak and this covers the first:
@@ -40,7 +39,7 @@ twice.
 import os
 import unittest
 
-from . import envisolation
+from tests import envisolation
 
 
 class NoModuleLeavesTheEnvironmentChanged(unittest.TestCase):
@@ -81,8 +80,8 @@ class NoModuleLeavesTheEnvironmentChanged(unittest.TestCase):
         if ran == 0:
             print("\n[env guard] no leaks recorded. If this was not a full "
                   "suite run, that is a pass about nothing: the record is "
-                  "populated by tests/__init__.py's load_tests, which only "
-                  "runs under discovery.")
+                  "populated by build_suite() in tests/offline.py, "
+                  "so only a discovered run fills it.")
 
 
 class TheIsolationItselfWorks(unittest.TestCase):
@@ -200,40 +199,62 @@ class TheIsolationItselfWorks(unittest.TestCase):
 
 
 class TheSuiteIsAssembledWithIsolation(unittest.TestCase):
-    """If `load_tests` ever stops wrapping, the guard above goes quiet and
-    every leak comes back. That would be invisible, so it is asserted."""
+    """If the runner ever stops wrapping, the guard above goes quiet and every
+    leak comes back. That would be invisible, so it is asserted - against the
+    RUNNER, not against the mechanism.
 
-    def test_load_tests_wraps_every_module_and_keeps_them_all(self):
-        import unittest as ut
+    The first version of this class called `tests.__init__.load_tests` and
+    asserted it wrapped everything. It passed. The runner never called
+    `load_tests`: `tests/offline.py` discovers with `tests` as the top level,
+    so `unittest` never consults the package's hook, and the isolation was
+    inert for the whole suite while this test was green. Asserting on the
+    mechanism instead of on the execution path is the defect CLAUDE.md names
+    as "existence is not function", committed inside the test written to stop
+    exactly that.
+    """
 
-        from tests import load_tests
+    def test_the_runner_wraps_every_module(self):
+        from tests import offline
 
-        loader = ut.TestLoader()
-        suite = load_tests(loader, ut.TestSuite(), None)
-
+        suite = offline.build_suite()
         children = list(suite)
-        self.assertTrue(children, "load_tests assembled an empty suite")
+
+        self.assertTrue(children, "the runner assembled an empty suite")
         self.assertTrue(
             all(isinstance(c, envisolation.Isolated) for c in children),
-            "a module was added to the suite without isolation")
+            "the runner produced a suite with unisolated modules")
 
         expected = len([f for f in os.listdir(os.path.dirname(__file__))
                         if f.startswith("test_") and f.endswith(".py")])
         self.assertEqual(
             len(children), expected,
-            "load_tests assembled %d module(s) and there are %d on disk - a "
+            "the runner assembled %d module(s) and there are %d on disk - a "
             "suite that silently runs fewer tests than exist is the failure "
             "this file exists to refuse" % (len(children), expected))
 
     def test_the_guard_module_is_assembled_last(self):
-        import unittest as ut
+        from tests import offline
 
-        from tests import load_tests
+        last = list(offline.build_suite())[-1].module
+        self.assertTrue(
+            last.endswith("test_no_test_leaves_the_environment_changed"),
+            "the guard ran before other modules, so it can only report a "
+            "prefix of them; it was assembled as %r" % (last,))
 
-        suite = load_tests(ut.TestLoader(), ut.TestSuite(), None)
-        self.assertEqual(
-            list(suite)[-1].module,
-            "tests.test_no_test_leaves_the_environment_changed")
+    def test_every_module_on_disk_imports(self):
+        """A module that fails to import becomes a `_FailedTest` and its real
+        tests silently do not run. This guard module itself did that for a
+        whole measurement, on a relative import that works under
+        `python -m unittest tests.x` and not under discovery."""
+        from tests import offline
+
+        failed = []
+        for child in offline.build_suite():
+            for test in child:
+                name = type(test).__module__
+                if "_FailedTest" in type(test).__name__ or "loader" in name:
+                    failed.append(child.module)
+        self.assertEqual(failed, [], "module(s) failed to import: %r" % failed)
 
 
 if __name__ == "__main__":
