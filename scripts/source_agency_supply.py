@@ -134,6 +134,10 @@ RATE_LIMIT_BACKOFF = (20, 45, 90, 180, 300)
 #: stops paging somewhere; this bounds a runaway rather than the spend.
 MAX_PAGES_PER_SLICE = 400
 
+#: A slice whose free people-count is at least this and which returned NO
+#: companies is reported SUSPECT rather than finished.
+SUSPECT_COUNT_FLOOR = 1000
+
 
 def slice_key(industry, bucket, geo):
     return f"{industry}|{bucket}|{geo}"
@@ -303,6 +307,7 @@ def run():
 
     handle = open(OUT, "a", encoding="utf-8", newline="\n")
     stopped_for = "slices exhausted"
+    broke = []
     try:
         for industry, bucket, geo in slices():
             key = slice_key(industry, bucket, geo)
@@ -322,6 +327,7 @@ def run():
             while record["page"] <= MAX_PAGES_PER_SLICE:
                 page = fetch_page(industry, bucket, geo, record["page"], key)
                 if page is None:
+                    broke.append(key)
                     # A non-rate-limit failure, or a rate limit that outlasted
                     # every backoff. The cursor stays put, so a resume picks
                     # this page up rather than skipping past it.
@@ -330,7 +336,22 @@ def run():
                 record["credits"] += len(companies)
                 state["credits"] += len(companies)
                 if not companies:
+                    # EMPTY IS AMBIGUOUS: end-of-results, or a transient
+                    # failure, or a filter the provider is not honouring for
+                    # this slice. Marking it done conflates all three, and on
+                    # 2026-09-22 that silently dropped every Canada slice -
+                    # nine of them closed as FINISHED on page one with
+                    # thousands of people behind them, because company-search
+                    # returns almost nothing for location=Canada and what it
+                    # does return is Spanish and Indian companies.
                     record["done"] = True
+                    if (record["count"] or 0) >= SUSPECT_COUNT_FLOOR \
+                            and record["new"] == 0:
+                        record["suspect"] = (
+                            f"closed empty on page {record['page']} while the "
+                            f"free count said {record['count']:,} - the filter "
+                            "may not be honoured for this slice")
+                        state.setdefault("suspect", []).append(key)
                     break
                 for row in companies:
                     domain = row["domain"]
@@ -348,7 +369,18 @@ def run():
                     record["new"] += 1
                     state["new_domains"] += 1
                 handle.flush()
-                if record["page"] * PAGE_SIZE >= (page["total"] or 0):
+                total = page["total"]
+                if not isinstance(total, int) or total <= 0:
+                    # `or 0` here closed the slice after ONE page whenever the
+                    # provider omitted a total - a full page of results
+                    # discarded as "finished". A missing total is UNKNOWN, not
+                    # zero. Keep paging; the empty-page branch above is what
+                    # legitimately ends a slice.
+                    record["page"] += 1
+                    save_state(state)
+                    time.sleep(PAGE_PAUSE)
+                    continue
+                if record["page"] * PAGE_SIZE >= total:
                     record["done"] = True
                     break
                 record["page"] += 1
@@ -367,6 +399,19 @@ def run():
     finally:
         handle.close()
         save_state(state)
+    if broke and stopped_for == "slices exhausted":
+        # "slices exhausted" was the INITIAL value, overwritten only on a
+        # credit refusal - so a night of 5xx or ambiguous 403s would end the
+        # run printing a clean finish while most of the slice space was never
+        # walked. A slice that BROKE was not exhausted, and the difference is
+        # the operator reading success where there was none.
+        names = sorted(set(broke))
+        stopped_for = (f"slices exhausted EXCEPT {len(names)} that BROKE and "
+                       f"were not walked to the end: {names[:5]}")
+    suspect = state.get("suspect") or []
+    if suspect:
+        print(f"\n  SUSPECT - closed empty while the free count said there "
+              f"was supply ({len(set(suspect))}): {sorted(set(suspect))[:6]}")
     print(f"\n  stopped: {stopped_for}")
     report(state)
     return 0

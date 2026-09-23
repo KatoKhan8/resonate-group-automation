@@ -1550,8 +1550,21 @@ def campaign(campaign_id):
     return mapping(data, "campaign").get("data") or {}
 
 
-def scheduled_emails(campaign_id):
+def scheduled_emails(campaign_id, cap=None):
     """The pre-send queue for one campaign, AS THE PROVIDER WILL SEND IT.
+
+    `cap` RAISES THE PAGE LIMIT FOR A CALLER THAT GENUINELY NEEDS EVERY ROW,
+    and it does not weaken anything: the walk still REFUSES past whatever cap
+    it is given rather than returning a prefix as though it were the whole
+    queue. That refusal is the property, not the number 40.
+
+    The caller that needs this is the deliverability hard stop, which is a
+    per-MAILBOX question - bounce rate over seven days - and therefore cannot
+    be answered by any per-campaign counter. On 2026-09-22 campaign 491 grew
+    to 43 pages and the check went BLIND rather than wrong, which is the right
+    failure but still a failure: a hard stop that cannot read is not a hard
+    stop. A caller passing a cap must size it from the campaign and report
+    itself blind if the queue outgrows it.
 
     The only place the RENDERED copy is visible. `email_subject` and
     `email_body` here carry merge fields already resolved - measured against
@@ -1574,7 +1587,8 @@ def scheduled_emails(campaign_id):
         "scheduled_emails",
         lambda page: query(
             f"{base()}/campaigns/{campaign_id}/scheduled-emails",
-            {"page": page}))
+            {"page": page}),
+        cap=cap or PAGE_CAP)
     return rows
 
 

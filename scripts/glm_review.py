@@ -300,12 +300,101 @@ ATTRIBUTION_QUESTION = (
 )
 
 
+SOURCING_QUESTION = """This is an UNATTENDED OVERNIGHT SPENDING LOOP in a
+cold-outreach system. It calls a paid provider that bills one credit per
+company returned, it has NO spend cap and NO domain target by operator
+decision, and it runs for hours with nobody watching. The only things that
+may end it are slice exhaustion and the provider refusing for credit (402, or
+an ambiguous 403).
+
+Function `{name}`:
+
+{source}
+
+Attack it adversarially. I am specifically asking about:
+
+1. RETRY LOOPS THAT COULD SPIN. Is there any input, status code or provider
+   behaviour that makes this retry without bound, or back off and retry
+   something that will never succeed? A 429 retries the same page; can that
+   become infinite? Can a slice be walked forever without its cursor moving?
+
+2. CURSOR CORRUPTION ON 429 OR 402. State is saved to disk and the run is
+   resumable. Can a rate limit or a credit refusal leave the cursor pointing
+   somewhere that re-buys pages already paid for, or skips pages never
+   bought? Can the process being killed mid-page lose or double-count?
+
+3. DEDUPE GAPS. Domains are deduped against the store, the candidate list and
+   a suppression roster. Can a domain reach the output that is already held,
+   or that is suppressed? Consider case, whitespace, subdomain and encoding
+   differences, and the order in which the sets are built.
+
+4. ANY PATH THAT STOPS THE RUN FOR A REASON OTHER THAN 402/403. Silent
+   `break`s, swallowed exceptions, a slice wrongly marked done, a loop bound
+   that ends the walk early. A slice quietly marked finished when it was not
+   is the worst outcome here, because it looks like success.
+
+Name the concrete failing input or sequence. If you cannot construct one for
+a given heading, say so plainly rather than describing a general risk."""
+
+
+BATCHPUSH_QUESTION = """This is the enrolment and activation path of a
+cold-outreach system that sends real email to real people. Two failures are
+unacceptable and I want you to try hard to construct each:
+
+A. A LEAD ENROLLED TWICE - the same person added to a campaign, or to two
+   campaigns, so they receive the sequence twice.
+B. A SEND FROM AN UNATTESTED MAILBOX - a sender that no attested human owns,
+   or a mailbox belonging to one of three excluded identities.
+
+Function `{name}`:
+
+{source}
+
+Consider at least: a retried call after a partial success, two processes
+racing, a provider write that succeeded while the client reported failure, a
+lead already present being re-staged, an identity resolving to more than one
+human or to none, a campaign naming a sender it was not granted, and any
+check that reads our own stored state where it should read the provider's.
+
+Give the concrete sequence. If a guard already closes a route, say which line
+closes it rather than listing it as a risk."""
+
+
 def _targets():
     """Built lazily so a broken import in one area cannot block the others."""
+    import importlib.util as _ilu
+
     from src import (store, actionledger, collision, bisonevents,
                      executionguard, providerwrites, providers,
                      senderownership, queuejournal, inbound, leadstop)
+    from src.providers import bison
+
+    def _script(path, names):
+        """Load a SCRIPT's functions for review. They are not importable as
+        `src.x`, and the overnight spender is a script."""
+        spec = _ilu.spec_from_file_location(
+            "glm_target_" + os.path.basename(path)[:-3],
+            os.path.join(ROOT, path))
+        module = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return [(f"{os.path.basename(path)[:-3]}.{n}", getattr(module, n))
+                for n in names if hasattr(module, n)]
+
     return {
+        # ADDED 2026-09-22. This one spends money all night with nobody
+        # watching, which no other target here does.
+        "sourcing": (SOURCING_QUESTION,
+                     _script("scripts/source_agency_supply.py",
+                             ["run", "fetch_page", "already_held"])),
+        # ADDED 2026-09-22. The two failures the batch grant exists to
+        # prevent, asked of the path end to end rather than one guard.
+        "batchpush": (BATCHPUSH_QUESTION, [
+            ("bison.attach_leads", bison.attach_leads),
+            ("providerwrites.perform", providerwrites.perform),
+            ("senderownership.one_attested_human",
+             senderownership.one_attested_human),
+            ("senderownership.resolve_owner", senderownership.resolve_owner),
+        ]),
         # ADDED 2026-09-20 to review a change BEFORE it reaches master, which
         # is the first time this file has been used that way. Qwen's TASK-234
         # fix makes EMAIL_ACTIVATE and LINKEDIN_ACTIVATE `REPEATABLE`, so the
