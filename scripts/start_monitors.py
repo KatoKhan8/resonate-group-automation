@@ -90,6 +90,22 @@ STALE_SECONDS = 1200
 #: This file's own docstring predicted the merge and said the table would
 #: move into the supervisor. It has. What is left here is the Windows-side
 #: starting and the two-witness check, which the supervisor does not do.
+#:
+#: PRODUCTION HAND-EDITED THIS FILE'S LIST TO 15 ENTRIES ON 2026-09-23 for
+#: the incident gate, and `src/supervisor.py`'s to the same 15. BOTH
+#: HAND-WRITTEN LISTS ARE DELETED HERE, not merged. They are the second and
+#: third copies of a table this branch already made one, and the reason 496,
+#: 497 and 498 were unwatched in the first place is that a hand-written list
+#: is a list somebody has to remember to edit the day a campaign goes live.
+#: 497 - where the blank emails were found BY HAND, because nothing was
+#: watching it - is the cost of forgetting, and editing the list is not the
+#: fix for it.
+#:
+#: THE INTENT SURVIVES AND IS NOW LOAD-BEARING. The 15 must come from the
+#: derived table, and `test_the_derived_table_is_the_incident_gates_15`
+#: asserts the derived set at today's registry equals those 15 BY NAME. If
+#: the rule ever stops producing one of them, that test fails rather than a
+#: campaign going quietly unwatched.
 
 
 def _script_of(mon):

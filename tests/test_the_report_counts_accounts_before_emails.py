@@ -72,9 +72,39 @@ class Reporting(unittest.TestCase):
 class AccountsComeFirst(Reporting):
 
     def test_accounts_are_present_and_named_in_order(self):
+        """ALL EIGHT STATES, in the operator's order.
+
+        This used to be the four-name roll-up, which meant `sequenced`,
+        `won` and `lost` had no key in the payload at all - and the PDF,
+        which now renders from this same dict, cannot show a tile for a key
+        it is never handed. OPERATOR, 2026-09-23: one vocabulary for the
+        Monday post, the PDF and later the portal.
+        """
+        from src import accountstate
+
         out = self.report([record()])
         self.assertEqual(out["accounts_order"],
-                         ["in_flight", "engaged", "replied", "meetings"])
+                         list(accountstate.ACCOUNT_STATES))
+        for state in accountstate.ACCOUNT_STATES:
+            self.assertIn(state, out["accounts"])
+
+    def test_in_flight_is_a_sum_and_says_which_states_it_sums(self):
+        """It is not a ninth state. Anything that iterates the eight and
+        then adds this one double-counts every account in it, so the
+        payload names its members rather than leaving them to be guessed."""
+        from src import accountstate
+
+        out = self.report([record()])
+        self.assertEqual(out["accounts_in_flight_is_a_sum_of"],
+                         list(accountstate.IN_FLIGHT))
+        self.assertNotIn("in_flight", out["accounts_order"])
+
+    def test_the_two_states_with_no_source_are_named(self):
+        """`won` and `lost` are always zero because nothing in this tree
+        records a deal. The payload says so, so the PDF can print why
+        instead of letting a client read `0 won` as a measurement."""
+        out = self.report([record()])
+        self.assertEqual(out["accounts_without_a_source"], ["won", "lost"])
 
     def test_the_accounts_block_precedes_the_emails_block(self):
         """Key order in the payload, because the model is handed this
@@ -124,7 +154,7 @@ class WhatCountsAsInFlight(Reporting):
         out = self.report([record(domain="d.test",
                                   events_=[touch(), reply_event()])],
                           meetings=[{"domain": "d.test"}])
-        self.assertEqual(out["accounts"]["meetings"], 1)
+        self.assertEqual(out["accounts"]["meeting"], 1)
         self.assertEqual(out["accounts"]["in_flight"], 1)
 
     def test_each_account_is_counted_once(self):

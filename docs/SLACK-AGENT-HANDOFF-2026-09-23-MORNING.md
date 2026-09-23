@@ -240,10 +240,11 @@ Ordered by what costs most to leave undone.
                                        until a positive appears, which is the
                                        correct behaviour and not a bug.
     5. question catalogue, next ten    not started
-    6. multi-workspace readiness       not started. NOTE: #mediaboard-resonate-
-                                       outbound and #nextoria-team already
-                                       exist - a synthetic second client may
-                                       not be needed, but binding a real one is
+    6. multi-workspace readiness       not started. NOTE: two real client
+                                       channels already exist (named in the
+                                       workspace policy, not here) - a
+                                       synthetic second client may not be
+                                       needed, but binding a real one is
                                        an operator decision, not this session's.
     7. internal briefing additions     not started
     8. CLIENT-PORTAL-DESIGN.md         not started, and it is last for a reason

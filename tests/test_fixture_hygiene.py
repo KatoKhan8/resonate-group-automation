@@ -100,6 +100,23 @@ FORBIDDEN_NAMES = (
     # holding the credential, which is where it belongs.
     "vrbat", "simicic", "simcic", "rendulic", "mamic", "mamić",
     "vizintin", "vižintin", "zrncevic", "zrnčević", "tomislav car",
+    # THE HANDLE, NOT ONLY THE SURNAME. Added 2026-09-23 after the operator's
+    # own LinkedIn vanity name reached a tracked document
+    # (`HUMAN-ACTIONS-REQUIRED.md`, 17:21) and a second one reached a script
+    # comment as an attribution.
+    #
+    # `beslic` above already matched it as a substring, so this adds no
+    # coverage the guard did not have - it adds a LEGIBLE FAILURE. The report
+    # read `HUMAN-ACTIONS-REQUIRED.md: beslic`, which sends the next reader
+    # looking for a surname in prose when what is actually in the file is a
+    # profile URL. A guard that is right about the violation and misleading
+    # about its shape costs the time it was meant to save.
+    #
+    # NOTE FOR ANYONE TEMPTED THE OTHER WAY: the fix for a real name in a
+    # tracked file is to remove the name, never to add it to `FAKE_VANITY`
+    # below. That list is an allowlist of INVENTED handles; putting a real
+    # one in it would retire the guard for exactly the person it protects.
+    "zbeslic",
 )
 
 # Figures read from a real provider account. A count is not anonymous when it
@@ -127,6 +144,57 @@ TEXT_SUFFIXES = (".py", ".json", ".jsonl", ".csv", ".txt", ".md", ".yaml",
 
 SELF = "tests/test_fixture_hygiene.py"
 
+#: THE ONE EXEMPTION. OPERATOR DECISION, 2026-09-23.
+#:
+#: `src/testidentity.py` exists to stop a `positive_reply` for the OPERATOR'S
+#: OWN test identity reaching a client's Slack channel. On 2026-09-23 one was
+#: routed to Productive's channel and suppressed by hand; the module is the
+#: mechanism that replaced the hand-edit.
+#:
+#: **An exclusion must be able to name what it excludes.** That is the whole
+#: conflict: this guard forbids real identifiers in tracked files, and this
+#: module cannot do its job without holding them. A safety mechanism and a
+#: privacy guard that cannot both be satisfied.
+#:
+#: Two fixes were rejected, and WHY is the part worth keeping:
+#:
+#:   a sidecar in `work/`   the module would then depend on a file that can
+#:                          be missing, and there is no safe answer when it
+#:                          is - suppress everything and real client
+#:                          notifications are lost, suppress nothing and the
+#:                          client is told about the operator. A safety
+#:                          mechanism must not have a failure mode that
+#:                          depends on a gitignored file being present.
+#:   allowlist the handle   adding a real vanity name to FAKE_VANITY retires
+#:   in FAKE_VANITY         this guard for exactly the person it protects,
+#:                          everywhere in the repository, forever.
+#:
+#: So the exemption is NARROW AND NAMED: two files, listed here, not a
+#: directory and not a pattern. Every other occurrence in the repository
+#: references `testidentity`'s constants or says "the test identity" - the
+#: identifiers appear in these two files and nowhere else, which is what
+#: makes an exemption this small sufficient.
+#:
+#: Anything added here needs the same argument made in full.
+HYGIENE_EXEMPT = (
+    "src/testidentity.py",
+    "tests/test_the_test_identity_is_never_counted.py",
+)
+
+
+def names_the_test_identity_on_purpose(path):
+    """Is this one of the two files the operator allowed the name in?
+
+    The slack-agent branch reached the same exemption independently and
+    called the tuple `TEST_IDENTITY_FILES`; master called it
+    `HYGIENE_EXEMPT`. One decision, two names, merged 2026-09-23 - and the
+    merge keeps master's tuple because its three tests assert against it,
+    while this helper keeps the branch's call sites working rather than
+    rewriting checks that were already green. A second name for the same
+    tuple would be the thing worth avoiding, so there is exactly one.
+    """
+    return path in HYGIENE_EXEMPT
+
 
 def tracked_files():
     """Every file git actually tracks. Untracked local state is not our problem.
@@ -139,7 +207,8 @@ def tracked_files():
     out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
                          capture_output=True, text=True, check=True).stdout
     return [p for p in out.split("\0")
-            if p and p.endswith(TEXT_SUFFIXES) and p != SELF]
+            if p and p.endswith(TEXT_SUFFIXES) and p != SELF
+            and p not in HYGIENE_EXEMPT]
 
 
 def read(path):
@@ -163,6 +232,8 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
         """
         hits = []
         for path, text in corpus():
+            if names_the_test_identity_on_purpose(path):
+                continue           # see TEST_IDENTITY_FILES
             for domain in sorted(set(EMAIL.findall(text))):
                 low = domain.lower()
                 if not any(low == s or low.endswith(s) for s in SAFE_SUFFIXES):
@@ -182,6 +253,8 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
     def test_no_real_person_or_client_named(self):
         hits = []
         for path, text in corpus():
+            if names_the_test_identity_on_purpose(path):
+                continue           # see TEST_IDENTITY_FILES
             low = text.lower()
             for name in FORBIDDEN_NAMES:
                 if name in low:
@@ -278,6 +351,8 @@ class TestNoRealDataAnywhereInGit(unittest.TestCase):
                        "jesse-hollis", "nikola-feric", "unknown-0", "unknown-"}
         hits = []
         for path, text in corpus():
+            if names_the_test_identity_on_purpose(path):
+                continue           # see TEST_IDENTITY_FILES
             if path.startswith("tests/"):
                 continue
             for match in LINKEDIN.finditer(text):
@@ -367,3 +442,56 @@ class TestSecretsAreNotTracked(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheExemptionStaysNarrow(unittest.TestCase):
+    """An exemption is a hole in a guard. These keep it the size it was
+    argued for. OPERATOR DECISION 2026-09-23 - see `HYGIENE_EXEMPT`.
+    """
+
+    def test_it_is_exactly_the_two_files_that_were_argued_for(self):
+        self.assertEqual(
+            HYGIENE_EXEMPT,
+            ("src/testidentity.py",
+             "tests/test_the_test_identity_is_never_counted.py"),
+            "the hygiene exemption changed. It was granted for two named "
+            "files on one argument - an exclusion must be able to name what "
+            "it excludes. Anything added needs that argument made in full.")
+
+    def test_no_entry_is_a_directory_or_a_pattern(self):
+        """A directory exemption would grow silently as files are added."""
+        for entry in HYGIENE_EXEMPT:
+            with self.subTest(entry=entry):
+                self.assertTrue(entry.endswith(".py"))
+                self.assertNotIn("*", entry)
+                self.assertFalse(entry.endswith("/"))
+
+    def test_every_exempt_file_is_actually_tracked(self):
+        """A stale entry is an exemption nobody can see the effect of."""
+        out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+                             capture_output=True, text=True, check=True).stdout
+        tracked = set(p for p in out.split("\0") if p)
+        for entry in HYGIENE_EXEMPT:
+            with self.subTest(entry=entry):
+                self.assertIn(entry, tracked)
+
+    def test_the_identifiers_appear_nowhere_ELSE_in_the_repository(self):
+        """THE CONDITION THAT MAKES THE EXEMPTION SUFFICIENT.
+
+        The operator's decision was that every other occurrence references
+        `testidentity`'s constants or says "the test identity". If the
+        identifiers spread again, two exempt files stop being enough and the
+        guard is quietly weaker than it reads. This fails in that case.
+        """
+        needles = ("zbeslic", "beslic")
+        hits = []
+        for path, text in corpus():           # corpus() already drops exempt
+            low = text.lower()
+            for needle in needles:
+                if needle in low:
+                    hits.append(f"{path}: {needle}")
+        self.assertEqual(
+            sorted(set(hits)), [],
+            "the test identity is named outside the two exempt files. "
+            "Reference testidentity's constants or say 'the test identity':\n"
+            + "\n".join(sorted(set(hits))))

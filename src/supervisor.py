@@ -222,10 +222,12 @@ def campaign_monitors(rows=None, now=None, sequence_source=None):
     for row in rows or []:
         if not isinstance(row, dict):
             continue
+        # ONE per-campaign provider today, still a table rather than a
+        # straight line: heyreach was the second entry here until it was
+        # found to be underivable (its loop hardcodes its campaign), and the
+        # next provider whose loop DOES take a --campaign belongs here.
         for provider, key, module, interval in (
-                ("bison", "bison_campaign_id", "scripts.bison_watch_loop", 180),
-                ("heyreach", "heyreach_campaign_id",
-                 "scripts.heyreach_watch_loop", 300)):
+                ("bison", "bison_campaign_id", "scripts.bison_watch_loop", 180),):
             raw = row.get(key)
             if raw in (None, ""):
                 continue
@@ -233,11 +235,7 @@ def campaign_monitors(rows=None, now=None, sequence_source=None):
             watch, why = _watch_campaign(row, provider, campaign_id, now, source)
             if not watch:
                 continue
-            # `heyreach_watch_loop` takes NO --campaign: it watches the
-            # campaigns it finds itself, and passing one made argparse exit 2
-            # before the first beat. Measured 2026-09-23.
-            args = ([] if provider == "heyreach"
-                    else ["--campaign", campaign_id, "--interval", str(interval)])
+            args = ["--campaign", campaign_id, "--interval", str(interval)]
             out.append({
                 "name": "%s_watch_%s" % (provider, campaign_id),
                 "module": module,
@@ -246,19 +244,38 @@ def campaign_monitors(rows=None, now=None, sequence_source=None):
                 "heartbeat": {"source": provider, "campaign": campaign_id},
                 "derived": why,
             })
-    # One heyreach loop however many campaigns are bound to it, because it
-    # takes no --campaign. Keep the first by campaign id so the choice is
-    # deterministic rather than file-order.
     kept, seen = [], set()
     for entry in sorted(out, key=lambda m: m["name"]):
-        key = ("heyreach" if entry["module"].endswith("heyreach_watch_loop")
-               else entry["name"])
-        if key in seen:
+        if entry["name"] in seen:
             continue
-        seen.add(key)
+        seen.add(entry["name"])
         kept.append(entry)
     return kept
 
+
+#: THE HEYREACH CAMPAIGN, DECLARED AND NOT DERIVED.
+#:
+#: `scripts/heyreach_watch_loop.py` watches ONE campaign and it is a hardcoded
+#: `PROVIDER_ID = 605732` in the loop. It takes no `--campaign`. So which
+#: campaign it watches is NOT a fact about the registry, and deriving it from
+#: the registry was wrong in a way that was invisible until the real file was
+#: read: the registry holds FIVE heyreach rows, the derived half picked the
+#: lowest-named of them (594061, the paused canary), and the entry's heartbeat
+#: therefore resolved to `heyreach-594061.json` - a file nothing writes.
+#: `cold_start --verify` would have polled for it and reported the LinkedIn
+#: monitor down forever. That is precisely the defect `46474c6c` fixed for the
+#: static half, arriving a second time through the derived half.
+#:
+#: IT WAS GREEN THE WHOLE TIME. `MonitorTableTest.ROWS` invents a registry
+#: with exactly one heyreach row and it is 605732, so the fixture agreed with
+#: the loop and the suite could not see the bug. A fixture that invents the
+#: convenient input is not a witness.
+#:
+#: Declared here, ONE place, with `test_the_declared_heyreach_campaign_is_the
+#: _loops_own` asserting it equals the loop's constant so the two cannot
+#: drift. Read from the source rather than imported: importing the loop pulls
+#: in providers.
+HEYREACH_CAMPAIGN = "605732"
 
 #: The loops that are not per-campaign, listed once with where each beat
 #: actually lands.
@@ -278,6 +295,13 @@ STATIC_MONITORS = [
      "module": "scripts.notify_deliver_loop",
      "args": ["--interval", "60"], "interval": 60,
      "heartbeat": {"file": "notify-deliver.json"}},
+    # PRODUCTION HAND-EDITED THIS LIST TO 15 ENTRIES ON 2026-09-23 for the
+    # incident gate, adding 491-498 alongside 487/489 and a heyreach entry.
+    # THAT LIST IS DELETED, NOT MERGED. Its INTENT is kept and is now the
+    # derived rule above: 496/497/498 are watched because they are live,
+    # not because somebody remembered to type them, and 487/489 retire
+    # without an edit. `test_the_derived_table_is_the_incident_gates_15`
+    # pins that the derived set at today's registry equals those 15 BY NAME.
     {"name": "digest",
      "module": "scripts.digest_loop",
      "args": ["--interval", "300"], "interval": 300,
@@ -290,6 +314,12 @@ STATIC_MONITORS = [
      "module": "scripts.slack_followup_loop",
      "args": ["--interval", "60"], "interval": 60,
      "heartbeat": {"file": "slack-followup.json"}},
+    # No `--campaign`: passing one made argparse exit 2 before the first
+    # beat. Measured 2026-09-23.
+    {"name": "heyreach_watch_%s" % HEYREACH_CAMPAIGN,
+     "module": "scripts.heyreach_watch_loop",
+     "args": ["--interval", "300"], "interval": 300,
+     "heartbeat": {"source": "heyreach", "campaign": HEYREACH_CAMPAIGN}},
 ]
 
 

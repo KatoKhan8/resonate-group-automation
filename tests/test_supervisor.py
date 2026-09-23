@@ -306,7 +306,8 @@ class MonitorTableTest(_SupervisorTestBase):
 
     def test_known_monitors_are_present(self):
         """The STATIC loops. The campaign watchers are derived and are
-        asserted in tests/test_there_is_one_monitor_table.py instead - naming
+        asserted in tests/test_the_derived_table_is_the_incident_gates_15.py
+        instead - naming
         a campaign here would put a second hand-written list in the repo,
         which is the thing the one-table decision removed."""
         names = {m["name"] for m in self._table()}

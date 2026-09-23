@@ -80,7 +80,11 @@ class TestTheIdentityIsRecognised(unittest.TestCase):
         silently dropped from the client's own reply count."""
         for value in ({"record_id": "productive-acme-2026-09-22"},
                       {"contact_key": "jane-doe"},
-                      {"lead_id": 204967},
+                      # 204968: NOT a test lead. 204966 and 204967
+                      # both are - this line said 204967 until the
+                      # second test lead was created, which made the
+                      # assertion claim the opposite of the truth.
+                      {"lead_id": 204968},
                       {"linkedin": "https://www.linkedin.com/in/zbeslicic"},
                       {"email": "zvonimir@example.test"},
                       {"campaign_id": None},

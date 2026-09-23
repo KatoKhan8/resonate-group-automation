@@ -33,7 +33,7 @@ import re
 
 from .. import repo as repo_module
 from .. import assignment
-from .. import (account, accountpolicy, cadence, cadencegraph,
+from .. import (account, accountpolicy, accountstate, cadence, cadencegraph,
                 campaignqa, campaignseg,
                 campaigns as campaign_store, channels,
                 clientreport, clients, coherence, dmplan, duplicates,
@@ -3422,7 +3422,7 @@ def report_data(repo, campaigns=None, since=None, until=None):
     # `account.graph`, read the way every other number here is read.
     data["linkedin"] = _linkedin_counts(recs)
     data["pipeline"] = _pipeline_rows(repo, recs)
-    data["accounts"] = _account_counts(recs)
+    data["accounts"] = _account_counts(recs, client=repo.client)
     data["by_sender"] = _sender_rows(repo)
     data["months"] = _months(recs)
     data["mx"] = mx.summarise(recs, config).get("by_provider") or {}
@@ -3548,25 +3548,56 @@ def _pipeline_rows(repo, recs):
     return rows
 
 
-def _account_counts(recs):
-    """Companies, not contacts, which is what the section says it counts.
+def _account_counts(recs, client=None):
+    """Companies, not contacts, in THE OPERATOR'S VOCABULARY.
 
     Read through `account.graph`, the canonical answer to every
     account-level question, rather than by walking the event log again with
     a second opinion about what counts as contacted.
+
+    ## THE OLD KEYS ARE RETIRED, NOT ALIASED
+
+    OPERATOR, 2026-09-23. This used to emit `targeted / contacted / engaged
+    / positive`, and `slackagenttools` answered the same question in eight
+    different words. **Both spelled `engaged` and meant different things**:
+    here it was "at least one reply", there it is deliberately short of a
+    reply. An alias would have carried that collision forward under a
+    forwarding address, so the four old keys are gone and every reader takes
+    `accountstate.state_of` - the one state machine, called from both.
+
+    `multi_dm` and `referrals` survive unchanged. They are not states; they
+    are facts about how an account was worked, and no other key says them.
+
+    `unanswerable` is counted apart and NEVER folded into `untouched`. On
+    this path it should stay zero - the report is built from the same event
+    log `account.graph` reads, so `untouched` is assertable and `ledger_ok`
+    is left `None` - but it is emitted anyway, because a tile that only
+    appears when it is non-zero is a tile nobody notices has appeared.
     """
-    counts = {"targeted": len(recs), "contacted": 0, "engaged": 0,
-              "positive": 0, "multi_dm": 0, "referrals": 0}
+    counts = accountstate.empty_counts()
+    counts.update({"unanswerable": 0, "multi_dm": 0, "referrals": 0})
+
+    # The meetings ledger is hand-fed and workspace-scoped; it is the only
+    # source for MEETING and it is read here rather than guessed at, so the
+    # PDF and the Monday post cannot disagree about which accounts met us.
+    met = set()
+    try:
+        from .. import slackmeetings
+        met = {str(row.get("domain") or "").lower()
+               for row in (slackmeetings.by_domain(workspace=client) or [])}
+    except Exception:                                           # noqa: BLE001
+        met = set()
+
     for rec in recs:
         graph = account.graph(rec)
         people = graph["contacts"]
         worked = [c for c in people if c["confirmed_touches"]]
-        if worked:
-            counts["contacted"] += 1
-        if any(c["replies"] for c in people):
-            counts["engaged"] += 1
-        if any(c["positive"] for c in people):
-            counts["positive"] += 1
+        here = 1 if str(rec.get("domain") or "").lower() in met else 0
+        state, _evidence = accountstate.state_of(rec, graph, here)
+        if state is None:
+            counts["unanswerable"] += 1
+        else:
+            counts[state] = counts.get(state, 0) + 1
         if len(worked) > 1:
             counts["multi_dm"] += 1
         counts["referrals"] += len(graph["referrals"])

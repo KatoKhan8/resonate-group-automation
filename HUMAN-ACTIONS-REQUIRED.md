@@ -60,7 +60,7 @@ Each line says what was measured, so a stale entry can be caught the same way.
 
 7. **The workforce and account-based directives** need their own session.
 
-8. **A test address reply.** No reply from `zvonimir@resonate.co` exists
+8. **A test address reply.** No reply from the operator's test address exists
    anywhere in the estate - checked against 180 rows across 12 pages of the
    EmailBison reply feed on 2026-09-23. The send-path verification needs one
    inbound reply from that address to reply TO.
@@ -74,9 +74,9 @@ Each line says what was measured, so a stale entry can be caught the same way.
   part worth keeping.
 
 - **The LinkedIn connection request is answered.** Measured 2026-09-23
-  against the provider: campaign 613744, `https://www.linkedin.com/in/zbeslic`
-  is `state=replied`, created 2026-09-23T10:58:13Z. Previous handoffs list
-  this as waiting on the operator. It is not.
+  against the provider: campaign 613744, the operator's profile (see
+  `config`) is `state=replied`, created 2026-09-23T10:58:13Z. Previous
+  handoffs list this as waiting on the operator. It is not.
 
 ## Open, but NOT on the operator — named here so it is not mistaken for one
 

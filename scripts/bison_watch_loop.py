@@ -61,6 +61,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import watchsink                                       # noqa: E402
+from src import emptyrender                                     # noqa: E402
 from src.providers import bison, load_env                       # noqa: E402
 
 # THE DEFAULT IS 487 AND THE ARGUMENT EXISTS BECAUSE THERE ARE NOW TWO.
@@ -143,6 +144,25 @@ def snapshot(provider_id=None):
     except bison.PartialInventory as exc:
         emit(f"QUEUE-UNREADABLE {provider_id}: {str(exc)[:160]}")
         queue = None
+    # THE BLANK-CONTENT SCAN, ON THE ROWS ALREADY IN HAND.
+    #
+    # OPERATOR DECISION 2026-09-23, control (b) of the incident gate: every
+    # cycle, every scheduled row of every active campaign, halted CRITICAL on
+    # any hit. See `docs/INCIDENT-2026-09-23-BLANK-EMAILS.md`.
+    #
+    # It runs HERE because `snapshot` has already paid for the queue read, so
+    # the check costs no extra provider call - which is what makes "every
+    # cycle" affordable rather than aspirational.
+    #
+    # IT DOES NOT CARE WHOSE LEAD IT IS, and that is the whole point. 73 of
+    # the 76 blank emails went to leads our factory never created and that no
+    # guard of ours had any reason to look at. A check that only examined our
+    # own staged leads would have reported this campaign clean while it sent.
+    #
+    # None when the queue could not be read, distinct from an empty finding.
+    # A scan that reports "no blanks" off a queue it could not read is the
+    # false clean this whole incident is about.
+    blanks = None if queue is None else emptyrender.scan(queue)
     sent_rows = None if queue is None else 0
     for entry in queue or []:
         state = str(entry.get("status") or entry.get("state") or "").lower()
@@ -170,6 +190,8 @@ def snapshot(provider_id=None):
         # means the provider has nothing queued.
         "queue_rows": None if queue is None else len(queue),
         "sent_rows": sent_rows,
+        # `{"pending": [...], "already": [...]}`, or None if unreadable.
+        "blanks": blanks,
         # Carried verbatim and compared for movement, never parsed: a format
         # this system has not seen still reports a touch rather than raising.
         "updated_at": row.get("updated_at"),
@@ -338,6 +360,98 @@ def _alert_if_stopped_by_someone_else(provider_id, watched, was, current,
         emit(f"ALERT-FAILED {watched}: {type(exc).__name__}")
 
 
+#: The ONE route the blank-content halt may use. A fragment, not a whole URL,
+#: so a host change cannot silently widen or void it - the contract
+#: `providers.allow_writes(only=...)` documents.
+PAUSE_ROUTES = ("/pause",)
+
+
+def _halt_on_blank_content(provider_id, state, emit):
+    """Control (b): a campaign about to send an empty email is stopped.
+
+    OPERATOR DECISION 2026-09-23. Returns True if a halt was attempted.
+
+    THE HALT IS ATTEMPTED AND THE ALERT IS SENT EITHER WAY, in that order of
+    importance. A pause that refuses - killswitch, an unsupported verb, a
+    provider 500 - must not swallow the finding: the whole incident is a
+    fault that was real for a day and a half while every reading of it said
+    fine. So the alert carries whether the pause succeeded rather than being
+    conditional on it.
+
+    ONLY `pending` ROWS HALT. A `sent` blank is already a fact and pausing
+    the campaign cannot unsend it; a `stopped` one cannot reach anybody. Both
+    are reported in the alert because the counts are the incident and its
+    containment, but halting on them would mean every campaign that ever sent
+    a blank is permanently unstartable, which would make the control the
+    first thing somebody disables.
+    """
+    blanks = state.get("blanks")
+    if not blanks or not blanks["pending"]:
+        return False
+
+    pending = blanks["pending"]
+    steps = sorted({str(e["step"]) for e in pending if e.get("step")})
+    reasons = sorted({f"{f}/{r}" for e in pending for f, r in e["faults"]})
+    emit(f"BLANK-CONTENT {provider_id} {len(pending)} row(s) would send "
+         f"empty: steps {','.join(steps) or '?'} reasons {','.join(reasons)}")
+
+    paused, why = False, ""
+    try:
+        from src import providerwrites
+        from src import providers as _providers
+        # A ROUTE-SCOPED SCOPE, FOR EXACTLY ONE VERB.
+        #
+        # A watcher is a reader and holds no write scope, which is why this
+        # halt refused the first time it was exercised: "no
+        # RESONATE_PROVIDER_WRITES and no allow_writes() scope", recorded in
+        # `work/provider-write-refusals.jsonl` at 2026-09-23T20:18:58Z. The
+        # guard was right and the control was ceremony - it alerted and
+        # halted nothing.
+        #
+        # `only=PAUSE_ROUTES` and not a bare scope, for the reason
+        # `allow_writes` states: without it this block would authorise every
+        # mutating route for its duration, and a function believed only to
+        # pause is one refactor from enrolling, resuming or creating. This
+        # loop's job is to stop a campaign that is about to send an empty
+        # email. It gets that and nothing else.
+        with _providers.allow_writes(
+                f"blank-content halt on campaign {provider_id}: rendered "
+                f"rows would send empty (OPERATOR DECISION 2026-09-23)",
+                only=PAUSE_ROUTES):
+            providerwrites.perform(
+                providerwrites.EMAIL_PAUSE,
+                campaign=str(provider_id),
+                payload={"campaign_id": provider_id},
+                transport=lambda _p: bison.pause_campaign(provider_id),
+                readback=lambda: {"status": str(
+                    (bison.campaign(provider_id) or {}).get("status")
+                    or "").lower()},
+                expected={"status": "paused"},
+                step="blank_content_halt", by="bison_watch_loop")
+        paused = True
+    except Exception as exc:                                  # noqa: BLE001
+        why = f"{type(exc).__name__}: {str(exc)[:200]}"
+        emit(f"BLANK-CONTENT-HALT-REFUSED {provider_id} {why}")
+
+    try:
+        from src import notify as _notify
+        _notify.notify(
+            _notify.CAMPAIGN_BLANK_CONTENT, None,
+            fields={
+                "campaign": provider_id,
+                "rows_that_would_send_empty": len(pending),
+                "rows_already_sent_or_stopped": len(blanks["already"]),
+                "steps": ", ".join(steps) or "unknown",
+                "reasons": ", ".join(reasons),
+                "campaign_paused": "yes" if paused else f"NO - {why}",
+            },
+            actions=("Read the queue rows before restarting anything.",
+                     "docs/INCIDENT-2026-09-23-BLANK-EMAILS.md"))
+    except Exception as exc:                                  # noqa: BLE001
+        emit(f"BLANK-CONTENT-ALERT-FAILED {provider_id} {type(exc).__name__}")
+    return True
+
+
 def _known(*values):
     """True when every value is a real reading rather than an UNKNOWN.
 
@@ -440,6 +554,14 @@ def main(argv=None):
         # EVERY poll, including the ones that emit nothing. This is what makes
         # an empty event log readable as "unchanged" rather than "died".
         watchsink.beat("bison", campaign=watched, state=current)
+
+        # BEFORE the first-cycle early return, deliberately. Every other
+        # check here compares against `previous` and so cannot run on the
+        # first poll - but "this campaign is about to send an empty email" is
+        # not a transition, it is a standing fact, and a watcher restarted at
+        # 21:31 must not wait an interval to notice one. The incident it
+        # exists for was true for a day and a half.
+        _halt_on_blank_content(watched, current, emit)
 
         if previous is None:
             emit(f"WATCHING {watched} status={current['status']} "

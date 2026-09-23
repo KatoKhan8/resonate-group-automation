@@ -94,7 +94,10 @@ def _shape(raw):
     }
 
 
-#: OPERATOR AMENDMENT, Zvonimir Beslic, 2026-09-22.
+#: OPERATOR AMENDMENT, 2026-09-22. (The operator is named in the
+#: authorization document below, which is where attribution belongs; the
+#: hygiene guard forbids real names in tracked files and this comment was
+#: one of two places leaking one.)
 #: `docs/OPERATOR-AUTHORIZATION-2026-09-22-BOUNCE-DENOMINATOR-AND-HEADCOUNT.md`
 #: section D: "Remove the headcount criterion from the S3 ICP verdict for the
 #: 2026-09-07 Productive file (24,404 domains). Geo and industry rules
@@ -107,7 +110,7 @@ def _shape(raw):
 #: exactly the config edit the operator declined to make.
 HEADCOUNT_AMENDMENT = "PRODUCTIVE-2026-09-07"
 
-#: OPERATOR DECISION, Zvonimir Beslic, 2026-09-23. Second amendment, same
+#: OPERATOR DECISION, 2026-09-23. Second amendment, same
 #: snapshot. A domain the CLIENT supplied on their own list is IN even when
 #: its country is outside the configured allow list, "because the client
 #: supplied these domains on their own list" - the client naming a company is

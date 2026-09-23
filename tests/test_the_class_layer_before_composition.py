@@ -72,7 +72,7 @@ class AReferralNeedsAHumanWriterAndAHumanTarget(unittest.TestCase):
 
     DRAFT_7 = ("Sehr geehrte Damen und Herren, vielen Dank fuer Ihre "
                "Nachricht. In dringenden Faellen wenden Sie sich bitte an "
-               "buero@erlebnismarketing.com.")
+               "buero@example-agency.test.")
 
     def as_referral(self):
         return {"classification": "referral", "confidence": 0.85}
@@ -91,35 +91,35 @@ class AReferralNeedsAHumanWriterAndAHumanTarget(unittest.TestCase):
             tz_offset_hours=2)
         self.assertEqual(decision.action, replyengine.REVIEW)
         self.assertIn("generic mailbox", decision["why"])
-        self.assertIn("buero@erlebnismarketing.com",
+        self.assertIn("buero@example-agency.test",
                       decision.get("account_context") or [])
 
     def test_a_generic_target_is_account_context_not_an_enrolment(self):
         decision = replyengine.decide(
-            {"text": "please send it to info@acme.io", "automated": False},
+            {"text": "please send it to info@acme.test", "automated": False},
             self.as_referral(), tz_offset_hours=2)
-        self.assertEqual(decision.get("account_context"), ["info@acme.io"])
+        self.assertEqual(decision.get("account_context"), ["info@acme.test"])
         self.assertNotEqual(decision.action, replyengine.REPLY)
 
     def test_a_named_person_passes_both_gates(self):
         """It stops at the register, which is the composition refusal."""
         decision = replyengine.decide(
-            {"text": "speak to marko.juric@acme.io, he owns this",
+            {"text": "speak to marko.juric@acme.test, he owns this",
              "automated": False}, self.as_referral(), tz_offset_hours=2)
         checks = dict((name, ok) for name, ok, _why in decision["checks"])
         self.assertTrue(checks.get("referral_human"))
         self.assertTrue(checks.get("referral_target"))
 
     def test_the_generic_list_covers_the_shapes_we_see(self):
-        for address in ("info@a.io", "office@a.io", "buero@a.io",
-                        "kontakt@a.io", "hello@a.io", "sales@a.io",
-                        "sales-eu@a.io", "office_2@a.hr", "noreply@a.io"):
+        for address in ("info@a.test", "office@a.test", "buero@a.test",
+                        "kontakt@a.test", "hello@a.test", "sales@a.test",
+                        "sales-eu@a.test", "office_2@b.test", "noreply@a.test"):
             with self.subTest(address=address):
                 self.assertTrue(replies.is_generic_mailbox(address))
 
     def test_a_person_is_not_a_generic_mailbox(self):
-        for address in ("marko.juric@acme.io", "m.horvat@studio.de",
-                        "megan@studionorth.com"):
+        for address in ("marko.juric@acme.test", "m.horvat@studio.test",
+                        "megan@studionorth.test"):
             with self.subTest(address=address):
                 self.assertFalse(replies.is_generic_mailbox(address))
 

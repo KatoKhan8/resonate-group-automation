@@ -1623,6 +1623,75 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     # route serves fifteen rows however many the campaign holds, so a list
     # here was a page pretending to be a membership.
     report["provider"]["leads_before"] = before
+    _refuse_blank_render(provider_id, report)
+
+
+def _refuse_blank_render(provider_id, report):
+    """Control (a): read back what the provider WILL SEND, and refuse a blank.
+
+    OPERATOR DECISION 2026-09-23, the incident gate. Refuse any push where a
+    step for any lead would send an empty, `"None"` or placeholder subject or
+    body - verified by reading the provider's own rendered queue rather than
+    by checking what we intended to send.
+    `docs/INCIDENT-2026-09-23-BLANK-EMAILS.md`.
+
+    WHY THE RENDERED ROW AND NOT OUR OWN MATERIAL. Every other guard in this
+    file inspects `wanted` - the leads we are staging - and each one of them
+    passed while 76 blank emails went out, because 73 of those went to leads
+    this factory never created and had no reason to look at. And the three
+    that WERE ours carry correct copy to this day: they were patched up to 54
+    minutes after the empty row had already been queued and sent, because the
+    render is a snapshot and patching a lead does not rebuild it. There is
+    exactly one object that answers "what will this person receive", and it
+    is the queue row.
+
+    IT REPORTS HOW MANY ROWS IT CHECKED, AND ZERO IS NOT A PASS.
+
+    A campaign is paused while it is staged, and the provider may not have
+    built the queue yet - so this can legitimately find nothing to look at.
+    That is a different fact from "every row is fine", and conflating the two
+    is how a guard becomes ceremony: it would report clean on every push, for
+    ever, and nobody would know. So `blank_render_checked` carries the row
+    count and `blank_render_verified` is False when it is zero. The live
+    window is covered by the watcher check, which is control (b) and is not
+    optional precisely because this one can come up empty.
+    """
+    from . import emptyrender
+    try:
+        rows = bison.scheduled_emails(
+            provider_id, cap=bison.CAMPAIGN_QUEUE_PAGE_CAP) or []
+    except Exception as exc:                                  # noqa: BLE001
+        # A queue that cannot be read is not a queue that is fine. Refusing
+        # costs a re-run; assuming costs an empty email.
+        raise FactoryRefused(
+            f"the rendered queue for EmailBison campaign {provider_id} could "
+            f"not be read ({type(exc).__name__}: {str(exc)[:160]}), so what "
+            f"it would send cannot be verified. Refusing the push: an "
+            f"unreadable queue is the state the blank-email incident was "
+            f"invisible in") from None
+
+    found = emptyrender.scan(rows)
+    report["provider"]["blank_render_checked"] = len(rows)
+    report["provider"]["blank_render_verified"] = bool(rows)
+    offending = found["pending"] + found["already"]
+    if not offending:
+        report["did"].append(
+            f"read back {len(rows)} rendered queue row(s): none empty"
+            if rows else
+            "rendered queue is EMPTY - nothing was verified, and the watcher "
+            "check is what covers this campaign once the provider builds it")
+        return
+
+    reasons = sorted({f"{f}/{r}" for e in offending for f, r in e["faults"]})
+    steps = sorted({str(e["step"]) for e in offending if e.get("step")})
+    raise FactoryRefused(
+        f"{len(offending)} of {len(rows)} rendered queue row(s) on EmailBison "
+        f"campaign {provider_id} would send nothing a person can read - "
+        f"steps {','.join(steps) or '?'}, {', '.join(reasons)} "
+        f"({len(found['pending'])} still sendable). This is read from the "
+        f"PROVIDER's own rendered queue, not from our material, and it is the "
+        f"check that 76 blank emails got past on 2026-09-22/23. Fix the "
+        f"lead variables and re-stage; do not activate this campaign")
 
 
 def _ensure_stopped(provider_id, report, by="system"):
