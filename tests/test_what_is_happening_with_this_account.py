@@ -108,6 +108,12 @@ class AccountStatus(unittest.TestCase):
             "workspaces": {"alpha": {"provider_campaign_ids": []},
                            "beta": {"provider_campaign_ids": []}}}
         self.addCleanup(setattr, tools.knowledge, "pack", self._pack)
+        # THE WITNESS CACHE IS MODULE-LEVEL. A verdict left behind by one
+        # test decides the next one's answer, which is a test suite that
+        # passes for reasons it does not state - and the thing this file
+        # exists to argue against.
+        tools._LEDGER_WITNESS.clear()
+        self.addCleanup(tools._LEDGER_WITNESS.clear)
 
     def ask(self, rows, domain="acme.test", scope=None, meetings=()):
         scope = scope or slackscope.Scope(slackscope.INTERNAL, source="test")
@@ -170,96 +176,147 @@ class EachStateCanActuallyBeProduced(AccountStatus):
         self.assertIn("1 meeting(s)", " ".join(out["status_evidence"]))
 
 
-# ================ 1b. THE PROVIDER IS THE OTHER WITNESS, AND IT KNOWS MORE
+# ============== 1b. THE LEDGER IS THE SOURCE, AND IT MUST BE TRUSTWORTHY
 
-class TheLocalLogIsNotTheOnlyWitness(AccountStatus):
-    """MEASURED ON THE LIVE ESTATE, 2026-09-23. Against 494
-    provider-confirmed sends the day before, the local store carried:
+class TheLedgerIsAskedWhetherItIsRecording(AccountStatus):
+    """OPERATOR DECISION, 2026-09-23:
 
-        push_marked 1 · email_delivered 0 · linkedin_connected 0
+    > "Provider-confirmed sends, bounces, replies and HeyReach
+    > requests/accepts are written back into the local event ledger by the
+    > watchers on every readback (idempotent per provider row id), so
+    > account status and accounts-first reporting are computed locally from
+    > the ledger, with the provider as a periodic second witness, never as
+    > a per-account call. Production owns the write-back; the agent reads
+    > the ledger."
 
-    `account.graph()` is built from exactly those three events, so an
-    account this workspace emailed yesterday reads `untouched` from local
-    state alone. A first draft of this tool did precisely that over 400 live
-    records: 399 untouched, 1 sequenced.
+    An earlier version of this tool matched each account's addresses
+    against the campaign queues. It answered correctly and it is exactly
+    the shape this decision rules out: affordable for one domain, ruinous
+    for a report over a workspace, and a tool that is affordable for one
+    and ruinous for fifty will be used for fifty.
 
-    Telling a client nothing has happened on an account we wrote to is the
-    worst version of the confidently-empty failure, because it is confident,
-    it is client-facing, and nothing errors.
+    What is left is ONE question per workspace per TTL: is the ledger
+    actually recording sends? Measured on the live store on 2026-09-23 the
+    answer was no - 1 `push_marked` and 0 `email_delivered` against 494
+    provider-confirmed sends the day before - and the honest behaviour
+    while that is true is to WITHHOLD `untouched` rather than assert it.
     """
 
-    def ask_with_provider(self, rows, sends, domain="acme.test", scope=None):
+    def ask_with_witness(self, rows, verdict, domain="acme.test",
+                         scope=None):
         scope = scope or slackscope.Scope(slackscope.INTERNAL, source="test")
         with mock.patch.object(tools, "_records", lambda slug: [
                 r for r in rows if r.get("client") == slug]), \
                 mock.patch.object(tools, "_default_workspace",
                                   lambda: "alpha"), \
-                mock.patch.object(tools, "_provider_touches",
-                                  lambda slug, emails: sends), \
+                mock.patch.object(tools, "_ledger_carries_sends",
+                                  lambda slug, now=None: verdict), \
                 mock.patch("src.slackmeetings.by_domain",
                            lambda workspace=None, **k: []):
             return tools.account_status(scope, domain)
 
-    SEND = {"campaign_id": "491", "email": "ada@acme.test",
-            "sent_at": "2026-09-22T13:05:00Z", "status": "sent"}
-
-    def test_a_provider_send_beats_an_empty_local_log(self):
-        out = self.ask_with_provider([record()], [self.SEND])
-        self.assertEqual(out["status"], tools.SEQUENCED)
-        self.assertEqual(out["provider_confirmed_sends"], 1)
-
-    def test_the_disagreement_is_reported_not_smoothed_over(self):
-        """Somebody should learn that the local log is not recording
-        sends. Quietly preferring the provider hides a broken writer."""
-        out = self.ask_with_provider([record()], [self.SEND])
-        self.assertIn("the local event log carries none",
-                      out["witness_disagreement"])
-
-    def test_no_provider_send_and_no_local_touch_is_untouched(self):
-        out = self.ask_with_provider([record()], [])
-        self.assertEqual(out["status"], tools.UNTOUCHED)
-        self.assertNotIn("witness_disagreement", out)
-
-    def test_an_unreadable_provider_is_not_an_untouched_account(self):
-        """`None` is unreadable. Returning `untouched` here would be a
-        guess dressed as an answer, in a client channel."""
-        out = self.ask_with_provider([record()], None)
+    def test_untouched_is_withheld_while_the_ledger_is_blind(self):
+        """THE POINT OF THE WHOLE CLASS. An account with nothing in the
+        ledger, on a workspace whose ledger is not recording sends, is not
+        an untouched account - it is an unanswerable one."""
+        out = self.ask_with_witness([record()], False)
         self.assertIsNone(out["status"])
-        self.assertIn("could not be read", out["_error"])
+        self.assertIn("not recording", out["_error"])
 
-    def test_a_local_touch_stands_even_if_the_provider_is_unreadable(self):
-        out = self.ask_with_provider([record(events_=[touch()])], None)
+    def test_untouched_is_asserted_once_the_ledger_is_trusted(self):
+        out = self.ask_with_witness([record()], True)
+        self.assertEqual(out["status"], tools.UNTOUCHED)
+
+    def test_a_ledger_touch_answers_even_while_the_witness_says_no(self):
+        """Evidence present beats evidence missing. The witness only ever
+        licenses the ABSENCE of evidence."""
+        out = self.ask_with_witness([record(events_=[touch()])], False)
         self.assertEqual(out["status"], tools.SEQUENCED)
 
-    def test_unreadable_queues_with_no_hits_never_read_as_zero(self):
-        """`_provider_touches` itself: the one combination that must not
-        come back as a clean empty list."""
+    def test_an_unavailable_witness_is_not_a_failing_one(self):
+        """None is not False. A witness that could not be asked has not
+        reported a problem, and degrading every answer on a transient
+        outage is its own kind of wrong."""
+        out = self.ask_with_witness([record()], None)
+        self.assertEqual(out["status"], tools.UNTOUCHED)
+
+    def test_the_verdict_is_reported_on_the_answer(self):
+        out = self.ask_with_witness([record(events_=[touch()])], False)
+        self.assertFalse(out["ledger_carries_sends"])
+
+    def test_the_provider_is_named_as_periodic_never_per_account(self):
+        out = self.ask_with_witness([record(events_=[touch()])], True)
+        self.assertIn("periodic", out["source"]["provider"])
+        self.assertIn("never a per-account call", out["source"]["provider"])
+
+    def test_there_is_no_per_account_provider_call_left(self):
+        """The decision, as an assertion. If a later change reintroduces a
+        per-account queue walk, this is what should stop it."""
+        self.assertFalse(hasattr(tools, "_provider_touches"))
+
+
+class TheWitnessIsAskedOncePerWindow(AccountStatus):
+
+    def setUp(self):
+        super().setUp()
+        tools._LEDGER_WITNESS.clear()
+        self.addCleanup(tools._LEDGER_WITNESS.clear)
+
+    def witness(self, provider_sent, ledger_events, reads):
+        def campaign_by_id(campaign_id):
+            reads.append(campaign_id)
+            return {"emails_sent": provider_sent}
+        rows = [record(events_=[touch()] * ledger_events)]
+        return (mock.patch.object(tools.knowledge, "pack", lambda *a, **k: {
+                    "workspaces": {"alpha": {"provider_campaign_ids": ["491"]}}}),
+                mock.patch.object(tools.readback, "campaign_by_id",
+                                  campaign_by_id),
+                mock.patch.object(tools, "_records", lambda slug: rows))
+
+    def test_an_empty_ledger_against_a_sending_provider_is_false(self):
+        reads = []
+        a, b, c = self.witness(494, 1, reads)
+        with a, b, c:
+            self.assertIs(tools._ledger_carries_sends("alpha"), False)
+
+    def test_a_populated_ledger_is_true(self):
+        reads = []
+        a, b, c = self.witness(494, 300, reads)
+        with a, b, c:
+            self.assertIs(tools._ledger_carries_sends("alpha"), True)
+
+    def test_a_workspace_that_has_sent_nothing_proves_nothing(self):
+        """Zero sends tells us nothing about whether a send would be
+        recorded, so the verdict is None rather than a reassuring True."""
+        reads = []
+        a, b, c = self.witness(0, 0, reads)
+        with a, b, c:
+            self.assertIsNone(tools._ledger_carries_sends("alpha"))
+
+    def test_it_is_cached_so_fifty_accounts_cost_one_read(self):
+        """The whole reason the per-account call was removed."""
+        reads = []
+        a, b, c = self.witness(494, 300, reads)
+        with a, b, c:
+            for _ in range(50):
+                tools._ledger_carries_sends("alpha")
+        self.assertEqual(len(reads), 1)
+
+    def test_the_cache_expires(self):
+        reads = []
+        a, b, c = self.witness(494, 300, reads)
+        with a, b, c:
+            tools._ledger_carries_sends("alpha", now=1000.0)
+            tools._ledger_carries_sends(
+                "alpha", now=1000.0 + tools.LEDGER_WITNESS_TTL + 1)
+        self.assertEqual(len(reads), 2)
+
+    def test_an_unreadable_provider_leaves_it_unestablished(self):
         with mock.patch.object(tools.knowledge, "pack", lambda *a, **k: {
                 "workspaces": {"alpha": {"provider_campaign_ids": ["491"]}}}), \
-                mock.patch.object(tools.readback, "queue",
+                mock.patch.object(tools.readback, "campaign_by_id",
                                   mock.Mock(side_effect=RuntimeError("no"))):
-            self.assertIsNone(
-                tools._provider_touches("alpha", ["ada@acme.test"]))
-
-    def test_a_readable_queue_with_no_match_is_an_honest_empty(self):
-        with mock.patch.object(tools.knowledge, "pack", lambda *a, **k: {
-                "workspaces": {"alpha": {"provider_campaign_ids": ["491"]}}}), \
-                mock.patch.object(tools.readback, "queue",
-                                  lambda cid: [{"lead": {"email": "x@y.test"},
-                                                "sent_at": "2026-09-22"}]):
-            self.assertEqual(
-                tools._provider_touches("alpha", ["ada@acme.test"]), [])
-
-    def test_a_queued_row_that_never_sent_is_not_a_touch(self):
-        """`sent_at` is the witness, not membership. Enrolled is not sent."""
-        with mock.patch.object(tools.knowledge, "pack", lambda *a, **k: {
-                "workspaces": {"alpha": {"provider_campaign_ids": ["491"]}}}), \
-                mock.patch.object(tools.readback, "queue",
-                                  lambda cid: [{"lead": {"email":
-                                                         "ada@acme.test"},
-                                                "status": "scheduled"}]):
-            self.assertEqual(
-                tools._provider_touches("alpha", ["ada@acme.test"]), [])
+            self.assertIsNone(tools._ledger_carries_sends("alpha"))
 
 
 # ================================ 2. PRECEDENCE
@@ -445,6 +502,49 @@ class PersonasStepsTouchesAndReplies(AccountStatus):
         out = self.ask([record(events_=[
             touch(), reply_event(classification=None)])])
         self.assertEqual(out["replies_by_class"], {"unclassified": 1})
+
+    def test_one_reply_with_a_receipt_and_a_verdict_is_ONE_reply(self):
+        """MEASURED LIVE, 2026-09-23, and it would have reached a client.
+
+        `account.replies()` returns reply_received AND reply_classified as
+        separate rows - it answers "what is on this record", not "how many
+        replies". Counted per event, olv.global's single out-of-office came
+        back as `{'unclassified': 1, 'out_of_office': 1}`: two replies, one
+        of them apparently unlooked-at. Both halves false.
+        """
+        out = self.ask([record(events_=[
+            touch(),
+            # The receipt, as the watcher writes it: no classification.
+            {"type": events.REPLY_RECEIVED, "contact": "ada",
+             "at": "2026-09-22T10:00:00Z", "channel": "email"},
+            # The verdict, moments later, on the same reply.
+            {"type": events.REPLY_CLASSIFIED, "contact": "ada",
+             "at": "2026-09-22T10:00:05Z", "channel": "email",
+             "classification": "out_of_office"}])])
+        self.assertEqual(out["replies_by_class"], {"out_of_office": 1})
+
+    def test_a_receipt_with_no_verdict_is_still_reported(self):
+        """The other half: a reply nobody has classified must not vanish
+        just because the double-count was fixed."""
+        out = self.ask([record(events_=[
+            touch(),
+            {"type": events.REPLY_RECEIVED, "contact": "ada",
+             "at": "2026-09-22T10:00:00Z", "channel": "email"},
+            {"type": events.REPLY_CLASSIFIED, "contact": "ada",
+             "at": "2026-09-22T10:00:05Z", "channel": "email",
+             "classification": "out_of_office"},
+            {"type": events.REPLY_RECEIVED, "contact": "ada",
+             "at": "2026-09-23T09:00:00Z", "channel": "email"}])])
+        self.assertEqual(out["replies_by_class"],
+                         {"out_of_office": 1, "unclassified": 1})
+
+    def test_two_people_replying_are_two_replies(self):
+        out = self.ask([record(
+            contacts=[contact(key="ada"), contact(key="ben")],
+            events_=[touch(),
+                     reply_event(key="ada", classification="not_relevant"),
+                     reply_event(key="ben", classification="not_relevant")])])
+        self.assertEqual(out["replies_by_class"], {"not_relevant": 2})
 
     def test_the_last_touch_is_a_confirmed_one(self):
         out = self.ask([record(events_=[

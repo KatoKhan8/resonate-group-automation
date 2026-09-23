@@ -462,73 +462,151 @@ STATES_WITHOUT_A_SOURCE = (WON, LOST)
 
 
 def _reply_classes(rows):
-    """`{classification: n}` over reply events, unclassified counted apart.
+    """`{classification: n}` over REPLIES, not over reply EVENTS.
 
-    `unclassified` is its own key and never folded into a class. A reply
-    nobody has classified is not a neutral one, and this figure reaches a
-    client channel.
+    ## ONE REPLY IS SEVERAL EVENTS, AND COUNTING EVENTS DOUBLES IT
+
+    `account.replies()` returns `reply_received`, `reply_classified` AND
+    `positive_reply_detected` as separate rows, because it is answering
+    "what is on this record" rather than "how many replies were there".
+    One real reply therefore appears twice: once as the receipt, carrying no
+    classification, and once as the verdict.
+
+    Counted naively this produced, live on 2026-09-23:
+
+        olv.global    {'unclassified': 1, 'out_of_office': 1}
+
+    for a single out-of-office. A client reading that has been told they
+    have two replies, one of which nobody has looked at. Both halves of that
+    are false.
+
+    So the receipt is only counted when nothing classified it. `unclassified`
+    stays its own key and is never folded into a class - a reply nobody has
+    classified is not a neutral one - but it now means what it says.
     """
-    out = {}
+    classified, received = {}, {}
     for row in rows or []:
-        name = str(row.get("classification") or "").strip() or "unclassified"
-        out[name] = out.get(name, 0) + 1
+        key = row.get("contact_key")
+        name = str(row.get("classification") or "").strip()
+        if name:
+            classified.setdefault(key, []).append(name)
+        else:
+            received[key] = received.get(key, 0) + 1
+
+    out = {}
+    for key, names in classified.items():
+        for name in names:
+            out[name] = out.get(name, 0) + 1
+    for key, count in received.items():
+        # Only the receipts this contact has BEYOND their verdicts. A reply
+        # with both is one reply; a reply with only a receipt is one nobody
+        # has classified yet, and that is worth saying out loud.
+        spare = count - len(classified.get(key) or [])
+        if spare > 0:
+            out["unclassified"] = out.get("unclassified", 0) + spare
     return out
 
 
-def _provider_touches(slug, emails):
-    """Sends the PROVIDER confirms to these addresses. `None` if unreadable.
+# ---------------------------------------------- is the ledger trustworthy
+#
+# OPERATOR DECISION, 2026-09-23, recorded verbatim because it is an
+# architecture and not a preference:
+#
+#   "Provider-confirmed sends, bounces, replies and HeyReach
+#   requests/accepts are written back into the local event ledger by the
+#   watchers on every readback (idempotent per provider row id), so account
+#   status and accounts-first reporting are computed locally from the
+#   ledger, with the provider as a periodic second witness, never as a
+#   per-account call. Production owns the write-back; the agent reads the
+#   ledger."
+#
+# SO THE PER-ACCOUNT PROVIDER CALL IS GONE. An earlier version of
+# `account_status` matched each account's addresses against the campaign
+# queues, which answered correctly and is exactly the shape this decision
+# rules out: it does not survive contact with a report over a whole
+# workspace, and a tool that is affordable for one domain and ruinous for
+# fifty is a tool that will be used for fifty.
+#
+# WHAT REPLACES IT IS ONE QUESTION, ASKED PERIODICALLY, FOR THE WHOLE
+# WORKSPACE: does the ledger actually carry the sends yet? Until production's
+# write-back lands the answer is no, and the honest behaviour then is to
+# WITHHOLD `untouched` rather than to assert it - measured on the live store
+# on 2026-09-23, the ledger held 1 push_marked and 0 email_delivered against
+# 494 provider-confirmed sends the day before.
 
-    ## WHY THIS LEG EXISTS, MEASURED
+#: How long one workspace's ledger verdict stands before it is re-measured.
+#: Ten minutes: long enough that a burst of account questions costs one
+#: provider read rather than fifty, short enough that the day the write-back
+#: starts working the agent notices inside a coffee break.
+LEDGER_WITNESS_TTL = 600
 
-    The local event log does not carry this estate's sends. Counted over the
-    live store on 2026-09-23, against 494 provider-confirmed sends the day
-    before:
+#: `{slug: (checked_epoch, verdict)}`. Process-local and deliberately not
+#: persisted: a cached "the ledger is fine" surviving a restart is how a
+#: stale reassurance outlives the thing it was measuring.
+_LEDGER_WITNESS = {}
 
-        push_marked           1
-        email_delivered       0
-        linkedin_connected    0
-        reply_received       11
 
-    `account.graph()` is built from `touch.CONFIRMING_EVENTS`, which is
-    exactly those three, so it reports `untouched` for every account this
-    workspace has emailed. Deriving an account's status from it alone would
-    tell a client nothing has happened on an account we wrote to yesterday -
-    the same confidently-empty failure this session has now hit three times,
-    and the first one that would have reached a client channel.
+def _ledger_carries_sends(slug, now=None):
+    """Does this workspace's ledger carry the provider's sends? Periodic.
 
-    So the provider is asked as well, which is what "derive from provider
-    truth" means. An unreadable queue is `None` and NEVER an empty list: a
-    campaign nobody could read is not a campaign that sent nothing.
+    ONE provider read per workspace per `LEDGER_WITNESS_TTL`, shared by
+    every account question in that window - the "periodic second witness"
+    of the operator's decision, never a per-account call.
+
+    Returns True, False, or None when it could not be established. None is
+    NOT False: a witness that could not be asked has not reported a problem,
+    and treating it as one would degrade every answer on a transient outage.
     """
-    if not emails:
-        return []
-    entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
-    ids, _hidden = _campaigns_to_read(entry, WEEK_CAMPAIGN_CAP)
-    wanted = {str(e).strip().lower() for e in emails if e}
-    found, unreadable = [], 0
-    for campaign_id in ids:
-        try:
-            queue = readback.queue(campaign_id)
-        except Exception:                                       # noqa: BLE001
-            unreadable += 1
-            continue
-        for row in queue:
-            lead = row.get("lead") if isinstance(row.get("lead"), dict) else {}
-            address = str(lead.get("email") or "").strip().lower()
-            if address and address in wanted and row.get("sent_at"):
-                found.append({"campaign_id": str(campaign_id),
-                              "email": address,
-                              "sent_at": row.get("sent_at"),
-                              "status": row.get("status")})
-    if unreadable and not found:
-        # NOTHING FOUND AND SOMETHING UNREADABLE is not "no sends". It is
-        # the one combination that must not be reported as a clean zero.
-        return None
-    found.sort(key=lambda r: str(r.get("sent_at") or ""))
-    return found
+    now = time.time() if now is None else now
+    cached = _LEDGER_WITNESS.get(slug)
+    if cached and (now - cached[0]) < LEDGER_WITNESS_TTL:
+        return cached[1]
+
+    verdict = None
+    try:
+        entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
+        ids, _hidden = _campaigns_to_read(entry, SENDS_TODAY_CAP)
+        provider_sent = 0
+        for campaign_id in ids:
+            row = readback.campaign_by_id(campaign_id) or {}
+            value = row.get("emails_sent")
+            if isinstance(value, int):
+                provider_sent += value
+        if provider_sent:
+            ledger_touches = 0
+            for record in _records(slug):
+                for event in record.get("events") or []:
+                    if event.get("type") in _CONFIRMING_TYPES:
+                        ledger_touches += 1
+            # NOT AN EQUALITY. The ledger counts touches on this
+            # workspace's records and the provider counts sends on its
+            # campaigns; they are close relatives, not the same number.
+            # What is being detected is the ledger being EMPTY against a
+            # provider that is plainly sending - 1 against 494, not 480
+            # against 494.
+            verdict = ledger_touches >= max(1, provider_sent // 10)
+        # provider_sent == 0 leaves the verdict None: a workspace that has
+        # sent nothing tells us nothing about whether the ledger would
+        # record a send if there were one.
+    except Exception:                                           # noqa: BLE001
+        verdict = None
+
+    _LEDGER_WITNESS[slug] = (now, verdict)
+    return verdict
 
 
-def _account_state(record, detail, meetings_for_domain, provider_sends=None):
+def _confirming_types():
+    try:
+        from . import touch
+        return frozenset(touch.CONFIRMING_EVENTS)
+    except Exception:                                           # noqa: BLE001
+        return frozenset()
+
+
+_CONFIRMING_TYPES = _confirming_types()
+
+
+def _account_state(record, detail, meetings_for_domain, ledger_ok=None):
     """One of `ACCOUNT_STATES`, with the evidence that decided it.
 
     PRECEDENCE, strongest first, and every step of it is a judgement worth
@@ -586,26 +664,21 @@ def _account_state(record, detail, meetings_for_domain, provider_sends=None):
 
     confirmed = len((detail or {}).get("confirmed_touches") or [])
     if confirmed:
-        evidence.append("%d confirmed touch(es) in the event log" % confirmed)
+        evidence.append("%d confirmed touch(es) in the ledger" % confirmed)
         return SEQUENCED, evidence
 
-    if provider_sends:
-        evidence.append(
-            "%d send(s) confirmed by the provider, and NONE of them in the "
-            "local event log" % len(provider_sends))
-        return SEQUENCED, evidence
-
-    if provider_sends is None:
-        # THE ONE CASE THAT IS NOT A STATE. The local log says nothing and
-        # the provider could not be asked, so "untouched" would be a guess
-        # dressed as an answer, and it is the guess that reads as good news
-        # to nobody and as bad news to a client.
-        evidence.append("the local log has no touch and the provider queue "
-                        "could not be read")
+    if ledger_ok is False:
+        # THE ONE CASE THAT IS NOT A STATE, and it is the whole reason this
+        # function takes the witness. The ledger says nobody has been
+        # touched AND the ledger is known not to be recording touches, so
+        # `untouched` would be a guess dressed as an answer - in a client
+        # channel, about an account we may well have emailed yesterday.
+        evidence.append("the ledger carries no touch for this account AND "
+                        "is not recording this workspace's sends, so "
+                        "`untouched` cannot be asserted")
         return None, evidence
 
-    evidence.append("no confirmed touch in the event log and no send "
-                    "confirmed by the provider")
+    evidence.append("no confirmed touch in the ledger")
     return UNTOUCHED, evidence
 
 
@@ -673,34 +746,20 @@ def account_status(scope, argument=None):
                            "`meeting` could not be reached"
                            % type(exc).__name__)
 
-    emails = [c.get("email") for c in (record.get("contacts") or [])
-              if isinstance(c, dict) and c.get("email")]
-    provider_sends = _provider_touches(slug, emails)
+    ledger_ok = _ledger_carries_sends(slug)
+    out["ledger_carries_sends"] = ledger_ok
 
-    state, evidence = _account_state(record, detail, meetings_here,
-                                     provider_sends)
+    state, evidence = _account_state(record, detail, meetings_here, ledger_ok)
     if state is None:
-        return dict(out, status=None, status_evidence=evidence,
-                    _error="account status is not answerable right now: "
-                           "the local event log carries no touch and the "
-                           "provider queue could not be read")
-    out["status"] = state
+        return dict(
+            out, status=None, status_evidence=evidence,
+            _error="account status is not answerable for this workspace "
+                   "yet: the ledger is not recording provider-confirmed "
+                   "sends, so an account with no touch in it cannot be "
+                   "called untouched. This resolves when the watchers' "
+                   "write-back is live.")
     out["status_evidence"] = evidence
-    out["provider_confirmed_sends"] = (
-        None if provider_sends is None else len(provider_sends))
-    if provider_sends:
-        out["provider_last_send_at"] = provider_sends[-1].get("sent_at")
-        out["provider_campaigns"] = sorted(
-            {r["campaign_id"] for r in provider_sends})
-        if not (detail or {}).get("confirmed_touches"):
-            # THE DISAGREEMENT, REPORTED RATHER THAN RESOLVED QUIETLY. Two
-            # witnesses to the same account say different things, and the
-            # one that says more is the provider. Somebody should know the
-            # local log is not being written.
-            out["witness_disagreement"] = (
-                "the provider confirms %d send(s) to this account and the "
-                "local event log carries none - the log is not recording "
-                "sends for this estate" % len(provider_sends))
+    out["status"] = state
 
     personas = []
     for entry in (detail or {}).get("contacts") or []:
@@ -755,8 +814,10 @@ def account_status(scope, argument=None):
 
     out["states_without_a_source"] = list(STATES_WITHOUT_A_SOURCE)
     out["source"] = {
-        "status": ("derived from account.graph(), the provider queue and "
-                   + meetings_source),
+        "status": ("computed from the local ledger via account.graph(), "
+                   "plus " + meetings_source),
+        "provider": ("a periodic workspace-level witness on whether the "
+                     "ledger is recording sends - never a per-account call"),
         "personas": "account.graph(), confirmed touches only",
         "replies_by_class": "reply events on the record, as classified",
         "not_production_account_status_object": True,
