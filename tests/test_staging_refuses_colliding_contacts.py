@@ -36,7 +36,7 @@ from unittest import mock
 from src import bisonfactory, campaigns, collision, store, workspaces
 from src import providers
 from tests.base import QueueTest
-from tests.fakebison import FakeBison
+from tests.fakebison import FakeBison, RendersTheQueue
 
 
 CID = "collision-test"
@@ -149,7 +149,7 @@ class _EstateAwareFakeBison(FakeBison):
                                              "current_page": 1}}
 
 
-class _FakeBisonForFactory:
+class _FakeBisonForFactory(RendersTheQueue):
     """The factory-side fake: create_campaign, attach_leads, etc.
 
     Separate from the estate fake because the factory and the collision check

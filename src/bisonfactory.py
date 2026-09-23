@@ -1500,6 +1500,9 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     before = bison.campaign_lead_count(provider_id)
     known = _known_lead_ids(campaign, wanted)
     ids, created, reconciled, refreshed = [], 0, 0, 0
+    adopted = 0
+    #: provider lead id -> the lead we staged, for the pre-attach check.
+    _wanted_by_id = {}
     remember_pairs = []
     for lead in wanted:
         existing = known.get(lead["contact_key"])
@@ -1534,6 +1537,7 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
                     f"refreshed {len(stale)} variable(s) on lead {existing}: "
                     f"{sorted(v['name'] for v in stale)}")
             ids.append(existing)
+            _wanted_by_id[existing] = lead
             continue
         try:
             row = bison.create_lead({
@@ -1573,10 +1577,35 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
                     f"EmailBison says {lead['email']} already exists but will "
                     f"not return it - its lead search lags behind creation. "
                     f"Wait and re-run; do NOT create a duplicate") from None
+            # THE ADOPTED LEAD IS NOT OURS YET, AND THIS IS WHERE 73 BLANK
+            # EMAILS CAME FROM.
+            #
+            # "already been taken" does NOT only mean we lost a race with
+            # ourselves. It also means the address is already in the CLIENT'S
+            # OWN ESTATE - and then this lookup returns THEIR lead, months
+            # old, carrying THEIR custom variables (`headline`, `location`)
+            # and none of ours. Until 2026-09-23 this branch took that id and
+            # attached it, and the variables were never written: our sequence
+            # is a template of merge fields, so `{BODY_1}` resolved against
+            # nothing and the provider sent `<p></p>`.
+            #
+            # Measured: 90 of the 91 foreign leads in campaigns 491-498 are
+            # recorded in our own store as `bison_lead_id` on our own
+            # contacts, and 85 of them are `sequence_finished` members of the
+            # client's campaign 352.
+            # `docs/INCIDENT-2026-09-23-BLANK-EMAILS.md`.
+            #
+            # So the copy is written HERE, before the lead can be attached,
+            # and the `_verified` check below refuses if it did not land.
+            bison.update_lead(row["id"], {"custom_variables": _variables_for(
+                lead, campaign, sequence=plan.get("sequence") or [])})
+            adopted += 1
             reconciled += 1
         remember_pairs.append((lead, row["id"]))
         ids.append(row["id"])
+        _wanted_by_id[row["id"]] = lead
     _remember_leads(remember_pairs)
+    _refuse_unvariabled_leads(ids, _wanted_by_id, campaign, plan, report)
     # FRESH READ, NOT ASSUMED FROM `_ensure_stopped` FOUR CALLS AGO.
     # The invariant that makes lead attachment safe is "the campaign is
     # stopped at the provider". `_ensure_stopped` established that earlier,
@@ -1613,7 +1642,12 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     # and would be one indexing delay away from not avoiding them.
     report["provider"]["leads"] = {"created": created, "reused": len(known),
                                    "reconciled": reconciled,
-                                   "refreshed": refreshed}
+                                   "refreshed": refreshed,
+                                   # Adopted from an address that already
+                                   # existed - usually the CLIENT's own
+                                   # estate. Counted separately because it is
+                                   # the path that crossed a lane.
+                                   "adopted": adopted}
     report["did"].append(
         f"created {created} lead(s), reused {len(known)}, reconciled "
         f"{reconciled}; attached {len(outcome['attached'])}, "
@@ -1624,6 +1658,71 @@ def _ensure_leads(provider_id, campaign, plan, report, by="system"):
     # here was a page pretending to be a membership.
     report["provider"]["leads_before"] = before
     _refuse_blank_render(provider_id, report)
+
+
+def _refuse_unvariabled_leads(ids, wanted_by_id, campaign, plan, report):
+    """NEVER ATTACH A LEAD WHOSE COPY IS NOT ALREADY ON IT.
+
+    OPERATOR DECISION 2026-09-23, the structural half of the incident fix.
+    Set the variables first, READ THE LEAD BACK, and only then attach.
+
+    WHY AN INVARIANT OVER ALL IDS AND NOT A FIX TO ONE BRANCH. The adoption
+    branch is the one that did this, and fixing it there is necessary and not
+    sufficient: `ids` is assembled from three paths - remembered, created,
+    adopted - and the property that matters is about what goes on the wire,
+    not about which branch put it there. A fourth path added later inherits
+    this check instead of having to remember the lesson.
+
+    IT READS THE PROVIDER. The write we are guarding against is one where our
+    PATCH was accepted and did not take, and our own copy of what we sent
+    cannot see that. The read is per lead touched this run, not per lead in
+    the campaign: leads already carrying their copy from an earlier stage are
+    not re-read, so a 300-lead re-stage does not pay 300 GETs to re-prove a
+    property nothing changed.
+
+    A REFUSAL HERE LEAVES LEADS CREATED AND UNATTACHED, which is the safe
+    direction and is stated so nobody 'fixes' it: an unattached lead sends
+    nothing to anybody, while an attached one is in a campaign's queue within
+    the minute.
+    """
+    from . import emptyrender
+    sequence = plan.get("sequence") or []
+    unverified = []
+    for lead_id in ids:
+        lead = wanted_by_id.get(lead_id)
+        if lead is None:
+            # Not staged by this run: it was already on the campaign and
+            # nothing here changed it. Naming it rather than passing it
+            # silently, because "we did not look" is not "it is fine".
+            unverified.append((lead_id, "not staged by this run"))
+            continue
+        wanted = {v["name"]: v["value"]
+                  for v in _variables_for(lead, campaign, sequence=sequence)}
+        held = bison.variables_of(bison.lead(lead_id))
+        for name, value in sorted(wanted.items()):
+            if held.get(name) != value:
+                unverified.append((lead_id, f"{name} did not take"))
+                break
+        else:
+            # And the copy itself must be sendable, by the SAME predicate the
+            # queue is judged by - not by a truthiness check, which is what
+            # let `'None'` through.
+            body = held.get("body_1") or held.get("body") or ""
+            fault = emptyrender.classify_body(body)
+            if fault:
+                unverified.append((lead_id, f"body_1 is {fault}"))
+
+    report.setdefault("provider", {})["leads_variable_verified"] = (
+        len(ids) - len(unverified))
+    if unverified:
+        detail = "; ".join(f"lead {i}: {w}" for i, w in unverified[:5])
+        raise FactoryRefused(
+            f"{len(unverified)} of {len(ids)} lead(s) would be attached "
+            f"without their copy on them: {detail}"
+            f"{' and more' if len(unverified) > 5 else ''}. A lead attached "
+            f"without `subject_1`/`body_1` renders the sequence template "
+            f"against nothing and the provider SENDS the empty result - it "
+            f"did so 76 times on 2026-09-22/23. Nothing was attached")
 
 
 def _refuse_blank_render(provider_id, report):
@@ -1671,11 +1770,12 @@ def _refuse_blank_render(provider_id, report):
             f"invisible in") from None
 
     found = emptyrender.scan(rows)
-    report["provider"]["blank_render_checked"] = len(rows)
-    report["provider"]["blank_render_verified"] = bool(rows)
+    provider = report.setdefault("provider", {})
+    provider["blank_render_checked"] = len(rows)
+    provider["blank_render_verified"] = bool(rows)
     offending = found["pending"] + found["already"]
     if not offending:
-        report["did"].append(
+        report.setdefault("did", []).append(
             f"read back {len(rows)} rendered queue row(s): none empty"
             if rows else
             "rendered queue is EMPTY - nothing was verified, and the watcher "
