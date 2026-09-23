@@ -41,6 +41,26 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from src import store, workspaces
 from src.web import app, demodata, oidc, security
 
+
+# This module exercises code that writes `os.environ` ITSELF - `src/web/demoslack.py` calls `os.environ.setdefault` - so
+# restoring only what the tests set is not enough.
+#
+# Found by `test_no_test_leaves_the_environment_changed` on the run AFTER the
+# first twelve were fixed, and that is the point of the guard: while an
+# earlier module set SLACK_OPS_CHANNEL and never put it back, this one never CHANGED it and
+# so never looked like a leak. Fixing the first one revealed the next.
+_ENV_BEFORE_MODULE = None
+
+
+def setUpModule():
+    global _ENV_BEFORE_MODULE
+    _ENV_BEFORE_MODULE = dict(os.environ)
+
+
+def tearDownModule():
+    from tests.envisolation import restore
+    restore(_ENV_BEFORE_MODULE)
+
 CLIENT_ID = "resonate-test-client"
 # "synthetic" is not decoration: tests/test_secrets.py scans every tracked
 # file for credential-shaped assignments, and that is the repository's

@@ -91,6 +91,22 @@ class ItIsTheIDENTITYThatCloses(unittest.TestCase):
         self.assertTrue(ok, why)
 
 
+def _productive_contact(key="ck-1", email="dana@acme.test"):
+    """A contact satisfying the productive verification policy (deliverable+reoon).
+
+    TheSENDPathReadsIt uses eligibility.decide, which loads the client config.
+    The record's client is "productive", whose policy requires deliverable as
+    primary. The shared contact() helper uses (contactout, reoon) which
+    satisfies the DEFAULT_POLICY used by channels.email_verdict but not the
+    productive policy.
+    """
+    return {"key": key, "email": email, "name": "Dana Reed",
+            "sendable": True, "verdict": "valid",
+            "verification": {"evidence": [
+                {"provider": "deliverable", "status": "valid", "email": email},
+                {"provider": "reoon", "status": "valid", "email": email}]}}
+
+
 class TheSENDPathReadsIt(unittest.TestCase):
     """A gate nothing consults is not a gate.
 
@@ -104,7 +120,7 @@ class TheSENDPathReadsIt(unittest.TestCase):
     def _rec(*entries):
         rec = record(*entries)
         rec["state"] = "ready"
-        rec["contacts"] = [contact()]
+        rec["contacts"] = [_productive_contact()]
         rec["cadence"] = {"ck-1": {"day1": {"channel": "email",
                                             "subject": "s", "body": "b" * 200}}}
         return rec

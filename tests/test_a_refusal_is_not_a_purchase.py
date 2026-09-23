@@ -29,6 +29,26 @@ from src import providers
 from src.providers import deliverable
 
 
+# This module exercises code that writes `os.environ` ITSELF - `deliverable.configure()` sets its contract variables in `os.environ` - so
+# restoring only what the tests set is not enough. Measured 2026-09-23: it
+# left DELIVERABLE_AUTH set for every module that ran afterwards.
+#
+# Module-level, because the writes happen inside the code under test rather
+# than in any one setUp, and a module is responsible for the side effects of
+# what it exercises.
+_ENV_BEFORE_MODULE = None
+
+
+def setUpModule():
+    global _ENV_BEFORE_MODULE
+    _ENV_BEFORE_MODULE = dict(os.environ)
+
+
+def tearDownModule():
+    from tests.envisolation import restore
+    restore(_ENV_BEFORE_MODULE)
+
+
 class ALocalRefusalIsFree(unittest.TestCase):
 
     def test_the_deliverable_contract_waits_on_the_operator(self):

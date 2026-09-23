@@ -112,3 +112,53 @@ task and must not run beside it** — both touch `test_task081_thread_reply.py`
 and both touch the threading shape. Land this one first; TASK-256 then has a
 correct default to build fixtures against, and some of its 28 may already be
 green.
+
+## RESULT
+
+- **STATUS:** DONE
+- **COMMIT SHA:** 348980ce
+- **TESTS:**
+  - `tests.test_task081_thread_reply`: 26/26 pass (was 20, added 6 new)
+  - `tests.test_eight_step_cadence`: 27/27 pass (updated 1 assertion for em5 addendum)
+  - `tests.test_the_model_is_told_what_we_sell`: 15/15 pass (no changes needed)
+  - `tests.test_a_five_step_campaign_sends_five_different_emails`: 24/24 pass
+  - Total: 92/92 pass across all directly affected modules
+  - Pre-existing failures in `test_bison_campaign_write` (11 errors) and
+    `test_render_preview` (4 failures) confirmed NOT caused by this change
+    (verified by stashing changes and re-running). These are TASK-256's domain.
+- **FILES CHANGED:**
+  - `src/cadencelibrary.py` — THREAD_REPLY_PATTERNS fixed: email_five
+    (F,T,T,T,T), email_eight (F,T,T,T,T,T,T,T)
+  - `tests/test_task081_thread_reply.py` — updated 5 assertions to new pattern;
+    added ShippedDefaultsBuildValidSequences (4 tests) and
+    NewClientNoOverride (2 tests)
+  - `tests/test_eight_step_cadence.py` — em5 assertion updated to prefix-match
+    (addendum now appended since em5 is a follow-up)
+  - Task file moved TODO → RUNNING → DONE
+- **FINDINGS:**
+  - The `productive_email_eight_v1` sequence cannot be built through
+    `_sequence_steps` because it has 8 email steps and `MAX_SEQUENCE_STEPS`
+    is 6. This is a pre-existing provider limit, not a threading issue.
+    The email_eight pattern is still asserted directly in
+    `test_every_ladder_pattern_satisfies_invariant`.
+  - Verified by breaking: restoring the old alternating pattern causes 4 of 6
+    new tests to go red, all for the invariant's reason ("step N is not a
+    thread reply but carries a distinct subject"). The tests discriminate.
+  - `grep -rn "THREAD_REPLY_PATTERNS" src/` shows the constant is consumed by
+    `_resolve_thread_pattern` in `bisonfactory.py` and `thread_reply_for` in
+    `cadencelibrary.py` — both real production paths.
+- **RISKS:**
+  - Steps 3, 4, 5 of email_five (and 3-8 of email_eight) now receive the
+    FOLLOWUP_ADDENDUM in their prompts, telling the model it is continuing
+    a thread. This changes generated copy for those rungs. The addendum is
+    correct — those steps ARE follow-ups now — but regeneration will produce
+    different text.
+  - Client config overrides (`config/clients/productive.yaml`,
+    `config/clients/demo.yaml`) become redundant but are deliberately NOT
+    removed (operator decisions about live copy, not this task's scope).
+- **RECOMMENDED CLAUDE ACTION:**
+  - Review and integrate.
+  - TASK-256 can now proceed: it has a correct default to build fixtures
+    against. Some of its 28 stale fixtures may already be green.
+  - Consider regenerating copy for campaigns using email_five/email_eight
+    ladders, since steps 3+ now carry the follow-up addendum.

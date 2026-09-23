@@ -34,18 +34,19 @@ from tests.fakebison import FakeBison
 class LadderMarksFollowUps(unittest.TestCase):
     """The ladder says which rungs are same-thread follow-ups."""
 
-    def test_email_five_pattern_is_ftftf(self):
-        """Campaign 352 runs F,T,F,T,F. The ladder's default matches."""
+    def test_email_five_pattern_is_opener_then_all_followups(self):
+        """TASK-258: opener is new-thread, every follow-up is same-thread.
+        The old alternating pattern (F,T,F,T,F) violated the invariant."""
         pattern = cadencelibrary.THREAD_REPLY_PATTERNS["email_five"]
-        self.assertEqual(pattern, (False, True, False, True, False))
+        self.assertEqual(pattern, (False, True, True, True, True))
 
     def test_thread_reply_for_returns_true_for_follow_up_rungs(self):
-        """Rungs 2 and 4 are follow-ups in the five-step ladder."""
+        """TASK-258: rung 1 is the opener; rungs 2-5 are follow-ups."""
         self.assertFalse(cadencelibrary.thread_reply_for("email_five", 1))
         self.assertTrue(cadencelibrary.thread_reply_for("email_five", 2))
-        self.assertFalse(cadencelibrary.thread_reply_for("email_five", 3))
+        self.assertTrue(cadencelibrary.thread_reply_for("email_five", 3))
         self.assertTrue(cadencelibrary.thread_reply_for("email_five", 4))
-        self.assertFalse(cadencelibrary.thread_reply_for("email_five", 5))
+        self.assertTrue(cadencelibrary.thread_reply_for("email_five", 5))
 
     def test_thread_reply_for_returns_none_for_unknown_ladder(self):
         """A ladder with no pattern returns None, not a guess."""
@@ -100,11 +101,11 @@ class FactoryCarriesThreadReply(unittest.TestCase):
     """The factory puts thread_reply into the payload."""
 
     def test_thread_reply_matches_ladder_pattern(self):
-        """Step 2 and 4 are True; steps 1, 3, 5 are False."""
+        """TASK-258: step 1 is the opener; steps 2-5 are follow-ups."""
         steps = bisonfactory._sequence_steps(
             SEQUENCE_CONFIG, cadencelibrary.PRODUCTIVE_LI_HEAVY_V1)
         thread_values = [s["thread_reply"] for s in steps]
-        self.assertEqual(thread_values, [False, True, False, True, False])
+        self.assertEqual(thread_values, [False, True, True, True, True])
 
     def test_follow_up_step_still_carries_subject(self):
         """A follow-up step carries email_subject - the flag is the mechanism,
@@ -179,7 +180,7 @@ class ThreadReplyRoundTrips(unittest.TestCase):
         self.assertEqual(status, 200)
         held = data["data"]
         thread_values = [s.get("thread_reply") for s in held]
-        self.assertEqual(thread_values, [False, True, False, True, False])
+        self.assertEqual(thread_values, [False, True, True, True, True])
 
     def test_follow_up_step_keeps_subject_after_round_trip(self):
         """After write+read, a follow-up step has both subject and flag."""
@@ -267,16 +268,172 @@ class BreakTheWiring(unittest.TestCase):
         self.assertEqual(steps[0]["thread_reply"], False)
 
     def test_wrong_pattern_is_detected(self):
-        """If the pattern were all-False (the old defect), the test fails."""
+        """If the pattern were the old alternating shape, the test fails."""
         steps = bisonfactory._sequence_steps(
             SEQUENCE_CONFIG, cadencelibrary.PRODUCTIVE_LI_HEAVY_V1)
-        # The old defect: all False
-        all_false = [False, False, False, False, False]
+        # The old defect: alternating F,T,F,T,F
+        old_alternating = [False, True, False, True, False]
         actual = [s["thread_reply"] for s in steps]
-        self.assertNotEqual(actual, all_false,
-                            "the pattern should NOT be all-False anymore")
-        # The correct pattern
-        self.assertEqual(actual, [False, True, False, True, False])
+        self.assertNotEqual(actual, old_alternating,
+                            "the pattern should NOT be the old alternating "
+                            "shape anymore")
+        # The correct pattern: opener only is new-thread
+        self.assertEqual(actual, [False, True, True, True, True])
+
+
+# ------------------------------------------- TASK-258: the shipped defaults
+#
+# Every shipped default cadence builds a valid sequence with NO client
+# override. The shape that trips the invariant: every step carries its OWN
+# distinct subject. With identical subjects the invariant is satisfied
+# trivially and the test passes on a broken ladder.
+
+
+class ShippedDefaultsBuildValidSequences(unittest.TestCase):
+    """TASK-258: every shipped cadence satisfies the threading invariant
+    with no client override, even when every step has a distinct subject."""
+
+    def _build_config_for_keys(self, keys, cadence_steps=None):
+        """Build a sequence config with distinct subjects.
+
+        When `cadence_steps` is supplied, the wait_in_days for each step is
+        derived from the actual day gaps in the cadence, so the delay
+        invariant is satisfied. When absent, waits are all 3 (and the
+        cadence is synthetic with matching day spacing).
+        """
+        if cadence_steps is not None:
+            email_days = [(s.get("day"), s.get("key"))
+                          for s in cadence_steps
+                          if s.get("channel") == "email" and s.get("key")]
+            email_days.sort(key=lambda p: (p[0], p[1]))
+            day_of = {k: d for d, k in email_days}
+        else:
+            day_of = {k: i * 3 + 1 for i, k in enumerate(keys)}
+
+        config_steps = {}
+        for i, key in enumerate(keys, start=1):
+            if i < len(keys):
+                wait = day_of.get(keys[i], day_of.get(key, 1) + 3) - day_of.get(key, 1)
+            else:
+                wait = 0
+            config_steps[key] = {
+                "order": i,
+                "subject": f"Distinct Subject {i}",
+                "body": f"<p>Body {i}</p>",
+                "wait_in_days": wait,
+            }
+        return {"title": "test", "steps": config_steps}
+
+    def test_productive_li_heavy_builds_with_distinct_subjects(self):
+        """productive_li_heavy_v1: 5 email steps, no override, distinct subjects."""
+        seq = cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
+        email_keys = [s["key"] for s in seq if s.get("channel") == "email"]
+        config = self._build_config_for_keys(email_keys, seq)
+        steps = bisonfactory._sequence_steps(config, seq)
+        self.assertEqual(len(steps), 5)
+        self.assertFalse(steps[0]["thread_reply"])
+        for step in steps[1:]:
+            self.assertTrue(step["thread_reply"])
+
+    def test_productive_balanced_builds_with_distinct_subjects(self):
+        """productive_balanced_v1: 5 email steps, no override, distinct subjects."""
+        seq = cadencelibrary.PRODUCTIVE_BALANCED_V1
+        email_keys = [s["key"] for s in seq if s.get("channel") == "email"]
+        config = self._build_config_for_keys(email_keys, seq)
+        steps = bisonfactory._sequence_steps(config, seq)
+        self.assertEqual(len(steps), 5)
+        self.assertFalse(steps[0]["thread_reply"])
+        for step in steps[1:]:
+            self.assertTrue(step["thread_reply"])
+
+    def test_productive_email_eight_builds_with_distinct_subjects(self):
+        """productive_email_eight_v1: 8 email steps, no override, distinct subjects.
+
+        The provider declares MAX_SEQUENCE_STEPS (6) copy-variable pairs, so
+        an 8-step sequence is refused BEFORE the threading check fires. The
+        threading invariant is still covered for email_eight through the
+        ladder pattern assertion in test_every_ladder_pattern_satisfies_invariant
+        and through the eight-step cadence tests in test_eight_step_cadence.
+        """
+        seq = cadencelibrary.PRODUCTIVE_EMAIL_EIGHT_V1
+        email_keys = [s["key"] for s in seq if s.get("channel") == "email"]
+        config = self._build_config_for_keys(email_keys, seq)
+        with self.assertRaises(bisonfactory.FactoryRefused) as ctx:
+            bisonfactory._sequence_steps(config, seq)
+        self.assertIn("MAX_SEQUENCE_STEPS", str(ctx.exception))
+
+    def test_every_ladder_pattern_satisfies_invariant(self):
+        """Every pattern in THREAD_REPLY_PATTERNS has opener False and all
+        follow-ups True - the shape that satisfies the threading invariant."""
+        for ladder_name, pattern in cadencelibrary.THREAD_REPLY_PATTERNS.items():
+            self.assertFalse(pattern[0],
+                             f"ladder {ladder_name}: opener must be new-thread")
+            for i, is_thread in enumerate(pattern[1:], start=2):
+                self.assertTrue(is_thread,
+                                f"ladder {ladder_name}: step {i} must be "
+                                f"a follow-up")
+
+
+class NewClientNoOverride(unittest.TestCase):
+    """TASK-258: a new client with email_sequence and NO thread_reply_pattern
+    inherits a default that satisfies the threading invariant."""
+
+    def test_client_without_override_builds_valid_sequence(self):
+        """A client config with email_sequence steps but no thread_reply_pattern
+        builds a valid sequence through the default ladder."""
+        seq = cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
+        email_steps = [s for s in seq if s.get("channel") == "email"]
+        email_keys = [s["key"] for s in email_steps]
+        email_days = [(s["day"], s["key"]) for s in email_steps]
+        email_days.sort(key=lambda p: (p[0], p[1]))
+        day_of = {k: d for d, k in email_days}
+        config_steps = {}
+        for i, key in enumerate(email_keys, start=1):
+            if i < len(email_keys):
+                wait = day_of[email_keys[i]] - day_of[key]
+            else:
+                wait = 0
+            config_steps[key] = {
+                "order": i,
+                "subject": f"Subject {i}",
+                "body": f"<p>Body {i}</p>",
+                "wait_in_days": wait,
+            }
+        config = {"title": "new client", "steps": config_steps}
+        self.assertNotIn("thread_reply_pattern", config)
+        steps = bisonfactory._sequence_steps(config, seq)
+        self.assertFalse(steps[0]["thread_reply"])
+        for step in steps[1:]:
+            self.assertTrue(step["thread_reply"])
+
+    def test_old_pattern_would_be_refused(self):
+        """Verify the new tests discriminate: restoring the old alternating
+        pattern causes the invariant to refuse distinct-subject steps."""
+        seq = cadencelibrary.PRODUCTIVE_LI_HEAVY_V1
+        email_steps = [s for s in seq if s.get("channel") == "email"]
+        email_keys = [s["key"] for s in email_steps]
+        email_days = [(s["day"], s["key"]) for s in email_steps]
+        email_days.sort(key=lambda p: (p[0], p[1]))
+        day_of = {k: d for d, k in email_days}
+        config_steps = {}
+        for i, key in enumerate(email_keys, start=1):
+            if i < len(email_keys):
+                wait = day_of[email_keys[i]] - day_of[key]
+            else:
+                wait = 0
+            config_steps[key] = {
+                "order": i,
+                "subject": f"Subject {i}",
+                "body": f"<p>Body {i}</p>",
+                "wait_in_days": wait,
+            }
+        config = {
+            "title": "test",
+            "steps": config_steps,
+            "thread_reply_pattern": [False, True, False, True, False],
+        }
+        with self.assertRaises(bisonfactory.FactoryRefused):
+            bisonfactory._sequence_steps(config, seq)
 
 
 if __name__ == "__main__":

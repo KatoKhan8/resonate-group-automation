@@ -314,21 +314,5 @@ class ItDoesNotTouchTheRealStore(unittest.TestCase):
             used - {"refuse_production_write"}, set(),
             "sqlitestore reaches into store for more than the barrier")
 
-    def test_store_does_not_import_sqlitestore(self):
-        """The other direction. TASK-253 wires them; until then `store` must
-        not know this module exists, or 'not wired' is not true."""
-        import ast
-        import inspect
-
-        tree = ast.parse(inspect.getsource(store))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                names = {a.name for a in node.names}
-                self.assertNotIn("sqlitestore", names)
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    self.assertNotIn("sqlitestore", alias.name)
-
-
 if __name__ == "__main__":
     unittest.main()

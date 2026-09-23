@@ -23,6 +23,26 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import claim_task
 
 
+# This module exercises code that writes `os.environ` ITSELF - it sets git's author and committer dates to make a commit reproducible - so
+# restoring only what the tests set is not enough. Measured 2026-09-23: it
+# left GIT_AUTHOR_DATE and GIT_COMMITTER_DATE set for every module that ran afterwards.
+#
+# Module-level, because the writes happen inside the code under test rather
+# than in any one setUp, and a module is responsible for the side effects of
+# what it exercises.
+_ENV_BEFORE_MODULE = None
+
+
+def setUpModule():
+    global _ENV_BEFORE_MODULE
+    _ENV_BEFORE_MODULE = dict(os.environ)
+
+
+def tearDownModule():
+    from tests.envisolation import restore
+    restore(_ENV_BEFORE_MODULE)
+
+
 STAGES = ["TODO", "RUNNING", "REVIEW", "DONE", "REWORK", "BLOCKED",
           "BLOCKED_QUOTA"]
 

@@ -13,7 +13,7 @@ real write is the second time the code path runs, not the first.
 
 WHAT THIS PROVES:
 1. The campaign is created holding zero leads.
-2. The sequence written is three CONTROL steps with threading F/T/F.
+2. The sequence written is three CONTROL steps with threading F/T/T.
 3. The readback returns what was written.
 4. A second set_sequence call APPENDS (the behaviour to prove, not assume).
 5. The retry question: a blind retry produces a doubled sequence.
@@ -39,8 +39,8 @@ CID = "control-rehearsal"
 CLIENT = "productive"
 
 # The three CONTROL steps, from cadence.TEMPLATES: persona_pain,
-# comparable_proof, breakup. Threading F/T/F from the email_five ladder
-# pattern truncated to three.
+# comparable_proof, breakup. Threading F/T/T: opener owns the subject,
+# both follow-ups are thread replies referencing it.
 CONTROL_SEQUENCE_CONFIG = {
     "title": "Resonate generated cadence",
     "steps": {
@@ -51,7 +51,7 @@ CONTROL_SEQUENCE_CONFIG = {
         "em3": {"order": 3, "subject": "{SUBJECT_3}",
                 "body": "<p>{BODY_3}</p>", "wait_in_days": 0},
     },
-    "thread_reply_pattern": [False, True, False],
+    "thread_reply_pattern": [False, True, True],
 }
 
 CONFIG = {
@@ -147,7 +147,7 @@ class CampaignNameDerivation(_Base):
 
 
 class SequenceShape(_Base):
-    """The three CONTROL steps with threading F/T/F, built by _sequence_steps."""
+    """The three CONTROL steps with threading F/T/T, built by _sequence_steps."""
 
     def test_three_steps_in_cadence_order(self):
         steps = bisonfactory._sequence_steps(
@@ -156,12 +156,12 @@ class SequenceShape(_Base):
         self.assertEqual([s["order"] for s in steps], [1, 2, 3])
         self.assertEqual([s["step_key"] for s in steps], ["em1", "em2", "em3"])
 
-    def test_threading_is_false_true_false(self):
+    def test_threading_is_false_true_true(self):
         steps = bisonfactory._sequence_steps(
             CONTROL_SEQUENCE_CONFIG, CONTROL_CADENCE_STEPS)
         self.assertEqual(
             [s["thread_reply"] for s in steps],
-            [False, True, False])
+            [False, True, True])
 
     def test_waits_are_declared(self):
         steps = bisonfactory._sequence_steps(
@@ -224,7 +224,7 @@ class SequenceWriteAndReadback(_Base):
         # Threading pattern preserved.
         self.assertEqual(
             [s["thread_reply"] for s in held],
-            [False, True, False])
+            [False, True, True])
         # Subjects preserved.
         self.assertEqual(
             [s["email_subject"] for s in held],

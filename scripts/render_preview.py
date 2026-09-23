@@ -1109,7 +1109,8 @@ def _fixture_rec_email():
                                  "whether a project is on track while it "
                                  "is still running?"),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em1"}},
+                        "approval": {"fingerprint": "ed9e367b8bac48fe",
+                                     "by": "operator"}},
                 "em2": {"subject": "A different angle on the numbers",
                         "body": ("Jacob, a different thought for "
                                  "Northbridge Consulting.\n\n"
@@ -1122,7 +1123,8 @@ def _fixture_rec_email():
                                  "Would it be useful to see what that "
                                  "looked like for a team your size?"),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em2"}},
+                        "approval": {"fingerprint": "676e2cd011159759",
+                                     "by": "operator"}},
                 "em3": {"subject": ("What Productive joins up at "
                                     "Northbridge Consulting"),
                         "body": ("Jacob, Productive connects time "
@@ -1137,7 +1139,8 @@ def _fixture_rec_email():
                                  "finance team sees, during the project "
                                  "rather than after it."),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em3"}},
+                        "approval": {"fingerprint": "0d8fc007463ac48e",
+                                     "by": "operator"}},
                 "em4": {"subject": "One more thought on visibility",
                         "body": ("Jacob, following up on a different "
                                  "point. The teams we work with find that "
@@ -1147,7 +1150,8 @@ def _fixture_rec_email():
                                  "Is that roughly how it works at "
                                  "Northbridge Consulting?"),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em4"}},
+                        "approval": {"fingerprint": "07339bdbcc7c71bc",
+                                     "by": "operator"}},
                 "em5": {"subject": "Should I close the file?",
                         "body": ("Jacob, I don't want to keep writing if "
                                  "the timing is wrong. If project "
@@ -1156,7 +1160,8 @@ def _fixture_rec_email():
                                  "Is there someone else at Northbridge "
                                  "Consulting who owns this?"),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em5"}},
+                        "approval": {"fingerprint": "2b79f3af3bab308f",
+                                     "by": "operator"}},
             },
         },
     }
@@ -1207,7 +1212,8 @@ def _fixture_rec_email_second():
                                  "project is making money while it is "
                                  "still running?"),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em1"}},
+                        "approval": {"fingerprint": "e6bad56fddffc0fa",
+                                     "by": "operator"}},
                 "em2": {"subject": "The cost of the current approach",
                         "body": ("Declan, a different thought for Bastion "
                                  "Digital.\n\n"
@@ -1220,7 +1226,8 @@ def _fixture_rec_email_second():
                                  "Would it be useful to see what that "
                                  "looks like for a team your size?"),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em2"}},
+                        "approval": {"fingerprint": "e49d5c1069447c1f",
+                                     "by": "operator"}},
                 "em3": {"subject": "What Productive joins up at Bastion",
                         "body": ("Declan, Productive connects time "
                                  "tracking, budgets and resource planning "
@@ -1230,7 +1237,8 @@ def _fixture_rec_email_second():
                                  "running rather than reconstructed at "
                                  "month end."),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em3"}},
+                        "approval": {"fingerprint": "78b7cff2c1a51808",
+                                     "by": "operator"}},
                 "em4": {"subject": "One more thought on margin",
                         "body": ("Declan, following up on a different "
                                  "point. The agencies we work with find "
@@ -1241,7 +1249,8 @@ def _fixture_rec_email_second():
                                  "Is that roughly how it works at Bastion "
                                  "Digital?"),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em4"}},
+                        "approval": {"fingerprint": "7ec3269a7d5a5db9",
+                                     "by": "operator"}},
                 "em5": {"subject": "Should I close the file?",
                         "body": ("Declan, I don't want to keep writing if "
                                  "the timing is wrong. If margin "
@@ -1250,7 +1259,8 @@ def _fixture_rec_email_second():
                                  "Is there someone else at Bastion Digital "
                                  "who owns this?"),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em5"}},
+                        "approval": {"fingerprint": "e49684093dcf03ed",
+                                     "by": "operator"}},
             },
         },
     }
@@ -1292,13 +1302,15 @@ def _fixture_rec_email_missing():
                         "body": ("Priya, I work with agency founders on "
                                  "project margin visibility."),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em1"}},
+                        "approval": {"fingerprint": "c248521334dab493",
+                                     "by": "operator"}},
                 "em2": {"subject": "A different angle on the numbers",
                         "body": ("Priya, most agencies your size lose "
                                  "margin between the spreadsheet and the "
                                  "actual work."),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em2"}},
+                        "approval": {"fingerprint": "4ab5419654a01434",
+                                     "by": "operator"}},
                 "em3": {"subject": "This has no approval",
                         "body": "This should not reach the wire",
                         "channel": "email", "generated": True},
@@ -1308,12 +1320,14 @@ def _fixture_rec_email_missing():
                                  "existing and the right person seeing "
                                  "it."),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em4"}},
+                        "approval": {"fingerprint": "4e8dd13fbff9c278",
+                                     "by": "operator"}},
                 "em5": {"subject": "Should I close the file?",
                         "body": ("Priya, happy to stop if the timing is "
                                  "wrong."),
                         "channel": "email", "generated": True,
-                        "approval": {"fingerprint": "fixture-approve-em5"}},
+                        "approval": {"fingerprint": "2da7d1e10a2f13c2",
+                                     "by": "operator"}},
             },
         },
     }

@@ -288,11 +288,29 @@ through shadow and stays on disk as a readable artifact afterwards.
 
 ## 9. What this design does NOT settle
 
-- **It does not make `load()` cheap.** `load()` still materialises every
-  record, because `Snapshot` and both guards need the full set. What SQLite
-  buys first is the WRITE: a checkpoint updates the rows it changed.
-  A narrowed read needs the guards to work against a subset, which is a
-  safety change and is deliberately not in this design.
+- **It does not make `load()` cheap — NOW MEASURED, not predicted.**
+  TASK-255 ran the three arms at production record size
+  (`docs/LOAD-TEST-20K-2026-09-22.md`):
+
+        ARM              RECORDS  CHECKPOINTS  TIME_S  MB_WRITTEN  AMPLIFICATION
+        jsonl              1,000          200    65.4     3,981.8       1108.1x
+        jsonl+journal      1,000          200   123.9         3.6          1.0x
+        sqlite             1,000          200    43.3         0.2          0.1x
+
+  On write volume it is a rout, and O(changed) is demonstrated across three
+  sizes rather than asserted at one: sqlite writes a constant ~180-188 KB from
+  500 to 1,000 records while the payload doubles.
+
+  **But all three arms are O(N²) in wall clock.** 2x the records costs 4x the
+  time on every arm, because the read per checkpoint is O(N) and there are N/5
+  checkpoints. Narrowing the write does not change the shape. Projected at
+  20,000: jsonl ~7 hours, journal ~52 minutes, sqlite ~23 minutes.
+
+  So this design is a very large win and NOT the finish line — 7 hours to 23
+  minutes, and 1.59 TB of writes to 188 KB. The read half stays open, it needs
+  the guards to work against a subset, and that is a safety change deliberately
+  not in this design. **Do not let "SQLite fixes the storage problem" be the
+  sentence that survives from this document.**
 - **It does not touch `work/campaigns.jsonl`.** 58 KB, 1 file, no pressure.
   Migrating it would be scope nobody asked for.
 - **It is not proven at 20k.** Every figure above is measured at 1,027 records
@@ -337,6 +355,81 @@ holding real client state are separate reviewable things, exactly as
               a 900-byte one, and reports the same columns as
               store_write_profile so the two are comparable.
 
-Promotion to `QUEUE_BACKEND=sqlite` is NOT in this list. It is an operator
-decision against a clean shadow ledger, and it belongs to the production
-session.
+Promotion to `QUEUE_BACKEND=sqlite` is NOT in this list. See §11.
+
+---
+
+## 11. THE PROMOTION RULE — recorded, operator, 2026-09-22
+
+**Set by Zvonimir. Four conditions, all of them, and none is inferable from a
+passing test suite. Until every one holds, JSONL stays live.**
+
+    1. TASK-259 green    the reproduced-incident tests run on BOTH backends,
+                         so both loss guards are exercised on both. Until
+                         this, the three-way merge and both guards are
+                         proven on JSONL only.
+
+    2. TASK-260 green    the checkpoint read is O(changed).
+                         **MET 2026-09-22 after TASK-261 + the index fix.**
+                         1,000 -> 3.74s, 5,000 -> 20.77s, ratio 5.55x
+                         against a target of ~5x. 20,000 records now takes
+                         126.91s - 2m07s, measured, against ~6.8 HOURS
+                         projected the same morning.
+                         Two causes were found and both are fixed: Snapshot
+                         re-serialising every record twice per checkpoint
+                         (TASK-261), and `ORDER BY seq` defeating the
+                         records_rev index so `read_changed_since` did a full
+                         table SCAN even when nothing matched.
+                         `docs/BENCHMARK-PASS-WALL-CLOCK-2026-09-22.md`.
+                         SUPERSEDED, kept for the record:
+                         Measured after it landed: 1,000 records 60.53s,
+                         5,000 records 1,522.58s - a ratio of 25.2x for 5x
+                         the records, where 5 squared is 25. A pass is still
+                         quadratic to two significant figures.
+                         The cause is NOT the storage backend: `Snapshot`
+                         re-serialises every record TWICE per checkpoint to
+                         re-derive which the caller edited, on every arm.
+                         TASK-261 owns it.
+                         `docs/BENCHMARK-PASS-WALL-CLOCK-2026-09-22.md`.
+
+    3. 48 HOURS OF SHADOW WITH A ZERO DIFF
+                         `QUEUE_BACKEND=shadow` on the live queue, for two
+                         full days, with `work/store-shadow-diff.jsonl`
+                         carrying no divergence.
+
+    4. THE PRODUCTION SESSION FLIPS IT, IN A WINDOW WITH NO SENDS.
+                         Not this session, not a worker, not a script. And
+                         not while a campaign is sending.
+
+### The trap condition 3 is built to avoid, and how to not fall into it
+
+**An empty diff ledger is not the same as a clean one.** A ledger with zero
+rows because nothing ran looks identical to a ledger with zero rows because
+everything agreed, and this repository has shipped that exact vacuous pass
+twice — F-003's `active_campaign_ids` defaulting to `()` so `coverage()`
+passed against nothing, and `leadstop.sweep` reporting clean because it never
+incremented its counter.
+
+TASK-253's ledger therefore records **writes observed** as well as
+divergences, and the promotion check refuses on zero of both. So condition 3
+is not "the file is empty" — it is:
+
+    writes_observed > 0  AND  divergences == 0  over 48 hours
+
+Read the count before believing the silence.
+
+### What promotion does NOT require, so nobody adds it later
+
+Not a full-suite green: the baseline carries 111 known failures
+(`docs/state/SUITE-BASELINE-2026-09-22.md`) and none of them is about storage.
+Not the 20k load test being performed on the jsonl arm — it writes ~1.59 TB
+and is projected by design.
+
+### And it is reversible
+
+`QUEUE_BACKEND=jsonl` puts the old path back, because the migration never
+deletes or modifies `queue.jsonl` (§8) and the JSONL file keeps being written
+throughout shadow. The rollback is one environment variable, provided nothing
+has been written in `sqlite` mode that JSONL did not also get — which is the
+reason shadow comes first and the reason it is 48 hours rather than an
+afternoon.

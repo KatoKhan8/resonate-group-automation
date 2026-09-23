@@ -24,6 +24,26 @@ from src.providers import xai
 from tests.base import ProviderTest
 
 
+# This module exercises code that writes `os.environ` ITSELF - its own `XaiTest.setUp` sets the key and nothing unsets it - so
+# restoring only what the tests set is not enough. Measured 2026-09-23: it
+# left XAI_API_KEY set for every module that ran afterwards.
+#
+# Module-level, because the writes happen inside the code under test rather
+# than in any one setUp, and a module is responsible for the side effects of
+# what it exercises.
+_ENV_BEFORE_MODULE = None
+
+
+def setUpModule():
+    global _ENV_BEFORE_MODULE
+    _ENV_BEFORE_MODULE = dict(os.environ)
+
+
+def tearDownModule():
+    from tests.envisolation import restore
+    restore(_ENV_BEFORE_MODULE)
+
+
 class XaiTest(ProviderTest):
     def setUp(self):
         super().setUp()

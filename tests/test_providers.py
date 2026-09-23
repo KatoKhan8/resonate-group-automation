@@ -445,7 +445,8 @@ class TestNoSendPathExists(unittest.TestCase):
         self.assertNotIn('"POST"', inspect.getsource(reoon))
 
     def test_every_contactout_post_goes_to_a_read_only_route(self):
-        read_only = {"/people/count", "/people/search", "/domain/enrich"}
+        from tests.base import CONTACTOUT_READ_ONLY_ROUTES
+        read_only = CONTACTOUT_READ_ONLY_ROUTES
         posted = {path for method, path in contactout.ROUTES.values()
                   if method == "POST"}
         self.assertTrue(posted <= read_only, f"unexpected POST route: {posted - read_only}")

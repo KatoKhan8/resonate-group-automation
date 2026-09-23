@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 from src import approval, approve, cadence, clients, lint, push, store
-from tests.base import FIXTURES, pin_client_config
+from tests.base import FIXTURES, install_fixture, pin_client_config, write_as_another_process
 
 
 @contextlib.contextmanager
@@ -28,7 +28,7 @@ def degraded_fixture():
     """
     recs = store.load()
     yield recs
-    store._write(recs)
+    write_as_another_process(recs)
 
 
 PARA = chr(10) * 2
@@ -39,9 +39,9 @@ class ApproveTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="rga-approve-")
         self.queue = os.path.join(self.tmp, "work", "queue.jsonl")
         os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        shutil.copyfile(os.path.join(FIXTURES, "phase7.jsonl"), self.queue)
         self._prev = os.environ.get("QUEUE")
         os.environ["QUEUE"] = self.queue
+        install_fixture("phase7.jsonl", self.queue)
         # Pinned, not loaded: these tests are about approval, not about
         # which cadence Productive currently runs. `push.run` and
         # `approve.pending` load the config themselves, so passing one
@@ -298,10 +298,28 @@ class TestApprovalIsResumable(ApproveTest):
 
     def test_approval_state_lives_in_the_queue_and_nowhere_else(self):
         self.approve()
-        with open(self.queue, encoding="utf-8") as f:
-            self.assertIn("approval", f.read())
-        work = os.path.dirname(self.queue)
-        self.assertEqual(sorted(os.listdir(work)), ["queue.jsonl"])
+        mode = store.backend()
+        if mode == "sqlite":
+            # Under sqlite, the canonical store is the DB, not the JSONL file
+            import sqlite3
+            from src import sqlitestore
+            conn = sqlite3.connect(store.db_path())
+            try:
+                recs = sqlitestore.read_all(conn)
+                rec = next(r for r in recs if r["id"] == "meridian")
+                # Check that approval state is persisted
+                self.assertTrue(any("approval" in str(v) for v in rec.values()))
+            finally:
+                conn.close()
+            work = os.path.dirname(self.queue)
+            # Under sqlite, expect queue.db (and possibly WAL/SHM files)
+            files = [f for f in os.listdir(work) if not f.endswith(("-wal", "-shm"))]
+            self.assertEqual(sorted(files), ["queue.db"])
+        else:
+            with open(self.queue, encoding="utf-8") as f:
+                self.assertIn("approval", f.read())
+            work = os.path.dirname(self.queue)
+            self.assertEqual(sorted(os.listdir(work)), ["queue.jsonl"])
 
 
 class TestTheRecordLevelState(ApproveTest):

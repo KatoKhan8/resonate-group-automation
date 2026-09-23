@@ -1,0 +1,122 @@
+{
+  "1k_jsonl": {
+    "records": 1000,
+    "initial_write_s": 0.0753,
+    "checkpoints": 200,
+    "total_write_s": 56.8984,
+    "median_write_s": 0.272145,
+    "bytes_written": 3981770195,
+    "payload_bytes": 3593277,
+    "write_amplification": 1108.1,
+    "read_s": 0.098519,
+    "runs": 1,
+    "projection_at_20k": {
+      "base_file_bytes": 398122540.0,
+      "checkpoints": 4000,
+      "total_bytes_written": 1592490160000.0,
+      "total_mb_written": 1592490.2,
+      "total_gb_written": 1592.49,
+      "total_tb_written": 1.5925
+    },
+    "arm": "jsonl",
+    "generator_stats": {
+      "count": 1000,
+      "mean_bytes": 19906.1,
+      "max_bytes": 200026,
+      "min_bytes": 2039,
+      "median_bytes": 12145.0,
+      "total_bytes": 19906127,
+      "tail_over_150k": 5,
+      "mean_within_5pct": true
+    }
+  },
+  "scaling": [
+    {
+      "records": 100,
+      "initial_write_s": 0.0101,
+      "checkpoints": 20,
+      "total_write_s": 0.8312,
+      "median_write_s": 0.040297,
+      "bytes_written": 366221,
+      "payload_bytes": 364171,
+      "write_amplification": 1.0,
+      "read_s": 0.017701,
+      "runs": 1,
+      "arm": "jsonl+journal",
+      "size": 100
+    },
+    {
+      "records": 100,
+      "db_bytes": 2344288,
+      "initial_write_s": 0.0181,
+      "checkpoints": 20,
+      "total_write_s": 0.2103,
+      "median_write_s": 0.01054,
+      "bytes_written": 877560,
+      "payload_bytes": 364171,
+      "write_amplification": 2.4,
+      "read_s": 0.006412,
+      "runs": 1,
+      "arm": "sqlite",
+      "size": 100
+    },
+    {
+      "records": 500,
+      "initial_write_s": 0.0373,
+      "checkpoints": 100,
+      "total_write_s": 22.5257,
+      "median_write_s": 0.22355,
+      "bytes_written": 1991280,
+      "payload_bytes": 1980990,
+      "write_amplification": 1.0,
+      "read_s": 0.070728,
+      "runs": 1,
+      "arm": "jsonl+journal",
+      "size": 500
+    },
+    {
+      "records": 500,
+      "db_bytes": 20992080,
+      "initial_write_s": 0.2277,
+      "checkpoints": 100,
+      "total_write_s": 8.8483,
+      "median_write_s": 0.084107,
+      "bytes_written": 180224,
+      "payload_bytes": 1980990,
+      "write_amplification": 0.1,
+      "read_s": 0.040779,
+      "runs": 1,
+      "arm": "sqlite",
+      "size": 500
+    },
+    {
+      "records": 1000,
+      "initial_write_s": 0.1415,
+      "checkpoints": 200,
+      "total_write_s": 89.963,
+      "median_write_s": 0.441688,
+      "bytes_written": 3613967,
+      "payload_bytes": 3593277,
+      "write_amplification": 1.0,
+      "read_s": 0.112528,
+      "runs": 1,
+      "arm": "jsonl+journal",
+      "size": 1000
+    },
+    {
+      "records": 1000,
+      "db_bytes": 41901800,
+      "initial_write_s": 0.5025,
+      "checkpoints": 200,
+      "total_write_s": 34.7279,
+      "median_write_s": 0.167307,
+      "bytes_written": 188416,
+      "payload_bytes": 3593277,
+      "write_amplification": 0.1,
+      "read_s": 0.080661,
+      "runs": 1,
+      "arm": "sqlite",
+      "size": 1000
+    }
+  ]
+}

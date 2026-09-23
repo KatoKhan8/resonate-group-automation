@@ -5,32 +5,39 @@ diffable.** `SUITE-BASELINE-2026-09-22.json` beside this file holds every
 failing test by name; this file says what they are.
 
     runner      py -3 -m tests.offline
-    branch      infra, off master c75b4b60
+    branch      infra
 
-    BEFORE      11,098 tests · 80 F · 36 E · 116 entries · 112 distinct
-    AFTER       11,109 tests · 75 F · 36 E · 111 entries · 111 distinct
+    MORNING     11,098 tests · 80 F · 36 E · 116 entries · 112 distinct
+    AFTER FIX   11,109 tests · 75 F · 36 E · 111 entries · 111 distinct
+    END OF DAY  11,226 tests · 74 F ·  8 E ·  82 entries ·  82 distinct
 
-Two full runs, not one and an estimate. The second was taken after the
-`test_invariants` fix in section 2 and **confirms the predicted −5 exactly**,
-with the JSON beside this file regenerated from it.
+# THE NUMBER FOR THE REGISTER: 82
 
-**The diff this file exists to make possible, performed:**
+Three full runs, not one and two estimates. The JSON beside this file is
+generated from the third.
 
-    gone   test_invariants.TestTheBarrierCoversEveryWriter
-             .test_every_self_writer_refuses_the_real_work_directory
-           — one method, five subTest entries, hence −5 entries and −1 distinct
-    new    (none)
+**The diff this file exists to make possible, performed across the day:**
 
-Zero regressions, stated as a set difference rather than inferred from two
-totals being five apart. That is the whole argument of section 1 in one line:
-116 → 111 could have been eleven fixes and six new failures, and nothing in
-the old format could have told you.
+    gone   30 distinct tests, in four modules
+             test_render_preview          11   TASK-258 + TASK-256
+             test_bison_campaign_write    11   TASK-256
+             test_task081_thread_reply     6   TASK-258
+             test_invariants               2   the PinsTheRealStatePaths mixin
+    new    NONE
 
-The +11 tests are this branch's new GLM harness tests, which landed between
-the two runs. A further **−1** landed after the second run
-(`TestValidationCannotSpendByAccident`, the same environment leak, found *by*
-this diff) and is not yet reflected in a full measurement; expect 110.
-The 26 `sqlitestore` tests also postdate it.
+**Zero regressions**, stated as a set difference rather than inferred from two
+totals being thirty-four apart. 116 → 82 could have been forty fixes and six
+new failures; the old count-only format could not have told you which. That is
+the entire argument for this file, and it is now load-bearing rather than
+rhetorical — it is how the `QUEUE_DB` omission and both guard false positives
+were caught.
+
+Errors fell hardest: **36 → 8**. Most of the morning's errors were the
+`FactoryRefused` cluster, which was one cause wearing twenty-eight hats.
+
+Measured at `be3f1c55`, before TASK-259, TASK-260 and the three store fixes
+merged. Those are store-only and ADD tests rather than removing failures; 277
+store tests are green on **both backends** at `54619fc1`. Expect 82 to hold.
 
 ---
 
@@ -212,23 +219,37 @@ assertion loosened, no guard widened.
 
 ## 5. THE NUMBER THE REGISTER SHOULD CARRY
 
-    2026-09-22   11,109 tests   111 failure/error entries   111 distinct
+    2026-09-22   11,226 tests   82 failure/error entries   82 distinct
 
-**Measured, not derived** — the second full run, and the JSON beside this file
-is generated from it. Expect **110** on the next measurement: one more
-order-dependent failure was fixed after that run, and it was found by the
-diff above rather than by looking.
+**Measured, three times, and diffed by name each time.** Down from 116 this
+morning, zero regressions.
 
-It is **a floor to work down from, not an achievement**. Two thirds of it is two
-known contract changes:
+What is left, and none of it is storage:
 
-    threading invariant (TASK-219)   28
-    verification roles  (TASK-250)   ~19  — task already written, not started
-    ------------------------------------
-                                     ~47 of 111
+    test_e2e                                   14
+    test_preproduction                          6
+    test_a_gated_step_is_waiting_not_absent     5
+    test_two_providers_disagreeing...           5
+    test_enrich                                 5
+    test_for_prompt_quality                     5
+    the tail, 1-3 each across ~20 modules      ~42
 
-Both are fixture work with a stated rule — *update the fixtures, not the
-policy* — and neither is hard. It is simply never been anybody's turn.
+**The next big cluster is TASK-250's**, which is written and was never
+started: the verification roles changed on 2026-09-21 (primary moved from
+ContactOut to Deliverable) and fixtures still build evidence from the old
+pair. `test_e2e` and `test_enrich` carry its signature — `None != 'accept_all'`
+and `'held' != 'approved'` — which is ~19 of the 82. It is fixture work with
+a stated rule, exactly like the 30 closed today.
+
+**Still not classified, and deliberately not guessed at**: the ~42-entry tail.
+Named in the JSON. "Looks like TASK-250" is not a classification and this
+register's first rule is a reproduction.
+
+**THREE OF THE 82 ARE A REAL DEFECT, NOT TEST DEBT.**
+`test_fixture_hygiene.TestNoRealDataAnywhereInGit` — the PII guard — is red
+because of identifiers that landed on 09-21 and 09-22, after ISSUE-006 closed
+it. §3.2. It belongs to the production session and it is the one row here that
+should not wait its turn.
 
 **The rule this file asks the register to adopt:** a baseline is a LIST, and a
 count without one is not a baseline. Regenerate the JSON on every measurement
