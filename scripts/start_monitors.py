@@ -163,6 +163,71 @@ def start(live=False, only=None, out=print):
     return started, skipped
 
 
+def pids_for(argv):
+    """PIDs whose command line runs this monitor's script. Windows-specific.
+
+    Matching on the SCRIPT PATH, not on a friendly name: two bison watchers
+    differ only by `--campaign N`, so the campaign argument is matched too
+    when there is one. A restart that killed the wrong watcher would be a
+    silent gap on a live campaign.
+    """
+    script = os.path.basename(argv[0])
+    want = []
+    if "--campaign" in argv:
+        want.append("--campaign " + argv[argv.index("--campaign") + 1])
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name like '%python%'\" | "
+          "Select-Object ProcessId, CommandLine | ConvertTo-Json -Compress")
+    try:
+        done = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                              capture_output=True, text=True, timeout=60)
+        rows = json.loads(done.stdout or "[]")
+    except Exception:                                       # noqa: BLE001
+        return []
+    if isinstance(rows, dict):
+        rows = [rows]
+    out = []
+    for row in rows:
+        line = row.get("CommandLine") or ""
+        if script not in line:
+            continue
+        if any(w not in line for w in want):
+            continue
+        out.append(int(row.get("ProcessId")))
+    return out
+
+
+def restart(names, out=print):
+    """Stop, then start. For a merge: the loops import once and never reload.
+
+    `--live` alone will NOT do this - it skips anything with a fresh
+    heartbeat, which is exactly right for a crash recovery and exactly wrong
+    after a merge. A merge is not a deploy, and this is the deploy.
+    """
+    table = dict(MONITORS)
+    rc = 0
+    for name in names:
+        argv = table.get(name)
+        if argv is None:
+            out(f"  UNKNOWN monitor {name!r}")
+            rc = 1
+            continue
+        pids = pids_for(argv)
+        if not pids:
+            out(f"  {name:<20} no process found; starting fresh")
+        for pid in pids:
+            try:
+                subprocess.run(["taskkill", "/PID", str(pid), "/F"],
+                               capture_output=True, text=True, timeout=30)
+                out(f"  STOP  {name:<20} pid {pid}")
+            except Exception as exc:                        # noqa: BLE001
+                out(f"  STOP  {name:<20} pid {pid} FAILED: {exc}")
+                rc = 1
+        time.sleep(2)
+        proc = spawn(argv)
+        out(f"  START {name:<20} pid {proc.pid}")
+    return rc
+
+
 def install_task(out=print):
     """Register the logon task. Prints what automatic logon still needs."""
     cmd = (f'"{sys.executable}" "{os.path.join(ROOT, "scripts", "start_monitors.py")}" --live')
@@ -225,10 +290,18 @@ def main(argv=None):
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--only", action="append")
     parser.add_argument("--install-task", action="store_true")
+    parser.add_argument("--restart", action="append",
+                        help="stop and start this monitor, whatever its "
+                             "heartbeat says. Use after a merge.")
     args = parser.parse_args(argv)
 
     if args.install_task:
         return install_task()
+    if args.restart:
+        print("")
+        print("RESTARTING " + ", ".join(args.restart))
+        print("")
+        return restart(args.restart)
     if args.status or not (args.plan or args.live):
         return 0 if status() == 0 else 1
 
