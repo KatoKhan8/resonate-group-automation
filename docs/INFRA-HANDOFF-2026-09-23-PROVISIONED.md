@@ -83,11 +83,13 @@ predicted would be gone:
 fixed by `ca08363d`. Expect 73, not 74 — confirmed on a different machine,
 a different OS and a different Python.
 
-**76 further failures are NOT host-caused.** They reproduce on this Windows
-machine at the same commit. The baseline was measured at `dc395fa1`, which
-is BEFORE this session merged 44 commits of master (`a4924f7c`), so it does
-not describe the merged tree. **The baseline is stale, and a count against
-it is meaningless until it is re-measured.** §5 has the split.
+**Only 17 failures are host-only, and 0 are local-only.** The suite was run
+on BOTH machines at the same commit and diffed by name. Thirteen of the 17
+need a `.git` the staging copy does not have; **four are a real Linux
+difference that 2f has to know about** — see §5. The rise from 74 to 132 is
+the master merge, not the host: the baseline was measured at `dc395fa1`,
+before this session merged 44 commits. **It is stale, and a count against it
+means nothing until re-measured.**
 
 ---
 
@@ -130,40 +132,86 @@ default: use `newline="\n"` or write bytes.
 
 ---
 
-## 5. WHY THE BASELINE NUMBER CANNOT BE USED YET
+## 5. THE SUITE, MEASURED ON BOTH MACHINES
 
-    host, full discovery      11,999 tests, 149 distinct FAIL+ERROR
-    baseline (dc395fa1)                     74 distinct
-    in both                                 73
-    only in baseline                         1   <- the ca08363d fix
-    only on host                            76
+The host run alone could not answer "is anything host-specific?", so the
+same suite was run locally at the same commit and the two failing sets were
+diffed BY NAME.
 
-The 76 break down as:
+    baseline (dc395fa1, PRE-merge)   74 distinct
+    local,  merged tree             132 distinct
+    host,   merged tree             149 distinct
 
-- **9 in `test_fixture_hygiene`** — `git ls-files -z` exits 128, because the
-  staging copy has no `.git`. An artifact of how the tree was put on the
-  host, not a defect.
-- **The rest reproduce locally at the same commit.** They arrived with the
-  master merge, not with the host.
+    baseline entries still failing LOCALLY    73 / 74
+    baseline entries still failing ON HOST    73 / 74
+    the one that is gone, on both:
+        test_providers.TestNoSendPathExists
+            .test_every_contactout_post_goes_to_a_read_only_route
 
-**So there are two separate jobs and they must not be confused:**
+**The baseline's content reproduces exactly, on both machines, and the only
+entry that disappeared is the one the night handoff predicted** (`ca08363d`
+fixed it). Expect 73, not 74 — now confirmed on a different OS and a
+different Python build.
+
+    HOST-ONLY   17     fail on the host, pass locally
+    LOCAL-ONLY   0
+
+So the merge, not the host, accounts for the rise from 74 to 132. **The
+baseline was measured before this session merged 44 commits of master
+(`a4924f7c`), so it does not describe this tree, and a count against it
+means nothing until it is re-measured.**
+
+### The 17 host-only failures
+
+**Eleven need a `.git` directory** and the staging copy has none — every
+`*_is_gitignored`, `TestNoRealDataAnywhereInGit`,
+`TestTheSuppressionRosterIsNotInGit`, `test_git_ignores_config_env`,
+`test_the_start_date_comes_from_the_first_commit`. `git ls-files -z` exits
+128. An artifact of how the tree was staged, not a defect, and a reason not
+to re-measure the baseline from `~/suite-check`.
+
+**Two more are the same family**: `test_the_pack_reports_its_own_numbers`
+and `test_every_phone_number_is_a_reserved_fiction` both read the tree the
+same way.
+
+**Four are a genuine platform difference, and they matter for 2f.**
+`test_upload_is_never_truncated.AnOversizedUploadIsRefused`, all four, fail
+on Linux with:
+
+    BrokenPipeError: [Errno 32] Broken pipe
+    urllib.error.URLError: <urlopen error [Errno 32] Broken pipe>
+
+The server refuses the oversized body and closes the connection before the
+client has finished sending it. On Windows the client still reads the
+refusal; **on Linux it gets EPIPE and never sees the message at all.** The
+test asserts the refusal *says what the limit is*, and on the host there is
+no response to read.
+
+This is not a test artifact to wave away. **The webhook receiver in 2f will
+run on this Linux host**, and a receiver that drops the connection on an
+oversized or malformed body — rather than returning a readable refusal —
+gives the sender a transport error instead of an answer. Whoever builds 2f
+should read this cluster first: the refusal has to be sent *after* the body
+is drained, or the peer never gets it.
+
+### Two jobs, and conflating them is how a merge regression gets filed as a host problem
 
 1. Re-measure the baseline at the merged commit, on one machine, full
-   discovery and per-module standalone, diffed BY NAME. Until that exists
-   there is no number to compare a host run against.
-2. Triage the modules the merge turned red. They are production's code, not
-   this branch's.
-
-Do not re-measure the baseline from the `~/suite-check` copy: no `.git`
-means `test_fixture_hygiene` is guaranteed red for a reason that has nothing
-to do with the code.
+   discovery and per-module standalone, diffed by name.
+2. Triage separately what the merge turned red. That is production's code,
+   not this branch's.
 
 **One oddity worth not chasing:** the host run reported
 `Ran 11999 tests in 684029s` — 7.9 days, for a run of about twenty minutes.
 The host's timezone was set to UTC during provisioning, in the same window.
-It is a clock artifact in the runner's elapsed measure, not a hung test.
+A clock artifact in the runner's elapsed measure, not a hung test.
 
----
+**And one measurement trap that cost a wrong answer here:** the host's
+failing names were passed through the host-value redactor and the local
+ones were not, so every test whose NAME contains the app username appeared
+in both "host-only" and "local-only". It looked like a real divergence. Both
+sides have to be normalised the same way before a set difference means
+anything.
 
 ## 6. WHAT IS BUILT, AND WHAT IS NOT
 
