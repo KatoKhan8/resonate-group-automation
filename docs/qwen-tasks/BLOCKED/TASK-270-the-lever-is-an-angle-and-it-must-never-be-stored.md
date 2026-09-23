@@ -103,3 +103,47 @@ its percentage; a recommendation carries its evidence.
 
     src/clientapproval.py    src/providers/*    config/    work/*.jsonl
     src/executionguard.py
+
+## FINDINGS
+
+**BLOCKED on TASK-247.** The task instruction names the dependency explicitly:
+"a lever assigned to a lane that is computed two different ways in two places
+will disagree with itself." The instruction then says:
+
+> If TASK-247 is still TODO when this is picked up, **say so and stop** —
+> write the boundary into FINDINGS and take the next task. Do not inline a
+> third copy of `lane_for`.
+
+Verified 2026-09-23:
+
+1. `docs/qwen-tasks/TODO/TASK-247-three-lanes-for-the-estate-we-already-touched.md`
+   is still in `TODO/` — not started, not in `RUNNING/` or `DONE/`.
+2. `lane_for` exists only in `scripts/reengagement_inventory.py` (line 177,
+   with `REENGAGE_AFTER_DAYS = 90` at line 94). It does **not** exist in
+   `src/`. A `grep_search` for `lane_for` across `src/` returned zero matches.
+3. The lever computation this task asks for depends on a lane classification
+   that has no canonical `src/` home. Building levers against the script copy
+   would be the "third copy" the instruction forbids, and would produce
+   different answers from whatever TASK-247 eventually writes.
+
+The boundary: levers (`fresh_face`, `value_first`, `trigger`, `close`) require
+a lane, and the lane must come from a single canonical function in `src/`.
+TASK-247 must land first, providing that function, before this task can build
+on it without duplicating or diverging.
+
+No code was written. No tests were run. The existing `src/revival.py` and
+`src/playbooks.py` were read and are ready to be built on once the dependency
+clears.
+
+## RESULT
+
+- STATUS: BLOCKED
+- COMMIT SHA: (pending — this commit)
+- TESTS: not run (no code written)
+- FILES CHANGED: task file moved TODO → RUNNING, FINDINGS added
+- FINDINGS: TASK-247 still in TODO; `lane_for` not in `src/`; cannot build
+  levers without a canonical lane function; inlining a third copy is forbidden
+  by the task instruction
+- RISKS: none — no code written
+- RECOMMENDED CLAUDE ACTION: complete TASK-247 (move `lane_for` into `src/`
+  as the canonical lane classifier), then re-dispatch TASK-270
