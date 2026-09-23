@@ -329,6 +329,24 @@ REFUSAL_INTERNAL = (
     "cadence step, a campaign pause or a sending window, say so plainly and "
     "I will raise it as a change request for you to approve.")
 
+#: OPERATOR GAG on client channels, set 2026-09-23 after three client-facing
+#: defects in one exchange (13:28-13:51). Set to None to lift it - and only
+#: the operator lifts it, once the reply-count source, the awaiting-approval
+#: scope and the latency are all live. A falsy value here is the ONLY thing
+#: that lets `respond` produce client-visible text.
+#:
+#: Deliberately a module constant rather than an env var: an env var is unset
+#: by a restart and this must survive one. A merge is not a deploy either -
+#: the loop has to be restarted for a change here to take effect, which is
+#: why lifting it is a deploy step and not an edit.
+CLIENT_CHANNEL_GAG = (
+    "client channel answering is paused by the operator, 2026-09-23: the "
+    "agent reported three positive replies where our own classifier says "
+    "zero, answered 'awaiting your approval' for an operator decision, and "
+    "took seven minutes. Nothing is posted to a client channel until all "
+    "three are live."
+)
+
 REFUSAL_CLIENT = (
     "I can't make that change myself - I can read and report, not act. I'll "
     "pass it to the Resonate team, who will confirm the detail with you "
@@ -1206,6 +1224,28 @@ def respond(question, channel=None, user=None, channel_type=None,
     but the thread memory."""
     scope = slackscope.resolve(channel=channel, user=user,
                                channel_type=channel_type, rows=rows)
+
+    # OPERATOR GAG, 2026-09-23. Before anything else, because a defect that
+    # reaches a client is not fixed by answering more carefully.
+    #
+    # At 13:28-13:51 the agent told the client "three positive" replies. The
+    # true count from `replies.classify` is ZERO - it had read the provider's
+    # `interested` flag, which is set on autoresponders. It also answered
+    # "what is waiting on your approval" with the fallback twice, while the
+    # fallback text promises exactly that answer, and the three campaigns it
+    # would have named are `awaiting_approval` on the OPERATOR, not on the
+    # client. Seven minutes of latency on top.
+    #
+    # `CLIENT_CHANNEL_GAG` is lifted by the operator once those are live. It
+    # is checked here rather than at the poster because every path below this
+    # line can produce client-visible text.
+    if scope.is_client and CLIENT_CHANNEL_GAG:
+        out = {"at": _now(), "scope": scope.kind, "workspace": scope.workspace,
+               "scope_source": scope.source, "user": user, "channel": channel,
+               "relayed": bool(relay_of), "reply": None, "how": "gagged",
+               "tools": [], "gag_reason": CLIENT_CHANNEL_GAG}
+        return out
+
     # A RELAY ANSWERS THE PARENT, not the sentence that asked for a relay.
     # "@Resonate OS answer this" is an instruction about which question to
     # take, and taking it literally would answer "answer this".
