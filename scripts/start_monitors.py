@@ -16,19 +16,31 @@ minutes; the outage cost four hours, and the difference is this file.
 `docs/MACHINE-HARDENING-2026-09-23.md` covers the other half - stopping the
 restart. This half assumes the restart happens anyway.
 
-## One instance each, and the check is the heartbeat, not a pid file
+## One instance each, on TWO witnesses
 
-A pid file records what somebody intended. `work/heartbeat/<watcher>.json`
-records what is actually beating, and `watchsink.heartbeats()` already reads
-it. A watcher whose heartbeat is younger than `STALE_SECONDS` is live and is
-NOT restarted - starting a second `bison_watch_loop --campaign 492` does not
-double the watching, it doubles the provider calls and interleaves two writers
-onto one heartbeat.
+Starting a second `bison_watch_loop --campaign 492` does not double the
+watching. It doubles the provider calls and interleaves two writers onto one
+heartbeat. So nothing is started that is already running, and "running" is
+decided by two independent witnesses:
 
-A heartbeat older than that is treated as dead. That is a judgement and it can
-be wrong in one direction: a loop wedged but alive looks dead here and gets a
-second instance. `--status` prints the ages so a person can see it before
-`--live` acts on it.
+    beat      work/heartbeat/<watcher>.json newer than STALE_SECONDS
+    process   a python process whose command line runs this script
+              (and this --campaign, where there is one)
+
+**Either one alone is proof of life.** They are here because they fail apart,
+and the first version of this file used only the beat and was wrong within the
+hour:
+
+`slack_agent_loop` writes its heartbeat when it handles a Slack envelope, not
+on a timer. Twenty quiet minutes therefore look exactly like death. Measured
+2026-09-23: pid 34924 alive, socket reconnected, log healthy, heartbeat 21.5
+minutes old, `--status` saying DOWN. Had the logon autostart fired in that
+state it would have launched a **second agent beside the first** - two Socket
+Mode clients on one app, both answering the same message.
+
+The process witness covers that. The beat witness covers the reverse case,
+where the process table cannot be read at all. Only when both are silent is a
+monitor down, and `--status` prints which witness spoke.
 
 ## It does not adopt the supervisor
 
@@ -104,25 +116,82 @@ def beat_age(name, now=None):
         return None
 
 
-def state(name, now=None):
+def all_python_processes():
+    """(pid, commandline) for every python process, fetched ONCE.
+
+    Once, because the alternative is a PowerShell round-trip per monitor and
+    eleven of those is slower than everything else this script does.
+    """
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name like '%python%'\" | "
+          "Select-Object ProcessId, CommandLine | ConvertTo-Json -Compress")
+    try:
+        done = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                              capture_output=True, text=True, timeout=60)
+        rows = json.loads(done.stdout or "[]")
+    except Exception:                                           # noqa: BLE001
+        return []
+    if isinstance(rows, dict):
+        rows = [rows]
+    return [(int(r.get("ProcessId")), r.get("CommandLine") or "")
+            for r in rows if r.get("ProcessId")]
+
+
+def matches(argv, commandline):
+    """Does this command line run this monitor? Script name plus --campaign."""
+    if os.path.basename(argv[0]) not in commandline:
+        return False
+    if "--campaign" in argv:
+        want = "--campaign " + argv[argv.index("--campaign") + 1]
+        if want not in commandline:
+            return False
+    return True
+
+
+def state(name, now=None, argv=None, procs=None):
+    """UP if EITHER witness says so. Two witnesses, because they fail apart.
+
+    THE HEARTBEAT IS NOT A TIMER FOR EVERY LOOP. `slack_agent_loop` writes
+    its heartbeat when it handles a Slack envelope, so twenty quiet minutes
+    look exactly like death - measured 2026-09-23, pid 34924 alive, socket
+    reconnected, log healthy, heartbeat 21.5 minutes old.
+
+    Reading that as DOWN is not a cosmetic bug. `--live` would have started
+    a SECOND agent beside the running one at every logon: two Socket Mode
+    clients on one app, both answering the same message.
+
+    So a live process is proof of life on its own. A fresh heartbeat is too
+    - it covers the case where the process table cannot be read. Only when
+    BOTH are silent is a monitor down.
+    """
     age = beat_age(name, now=now)
+    fresh = age is not None and age <= STALE_SECONDS
+    alive = None
+    if argv is not None and procs is not None:
+        alive = any(matches(argv, line) for _pid, line in procs)
+    if fresh or alive:
+        return "UP", age
     if age is None:
         return "NEVER", None
-    return ("UP" if age <= STALE_SECONDS else "DOWN"), age
+    return "DOWN", age
 
 
 def status(out=print):
     now = time.time()
+    procs = all_python_processes()
     down = 0
-    out(f"{'watcher':<20} {'state':<7} {'last beat':>12}")
-    out("-" * 42)
-    for name, _argv in MONITORS:
-        st, age = state(name, now=now)
+    out(f"{'watcher':<20} {'state':<7} {'last beat':>12}  witness")
+    out("-" * 56)
+    for name, argv in MONITORS:
+        st, age = state(name, now=now, argv=argv, procs=procs)
         if st != "UP":
             down += 1
         shown = "never" if age is None else f"{age/60:.1f} min ago"
-        out(f"{name:<20} {st:<7} {shown:>12}")
-    out("-" * 42)
+        alive = any(matches(argv, line) for _pid, line in procs)
+        fresh = age is not None and age <= STALE_SECONDS
+        witness = "+".join(
+            [w for w, on in (("beat", fresh), ("process", alive)) if on]) or "-"
+        out(f"{name:<20} {st:<7} {shown:>12}  {witness}")
+    out("-" * 56)
     out(f"{len(MONITORS) - down} UP, {down} not UP "
         f"(stale after {STALE_SECONDS//60} min)")
     return down
@@ -144,14 +213,17 @@ def spawn(argv):
 
 def start(live=False, only=None, out=print):
     now = time.time()
+    procs = all_python_processes()
     started, skipped = [], []
     for name, argv in MONITORS:
         if only and name not in only:
             continue
-        st, age = state(name, now=now)
+        st, age = state(name, now=now, argv=argv, procs=procs)
         if st == "UP":
-            skipped.append((name, f"beating {age/60:.1f} min ago"))
-            out(f"  SKIP  {name:<20} already UP ({age/60:.1f} min ago)")
+            why = ("process alive" if any(matches(argv, l) for _p, l in procs)
+                   else f"beating {age/60:.1f} min ago")
+            skipped.append((name, why))
+            out(f"  SKIP  {name:<20} already UP ({why})")
             continue
         if not live:
             out(f"  PLAN  {name:<20} would start: py -3 {' '.join(argv)}")
