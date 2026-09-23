@@ -68,6 +68,19 @@ MINUTES_AFTER_DIGEST = 15
 #: 07:15 briefing as though it were on time; it records that it missed one.
 LATE_CUTOFF_MINUTES = 180
 
+#: OPERATOR, `docs/SLACK-AGENT-EXPECTATIONS.md` section 4 item 2: flag a
+#: sender at 1.5%, "early enough to matter, not at 2%".
+#:
+#: A PERCENTAGE, not a fraction, because `sender_roster` reports
+#: `bounce_rate_percent` that way and a threshold in the other unit would
+#: compare 0.015 against 1.5 and flag every sender or none.
+BOUNCE_ALERT_PERCENT = 1.5
+
+#: How quiet a watcher may be before the briefing names it. Half an hour:
+#: the fastest monitor here beats on a 60s interval and the slowest on 300s,
+#: so this is several missed beats rather than one slow one.
+QUIET_AFTER_SECONDS = 1800
+
 
 def _emit(line):
     print(line, flush=True)
@@ -135,8 +148,10 @@ def heartbeat(state):
 BRIEFING_PROMPT = """Write the morning briefing for the Resonate team, in
 their internal Slack channel.
 
-EXACTLY THREE SENTENCES, in this order and in prose - no bullets, no
-headings, no preamble:
+ONE SENTENCE EACH for the items below, in this order, in prose - no
+bullets, no headings, no preamble. Say "nothing" for an item with nothing
+in it rather than dropping it; a briefing that silently omits an empty
+section is indistinguishable from one whose readback failed.
 
   1. What happened. The most recent real state of the system.
   2. What is next.
@@ -144,6 +159,11 @@ headings, no preamble:
   4. Anything we PROMISED somebody and have not delivered, from the
      `promises` readback. Only rows whose status is `open`. `undated` is
      not late and is never reported as such.
+  5. Any WATCHER that is not beating, from the `monitors` readback, and how
+     long it has been quiet.
+  6. Any SENDER at or above 1.5% bounce, from the `sender_roster` readback,
+     named. The operator's threshold, chosen to be early enough to matter
+     rather than at 2% when it already does.
 
 Rules:
   - NEVER state a number that is not in the material below.
@@ -151,6 +171,8 @@ Rules:
     figure beside it.
   - A colleague's voice: direct, specific, no corporate register.
   - If nothing needs the operator, say so plainly in the third sentence.
+  - A readback carrying `_error` is a FAILED READ, not an empty result.
+    Say that it could not be read. Never report it as "nothing to report".
 
 MATERIAL:
 {material}
@@ -161,13 +183,29 @@ def gather(scope=None):
     """Everything the briefing is built from. Internal scope, by definition."""
     scope = scope or slackscope.Scope(slackscope.INTERNAL,
                                       source="briefing")
-    results = tools.run_all(scope, [
+    # `run_scheduled`, NOT `run_all`. This list is a literal; no message
+    # chooses it, so the turn budget protects nothing here and was silently
+    # truncating the report - `monitors` sat at index 5 against a budget of
+    # 5 and came back as `{"_error": "dropped: over the 5-call budget"}`
+    # EVERY MORNING. See `slackagenttools.run_scheduled`.
+    results = tools.run_scheduled(scope, [
         {"name": "next_actions"},
         {"name": "sends_today"},
         {"name": "batch_state"},
         {"name": "meetings_booked", "argument": "week"},
         {"name": "promises", "argument": "open"},
         {"name": "monitors"},
+        # OPERATOR, `docs/SLACK-AGENT-EXPECTATIONS.md` section 4 item 2:
+        # lead with "any sender over 1.5% bounce - early enough to matter,
+        # not at 2%". `sender_roster` carries the per-sender bounce rate and
+        # has been a registered tool the whole time; the briefing simply
+        # never asked for it. Adding a SEVENTH call is only possible because
+        # the budget above is gone.
+        {"name": "sender_roster"},
+        # `weekly_plan`'s own docstring cites this briefing by name - "the
+        # 07:15 briefing is supposed to already hold it when somebody asks".
+        # It did not.
+        {"name": "weekly_plan"},
     ])
     pending = requests.pending()
     approved = requests.approved_unexecuted()
@@ -202,7 +240,18 @@ def compose(model=None):
 
 
 def _plain(results):
-    """The briefing with no model. The same three things, plainly."""
+    """The briefing with no model. EVERYTHING GATHERED, not a subset.
+
+    This used to read `next_actions`, `sends_today` and `change_requests`
+    and nothing else - so `meetings_booked`, `promises` and `monitors` were
+    fetched every morning and silently discarded whenever no model was
+    configured. The operator's promises requirement, which is the reason
+    `promises` exists at all, simply vanished on that path.
+
+    A fallback that quietly answers a smaller question than the one it was
+    asked is worse than one that fails, because the output still looks like
+    a briefing.
+    """
     by_name = {name: value for name, _argument, value in results}
     state = by_name.get("next_actions") or {}
     waiting = state.get("waiting_on_operator") or []
@@ -229,6 +278,54 @@ def _plain(results):
         lines.append("Change requests to decide: " + ", ".join(
             "%s (%s, %s)" % (t["id"], t["kind"], t["workspace"])
             for t in tickets))
+
+    # THE THREE THAT WERE GATHERED AND THROWN AWAY.
+    promised = by_name.get("promises") or {}
+    open_rows = promised.get("open") or []
+    if open_rows:
+        lines.append("Promised and not delivered: " + ", ".join(
+            str(r.get("what") or r.get("text") or r.get("id") or "?")
+            for r in open_rows[:5]))
+
+    # THE SHAPES ARE THE READBACKS' OWN, taken off the real returns rather
+    # than guessed. `monitors` returns {"monitors": [...]} - not
+    # "watchers" - and each row carries `watcher` and `age_seconds`, with
+    # no `beating` flag. An UNDATED beat counts as quiet, which is
+    # `watchsink.stale`'s rule and its reasoning: the question is "may I
+    # read silence as unchanged", and for a beat that cannot be read the
+    # only safe answer is no.
+    watchers = by_name.get("monitors") or {}
+    quiet = []
+    for row in watchers.get("monitors") or []:
+        age = row.get("age_seconds")
+        if not isinstance(age, (int, float)):
+            quiet.append((row.get("watcher"), "no readable beat"))
+        elif age > QUIET_AFTER_SECONDS:
+            quiet.append((row.get("watcher"), "%d min" % (age // 60)))
+    if quiet:
+        lines.append("Not beating: " + ", ".join(
+            "%s (%s)" % (name, why) for name, why in quiet[:6]))
+
+    # `bounce_rate_percent` is ALREADY A PERCENTAGE (1.5 means 1.5%), and
+    # the sender's key is `name`. Multiplying it again would have reported
+    # 150% and named nobody.
+    roster = by_name.get("sender_roster") or {}
+    hot = [x for x in (roster.get("senders") or [])
+           if isinstance(x.get("bounce_rate_percent"), (int, float))
+           and x["bounce_rate_percent"] >= BOUNCE_ALERT_PERCENT]
+    if hot:
+        lines.append("Bounce at or over %.1f%%: " % BOUNCE_ALERT_PERCENT
+                     + ", ".join("%s %.2f%%" % (x.get("name"),
+                                                x["bounce_rate_percent"])
+                                 for x in hot))
+
+    # A FAILED READ IS NOT AN ABSENCE. Named, so a morning with a broken
+    # readback does not read as a quiet morning.
+    broken = sorted(n for n, _a, v in results
+                    if isinstance(v, dict) and v.get("_error"))
+    if broken:
+        lines.append("Could not be read: " + ", ".join(broken) + ".")
+
     return "\n".join(lines) if lines else "No briefing material was readable."
 
 

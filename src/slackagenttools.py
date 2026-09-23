@@ -2997,6 +2997,95 @@ def run_all(scope, calls):
         try:
             out.append((name, argument, run(scope, name, argument)))
         except ToolRefused as exc:
+            out.append((name, argument, {"_error": _refusal_text(scope, exc)}))
+    return out
+
+
+def _refusal_text(scope, exc):
+    """A refusal, worded for whoever's material it is about to land in.
+
+    ## THE REFUSAL WAS ITSELF A DISCLOSURE
+
+    `run()` refuses a client channel with "a client channel may not call
+    'who_does_what'". `run_all` puts that string into the result row,
+    `render()` dumps it into the prompt and `material_for` hands it to the
+    model - so the model is told, in a client channel, the internal name of
+    a tool it may not use.
+
+    `check_outbound` does NOT catch the paraphrase. Measured 2026-09-23
+    against a real client scope:
+
+        "I'm not allowed to call who_does_what in this channel."  LEAKS
+        "I can't run next_actions here."                          LEAKS
+        "The monitors tool is internal only."                     LEAKS
+        "I can't check promises for you."                         LEAKS
+        "I can't see the credits balance."                        caught
+
+    Only the last one, and only by accident - `credit` was already in
+    `INTERNAL_COMMERCIAL_TERMS` for a different reason. Four of the five
+    internal tools are named in English words or snake_case that no
+    forbidden-term list has any reason to contain.
+
+    **The list is the wrong place to fix it.** `monitors` and `promises` are
+    ordinary English; forbidding them would refuse a legitimate answer that
+    says "the system monitors your bounce rate", and a backstop that fires
+    on innocent prose gets widened until it fires on nothing.
+
+    So the fix is the one `for_client` already makes for numbers and labels:
+    correct the MATERIAL, so the model has nothing wrong to repeat. A client
+    turn is told the tool is not available here, without its name. The
+    internal wording is unchanged, where it is a useful thing to read in a
+    log.
+    """
+    if getattr(scope, "kind", None) == slackscope.CLIENT:
+        return "not available in this channel"
+    return str(exc)
+
+
+def run_scheduled(scope, calls):
+    """Every call in a SCHEDULED INTERNAL job's fixed list. No turn budget.
+
+    ## WHY THIS IS NOT `run_all`, AND WHY IT IS NOT A WEAKENED `run_all`
+
+    `MAX_CALLS_PER_TURN` exists because **a message can drive an agent into a
+    loop** - see this module's header. It is an anti-injection budget on a
+    conversational TURN, where the call list is chosen by a model reading
+    text a prospect or a client wrote.
+
+    A scheduled job is the other thing entirely: its call list is a literal
+    in this repository, nothing anyone says changes it, and it runs on a
+    clock rather than in reply. Applying a turn budget to it protects
+    against nothing and silently truncates a report.
+
+    **AND IT WAS TRUNCATING ONE.** Measured 2026-09-23:
+    `scripts/slack_agent_briefing.py` asked for six readbacks, the sixth was
+    `monitors`, and every morning the 07:15 briefing rendered
+
+        monitors -> {"_error": "dropped: over the 5-call budget"}
+
+    into the model's material. `monitors` is "which watchers are beating and
+    how long ago" - a dead watcher is the most briefing-shaped fact there
+    is, and the briefing has never once carried one. On the day this was
+    found, it would have reported `bison-491` failing its inventory read a
+    hundred times and a follow-up loop that had never been started.
+
+    **INTERNAL ONLY, and that is the whole safety argument.** Raising the
+    budget on `run_all` would have removed the protection from the path that
+    needs it. This function refuses any other scope, so there is no way to
+    reach it from a channel where the injection risk exists.
+    """
+    if getattr(scope, "kind", None) != slackscope.INTERNAL:
+        raise ToolRefused(
+            "run_scheduled is for scheduled internal jobs; a %s scope must "
+            "use run_all and its turn budget"
+            % getattr(scope, "kind", "unknown"))
+    out = []
+    for call in calls or []:
+        name = (call or {}).get("name")
+        argument = (call or {}).get("argument")
+        try:
+            out.append((name, argument, run(scope, name, argument)))
+        except ToolRefused as exc:
             out.append((name, argument, {"_error": str(exc)}))
     return out
 
