@@ -31,7 +31,7 @@ Nothing that fails lint is push eligible, whatever produced it.
 import argparse
 import re
 
-from . import (approval, clients, events, lint, linkedinstate, stepstate,
+from . import (approval, clients, events, lint, linkedinstate, names, stepstate,
                store)
 
 CHAMPION = "champion"
@@ -579,7 +579,7 @@ def company_name(rec):
 
 def template_vars(rec, contact, config):
     angle, phrase = angle_words(contact, config)
-    first = (contact.get("name") or "").split()[0] if contact.get("name") else "there"
+    first = names.greeting_first_name(contact) or "there"
     facts = rec.get("company_facts") or {}
     company = company_name(rec)
     evidence = (rec.get("evidence") or {}).get(lint.contact_key(contact)) or []

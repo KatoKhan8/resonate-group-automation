@@ -64,7 +64,7 @@ import sys
 
 from . import (cadence, cadencelibrary, campaigns, clients, configdiff,
                collision, eligibility, executionguard, killswitch, linkedin,
-               lint, providerwrites, store)
+               lint, names, providerwrites, store)
 from .providers import ProviderError, heyreach
 
 
@@ -1253,17 +1253,23 @@ def ensure_leads(campaign_id, *, recs=None, config=None, live=False,
         if not rec:
             continue
         linkedin_url = None
+        record_contact = None
         for c in rec.get("contacts") or []:
             if c.get("key") == contact["contact_key"]:
                 linkedin_url = c.get("linkedin")
+                record_contact = c
                 break
         if not linkedin_url:
             continue
+        # TASK-269: unified derivation via names.greeting_first_name.
+        # Uses the record contact's name field (which has context for
+        # stripping honorifics) rather than deriving from contact_key.
+        first_name = names.greeting_first_name(record_contact) if record_contact else ""
         enriched.append({
             "record_id": contact["record_id"],
             "contact_key": contact["contact_key"],
             "linkedin_url": linkedin_url,
-            "first_name": (contact.get("contact_key") or "").split("_")[0],
+            "first_name": first_name,
             "last_name": "",
             "company": rec.get("company", ""),
             "title": "",

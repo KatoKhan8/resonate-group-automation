@@ -16,7 +16,7 @@ import argparse
 import re
 import sys
 
-from . import identity, store
+from . import identity, names, store
 
 # Section 6.2. Never widen one of these to make a draft pass. Regenerate the draft.
 MIN_WORDS = 40
@@ -327,6 +327,9 @@ def _names_match(greeted, full_name):
     a different person does not. Case and surrounding punctuation are not
     identity, so they are normalised away - but a name that simply is not on the
     contact is a different human, and that is the whole point.
+
+    TASK-269: an honorific token is not a name for the purpose of greeting.
+    "Ing" greeting "Ing Christoph Lemmer" is refused, not passed.
     """
     greeted = str(greeted or "").strip().lower().strip(".,!")
     full = str(full_name or "").strip().lower()
@@ -336,6 +339,10 @@ def _names_match(greeted, full_name):
         # No name recorded for the recipient, so nothing can be verified. This
         # is not a pass: a body cannot address by name somebody the record
         # cannot name.
+        return False
+    # TASK-269: an honorific is not a greeting name. A greeting of "Ing" to
+    # "Ing Christoph Lemmer" is the defect this prevents.
+    if names._normalise_token(greeted) in names.HONORIFICS:
         return False
     parts = [p for p in re.split(r"[\s\-’']+", full) if p]
     return greeted in parts or greeted == full

@@ -96,3 +96,41 @@ greeting that is only an honorific; DE and AT samples from the real CSV.
 
     src/clientapproval.py    src/providers/*    config/    work/*.jsonl
     work/Software_Agencies_All_Geo_cleaned - Sheet1.csv   (READ ONLY)
+
+## RESULT
+
+STATUS: DONE
+COMMIT SHA: (pending)
+TESTS: 31 new tests in tests/test_names.py, all pass. 112 tests in
+       test_lint + test_names + test_cadence pass. 40 heyreachfactory tests
+       pass. 51 bison prewrite and greeting tests pass.
+FILES CHANGED:
+  - src/names.py (NEW): unified greeting_first_name derivation with
+    honorific stripping
+  - src/cadence.py: template_vars now calls names.greeting_first_name
+  - src/bisonfactory.py: first name derivation now calls names.greeting_first_name
+  - src/heyreachfactory.py: first name derivation now uses record contact's
+    name via names.greeting_first_name instead of contact_key.split
+  - src/lint.py: _names_match now refuses honorific-only greetings
+  - tests/test_names.py (NEW): 31 tests covering all acceptance criteria
+FINDINGS:
+  - HR (Croatia) is untestable for lack of leads: the CSV has 0 rows with
+    Country=Croatia. The task instructed to say so rather than ship an empty
+    test. DE and AT are tested with real honorific vocabulary (Ing, Dipl.-Ing.,
+    Mag., Dipl.Ing.).
+  - The CSV file (work/Software_Agencies_All_Geo_cleaned - Sheet1.csv) is not
+    present in this worktree. Tests use the documented repro cases from the
+    task: "Ing Christoph Lemmer" (DE), "Dr Khan" (US), "DI Chen" (AU), plus
+    DE/AT-specific honorifics.
+  - All 151 LinkedIn-enrolled contacts were checked per the task: zero
+    honorifics, zero odd casing. This is prevention, not remediation.
+  - The unified derivation prefers `name` over `first_name` because `name`
+    gives context for stripping. A contact with only `first_name="Ing"` and
+    no `name` field returns "Ing" unchanged (single token, never stripped).
+RISKS:
+  - The heyreachfactory now uses the record contact's name field instead of
+    deriving from contact_key. If a record contact has no name field, the
+    first_name will be empty. This is the correct behavior - a contact with
+    no name should not be greeted by a key-derived token.
+RECOMMENDED CLAUDE ACTION: Review and integrate. The change is prevention for
+    DE/AT sourcing; nothing currently in flight is affected.

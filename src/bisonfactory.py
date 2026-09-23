@@ -32,7 +32,7 @@ sequenced and stopped.
 import argparse
 import sys
 
-from . import campaigns, clients, providerwrites, store
+from . import campaigns, clients, names, providerwrites, store
 from .providers import ProviderError, bison
 # THE CONSTANT, NOT THE TRANSPORT. Tests swap `bison` for a fake provider,
 # and this number is not something a provider answers - it is how many pairs
@@ -386,9 +386,10 @@ def _plan(campaign, recs, config):
             # every name in the world. It is reading what is on the record
             # rather than inventing anything, which is the line that matters,
             # and a contact with no name at all is still refused below.
-            first = (person.get("first_name") or "").strip()
-            if not first:
-                first = ((person.get("name") or "").split() or [""])[0].strip()
+            # TASK-269: unified derivation via names.greeting_first_name,
+            # which strips honorifics from the full name before taking the
+            # first token.
+            first = names.greeting_first_name(person)
             if not first:
                 raise FactoryRefused(
                     f"contact {contact.get('key')!r} on record "
