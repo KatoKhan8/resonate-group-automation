@@ -72,6 +72,32 @@ def queue(campaign_id):
     return bison.scheduled_emails(campaign_id, cap=QUEUE_PAGE_CAP) or []
 
 
+def newest_reply_id():
+    """The provider's highest reply id right now, or None if unreadable.
+
+    The marker a follow-up watch opens with, so that a reply which arrived
+    BEFORE the client opted in can never be announced as the batch's first.
+    Read here rather than in the deliverer because registration is its only
+    caller and this is where the agent's provider reads live.
+
+    **None is not zero.** Zero is a workspace whose replies all lie ahead;
+    None is a feed that could not be read, and a watch that cannot
+    establish its marker is never promised the reply half at all -
+    `slackfollowup.advance_to_reply` closes it instead of advancing it.
+
+    One page. The feed is newest-first, so the highest id is on it, and a
+    walk would buy nothing.
+    """
+    from .providers import bison
+    try:
+        rows, _cursor = bison.fetch_replies(per_page=25)
+    except Exception:                                           # noqa: BLE001
+        return None
+    ids = [row["id"] for row in (rows or [])
+           if isinstance(row, dict) and isinstance(row.get("id"), int)]
+    return max(ids) if ids else 0
+
+
 def _now_iso():
     return _store.now()
 
