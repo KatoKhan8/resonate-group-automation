@@ -51,6 +51,16 @@ UNKNOWN = "UNKNOWN"
 #: the day before, for the same reason, and this is deliberately the same
 #: number: two readers that disagree about how much of a campaign they can
 #: see will disagree about what was sent.
+#: 2026-09-23: the canonical value now lives at
+#: `bison.CAMPAIGN_QUEUE_PAGE_CAP`, and there were THREE readers by then -
+#: this one, `scripts/hard_stop_check.py`, and `bison_watch_loop`, which had
+#: no cap at all and went blind on 491 for hours. It is repeated here rather
+#: than referenced because this module imports `providers.bison` inside its
+#: functions on purpose (see the module docstring), so a module-level
+#: reference would break that. The agreement is enforced by
+#: `tests/test_the_queue_cap_is_one_number.py`, which fails if any of the
+#: three drifts - a test being the only anti-drift mechanism that does not
+#: cost the lazy import.
 QUEUE_PAGE_CAP = 400
 
 
