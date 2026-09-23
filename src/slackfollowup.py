@@ -55,6 +55,36 @@ CANCELLED = "cancelled"
 #: arriving three days later reads as a system that lost track.
 TTL_SECONDS = 24 * 3600
 
+# ------------------------------------------------------------------ stages
+#
+# OPERATOR, 2026-09-23: "post once when that batch's first provider-confirmed
+# send lands and once on first human reply, then stop."
+#
+# TWO POSTS, NEVER THREE, and the watch carries which one it is waiting for.
+# A second journal keyed the same way would be a parallel state machine for
+# one fact - the thing this repository's rules name explicitly - so the
+# stage lives on the row that already exists.
+
+#: Waiting for the provider's sent counter to move. What the watch opens in.
+AWAITING_SEND = "awaiting_send"
+
+#: Sent has been announced; waiting for the first reply a PERSON wrote.
+AWAITING_REPLY = "awaiting_reply"
+
+STAGES = (AWAITING_SEND, AWAITING_REPLY)
+
+#: How long the reply half stays open. SEVEN DAYS, and it is a different
+#: number from `TTL_SECONDS` because it is a different question: a first
+#: send is hours away and a first human reply routinely is not. A day here
+#: would close almost every watch unfired and teach the client that the
+#: offer means nothing.
+#:
+#: IT IS ALSO A GUESS, and the operator should overrule it with a real one.
+#: Seven days is the window this estate's own cadence works in, not a
+#: measurement of how long a first reply takes - nobody has measured that
+#: here yet, and when somebody does, this is the line to change.
+REPLY_TTL_SECONDS = 7 * 24 * 3600
+
 JOURNAL_NAME = "slack-followups.jsonl"
 JOURNAL_VAR = "SLACK_FOLLOWUPS"
 
@@ -141,7 +171,7 @@ def for_thread(channel, thread_ts):
 
 
 def register(channel, thread_ts, workspace, campaign_ids, baseline,
-             language=None, asked_by=None):
+             language=None, asked_by=None, reply_marker=None):
     """Open one watch. Refuses a second on the same thread."""
     import secrets
 
@@ -151,6 +181,7 @@ def register(channel, thread_ts, workspace, campaign_ids, baseline,
     row = {
         "id": "fu-%s" % secrets.token_hex(3),
         "status": REGISTERED,
+        "stage": AWAITING_SEND,
         "channel": channel,
         "thread_ts": thread_ts,
         "workspace": workspace,
@@ -160,6 +191,24 @@ def register(channel, thread_ts, workspace, campaign_ids, baseline,
         # gets "the first mail has gone out" about mail that went out
         # before they asked.
         "baseline": {str(k): int(v) for k, v in (baseline or {}).items()},
+        # THE SAME ARGUMENT, FOR REPLIES, AND IT IS A MARKER RATHER THAN A
+        # COUNT. A batch that already has replies when the client opts in
+        # must not fire the reply post on one that arrived before they
+        # asked - so the watch records the HIGHEST provider reply id it had
+        # seen, and only a reply above it counts.
+        #
+        # A count would have to be recomputed from the whole reply history
+        # on every tick to be compared; a marker lets the walk stop as soon
+        # as it reaches a reply it has already seen. The feed is newest
+        # first and this estate's reply history only grows.
+        #
+        # `None` IS NOT ZERO. Zero is a batch whose replies all lie ahead;
+        # None means the feed could not be read when the client opted in,
+        # and a watch that cannot establish its own marker never fires the
+        # reply half at all rather than announcing an older reply as this
+        # batch's first.
+        "reply_marker": (None if reply_marker is None
+                         else int(reply_marker)),
         "language": language,
         "asked_by": asked_by,
         "registered_at": _now(),
@@ -171,6 +220,42 @@ def register(channel, thread_ts, workspace, campaign_ids, baseline,
 def close(watch, status, detail=None):
     return _append(dict(watch, status=status, closed_at=_now(),
                         detail=detail))
+
+
+def stage_of(watch):
+    """Which half this watch is waiting on.
+
+    A row written before stages existed has no `stage` and is waiting for a
+    send, which is what every such row was. Defaulting rather than migrating
+    the journal: it is append-only and rewriting it to add a field would
+    mean editing what was actually said to a client.
+    """
+    value = str((watch or {}).get("stage") or "")
+    return value if value in STAGES else AWAITING_SEND
+
+
+def advance_to_reply(watch, detail=None):
+    """The send has been announced; wait for the first human reply.
+
+    A SEPARATE WRITE FROM THE POST, and it follows it, for the same reason
+    `close` does in the deliverer: a watch advanced before the message is
+    posted loses that message and moves on as though it were sent.
+
+    The watch stays REGISTERED - it is not finished - and gets a new, longer
+    expiry. A watch whose reply baseline could not be established at
+    registration is CLOSED here instead: there is no honest second post to
+    make, and leaving it open would promise one.
+    """
+    if watch.get("reply_marker") is None:
+        return close(watch, FIRED,
+                     (detail or "") +
+                     " - no reply baseline, so the reply half was never "
+                     "promised and this watch is finished")
+    return _append(dict(watch, stage=AWAITING_REPLY,
+                        status=REGISTERED,
+                        sent_announced_at=_now(),
+                        detail=detail,
+                        expires_epoch=int(time.time()) + REPLY_TTL_SECONDS))
 
 
 def heartbeat_path():
@@ -223,6 +308,8 @@ def due(read_counts):
     out = []
     now = int(time.time())
     for watch in open_watches():
+        if stage_of(watch) != AWAITING_SEND:
+            continue
         if now > int(watch.get("expires_epoch") or 0):
             out.append((watch, None))
             continue
@@ -234,6 +321,51 @@ def due(read_counts):
                 moved[campaign_id] = count - before
         if moved:
             out.append((watch, moved))
+    return out
+
+
+def due_replies(read_human_replies):
+    """`[(watch, count)]` for watches whose first HUMAN reply has landed.
+
+    `read_human_replies(watch) -> int | None` counts replies ABOVE the
+    watch.s `reply_marker`, and is passed in for the same
+    reason `due`'s reader is: this module reaches no provider and reads no
+    feed. **None means UNREADABLE and never fires** - a feed that cannot be
+    read is not a batch with no replies, and the cost of getting that wrong
+    is telling a client nobody answered them when somebody did.
+
+    A count at or below the baseline does not fire either. The baseline is
+    what the batch had when the client opted in, so the post is about a
+    reply that arrived AFTER they asked, which is what was offered.
+
+    AUTOMATED REPLIES ARE NOT REPLIES HERE, and that is the caller's job:
+    `replies.is_automated` is the one definition, and the operator's rule of
+    2026-09-22 is that an out-of-office, a ticket acknowledgement and an
+    assistant writing on somebody else's behalf are all things nobody chose
+    to say to us. A client told "you have your first reply" about an
+    autoresponder has been told something false in the direction that
+    sounds like good news.
+    """
+    out = []
+    now = int(time.time())
+    for watch in open_watches():
+        if stage_of(watch) != AWAITING_REPLY:
+            continue
+        if now > int(watch.get("expires_epoch") or 0):
+            out.append((watch, None))
+            continue
+        if not isinstance(watch.get("reply_marker"), int):
+            # No marker, no honest comparison. `advance_to_reply` already
+            # closes these, so reaching here means a hand-written row.
+            continue
+        count = read_human_replies(watch)
+        if not isinstance(count, int):
+            # UNREADABLE, AND IT STAYS OPEN. Not zero, not expired: the
+            # next tick asks again, and the TTL says so out loud if it
+            # never becomes readable.
+            continue
+        if count > 0:
+            out.append((watch, count))
     return out
 
 
@@ -256,6 +388,45 @@ EXPIRED_MESSAGE = {
           "confirmed as sent in the last 24 hours. Nothing is wrong on "
           "your side - telling you rather than leaving you waiting.",
 }
+
+
+#: The second and LAST post. It says a person wrote it, because the whole
+#: reason this figure exists apart from the provider's `replied` counter is
+#: that the counter includes autoresponders. It does not quote the reply, it
+#: does not characterise it, and it does not call it good news: a first
+#: reply is not a positive reply, and this thread is the client's.
+REPLY_MESSAGE = {
+    "hr": "I zadnja javka kako smo se dogovorili: stigao je prvi odgovor "
+          "koji je napisala osoba (%s). Automatske odgovore ne brojim. "
+          "Ovime zatvaram ovu temu - dalje pitajte kad vam treba.",
+    "en": "The last update as agreed: the first reply written by a person "
+          "has come in (%s). Automated replies are not counted. That closes "
+          "this thread from my side - ask whenever you want more.",
+}
+
+#: Seven days with nothing a person wrote. Said out loud rather than
+#: dropped, because a promise that quietly expires is the fault this whole
+#: module was written about - one level further down again.
+REPLY_EXPIRED_MESSAGE = {
+    "hr": "I zadnja javka kako smo se dogovorili: u proteklih sedam dana "
+          "nije stigao nijedan odgovor koji je napisala osoba. Ovime "
+          "zatvaram ovu temu - javite se kad vam zatreba.",
+    "en": "The last update as agreed: no reply written by a person has come "
+          "in over the past seven days. That closes this thread from my "
+          "side - just ask whenever you want more.",
+}
+
+
+def reply_message_for(watch, count):
+    code = (watch.get("language") or "en")
+    if count is None:
+        return REPLY_EXPIRED_MESSAGE.get(code) or REPLY_EXPIRED_MESSAGE["en"]
+    template = REPLY_MESSAGE.get(code) or REPLY_MESSAGE["en"]
+    if code == "hr":
+        detail = "%d %s" % (count, "odgovor" if count == 1 else "odgovora")
+    else:
+        detail = "%d %s" % (count, "reply" if count == 1 else "replies")
+    return template % detail
 
 
 def message_for(watch, moved):
