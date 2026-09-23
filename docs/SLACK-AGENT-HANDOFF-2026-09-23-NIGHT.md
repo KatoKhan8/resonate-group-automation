@@ -278,6 +278,60 @@ edit is what contaminated the first baseline.
 
 ---
 
+## 8b. QUEUED BY THE OPERATOR AFTER THIS HANDOFF WAS FIRST WRITTEN
+
+Three additions, in the order they were given. Recorded here because they
+are commitments, not ideas.
+
+**1. "Internal assistant mode"** - its own increment, merge-requested
+**after Phase D item 4**.
+
+> In the internal channels and DMs from Resonate users, the agent is a full
+> Claude assistant with Resonate OS context: it may answer general
+> questions, draft messages and documents, explain code and docs from the
+> repo, reason about strategy, and use every read-only tool it has; it stays
+> unable to act (no writes, no pushes, no provider calls, changes still go
+> through tickets). It threads long answers and keeps the one-offer rule.
+> **In client channels nothing changes**: scoped answers from the catalogue
+> only, no general chat, no drafting on the client's behalf.
+
+Its three required tests, in the operator's own words: a general question in
+`#resonate-os` gets a real answer; the same question in the client channel
+gets the scoped fallback; **no tool result from another workspace ever
+reaches a client channel even in a general answer.**
+
+The third is the hard one and it is where the risk lives. `for_client()` and
+`slackscope.check_outbound` are the existing backstops; a "general answer"
+is the first path that composes free prose over tool output, so the
+backstop stops being a formality.
+
+**2. A STANDING WEEKLY OSS SURVEY, Fridays, one session hour.** Same method
+as `docs/LEARNED-FROM-OSS-2026-09-23.md`: premises checked against the repo,
+never assumed; license noted per candidate; what it does better than us
+named against the file in our tree it beats. Output
+`docs/OSS-SURVEY-<date>.md` plus S/M Qwen tasks, posted to `#resonate-os`,
+and **the operator decides what enters the queue**. Never copied code, never
+a dependency, never a production-behaviour change without approval.
+
+**BLOCKED ON ONE THING:** the cloud routine was composed and the API refused
+it - `github_token_missing`, "Connect your GitHub account before saving a
+routine that uses a GitHub repository." The operator runs `/web-setup` (or
+installs the Claude GitHub App on `KatoKhan8/resonate-group-automation`) and
+it can be created in one call. Intended config: Fridays `0 7 * * 5` UTC =
+09:00 Europe/Zagreb, `claude-sonnet-5`, Slack connector attached, branch
+`oss-survey-<date>` plus a PR, never master.
+
+**AND IT CANNOT CHECK EVERY PREMISE.** `work/` is gitignored, so a cloud
+agent has the code and none of the live data. Of the eight checks on
+2026-09-23, five were code-grounded and **three needed `work/`** - the
+FLAGGED count, the 151/154 enrolment drift, and the DE/AT/HR lead counts.
+The routine's prompt requires it to write those as
+`UNVERIFIED (needs work/): <file, count>` and **never to guess a number**.
+
+**3. The vacuous PDF assertion** - done, `93b4ace2`. See §4a.
+
+---
+
 ## 9. THE RULES THIS SESSION WORKED UNDER
 
 Unchanged, restated by the operator, verified for every commit:
