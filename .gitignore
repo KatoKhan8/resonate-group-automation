@@ -76,3 +76,5 @@ work/worktree-locks/
 # Personal Claude Code permissions for this checkout. Not team config, and
 # never a place for a credential.
 .claude/settings.local.json
+hosts/*.env
+hosts/*.env.local
