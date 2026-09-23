@@ -1,6 +1,6 @@
 # Merge request — Phase D3: the second post, and it is about a person
 
-**For the production session.** Branch `slack-agent` at `2afc2020`, pushed
+**For the production session.** Branch `slack-agent` at `55aced87`, pushed
 and verified against the remote. Not merged, not pushed to master.
 
 Phase D **item 2**: *"proactive client updates, opt-in per thread: post once
@@ -22,7 +22,7 @@ this session's lineage in C3, and is not a `*_watch_loop.py`.
     src/slackagentreadback.py       newest_reply_id()
     src/slackconversation.py        the marker at registration; OFFER_NOTICE
     scripts/slack_followup_loop.py  THE CALLER
-    tests/test_the_second_post_is_a_person_not_a_counter.py   NEW, 23 tests
+    tests/test_the_second_post_is_a_person_not_a_counter.py   NEW, 26 tests
     tests/test_slack_agent_cannot_act.py                      two verbs argued for
 
 ---
@@ -133,7 +133,7 @@ days. Both are argued for in the allow-list rather than added as noise:
 
 ## 5. THE TESTS
 
-`tests/test_the_second_post_is_a_person_not_a_counter.py` — **23 tests, and
+`tests/test_the_second_post_is_a_person_not_a_counter.py` — **26 tests, and
 every one drives the real deliverer**, loaded by path, through
 `loop.tick()` or `loop.read_human_replies`. None of them hands
 `followup.due_replies` a reader of its own and calls that a passing
@@ -141,8 +141,8 @@ feature: **a caller that does not exist is the failure mode, and a test
 that supplies the caller itself cannot see it.**
 
     1. two posts, never three - the third tick posts nothing
-    2. out-of-office, ticket acknowledgement and assistant redirect are
-       each rejected through the REAL classifier
+    2. out-of-office, ticket acknowledgement and YESTERDAY'S ACTUAL EA
+       REPLY are each rejected through the REAL classifier - see 5a
     3. either witness alone disqualifies; a raising classifier disqualifies
     4. the marker - an older reply, the marker row itself, another
        campaign's reply, and a human reply buried under an older row
@@ -151,9 +151,38 @@ that supplies the caller itself cannot see it.**
     7. a rebound channel is cancelled unposted AT THE SECOND STAGE TOO -
        it fires days later, which is when a rebinding is likeliest
 
-**Attacked:** with the caller removed and nothing else changed, **7 of the
-23 fail plus 1 error**. With the fixtures wrong, it failed for the right
-reason too — see §6.
+**Attacked twice.** With the caller removed and nothing else changed, **7 of
+the 26 fail plus 1 error**. With `_is_human` leaning on the provider's
+`automated_reply` flag alone, **7 fail** — including all three EA tests and
+the out-of-office and ticket ones.
+
+### 5a. The EA reply, and a fixture that had been trimmed until it passed
+
+The operator's instruction was *"automated and assistant_redirect never fire
+it — add a test with yesterday's EA auto-reply as the negative case."* The
+gate was already correct; the **fixture was not**.
+
+The first EA fixture here was synthetic — `"I manage Peter's inbox."` —
+written that short because the realistic sentence I tried first classified
+`negative` and fired the trigger. **A fixture trimmed until it passes is not
+evidence**, and this is the fourth time in three days that a test in this
+repository proved something other than what it claimed.
+
+It now imports `EA_REDIRECT` from
+`tests/test_an_assistant_is_not_a_buying_signal.py`, where `4af4f982`
+sanitised the real thing — **one canonical fixture for one real reply**,
+not a second copy to keep in step. The emoji and exclamation marks are load
+bearing: they are what made the old classifier read it as warmth.
+
+Three tests where there was one, and the second and third are the ones that
+matter under refactoring:
+
+- `test_yesterdays_ea_auto_reply_does_not_fire_it` — the named case.
+- `test_it_is_the_new_classifier_that_stops_it` — names the mechanism, so a
+  refactor onto the provider flag alone cannot pass this class by accident.
+- `test_the_provider_did_not_flag_it` — **the hard case.** That row carries
+  `automated_reply` **false**, and it is stopped anyway. The provider's flag
+  was true on 21 of that day's 26 replies, but a flag is not the rule.
 
 **319 slack tests green.** `test_replies` (76), `test_invariants` (83),
 `test_the_offer_has_a_process_behind_it` (15),
@@ -173,12 +202,23 @@ Writing the fixtures surfaced a real classifier behaviour:
 "I will pass this along" matches the decline sense of *"I'll pass"*. A
 forwarding assistant is read as a refusal.
 
-**It errs in the safe direction** — it stops contact rather than continuing
-it — so nothing here is unsafe. What it costs is the contact candidate that
-`assistant_redirect` exists to keep, and `reply.on_referral` never gets the
-chance to apply. `src/replies.py` is not this session's to edit and the
-reply-classification policy is the production session's, so it is reported
-rather than patched.
+**It errs in the safe direction for sending** — it stops contact rather than
+continuing it — so nothing about the cadence is unsafe. What it costs is the
+contact candidate that `assistant_redirect` exists to keep, and
+`reply.on_referral` never gets the chance to apply.
+
+**But it is NOT safe for this feature**, and that is the part worth your
+attention: a `negative` classification is not automated, so a forwarding
+assistant **does** fire the second post. A client who opted in would be told
+their first human reply had arrived when what arrived was an assistant
+forwarding the mail on.
+
+It is asserted as current behaviour in
+`test_the_forwarding_assistant_is_the_boundary_and_it_does_fire`, not hidden
+in a comment, so the day somebody fixes `src/replies.py` that test fails
+loudly and tells them a client-facing trigger moved with it.
+`src/replies.py` is not this session's to edit and the reply-classification
+policy is the production session's, so it is reported rather than patched.
 
 A second, smaller one, recorded because it looks like a bug and is not: an
 EA who writes *"he is not taking new meetings"* classifies `negative`
