@@ -112,17 +112,16 @@ run "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \\
      python3 python3-venv python3-pip"
 
 say "4b. PYTHON VERSION — checked, not assumed"
-cat <<'PYCHECK' > /tmp/rga_pycheck.sh
-set -e
-V=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
-MAJ=${V%%.*}; MIN=${V##*.}
-echo "   python3 is ${V}"
-if [ "$MAJ" -lt 3 ] || { [ "$MAJ" -eq 3 ] && [ "$MIN" -lt 12 ]; }; then
-  echo "   REFUSING: this codebase needs >= 3.12 and the host has ${V}." >&2
-  exit 1
-fi
-PYCHECK
-run "bash /tmp/rga_pycheck.sh"
+
+# One `run` line, so --check prints it and writes nothing. The first version
+# of this wrote a helper to /tmp unconditionally, which made --check a mode
+# that still touched the filesystem - a dry run that is not dry is worse than
+# no dry run, because it is believed.
+PYGUARD='V=$(python3 -c "import sys; print(\"%d.%d\" % sys.version_info[:2])"); '
+PYGUARD+='MAJ=${V%%.*}; MIN=${V##*.}; echo "   python3 is $V"; '
+PYGUARD+='if [ "$MAJ" -lt '"${PY_MIN_MAJOR}"' ] || { [ "$MAJ" -eq '"${PY_MIN_MAJOR}"' ] && [ "$MIN" -lt '"${PY_MIN_MINOR}"' ]; }; then '
+PYGUARD+='echo "   REFUSING: this codebase needs >= '"${PY_MIN_MAJOR}.${PY_MIN_MINOR}"' and the host has $V." >&2; exit 1; fi'
+run "$PYGUARD"
 
 note "26.04's default python3 is whatever 26.04 ships, and this script has"
 note "never been run against it. It is CHECKED rather than pinned to a"
