@@ -1,0 +1,1118 @@
+{
+  "taken_at": "2026-09-23",
+  "measured_at_commit": "0d6ed72c",
+  "branch": "infra",
+  "runner": "py -3 -m tests.offline",
+  "platform": "win32",
+  "python": "3.14.3",
+  "tests_run": 12205,
+  "failures": 97,
+  "errors": 73,
+  "full_exit": 1,
+  "distinct_tests": 170,
+  "standalone_distinct": 165,
+  "order_dependent": [
+    "test_ownership_readback_staleness.AStaleReadbackRefuses.test_a_missing_file_refuses",
+    "test_ownership_readback_staleness.AStaleReadbackRefuses.test_an_undated_readback_refuses",
+    "test_ownership_readback_staleness.AStaleReadbackRefuses.test_an_unparseable_date_refuses",
+    "test_ownership_readback_staleness.AStaleReadbackRefuses.test_past_the_age_limit_it_returns_none",
+    "test_ownership_readback_staleness.AStaleReadbackRefuses.test_the_reason_names_the_command_that_refreshes_it"
+  ],
+  "fails_only_standalone": [],
+  "by_module": {
+    "test_a_bounced_address_stops_being_sendable": 1,
+    "test_a_client_can_never_reach_another_client": 11,
+    "test_a_five_step_campaign_sends_five_different_emails": 5,
+    "test_an_email_is_not_a_finished_person": 2,
+    "test_campaign_cannot_send": 2,
+    "test_contactout_first": 1,
+    "test_crash_restart_idempotency": 9,
+    "test_delivery_titles_are_a_persona_family": 1,
+    "test_e2e": 14,
+    "test_enrich": 5,
+    "test_fixture_hygiene": 1,
+    "test_for_prompt_quality": 5,
+    "test_invariants": 1,
+    "test_ladder_impact": 2,
+    "test_lead_variables": 4,
+    "test_lead_writes_respect_the_killswitch": 3,
+    "test_mutation_anchors": 1,
+    "test_nothing_talks_back_to_a_prospect": 2,
+    "test_ownership_readback_staleness": 5,
+    "test_preproduction": 6,
+    "test_red_team_tonights_guards": 3,
+    "test_referral": 1,
+    "test_replaysim": 2,
+    "test_secrets": 1,
+    "test_set_regeneration": 2,
+    "test_slack_agent_scope": 1,
+    "test_slack_request_tickets": 31,
+    "test_staging_a_campaign_twice_builds_one": 6,
+    "test_staging_refuses_colliding_contacts": 3,
+    "test_staging_the_same_material_twice": 2,
+    "test_taxonomy_safety": 1,
+    "test_the_account_is_the_unit_of_outreach": 3,
+    "test_the_cadence_reacts_to_what_the_prospect_did": 1,
+    "test_the_cadence_the_client_chose_is_the_one_that_runs": 1,
+    "test_the_email_activation_grant_is_two_rows_not_a_channel": 2,
+    "test_the_emailbison_write_door_is_enforced": 1,
+    "test_the_free_leg_runs_before_the_paid_one": 2,
+    "test_the_linkedin_stop_can_actually_address_somebody": 1,
+    "test_the_live_activation_grant": 2,
+    "test_the_prototype_cannot_send": 1,
+    "test_the_reply_path_may_stop_and_nothing_else": 1,
+    "test_the_second_activation_at_an_account_is_refused": 3,
+    "test_the_second_post_is_a_person_not_a_counter": 1,
+    "test_the_stop_can_be_performed": 1,
+    "test_threaded_sequence": 2,
+    "test_two_providers_disagreeing_is_not_a_headcount": 5,
+    "test_what_are_we_working_on": 9
+  },
+  "standalone_by_module": {
+    "tests.test_a_bounced_address_stops_being_sendable": [
+      "test_a_bounced_address_stops_being_sendable.TheSENDPathReadsIt.test_decide_blocks_a_bounced_address"
+    ],
+    "tests.test_a_client_can_never_reach_another_client": [
+      "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_a_target_that_exists_nowhere_gets_the_same_refusal",
+      "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_a_ticket_alpha_raised_is_scoped_to_alpha",
+      "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_can_raise_a_copy_change_on_its_own_cadence",
+      "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_can_raise_a_pause_for_its_own_campaign",
+      "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_can_still_remove_its_own_lead",
+      "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_cannot_decide_betas_ticket",
+      "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_cannot_raise_a_copy_change_on_betas_cadence",
+      "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_cannot_raise_a_pause_for_betas_campaign",
+      "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_cannot_raise_a_removal_for_betas_lead",
+      "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_the_refusal_does_not_say_whose_it_is",
+      "test_a_client_can_never_reach_another_client.NothingAboutBetaSurvivesIntoAlphasChannel.test_the_action_required_post_names_only_the_raising_workspace"
+    ],
+    "tests.test_a_five_step_campaign_sends_five_different_emails": [
+      "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_a_multi_step_lead_carries_no_unnumbered_copy",
+      "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_every_step_gets_its_own_words",
+      "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_the_lead_carries_one_subject_and_no_numbered_follow_up_one",
+      "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_the_provider_holds_five_steps_with_the_cadence_delays",
+      "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_the_provider_holds_one_opener_and_four_thread_replies"
+    ],
+    "tests.test_an_email_is_not_a_finished_person": [
+      "test_an_email_is_not_a_finished_person.AKnownCompanyFieldIsNotReBought.test_a_fallback_for_another_field_is_walked_past",
+      "test_an_email_is_not_a_finished_person.AKnownCompanyFieldIsNotReBought.test_the_two_company_fields_route_independently"
+    ],
+    "tests.test_campaign_cannot_send": [
+      "test_campaign_cannot_send.TheNarrowedSeals.test_add_lead_is_refused_for_finished",
+      "test_campaign_cannot_send.ThePredicateReadsProviderTruth.test_finished_is_not_proven_safe"
+    ],
+    "tests.test_contactout_first": [
+      "test_contactout_first.TestStoredDataWinsFirst.test_a_stored_verdict_is_not_bought_again"
+    ],
+    "tests.test_crash_restart_idempotency": [
+      "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_attach_before_readback",
+      "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_create_lead_before_remember",
+      "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_limits",
+      "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_schedule",
+      "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_senders",
+      "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_sequence",
+      "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_stopped",
+      "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_find_or_create_before_bind",
+      "test_crash_restart_idempotency.CrashAtSeam.test_crash_between_first_and_second_lead"
+    ],
+    "tests.test_delivery_titles_are_a_persona_family": [
+      "test_delivery_titles_are_a_persona_family.AnArbitraryTitleStillFailsClosed.test_a_classified_title_with_no_angle_is_still_held"
+    ],
+    "tests.test_e2e": [
+      "test_e2e.TestEnrichmentOutcomes.test_a_catch_all_cleared_by_one_provider_is_now_held",
+      "test_e2e.TestEnrichmentOutcomes.test_the_catch_all_that_does_not_clear_is_held_and_not_sendable",
+      "test_e2e.TestEnrichmentOutcomes.test_the_clean_domain_verifies",
+      "test_e2e.TestEnrichmentOutcomes.test_the_invalid_address_ends_dropped_with_a_reason",
+      "test_e2e.TestGenerationAndLint.test_the_good_records_still_ship_alongside_it",
+      "test_e2e.TestPushPreparationAndIdempotency.test_the_payloads_are_the_documented_shapes",
+      "test_e2e.TestTheFinalShape.test_the_review_sheet_shows_green_and_can_show_red",
+      "test_e2e.TestTheFinalShape.test_the_state_of_every_record",
+      "test_e2e.TestTheFinalShape.test_the_summary_counts_add_up",
+      "test_e2e.TestTheProviderWaterfall.test_a_deliverable_failure_never_becomes_evidence_of_validity",
+      "test_e2e.TestTheProviderWaterfall.test_deliverable_never_called_while_its_contract_is_unconfirmed",
+      "test_e2e.TestTheProviderWaterfall.test_one_provider_failing_does_not_stop_the_batch",
+      "test_e2e.TestTheProviderWaterfall.test_the_catch_all_that_cleared_needed_reoon",
+      "test_e2e.TestTheProviderWaterfall.test_the_report_can_break_verification_down_by_verifier"
+    ],
+    "tests.test_enrich": [
+      "test_enrich.TestSection9Traps.test_trap_2_accept_all_is_never_sendable_on_its_own",
+      "test_enrich.TestTheAcceptanceTest.test_its_address_was_checked_by_both_verifiers",
+      "test_enrich.TestTheAcceptanceTest.test_the_verified_record_still_ships",
+      "test_enrich.TestTheCap.test_a_dry_run_reports_what_it_would_do_and_what_it_would_cost",
+      "test_enrich.TestTheWaterfallOrder.test_a_record_with_an_address_does_not_buy_decision_makers"
+    ],
+    "tests.test_fixture_hygiene": [
+      "test_fixture_hygiene.TestNoRealDataAnywhereInGit.test_every_email_address_is_on_a_reserved_domain"
+    ],
+    "tests.test_for_prompt_quality": [
+      "test_for_prompt_quality.ForPromptFiltersUnusable.test_all_unusable_means_empty_public_evidence",
+      "test_for_prompt_quality.ForPromptFiltersUnusable.test_hook_step_also_filters_unusable",
+      "test_for_prompt_quality.ForPromptFiltersUnusable.test_unusable_rows_are_excluded_from_public_evidence",
+      "test_for_prompt_quality.ForPromptHandlesRefresh.test_fresh_rows_come_first_after_refresh",
+      "test_for_prompt_quality.ForPromptRanksByQuality.test_strong_before_medium"
+    ],
+    "tests.test_invariants": [
+      "test_invariants.TestNothingCanSend.test_emailbison_posts_only_to_routes_it_declares"
+    ],
+    "tests.test_ladder_impact": [
+      "test_ladder_impact.TestAnalyzeRecord.test_all_linkedin_steps_affected",
+      "test_ladder_impact.TestAnalyzeRecord.test_full_linkedin_shape"
+    ],
+    "tests.test_lead_variables": [
+      "test_lead_variables.StaleVariablesClearedOnReconciliation.test_already_empty_variables_do_not_trigger_extra_writes",
+      "test_lead_variables.StaleVariablesClearedOnReconciliation.test_in_range_variables_are_preserved",
+      "test_lead_variables.StaleVariablesClearedOnReconciliation.test_report_names_the_cleared_variables",
+      "test_lead_variables.StaleVariablesClearedOnReconciliation.test_stale_numbered_variables_are_cleared"
+    ],
+    "tests.test_lead_writes_respect_the_killswitch": [
+      "test_lead_writes_respect_the_killswitch.KillswitchStopsLeadWrites.test_a_running_campaign_is_caught_fresh_before_attach",
+      "test_lead_writes_respect_the_killswitch.KillswitchStopsLeadWrites.test_an_active_campaign_with_leads_already_created_refuses_attach",
+      "test_lead_writes_respect_the_killswitch.KillswitchStopsLeadWrites.test_the_killswitch_check_is_what_stops_the_leads"
+    ],
+    "tests.test_mutation_anchors": [
+      "test_mutation_anchors.EveryAnchorStillMatches.test_every_guard_appears_exactly_once"
+    ],
+    "tests.test_nothing_talks_back_to_a_prospect": [
+      "test_nothing_talks_back_to_a_prospect.NoSourceFileComposesAResponse.test_no_function_answers_a_prospect",
+      "test_nothing_talks_back_to_a_prospect.TheVocabularyContainsNoSend.test_and_no_send_verb_is_supported"
+    ],
+    "tests.test_preproduction": [
+      "test_preproduction.TestApprovalIsRequired.test_after_approval_the_payloads_appear",
+      "test_preproduction.TestApprovalIsRequired.test_editing_after_approval_pulls_it_back_out_of_the_payload",
+      "test_preproduction.TestApprovalIsRequired.test_the_approval_is_attributed_to_a_person",
+      "test_preproduction.TestTheCadenceIsPrepared.test_each_contact_has_the_full_seven_step_timeline",
+      "test_preproduction.TestTheControlledScope.test_the_catch_all_cleared_through_reoon_before_being_used",
+      "test_preproduction.TestTheWholeRunIsAccountedFor.test_the_funnel_adds_up"
+    ],
+    "tests.test_red_team_tonights_guards": [
+      "test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_a_config_cannot_raise_the_limit_by_being_unreadable",
+      "test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_a_second_contact_does_not_reset_the_company_count",
+      "test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_it_is_asked_before_content_and_cannot_be_out_ranked"
+    ],
+    "tests.test_referral": [
+      "test_referral.TheWholeChain.test_a_plain_hand_off_holds_the_referrer"
+    ],
+    "tests.test_replaysim": [
+      "test_replaysim.TestThePositiveChain.test_the_company_is_paused_afterwards",
+      "test_replaysim.TestTheScenarios.test_each_one_classifies_as_documented"
+    ],
+    "tests.test_secrets": [
+      "test_secrets.TestTheEnvFileIsIgnored.test_every_state_override_is_in_the_example"
+    ],
+    "tests.test_set_regeneration": [
+      "test_set_regeneration.GenerateRecordIntegrationTest.test_model_calls_are_counted",
+      "test_set_regeneration.SetRegenerationTransactionTest.test_successful_regeneration_replaces_all_notes"
+    ],
+    "tests.test_slack_agent_scope": [
+      "test_slack_agent_scope.TheTurnACTUALLYAppliesTheBackstop.test_a_whole_turn_in_a_client_channel_discards_a_leaking_answer"
+    ],
+    "tests.test_slack_request_tickets": [
+      "test_slack_request_tickets.AVagueRequestBecomesAQuestion.test_a_copy_change_with_no_wording_asks_for_it",
+      "test_slack_request_tickets.AVagueRequestBecomesAQuestion.test_a_request_with_no_target_asks_for_one",
+      "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_a_second_request_replaces_the_first_pending_one",
+      "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_a_stale_restatement_is_not_confirmable",
+      "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_confirming_twice_raises_one_ticket",
+      "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_confirming_writes_the_ticket",
+      "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_declining_drops_it",
+      "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_no_restatement_promises_a_time",
+      "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_first_turn_restates_and_writes_nothing",
+      "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_restatement_to_a_client_names_nobody_at_resonate",
+      "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_restatement_to_a_client_says_the_effect_in_plain_words",
+      "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_ticket_file_carries_the_original_words",
+      "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_ticket_records_who_asked_and_from_where",
+      "test_slack_request_tickets.OnlyTheOperatorDecides.test_a_decision_cannot_be_applied_twice",
+      "test_slack_request_tickets.OnlyTheOperatorDecides.test_a_refused_attempt_is_recorded_on_the_ticket",
+      "test_slack_request_tickets.OnlyTheOperatorDecides.test_approving_in_a_client_channel_is_refused_even_by_the_operator",
+      "test_slack_request_tickets.OnlyTheOperatorDecides.test_somebody_else_in_the_internal_channel_cannot",
+      "test_slack_request_tickets.OnlyTheOperatorDecides.test_the_operator_can_approve",
+      "test_slack_request_tickets.OnlyTheOperatorDecides.test_the_requester_cannot_approve_their_own_request",
+      "test_slack_request_tickets.OnlyTheOperatorDecides.test_with_no_operator_configured_nobody_can_approve",
+      "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_a_client_decision_note_carries_no_ticket_id",
+      "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_a_client_request_is_marked_client_originated",
+      "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_a_rejection_is_reported_too",
+      "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_an_executed_outcome_reaches_the_requester",
+      "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_the_action_required_post_carries_the_id_and_both_verbs",
+      "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_the_approved_queue_empties_when_it_is_executed",
+      "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_the_client_is_told_it_was_passed_on_and_nothing_more",
+      "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_the_decision_names_the_original_thread",
+      "test_slack_request_tickets.TheTicketFileAndTheJournalAgree.test_a_corrupt_journal_line_does_not_lose_the_queue",
+      "test_slack_request_tickets.TheTicketFileAndTheJournalAgree.test_both_are_written_together",
+      "test_slack_request_tickets.TheTicketFileAndTheJournalAgree.test_the_latest_journal_row_wins"
+    ],
+    "tests.test_staging_a_campaign_twice_builds_one": [
+      "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_every_lead_can_be_traced_back_to_its_person",
+      "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_it_is_left_stopped",
+      "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_re_staging_does_not_stop_a_running_campaign",
+      "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_the_cap_is_applied_before_anybody_is_attached",
+      "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_the_provider_id_is_persisted_where_it_can_be_found",
+      "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_the_second_run_creates_nothing"
+    ],
+    "tests.test_staging_refuses_colliding_contacts": [
+      "test_staging_refuses_colliding_contacts.StagingRefusesCollidingContacts.test_a_clean_contact_still_stages",
+      "test_staging_refuses_colliding_contacts.StagingRefusesCollidingContacts.test_breaking_the_check_makes_the_intended_test_fail",
+      "test_staging_refuses_colliding_contacts.StagingRefusesCollidingContacts.test_sequence_finished_may_pass"
+    ],
+    "tests.test_staging_the_same_material_twice": [
+      "test_staging_the_same_material_twice.StagingIsIdempotent.test_and_it_is_recorded_on_the_campaign",
+      "test_staging_the_same_material_twice.StagingIsIdempotent.test_the_second_with_the_same_material_is_refused"
+    ],
+    "tests.test_taxonomy_safety": [
+      "test_taxonomy_safety.GenuineInterestStillClassifies.test_genuine_curiosity_reaches_interested"
+    ],
+    "tests.test_the_account_is_the_unit_of_outreach": [
+      "test_the_account_is_the_unit_of_outreach.TheDecisionConsultsIt.test_the_check_returns_the_reason_when_the_company_is_past_policy",
+      "test_the_account_is_the_unit_of_outreach.TheDecisionItselfHoldsIt.test_a_company_past_its_weekly_limit_is_held",
+      "test_the_account_is_the_unit_of_outreach.TheDecisionItselfHoldsIt.test_it_is_asked_before_any_content_work"
+    ],
+    "tests.test_the_cadence_reacts_to_what_the_prospect_did": [
+      "test_the_cadence_reacts_to_what_the_prospect_did.TheConfiguredCadenceAndTheConfiguredCapsAgree.test_the_client_file_selects_the_linkedin_heavy_sequence"
+    ],
+    "tests.test_the_cadence_the_client_chose_is_the_one_that_runs": [
+      "test_the_cadence_the_client_chose_is_the_one_that_runs.TheClientRunsTheSequenceItNames.test_it_is_the_shape_the_operator_asked_for"
+    ],
+    "tests.test_the_email_activation_grant_is_two_rows_not_a_channel": [
+      "test_the_email_activation_grant_is_two_rows_not_a_channel.TestEverythingElseStillRefuses.test_the_two_authorized_rows_cannot_borrow_each_others_campaign",
+      "test_the_email_activation_grant_is_two_rows_not_a_channel.TestTheGrantIsTwoNamedRows.test_an_unbound_row_is_refused_rather_than_waved_through"
+    ],
+    "tests.test_the_emailbison_write_door_is_enforced": [
+      "test_the_emailbison_write_door_is_enforced.TheDoorDidNotWidenWhatThisModuleMaySend.test_resume_is_declared_and_authorised_for_one_campaign_only"
+    ],
+    "tests.test_the_free_leg_runs_before_the_paid_one": [
+      "test_the_free_leg_runs_before_the_paid_one.TheFreeLegSettlesIt.test_a_site_that_defeats_it_falls_through",
+      "test_the_free_leg_runs_before_the_paid_one.TheFreeLegSettlesIt.test_boilerplate_is_refused_rather_than_stored"
+    ],
+    "tests.test_the_linkedin_stop_can_actually_address_somebody": [
+      "test_the_linkedin_stop_can_actually_address_somebody.TestTheFieldNameMatchesTheData.test_the_store_uses_linkedin_and_not_linkedin_url"
+    ],
+    "tests.test_the_live_activation_grant": [
+      "test_the_live_activation_grant.TheGrantIsEmptyUntilSomebodyDecides.test_each_grant_names_one_channel_only",
+      "test_the_live_activation_grant.TheGrantIsEmptyUntilSomebodyDecides.test_the_grant_holds_exactly_what_an_operator_decided"
+    ],
+    "tests.test_the_prototype_cannot_send": [
+      "test_the_prototype_cannot_send.EveryLivePathRefuses.test_the_linkedin_path_refuses_before_it_imports_a_transport"
+    ],
+    "tests.test_the_reply_path_may_stop_and_nothing_else": [
+      "test_the_reply_path_may_stop_and_nothing_else.TheStopPathAsksForTheNarrowGrant.test_stop_at_provider_scopes_to_stop_routes"
+    ],
+    "tests.test_the_second_activation_at_an_account_is_refused": [
+      "test_the_second_activation_at_an_account_is_refused.ActivationOrderTest.test_activating_a_makes_b_refused",
+      "test_the_second_activation_at_an_account_is_refused.ActivationOrderTest.test_activating_b_makes_a_refused",
+      "test_the_second_activation_at_an_account_is_refused.ActivationOrderTest.test_after_a_activates_b_rows_are_no_longer_excluded"
+    ],
+    "tests.test_the_second_post_is_a_person_not_a_counter": [
+      "test_the_second_post_is_a_person_not_a_counter.AnAutoresponderIsNotAFirstReply.test_the_forwarding_assistant_is_the_boundary_and_it_does_fire"
+    ],
+    "tests.test_the_stop_can_be_performed": [
+      "test_the_stop_can_be_performed.ThePauseIsPerformable.test_and_nothing_else_came_with_it"
+    ],
+    "tests.test_threaded_sequence": [
+      "test_threaded_sequence.ThreadedCampaignStaging.test_threaded_campaign_clears_stale_subjects_on_existing_lead",
+      "test_threaded_sequence.ThreadedCampaignStaging.test_threaded_campaign_writes_subject_1_only"
+    ],
+    "tests.test_two_providers_disagreeing_is_not_a_headcount": [
+      "test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_a_dry_run_calls_nothing_and_still_says_it_would",
+      "test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_call_is_on_the_waterfall_ledger_with_its_reason",
+      "test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_provider_is_called",
+      "test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_reported_cost_replaces_the_assumed_one",
+      "test_two_providers_disagreeing_is_not_a_headcount.TheProviderCanActuallyBeReached.test_the_field_routes_to_blitz"
+    ],
+    "tests.test_what_are_we_working_on": [
+      "test_what_are_we_working_on.ItAnswersTheThreeParts.test_in_flight_is_a_sum_and_not_a_ninth_state",
+      "test_what_are_we_working_on.ItAnswersTheThreeParts.test_it_says_what_is_waiting_on_them",
+      "test_what_are_we_working_on.ItAnswersTheThreeParts.test_it_says_where_the_accounts_stand",
+      "test_what_are_we_working_on.ItAnswersTheThreeParts.test_it_says_which_campaigns_are_running",
+      "test_what_are_we_working_on.ItAnswersTheThreeParts.test_it_uses_the_operators_vocabulary_and_not_the_retired_one",
+      "test_what_are_we_working_on.ItAnswersTheThreeParts.test_unanswerable_is_carried_and_never_folded_into_untouched",
+      "test_what_are_we_working_on.ItIsScopedLikeEveryOtherClientTool.test_it_answers_about_the_channels_own_workspace_only",
+      "test_what_are_we_working_on.WhatItRefusesToSay.test_it_states_no_plan_past_the_providers_horizon",
+      "test_what_are_we_working_on.WhatItRefusesToSay.test_our_own_backlog_is_a_COUNT_and_not_a_list"
+    ]
+  },
+  "entries": [
+    {
+      "kind": "FAIL",
+      "test": "test_a_bounced_address_stops_being_sendable.TheSENDPathReadsIt.test_decide_blocks_a_bounced_address"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_a_target_that_exists_nowhere_gets_the_same_refusal"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_a_ticket_alpha_raised_is_scoped_to_alpha"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_can_raise_a_copy_change_on_its_own_cadence"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_can_raise_a_pause_for_its_own_campaign"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_can_still_remove_its_own_lead"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_cannot_decide_betas_ticket"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_cannot_raise_a_copy_change_on_betas_cadence"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_cannot_raise_a_pause_for_betas_campaign"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_cannot_raise_a_removal_for_betas_lead"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_the_refusal_does_not_say_whose_it_is"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_a_client_can_never_reach_another_client.NothingAboutBetaSurvivesIntoAlphasChannel.test_the_action_required_post_names_only_the_raising_workspace"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_a_multi_step_lead_carries_no_unnumbered_copy"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_every_step_gets_its_own_words"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_the_lead_carries_one_subject_and_no_numbered_follow_up_one"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_the_provider_holds_five_steps_with_the_cadence_delays"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_the_provider_holds_one_opener_and_four_thread_replies"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_an_email_is_not_a_finished_person.AKnownCompanyFieldIsNotReBought.test_a_fallback_for_another_field_is_walked_past"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_an_email_is_not_a_finished_person.AKnownCompanyFieldIsNotReBought.test_the_two_company_fields_route_independently"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_campaign_cannot_send.TheNarrowedSeals.test_add_lead_is_refused_for_finished"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_campaign_cannot_send.ThePredicateReadsProviderTruth.test_finished_is_not_proven_safe"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_contactout_first.TestStoredDataWinsFirst.test_a_stored_verdict_is_not_bought_again"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_attach_before_readback"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_create_lead_before_remember"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_limits"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_schedule"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_senders"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_sequence"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_stopped"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_find_or_create_before_bind"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_crash_restart_idempotency.CrashAtSeam.test_crash_between_first_and_second_lead"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_delivery_titles_are_a_persona_family.AnArbitraryTitleStillFailsClosed.test_a_classified_title_with_no_angle_is_still_held"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestEnrichmentOutcomes.test_a_catch_all_cleared_by_one_provider_is_now_held"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestEnrichmentOutcomes.test_the_catch_all_that_does_not_clear_is_held_and_not_sendable"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestEnrichmentOutcomes.test_the_clean_domain_verifies"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestEnrichmentOutcomes.test_the_invalid_address_ends_dropped_with_a_reason"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestGenerationAndLint.test_the_good_records_still_ship_alongside_it"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_e2e.TestPushPreparationAndIdempotency.test_the_payloads_are_the_documented_shapes"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestTheFinalShape.test_the_review_sheet_shows_green_and_can_show_red"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestTheFinalShape.test_the_state_of_every_record"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestTheFinalShape.test_the_summary_counts_add_up"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestTheProviderWaterfall.test_a_deliverable_failure_never_becomes_evidence_of_validity"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestTheProviderWaterfall.test_deliverable_never_called_while_its_contract_is_unconfirmed"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestTheProviderWaterfall.test_one_provider_failing_does_not_stop_the_batch"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestTheProviderWaterfall.test_the_catch_all_that_cleared_needed_reoon"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_e2e.TestTheProviderWaterfall.test_the_report_can_break_verification_down_by_verifier"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_enrich.TestSection9Traps.test_trap_2_accept_all_is_never_sendable_on_its_own"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_enrich.TestTheAcceptanceTest.test_its_address_was_checked_by_both_verifiers"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_enrich.TestTheAcceptanceTest.test_the_verified_record_still_ships"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_enrich.TestTheCap.test_a_dry_run_reports_what_it_would_do_and_what_it_would_cost"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_enrich.TestTheWaterfallOrder.test_a_record_with_an_address_does_not_buy_decision_makers"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_fixture_hygiene.TestNoRealDataAnywhereInGit.test_every_email_address_is_on_a_reserved_domain"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_for_prompt_quality.ForPromptFiltersUnusable.test_all_unusable_means_empty_public_evidence"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_for_prompt_quality.ForPromptFiltersUnusable.test_hook_step_also_filters_unusable"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_for_prompt_quality.ForPromptFiltersUnusable.test_unusable_rows_are_excluded_from_public_evidence"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_for_prompt_quality.ForPromptHandlesRefresh.test_fresh_rows_come_first_after_refresh"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_for_prompt_quality.ForPromptRanksByQuality.test_strong_before_medium"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_invariants.TestNothingCanSend.test_emailbison_posts_only_to_routes_it_declares"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_ladder_impact.TestAnalyzeRecord.test_all_linkedin_steps_affected"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_ladder_impact.TestAnalyzeRecord.test_full_linkedin_shape"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_lead_variables.StaleVariablesClearedOnReconciliation.test_already_empty_variables_do_not_trigger_extra_writes"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_lead_variables.StaleVariablesClearedOnReconciliation.test_in_range_variables_are_preserved"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_lead_variables.StaleVariablesClearedOnReconciliation.test_report_names_the_cleared_variables"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_lead_variables.StaleVariablesClearedOnReconciliation.test_stale_numbered_variables_are_cleared"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_lead_writes_respect_the_killswitch.KillswitchStopsLeadWrites.test_a_running_campaign_is_caught_fresh_before_attach"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_lead_writes_respect_the_killswitch.KillswitchStopsLeadWrites.test_an_active_campaign_with_leads_already_created_refuses_attach"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_lead_writes_respect_the_killswitch.KillswitchStopsLeadWrites.test_the_killswitch_check_is_what_stops_the_leads"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_mutation_anchors.EveryAnchorStillMatches.test_every_guard_appears_exactly_once"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_nothing_talks_back_to_a_prospect.NoSourceFileComposesAResponse.test_no_function_answers_a_prospect"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_nothing_talks_back_to_a_prospect.TheVocabularyContainsNoSend.test_and_no_send_verb_is_supported"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_ownership_readback_staleness.AStaleReadbackRefuses.test_a_missing_file_refuses"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_ownership_readback_staleness.AStaleReadbackRefuses.test_an_undated_readback_refuses"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_ownership_readback_staleness.AStaleReadbackRefuses.test_an_unparseable_date_refuses"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_ownership_readback_staleness.AStaleReadbackRefuses.test_past_the_age_limit_it_returns_none"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_ownership_readback_staleness.AStaleReadbackRefuses.test_the_reason_names_the_command_that_refreshes_it"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_preproduction.TestApprovalIsRequired.test_after_approval_the_payloads_appear"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_preproduction.TestApprovalIsRequired.test_editing_after_approval_pulls_it_back_out_of_the_payload"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_preproduction.TestApprovalIsRequired.test_the_approval_is_attributed_to_a_person"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_preproduction.TestTheCadenceIsPrepared.test_each_contact_has_the_full_seven_step_timeline"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_preproduction.TestTheControlledScope.test_the_catch_all_cleared_through_reoon_before_being_used"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_preproduction.TestTheWholeRunIsAccountedFor.test_the_funnel_adds_up"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_a_config_cannot_raise_the_limit_by_being_unreadable"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_a_second_contact_does_not_reset_the_company_count"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_red_team_tonights_guards.TheFatigueHoldCannotBeSidestepped.test_it_is_asked_before_content_and_cannot_be_out_ranked"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_referral.TheWholeChain.test_a_plain_hand_off_holds_the_referrer"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_replaysim.TestThePositiveChain.test_the_company_is_paused_afterwards"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_replaysim.TestTheScenarios.test_each_one_classifies_as_documented"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_secrets.TestTheEnvFileIsIgnored.test_every_state_override_is_in_the_example"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_set_regeneration.GenerateRecordIntegrationTest.test_model_calls_are_counted"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_set_regeneration.SetRegenerationTransactionTest.test_successful_regeneration_replaces_all_notes"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_agent_scope.TheTurnACTUALLYAppliesTheBackstop.test_a_whole_turn_in_a_client_channel_discards_a_leaking_answer"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_slack_request_tickets.AVagueRequestBecomesAQuestion.test_a_copy_change_with_no_wording_asks_for_it"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_slack_request_tickets.AVagueRequestBecomesAQuestion.test_a_request_with_no_target_asks_for_one"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_a_second_request_replaces_the_first_pending_one"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_a_stale_restatement_is_not_confirmable"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_confirming_twice_raises_one_ticket"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_confirming_writes_the_ticket"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_declining_drops_it"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_no_restatement_promises_a_time"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_first_turn_restates_and_writes_nothing"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_restatement_to_a_client_names_nobody_at_resonate"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_restatement_to_a_client_says_the_effect_in_plain_words"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_ticket_file_carries_the_original_words"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_ticket_records_who_asked_and_from_where"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.OnlyTheOperatorDecides.test_a_decision_cannot_be_applied_twice"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.OnlyTheOperatorDecides.test_a_refused_attempt_is_recorded_on_the_ticket"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.OnlyTheOperatorDecides.test_approving_in_a_client_channel_is_refused_even_by_the_operator"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.OnlyTheOperatorDecides.test_somebody_else_in_the_internal_channel_cannot"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.OnlyTheOperatorDecides.test_the_operator_can_approve"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.OnlyTheOperatorDecides.test_the_requester_cannot_approve_their_own_request"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.OnlyTheOperatorDecides.test_with_no_operator_configured_nobody_can_approve"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_a_client_decision_note_carries_no_ticket_id"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_a_client_request_is_marked_client_originated"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_a_rejection_is_reported_too"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_an_executed_outcome_reaches_the_requester"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_the_action_required_post_carries_the_id_and_both_verbs"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_the_approved_queue_empties_when_it_is_executed"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_the_client_is_told_it_was_passed_on_and_nothing_more"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_the_decision_names_the_original_thread"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.TheTicketFileAndTheJournalAgree.test_a_corrupt_journal_line_does_not_lose_the_queue"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.TheTicketFileAndTheJournalAgree.test_both_are_written_together"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_slack_request_tickets.TheTicketFileAndTheJournalAgree.test_the_latest_journal_row_wins"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_every_lead_can_be_traced_back_to_its_person"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_it_is_left_stopped"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_re_staging_does_not_stop_a_running_campaign"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_the_cap_is_applied_before_anybody_is_attached"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_the_provider_id_is_persisted_where_it_can_be_found"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_the_second_run_creates_nothing"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_staging_refuses_colliding_contacts.StagingRefusesCollidingContacts.test_a_clean_contact_still_stages"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_staging_refuses_colliding_contacts.StagingRefusesCollidingContacts.test_breaking_the_check_makes_the_intended_test_fail"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_staging_refuses_colliding_contacts.StagingRefusesCollidingContacts.test_sequence_finished_may_pass"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_staging_the_same_material_twice.StagingIsIdempotent.test_and_it_is_recorded_on_the_campaign"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_staging_the_same_material_twice.StagingIsIdempotent.test_the_second_with_the_same_material_is_refused"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_taxonomy_safety.GenuineInterestStillClassifies.test_genuine_curiosity_reaches_interested"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_account_is_the_unit_of_outreach.TheDecisionConsultsIt.test_the_check_returns_the_reason_when_the_company_is_past_policy"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_account_is_the_unit_of_outreach.TheDecisionItselfHoldsIt.test_a_company_past_its_weekly_limit_is_held"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_account_is_the_unit_of_outreach.TheDecisionItselfHoldsIt.test_it_is_asked_before_any_content_work"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_cadence_reacts_to_what_the_prospect_did.TheConfiguredCadenceAndTheConfiguredCapsAgree.test_the_client_file_selects_the_linkedin_heavy_sequence"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_cadence_the_client_chose_is_the_one_that_runs.TheClientRunsTheSequenceItNames.test_it_is_the_shape_the_operator_asked_for"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_email_activation_grant_is_two_rows_not_a_channel.TestEverythingElseStillRefuses.test_the_two_authorized_rows_cannot_borrow_each_others_campaign"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_email_activation_grant_is_two_rows_not_a_channel.TestTheGrantIsTwoNamedRows.test_an_unbound_row_is_refused_rather_than_waved_through"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_emailbison_write_door_is_enforced.TheDoorDidNotWidenWhatThisModuleMaySend.test_resume_is_declared_and_authorised_for_one_campaign_only"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_free_leg_runs_before_the_paid_one.TheFreeLegSettlesIt.test_a_site_that_defeats_it_falls_through"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_free_leg_runs_before_the_paid_one.TheFreeLegSettlesIt.test_boilerplate_is_refused_rather_than_stored"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_linkedin_stop_can_actually_address_somebody.TestTheFieldNameMatchesTheData.test_the_store_uses_linkedin_and_not_linkedin_url"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_live_activation_grant.TheGrantIsEmptyUntilSomebodyDecides.test_each_grant_names_one_channel_only"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_live_activation_grant.TheGrantIsEmptyUntilSomebodyDecides.test_the_grant_holds_exactly_what_an_operator_decided"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_prototype_cannot_send.EveryLivePathRefuses.test_the_linkedin_path_refuses_before_it_imports_a_transport"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_reply_path_may_stop_and_nothing_else.TheStopPathAsksForTheNarrowGrant.test_stop_at_provider_scopes_to_stop_routes"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_second_activation_at_an_account_is_refused.ActivationOrderTest.test_activating_a_makes_b_refused"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_second_activation_at_an_account_is_refused.ActivationOrderTest.test_activating_b_makes_a_refused"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_second_activation_at_an_account_is_refused.ActivationOrderTest.test_after_a_activates_b_rows_are_no_longer_excluded"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_second_post_is_a_person_not_a_counter.AnAutoresponderIsNotAFirstReply.test_the_forwarding_assistant_is_the_boundary_and_it_does_fire"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_the_stop_can_be_performed.ThePauseIsPerformable.test_and_nothing_else_came_with_it"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_threaded_sequence.ThreadedCampaignStaging.test_threaded_campaign_clears_stale_subjects_on_existing_lead"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_threaded_sequence.ThreadedCampaignStaging.test_threaded_campaign_writes_subject_1_only"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_a_dry_run_calls_nothing_and_still_says_it_would"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_call_is_on_the_waterfall_ledger_with_its_reason"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_provider_is_called"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_two_providers_disagreeing_is_not_a_headcount.TheCallIsMadeAndItGoesThroughTheLedger.test_the_reported_cost_replaces_the_assumed_one"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_two_providers_disagreeing_is_not_a_headcount.TheProviderCanActuallyBeReached.test_the_field_routes_to_blitz"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_what_are_we_working_on.ItAnswersTheThreeParts.test_in_flight_is_a_sum_and_not_a_ninth_state"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_what_are_we_working_on.ItAnswersTheThreeParts.test_it_says_what_is_waiting_on_them"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_what_are_we_working_on.ItAnswersTheThreeParts.test_it_says_where_the_accounts_stand"
+    },
+    {
+      "kind": "FAIL",
+      "test": "test_what_are_we_working_on.ItAnswersTheThreeParts.test_it_says_which_campaigns_are_running"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_what_are_we_working_on.ItAnswersTheThreeParts.test_it_uses_the_operators_vocabulary_and_not_the_retired_one"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_what_are_we_working_on.ItAnswersTheThreeParts.test_unanswerable_is_carried_and_never_folded_into_untouched"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_what_are_we_working_on.ItIsScopedLikeEveryOtherClientTool.test_it_answers_about_the_channels_own_workspace_only"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_what_are_we_working_on.WhatItRefusesToSay.test_it_states_no_plan_past_the_providers_horizon"
+    },
+    {
+      "kind": "ERROR",
+      "test": "test_what_are_we_working_on.WhatItRefusesToSay.test_our_own_backlog_is_a_COUNT_and_not_a_list"
+    }
+  ],
+  "supersedes": "74 distinct at dc395fa1 (PRE-merge), 2026-09-23. That file stays as the pre-merge record; this one is what a host comparison must diff against.",
+  "gone_since_dc395fa1": [
+    "test_providers.TestNoSendPathExists.test_every_contactout_post_goes_to_a_read_only_route"
+  ],
+  "new_since_dc395fa1": [
+    "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_a_target_that_exists_nowhere_gets_the_same_refusal",
+    "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_a_ticket_alpha_raised_is_scoped_to_alpha",
+    "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_can_raise_a_copy_change_on_its_own_cadence",
+    "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_can_raise_a_pause_for_its_own_campaign",
+    "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_can_still_remove_its_own_lead",
+    "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_cannot_decide_betas_ticket",
+    "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_cannot_raise_a_copy_change_on_betas_cadence",
+    "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_cannot_raise_a_pause_for_betas_campaign",
+    "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_alpha_cannot_raise_a_removal_for_betas_lead",
+    "test_a_client_can_never_reach_another_client.AlphaCannotTriggerAnythingAboutBeta.test_the_refusal_does_not_say_whose_it_is",
+    "test_a_client_can_never_reach_another_client.NothingAboutBetaSurvivesIntoAlphasChannel.test_the_action_required_post_names_only_the_raising_workspace",
+    "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_a_multi_step_lead_carries_no_unnumbered_copy",
+    "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_every_step_gets_its_own_words",
+    "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_the_lead_carries_one_subject_and_no_numbered_follow_up_one",
+    "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_the_provider_holds_five_steps_with_the_cadence_delays",
+    "test_a_five_step_campaign_sends_five_different_emails.TheWordsTravelWithThePerson.test_the_provider_holds_one_opener_and_four_thread_replies",
+    "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_attach_before_readback",
+    "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_create_lead_before_remember",
+    "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_limits",
+    "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_schedule",
+    "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_senders",
+    "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_sequence",
+    "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_ensure_stopped",
+    "test_crash_restart_idempotency.CrashAtSeam.test_crash_after_find_or_create_before_bind",
+    "test_crash_restart_idempotency.CrashAtSeam.test_crash_between_first_and_second_lead",
+    "test_fixture_hygiene.TestNoRealDataAnywhereInGit.test_every_email_address_is_on_a_reserved_domain",
+    "test_lead_variables.StaleVariablesClearedOnReconciliation.test_already_empty_variables_do_not_trigger_extra_writes",
+    "test_lead_variables.StaleVariablesClearedOnReconciliation.test_in_range_variables_are_preserved",
+    "test_lead_variables.StaleVariablesClearedOnReconciliation.test_report_names_the_cleared_variables",
+    "test_lead_variables.StaleVariablesClearedOnReconciliation.test_stale_numbered_variables_are_cleared",
+    "test_lead_writes_respect_the_killswitch.KillswitchStopsLeadWrites.test_a_running_campaign_is_caught_fresh_before_attach",
+    "test_lead_writes_respect_the_killswitch.KillswitchStopsLeadWrites.test_an_active_campaign_with_leads_already_created_refuses_attach",
+    "test_lead_writes_respect_the_killswitch.KillswitchStopsLeadWrites.test_the_killswitch_check_is_what_stops_the_leads",
+    "test_nothing_talks_back_to_a_prospect.NoSourceFileComposesAResponse.test_no_function_answers_a_prospect",
+    "test_nothing_talks_back_to_a_prospect.TheVocabularyContainsNoSend.test_and_no_send_verb_is_supported",
+    "test_ownership_readback_staleness.AStaleReadbackRefuses.test_a_missing_file_refuses",
+    "test_ownership_readback_staleness.AStaleReadbackRefuses.test_an_undated_readback_refuses",
+    "test_ownership_readback_staleness.AStaleReadbackRefuses.test_an_unparseable_date_refuses",
+    "test_ownership_readback_staleness.AStaleReadbackRefuses.test_past_the_age_limit_it_returns_none",
+    "test_ownership_readback_staleness.AStaleReadbackRefuses.test_the_reason_names_the_command_that_refreshes_it",
+    "test_slack_agent_scope.TheTurnACTUALLYAppliesTheBackstop.test_a_whole_turn_in_a_client_channel_discards_a_leaking_answer",
+    "test_slack_request_tickets.AVagueRequestBecomesAQuestion.test_a_copy_change_with_no_wording_asks_for_it",
+    "test_slack_request_tickets.AVagueRequestBecomesAQuestion.test_a_request_with_no_target_asks_for_one",
+    "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_a_second_request_replaces_the_first_pending_one",
+    "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_a_stale_restatement_is_not_confirmable",
+    "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_confirming_twice_raises_one_ticket",
+    "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_confirming_writes_the_ticket",
+    "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_declining_drops_it",
+    "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_no_restatement_promises_a_time",
+    "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_first_turn_restates_and_writes_nothing",
+    "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_restatement_to_a_client_names_nobody_at_resonate",
+    "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_restatement_to_a_client_says_the_effect_in_plain_words",
+    "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_ticket_file_carries_the_original_words",
+    "test_slack_request_tickets.NothingIsWrittenBeforeItIsConfirmed.test_the_ticket_records_who_asked_and_from_where",
+    "test_slack_request_tickets.OnlyTheOperatorDecides.test_a_decision_cannot_be_applied_twice",
+    "test_slack_request_tickets.OnlyTheOperatorDecides.test_a_refused_attempt_is_recorded_on_the_ticket",
+    "test_slack_request_tickets.OnlyTheOperatorDecides.test_approving_in_a_client_channel_is_refused_even_by_the_operator",
+    "test_slack_request_tickets.OnlyTheOperatorDecides.test_somebody_else_in_the_internal_channel_cannot",
+    "test_slack_request_tickets.OnlyTheOperatorDecides.test_the_operator_can_approve",
+    "test_slack_request_tickets.OnlyTheOperatorDecides.test_the_requester_cannot_approve_their_own_request",
+    "test_slack_request_tickets.OnlyTheOperatorDecides.test_with_no_operator_configured_nobody_can_approve",
+    "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_a_client_decision_note_carries_no_ticket_id",
+    "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_a_client_request_is_marked_client_originated",
+    "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_a_rejection_is_reported_too",
+    "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_an_executed_outcome_reaches_the_requester",
+    "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_the_action_required_post_carries_the_id_and_both_verbs",
+    "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_the_approved_queue_empties_when_it_is_executed",
+    "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_the_client_is_told_it_was_passed_on_and_nothing_more",
+    "test_slack_request_tickets.TheOutcomeGoesBackToTheThreadItCameFrom.test_the_decision_names_the_original_thread",
+    "test_slack_request_tickets.TheTicketFileAndTheJournalAgree.test_a_corrupt_journal_line_does_not_lose_the_queue",
+    "test_slack_request_tickets.TheTicketFileAndTheJournalAgree.test_both_are_written_together",
+    "test_slack_request_tickets.TheTicketFileAndTheJournalAgree.test_the_latest_journal_row_wins",
+    "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_every_lead_can_be_traced_back_to_its_person",
+    "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_it_is_left_stopped",
+    "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_re_staging_does_not_stop_a_running_campaign",
+    "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_the_cap_is_applied_before_anybody_is_attached",
+    "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_the_provider_id_is_persisted_where_it_can_be_found",
+    "test_staging_a_campaign_twice_builds_one.StagingTwiceBuildsOne.test_the_second_run_creates_nothing",
+    "test_staging_refuses_colliding_contacts.StagingRefusesCollidingContacts.test_a_clean_contact_still_stages",
+    "test_staging_refuses_colliding_contacts.StagingRefusesCollidingContacts.test_breaking_the_check_makes_the_intended_test_fail",
+    "test_staging_refuses_colliding_contacts.StagingRefusesCollidingContacts.test_sequence_finished_may_pass",
+    "test_taxonomy_safety.GenuineInterestStillClassifies.test_genuine_curiosity_reaches_interested",
+    "test_the_linkedin_stop_can_actually_address_somebody.TestTheFieldNameMatchesTheData.test_the_store_uses_linkedin_and_not_linkedin_url",
+    "test_the_reply_path_may_stop_and_nothing_else.TheStopPathAsksForTheNarrowGrant.test_stop_at_provider_scopes_to_stop_routes",
+    "test_the_second_post_is_a_person_not_a_counter.AnAutoresponderIsNotAFirstReply.test_the_forwarding_assistant_is_the_boundary_and_it_does_fire",
+    "test_the_stop_can_be_performed.ThePauseIsPerformable.test_and_nothing_else_came_with_it",
+    "test_threaded_sequence.ThreadedCampaignStaging.test_threaded_campaign_clears_stale_subjects_on_existing_lead",
+    "test_threaded_sequence.ThreadedCampaignStaging.test_threaded_campaign_writes_subject_1_only",
+    "test_what_are_we_working_on.ItAnswersTheThreeParts.test_in_flight_is_a_sum_and_not_a_ninth_state",
+    "test_what_are_we_working_on.ItAnswersTheThreeParts.test_it_says_what_is_waiting_on_them",
+    "test_what_are_we_working_on.ItAnswersTheThreeParts.test_it_says_where_the_accounts_stand",
+    "test_what_are_we_working_on.ItAnswersTheThreeParts.test_it_says_which_campaigns_are_running",
+    "test_what_are_we_working_on.ItAnswersTheThreeParts.test_it_uses_the_operators_vocabulary_and_not_the_retired_one",
+    "test_what_are_we_working_on.ItAnswersTheThreeParts.test_unanswerable_is_carried_and_never_folded_into_untouched",
+    "test_what_are_we_working_on.ItIsScopedLikeEveryOtherClientTool.test_it_answers_about_the_channels_own_workspace_only",
+    "test_what_are_we_working_on.WhatItRefusesToSay.test_it_states_no_plan_past_the_providers_horizon",
+    "test_what_are_we_working_on.WhatItRefusesToSay.test_our_own_backlog_is_a_COUNT_and_not_a_list"
+  ],
+  "baseline_reproduces": "73 of the pre-merge baseline's 74 entries still fail, and the ONE that is gone is exactly the one the night handoff predicted would be gone: test_providers.TestNoSendPathExists.test_every_contactout_post_goes_to_a_read_only_route, fixed by ca08363d. The rise 74 -> 170 is the master merge (31 commits, through 5c9fb515), not a regression in this branch: all 97 new entries are in modules master added or changed.",
+  "order_dependence": "FIVE entries fail in the full run and PASS standalone, all in test_ownership_readback_staleness.AStaleReadbackRefuses. The pre-merge baseline recorded ZERO order-dependent failures and credited test_no_test_leaves_the_environment_changed with keeping it that way. That guard is still GREEN, so this leak is NOT an environment variable - the guard does not cover this class. src.inbound.OWNERSHIP_MAX_AGE_HOURS is not mutated by any other module either (checked). The tests pass an explicit path, so the carrier is something else: a module-level cache, the clock, or the working directory. NOT TRIAGED HERE - per the provisioned handoff \u00a75, re-measuring the baseline and triaging what the merge turned red are two jobs, and the second is production's code.",
+  "note": "Full discovery and per-module standalone (550 modules), taken at the SAME commit and diffed BY NAME, per docs/INFRA-HANDOFF-2026-09-23-PROVISIONED.md \u00a75. Generated by scripts/suite_baseline.py, which refuses to measure from a dirty tree. Windows/Python 3.14.3; a host comparison must normalise BOTH sides through the same redactor before a set difference means anything - see --redact-map."
+}
