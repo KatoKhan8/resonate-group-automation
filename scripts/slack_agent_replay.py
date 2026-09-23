@@ -224,6 +224,7 @@ def main(argv=None):
 
     print("replaying %d question(s)%s"
           % (len(corpus), " with no model" if args.no_model else ""))
+    sys.stdout.flush()
     rows = []
     for index, question in enumerate(corpus, 1):
         row = replay_one(question, model=model)
@@ -233,6 +234,12 @@ def main(argv=None):
               % (index, len(corpus), question["source"],
                  row.get("scope") or "?", row["seconds"], flag,
                  str(question["text"])[:58].replace("\n", " ")))
+        # FLUSH PER QUESTION. Redirected to a file, Python block-buffers
+        # stdout, so a run taking half an hour shows NOTHING until it
+        # exits - and a stalled run is then indistinguishable from a slow
+        # one. Measured the hard way on the first real pass: twenty
+        # minutes with an empty log and no way to tell which.
+        sys.stdout.flush()
 
     tally = {c: {PASS: 0, FAIL: 0, NA: 0} for c in CHECKS}
     for row in rows:
