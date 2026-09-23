@@ -167,6 +167,71 @@ class TestTheAdministrativePathOutlivesRootLogin(unittest.TestCase):
         self.assertIn("NOPASSWD", text)
 
 
+class TestNoRunLineShipsAnUnexpandedSubstitution(unittest.TestCase):
+    """MEASURED ON THE HOST 2026-09-23. The Docker repo line ended with
+
+        ... /ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable'
+
+    INSIDE THE SINGLE QUOTES of an `echo`, so the substitution never ran and
+    the literal text was written into /etc/apt/sources.list.d/docker.list.
+    apt refused with "The repository '...ubuntu $(. Release' does not have a
+    Release file" and, under `set -e`, step 7 took the run down with it.
+
+    WHAT MAKES IT WORTH A TEST rather than a one-line fix: the step's own
+    note predicts a failure that looks identical - "IF 26.04 HAS NO DOCKER CE
+    REPO YET, this step fails loudly rather than silently installing
+    docker.io. Check the codename before cutover; the Docker repo has
+    historically lagged a new LTS by weeks." The repo was fine.
+    `dists/resolute/Release` answers HTTP 200. A correct, prominent warning
+    stood ready to absorb the blame for an unrelated quoting bug, and the
+    next person would have waited for Docker to publish a repo that was
+    already published.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.commands = _run_lines()
+
+    def test_no_command_writes_an_unexpanded_substitution_to_a_file(self):
+        offenders = []
+        for command in self.commands:
+            if ">" not in command:
+                continue
+            # What lands in the file is what sits inside the quotes.
+            for quoted in re.findall(r"'([^']*)'", command):
+                if "$(" in quoted or re.search(r"\$[A-Za-z_]", quoted):
+                    offenders.append(command)
+        self.assertEqual(
+            offenders, [],
+            "single-quoted text containing a substitution is written "
+            "LITERALLY into the target file, not expanded: %s" % (offenders,),
+        )
+
+    def _docker_list_write(self):
+        # The line that WRITES the file. Others mention the path - the
+        # update step now names it too, because it removes it on failure.
+        lines = [c for c in self.commands
+                 if "docker.list" in c and ">" in c and c.startswith("echo")]
+        self.assertEqual(len(lines), 1, lines)
+        return lines[0]
+
+    def test_the_docker_repo_line_carries_a_resolved_codename(self):
+        lines = [self._docker_list_write()]
+        self.assertNotIn(
+            "$(", lines[0],
+            "the codename must be a value by the time the run line is built",
+        )
+
+    def test_the_codename_resolves_where_there_is_an_os_release_to_read(self):
+        """Off-host - this suite runs on Windows - there is no
+        /etc/os-release and the placeholder is the correct answer. ON a host
+        the script refuses outright rather than writing an empty codename, so
+        this only asserts where the file exists."""
+        if not Path("/etc/os-release").exists():
+            self.skipTest("no /etc/os-release; the placeholder is correct here")
+        self.assertNotIn("CODENAME-UNRESOLVED", self._docker_list_write())
+
+
 class TestTimeSyncAsksForAClockNotAService(unittest.TestCase):
     """MEASURED ON THE HOST: step 3 ran `systemctl enable --now
     systemd-timesyncd` and failed with "Unit systemd-timesyncd.service does

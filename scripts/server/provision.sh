@@ -288,8 +288,59 @@ say "7. DOCKER — for the F6 sourcing service only, installed and NOT enabled"
 run "install -m 0755 -d /etc/apt/keyrings"
 run "curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc"
 run "chmod a+r /etc/apt/keyrings/docker.asc"
-run "echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo \$VERSION_CODENAME) stable' > /etc/apt/sources.list.d/docker.list"
-run "apt-get update -qq"
+# MEASURED ON THE HOST 2026-09-23. This line used to end with
+#
+#     ... /ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable'
+#
+# where the `$(` was BACKSLASH-ESCAPED, so bash did not expand it while
+# building the string, `eval` then saw it inside SINGLE QUOTES, and the
+# literal text `$(. /etc/os-release && echo $VERSION_CODENAME)` was written
+# into docker.list. apt refused:
+#
+#     E: The repository 'https://download.docker.com/linux/ubuntu $(. Release'
+#        does not have a Release file.
+#
+# AND IT LOOKS EXACTLY LIKE THE FAILURE THE NOTE BELOW PREDICTS - "if 26.04
+# has no Docker CE repo yet, this step fails loudly". It has one:
+# dists/resolute/Release answers HTTP 200. The repo was never the problem,
+# the quoting was, and a correct and prominent warning stood ready to take
+# the blame for it.
+#
+# The codename is resolved HERE, once, into a variable, so it is a value by
+# the time the run line is built and `--check` prints the real repo line
+# rather than a promise about one.
+#
+# `|| true` because an assignment whose command substitution fails is fatal
+# under `set -e`, and off-host - where `--check` is reviewed and where this
+# repository's suite runs - there is no /etc/os-release. The refusal below
+# handles an unresolved codename and is scoped to a real run, so a dry run
+# stays readable anywhere.
+CODENAME="$( . /etc/os-release 2>/dev/null && printf '%s' "${VERSION_CODENAME:-}" || true )"
+if [[ $CHECK -eq 0 && -z "${CODENAME}" ]]; then
+  echo "   REFUSING: cannot read VERSION_CODENAME from /etc/os-release." >&2
+  echo "   The Docker repo line would be written with an empty codename." >&2
+  exit 1
+fi
+run "echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${CODENAME:-CODENAME-UNRESOLVED} stable' > /etc/apt/sources.list.d/docker.list"
+# MEASURED 2026-09-23: when this update failed, the docker.list written just
+# above STAYED ON THE HOST - and `apt-get update` in STEP 1 then failed on
+# the next run, so the whole script aborted at the firewall over a broken
+# file it had written itself. A partial failure that poisons the next attempt
+# is worse than the failure.
+#
+# So the repo file is PROVISIONAL until an update succeeds with it, and is
+# removed if it does not. The failure still stops the run - it is a real
+# failure - but it stops a run that can simply be repeated.
+if [[ $CHECK -eq 1 ]]; then
+  note "WOULD: apt-get update -qq (and REMOVE docker.list if it fails)"
+else
+  if ! apt-get update -qq; then
+    rm -f /etc/apt/sources.list.d/docker.list
+    echo "   REFUSING: the Docker repo did not validate. docker.list has" >&2
+    echo "   been removed so step 1 of the next run is not broken by it." >&2
+    exit 1
+  fi
+fi
 run "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin"
 run "systemctl disable --now docker.socket docker.service || true"
 run "usermod -aG docker ${APP_USER}"
