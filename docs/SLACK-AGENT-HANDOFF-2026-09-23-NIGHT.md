@@ -219,6 +219,65 @@ In the operator's own order:
 
 ---
 
+## 8a. MEASURED TONIGHT: `classifier` IS ON THE EVENTS, AND IT IS USELESS
+
+The evening handoff said `account.replies()` projects no `classifier` and
+concluded there was "no local way" to tell a stale verdict from a fresh one.
+**Half of that is wrong and the correction changes increment 3's shape.**
+
+Counted in production's `work/queue.jsonl` tonight - 42 reply events across
+the live estate:
+
+    type                42      provider_event_id   42
+    contact             42      classifier          20   <- IT IS THERE
+    at                  42      reason              20
+    channel             42      confidence          22
+    provider            42      outcome             20
+
+And the stale positive carries it explicitly:
+
+    {"type": "reply_classified", "contact": "jennifer-bagley",
+     "at": "2026-09-22T18:35:03Z", "classification": "positive",
+     "classifier": "rules-3", "confidence": "0.75",
+     "reason": "matched 2 positive phrase(s)"}
+
+So the field is on disk and **`account.replies()` drops it in projection**
+(`src/account.py:149`, which returns `contact_key, channel, at, type,
+classification, positive` and nothing else). That is a one-line widening,
+not a missing write-back.
+
+**But it does not solve the problem, and this is the part worth carrying.**
+`classifier` reads `"rules-3"` on the stale event and `replies.VERSION` is
+*still* `"rules-3"` today, after the rules moved twice on 2026-09-23. **The
+field is present, readable, and cannot distinguish anything** - which is a
+worse failure than an absent field, because a guard written against it would
+look correct and pass the stale row straight through.
+
+**No reply text is stored either** (no `text`, `body` or `snippet` on any of
+the 42), so re-classifying locally is not possible.
+
+### So increment 3 is this, and it is buildable now
+
+Not "wait for the write-back". `_ledger_replies` should report
+`positive` and **`positive_confirmed`** apart, where a stored positive is
+confirmed only when its `classifier` can be shown to be the current rule
+set. Today nothing can show that, so **`positive_confirmed` is 0** - and the
+test feeds it the real Jennifer/Rose row and asserts 0, failing on the stale
+data itself rather than on a version string somebody has to remember to
+change, which is exactly what §3a of the evening handoff asked for.
+
+That is also why the operator tied decisions 2 and 3 together: the day
+`replies.VERSION` becomes a rule HASH, `positive_confirmed` starts being
+answerable, and Phase D item 4 can read it. Until then a feature that posts
+positives into a client channel reads `positive_confirmed`, gets 0, and
+announces nothing - instead of announcing an autoresponder as a buying
+signal.
+
+Drafted, not implemented: the full suite was running and a mid-run source
+edit is what contaminated the first baseline.
+
+---
+
 ## 9. THE RULES THIS SESSION WORKED UNDER
 
 Unchanged, restated by the operator, verified for every commit:
