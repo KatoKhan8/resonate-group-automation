@@ -160,7 +160,14 @@ class StatusTest(_SupervisorTestBase):
         try:
             state = supervisor._monitor_status(mon, self.lock_dir,
                                                self.state_dir)
-            self.assertEqual("UP", state["status"])
+            # UP_ONE_WITNESS, not UP. This fixture sleeps and writes no
+            # heartbeat, and `_monitor_status` is now the two-witness verdict:
+            # a live pid alone is forgeable across a reboot, and a monitor
+            # that cannot prove it is WORKING must not read the same as one
+            # that has. The pid is still reported, which is what this test is
+            # actually about.
+            self.assertEqual("UP_ONE_WITNESS", state["status"])
+            self.assertTrue(state["witness_process"])
             self.assertEqual(proc.pid, state["pid"])
         finally:
             proc.terminate()

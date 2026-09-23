@@ -54,69 +54,24 @@ sys.path.insert(0, ROOT)
 
 from src import singlewalker, store, supervisor, watchsink  # noqa: E402
 
-#: A heartbeat older than this many times a monitor's own interval is not a
-#: witness. Two, not one: a monitor that polls every 300s and is mid-poll when
-#: asked has legitimately not beaten for slightly over 300s, and an alarm that
-#: fires on the normal case is an alarm people learn to ignore.
-STALE_BEAT_MULTIPLE = 2
-
-#: For the event-driven monitors that declare no interval.
-DEFAULT_INTERVAL = 300
-
+# The two-witness rule, the boot time and the staleness tolerance all live in
+# `src/supervisor.py` and are imported rather than reimplemented here. This
+# file carried its own copy for one afternoon, and that copy looked up
+# `watchsink.heartbeat_path(monitor_name)` - which matches the real heartbeat
+# file of exactly ZERO of the eight monitors. `--verify` would have polled for
+# ten minutes, timed out, and reported a recovery time that meant nothing.
+#
+# Two implementations of one liveness rule is how a status board and a
+# recovery check come to disagree about whether the estate is up.
 #: How long a full recovery is allowed to take before `--verify` gives up.
 #: The machine rebooted in three minutes on 2026-09-23; a supervisor that has
 #: not brought every monitor up in ten is not slow, it is stuck.
 VERIFY_DEADLINE = 600
 
-
-def boot_time():
-    """Epoch seconds of the last boot, or None if it cannot be established.
-
-    NONE IS NOT ZERO, and every caller below fails closed on it. A caller that
-    could not read the boot time must not conclude that every lock is stale -
-    that would delete the locks of monitors running perfectly well, which is
-    the opposite of this script's job.
-
-    Windows: `Win32_OperatingSystem.LastBootUpTime`, via PowerShell, because
-    this repository carries no third-party dependencies and `psutil` is not
-    installed. Linux: `/proc/stat`'s `btime`, the same fact with no subprocess
-    at all. The server migration lands on Linux, so the cheap branch is the
-    one that survives.
-    """
-    if os.name != "nt":
-        try:
-            with open("/proc/stat", encoding="utf-8") as f:
-                for line in f:
-                    if line.startswith("btime "):
-                        return float(line.split()[1])
-        except OSError:
-            return None
-        return None
-
-    try:
-        out = subprocess.run(
-            ["powershell", "-NoProfile", "-Command",
-             "(Get-CimInstance Win32_OperatingSystem)"
-             ".LastBootUpTime.ToString('o')"],
-            capture_output=True, text=True)
-    except OSError:
-        return None
-    if out.returncode != 0:
-        return None
-    stamp = (out.stdout or "").strip()
-    if not stamp:
-        return None
-    try:
-        return datetime.datetime.fromisoformat(stamp).timestamp()
-    except ValueError:
-        return None
-
-
-def _mtime(path):
-    try:
-        return os.path.getmtime(path)
-    except OSError:
-        return None
+witnesses = supervisor.witnesses
+boot_time = supervisor.boot_time
+STALE_BEAT_MULTIPLE = supervisor.STALE_BEAT_MULTIPLE
+DEFAULT_INTERVAL = supervisor.DEFAULT_INTERVAL
 
 
 def lock_survey(booted_at, lock_dir=None):
@@ -124,7 +79,8 @@ def lock_survey(booted_at, lock_dir=None):
 
     Returns paths rather than verdicts, so the caller decides. `unknown` is
     everything when the boot time could not be read: fail closed, touch
-    nothing.
+    nothing - deleting a live monitor's lock is worse than leaving a dead
+    one's.
     """
     lock_dir = lock_dir or supervisor._lock_dir()
     found = []
@@ -139,8 +95,9 @@ def lock_survey(booted_at, lock_dir=None):
 
     stale, live = [], []
     for fp in found:
-        mtime = _mtime(fp)
-        if mtime is None:
+        try:
+            mtime = os.path.getmtime(fp)
+        except OSError:
             continue
         (stale if mtime < booted_at else live).append(fp)
     return {"stale": stale, "live": live, "unknown": []}
@@ -152,79 +109,6 @@ def lock_pid(path):
             return int((f.read() or "0").strip() or 0)
     except (OSError, ValueError):
         return 0
-
-
-def witnesses(mon, booted_at, now=None):
-    """The two witnesses for one monitor, and the verdict they support.
-
-    `status` is UP only when both witnesses hold. Anything else is reported as
-    what it is - DOWN, or UNKNOWN when the evidence cannot be trusted - rather
-    than rounded to UP, because the whole point of this function is that the
-    existing single-witness check says UP too easily.
-    """
-    now = time.time() if now is None else now
-    name = mon["name"]
-    state = supervisor._read_state(name)
-    state_file = os.path.join(supervisor._state_dir(), "%s.json" % name)
-    state_written = _mtime(state_file)
-
-    pid = state.get("pid")
-    alive = bool(pid) and singlewalker._alive(pid)
-    state_after_boot = (booted_at is not None and state_written is not None
-                        and state_written >= booted_at)
-    process_witness = bool(alive and state_after_boot)
-
-    beat_epoch = None
-    try:
-        hb_path = watchsink.heartbeat_path(name)
-        if os.path.exists(hb_path):
-            with open(hb_path, encoding="utf-8") as f:
-                beat = json.load(f)
-            if isinstance(beat.get("epoch"), (int, float)):
-                beat_epoch = float(beat["epoch"])
-    except (OSError, ValueError):
-        beat_epoch = None
-
-    interval = mon.get("interval") or DEFAULT_INTERVAL
-    beat_age = (now - beat_epoch) if beat_epoch is not None else None
-    beat_after_boot = (booted_at is not None and beat_epoch is not None
-                       and beat_epoch >= booted_at)
-    beat_fresh = (beat_age is not None
-                  and beat_age <= interval * STALE_BEAT_MULTIPLE)
-    heartbeat_witness = bool(beat_after_boot and beat_fresh)
-
-    if booted_at is None:
-        status, why = "UNKNOWN", "boot time unreadable, so neither witness " \
-                                 "can be dated"
-    elif process_witness and heartbeat_witness:
-        status, why = "UP", ""
-    elif alive and not state_after_boot:
-        status, why = "UNKNOWN", ("its state file predates the boot, so the "
-                                  "pid it names is not the pid that wrote it")
-    elif process_witness and not heartbeat_witness:
-        status, why = "DOWN", ("process alive but no fresh beat since boot - "
-                               "running and not working is still not up")
-    elif heartbeat_witness and not process_witness:
-        status, why = "DOWN", ("a beat since boot but no live process - it "
-                               "started and died")
-    else:
-        status, why = "DOWN", "neither witness"
-
-    return {
-        "name": name,
-        "module": mon["module"],
-        "interval": interval,
-        "status": status,
-        "why": why,
-        "pid": pid if alive else None,
-        "witness_process": process_witness,
-        "witness_heartbeat": heartbeat_witness,
-        "state_written_at": state_written,
-        "beat_at": beat_epoch,
-        "beat_age": beat_age,
-        "restart_count": state.get("restart_count", 0),
-        "last_exit_code": state.get("last_exit_code"),
-    }
 
 
 def cursors():
