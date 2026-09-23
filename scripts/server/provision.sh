@@ -214,13 +214,31 @@ read -r -d '' UU <<'EOF' || true
 // moved to a time when nothing is sending, and cold_start brings the estate
 // back afterwards.
 //
-// Send windows, from CLAUDE.md:   487  Mon-Fri 07:00-15:00Z
-//                                 489  Mon-Fri 13:00-21:00Z
-// Nightly sourcing:               02:00 Europe/Zagreb = 00:00Z
+// DERIVED FROM THE LIVE COHORT, 491-498. An earlier version of this comment
+// derived it from 487 and 489, which are finished. It reached the same
+// answer by luck and for reasons that stop being true in November.
 //
-// So the quiet band is 21:00Z -> 07:00Z, and 02:00Z sits inside it with the
-// sourcing run finished and five hours before the first send window opens.
-// 02:00Z is 04:00 in Zagreb during CEST and 03:00 during CET.
+// 491-498 do not have UTC windows. They have COHORT TIMEZONES, and the
+// provider schedules inside each cohort's own business day - measured
+// 2026-09-22, first sends at 13:02Z (09:00 New York), 08:10Z (09:10 London)
+// and 07:09Z (09:09 Zagreb):
+//
+//   491,492,493,494,495  America/New_York   496,497  Europe/London
+//   498                  Europe/Zagreb
+//
+// So the union in UTC MOVES TWICE A YEAR, in two different weeks, because
+// the EU and the US do not change on the same date:
+//
+//   now, all DST on        07:00Z-21:00Z      quiet 21:00Z -> 07:00Z
+//   after EU falls back    08:00Z-21:00Z      quiet 21:00Z -> 08:00Z
+//   after US falls back    08:00Z-22:00Z      quiet 22:00Z -> 08:00Z
+//
+// 02:00Z is inside the quiet band in ALL THREE regimes, so the reboot time
+// does not move. WHAT MOVES IS THE MARGIN AGAINST SOURCING: the nightly run
+// is 02:00 Europe/Zagreb, which is 00:00Z in CEST and 01:00Z in CET, so the
+// gap between sourcing starting and the host rebooting HALVES from two hours
+// to one on the last Sunday in October. A sourcing run that grows past an
+// hour meets the reboot, and it meets it in winter only.
 Unattended-Upgrade::Automatic-Reboot "true";
 Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
 Unattended-Upgrade::Automatic-Reboot-Time "02:00";
