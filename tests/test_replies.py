@@ -24,9 +24,15 @@ class TestTheClassifier(unittest.TestCase):
             self.assertEqual(self.verdict(text), replies.POSITIVE, text)
 
     def test_a_clear_no_is_negative(self):
+        # "We already use something for this." was here until 2026-09-23 and
+        # moved to `test_the_class_layer_before_composition`. OPERATOR
+        # DECISION that day: "we already use X", "we have a tool for this"
+        # and "not a priority right now" are OBJECTIONS unless paired with an
+        # explicit decline. It is a conversation, not a door closing - and
+        # the paired forms ("we already use Harvest, no thanks") still read
+        # NEGATIVE, which that file asserts in both directions.
         for text in ("Not interested, thanks.",
-                     "No thanks, we're all set.",
-                     "We already use something for this."):
+                     "No thanks, we're all set."):
             self.assertEqual(self.verdict(text), replies.NEGATIVE, text)
 
     def test_an_unsubscribe_is_an_unsubscribe(self):

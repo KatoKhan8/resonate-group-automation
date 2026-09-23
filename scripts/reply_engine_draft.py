@@ -99,7 +99,11 @@ def main(argv=None):
             counts[f"[{kind}]"] = counts.get(f"[{kind}]", 0) + 1
             continue
         event = as_event(row, kind)
-        verdict = replies.classify(event["text"])
+        # The SUBJECT is passed deliberately: it is where an autoresponder
+        # announces itself in every language, and the body is where it
+        # fooled the classifier into REFERRAL on 2026-09-22.
+        verdict = replies.classify(event["text"],
+                                   subject=event.get("subject"))
         record = replyengine.draft(event, verdict,
                                    tz_offset_hours=args.tz_offset)
         record["at_inbound"] = at.strftime("%Y-%m-%dT%H:%M:%SZ") if at else None
