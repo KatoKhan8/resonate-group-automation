@@ -1,6 +1,50 @@
 # Merge request — Phase D4: account status, and the witness that was blind
 
-**For the production session.** Branch `slack-agent` at `0e8133a8`, pushed
+## THE DECISION THIS IS BUILT ON — READ THIS FIRST
+
+**OPERATOR, 2026-09-23**, verbatim:
+
+> Provider-confirmed sends, bounces, replies and HeyReach requests/accepts
+> are written back into the local event ledger by the watchers on every
+> readback (idempotent per provider row id), so account status and
+> accounts-first reporting are computed locally from the ledger, with the
+> provider as a periodic second witness, never as a per-account call.
+> **Production owns the write-back; the agent reads the ledger.**
+
+**Production owns the write-back. This branch does not contain it, and
+cannot: `src/providers/*` and the watch loops are not this session's.**
+
+What this branch does is make the agent side correct on both sides of that
+change:
+
+- It reads the **ledger** and nothing else per account. An earlier version
+  of this increment walked the campaign queues per account — it answered
+  correctly and it is exactly the shape ruled out above, so it is **gone**,
+  and a test asserts the function no longer exists so it cannot be quietly
+  reintroduced.
+- It asks **one** question per workspace per ten minutes — *is the ledger
+  recording sends yet?* — and caches it. Fifty accounts cost one provider
+  read, asserted by test.
+- Until the write-back lands, it **withholds `untouched`** rather than
+  asserting it. See §1: the ledger currently holds 1 confirming event
+  against 494 provider-confirmed sends.
+
+**So the agent goes quiet on most accounts until production ships the
+write-back, and loud the moment it does.** That is deliberate and it is the
+same pattern as the follow-up offer, which stays switched off until its
+deliverer beats. A tool that answers confidently from a ledger nobody is
+writing is the failure this whole document is about.
+
+**What production needs to do for this to light up:** write the four event
+kinds back on every readback, idempotent per provider row id, using the
+event types `touch.CONFIRMING_EVENTS` already names — `push_marked`,
+`email_delivered`, `linkedin_connected` — plus `reply_received` /
+`reply_classified`, which already exist and already work. Nothing here needs
+a new event type or a schema change.
+
+---
+
+**For the production session.** Branch `slack-agent` at `18b7c068`, pushed
 and verified against the remote. Not merged, not pushed to master.
 
 The operator's additive item 2: *"'what is happening with `<domain>`'
@@ -18,8 +62,8 @@ now merged — thank you). Take D3 and this together or in order.
 
     nothing
 
-    src/slackagenttools.py    account_status, _provider_touches, _account_state
-    tests/test_what_is_happening_with_this_account.py   NEW, 39 tests
+    src/slackagenttools.py    account_status, _ledger_carries_sends, _account_state
+    tests/test_what_is_happening_with_this_account.py   NEW, 47 tests
 
 ---
 
@@ -51,39 +95,53 @@ client-facing, and nothing errors.
 
 **This is not a defect in this increment; it is a defect this increment
 found**, and it is bigger than this tool. Anything reading `account.graph()`
-for "has this account been contacted" is currently wrong on this estate —
-every screen, claim resolver and fatigue check the docstring names. **Whether
-the sends should be written back into the event log is production's call**,
-and it is the thing worth taking from this document.
+for "has this account been contacted" is currently wrong on this estate -
+every screen, claim resolver and fatigue check the docstring names. The
+operator has since decided the fix, and it is at the top of this document:
+the watchers write the sends back, and the agent reads the ledger.
 
 ---
 
-## 2. SO THE PROVIDER IS THE SECOND WITNESS
+## 2. SO THE PROVIDER IS A PERIODIC WITNESS ON THE LEDGER ITSELF
 
-Which is what *"derive from provider truth"* means.
-`_provider_touches(slug, emails)` matches the account's contact addresses
-against the campaign queues — through `readback.queue`, so it carries D2's
-page cap — and counts rows the provider says were **sent**. `sent_at` is the
-witness, never membership: enrolled is not sent.
+`_ledger_carries_sends(slug)` asks one question for a whole workspace and
+caches the answer for ten minutes: **does the ledger hold anything like the
+number of sends the provider is reporting?**
 
-Re-run live after the change:
+It is deliberately **not an equality**. The ledger counts touches on this
+workspace's records and the provider counts sends on its campaigns; they are
+close relatives, not the same number. What is being detected is the ledger
+being *empty* against a provider that is plainly sending — **1 against 494**,
+not 480 against 494.
 
-    28row.com   untouched  ->  sequenced
-                provider sends: 1
-                "the provider confirms 1 send(s) to this account and the
-                 local event log carries none"
+**`None` is not `False`.** A witness that could not be asked has not
+reported a problem, and treating an unreachable provider as a broken ledger
+would degrade every answer on a transient outage.
 
-**The disagreement is reported, not smoothed over.** Quietly preferring the
-provider would hide a writer that has stopped writing.
+### 2a. What the verdict licenses, and what it does not
 
-### 2a. Unreadable is never zero, in both places
+The witness **only ever licenses the absence of evidence**:
 
-- `_provider_touches` returns **`None`** when queues refused and nothing was
-  found — not `[]`. A campaign nobody could read is not a campaign that sent
-  nothing.
-- An account with no local touch **and** an unreadable provider returns **no
-  status at all**, with an error. `untouched` there would be a guess dressed
-  as an answer, in a client channel.
+- Ledger has a touch → answered, whatever the witness says. Evidence present
+  beats evidence missing.
+- Ledger empty, witness `True` or `None` → `untouched`.
+- **Ledger empty, witness `False` → no status at all**, with an error
+  naming the write-back. In a client channel `untouched` there would be a
+  guess dressed as an answer, about an account we may well have emailed
+  yesterday.
+
+### 2b. What that means live, today, and it is not comfortable
+
+Run over the live estate this afternoon, before the write-back exists:
+
+    60 accounts sampled   ->   60 unanswerable
+    12 accounts in the whole workspace carry a touch or reply in the ledger
+       -> those 12 answer: 1 sequenced, 8 replied, 3 do_not_contact
+
+**The tool is nearly silent until production ships the write-back.** That is
+the honest consequence of the decision, not a defect in it: the alternative
+is the per-account queue walk that was removed, and the alternative to
+*that* is telling a client `untouched` about an account we wrote to.
 
 ---
 
@@ -133,6 +191,19 @@ because the pattern is now four days old:
   confirming one. A field that cannot vary is a claim nobody can check. It
   is gone, replaced by an explicit limit: **a held step and a step not yet
   due look identical here.**
+- **`account.replies()` returns one row per EVENT, not per reply** — it
+  answers "what is on this record". `reply_received` and `reply_classified`
+  are both on it for the same reply, so a naive per-class count doubles
+  every classified reply and invents an unclassified one. Live:
+
+      olv.global   {'unclassified': 1, 'out_of_office': 1}
+
+  for a single out-of-office — **two replies, one apparently unlooked-at,
+  both halves false, and it would have reached a client channel.** Fixed by
+  counting the receipt only when nothing classified it; re-run live, all
+  twelve accounts now show one reply with its real class. **Any other caller
+  counting `len(account.replies(rec))` as a reply count has this bug**, and
+  that is worth a grep on your side.
 
 A fixture that mocked `graph()` would have hidden the first two. The tests
 use **records in the store's shape** and run the real `graph()`.
@@ -141,7 +212,7 @@ use **records in the store's shape** and run the real `graph()`.
 
 ## 5. THE TESTS
 
-**39, and the ones that matter are the live-shaped ones.** Each of the six
+**47, and the ones that matter are the live-shaped ones.** Each of the six
 reachable states is produced from a record rather than asserted about a
 constant; the precedence is tested including `do_not_contact` over
 `meeting`; the provider leg is tested for all four combinations of
@@ -157,14 +228,16 @@ touch that baseline.
 
 ## 6. STILL YOURS
 
-New, and the first is the important one:
+New, and the first is the only one that matters:
 
-- **Decide whether provider sends should be written back to the event log.**
-  Until they are, `account.graph()` is blind on this estate and this tool is
-  carrying a provider call per account to work around it. That cost is
-  acceptable for one-domain questions and **will not scale to a report**,
-  which matters for the operator's additive item 3 (accounts-first
-  reporting) — that wants these counts across a whole workspace.
+- **Ship the write-back.** Everything above is switched off until it exists:
+  the four event kinds, idempotent per provider row id, on every watcher
+  readback. No new event types and no schema change — `push_marked`,
+  `email_delivered`, `linkedin_connected`, `reply_received` /
+  `reply_classified` all already exist and already work. **Accounts-first
+  reporting (additive item 3) is waiting on the same thing**, and it is
+  waiting for a stronger reason: a report wants these counts across a whole
+  workspace, and with a blind ledger every account in it is unanswerable.
 - **`next_planned_touch` is refused rather than guessed.** It lives in the
   provider's queue and `weekly_plan` already answers it honestly with a
   three-day horizon, because that is as far as the provider answers. Wiring
