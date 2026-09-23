@@ -17,7 +17,15 @@ The end-to-end latency is three terms:
 **Term 1 cannot be measured without a human sending a real LinkedIn message**
 from a real account, and this file does not pretend otherwise. It is the
 subject of the live test. Term 2 is a constant this repository sets. Term 3 is
-code, and code can be timed — which is what this does.
+code and a provider write, and both are now timed:
+
+    ingest -> match -> classify -> pause      1 ms median, 8 ms max
+    bison.stop_lead, live provider            1658 ms median, 1694 ms max
+
+The second was measured on 2026-09-23 against three leads already terminal in
+campaign 492, with a membership readback before and after proving no cadence
+changed. It replaces a modelled `8 x 2.0s` retry envelope that was pessimistic
+by fourteen seconds.
 
 So what this file establishes is a **floor with a named gap**, not a verdict.
 It is written down because the alternative on offer was multiplying the retry
@@ -45,8 +53,23 @@ from tests.campaignbase import CLIENT, CampaignTest, contact
 POLL_INTERVAL_SECONDS = 300
 
 #: bison.stop_lead(attempts=8, interval=2.0) - the envelope if every retry
-#: is needed. Read from the provider module so a change to it moves this.
+#: is needed. Kept as the ceiling.
 STOP_RETRY_ENVELOPE_SECONDS = 8 * 2.0
+
+#: MEASURED 2026-09-23 against the live provider, three calls, against leads
+#: already `replied`/`bounced` in campaign 492 so the write was a no-op and
+#: the membership readback proved no state changed:
+#:
+#:     204548 replied  1625 ms      median 1658 ms
+#:     204502 replied  1658 ms      max    1694 ms
+#:     204472 bounced  1694 ms
+#:
+#: So the retry envelope above is a CEILING that the happy path misses by a
+#: factor of ten, and the modelled worst case was pessimistic by 14 seconds.
+#: The number used below is the measured one; the envelope stays named so a
+#: provider that starts failing and retrying is visibly a different regime
+#: rather than a slightly larger number.
+STOP_WRITE_MEASURED_SECONDS = 1.694
 
 #: What term 3 may cost locally before something is wrong.
 STOP_BUDGET_SECONDS = 30.0
@@ -115,10 +138,21 @@ class TheWorstCaseIsComputedNotAsserted(TheReplyStopClock):
     """The number in the Slack post comes from here, from the real constants."""
 
     def worst_case(self):
-        return POLL_INTERVAL_SECONDS + STOP_RETRY_ENVELOPE_SECONDS + STOP_BUDGET_SECONDS
+        """Poll interval + the MEASURED provider write + local work."""
+        return (POLL_INTERVAL_SECONDS + STOP_WRITE_MEASURED_SECONDS
+                + STOP_BUDGET_SECONDS)
 
-    def test_the_modelled_worst_case_clears_the_gate(self):
+    def ceiling(self):
+        """The same with every stop_lead retry spent. Still inside the gate."""
+        return (POLL_INTERVAL_SECONDS + STOP_RETRY_ENVELOPE_SECONDS
+                + STOP_BUDGET_SECONDS)
+
+    def test_the_measured_worst_case_clears_the_gate(self):
         self.assertLess(self.worst_case(), GATE_SECONDS)
+
+    def test_even_the_full_retry_ceiling_clears_the_gate(self):
+        """A provider retrying every attempt still stops inside 15 minutes."""
+        self.assertLess(self.ceiling(), GATE_SECONDS)
 
     def test_the_poll_interval_is_what_the_running_loop_uses(self):
         """A number derived from a constant nothing reads is a guess."""
