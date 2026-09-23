@@ -100,6 +100,23 @@ FORBIDDEN_NAMES = (
     # holding the credential, which is where it belongs.
     "vrbat", "simicic", "simcic", "rendulic", "mamic", "mamić",
     "vizintin", "vižintin", "zrncevic", "zrnčević", "tomislav car",
+    # THE HANDLE, NOT ONLY THE SURNAME. Added 2026-09-23 after the operator's
+    # own LinkedIn vanity name reached a tracked document
+    # (`HUMAN-ACTIONS-REQUIRED.md`, 17:21) and a second one reached a script
+    # comment as an attribution.
+    #
+    # `beslic` above already matched it as a substring, so this adds no
+    # coverage the guard did not have - it adds a LEGIBLE FAILURE. The report
+    # read `HUMAN-ACTIONS-REQUIRED.md: beslic`, which sends the next reader
+    # looking for a surname in prose when what is actually in the file is a
+    # profile URL. A guard that is right about the violation and misleading
+    # about its shape costs the time it was meant to save.
+    #
+    # NOTE FOR ANYONE TEMPTED THE OTHER WAY: the fix for a real name in a
+    # tracked file is to remove the name, never to add it to `FAKE_VANITY`
+    # below. That list is an allowlist of INVENTED handles; putting a real
+    # one in it would retire the guard for exactly the person it protects.
+    "zbeslic",
 )
 
 # Figures read from a real provider account. A count is not anonymous when it

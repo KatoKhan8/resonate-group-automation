@@ -214,8 +214,8 @@ workspace; the backstop is armed in both channels.
 
 **Does not prove:**
 
-- **Anything about a real client's data.** `#mediaboard-resonate-outbound`
-  and `#nextoria-team` are live channels with real traffic. Binding one is an
+- **Anything about a real client's data.** The two live client channels
+  (named in the workspace policy, not here) carry real traffic. Binding one is an
   operator decision, and that is exactly why the synthetic one is the right
   vehicle.
 - **That the two gates on the sender path are independently load-bearing.**
