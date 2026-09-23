@@ -1,0 +1,46 @@
+TASK-253 complete. Here's what was delivered:
+
+## Implementation Summary
+
+**QUEUE_BACKEND, shadow write, and diff ledger** - the wiring between `src/store.py` and `src/sqlitestore.py`.
+
+### Key Features
+
+1. **Three backend modes** resolved per call via `backend()`:
+   - `jsonl` (default) - byte-identical to today's behavior
+   - `shadow` - JSONL canonical, both stores written, reads from JSONL, diffs to SQLite
+   - `sqlite` - SQLite canonical, JSONL untouched
+
+2. **Shadow mode** writes to both stores, reads from JSONL, and detects divergences:
+   - Divergences logged to `work/store-shadow-diff.jsonl`, do NOT raise by default
+   - `SHADOW_STRICT=1` raises on divergence (tests run with it on)
+   - Ledger records writes observed AND divergences; promotion refuses if both zero
+
+3. **digest() on sqlite** returns `meta.revision` (STRICTER than content hash):
+   - A record changed and changed back now REFUSES where content hash passed
+   - Test asserts the refusal; no compatibility shim added
+
+4. **Safety guards untouched**:
+   - `refuse_evidence_loss` and `refuse_history_loss` not edited
+   - Everything above the write in `save()` runs unchanged over FULL merged set
+   - `store.lock()` stays exactly as is, taken FIRST everywhere
+
+### Test Results
+
+- **30 new tests** in `tests/test_queue_backend_and_shadow.py` - all pass
+- **12 existing store tests** - all pass (backward compatibility verified)
+- **25 SQLite order tests** - all pass
+- **10 migration tests** - all pass
+
+### Files Changed
+
+- `src/store.py` - Added backend routing, shadow mode, SQLite integration
+- `tests/test_queue_backend_and_shadow.py` - New comprehensive test suite
+- `tests/test_the_sqlite_store_keeps_the_order_it_was_given.py` - Removed obsolete test
+
+### Commits
+
+- `917228de` - TASK-253: QUEUE_BACKEND, shadow write, and diff ledger
+- `ad7ebb20` - TASK-253: done, result block filled, moved to DONE
+
+Branch `qwen-worker-7-task-253` pushed to origin. Ready for Claude review.
