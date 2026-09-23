@@ -100,7 +100,7 @@ greeting that is only an honorific; DE and AT samples from the real CSV.
 ## RESULT
 
 STATUS: DONE
-COMMIT SHA: (pending)
+COMMIT SHA: 9d141ccbc993ee7b467d8a2e64971cb537367f93
 TESTS: 31 new tests in tests/test_names.py, all pass. 112 tests in
        test_lint + test_names + test_cadence pass. 40 heyreachfactory tests
        pass. 51 bison prewrite and greeting tests pass.
