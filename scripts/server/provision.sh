@@ -55,7 +55,13 @@ run "ufw allow 22/tcp  comment 'ssh'"
 run "ufw allow 443/tcp comment 'https'"
 run "ufw default deny incoming"
 run "ufw default allow outgoing"
-run "yes | ufw enable"
+# `ufw --force enable`, NOT `yes | ufw enable`. Measured on the host
+# 2026-09-23: `yes` is killed by SIGPIPE the moment ufw stops reading, the
+# pipeline exits 141 under `set -o pipefail`, and `set -e` aborts the script
+# ONE LINE AFTER THE FIREWALL CAME UP. Steps 2-8 silently never ran, and the
+# failure looks like a dropped ssh connection because that is what enabling a
+# firewall looks like. --force is ufw's own non-interactive flag.
+run "ufw --force enable"
 run "ufw status verbose"
 
 note "PORT 80 IS CLOSED, AND THAT IS A DECISION WITH A CONSEQUENCE."
@@ -82,7 +88,54 @@ run "cp /root/.ssh/authorized_keys ${APP_HOME}/.ssh/authorized_keys"
 run "chown ${APP_USER}:${APP_USER} ${APP_HOME}/.ssh/authorized_keys"
 run "chmod 600 ${APP_HOME}/.ssh/authorized_keys"
 
+say "2a. ADMINISTRATIVE PATH — before root login is taken away"
+
+# MEASURED ON THE HOST 2026-09-23. `adduser --disabled-password` leaves the
+# account with no password, `%sudo ALL=(ALL:ALL) ALL` then asks for one, and
+# /etc/sudoers.d was EMPTY. So membership of the sudo group bought nothing:
+# the app user could log in and could not become root. Step 2b then turned
+# off root ssh, and the host had no administrative path left at all - the
+# same lockout the ufw ordering in step 1 exists to prevent, through a door
+# nobody had checked.
+#
+# NOPASSWD is the right answer here rather than a password, and it is what
+# cloud-init already does for the default user on this image: the host is
+# key-only (2b turns passwords off on the next line), so a sudo password
+# would be a second secret to store, rotate and lose, protecting a shell
+# that the ssh key already grants.
+run "install -d -m 0755 /etc/sudoers.d"
+if [[ $CHECK -eq 1 ]]; then
+  note "WOULD write /etc/sudoers.d/90-${APP_USER} (0440) NOPASSWD for ${APP_USER}"
+else
+  printf '# Managed by scripts/server/provision.sh. See step 2a.\n%s ALL=(ALL) NOPASSWD:ALL\n' \
+    "${APP_USER}" > "/etc/sudoers.d/90-${APP_USER}"
+  chmod 0440 "/etc/sudoers.d/90-${APP_USER}"
+fi
+# visudo -c refuses to leave a syntactically broken sudoers behind, and a
+# broken sudoers is itself a lockout.
+run "visudo -c -f /etc/sudoers.d/90-${APP_USER}"
+
 say "2b. SSH HARDENING"
+
+# THE GATE. Everything above is preparation; this is the proof. Root ssh is
+# only given up once the replacement path is demonstrated to work, as the
+# app user, non-interactively, in the shell that is about to lose root.
+# Written as a refusal rather than a note because the note was already there
+# on 09-23 and the lockout happened anyway.
+ADMINCHECK="sudo -n -u ${APP_USER} sudo -n true"
+if [[ $CHECK -eq 1 ]]; then
+  note "WOULD verify: ${ADMINCHECK}"
+  note "WOULD REFUSE to touch sshd_config if that check fails."
+else
+  if ! su -s /bin/bash -c "sudo -n true" "${APP_USER}" >/dev/null 2>&1; then
+    echo "   REFUSING: ${APP_USER} cannot sudo without a password." >&2
+    echo "   Disabling root ssh now would leave this host with no" >&2
+    echo "   administrative path. Fix step 2a and re-run." >&2
+    exit 1
+  fi
+  note "verified: ${APP_USER} can become root without a password"
+fi
+
 run "sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config"
 run "sed -i 's/^#\\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config"
 note "Root login and passwords off. VERIFY A SECOND SSH SESSION AS"
@@ -95,7 +148,22 @@ run "systemctl reload ssh"
 say "3. TIME SYNC — before anything that timestamps"
 
 run "timedatectl set-timezone UTC"
-run "systemctl enable --now systemd-timesyncd"
+
+# MEASURED ON THE HOST 2026-09-23: `systemctl enable --now systemd-timesyncd`
+# failed with "Unit systemd-timesyncd.service does not exist" and aborted the
+# run under `set -e`. Ubuntu 26.04 does not install systemd-timesyncd at all
+# - the package exists but is not on the image, and CHRONY is what ships and
+# what is already synchronising. The step was enabling a named service when
+# what it actually wants is a synchronised clock from whatever provides one.
+#
+# So: ask the question the step exists to answer, and only install something
+# if nothing answers it. This also un-orders the old bug where step 3 enabled
+# a service before step 4 installed any packages.
+TIMECHECK='if [ "$(timedatectl show -p NTPSynchronized --value)" = "yes" ]; then '
+TIMECHECK+='echo "   clock synchronised by $(timedatectl show -p NTPServiceName --value 2>/dev/null || echo "the running ntp service")"; '
+TIMECHECK+='else echo "   no ntp service is synchronising; installing chrony"; '
+TIMECHECK+='DEBIAN_FRONTEND=noninteractive apt-get install -y -qq chrony && systemctl enable --now chrony; fi'
+run "$TIMECHECK"
 run "timedatectl show -p NTPSynchronized --value"
 
 note "UTC, not Europe/Zagreb, deliberately. Every send window in this"
