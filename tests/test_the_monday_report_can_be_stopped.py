@@ -25,37 +25,21 @@ rendered bytes.
 """
 import datetime
 import os
-import re
 import tempfile
 import unittest
-import zlib
 
 from src import weeklyreportpdf, weeklyreportwatch as watch
+from tests.test_client_reports import text_of
 
 
-def text_of(raw):
-    """The rendered TEXT of a PDF, not its bytes.
-
-    THIS HELPER IS THE POINT. `clientreport` writes its page content as
-    FlateDecode streams, so `assertNotIn(b"...", raw)` against the raw bytes
-    can never fail - the words are not there to find in either direction.
-    A test written that way asserts nothing and goes green forever, which is
-    a worse outcome than no test.
-
-    (`tests/test_report_sections.py` has one of those today:
-    `assertNotIn(b"is not assembled for this report", raw)`. It is passing
-    vacuously on master. Recorded here rather than left to be rediscovered.)
-    """
-    out = []
-    pattern = (b"stream" + bytes([13]) + b"?" + bytes([10])
-               + b"(.*?)endstream")
-    for match in re.finditer(pattern, raw, re.S):
-        try:
-            out.append(zlib.decompress(match.group(1)).decode(
-                "latin-1", "replace"))
-        except zlib.error:
-            continue
-    return chr(10).join(out)
+# `text_of` is tests/test_client_reports.py's, not a second copy. This file
+# briefly carried its own, which is the "parallel representation of one
+# truth" CLAUDE.md warns about - and the canonical one is better: it reads
+# only the `(...) Tj` text-draw operators and unescapes PDF string literals,
+# so a document containing "Acme (Holdings)" is actually findable.
+#
+# WHY IT MATTERS HERE: clientreport writes page content as FlateDecode
+# streams, so `assertNotIn(b"...", raw)` against raw bytes CANNOT FAIL.
 
 
 def report(**over):

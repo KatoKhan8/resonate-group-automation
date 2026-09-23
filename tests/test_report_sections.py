@@ -25,6 +25,7 @@ rate whose denominator includes messages sent after the acceptance.
 import unittest
 
 from tests.campaignbase import CampaignTest, contact as make_contact
+from tests.test_client_reports import text_of
 
 from src import events, store
 
@@ -306,7 +307,17 @@ class OnThePage(Sections):
         self.assertTrue(raw)
         # And it did not fall into the branch that says there is nothing
         # behind these sections.
-        self.assertNotIn(b"is not assembled for this report", raw)
+        # DECOMPRESS BEFORE ASSERTING. `clientreport` writes page content
+        # as FlateDecode streams, so `assertNotIn(b"...", raw)` against the
+        # raw bytes CANNOT FAIL - the words are not findable in either
+        # direction, and this assertion was green for that reason rather
+        # than because the sections rendered. `text_of` is the canonical
+        # reader, already used by tests/test_client_reports.py.
+        drawn = text_of(raw)
+        self.assertNotIn("is not assembled for this report", drawn)
+        # And it drew SOMETHING - otherwise the line above passes on an
+        # empty document, which is the same vacuity one level down.
+        self.assertIn("Account Engagement", drawn)
 
 
 if __name__ == "__main__":
