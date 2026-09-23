@@ -17,7 +17,7 @@ line is the brief for this one:
 
     scripts/cold_start.py         plan, start, verify
     scripts/install_autostart.py  register it at logon
-    tests/test_the_estate_comes_back_after_a_reboot.py   19 tests
+    tests/test_the_estate_comes_back_after_a_reboot.py   22 tests
 
 **A monitor is UP only with TWO WITNESSES**, and this is the substance of the
 change rather than a flourish:
@@ -171,8 +171,9 @@ same way.
 
 ## 7. WHAT THE TESTS PROVE
 
-19 tests, and the four that matter were verified by mutation: weakening the
-rule from "both witnesses" to "either witness" turns four of them red.
+22 tests, mutation-checked twice. Weakening the rule from "both
+witnesses" to "either witness" turns four of them red; removing the power
+request from the supervisor turns two more red.
 
     a live pid from a PRE-BOOT state file          -> not UP  (the forged UP)
     a live process with no fresh beat              -> not UP  (wedged)
