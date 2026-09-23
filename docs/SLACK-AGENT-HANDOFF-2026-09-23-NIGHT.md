@@ -144,7 +144,23 @@ The targeted set is green: `test_report_sections`,
 `test_two_clients_cannot_see_each_other` and
 `test_the_monday_report_can_be_stopped` together are **118 tests, OK**.
 
-**The full-suite by-name diff is the outstanding verification.**
+**THE FULL-SUITE BY-NAME DIFF IS DONE, AND IT IS CLEAN.**
+
+    baseline  9788ce2e   11,917 tests   126 failures/errors
+    increment 2 + 3      12,011 tests   121   NEW 0   GONE 5
+    increment 4          12,055 tests   121   NEW 0   GONE 5
+
+**Zero new failures** across increments 2, 3 and 4, the PDF-assertion fix
+and the PII fix - diffed BY NAME, both directions, against the master this
+branch actually merged. 138 tests added net; five pre-existing failures
+cleared, one of them `test_no_real_person_or_client_named`.
+
+The failure sets are in the session scratchpad as `base-names.txt`,
+`final-names.txt` and `inc4-names.txt`, one fully-qualified name per line -
+which is the form `docs/state/SUITE-BASELINE-<date>.json` exists for and the
+form a count can never be.
+
+How it was produced, because two earlier attempts were not valid:
 
 - A first full run was started at 17:23 and **discarded**: source was edited
   at 17:28 while `unittest discover` was still importing modules, so its
