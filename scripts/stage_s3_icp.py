@@ -94,7 +94,10 @@ def _shape(raw):
     }
 
 
-#: OPERATOR AMENDMENT, Zvonimir Beslic, 2026-09-22.
+#: OPERATOR AMENDMENT, 2026-09-22. (The operator is named in the
+#: authorization document below, which is where attribution belongs; the
+#: hygiene guard forbids real names in tracked files and this comment was
+#: one of two places leaking one.)
 #: `docs/OPERATOR-AUTHORIZATION-2026-09-22-BOUNCE-DENOMINATOR-AND-HEADCOUNT.md`
 #: section D: "Remove the headcount criterion from the S3 ICP verdict for the
 #: 2026-09-07 Productive file (24,404 domains). Geo and industry rules

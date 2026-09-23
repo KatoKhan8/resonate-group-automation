@@ -163,6 +163,18 @@ def replies(rec, contact_key=None):
             "type": entry.get("type"),
             "classification": entry.get("classification"),
             "positive": entry.get("type") == events.POSITIVE_REPLY_DETECTED,
+            # WHO DECIDED IT, AND WHICH ROW IT WAS. Both were on the event
+            # and both were dropped here, which is why 2026-09-23 concluded
+            # there was "no local way" to tell a stale verdict from a fresh
+            # one. Measured in the live estate that day: 42 reply events, 20
+            # carrying `classifier`, including the one stale `positive`.
+            #
+            # Projecting them does NOT by itself make a verdict checkable -
+            # see `replyverdict.is_confirmed`, which is where that question
+            # is answered and currently answers no. It makes the question
+            # ASKABLE, which it was not.
+            "classifier": entry.get("classifier"),
+            "provider_event_id": entry.get("provider_event_id"),
         })
     found.sort(key=lambda r: str(r.get("at") or ""))
     return found

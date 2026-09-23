@@ -216,9 +216,9 @@ It is the right next one for three reasons:
   difference between them is the leak. `weekly_report`, `lead_counts` and
   `lead_in_campaign` have the same shape. A second workspace turns those
   from one-sided assertions into real two-sided ones.
-- **Real second clients already exist in Slack**:
-  `#mediaboard-resonate-outbound` and `#nextoria-team` are live channels
-  with real client traffic. **Binding a real one is an operator decision,
+- **Real second clients already exist in Slack**: two live client channels
+  (named in the workspace policy, not here) carry real client traffic.
+  **Binding a real one is an operator decision,
   not this session's**, which is exactly why the synthetic one is the right
   vehicle — it proves the isolation without touching a real client's data.
 

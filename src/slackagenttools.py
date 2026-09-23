@@ -439,27 +439,15 @@ def account_lookup(scope, argument=None):
 # screen, claim resolver and fatigue check reads it rather than walking the
 # event log again with its own idea of what counts."
 
-#: The operator's account states, weakest first. The order is the
-#: progression; `_account_state` walks it from the strong end.
-UNTOUCHED = "untouched"
-SEQUENCED = "sequenced"
-ENGAGED = "engaged"
-REPLIED = "replied"
-MEETING = "meeting"
-WON = "won"
-LOST = "lost"
-DO_NOT_CONTACT = "do_not_contact"
-
-ACCOUNT_STATES = (UNTOUCHED, SEQUENCED, ENGAGED, REPLIED, MEETING,
-                  WON, LOST, DO_NOT_CONTACT)
-
-#: TWO OF THE EIGHT HAVE NO SOURCE IN THIS REPOSITORY, and that is reported
-#: rather than left to look like "it never happens". Nothing here records a
-#: deal. The meetings ledger is hand-fed and stops at the meeting; there is
-#: no CRM in this tree and no won/lost field on any record. An answer that
-#: silently never returns two of the states it advertises is worse than one
-#: that names the gap, because the gap is invisible from the outside.
-STATES_WITHOUT_A_SOURCE = (WON, LOST)
+# THE VOCABULARY LIVES IN `accountstate`, not here. It was defined in this
+# module and the PDF's producer defined a different one, and the two shared
+# the word `engaged` while meaning different things by it. One definition,
+# imported by every reader - the operator's decision of 2026-09-23.
+from .accountstate import (                                     # noqa: E402
+    UNTOUCHED, SEQUENCED, ENGAGED, REPLIED, MEETING, WON, LOST,
+    DO_NOT_CONTACT, ACCOUNT_STATES, STATES_WITHOUT_A_SOURCE,
+    state_of as _account_state,
+)
 
 
 def _reply_classes(rows):
@@ -635,80 +623,9 @@ def _confirming_types():
 _CONFIRMING_TYPES = _confirming_types()
 
 
-def _account_state(record, detail, meetings_for_domain, ledger_ok=None):
-    """One of `ACCOUNT_STATES`, with the evidence that decided it.
-
-    PRECEDENCE, strongest first, and every step of it is a judgement worth
-    arguing with rather than a lookup:
-
-    `do_not_contact` OUTRANKS EVERYTHING, including `meeting`. It is the one
-    state that answers "what may we do next" rather than "how far did this
-    get", and an account that met us and then asked to be left alone is an
-    account we may not write to. Ranking a meeting above it is how a good
-    outcome becomes a reason to ignore a refusal.
-
-    Then `meeting`, `replied`, `engaged`, `sequenced`, `untouched` - the
-    operator's own order, which is the commercial progression.
-
-    `engaged` MEANS SOMETHING SHORT OF A REPLY: a connection accepted, an
-    interaction recorded, nobody having written back yet. Without that
-    distinction it collapses into `replied` and one of the two words stops
-    meaning anything.
-    """
-    evidence = []
-    # `graph()["contacts"]` IS A LIST, not a mapping - `by_contact` is the
-    # mapping. Reading the wrong one raises on `.values()` and every account
-    # comes back unreadable, so the shape is taken off the real return.
-    contacts = (detail or {}).get("contacts") or []
-    states = [str((c or {}).get("state") or "") for c in contacts]
-
-    suppressed = [s for s in states if s in ("suppressed", "stopped")]
-    if str(record.get("state") or "") == "do_not_contact" \
-            or record.get("do_not_contact") \
-            or (states and len(suppressed) == len(states)):
-        evidence.append("every contact is suppressed or stopped"
-                        if states else "the record carries do_not_contact")
-        return DO_NOT_CONTACT, evidence
-
-    if meetings_for_domain:
-        evidence.append("%d meeting(s) in the hand-fed ledger"
-                        % meetings_for_domain)
-        return MEETING, evidence
-
-    replied = len((detail or {}).get("replies") or [])
-    if replied:
-        evidence.append("%d reply event(s) on the account" % replied)
-        return REPLIED, evidence
-
-    # ENGAGED IS SHORT OF A REPLY. `account._contact_state` calls a contact
-    # `engaged` when they have replied, so by the time we are here that
-    # branch is already spent - what is left is a confirmed touch on a
-    # channel that carries an acceptance. Reached deliberately and rarely;
-    # it is not a synonym for `replied` and must never become one.
-    if any(s == ENGAGED for s in states) \
-            or any(t.get("channel") == "linkedin" and t.get("confirmed")
-                   for t in ((detail or {}).get("touches") or [])):
-        evidence.append("a LinkedIn touch landed and nobody has written back")
-        return ENGAGED, evidence
-
-    confirmed = len((detail or {}).get("confirmed_touches") or [])
-    if confirmed:
-        evidence.append("%d confirmed touch(es) in the ledger" % confirmed)
-        return SEQUENCED, evidence
-
-    if ledger_ok is False:
-        # THE ONE CASE THAT IS NOT A STATE, and it is the whole reason this
-        # function takes the witness. The ledger says nobody has been
-        # touched AND the ledger is known not to be recording touches, so
-        # `untouched` would be a guess dressed as an answer - in a client
-        # channel, about an account we may well have emailed yesterday.
-        evidence.append("the ledger carries no touch for this account AND "
-                        "is not recording this workspace's sends, so "
-                        "`untouched` cannot be asserted")
-        return None, evidence
-
-    evidence.append("no confirmed touch in the ledger")
-    return UNTOUCHED, evidence
+# `_account_state` IS `accountstate.state_of`, imported above. The body
+# that stood here moved out whole so the PDF's producer could call the
+# same one; nothing about the precedence changed in the move.
 
 
 def account_status(scope, argument=None):
@@ -876,7 +793,7 @@ def account_status(scope, argument=None):
 #: closed. `untouched` is not in flight - nothing has happened to it - and
 #: neither is `do_not_contact`, which is finished in the only direction that
 #: matters.
-IN_FLIGHT = (SEQUENCED, ENGAGED, REPLIED, MEETING)
+from .accountstate import IN_FLIGHT             # noqa: E402,F401
 
 
 def _account_rollup(slug):
@@ -933,9 +850,20 @@ def _ledger_replies(slug):
         from . import replies as replyclass
     except Exception:                                           # noqa: BLE001
         return None
+    from . import replyverdict
     by_class, human, positive = {}, 0, 0
+    confirmed_positive = unconfirmed_positive = 0
     for record in _records(slug):
         rows = accountgraph.replies(record)
+        # POSITIVES SPLIT BY WHETHER THE VERDICT IS PROVABLY CURRENT.
+        # `account.replies` now projects `classifier`, so the question can
+        # be asked; `replyverdict` answers it, and today it answers no for
+        # every row because nothing identifies the RULE SET as opposed to
+        # the release. See `replyverdict` for why VERSION is not allowed to
+        # stand in for that.
+        yes, no = replyverdict.split_positives(rows)
+        confirmed_positive += yes
+        unconfirmed_positive += no
         counted = _reply_classes(rows)
         for name, count in counted.items():
             by_class[name] = by_class.get(name, 0) + count
@@ -947,7 +875,15 @@ def _ledger_replies(slug):
                 human += count
             if name == replyclass.POSITIVE:
                 positive += count
-    out = {"by_class": by_class, "human": human, "positive": positive}
+    out = {"by_class": by_class, "human": human, "positive": positive,
+           # THE FIELD A CLIENT-FACING FEATURE READS. `positive` is what the
+           # ledger stores; `positive_confirmed` is what we can stand
+           # behind. Phase D item 4 must read the second one - reading the
+           # first is how an executive assistant's "Rose is helping keep
+           # things running smoothly" gets announced as a buying signal.
+           "positive_confirmed": confirmed_positive,
+           "positive_unconfirmed": unconfirmed_positive,
+           "positive_confirmable": replyverdict.rules_are_identifiable()}
 
     # ## THE STORED VERDICT MAY PREDATE THE CURRENT RULES, AND NOTHING SAYS SO
     #
@@ -974,6 +910,8 @@ def _ledger_replies(slug):
     # positive replies into a client channel must not read this field, or it
     # will announce an autoresponder as a buying signal - the exact outcome
     # the reply-classification work existed to prevent.
+    if unconfirmed_positive:
+        out["positive_unconfirmed_why"] = replyverdict.WHY_UNCONFIRMED
     if positive:
         out["positive_caveat"] = (
             "stored classifications may predate the current rules and "
@@ -996,16 +934,22 @@ def weekly_report(scope, argument=None):
 
     counts, unanswerable, ledger_ok = _account_rollup(slug)
     in_flight = sum(counts.get(state, 0) for state in IN_FLIGHT)
-    out["accounts"] = {
-        "in_flight": in_flight,
-        "engaged": counts.get(ENGAGED, 0),
-        "replied": counts.get(REPLIED, 0),
-        "meetings": counts.get(MEETING, 0),
-        "untouched": counts.get(UNTOUCHED, 0),
-        "do_not_contact": counts.get(DO_NOT_CONTACT, 0),
-        "unanswerable": unanswerable,
-    }
-    out["accounts_order"] = ["in_flight", "engaged", "replied", "meetings"]
+    # ALL EIGHT STATES BY NAME, because this dict is now also what the PDF
+    # renders. OPERATOR, 2026-09-23: one vocabulary for the Monday post, the
+    # PDF and later the portal. The previous shape emitted `meetings` (plural)
+    # and folded SEQUENCED into `in_flight`, so `sequenced`, `won` and `lost`
+    # had no key at all - and a renderer cannot show a tile for a key it is
+    # never handed. `in_flight` stays, below the states and documented as a
+    # SUM of four of them, so nobody adds it to the eight and double-counts.
+    out["accounts"] = {state: counts.get(state, 0) for state in ACCOUNT_STATES}
+    out["accounts"]["unanswerable"] = unanswerable
+    out["accounts"]["in_flight"] = in_flight
+    out["accounts_order"] = list(ACCOUNT_STATES)
+    out["accounts_in_flight_is_a_sum_of"] = list(IN_FLIGHT)
+    # The two states nothing in this tree can source. Carried so the PDF can
+    # say WHY they are zero instead of letting a client read "0 won" as a
+    # measurement. `STATES_WITHOUT_A_SOURCE` is the single definition.
+    out["accounts_without_a_source"] = list(STATES_WITHOUT_A_SOURCE)
     if unanswerable:
         out["accounts_warning"] = (
             "%d account(s) could not be placed because the ledger is not "
@@ -1049,16 +993,18 @@ def sender_summary(scope, argument=None):
     slug = _workspace_for(scope, argument)
     rows = _campaign_rows(slug)
     email, linkedin = set(), set()
+    unidentified = 0
     volume = {"email": 0, "linkedin": 0}
     live = 0
     for row in rows:
         senders = row.get("senders") or {}
-        for entry in senders.get("email") or []:
-            email.add(str(entry.get("provider_account_id")
-                          or entry.get("account_id")))
-        for entry in senders.get("linkedin") or []:
-            linkedin.add(str(entry.get("provider_account_id")
-                             or entry.get("account_id")))
+        for channel, bucket in (("email", email), ("linkedin", linkedin)):
+            for entry in senders.get(channel) or []:
+                account = _sending_account_id(entry)
+                if account is None:
+                    unidentified += 1
+                    continue
+                bucket.add(account)
         if (row.get("status") or "").lower() in ("approved", "launched",
                                                  "active"):
             live += 1
@@ -1072,6 +1018,11 @@ def sender_summary(scope, argument=None):
            "campaigns_they_serve": len(rows),
            "campaigns_approved_or_live": live,
            "combined_daily_volume": volume}
+    if unidentified:
+        # NAMED, NOT FOLDED IN. See `_sending_account_id`: an entry with no
+        # id at all is a row we cannot count, and adding it to either total
+        # would be inventing a distinct account out of a missing field.
+        out["sender_entries_without_an_id"] = unidentified
     if not email and not linkedin:
         out["note"] = ("no sending account is bound to any campaign for "
                        "this workspace yet")
@@ -1080,6 +1031,40 @@ def sender_summary(scope, argument=None):
                        "not the same as sending, and sends_today is the "
                        "figure that says what actually went out")
     return out
+
+
+def _sending_account_id(entry):
+    """What identifies one sending account on a campaign row, or None.
+
+    THE STORE HOLDS TWO SHAPES AND THIS READ ONLY KNEW ONE. Counted on the
+    live campaign store, 2026-09-23: 164 sender entries carry
+    `provider_account_id`, 159 carry `account_id`, and **13 carry neither -
+    only `id`**, in the shape `{"id": "bison-a", "daily_limit": 50}`.
+
+    The old read was `provider_account_id or account_id`, stringified. On an
+    entry carrying only `id` that evaluates to the STRING `"None"`, and
+    every such entry across every campaign lands in that one bucket. So they
+    did not go uncounted, which would at least have been visible - they
+    counted as ONE sending account, shared.
+
+    Live, before this:
+
+        productive   156 email sending accounts, of which one is the
+                     "None" bucket standing for 3 real entries
+        contactout     1 email sending account - and that 1 IS the bucket.
+                       Both of its entries carry only `id`, so the answer
+                       to "how many senders are sending for us" was the
+                       number of shapes this function could not read.
+
+    `id` is read as the third fallback, and an entry with no identifier at
+    all returns None so the caller can count it apart and SAY so rather than
+    inventing a distinct account from a missing field.
+    """
+    for field in ("provider_account_id", "account_id", "id"):
+        value = (entry or {}).get(field)
+        if value not in (None, ""):
+            return str(value)
+    return None
 
 
 #: The bounce rate at which sending stops. A client is owed this number
@@ -3025,6 +3010,95 @@ def run_all(scope, calls):
                         {"_error": "dropped: over the %d-call budget"
                                    % MAX_CALLS_PER_TURN}))
             continue
+        try:
+            out.append((name, argument, run(scope, name, argument)))
+        except ToolRefused as exc:
+            out.append((name, argument, {"_error": _refusal_text(scope, exc)}))
+    return out
+
+
+def _refusal_text(scope, exc):
+    """A refusal, worded for whoever's material it is about to land in.
+
+    ## THE REFUSAL WAS ITSELF A DISCLOSURE
+
+    `run()` refuses a client channel with "a client channel may not call
+    'who_does_what'". `run_all` puts that string into the result row,
+    `render()` dumps it into the prompt and `material_for` hands it to the
+    model - so the model is told, in a client channel, the internal name of
+    a tool it may not use.
+
+    `check_outbound` does NOT catch the paraphrase. Measured 2026-09-23
+    against a real client scope:
+
+        "I'm not allowed to call who_does_what in this channel."  LEAKS
+        "I can't run next_actions here."                          LEAKS
+        "The monitors tool is internal only."                     LEAKS
+        "I can't check promises for you."                         LEAKS
+        "I can't see the credits balance."                        caught
+
+    Only the last one, and only by accident - `credit` was already in
+    `INTERNAL_COMMERCIAL_TERMS` for a different reason. Four of the five
+    internal tools are named in English words or snake_case that no
+    forbidden-term list has any reason to contain.
+
+    **The list is the wrong place to fix it.** `monitors` and `promises` are
+    ordinary English; forbidding them would refuse a legitimate answer that
+    says "the system monitors your bounce rate", and a backstop that fires
+    on innocent prose gets widened until it fires on nothing.
+
+    So the fix is the one `for_client` already makes for numbers and labels:
+    correct the MATERIAL, so the model has nothing wrong to repeat. A client
+    turn is told the tool is not available here, without its name. The
+    internal wording is unchanged, where it is a useful thing to read in a
+    log.
+    """
+    if getattr(scope, "kind", None) == slackscope.CLIENT:
+        return "not available in this channel"
+    return str(exc)
+
+
+def run_scheduled(scope, calls):
+    """Every call in a SCHEDULED INTERNAL job's fixed list. No turn budget.
+
+    ## WHY THIS IS NOT `run_all`, AND WHY IT IS NOT A WEAKENED `run_all`
+
+    `MAX_CALLS_PER_TURN` exists because **a message can drive an agent into a
+    loop** - see this module's header. It is an anti-injection budget on a
+    conversational TURN, where the call list is chosen by a model reading
+    text a prospect or a client wrote.
+
+    A scheduled job is the other thing entirely: its call list is a literal
+    in this repository, nothing anyone says changes it, and it runs on a
+    clock rather than in reply. Applying a turn budget to it protects
+    against nothing and silently truncates a report.
+
+    **AND IT WAS TRUNCATING ONE.** Measured 2026-09-23:
+    `scripts/slack_agent_briefing.py` asked for six readbacks, the sixth was
+    `monitors`, and every morning the 07:15 briefing rendered
+
+        monitors -> {"_error": "dropped: over the 5-call budget"}
+
+    into the model's material. `monitors` is "which watchers are beating and
+    how long ago" - a dead watcher is the most briefing-shaped fact there
+    is, and the briefing has never once carried one. On the day this was
+    found, it would have reported `bison-491` failing its inventory read a
+    hundred times and a follow-up loop that had never been started.
+
+    **INTERNAL ONLY, and that is the whole safety argument.** Raising the
+    budget on `run_all` would have removed the protection from the path that
+    needs it. This function refuses any other scope, so there is no way to
+    reach it from a channel where the injection risk exists.
+    """
+    if getattr(scope, "kind", None) != slackscope.INTERNAL:
+        raise ToolRefused(
+            "run_scheduled is for scheduled internal jobs; a %s scope must "
+            "use run_all and its turn budget"
+            % getattr(scope, "kind", "unknown"))
+    out = []
+    for call in calls or []:
+        name = (call or {}).get("name")
+        argument = (call or {}).get("argument")
         try:
             out.append((name, argument, run(scope, name, argument)))
         except ToolRefused as exc:
