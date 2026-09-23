@@ -115,7 +115,7 @@ raises. Offline: the provider is faked; no live HeyReach call in tests.
 
 **STATUS:** DONE
 
-**COMMIT SHA:** (to be filled after push)
+**COMMIT SHA:** 0ae7f40c
 
 **TESTS:**
 - 19 new tests in `tests/test_linkedin_profile_match.py`, all passing
