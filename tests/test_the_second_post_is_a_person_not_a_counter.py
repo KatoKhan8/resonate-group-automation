@@ -68,6 +68,11 @@ def _loop():
 
 loop = _loop()
 
+
+def _human(row):
+    """The trigger's own verdict on one row, straight off the deliverer."""
+    return loop._is_human(row)
+
 #: A reply row in the provider's real shape. Trimmed to the fields anything
 #: here reads, with the names and types the live feed uses.
 def reply(ident, campaign_id="491", text="Sounds good, send times.",
@@ -89,15 +94,33 @@ OUT_OF_OFFICE = ("I am currently out of the office returning 30 September "
 #: refuses on her principal's behalf is a refusal first and a redirect
 #: second, and that ordering is not this feature's to relitigate. What this
 #: fixture has to exercise is the redirect ALONE.
-#: AND NO "I WILL PASS THIS ALONG" EITHER, which is a finding rather than a
-#: fixture note: "I manage Peter's inbox and I look after his diary - I will
-#: pass this along to him" classifies `negative`, because "I will pass this
-#: along" matches the decline sense of "I'll pass". A forwarding assistant
-#: read as a refusal errs in the safe direction - it stops contact rather
-#: than continuing it - but it loses the contact candidate that
-#: `assistant_redirect` exists to keep. `src/replies.py` is not this
-#: session's to edit; it is reported in the merge request.
-ASSISTANT = "I manage Peter's inbox."
+#: YESTERDAY'S ACTUAL EA REPLY, imported rather than re-invented.
+#:
+#: It is the reply the operator named: the single `positive` in the whole of
+#: 2026-09-22, an executive assistant explaining that she manages her
+#: principal's inbox, which matched POSITIVE_PATTERNS on the warmth of its
+#: prose while nobody at that account had expressed interest in anything.
+#: `4af4f982` reclassified it `assistant_redirect`.
+#:
+#: Imported from `tests/test_an_assistant_is_not_a_buying_signal.py`, where
+#: it was sanitised, rather than copied: ONE canonical fixture for one real
+#: reply. A second copy is a second thing to keep in step, and the emoji and
+#: exclamation marks matter - they are what made the old classifier read it
+#: as warmth, and a paraphrase would quietly stop testing that.
+from tests.test_an_assistant_is_not_a_buying_signal import (       # noqa: E402
+    EA_REDIRECT as ASSISTANT)
+
+#: A SECOND assistant shape, and a finding rather than a fixture note:
+#: "I manage Peter's inbox and I look after his diary - I will pass this
+#: along to him" classifies `negative`, because "I will pass this along"
+#: matches the decline sense of "I'll pass". A forwarding assistant read as
+#: a refusal errs in the safe direction - it stops contact rather than
+#: continuing it - but it loses the contact candidate `assistant_redirect`
+#: exists to keep, and it WOULD fire this feature's second post. Kept here
+#: as a live boundary, asserted below rather than assumed.
+#: `src/replies.py` is not this session's to edit.
+ASSISTANT_WHO_FORWARDS = ("I manage Peter's inbox and I look after his "
+                          "diary - I will pass this along to him.")
 TICKET = ("Thank you for contacting support. Your request has been logged "
           "as ticket #44812 and a member of the team will respond.")
 HUMAN = "Yes please, Thursday works. What time zone are you in?"
@@ -224,17 +247,66 @@ class AnAutoresponderIsNotAFirstReply(ReplyHalf):
         self.run_tick([reply(101, text=OUT_OF_OFFICE)])
         self.assertEqual(self.posted, [])
 
-    def test_an_assistant_redirect_does_not_fire_it(self):
-        """The EA who managed her principal's inbox - 2026-09-22's only
-        "positive" before the operator's rule existed."""
+    def test_yesterdays_ea_auto_reply_does_not_fire_it(self):
+        """THE NAMED CASE, on the actual reply.
+
+        2026-09-22's only `positive` in the whole day: an executive
+        assistant explaining that she manages her principal's inbox. Under
+        the old classifier this was a buying signal. Under the new one it
+        is `assistant_redirect`, and a client who opted into two updates
+        must not be told this was the first reply a person wrote to them -
+        nobody at that account has expressed interest in anything.
+        """
         self.advanced()
         self.run_tick([reply(101, text=ASSISTANT)])
         self.assertEqual(self.posted, [])
+
+    def test_it_is_the_new_classifier_that_stops_it(self):
+        """NAMES THE MECHANISM, so a later refactor cannot pass this class
+        by accident - if the trigger stopped consulting the classifier and
+        leaned on the provider's flag alone, every test above would still
+        pass and this one would not."""
+        self.assertEqual(loop.replies.classify(ASSISTANT)["classification"],
+                         loop.replies.ASSISTANT_REDIRECT)
+        self.assertTrue(loop.replies.is_automated(
+            loop.replies.ASSISTANT_REDIRECT))
+        self.assertFalse(_human(reply(101, text=ASSISTANT)))
+
+    def test_the_provider_did_not_flag_it(self):
+        """And it is stopped anyway.
+
+        The EA reply is carried here with `automated_reply` false, which is
+        the hard case: the provider's own flag was true on 21 of that day's
+        26 replies but a flag is not the rule. If this feature leaned on
+        the provider alone it would announce this as a human reply.
+        """
+        row = reply(101, text=ASSISTANT)
+        self.assertFalse(row["automated_reply"])
+        self.assertFalse(_human(row))
 
     def test_a_ticket_acknowledgement_does_not_fire_it(self):
         self.advanced()
         self.run_tick([reply(101, text=TICKET)])
         self.assertEqual(self.posted, [])
+
+    def test_the_forwarding_assistant_is_the_boundary_and_it_does_fire(self):
+        """AN HONEST FAILURE, ASSERTED RATHER THAN HIDDEN.
+
+        "I will pass this along to him" classifies `negative`, not
+        `assistant_redirect`, because it matches the decline sense of "I'll
+        pass" - so it is not automated, so it DOES fire the second post.
+
+        This is written as an assertion of current behaviour, not of
+        desired behaviour. It is here so the boundary is visible and so
+        that the day somebody fixes `src/replies.py` this test fails
+        loudly and tells them a client-facing trigger moved with it.
+        """
+        self.advanced()
+        self.assertEqual(
+            loop.replies.classify(ASSISTANT_WHO_FORWARDS)["classification"],
+            loop.replies.NEGATIVE)
+        self.run_tick([reply(101, text=ASSISTANT_WHO_FORWARDS)])
+        self.assertEqual(len(self.posted), 1)
 
     def test_a_person_after_three_autoresponders_still_fires_it(self):
         """The autoresponders do not consume the promise."""
