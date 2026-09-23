@@ -227,6 +227,117 @@ def _provider_sending_plan(provider_id):
     return out
 
 
+#: Statuses that mean the campaign has stopped working through its sequence.
+#: A transition INTO one of these is the event this alerts on.
+STOPPED_STATUSES = ("archived", "paused", "stopped")
+
+#: Log STEPS this system writes when IT stops a campaign. Matched exactly,
+#: never as a substring of a free-text note - see `_we_did_it`.
+OUR_STOP_STEPS = frozenset({"pause", "paused", "archive", "archived",
+                            "stop", "stopped", "hard_stop", "kill"})
+
+#: How recently one of those must have been logged to explain a transition.
+RECENT_HOURS = 6
+
+
+def _we_did_it(provider_id, rows=None):
+    """Does canonical state record US stopping this campaign, recently?
+
+    Returns `(ours, why)`. `ours` is True only on POSITIVE evidence - a log
+    line on our own campaign row naming a pause or an archive. Absence is
+    never read as proof that somebody else did it; it is read as "we cannot
+    show that we did", which is what the alert says.
+
+    That asymmetry is the point. The register's standing rule is that missing
+    evidence is never positive evidence, and the expensive mistake here would
+    be telling an operator a third party archived their campaign when our own
+    process did it four minutes earlier.
+    """
+    try:
+        import datetime
+        from src import campaigns
+        rows = campaigns.load() if rows is None else rows
+        row = next((r for r in rows
+                    if str(r.get("bison_campaign_id")) == str(provider_id)),
+                   None)
+        if row is None:
+            return False, "no local campaign row names this provider campaign"
+        # THE STEP, NOT THE NOTE, AND RECENT.
+        #
+        # This matched any log entry whose NOTE contained "stop", and 495's
+        # row carries "0 held by the 2% bounce stop" from 09-21 - an
+        # unrelated sentence about a mailbox re-point. So the campaign this
+        # alert was built for would have been attributed to us and silenced.
+        # Caught by its own test before it ever ran.
+        #
+        # `step` is a structured verb this system writes; a note is prose and
+        # prose about stopping is not a record of having stopped. Recency
+        # matters for the same reason: a deliberate pause two days ago does
+        # not explain a status change four minutes ago.
+        cutoff = (datetime.datetime.now(datetime.UTC)
+                  - datetime.timedelta(hours=RECENT_HOURS)).isoformat()
+        for entry in reversed(row.get("log") or []):
+            step = str(entry.get("step") or "").strip().lower()
+            if step not in OUR_STOP_STEPS:
+                continue
+            when = str(entry.get("at") or "")
+            if when < cutoff:
+                return False, (f"our campaign row logs {step!r} but at "
+                               f"{when}, more than {RECENT_HOURS}h ago")
+            return True, (f"our campaign row logs {step!r} at {when}")
+        return False, ("our campaign row logs no recent pause, archive or "
+                       "stop step")
+    except Exception as exc:                                    # noqa: BLE001
+        return False, f"canonical state unreadable: {type(exc).__name__}"
+
+
+def _alert_if_stopped_by_someone_else(provider_id, watched, was, current,
+                                      emit):
+    """A campaign we did not stop has stopped. CRITICAL, by operator decision.
+
+    MEASURED 2026-09-23. EmailBison 495 went `active` -> `archived` at
+    15:57:22Z with 59 of its 60 leads reading `stopped` and 42 of 60 ever
+    contacted. Nothing in this system did it: no action-ledger row, no write
+    refusal, and our own campaign row's last entry is from 09-21. Nobody was
+    told. It was found hours later by reading a heartbeat file by hand while
+    looking at something else.
+
+    A campaign stopping is the loudest possible fact about an outbound
+    system - it is the difference between sending and not sending - and it
+    was the one state change with no alert on it.
+
+    THE PROVIDER NAMES NO ACTOR. Its event feed carries delivery events only
+    and holds zero rows mentioning an archive, so "who" is not answerable
+    from the API. This therefore reports what it can prove: the transition,
+    and whether OUR OWN canonical state can account for it. It never asserts
+    a third party.
+
+    Does not un-archive anything. Nothing here writes to the provider.
+    """
+    if str(current.get("status") or "").lower() not in STOPPED_STATUSES:
+        return
+    ours, why = _we_did_it(provider_id)
+    emit(f"CAMPAIGN-STOPPED {watched} {was} -> {current['status']} "
+         f"({'ours' if ours else 'NOT ATTRIBUTABLE TO US'}: {why})")
+    if ours:
+        return
+    try:
+        from src import notify
+        notify.notify(
+            notify.CAMPAIGN_STOPPED_EXTERNALLY, None,
+            fields={"campaign": str(provider_id),
+                    "was": was, "now": current.get("status"),
+                    "emails_sent": current.get("emails_sent"),
+                    "leads": current.get("leads"),
+                    "why": why,
+                    "action": "a campaign stopped and this system cannot show "
+                              "it did it. The provider names no actor. Do NOT "
+                              "un-archive: find out who first"},
+            ids={"campaign_id": str(provider_id), "status": current.get("status")})
+    except Exception as exc:                                    # noqa: BLE001
+        emit(f"ALERT-FAILED {watched}: {type(exc).__name__}")
+
+
 def _known(*values):
     """True when every value is a real reading rather than an UNKNOWN.
 
@@ -347,6 +458,8 @@ def main(argv=None):
                 milestone(PROVIDER_ID, "sequence_finished",
                           status=current["status"],
                           emails_sent=current["emails_sent"])
+            _alert_if_stopped_by_someone_else(
+                PROVIDER_ID, watched, previous["status"], current, emit)
         if current["leads"] != previous["leads"]:
             emit(f"COHORT {watched} leads {previous['leads']} -> {current['leads']}")
         if current["emails_sent"] > previous["emails_sent"]:
