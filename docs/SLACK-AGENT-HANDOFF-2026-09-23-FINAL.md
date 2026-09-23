@@ -59,7 +59,11 @@ anything. See §7.
     inc 2+3   30bf9920   12,011          121    NEW 0   GONE 5
     inc 4     7fe619a3   12,055          121    NEW 0   GONE 5
     assistant b1647328   12,116          125    NEW 3 — ALL THREE ON MASTER
-    the queue 48041869   running at the time of writing
+    the queue 48041869   12,132          123    NEW 0   GONE 2
+
+The two that went are exactly the two the operator's exemption decision was
+meant to close: `test_no_linkedin_url_with_real_vanity_name` and
+`test_every_email_address_is_on_a_reserved_domain`.
 
 Diffed **by NAME, both directions**. The three that appeared at `b1647328`
 were **not this branch's**: they arrived with the master merge, and that was
