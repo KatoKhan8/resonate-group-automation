@@ -16,7 +16,7 @@ sender:
 market:
   must: services business that tracks time
   size_min_employees: 20
-  # OPERATOR DECISION, Zvonimir Beslic, 2026-09-23: align this list to
+  # OPERATOR DECISION, the operator, 2026-09-23: align this list to
   # Productive's ICP as recorded in the client's structural criteria
   # (docs/FREE-GEOGRAPHY-AND-TYPE-2026-09-16.md). The eight entries that stood
   # here were NARROWER than the client's own ICP, which is why the 2026-09-07

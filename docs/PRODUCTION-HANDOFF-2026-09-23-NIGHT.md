@@ -25,7 +25,7 @@ distinction is the whole finding: every local check said the copy was fine.
         body    = '<p></p>'
 
 Five prospects in 497 received a completely blank email today (08:31, 09:02,
-13:15, 14:28, 14:30 UTC). **`paul.bradley@truedigital.co.uk` REPLIED to
+13:15, 14:28, 14:30 UTC). **`<prospect-a>@example.test` REPLIED to
 his** — his membership reads `replied`. A prospect answered an empty message
 from us.
 
@@ -69,7 +69,7 @@ people already mid-sequence, which the rule does not touch. Those 4 were
 stopped (`work/account-rule-defer-2026-09-23.json`). Deferred means *not this
 week*; they can be enrolled in a later batch.
 
-**Why four truedigital.co.uk contacts landed in one campaign on one day is
+**Why four contacts at one account landed in one campaign on one day is
 NOT yet answered.** They are all stopped now, so nothing is pending on it,
 but the sourcing/staging path that let four people at one account into one
 cohort has not been traced.
@@ -114,7 +114,7 @@ Then two things were found:
    email→LinkedIn stop could never have succeeded.** Invisible because the
    verb was sealed: `perform` refused before the transport ran. Fixed.
 2. **First live exercise of the route: the provider REJECTED the write.**
-   Target was the operator's own test profile (`/in/zbeslic`, `Finished`,
+   Target was the operator's own test profile (the test identity's profile, `Finished`,
    receives nothing either way). Provider truth read immediately after is
    unchanged and no ledger key was left unresolved. The readback conditions
    both pass, so the rejection is at the write; the likeliest reason is that
@@ -238,7 +238,7 @@ campaign answered fine. 491's queue reached 647 rows — 44 pages — past the
 
 ## 8. THE TEST IDENTITY
 
-`/in/zbeslic` and leads **204966 and 204967** are excluded from every count by
+the test identity's profile and leads **204966 and 204967** are excluded from every count by
 `src/testidentity.py` — suppressed at the notification **write** and excluded
 at the count **read**, because suppressing the write does nothing about rows
 already in the feed. Both leads read `stopped`; the record is
@@ -276,3 +276,123 @@ external-stop alert's first version matched the word "stop" in a sentence
 about a bounce threshold, and would have attributed 495 to us. Its own test
 caught it. A guard whose attribution logic is loose is a guard that reports
 clean.
+
+---
+
+## 11. THE AGENT BRANCH IS MERGED, AND INTERNAL MODE IS VERIFIED LIVE
+
+Four merge requests, merged together on operator instruction: **internal
+assistant mode**, Increment 2, Increment 4, and **Phase D5** — the last of
+which had been the oldest unmerged for days and whose `sender_summary` count
+fix is now live. 7,048 insertions.
+
+**The branch check mattered and nearly went the wrong way.** A two-dot diff
+(`git diff master origin/slack-agent`) appeared to show the branch touching
+`scripts/bison_watch_loop.py` and reverting the write-seal work done earlier
+tonight. It was not: that was MASTER's side of the diff. The **three-dot**
+diff (`master...origin/slack-agent`) is the one that answers "what did the
+branch change", and it shows no `src/providers/`, no `config/.env`, no
+`*_watch_loop.py` and nothing under `work/` — the three-session boundary is
+respected. Merging on the two-dot reading would have been the TASK-229
+mistake inverted.
+
+Verified AFTER the merge rather than assumed: the test-identity hook still in
+`slackagenttools` (the one file both sessions touched), `SUPPORTED` still 15
+with `heyreach.stop_lead` enabled, the `linkedin`-field fix still in
+`leadstop`.
+
+**Internal assistant mode's own measurement is the part worth carrying:**
+drafting was never being refused. `"write a short summary of how the stop
+works"` failed because `stop` is an action verb appearing there as a **noun**.
+So the increment is a prompt change for internal scope plus a verb-matching
+fix — not a licence to act. `COMPOSE_OPENERS` requires the verb to be the
+opener, so `"pause 491 and write it up"` is still refused, and scope selection
+is by exclusion so a fourth scope added later starts locked down.
+
+**Loop restarted (pid 37556), reconnected, and verified live.** Asked in
+`#resonate-os`: *"explain in three sentences how the cross-channel stop
+works"*.
+
+    ANSWERED C0C3C6MDN9L:1790189207.896399 scope=internal via=model
+      tools=['cadence_detail', 'decisions_log', 'workspace_summary']
+
+`via=model`, not a refusal and not a clarify loop. **And it did better than
+comply:** it said the knowledge pack carries no named "cross-channel stop",
+separated what it could evidence from what it was inferring — *"I'm
+reasoning, not reporting"* — named what would settle it, and offered a ticket.
+It is also correct: the stop lives in `inbound`/`leadstop`, not in the cadence
+library, so it genuinely is not in the pack. **That is a real gap in the
+agent's knowledge pack and it is a finding, not a fault.**
+
+---
+
+## 12. THE HYGIENE GUARD: ONE NARROW EXEMPTION, AND IT IS GREEN
+
+**OPERATOR DECISION.** `src/testidentity.py` must name what it excludes, and
+the hygiene guard forbids real identifiers in tracked files. A safety
+mechanism and a privacy guard that could not both be satisfied.
+
+**Resolved by a narrow, documented exemption for exactly two files**, listed
+in `HYGIENE_EXEMPT` in the guard itself with the reason:
+
+    src/testidentity.py
+    tests/test_the_test_identity_is_never_counted.py
+
+**Two fixes were rejected and why is recorded beside it.** A sidecar in
+`work/` was refused: the module would then depend on a file that can be
+missing, and there is no safe answer when it is — suppress everything and
+real client notifications are lost, suppress nothing and the client is told
+about the operator. A safety mechanism must not have a failure mode that
+depends on a gitignored file being present. Allowlisting the real handle in
+`FAKE_VANITY` was refused because it retires the guard for exactly the person
+it protects, everywhere, for ever.
+
+**Every other occurrence was scrubbed** — `notify.py`, `slackagenttools.py`,
+`config/clients/productive.yaml`, `scripts/stage_s3_icp.py`,
+`HUMAN-ACTIONS-REQUIRED.md`, all three handoffs, and the fixture addresses
+that arrived with the agent merge (`src/replies.py`,
+`test_the_class_layer_before_composition.py`). They reference
+`testidentity`'s constants or say "the test identity".
+
+**Three new tests keep the exemption the size it was argued for:** it must be
+exactly those two paths, no entry may be a directory or a pattern, every
+entry must actually be tracked, and — the load-bearing one —
+`test_the_identifiers_appear_nowhere_ELSE_in_the_repository` fails if the
+identifiers spread again, because two exempt files stop being sufficient the
+moment they do.
+
+**17/17 green.** The agent branch was given the same decision.
+
+---
+
+## 13. A CORRECTION: LEAD 204967
+
+`tests/test_the_test_identity_is_never_counted.py` used lead **204967** as its
+example of a lead that is NOT the test identity. 204967 then BECAME the second
+test lead when the stop test was re-armed, and the assertion had been claiming
+the opposite of the truth from that commit until the merge surfaced it.
+
+Both **204966 and 204967** are test leads and both are named in
+`testidentity.LEAD_IDS`. The non-matching example is now 204968. The lesson is
+small and exact: **a fixture that encodes "this value is not special" has to be
+re-checked whenever the special set grows**, and the suite should have been
+re-run at the moment `LEAD_IDS` changed rather than at the next merge.
+
+---
+
+## 14. THE NEXT THREE ITEMS, IN ORDER
+
+1. **Watchers for 496, 497 and 498.** `MONITORS` holds none. All three are
+   ACTIVE. 497 is where the blank emails were found — by hand, because nothing
+   was watching it. This is first precisely because the incident in §1 was
+   invisible for that reason.
+2. **Roles from Slack membership**, as decided: non-external members of the
+   internal channels are Resonate users (DMs included), external members of a
+   bound client channel are that client's users, everyone else unbound;
+   refresh on start and hourly; post the resolved internal names once in
+   `#resonate-os`. The three placeholder ids (`<ID_1>`…`<ID_3>`) are
+   superseded by this and must not be used.
+3. **The incident gate** — the empty-body push guard: refuse any push where a
+   required `BODY_n` is empty or `"None"`, `str(None)` never reaches a
+   provider variable, with tests. §1 is its justification and it is the single
+   highest-value item outstanding.

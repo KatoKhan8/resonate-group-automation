@@ -144,6 +144,43 @@ TEXT_SUFFIXES = (".py", ".json", ".jsonl", ".csv", ".txt", ".md", ".yaml",
 
 SELF = "tests/test_fixture_hygiene.py"
 
+#: THE ONE EXEMPTION. OPERATOR DECISION, 2026-09-23.
+#:
+#: `src/testidentity.py` exists to stop a `positive_reply` for the OPERATOR'S
+#: OWN test identity reaching a client's Slack channel. On 2026-09-23 one was
+#: routed to Productive's channel and suppressed by hand; the module is the
+#: mechanism that replaced the hand-edit.
+#:
+#: **An exclusion must be able to name what it excludes.** That is the whole
+#: conflict: this guard forbids real identifiers in tracked files, and this
+#: module cannot do its job without holding them. A safety mechanism and a
+#: privacy guard that cannot both be satisfied.
+#:
+#: Two fixes were rejected, and WHY is the part worth keeping:
+#:
+#:   a sidecar in `work/`   the module would then depend on a file that can
+#:                          be missing, and there is no safe answer when it
+#:                          is - suppress everything and real client
+#:                          notifications are lost, suppress nothing and the
+#:                          client is told about the operator. A safety
+#:                          mechanism must not have a failure mode that
+#:                          depends on a gitignored file being present.
+#:   allowlist the handle   adding a real vanity name to FAKE_VANITY retires
+#:   in FAKE_VANITY         this guard for exactly the person it protects,
+#:                          everywhere in the repository, forever.
+#:
+#: So the exemption is NARROW AND NAMED: two files, listed here, not a
+#: directory and not a pattern. Every other occurrence in the repository
+#: references `testidentity`'s constants or says "the test identity" - the
+#: identifiers appear in these two files and nowhere else, which is what
+#: makes an exemption this small sufficient.
+#:
+#: Anything added here needs the same argument made in full.
+HYGIENE_EXEMPT = (
+    "src/testidentity.py",
+    "tests/test_the_test_identity_is_never_counted.py",
+)
+
 
 def tracked_files():
     """Every file git actually tracks. Untracked local state is not our problem.
@@ -156,7 +193,8 @@ def tracked_files():
     out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
                          capture_output=True, text=True, check=True).stdout
     return [p for p in out.split("\0")
-            if p and p.endswith(TEXT_SUFFIXES) and p != SELF]
+            if p and p.endswith(TEXT_SUFFIXES) and p != SELF
+            and p not in HYGIENE_EXEMPT]
 
 
 def read(path):
@@ -384,3 +422,56 @@ class TestSecretsAreNotTracked(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheExemptionStaysNarrow(unittest.TestCase):
+    """An exemption is a hole in a guard. These keep it the size it was
+    argued for. OPERATOR DECISION 2026-09-23 - see `HYGIENE_EXEMPT`.
+    """
+
+    def test_it_is_exactly_the_two_files_that_were_argued_for(self):
+        self.assertEqual(
+            HYGIENE_EXEMPT,
+            ("src/testidentity.py",
+             "tests/test_the_test_identity_is_never_counted.py"),
+            "the hygiene exemption changed. It was granted for two named "
+            "files on one argument - an exclusion must be able to name what "
+            "it excludes. Anything added needs that argument made in full.")
+
+    def test_no_entry_is_a_directory_or_a_pattern(self):
+        """A directory exemption would grow silently as files are added."""
+        for entry in HYGIENE_EXEMPT:
+            with self.subTest(entry=entry):
+                self.assertTrue(entry.endswith(".py"))
+                self.assertNotIn("*", entry)
+                self.assertFalse(entry.endswith("/"))
+
+    def test_every_exempt_file_is_actually_tracked(self):
+        """A stale entry is an exemption nobody can see the effect of."""
+        out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+                             capture_output=True, text=True, check=True).stdout
+        tracked = set(p for p in out.split("\0") if p)
+        for entry in HYGIENE_EXEMPT:
+            with self.subTest(entry=entry):
+                self.assertIn(entry, tracked)
+
+    def test_the_identifiers_appear_nowhere_ELSE_in_the_repository(self):
+        """THE CONDITION THAT MAKES THE EXEMPTION SUFFICIENT.
+
+        The operator's decision was that every other occurrence references
+        `testidentity`'s constants or says "the test identity". If the
+        identifiers spread again, two exempt files stop being enough and the
+        guard is quietly weaker than it reads. This fails in that case.
+        """
+        needles = ("zbeslic", "beslic")
+        hits = []
+        for path, text in corpus():           # corpus() already drops exempt
+            low = text.lower()
+            for needle in needles:
+                if needle in low:
+                    hits.append(f"{path}: {needle}")
+        self.assertEqual(
+            sorted(set(hits)), [],
+            "the test identity is named outside the two exempt files. "
+            "Reference testidentity's constants or say 'the test identity':\n"
+            + "\n".join(sorted(set(hits))))

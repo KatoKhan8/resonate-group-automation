@@ -60,7 +60,7 @@ Each line says what was measured, so a stale entry can be caught the same way.
 
 7. **The workforce and account-based directives** need their own session.
 
-8. **A test address reply.** No reply from `zvonimir@resonate.co` exists
+8. **A test address reply.** No reply from the operator's test address exists
    anywhere in the estate - checked against 180 rows across 12 pages of the
    EmailBison reply feed on 2026-09-23. The send-path verification needs one
    inbound reply from that address to reply TO.
