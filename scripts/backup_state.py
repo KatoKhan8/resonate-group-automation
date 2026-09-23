@@ -27,71 +27,79 @@ from src import store
 
 
 def collect_state_files(directory=None):
-    """Every state file that must be in the archive.
+    """Every state file that must be in the archive, plus what is NOT there.
 
-    Asks ``store.STATE_OVERRIDES`` what to back up rather than listing files
-    by hand, then adds the queue and the SQLite store files.  Only files that
-    actually exist on disk are returned - a fresh install has no spend ledger
-    yet and that must not fail the backup.
+    Returns ``(files, findings)``.
+
+    Two sources, because one is not enough:
+
+    1. Everything on disk in the work directory. That covers every
+       ``STATE_OVERRIDES`` entry left UNSET, which is the normal case - they
+       all default beside ``queue_path()``.
+    2. Every ``STATE_OVERRIDES`` entry that IS set in the environment and
+       resolves OUTSIDE the work directory. Those are invisible to a
+       directory listing, and an archive that quietly omits them is a backup
+       that reports success while missing the spend ledger.
+
+    The set is asked of ``store.STATE_OVERRIDES`` rather than written down
+    here. The first version of this script carried a 30-name table of
+    defaults; ``SUPERVISOR_LOCKS`` and ``SUPERVISOR_STATE`` landed with
+    TASK-263 the same evening and the table was already two entries stale
+    before it was ever run. A list that has to be maintained is a list that
+    will be wrong.
     """
     if directory is None:
         directory = os.path.dirname(store.queue_path())
     directory = os.path.abspath(directory)
 
-    expected_basenames = set()
-    for var in store.STATE_OVERRIDES:
-        expected_basenames.add(_default_basename(var))
-    expected_basenames.add("queue.jsonl")
-    expected_basenames.add("queue.db")
-    expected_basenames.add("queue.db-wal")
-    expected_basenames.add("queue.db-shm")
-
+    findings = []
     found = []
+    seen = set()
+
     if os.path.isdir(directory):
         for fn in sorted(os.listdir(directory)):
             fp = os.path.join(directory, fn)
             if os.path.isfile(fp) and not fn.endswith(".lock"):
                 found.append(fp)
+                seen.add(os.path.normcase(fp))
+    else:
+        findings.append("work directory does not exist: " + directory)
 
-    return found
+    for var in store.STATE_OVERRIDES:
+        raw = os.environ.get(var)
+        if not raw:
+            continue
+        fp = os.path.abspath(raw)
+        if _is_within(fp, directory):
+            continue
+        if not os.path.isfile(fp):
+            findings.append(
+                var + " points outside the work directory at " + fp
+                + ", and no file is there")
+            continue
+        if os.path.normcase(fp) in seen:
+            continue
+        found.append(fp)
+        seen.add(os.path.normcase(fp))
+        findings.append(
+            var + " resolves outside the work directory to " + fp
+            + "; archived, but it will not restore beside the rest")
+
+    queue = os.path.abspath(store.queue_path())
+    if os.path.normcase(queue) not in seen:
+        findings.append("the queue is not in the archive: " + queue)
+
+    return found, findings
 
 
-def _default_basename(env_var):
-    """The filename a STATE_OVERRIDES entry resolves to when unset."""
-    _OVERRIDE_DEFAULTS = {
-        "QUEUE_DB": "queue.db",
-        "CAMPAIGNS": "campaigns.jsonl",
-        "JOBS": "jobs.jsonl",
-        "WORKSPACES": "workspaces.jsonl",
-        "AUDIT": "audit.jsonl",
-        "SENDERS": "senders.jsonl",
-        "NOTIFICATIONS": "notifications.jsonl",
-        "REPORTS": "reports.jsonl",
-        "REPORT_DRAFTS": "report-drafts.jsonl",
-        "MX_CACHE": "mx-cache.json",
-        "OBSERVABILITY": "observability.jsonl",
-        "CHECKPOINTS": "checkpoints.json",
-        "REPLY_WATCH_STATUS": "replywatch.json",
-        "TAG_OUTBOX": "tag-outbox.jsonl",
-        "AGENCY_DNC": "agency-dnc.jsonl",
-        "SIGNALS": "signals.jsonl",
-        "GTM": "gtm.jsonl",
-        "DISCOVERY": "discovery.jsonl",
-        "CLIENT_REVIEW": "clientreview.jsonl",
-        "CRAWL_CACHE": "crawl-cache.json",
-        "KNOWLEDGE_PACK": "knowledge-pack.json",
-        "SLACK_THREADS": "slack-threads.jsonl",
-        "SLACK_REQUESTS": "slack-requests.jsonl",
-        "SLACK_FOLLOWUPS": "slack-followups.jsonl",
-        "ACTION_LEDGER": "action-ledger.jsonl",
-        "SPEND_LEDGER": "spend-ledger.jsonl",
-        "LEAD_OBSERVATIONS": "lead-observations.jsonl",
-        "WATCH_EVENTS": "watch-events",
-        "WATCH_HEARTBEAT": "heartbeat",
-        "CLIENT_APPROVAL": "client-approval.jsonl",
-        "CANDIDATES": "candidates.jsonl",
-    }
-    return _OVERRIDE_DEFAULTS.get(env_var, env_var.lower().replace("_", "-"))
+def _is_within(path, directory):
+    """True when *path* sits inside *directory*."""
+    path = os.path.normcase(os.path.abspath(path))
+    directory = os.path.normcase(os.path.abspath(directory))
+    try:
+        return os.path.commonpath([path, directory]) == directory
+    except ValueError:          # different drives on Windows
+        return False
 
 
 def create_archive(file_list, work_dir, backup_dir):
@@ -126,6 +134,11 @@ def create_archive(file_list, work_dir, backup_dir):
 def prune_old_archives(backup_dir, retention_days=14):
     """Remove archives older than *retention_days*, oldest first.
 
+    **The newest archive is never pruned, whatever its age.** If backups stop
+    for a month, the run that notices must not begin by deleting the only
+    copy that exists - "retention 14 days" is a rule about how much history
+    to keep, not permission to reach zero.
+
     Returns the list of removed paths.
     """
     if not os.path.isdir(backup_dir):
@@ -141,7 +154,7 @@ def prune_old_archives(backup_dir, retention_days=14):
     archives.sort(key=lambda p: os.path.getmtime(p))
 
     removed = []
-    for fp in archives:
+    for fp in archives[:-1]:            # never the newest
         if os.path.getmtime(fp) < cutoff:
             os.remove(fp)
             removed.append(fp)
@@ -166,12 +179,16 @@ def main(argv=None):
 
     t0 = time.monotonic()
 
+    # The lock covers the LISTING AND THE ZIP. Holding it only across the
+    # listdir leaves the archive itself racing a checkpoint, and a torn
+    # archive is the one failure a backup may not have. It is released before
+    # the prune and before any future upload, which is what the brief asked:
+    # do not hold it across the ship.
     with store.lock():
-        files = collect_state_files(work_dir)
+        files, findings = collect_state_files(work_dir)
+        archive = create_archive(files, work_dir, args.backup_dir)
 
-    archive = create_archive(files, work_dir, args.backup_dir)
     prune_old_archives(args.backup_dir, args.retention)
-
     elapsed = time.monotonic() - t0
     size = os.path.getsize(archive)
 
@@ -181,6 +198,7 @@ def main(argv=None):
         "size_bytes": size,
         "elapsed_seconds": round(elapsed, 2),
         "encrypted": False,
+        "findings": findings,
         "encryption_finding": (
             "Python stdlib has no encryption. Options: cryptography "
             "(pip install cryptography, ~3MB wheel), pyage (pip install "
@@ -189,7 +207,10 @@ def main(argv=None):
         "off_machine_destination": None,
     }
     print(json.dumps(result, indent=2))
-    return 0
+    # A finding is not a warning to read later. An archive missing the queue,
+    # or missing a ledger that lives outside work/, is a failed backup and the
+    # exit code has to say so or nightly cron will report success forever.
+    return 1 if findings else 0
 
 
 if __name__ == "__main__":

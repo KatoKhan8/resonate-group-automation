@@ -130,11 +130,20 @@ def run_drill(archive_path, manifest_data=None, live_stats=None,
         else:
             manifest_data = {}
 
+    # `store.use_directory` sets QUEUE and clears every STATE_OVERRIDES
+    # entry, process-wide. This function is imported by tests, so leaving the
+    # process pointed at a temp directory that `finally` then deletes is the
+    # exact environment-leak class TASK-264 exists to remove - shipped by the
+    # task that runs right before it. Saved here and restored unconditionally.
+    _saved_env = {"QUEUE": os.environ.get("QUEUE")}
+    for _var in store.STATE_OVERRIDES:
+        _saved_env[_var] = os.environ.get(_var)
+
     tmp = tempfile.mkdtemp(prefix="rga-restore-drill-")
     try:
         try:
             extract_archive(archive_path, tmp)
-        except (zipfile.BadZipFile, Exception) as exc:
+        except Exception as exc:
             result["error"] = f"extraction failed: {exc}"
             shutil.rmtree(tmp, ignore_errors=True)
             return result
@@ -161,14 +170,42 @@ def run_drill(archive_path, manifest_data=None, live_stats=None,
         else:
             result["manifest_matches"] = None
 
-        result["ok"] = (result["stats_match"]
-                        and result["manifest_matches"] is not False)
+        # An empty restore is not a clean restore. Zero records compared
+        # against a live store that also holds zero records satisfies
+        # `stats_match` perfectly and says nothing at all - the same vacuous
+        # pass this repository has now shipped three times (F-003's
+        # `coverage()` against nothing, `leadstop.sweep` never incrementing,
+        # and the shadow ledger trap §11 is written to avoid). The drill
+        # asserts it RESTORED something before it is allowed to say ok.
+        if result["restored_records"] <= 0:
+            result["error"] = (
+                "restored 0 records: an empty restore proves nothing. "
+                "Run the drill where the live estate is, or against an "
+                "archive that carries records.")
+            result["ok"] = False
+        elif result["manifest_matches"] is None:
+            # No manifest is not a pass either. The manifest is in git
+            # precisely so a restore can be checked against something that is
+            # NOT in the backup; without it the drill is checking the archive
+            # against itself.
+            result["error"] = (
+                "no QUEUE-MANIFEST.json with a record count: the drill has "
+                "nothing independent of the archive to check against.")
+            result["ok"] = False
+        else:
+            result["ok"] = (result["stats_match"]
+                            and result["manifest_matches"] is True)
 
     except Exception as exc:
         result["error"] = str(exc)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         result["temp_dir_exists"] = os.path.isdir(tmp)
+        for _var, _val in _saved_env.items():
+            if _val is None:
+                os.environ.pop(_var, None)
+            else:
+                os.environ[_var] = _val
 
     result["restore_seconds"] = round(time.monotonic() - t0, 3)
     return result

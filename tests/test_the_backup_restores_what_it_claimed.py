@@ -94,7 +94,7 @@ class TestBackupContainsEveryStateOverride(_BackupEnvTest):
         self._seed_queue()
         seeded = self._seed_state_files()
 
-        files = collect_state_files()
+        files, _findings = collect_state_files()
         basenames = {os.path.basename(p) for p in files}
         for name in seeded:
             self.assertIn(name, basenames, f"{name} not collected")
@@ -117,7 +117,7 @@ class TestBackupContainsEveryStateOverride(_BackupEnvTest):
         with open(fake_env, "w") as f:
             f.write("SECRET=value\n")
 
-        files = collect_state_files()
+        files, _findings = collect_state_files()
         archive = create_archive(files, self.work_dir, self.backup_dir)
         with zipfile.ZipFile(archive) as zf:
             for name in zf.namelist():
@@ -136,7 +136,7 @@ class TestDrillSucceeds(_BackupEnvTest):
         live_stats = self._seed_queue()
         self._seed_state_files()
 
-        files = collect_state_files()
+        files, _findings = collect_state_files()
         archive = create_archive(files, self.work_dir, self.backup_dir)
 
         manifest = {
@@ -164,7 +164,7 @@ class TestCorruptedArchiveFails(_BackupEnvTest):
         self._seed_queue()
         self._seed_state_files()
 
-        files = collect_state_files()
+        files, _findings = collect_state_files()
         archive = create_archive(files, self.work_dir, self.backup_dir)
 
         with open(archive, "rb") as f:
@@ -212,7 +212,7 @@ class TestLiveDirectoryUntouched(_BackupEnvTest):
         self._seed_queue()
         self._seed_state_files()
 
-        files = collect_state_files()
+        files, _findings = collect_state_files()
         archive = create_archive(files, self.work_dir, self.backup_dir)
 
         mtimes_before = {}
@@ -246,7 +246,7 @@ class TestNeitherScriptWritesLive(_BackupEnvTest):
         self._seed_state_files()
 
         snapshot = set(os.listdir(self.work_dir))
-        files = collect_state_files()
+        files, _findings = collect_state_files()
         create_archive(files, self.work_dir, self.backup_dir)
         after = set(os.listdir(self.work_dir))
         self.assertEqual(snapshot, after)
@@ -261,7 +261,7 @@ class TestDrillComparesManifest(_BackupEnvTest):
         live_stats = self._seed_queue()
         self._seed_state_files()
 
-        files = collect_state_files()
+        files, _findings = collect_state_files()
         archive = create_archive(files, self.work_dir, self.backup_dir)
 
         wrong_manifest = {
