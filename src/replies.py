@@ -1220,7 +1220,7 @@ OUT_OF_OFFICE_SUBJECTS = (
 #: one of these is not a referral to somebody - it is an autoresponder's
 #: emergency contact, a website footer, or a switchboard.
 #:
-#: 2026-09-23: a German out-of-office naming `buero@erlebnismarketing.com`
+#: 2026-09-23: a German out-of-office naming `buero@example-agency.test`
 #: classified as REFERRAL at 0.8. Under the reply-engine brief a referral
 #: writes to the referred person via a NEW SEQUENCE, so the engine would have
 #: enrolled a company's general office inbox because their autoresponder
