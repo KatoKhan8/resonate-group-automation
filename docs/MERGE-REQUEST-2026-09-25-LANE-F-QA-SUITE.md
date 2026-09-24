@@ -197,6 +197,30 @@ carry lane E's TASK-279 … TASK-291 (they are on
 
 **All eight appear in the READY list and none is BLOCKED.** Six of the eight
 are P0 and sort to the top, which is the dispatch order for the morning.
+`dependencies` is `[]` and `blocked_by` is `[]` on every one of the eight in
+`docs/state/TASK-REGISTRY.json` — read out of the JSON, not inferred from the
+printed list.
+
+**And confirmed against the tool a worker actually claims with**, which is not
+the registry:
+
+    py -3 scripts/claim_task.py --status
+
+    claims held: 0
+    ready (unclaimed, deps met): 14
+      P0   TASK-292   P0   TASK-293   P0   TASK-294   P0   TASK-295
+      P0   TASK-296   P0   TASK-298   P1   TASK-297   P1   TASK-299
+
+**Eight of the fourteen tasks claimable on this machine right now are lane
+F's.** `claim_task.py` applies a branch-activity filter the registry does not,
+so 14 and 41 are different questions and neither is wrong: the registry counts
+what is queued, `claim_task` counts what is free. The number that matters for
+"can a worker take this in the morning" is the second one, and all eight are
+in it.
+
+This was verified by **running both tools**, after committing the files and
+after committing this document with the AFTER numbers still unchecked. Lane E's
+lesson was not "write the DEPENDS line correctly", it was "run the tool".
 
 When lane E's thirteen are integrated alongside these eight, the pool's READY
 count is higher again; lane E measured 41 READY on its own branch after its
