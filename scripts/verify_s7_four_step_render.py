@@ -30,6 +30,13 @@ reports the number that survives all of them.
                               shape. A row that renders and fails lint is
                               refused at `approve.why_not` and never ships,
                               so it does not belong in the headline
+    stage 3b the company name  `cadence.company_name` refuses a name that is
+                              domain-shaped, and it refuses per RECORD, so it
+                              takes every contact at that account with it.
+                              S7 never calls it - it writes the supplier's
+                              `Company` column straight into four bodies - so
+                              these two gates disagree about the same fact and
+                              the later one wins
     stage 4  bisonfactory     _sequence_steps -> _approved_copy ->
                               _variables_for -> _stale_clearances, which is
                               the actual `custom_variables` payload
@@ -53,7 +60,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import approval, bisonfactory, clients, identity, lint  # noqa: E402
+from src import (approval, bisonfactory, cadence, clients,  # noqa: E402
+                 identity, lint)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STAGE = os.path.join(ROOT, "work", "stage")
@@ -97,22 +105,37 @@ def rendered_by_email(rows):
     return {r["email"].lower(): r for r in rows if r.get("state") == "rendered"}
 
 
+def _load_by_path(filename, alias):
+    """Import a `scripts/` module by path. `scripts/` is not a package."""
+    import importlib.util
+
+    path = os.path.join(ROOT, "scripts", filename)
+    spec = importlib.util.spec_from_file_location(alias, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def supplier_companies(emails):
+    """email -> the supplier's `Company` value, via S7's own index.
+
+    Read through `stage_s7_copy.merge_index` rather than a second CSV reader,
+    so the company this checks is byte-for-byte the one S7 rendered.
+    """
+    s7 = _load_by_path("stage_s7_copy.py", "stage_s7_for_verify")
+    rows = s7.merge_index(list(emails))
+    return {e: (row.get("Company") or "").strip() for e, row in rows.items()}
+
+
 def cadence_steps():
     """`CADENCE_STEPS` out of the builder, so the two cannot drift.
 
     Loaded by path: `scripts/` is not a package.
     """
-    import importlib.util
-
-    path = os.path.join(ROOT, "scripts", "batch1_build.py")
-    spec = importlib.util.spec_from_file_location("batch1_build_for_verify",
-                                                  path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.CADENCE_STEPS
+    return _load_by_path("batch1_build.py", "batch1_build_for_verify").CADENCE_STEPS
 
 
-def build_record(email, variables, existing):
+def build_record(email, variables, existing, company):
     """One record per DOMAIN, with this contact's four steps on it.
 
     Grouped by domain because `scripts/batch1_build.py` groups by domain and
@@ -122,9 +145,13 @@ def build_record(email, variables, existing):
     domain = email.split("@")[-1]
     rec = existing.get(domain)
     if rec is None:
+        # THE REAL SUPPLIER COMPANY, not a stand-in. `cadence.company_name`
+        # has an opinion about this exact string and a placeholder would have
+        # made stage 3b agree with itself.
         rec = {"id": domain.replace(".", "-"), "client": "productive",
                "domain": domain, "state": "verified",
-               "company_facts": {"name": "Account", "domain": domain},
+               "company": company or domain,
+               "company_facts": {"name": company or domain, "domain": domain},
                "contacts": [], "cadence": {}, "stages": {}, "events": [],
                "log": [], "excluded": []}
         existing[domain] = rec
@@ -225,9 +252,11 @@ def main(argv=None):
     print("\nSTAGE 3  lint.check, the real approval gate, all four steps")
     config = clients.load(args.client)
     lint.forget_policies()
+    companies = supplier_companies(new)
     records, keys = {}, []
     for email, row in new.items():
-        rec, key = build_record(email, row["variables"], records)
+        rec, key = build_record(email, row["variables"], records,
+                                companies.get(email, ""))
         keys.append((rec, key, email))
     lintbad, lintex = collections.Counter(), {}
     refused = set()
@@ -247,6 +276,28 @@ def main(argv=None):
               f"never reach a provider")
     else:
         print("  PASS  no copy-quality failure on any step")
+
+    print("\nSTAGE 3b  cadence.company_name, which refuses per RECORD")
+    unusable_records, unusable_leads = set(), set()
+    for rec in records.values():
+        try:
+            cadence.company_name(rec)
+        except cadence.CompanyNameUnusable:
+            unusable_records.add(rec["id"])
+            for contact in rec["contacts"]:
+                unusable_leads.add(contact["email"])
+    if unusable_leads:
+        print(f"  FAIL {len(unusable_records)} record(s) carry only a "
+              f"domain-shaped company name, holding {len(unusable_leads)} "
+              f"lead(s)")
+        print("       S7 rendered that name into all four bodies; "
+              "`cadence.build` raises CompanyNameUnusable on the same record "
+              "and `scripts/batch1_build.py` drops it from the batch whole")
+        for email in sorted(unusable_leads)[:args.examples]:
+            print(f"      {email}   {companies.get(email, '')!r}")
+    else:
+        print("  PASS  every rendered record has a company name "
+              "`cadence.company_name` accepts")
 
     print("\nSTAGE 4  the custom_variables payload bisonfactory would build")
     sequence = bisonfactory._sequence_steps(config.get("email_sequence"),
@@ -313,13 +364,26 @@ def main(argv=None):
         print(f"  PASS  every lead carries {sorted(referenced)} non-empty, "
               f"and no follow-up subject leaks")
 
-    survivors = len(new) - len(refused)
+    # CROSS-TABULATED, not subtracted in prose. Two counts over the same set
+    # joined by arithmetic in a sentence is how this project has reported a
+    # wrong number before; a lead can fail lint AND carry a domain-shaped
+    # company, and 814 - 2 - 16 quietly assumes it cannot.
+    survivors = sorted(set(new) - refused - unusable_leads)
+    both = sorted(refused & unusable_leads)
     print("\nTHE NUMBER THAT SURVIVED EVERY STAGE")
     print(f"  {len(new_rows):>5} rows in the journal")
     print(f"  {len(new):>5} rendered by S7")
-    print(f"  {survivors:>5} also pass lint, so also approvable on their copy")
-    print(f"  {built:>5} build a complete four-step provider payload")
+    print(f"  {len(refused):>5} of those refused by lint")
+    print(f"  {len(unusable_leads):>5} of those held by the company name")
+    print(f"  {len(both):>5} in BOTH sets" + (f": {both}" if both else ""))
+    print(f"  {len(survivors):>5} survive every gate this script can ask")
+    print(f"  {built:>5} build a complete four-step provider payload "
+          f"(payload is about the WORDS; the two gates above are about the "
+          f"record, and both still have to pass)")
     print("\n  Not one of these is a send. Only a provider readback is.")
+    print("  And the verification pair, suppression, collision and fatigue "
+          "gates were never asked - they need `work/` state this does not "
+          "read. Expect the enrolled number to be lower again.")
     clean = not bad and not paybad and not regressed
     return 0 if clean else 1
 

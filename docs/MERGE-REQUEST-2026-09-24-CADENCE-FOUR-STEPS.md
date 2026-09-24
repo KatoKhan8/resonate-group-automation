@@ -19,8 +19,16 @@ credential read. Nothing was merged and nothing was pushed.
 
       927   rows in `work/stage/s7-copy.jsonl`
       814   RENDERED by S7. The other 113 are HELD and always were
-      812   also pass `lint.check`, which is the approval gate
-      814   build a complete four-step provider payload
+      814   build a complete four-step provider payload — every variable
+            non-empty, none the literal 'None', none unrendered
+    - 2     refused by `lint.check`, which is the approval gate
+    - 16    held by `cadence.company_name`, which refuses per RECORD
+    -----
+      796   survive every gate this script can ask
+
+**ASK FOR 796, NOT 814, AND NEVER 927.** Each of those four numbers is the
+answer to a different question and only the last one is the answer to "how
+many leads can be pushed".
 
 **927 was never the rendered count.** It is the journal's line count:
 814 rendered plus 113 held. `docs/STEPS-4-5-DRAFTS-2026-09-24.md` says
@@ -29,12 +37,9 @@ credential read. Nothing was merged and nothing was pushed.
 the same defect §8 of the handoff names: a headline from a stage that had not
 asked the next stage's question.
 
-**And 814 is not the shipping number either.** Two of the 814 carry copy
-`lint.check` refuses, so `approve.why_not` returns "fails lint" and they never
-reach a provider. 812 is the number that survives every gate reachable without
-provider state.
+**814 is the answer to "did the copy render", and two later gates disagree.**
 
-Both faults are PRE-EXISTING and neither is in the new copy:
+### 0.1 Two leads fail lint, and both are PRE-EXISTING
 
     bjorg@brandenburg.is         em_dash      Company is "Brandenburg <en dash>
                                               Creative Agency"
@@ -43,9 +48,32 @@ Both faults are PRE-EXISTING and neither is in the new copy:
 Proved rather than assumed: the same two leads fail the same two codes on
 em1/em2/em3 in the **3-step** journal, measured with the same gate. They are
 supplier data, they break every step equally, and they are correctly failing
-closed. They are not this change's regression and they are not worth widening
-a lint rule for — `MANUAL-REVIEW.md`'s kind of problem, or a corrected
-`Company` value.
+closed. Not this change's regression, and not worth widening a lint rule for.
+
+### 0.2 Sixteen leads carry a company name `cadence.company_name` refuses
+
+Thirteen records, sixteen leads. `Vibe.co`, `Ladder.io`, `Start.io`,
+`Stellent.AI`, `DO.AGENCY`, `mhp.si`, `GotU.io` and so on — names carrying a
+TLD, which is the exact thing `company_name` refuses so that no prospect is
+addressed by their own hostname.
+
+**Two gates disagree about the same fact and S7 is the one that is wrong.**
+S7 writes the supplier's `Company` column straight into four bodies and never
+calls `company_name`. `cadence.build` does call it, raises
+`CompanyNameUnusable`, and `scripts/batch1_build.py` catches that **per
+RECORD** and drops the whole account from the batch. So these leads render
+beautifully and then vanish at S8, and the number that reaches a provider is
+smaller than the number S7 printed.
+
+Also PRE-EXISTING — `body_1` already says "teams the size of Vibe.co" — and
+also correctly failing closed. But several of these are genuine brand names
+(`Vibe.co` really is called Vibe.co), which `company_name`'s own docstring
+admits it cannot tell apart from a hostname. **This is an operator decision
+about data**, and it is worth making before the push because it is 16 leads.
+
+**Cross-tabulated, not subtracted in prose**: 0 leads are in both the lint set
+and the company-name set, which the verifier computes as a set intersection
+and prints. `814 - 2 - 16` happens to be right and was not assumed to be.
 
 ### The held 113, unchanged in both directions
 
@@ -240,7 +268,9 @@ committed):
       EXISTING copy moved        0
     STAGE 3  lint.check, the real approval gate, all four steps
       3256 steps checked across 709 records
-      2 leads refused (both pre-existing, §0)
+      2 leads refused (both pre-existing, §0.1)
+    STAGE 3b cadence.company_name, which refuses per RECORD
+      13 records carry only a domain-shaped company name, holding 16 leads
     STAGE 4  the custom_variables payload bisonfactory would build
       sequence  em1@1 tr=False {SUBJECT_1} wait=3 | em2@2 tr=True wait=4
               | em4@3 tr=True wait=5 | em5@4 tr=True wait=1
@@ -287,10 +317,11 @@ See §6. One pass only, diffed by name.
    verifier stamps fingerprints the way `approve.approve_step` does once
    `why_not` has passed, then runs the real copy chain. It does NOT run the
    verification-pair, sendability, suppression, collision or fatigue checks —
-   those need `work/` state a worktree does not have. **812 is good ON ITS
-   COPY.** `scripts/batch1_build.py` still decides who is approvable, and the
-   handoff records that 167 leads were held on the verification pair alone
-   last time. **Expect the enrolled number to be materially below 812.**
+   those need `work/` state a worktree does not have. **796 is what survives
+   the gates about the WORDS and the COMPANY NAME.**
+   `scripts/batch1_build.py` still decides who is approvable, and the handoff
+   records that 167 leads were held on the verification pair alone last time.
+   **Expect the enrolled number to be materially below 796.**
 3. **`scripts/render_preview.py` was not run** over representative leads
    (§6 step 6 of the drafts doc). The four-stage verifier covers the same
    ground through `bisonfactory`, which is the path that actually stages, but
@@ -345,10 +376,11 @@ See §6. One pass only, diffed by name.
    build no longer reads it. Kept so a re-run stays comparable with every
    earlier journal, and because `breakup` remains correct for a three-step
    cadence. Delete it if the journal should carry only what ships.
-5. **The two lint-refused leads were left refused.** Correct fail-closed
-   behaviour and pre-existing. The alternative is correcting two `Company`
-   values in the supplier file, which is an operator's call about data, not
-   mine.
+5. **The two lint-refused leads and the sixteen company-name holds were left
+   held.** Correct fail-closed behaviour and both pre-existing. The
+   alternative is correcting `Company` values in the supplier file — two for
+   lint, thirteen records for the hostname rule — which is an operator's call
+   about data, not mine. Sixteen leads is enough to be worth the call.
 
 ---
 
@@ -361,8 +393,9 @@ See §6. One pass only, diffed by name.
    (it backs the previous journal up itself, stamped).
 4. Verify it:
    `py -3 scripts/verify_s7_four_step_render.py --old <that .bak>`
-   Expect 927 / 814 / 812 / 814. A different number means the ready set moved
-   and the difference has to be named before anything is pushed.
+   Expect **927 rows / 814 rendered / 796 survivors**. A different number
+   means the ready set moved, and the difference has to be named BY EMAIL
+   before anything is pushed — the script prints both directions.
 5. `py -3 scripts/batch1_build.py --plan`, and read the refused counts — that
    is where the verification-pair holds show up and where the real enrolled
    number appears.
