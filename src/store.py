@@ -262,7 +262,21 @@ def lock(timeout=None, poll=0.05, for_path=None):
         try:
             handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             break
-        except FileExistsError:
+        # PermissionError IS "somebody else has it", ON WINDOWS.
+        #
+        # An exclusive create against a file another handle has just unlinked
+        # returns EACCES rather than EEXIST while the delete is pending, so
+        # this loop raised PermissionError straight through the caller instead
+        # of waiting its turn. It needs real contention to show: found
+        # 2026-09-24 with eight workers taking this lock twice per contact to
+        # append to the spend ledger, and never once in two weeks of the
+        # single-writer queue path.
+        #
+        # Treated as contention rather than as a fault, which costs a worse
+        # message in the genuinely-unwritable case - `QueueLocked` after the
+        # timeout rather than `PermissionError` at once - and never opens the
+        # lock: both paths still end with nothing written.
+        except (FileExistsError, PermissionError):
             try:
                 age = time.time() - os.path.getmtime(path)
                 if age > LOCK_STALE_AFTER:
