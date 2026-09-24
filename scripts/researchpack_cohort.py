@@ -548,7 +548,14 @@ def main(argv=None):
     for where, count in sorted(summary["slug_source"].items(),
                                key=lambda kv: -kv[1]):
         print("  %-24s %3d" % (where, count))
-    print("\nour own crawler: %d request(s), %.1fs, %s"
+    # "%d requests" and not the plural in brackets:
+    # `tests/test_nothing_writes_to_a_provider.DYNAMIC` strips docstrings and
+    # comments before matching but not ordinary strings, so the literal
+    # `request(s` inside a print reads as a call whose verb is decided at
+    # runtime and the whole file is reported as an undeclared HTTP write.
+    # The guard is right to be blunt about a verb it cannot read; the cheap
+    # side of that trade is here, not in the guard.
+    print("\nour own crawler: %d requests, %.1fs, %s"
           % (summary["site_requests"], summary["site_seconds"],
              summary["site_outcomes"]))
     print("\nobserved apify spend, from the run records")
