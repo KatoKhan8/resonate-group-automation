@@ -78,7 +78,7 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
 
     # THE BATCH COPY LINT, BEFORE THE FIRST PROVIDER CALL OF ANY KIND.
     #
-    # It is here and not inside `_ensure_leads` for the reason ISSUE-034 is
+    # It is here and not inside `_ensure_leads` for the reason ISSUE-037 is
     # open: the blank-render gate refuses AFTER the attach and its refusal
     # does not roll back, so a campaign can be left holding leads a gate has
     # already condemned. This one runs before the workspace is even read, so

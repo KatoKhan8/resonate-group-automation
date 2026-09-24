@@ -23,7 +23,7 @@ the lead and the rule, and the provider was never touched.
 
 ## WHY THE PROVIDER COUNTERS ARE THE ASSERTION
 
-A lint that refuses after the attach is ISSUE-034: the blank-render gate
+A lint that refuses after the attach is ISSUE-037: the blank-render gate
 refuses once the leads are already on the campaign and its refusal does not
 roll back. "It raised" is therefore not enough - a gate can raise and still
 have left a real campaign holding condemned leads. So every refusal test also
@@ -216,7 +216,7 @@ class TheCopyLintIsOnTheSendPath(QueueTest):
     def test_nothing_reaches_the_provider_when_the_lint_refuses(self):
         """Rule 3: BEFORE any provider write, not after.
 
-        ISSUE-034 is the counter-example this exists against: the blank-render
+        ISSUE-037 is the counter-example this exists against: the blank-render
         gate refuses after the attach and does not roll back, so a refusal
         there leaves a real campaign holding condemned leads.
         """
@@ -225,29 +225,36 @@ class TheCopyLintIsOnTheSendPath(QueueTest):
         self.refusal()
         self.assertEqual(self.bison.touched(), CountingBison.UNTOUCHED)
 
-    def test_a_rule_this_wiring_never_heard_of_is_still_enforced(self):
+    def test_a_rule_added_to_the_lint_later_is_enforced_here(self):
         """Rule 4: the wiring reads the rule set; it does not enumerate rules.
 
-        Asserted by giving the lint a verdict naming a rule that does not
-        exist in `copylint.RULES`. A wiring that decided for itself which
-        rules matter could not carry this one into the refusal.
+        A rule is added to this system by adding it to `copylint.RULES` and
+        teaching `check_batch` to fire it. Both halves are done here, on a
+        rule that did not exist when this wiring was written, and the push has
+        to refuse and say its name. A wiring that decided for itself which
+        rules mattered would carry the six it knew about and drop this one.
         """
         invented = "a_rule_written_next_week"
-        real = copylint.check_batch
+        sentence = "a rule nobody had written yet"
+        rules, real = copylint.RULES, copylint.check_batch
 
         def fake(leads, packs=None, **kw):
             found = real(leads, packs, **kw)
             found["refused"] = True
-            found["counts"][invented] = 1
-            found["offenders"][invented] = ["rec-northwind/rec-northwind-c1"]
-            found["rules"][invented] = "a rule nobody had written yet"
+            found["counts"][invented] = len(leads)
+            found["offenders"][invented] = sorted(l["id"] for l in leads)
+            found["rules"][invented] = sentence
             return found
 
+        copylint.RULES = rules + ((invented, sentence),)
         copylint.check_batch = fake
         self.addCleanup(setattr, copylint, "check_batch", real)
+        self.addCleanup(setattr, copylint, "RULES", rules)
+
         said = self.refusal()
         self.assertIn(invented, said)
-        self.assertIn("a rule nobody had written yet", said)
+        self.assertIn(sentence, said)
+        self.assertIn("rec-northwind/rec-northwind-c1", said)
         self.assertEqual(self.bison.touched(), CountingBison.UNTOUCHED)
 
     # -------------------------------------------------- identity, not presence
