@@ -32,7 +32,7 @@ sequenced and stopped.
 import argparse
 import sys
 
-from . import campaigns, clients, providerwrites, store
+from . import campaigns, clients, copylint, packfacts, providerwrites, store
 from .providers import ProviderError, bison
 # THE CONSTANT, NOT THE TRANSPORT. Tests swap `bison` for a fake provider,
 # and this number is not something a provider answers - it is how many pairs
@@ -73,7 +73,17 @@ def stage(campaign_id, *, recs=None, config=None, live=False, by="system"):
               "workspace": None, "plan": plan, "did": [], "provider": {}}
     if not live:
         report["did"].append("dry run: nothing was sent")
+        report["copylint"] = _copylint_report(plan, recs)
         return report
+
+    # THE BATCH COPY LINT, BEFORE THE FIRST PROVIDER CALL OF ANY KIND.
+    #
+    # It is here and not inside `_ensure_leads` for the reason ISSUE-034 is
+    # open: the blank-render gate refuses AFTER the attach and its refusal
+    # does not roll back, so a campaign can be left holding leads a gate has
+    # already condemned. This one runs before the workspace is even read, so
+    # nothing it refuses can have reached the estate.
+    _refuse_copylint(plan, recs, report)
 
     # TENANCY, AGAINST THE PROVIDER, BEFORE ANYTHING IS WRITTEN.
     #
@@ -447,6 +457,76 @@ def _plan(campaign, recs, config):
             "sequence": sequence,
             "sequence_config": (config or {}).get("email_sequence") or {},
             "bison_campaign_id": campaign.get("bison_campaign_id")}
+
+
+def _copylint_batch(plan, recs):
+    """The plan's leads and their packs, in the shape `copylint` reads.
+
+    The ONLY translation here is of shape. Which rules exist, what they
+    check and what a refusal says are the lint's business, so a rule added to
+    `copylint.RULES` next week is enforced on this path without a line
+    changing here - that is what the wiring means, and enumerating rules is
+    how a wiring silently stops enforcing the new ones.
+
+    A step's SUBJECT is deliberately not folded into its body. `copylint`
+    takes the first line of step 1 as the opener, and a cohort shares its
+    subject template, so a subject prepended here would make every lead in a
+    campaign a duplicate-first-line offender and the rule would be measuring
+    the sequence rather than the copy.
+    """
+    by_id = {record.get("id"): record for record in recs or []}
+    leads, packs = [], {}
+    for lead in plan.get("leads") or []:
+        lead_id = "%s/%s" % (lead.get("record_id"), lead.get("contact_key"))
+        leads.append({"id": lead_id,
+                      "steps": [{"body": step.get("body")}
+                                for step in lead.get("copy") or []]})
+        # IDENTITY, NOT PRESENCE. `packfacts` admits a fact only when it can
+        # be shown to be this account's; 50 of 71 job rows in the research
+        # pilot were a different company, and a pack that kept them would
+        # have made a stranger's open roles "supporting evidence".
+        pack, _ = packfacts.pack_for(by_id.get(lead.get("record_id")))
+        packs[lead_id] = pack
+    return leads, packs
+
+
+def _copylint_report(plan, recs):
+    """Run the batch lint over what this stage is about to write.
+
+    `steps_expected` is THIS PLAN'S sequence length, not the lint's module
+    constant. The constant is the operator's target cadence; the plan's
+    sequence is how many steps this push will actually send, and checking a
+    four-step push against a five-step target would refuse every lead for a
+    reason that is about the cadence rollout rather than about the copy.
+    """
+    leads, packs = _copylint_batch(plan, recs)
+    expected = len(plan.get("sequence") or ()) or copylint.STEPS_EXPECTED
+    found = copylint.check_batch(leads, packs, steps_expected=expected)
+    found["steps_expected"] = expected
+    found["leads_with_a_pack"] = sum(1 for p in packs.values() if p["facts"])
+    return found
+
+
+def _refuse_copylint(plan, recs, report):
+    """Refuse the whole stage if the batch copy lint refuses it.
+
+    IT STOPS THE STAGE rather than skipping the offenders, for the reason
+    `_refuse_unsupported` gives directly below: a campaign meant for fifty
+    that quietly stages forty-one is a campaign whose reach nobody stated.
+
+    The refusal text is the LINT'S OWN report, not a sentence written here,
+    so it names the leads and the rules the lint named - including a rule
+    that did not exist when this function was written.
+    """
+    found = _copylint_report(plan, recs)
+    report["copylint"] = found
+    if not found["refused"]:
+        return found
+    raise FactoryRefused(
+        "the batch copy lint refuses this push, and it runs before any "
+        "provider write so nothing has reached the estate:\n%s\nREGENERATE "
+        "the affected copy; CLAUDE.md forbids widening a lint rule to let a "
+        "draft through." % "\n".join(copylint.report_lines(found)))
 
 
 def _refuse_unsupported(plan):
