@@ -41,7 +41,7 @@ exact mistake to say it is. 796 is what survives every gate reachable from a
 worktree with no `work/`. The verification pair, suppression, collision and
 fatigue gates were never asked, and the handoff records 167 leads held on the
 verification pair alone last time. **Only `batch1_build --plan` answers the
-push question, and its number will be lower.** §5.2.
+push question, and its number will be lower.** §5 item 2.
 
 **927 was never the rendered count.** It is the journal's line count:
 814 rendered plus 113 held. `docs/STEPS-4-5-DRAFTS-2026-09-24.md` says
