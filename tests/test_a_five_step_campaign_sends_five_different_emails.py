@@ -269,17 +269,26 @@ class TheSequenceReproducesTheCadence(unittest.TestCase):
         self.assertIn("MAX_SEQUENCE_STEPS", str(caught.exception))
 
 
-# The CONTROL cadence the live campaign runs: three email touches on days 1,
-# 4 and 8, so the gaps are 3 and 4. Written out here rather than read off the
-# campaign row, for two reasons. A test must not read live client state, and
-# a test that derives its expectation the same way the code does agrees with
-# the code unconditionally - the point of writing the days down is that
-# `productive.yaml`'s declared waits are checked AGAINST them.
-CONTROL_DAYS = (1, 4, 8)
+# The CONTROL cadence the live campaign runs: FOUR email touches from
+# 2026-09-24 on days 1, 4, 8 and 13, so the gaps are 3, 4 and 5. Written out
+# here rather than read off the campaign row, for two reasons. A test must not
+# read live client state, and a test that derives its expectation the same way
+# the code does agrees with the code unconditionally - the point of writing
+# the days down is that `productive.yaml`'s declared waits are checked
+# AGAINST them.
+#
+# THE KEYS ARE NOT em1..em4. `breakup` (em3) was retired and em4/em5 kept the
+# names their approved copy was written under, because a step key is identity
+# - approvals are fingerprinted per key. So the keys and the days are listed
+# as PAIRS rather than generated from a counter, which is what the previous
+# `f"em{n}"` did and what would quietly rename two steps here.
+CONTROL_STEPS = (("em1", 1), ("em2", 4), ("em4", 8), ("em5", 13))
+CONTROL_KEYS = [key for key, _day in CONTROL_STEPS]
+CONTROL_DAYS = tuple(day for _key, day in CONTROL_STEPS)
 CONTROL_CADENCE = tuple(
-    {"key": f"em{n}", "day": day, "channel": "email", "generated": True}
-    for n, day in enumerate(CONTROL_DAYS, start=1))
-CONTROL_WAITS = (3, 4)
+    {"key": key, "day": day, "channel": "email", "generated": True}
+    for key, day in CONTROL_STEPS)
+CONTROL_WAITS = (3, 4, 5)
 
 
 class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):
@@ -305,7 +314,13 @@ class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):
     484 was created wrong - five steps, three approvals - and refusing is the
     fix that episode earned.
 
-    Three steps is the production-safe CONTROL, not a claim that three is the
+    AND AGAIN ON 2026-09-24: the CONTROL is now FOUR steps, em1, em2, em4,
+    em5, with `breakup` retired. `em3` is gone and the later keys were NOT
+    renumbered, so `CONTROL_STEPS` above lists key/day pairs instead of
+    generating `em{n}` from a counter - generating them would have renamed two
+    steps silently and handed em4's approvals to a different message.
+
+    Four steps is the production-safe CONTROL, not a claim that four is the
     right number. Nothing in this class asserts the number; it asserts that
     whatever number is declared reproduces the cadence it is checked against.
     """
@@ -317,8 +332,7 @@ class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):
 
     def test_productive_builds_its_control_against_the_control_cadence(self):
         steps = bisonfactory._sequence_steps(self.shipped(), CONTROL_CADENCE)
-        self.assertEqual([s["step_key"] for s in steps],
-                         ["em1", "em2", "em3"])
+        self.assertEqual([s["step_key"] for s in steps], CONTROL_KEYS)
         self.assertEqual(tuple(s["wait_in_days"] for s in steps[:-1]),
                          CONTROL_WAITS)
         self.assertNotEqual(steps[-1]["wait_in_days"], 0)
@@ -351,16 +365,21 @@ class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):
         for n in range(1, len(steps) + 1):
             self.assertIn(f"body_{n}", LEAD_VARIABLES)
 
-    def test_the_three_step_control_refuses_the_five_step_library_cadence(self):
+    def test_the_control_refuses_the_five_step_library_cadence(self):
         """The drift this class exists to catch, caught by a refusal.
 
         `productive.yaml` still names `productive_li_heavy_v1`, whose email
         half is five steps, because that is the fallback for a campaign that
-        carries no cadence of its own. The CONTROL is three. Staging a
-        campaign with no `cadence_steps` override must therefore REFUSE, not
-        quietly write five provider steps with copy for three - that is
-        campaign 484, where `_ensure_leads` caught it one gate later and all
-        ten contacts were rejected.
+        carries no cadence of its own. The CONTROL is four, and it is four
+        DIFFERENT keys - em1, em2, em4, em5 against the library's em1..em5.
+        Staging a campaign with no `cadence_steps` override must therefore
+        REFUSE, not quietly write five provider steps with copy for four -
+        that is campaign 484, where `_ensure_leads` caught it one gate later
+        and all ten contacts were rejected.
+
+        The refusal is still asserted to name `em3`, which is precisely the
+        key the two sides disagree about now: the library has it and the
+        control does not.
         """
         from src import cadence, clients
 
@@ -371,7 +390,7 @@ class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):
         self.assertEqual(email_keys, ["em1", "em2", "em3", "em4", "em5"])
         with self.assertRaises(bisonfactory.FactoryRefused) as caught:
             bisonfactory._sequence_steps(self.shipped(), library)
-        self.assertIn("em4", str(caught.exception))
+        self.assertIn("em3", str(caught.exception))
 
 
 class TheWordsTravelWithThePerson(QueueTest):
