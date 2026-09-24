@@ -402,6 +402,78 @@ TEMPLATES = {
                 "is not a new process for delivery, it is that finance and delivery stop "
                 "keeping two separate spreadsheets.\n\n"
                 "Worth a look at what that did for a team your size?"},
+    # ---------------------------------------------------------------- step 4
+    #
+    # APPROVED BY THE OPERATOR 2026-09-24, to run as a FOUR-step cadence:
+    # em1, em2, em4, em5, with `breakup` RETIRED from the sequence. Rung 3 -
+    # name Productive, one capability, one consequence - is unwritten and is
+    # drafted separately; it is not filled with a restatement of em2 just to
+    # reach five.
+    #
+    # WHY A CLOSE MOVES TO THE END RATHER THAN STAYING AT em3. `breakup` says
+    # "I will leave it here". Two steps after it make that sentence false on
+    # every send, and nothing on the send path can catch it: `claims.py` reads
+    # claims about the PROSPECT, and `outreachclaims`, the authority on claims
+    # about US, has no consumer there. This repo decided the same thing once
+    # already - `cadencelibrary.EMAIL_EIGHT_LADDER` records "rung 8 is the
+    # breakup moved from rung 5".
+    #
+    # Step 4 opens a NEW thread and carries SUBJECT_2; step 5 replies into it
+    # and carries SUBJECT_2 as well.
+    "angle_shift_economic_buyer": {
+        "subject": "the cost of waiting for {angle_word}",
+        "body": "{first_name}, most teams treat {angle_phrase} as a reporting "
+                "problem. I think it is a decision problem.\n\n"
+                "The reporting catches up eventually. The decisions do not "
+                "wait for it. Which project gets the next two people, whether "
+                "the one that is slipping is worth rescuing, what the quarter "
+                "actually looks like. Those get made on whatever numbers exist "
+                "that week, and at an agency the size of {company} the numbers "
+                "that exist that week are usually last month's.\n\n"
+                "None of that shows up anywhere as a fault. It shows up as a "
+                "quarter that came in lower than it should have, for reasons "
+                "nobody can reconstruct cleanly afterwards.\n\n"
+                "Is that roughly the position at {company}, or is there "
+                "already something closing that gap?"},
+    "angle_shift_champion": {
+        "subject": "{angle_word}, and who assembles it",
+        "body": "{first_name}, the thing I find most often at agencies the "
+                "size of {company} is that the answer already exists. Somebody "
+                "assembles it.\n\n"
+                "Usually that is one person pulling hours out of one system, "
+                "budgets out of another and the plan out of a third, so that "
+                "the end of week conversation has numbers in it. It works. It "
+                "is also the most expensive hour of the week, because it is "
+                "the hour that cannot be spent on the thing the numbers are "
+                "about.\n\n"
+                "What I would want to know in your position is not whether the "
+                "number can be produced, but how long producing it takes and "
+                "how far behind it is by the time it lands.\n\n"
+                "How long does that take at {company} at the moment?"},
+    # ---------------------------------------------------------------- step 5
+    #
+    # These REPLACE `breakup` at the end of the sequence: same job, fewer
+    # words, per persona. Both claim nothing about what we have sent - "I will
+    # stop here" is a statement about what we do NEXT, the only construction
+    # that is true when this is the first message a record ever receives, and
+    # the same reasoning the fixed `breakup` below carries.
+    "close_economic_buyer": {
+        "subject": "the cost of waiting for {angle_word}",
+        "body": "{first_name}, I will stop here either way, so this only needs "
+                "a reply if a reply is useful to you.\n\n"
+                "If {angle_phrase} is not a priority at {company} this "
+                "quarter, that is a complete answer and I will take it as "
+                "one.\n\n"
+                "Shall I leave it there, or is there a better month to raise "
+                "it?"},
+    "close_champion": {
+        "subject": "{angle_word}, and who assembles it",
+        "body": "{first_name}, no reply needed if the answer is no. I would "
+                "rather you kept the time.\n\n"
+                "If {angle_phrase} is handled well enough at {company} for "
+                "now, that is the answer and a fine one. If nobody has had a "
+                "free week to look at it, that is a different one.\n\n"
+                "Which of those is closer, or shall I leave it there?"},
     "breakup": {
         "subject": "closing the loop",
         # This body used to open "I have written a few times ... and not
