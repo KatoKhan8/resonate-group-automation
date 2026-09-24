@@ -89,6 +89,14 @@ MONITORS = [
     ("bison-492",        ["scripts/bison_watch_loop.py", "--campaign", "492", "--interval", "180"]),
     ("bison-494",        ["scripts/bison_watch_loop.py", "--campaign", "494", "--interval", "180"]),
     ("bison-495",        ["scripts/bison_watch_loop.py", "--campaign", "495", "--interval", "180"]),
+    # 496, 497 and 498 were ACTIVE and unwatched until 2026-09-23.
+    # 497 is where the blank emails were found, BY HAND, because nothing
+    # was watching it - and `--restart bison-497` failed for the same
+    # reason. A campaign that can send and has no watcher is a campaign
+    # whose incidents are discovered by a person noticing.
+    ("bison-496",        ["scripts/bison_watch_loop.py", "--campaign", "496", "--interval", "180"]),
+    ("bison-497",        ["scripts/bison_watch_loop.py", "--campaign", "497", "--interval", "180"]),
+    ("bison-498",        ["scripts/bison_watch_loop.py", "--campaign", "498", "--interval", "180"]),
     # `heyreach_watch_loop` takes NO --campaign: it watches the campaigns it
     # finds itself. Passing one made argparse exit 2 before the first beat,
     # which is exactly the failure --status is meant to surface. It did.

@@ -106,9 +106,11 @@ also caught, and this session removed: the operator's email address from two
 tracked files, a client seat holder's name from a handoff, a name in a
 `config/clients/productive.yaml` COMMENT (one line, no key, no value, no
 behaviour), a real German agency's address that was fixture data in
-`src/replies.py`'s comment and in the class-layer test — and the test
-identity's handle in **this session's own handoff**, written while
-explaining the tension.
+`src/replies.py`'s comment and in the class-layer test — and **the test
+identity's own LinkedIn handle** (`testidentity.LINKEDIN_SLUGS`) in **this
+session's own handoff**, written while explaining the tension. That last one
+is the argument in miniature: a file explaining why the name must be confined
+to two files named it in a third.
 
 ---
 

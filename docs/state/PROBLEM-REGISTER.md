@@ -32,6 +32,81 @@ _ISSUE-011 and REFUTED-006 added 2026-09-23 from the post-reboot reply-stop swee
 
 _ISSUE-012 added 2026-09-23: the sourcing ceiling is the provider's, not ours._
 
+_ISSUE-025 added 2026-09-23 night: the adoption path, and the 76 blank
+emails it sent. `ISSUE-013` was already taken by a closed row - numbers are
+not reused._
+
+---
+
+### ISSUE-025 · adopting a lead by email carries the CLIENT's lead into our campaign
+
+**Status: FIXED in code 2026-09-23 (`7bb23d6d`), NOT production-verified** —
+no staging run has exercised the fix against a live adoption yet. The
+incident it caused is closed: `docs/INCIDENT-2026-09-23-BLANK-EMAILS.md`.
+
+**76 blank emails reached real prospects on 2026-09-22/23** — subject `''`,
+body `'<p></p>'` — and one prospect replied to one.
+
+`bisonfactory._ensure_leads` calls `bison.create_lead`. When the provider
+answers *"email has already been taken"* the branch called
+`find_lead_by_email` and used the id it got back. That refusal was read as
+**"we lost a race with ourselves"**, and it also means **"this address is
+already in the CLIENT'S OWN ESTATE"**. In that case the lookup returns
+*their* lead — months old, carrying *their* `headline` and `location` and
+none of our copy — and the branch attached it **without ever writing our
+variables onto it**.
+
+Our sequence steps are pure merge templates (`{SUBJECT_1}`,
+`<p>{BODY_1}</p>`), so the provider rendered them against a lead that had
+neither and sent the empty result.
+
+    foreign leads in 491-498                              91
+    recorded in OUR store as `bison_lead_id` on OUR contacts   90
+    `sequence_finished` members of the client's campaign 352   85
+    members of the client's 327 / 328                     55 / 23
+    created_at 2026-04-08 / 2026-04-23                    55 / 23
+    control: factory leads in 327/328/352            0 and 1 of 120
+
+**We attached them. Nobody else did**, and the action ledger cannot say so
+because it records no bison lead attachment at all — its silence is not
+evidence.
+
+**REFUTED on the way: the revive lane did not do this.** Two independent
+grounds — `reengagement_inventory.py` is read-only and `revival.py` makes no
+provider calls, so the lane has no attach path; and **0 of the 91** appear in
+its 1,415-row inventory. All eight campaigns are `lanes=['domains']`, created
+fresh at 19:18Z on 09-21, not from a list. It is still a lane crossing, by a
+different route.
+
+**Why every local check passed.** Every guard in `bisonfactory` inspects
+`wanted` — the leads we stage — and 73 of the 76 went to leads that were in
+`wanted` only as an address, whose provider row we never wrote. The other 3
+carry correct copy **to this day**: they were re-staged and patched at 13:58,
+up to 54 minutes *after* the empty row had been queued and sent. **The render
+is a snapshot; patching a lead does not rebuild an existing queue row.**
+
+**Fix.** `_refuse_unvariabled_leads` reads every lead the run touched back
+from the provider and refuses the attach unless our variables are on it — an
+invariant over `ids` rather than a patch to one branch, because `ids` is
+assembled from three paths. The adoption branch writes the copy first.
+`adopted` is counted separately in the report. Controls (a) and (b) of the
+incident gate (`5c9fb515`) cover the rendered queue itself.
+
+**Containment, 2026-09-23 22:4xZ.** 85 of the 91 were already stopped; the
+2 still `in_sequence` were stopped and read back `stopped`; the 4 `replied`
+stay `replied` — **the provider will not move a `replied` lead to `stopped`**
+— and all four have **0 sendable rows**, verified per lead. **Removal from
+the campaigns was NOT done: there is no remove-lead-from-campaign route on
+`bison.WRITE_ROUTES`**, so it needs a new write verb and an operator decision.
+
+Tests: `tests/test_a_blank_email_can_never_be_sent_again.py` (24), and the
+factory fakes now RENDER — `tests/fakebison.RendersTheQueue` substitutes
+variables into the step template and substitutes nothing where one is absent,
+so this regression fails in the suite instead of in production. A
+`scheduled_emails` stub returning `[]` would have kept all 782 tests green
+while modelling away the entire incident.
+
+
 ---
 
 ### ISSUE-012 · a company-search slice can never yield more than 400 pages

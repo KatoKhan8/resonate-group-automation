@@ -15,15 +15,17 @@ everybody twice. Both failure modes in here were real:
   - and the tempting fix - looking the lead up by `?email=` - reads an
     unfiltered page as if it were a filtered one.
 """
+import re as _re
 import unittest
 
 from src import bisonfactory, campaigns, store, workspaces
 from src import providers
 from tests.base import QueueTest
+from tests.fakebison import RendersTheQueue
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
 
 
-class FakeBison:
+class FakeBison(RendersTheQueue):
     """A provider that behaves the way the measured one does.
 
     Including the parts that bite: creating a lead whose address already
@@ -173,6 +175,7 @@ class FakeBison:
                 "members": list(self.members[cid]),
                 "count": len(self.members[cid])}
 
+    #: Custom-variable substitution, in the provider's own syntax.
     def set_limits(self, cid, name, emails_per_day, new_leads_per_day=None):
         leads = emails_per_day if new_leads_per_day is None else new_leads_per_day
         self.campaigns[int(cid)]["max_emails_per_day"] = emails_per_day
@@ -324,7 +327,13 @@ class StagingTwiceBuildsOne(QueueTest):
         # re-stage would churn every lead's words for no reason.
         self.assertEqual(second["provider"]["leads"],
                          {"created": 0, "reused": 2, "reconciled": 0,
-                          "refreshed": 0})
+                          "refreshed": 0,
+                          # `adopted` counts leads taken over from an address
+                          # that already existed - usually the CLIENT's own
+                          # estate. Zero here is the point of the test: a
+                          # second run of an unchanged campaign adopts
+                          # nobody. See the incident of 2026-09-23.
+                          "adopted": 0})
 
     def test_the_provider_id_is_persisted_where_it_can_be_found(self):
         """An id the provider issued and we did not record is a duplicate."""

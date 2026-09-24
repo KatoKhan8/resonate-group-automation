@@ -152,6 +152,21 @@ class TheLayerIsSealed(unittest.TestCase):
         self.assertEqual(
             providerwrites.SUPPORTED,
             (pw.LINKEDIN_PAUSE, pw.EMAIL_PAUSE, pw.EMAIL_STOP_LEAD,
+             # 2026-09-23, OPERATOR DECISION. The condition this docstring
+             # sets is one successful call read back from provider truth, and
+             # for a STOP that ordering is impossible: the verb has to be
+             # enabled before any stop can be attempted, so there is no way
+             # to prove it works first. What licenses it instead is the
+             # direction of the blast radius - it can only ever reduce what
+             # somebody receives - plus a readback in
+             # `heyreach.stop_lead_in_campaign` that RAISES when the provider
+             # still reports the lead running, so an unconfirmed stop is
+             # never reported as a stop.
+             #
+             # Asked for because the cross-channel stop was measured live
+             # that evening: LinkedIn->email passed at 7.7 minutes, and
+             # email->LinkedIn could not run at all while this was sealed.
+             pw.LINKEDIN_STOP_LEAD,
              pw.EMAIL_CREATE_CAMPAIGN, pw.EMAIL_SET_SEQUENCE,
              # 2026-09-14. The same condition this docstring sets - one
              # successful call, read back from provider truth - was already

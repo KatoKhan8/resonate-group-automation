@@ -144,51 +144,56 @@ TEXT_SUFFIXES = (".py", ".json", ".jsonl", ".csv", ".txt", ".md", ".yaml",
 
 SELF = "tests/test_fixture_hygiene.py"
 
-#: THE ONE EXEMPTION, AND IT IS NARROW ON PURPOSE.
+#: THE ONE EXEMPTION. OPERATOR DECISION, 2026-09-23.
 #:
-#: OPERATOR DECISION, 2026-09-23: the test identity may be named in these two
-#: files and nowhere else.
+#: `src/testidentity.py` exists to stop a `positive_reply` for the OPERATOR'S
+#: OWN test identity reaching a client's Slack channel. On 2026-09-23 one was
+#: routed to Productive's channel and suppressed by hand; the module is the
+#: mechanism that replaced the hand-edit.
 #:
-#: `src/testidentity.py` exists because a `positive_reply` for the operator's
-#: own test identity was routed to A CLIENT'S OWN CHANNEL - the client would
-#: have been told a prospect was interested when the "prospect" was the
-#: operator exercising a cross-channel stop. The module suppresses that at
-#: the write (`notify.plan`) and at the read (the reply counts).
+#: **An exclusion must be able to name what it excludes.** That is the whole
+#: conflict: this guard forbids real identifiers in tracked files, and this
+#: module cannot do its job without holding them. A safety mechanism and a
+#: privacy guard that cannot both be satisfied.
 #:
-#: **AN EXCLUSION HAS TO BE ABLE TO NAME WHAT IT EXCLUDES.** So a safety
-#: mechanism needs exactly the value this guard forbids, and the two cannot
-#: both be satisfied by argument. One of them has to give, deliberately.
+#: Two fixes were rejected, and WHY is the part worth keeping:
 #:
-#: The alternative was moving the value into gitignored config. Rejected, on
-#: the rule this repository already has about safety paths: a config read
-#: that fails would leave the exclusion silently not working, and a
-#: suppression that quietly stops suppressing is worse than a name in a
-#: tracked file we chose to put there.
+#:   a sidecar in `work/`   the module would then depend on a file that can
+#:                          be missing, and there is no safe answer when it
+#:                          is - suppress everything and real client
+#:                          notifications are lost, suppress nothing and the
+#:                          client is told about the operator. A safety
+#:                          mechanism must not have a failure mode that
+#:                          depends on a gitignored file being present.
+#:   allowlist the handle   adding a real vanity name to FAKE_VANITY retires
+#:   in FAKE_VANITY         this guard for exactly the person it protects,
+#:                          everywhere in the repository, forever.
 #:
-#: SCOPED TO THE THREE IDENTITY CHECKS - the name, the LinkedIn handle and
-#: the ADDRESS. All three for the same reason and no others: the module
-#: holds `CONTACT_KEYS`, `LINKEDIN_SLUGS` and `EMAILS`, and an exclusion
-#: cannot match on a value it is not allowed to hold. These files are
-#: still checked for phone numbers, live account figures, client domains
-#: and CRM narrative - `tracked_files` does not skip them, so a real
-#: PROSPECT reaching either file still fails. Compare `SELF` just above,
-#: exempt for the same structural reason: this file has to name what it
-#: forbids in order to forbid it.
+#: So the exemption is NARROW AND NAMED: two files, listed here, not a
+#: directory and not a pattern. Every other occurrence in the repository
+#: references `testidentity`'s constants or says "the test identity" - the
+#: identifiers appear in these two files and nowhere else, which is what
+#: makes an exemption this small sufficient.
 #:
-#: **AND THE WRONG FIX IS ONE SCREEN AWAY.** `FAKE_VANITY` below is an
-#: allowlist of INVENTED handles. Putting a real one there would turn the
-#: assertion green by retiring the guard for exactly the person it protects.
-#: If a real name appears in a file not listed here, REMOVE THE NAME - never
-#: widen this tuple to match the file.
-TEST_IDENTITY_FILES = (
+#: Anything added here needs the same argument made in full.
+HYGIENE_EXEMPT = (
     "src/testidentity.py",
     "tests/test_the_test_identity_is_never_counted.py",
 )
 
 
 def names_the_test_identity_on_purpose(path):
-    """Is this one of the two files the operator allowed it in?"""
-    return path in TEST_IDENTITY_FILES
+    """Is this one of the two files the operator allowed the name in?
+
+    The slack-agent branch reached the same exemption independently and
+    called the tuple `TEST_IDENTITY_FILES`; master called it
+    `HYGIENE_EXEMPT`. One decision, two names, merged 2026-09-23 - and the
+    merge keeps master's tuple because its three tests assert against it,
+    while this helper keeps the branch's call sites working rather than
+    rewriting checks that were already green. A second name for the same
+    tuple would be the thing worth avoiding, so there is exactly one.
+    """
+    return path in HYGIENE_EXEMPT
 
 
 def tracked_files():
@@ -225,6 +230,15 @@ def tracked_files():
     new = subprocess.run(["git", "ls-files", "-z", "--others",
                           "--exclude-standard"], cwd=ROOT,
                          capture_output=True, text=True, check=True).stdout
+    #: THE EXEMPTION IS APPLIED AT THE THREE IDENTITY CHECKS, NOT HERE.
+    #: Master's `tracked_files` dropped `HYGIENE_EXEMPT` from the corpus
+    #: outright. That is wider than the exemption that was argued for: it
+    #: also stops these two files being checked for phone numbers, live
+    #: account figures, client domains and CRM narrative, so a real PROSPECT
+    #: landing in `src/testidentity.py` would not fail anything. The
+    #: exemption was granted for the NAME, the HANDLE and the ADDRESS of the
+    #: test identity, and `names_the_test_identity_on_purpose` is called at
+    #: exactly those three checks. So the files stay in the corpus.
     seen, out = set(), []
     for chunk in (tracked, new):
         for path in chunk.split("\0"):
@@ -466,5 +480,72 @@ class TestSecretsAreNotTracked(unittest.TestCase):
         self.assertEqual(bad, [], f"runtime state tracked: {bad}")
 
 
+
+class TestTheExemptionStaysNarrow(unittest.TestCase):
+    """An exemption is a hole in a guard. These keep it the size it was
+    argued for. OPERATOR DECISION 2026-09-23 - see `HYGIENE_EXEMPT`.
+    """
+
+    def test_it_is_exactly_the_two_files_that_were_argued_for(self):
+        self.assertEqual(
+            HYGIENE_EXEMPT,
+            ("src/testidentity.py",
+             "tests/test_the_test_identity_is_never_counted.py"),
+            "the hygiene exemption changed. It was granted for two named "
+            "files on one argument - an exclusion must be able to name what "
+            "it excludes. Anything added needs that argument made in full.")
+
+    def test_no_entry_is_a_directory_or_a_pattern(self):
+        """A directory exemption would grow silently as files are added."""
+        for entry in HYGIENE_EXEMPT:
+            with self.subTest(entry=entry):
+                self.assertTrue(entry.endswith(".py"))
+                self.assertNotIn("*", entry)
+                self.assertFalse(entry.endswith("/"))
+
+    def test_every_exempt_file_is_actually_tracked(self):
+        """A stale entry is an exemption nobody can see the effect of."""
+        out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+                             capture_output=True, text=True, check=True).stdout
+        tracked = set(p for p in out.split("\0") if p)
+        for entry in HYGIENE_EXEMPT:
+            with self.subTest(entry=entry):
+                self.assertIn(entry, tracked)
+
+    def test_the_identifiers_appear_nowhere_ELSE_in_the_repository(self):
+        """THE CONDITION THAT MAKES THE EXEMPTION SUFFICIENT.
+
+        The operator's decision was that every other occurrence references
+        `testidentity`'s constants or says "the test identity". If the
+        identifiers spread again, two exempt files stop being enough and the
+        guard is quietly weaker than it reads. This fails in that case.
+        """
+        needles = ("zbeslic", "beslic")
+        hits = []
+        for path, text in corpus():
+            # ELSE. The corpus deliberately still CARRIES the two exempt
+            # files - they are checked for prospects, client domains and
+            # account figures like anything else - so this test skips them
+            # itself rather than relying on `tracked_files` to drop them.
+            if names_the_test_identity_on_purpose(path):
+                continue
+            low = text.lower()
+            for needle in needles:
+                if needle in low:
+                    hits.append(f"{path}: {needle}")
+        self.assertEqual(
+            sorted(set(hits)), [],
+            "the test identity is named outside the two exempt files. "
+            "Reference testidentity's constants or say 'the test identity':\n"
+            + "\n".join(sorted(set(hits))))
+
+
+# AT THE END, AND IT HAS TO BE. Until this merge the block sat above
+# `TestTheExemptionStaysNarrow`, so `python tests/test_fixture_hygiene.py`
+# called `unittest.main()` before that class existed and collected 13 tests
+# instead of 17 - the four guarding the exemption's size silently among the
+# missing, and a clean "Ran 13 tests" the only thing anyone saw. Import via
+# `-m unittest` ran all 17, which is why it was green both ways and wrong in
+# one. Anything appended below this line does not run.
 if __name__ == "__main__":
     unittest.main()

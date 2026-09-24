@@ -74,7 +74,7 @@ the enforcement point for the 5-step floor above.
 The controlled test was set up and run today. **It failed, and the failure
 looked exactly like success.**
 
-    15:57:01Z  reply matched to the record       contact <the test identity>
+    15:57:01Z  reply matched to the record       contact <the-test-identity>
     15:57:01Z  record paused locally             reason positive, linkedin
     15:57:01Z  classified                        unknown
                contact.stopped                   null
@@ -101,7 +101,7 @@ unchanged. It lifts on a measured sub-15-minute stop both ways.
 
 ### Test-lead state
 
-    EmailBison lead 204966   the operator's own address, attached to campaign 491,
+    EmailBison lead 204966   the test identity's address, attached to campaign 491,
                              reads in_sequence
     local record             crosschannel-stop-test-2026-09-23, state=held,
                              contact carries email, the test identity's profile,
@@ -138,7 +138,7 @@ from that profile plans another notification to the client's channel.**
 
 ### The finding that outranks it
 
-**A Productive seat holder answered manually at 16:10 from the seat inbox.** Productive's
+**a seat holder answered manually at 16:10 from the seat inbox.** Productive's
 own seat holders reply on LinkedIn themselves, in the same threads, so an
 automated reply can collide mid-conversation with a human one at the client.
 **The reply-ownership policy must be settled with Productive before the reply

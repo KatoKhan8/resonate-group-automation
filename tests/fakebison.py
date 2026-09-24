@@ -16,6 +16,9 @@ import json
 import urllib.parse
 
 
+import re as _re
+
+
 class FakeBison:
     """One workspace, with campaigns, leads and their memberships."""
 
@@ -340,3 +343,54 @@ class FakeBison:
                 held[wanted["name"]] = wanted      # PATCH merges, never replaces
             row["custom_variables"] = list(held.values())
         return 200, {"data": dict(row, lead_campaign_data=self._campaign_data(lead_id))}
+
+
+class RendersTheQueue:
+    """`scheduled_emails`, rendered the way EmailBison renders it.
+
+    A MIXIN BECAUSE THERE ARE TWO FACTORY FAKES AND A RENDERER MUST NOT BE
+    COPIED. Two near-identical fakes already exist here - one per test module,
+    for interfaces that genuinely differ - and duplicating the substitution
+    logic between them is how the two quietly stop agreeing about what the
+    provider does. The incident this exists for is precisely a disagreement
+    about what the provider does.
+
+    THE OBVIOUS FIXTURE IS `return []` AND IT WOULD PROVE NOTHING. The provider
+    substitutes each lead's custom variables into the step template when it
+    builds the queue, and substitutes NOTHING where the variable is absent: a
+    lead with no `body_1` renders `<p></p>`, and it is sent. Modelling that is
+    what makes a staging test able to fail on the 2026-09-22/23 incident.
+    `docs/INCIDENT-2026-09-23-BLANK-EMAILS.md`.
+
+    Requires the host to carry `members`, `leads`, `steps`, `variables_of`
+    and `_id`, which both factory fakes already do.
+    """
+
+    #: Mirrored from the real module so a caller may read it off the fake
+    #: exactly as it reads it off `bison`.
+    CAMPAIGN_QUEUE_PAGE_CAP = 400
+
+    _MERGE = _re.compile(r"\{\{?\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}?\}")
+
+    def scheduled_emails(self, cid, cap=None):
+        cid = int(cid)
+        rows = []
+        for lead_id in self.members.get(cid, []):
+            held = self.variables_of(self.leads.get(int(lead_id)) or {})
+
+            def _render(text, _held=held):
+                return self._MERGE.sub(
+                    lambda m: _held.get(m.group(1).lower(), ""), text or "")
+
+            for step in self.steps.get(cid, []):
+                rows.append({
+                    "id": self._id(),
+                    "campaign_id": cid,
+                    "sequence_step_id": step["id"],
+                    "thread_reply": bool(step.get("thread_reply")),
+                    "status": "scheduled",
+                    "email_subject": _render(step.get("email_subject")),
+                    "email_body": _render(step.get("email_body")),
+                    "lead": {"id": int(lead_id)},
+                })
+        return rows

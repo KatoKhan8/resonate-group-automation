@@ -2359,8 +2359,8 @@ def replies(scope, argument=None):
         #
         # Suppressing at the WRITE (`notify.plan`) stops the next one; it does
         # nothing about the rows already in the feed, and the 15:57:01Z
-        # `positive_reply` for the TEST IDENTITY is one of them - named
-        # once, in `testidentity`. Counting it would
+        # `positive_reply` for the operator's test identity is one of
+        # them (see `src/testidentity.py`). Counting it would
         # tell the client a prospect was interested when the "prospect" was
         # the operator exercising a cross-channel stop. Excluded here at the
         # READ so history cannot reach a figure either.

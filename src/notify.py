@@ -126,6 +126,31 @@ CAMPAIGN_REJECTED = "campaign_rejected"
 CAMPAIGN_HELD = "campaign_held"
 CAMPAIGN_QA_FAILED = "campaign_qa_failed"
 CAMPAIGN_PAUSED = "campaign_paused"
+#: A campaign stopped and THIS SYSTEM CANNOT SHOW IT DID IT.
+#:
+#: Its own type rather than a louder CAMPAIGN_PAUSED, because that one also
+#: covers our own deliberate pauses and raising its severity would make every
+#: routine pause critical - which is how a critical channel stops being read.
+#:
+#: MEASURED 2026-09-23: campaign 495 went active -> archived at 15:57:22Z
+#: with 59 of 60 leads stopped, nothing in this system did it, and nobody was
+#: told. A campaign stopping is the difference between sending and not
+#: sending, and it was the one state change with no alert on it.
+CAMPAIGN_STOPPED_EXTERNALLY = "campaign_stopped_externally"
+#: A campaign is about to send an email with nothing in it.
+#:
+#: MEASURED 2026-09-22/23: 76 emails with subject `''` and body `'<p></p>'`
+#: reached real prospects and one of them replied. Our steps are pure merge
+#: templates, so a lead carrying no `body_1` renders to nothing and the
+#: provider sends it - and nothing on the provider's side refuses that.
+#: `docs/INCIDENT-2026-09-23-BLANK-EMAILS.md`.
+#:
+#: CRITICAL rather than WARNING because the alternative to halting is a
+#: person receiving an empty email from us, and because the incident was
+#: invisible for a day and a half. It is its OWN event rather than a louder
+#: CAMPAIGN_PAUSED for the reason CAMPAIGN_STOPPED_EXTERNALLY is: an event
+#: that also covers our deliberate pauses is an event nobody can read.
+CAMPAIGN_BLANK_CONTENT = "campaign_blank_content"
 CAMPAIGN_COMPLETED = "campaign_completed"
 WORKSPACE_CREATED = "workspace_created"
 WORKSPACE_CONFIG_ISSUE = "workspace_configuration_issue"
@@ -181,6 +206,8 @@ ROUTES = {
     CAMPAIGN_HELD: (GLOBAL, WARNING),
     CAMPAIGN_QA_FAILED: (GLOBAL, WARNING),
     CAMPAIGN_PAUSED: (GLOBAL, WARNING),
+    CAMPAIGN_STOPPED_EXTERNALLY: (GLOBAL, CRITICAL),
+    CAMPAIGN_BLANK_CONTENT: (GLOBAL, CRITICAL),
     CAMPAIGN_COMPLETED: (GLOBAL, INFO),
     WORKSPACE_CREATED: (GLOBAL, INFO),
     WORKSPACE_CONFIG_ISSUE: (GLOBAL, WARNING),
@@ -630,8 +657,8 @@ def plan(event_type, workspace=None, fields=None, ids=None, actions=(),
 
     # THE OPERATOR'S TEST IDENTITY NEVER REACHES A CLIENT CHANNEL.
     #
-    # 2026-09-23: a `positive_reply` for THE TEST IDENTITY (named once,
-    # in `testidentity`) was routed to
+    # 2026-09-23: a `positive_reply` for the operator's test identity
+    # (see `src/testidentity.py`) was routed to
     # C0BFUF4JRK9, Productive's own channel. It was suppressed by hand, and a
     # hand-edit is not a mechanism - the next reply from that profile would
     # have planned another one. Suppressed rather than dropped: the row is
