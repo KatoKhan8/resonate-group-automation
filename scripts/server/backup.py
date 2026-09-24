@@ -51,6 +51,7 @@ import hashlib
 import io
 import os
 import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -62,6 +63,18 @@ sys.path.insert(0, ROOT)
 #: operator filling them changes nothing in git.
 BACKUP_TARGET = "BACKUP_TARGET"
 BACKUP_ENCRYPTION = "BACKUP_ENCRYPTION"
+#: The age PUBLIC key the archive is encrypted TO. A recipient is not a
+#: secret and belongs in secrets.env. The matching PRIVATE key is generated
+#: on the operator's laptop and never reaches this host - which is the whole
+#: design, and carries one consequence that is easy to miss and expensive:
+#: THE HOST CANNOT DECRYPT ITS OWN BACKUP. See `verify_encrypted`.
+BACKUP_AGE_RECIPIENT = "BACKUP_AGE_RECIPIENT"
+#: Hetzner Storage Boxes speak SSH on 23, not 22.
+BACKUP_SSH_PORT = "BACKUP_SSH_PORT"
+
+#: The first bytes of an age file. Checked before anything is uploaded: if
+#: encryption silently did not happen, this is what stops plaintext leaving.
+AGE_MAGIC = b"age-encryption.org/v1"
 
 #: Never in an archive, at any size, under any flag.
 NEVER_BACKED_UP = ("secrets.env", ".env")
@@ -210,38 +223,135 @@ def drill(source, into):
         shutil.rmtree(scratch, ignore_errors=True)
 
 
+def encrypt(archive, recipient):
+    """Encrypt `archive` to `recipient` with age. Returns the .age path.
+
+    REFUSES RATHER THAN DEGRADING. If `age` is missing, or the output does
+    not begin with age's own magic bytes, this raises. The failure it exists
+    to prevent is the quiet one: an encryptor that is not installed, a step
+    that is skipped, and 300 real companies landing on somebody else's disk
+    in the clear while the log says "shipped".
+    """
+    if not shutil.which("age"):
+        raise SystemExit(
+            "REFUSING: %s=age but the `age` binary is not installed.\n"
+            "  Nothing is ever shipped unencrypted. Install age, or unset\n"
+            "  the target so the backup stays local." % BACKUP_ENCRYPTION)
+    out = archive + ".age"
+    proc = subprocess.run(["age", "-r", recipient, "-o", out, archive],
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise SystemExit("REFUSING: age failed (%s)"
+                         % (proc.stderr.strip().splitlines() or ["no detail"])[0])
+    if not os.path.exists(out):
+        raise SystemExit("REFUSING: age reported success and wrote no file.")
+    with io.open(out, "rb") as fh:
+        head = fh.read(len(AGE_MAGIC))
+    if head != AGE_MAGIC:
+        os.unlink(out)
+        raise SystemExit(
+            "REFUSING: the output does not start with age's magic bytes, so "
+            "it is not an age file. Nothing is uploaded.")
+    return out
+
+
 def ship(archive):
-    """Send the archive off-host. REFUSES: two operator values are unfilled."""
+    """Encrypt, then upload. Every missing input is a refusal that names it."""
     target = os.environ.get(BACKUP_TARGET, "").strip()
     encryption = os.environ.get(BACKUP_ENCRYPTION, "").strip()
+    recipient = os.environ.get(BACKUP_AGE_RECIPIENT, "").strip()
+    port = os.environ.get(BACKUP_SSH_PORT, "").strip() or "23"
+
     problems = []
     if not target:
         problems.append(
             "  %s is unset. There is no sensible default: a guessed\n"
-            "  destination is either a host that does not exist or, worse, one\n"
-            "  that does and should not receive this." % BACKUP_TARGET)
+            "  destination is either a host that does not exist or, worse,\n"
+            "  one that does and should not receive this." % BACKUP_TARGET)
     if not encryption:
         problems.append(
-            "  %s is unset, and the 6b encryption decision is still\n"
-            "  open. work/ is 300 real companies and 92 real contacts and it\n"
-            "  is not ours to publish. An unencrypted archive on somebody\n"
-            "  else's disk is publishing it slowly." % BACKUP_ENCRYPTION)
+            "  %s is unset. work/ is 300 real companies and 92 real\n"
+            "  contacts and it is not ours to publish." % BACKUP_ENCRYPTION)
+    elif encryption != "age":
+        problems.append(
+            "  %s=%r is not a scheme this understands. Only `age` is\n"
+            "  implemented, and an unknown scheme is refused rather than\n"
+            "  quietly treated as none." % (BACKUP_ENCRYPTION, encryption))
+    if encryption == "age" and not recipient:
+        problems.append(
+            "  %s is unset. age encrypts TO a public recipient. Generate\n"
+            "  the key pair on the operator's laptop - the private half must\n"
+            "  never reach this host - and put only the age1... public half\n"
+            "  here." % BACKUP_AGE_RECIPIENT)
+    elif recipient and not recipient.startswith("age1"):
+        problems.append(
+            "  %s does not look like an age recipient (age1...). A PRIVATE\n"
+            "  key in this field would be a private key in secrets.env, on\n"
+            "  the host, which is the one thing this design forbids."
+            % BACKUP_AGE_RECIPIENT)
     if problems:
         sys.stderr.write(
-            "REFUSING to ship %s off-host.\n\n%s\n\n"
-            "Both are named, unfilled operator inputs. Fill them in\n"
-            "%s and re-run. Nothing was sent.\n"
-            % (os.path.basename(archive), "\n\n".join(problems),
-               "/etc/resonate/secrets.env"))
+            "REFUSING to ship %s off-host.\n\n%s\n\nNothing was sent.\n"
+            % (os.path.basename(archive), "\n\n".join(problems)))
         return 2
-    # Deliberately not implemented past the refusal: the transport depends on
-    # what BACKUP_TARGET turns out to be, and writing an scp call against a
-    # guessed shape is how the guess becomes the design.
-    sys.stderr.write(
-        "%s and %s are set, but the transport is not built: it depends on\n"
-        "what the target turns out to be. Nothing was sent.\n"
-        % (BACKUP_TARGET, BACKUP_ENCRYPTION))
-    return 3
+
+    sealed = encrypt(archive, recipient)
+    sys.stderr.write("encrypted -> %s\n" % os.path.basename(sealed))
+
+    # ONLY the .age file is named here. The plaintext archive is not an
+    # argument to this command and cannot be uploaded by it.
+    cmd = ["scp", "-P", port, "-o", "BatchMode=yes",
+           "-o", "StrictHostKeyChecking=accept-new", sealed, target]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        detail = (proc.stderr.strip().splitlines() or ["no detail"])[0]
+        sys.stderr.write(
+            "UPLOAD FAILED (%s).\n"
+            "  The encrypted archive is still here: %s\n"
+            "  'Permission denied' means the host's ssh key is not installed\n"
+            "  on the Storage Box yet - see docs/SECRETS-MOVE.md.\n"
+            % (detail, sealed))
+        return 1
+    sys.stderr.write("uploaded the ENCRYPTED archive.\n")
+    return 0
+
+
+def verify_encrypted(sealed, identity, source):
+    """Decrypt `sealed` and compare against `source`.
+
+    NOT RUNNABLE ON THE HOST, and that is the design working rather than
+    failing. The private key is generated on the operator's laptop and never
+    reaches the host, so the host can encrypt and cannot decrypt. The
+    consequence is easy to miss and expensive: THE HOST CANNOT VERIFY ITS OWN
+    BACKUPS. The plaintext drill there proves tar round-trips; only this
+    proves that what was actually shipped can be opened again, and it has to
+    run where the identity is.
+    """
+    if not shutil.which("age"):
+        raise SystemExit("REFUSING: `age` is not installed here.")
+    if not os.path.exists(identity):
+        raise SystemExit(
+            "REFUSING: no identity at %s. This runs where the PRIVATE key is "
+            "- the laptop - and nowhere else." % identity)
+    scratch = tempfile.mkdtemp(prefix="resonate-verify-")
+    try:
+        plain = os.path.join(scratch, "decrypted.tar.gz")
+        proc = subprocess.run(["age", "-d", "-i", identity, "-o", plain, sealed],
+                              capture_output=True, text=True)
+        if proc.returncode != 0:
+            sys.stderr.write("DECRYPT FAILED - the archive cannot be opened "
+                             "with this identity.\n")
+            return 1
+        into = os.path.join(scratch, "tree")
+        restore(plain, into)
+        before = {k: v for k, v in inventory(source).items() if not _excluded(k)}
+        ok, missing, extra, changed = compare(before, inventory(into))
+        print("ENCRYPTED VERIFY %s" % ("PASSED" if ok else "FAILED"))
+        print("  files %d  missing %d  unexpected %d  CHANGED %d"
+              % (len(before), len(missing), len(extra), len(changed)))
+        return 0 if ok else 1
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
 def main():
@@ -250,6 +360,11 @@ def main():
     ap.add_argument("--restore", metavar="ARCHIVE")
     ap.add_argument("--drill", action="store_true")
     ap.add_argument("--ship", metavar="ARCHIVE")
+    ap.add_argument("--verify-encrypted", metavar="SEALED",
+                    help="decrypt and compare. Runs where the PRIVATE key "
+                         "is - the laptop - never on the host.")
+    ap.add_argument("--identity", help="age identity file, for "
+                                       "--verify-encrypted")
     ap.add_argument("--into", help="destination directory")
     ap.add_argument("--state-dir", help="what to back up (default: work/)")
     ap.add_argument("--force", action="store_true",
@@ -258,6 +373,10 @@ def main():
 
     source = args.state_dir or state_dir()
 
+    if args.verify_encrypted:
+        if not args.identity:
+            ap.error("--verify-encrypted needs --identity")
+        return verify_encrypted(args.verify_encrypted, args.identity, source)
     if args.ship:
         return ship(args.ship)
     if args.drill:

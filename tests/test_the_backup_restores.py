@@ -24,6 +24,7 @@ directory and passes `--state-dir`; nothing reads or writes the real `work/`.
 """
 import io
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -191,15 +192,21 @@ class TheSecretsFileIsNeverInABackup(_Estate):
                          "the refusal printed the value it was refusing")
 
 
-class ShippingOffHostRefusesWithBothNames(_Estate):
+class ShippingOffHostRefusesAndNamesWhatIsMissing(_Estate):
+    """The transport is REAL now: age to a recipient, then scp to the Storage
+    Box. So the refusals matter more than they did as stubs - each one is the
+    last thing between `work/` and somebody else's disk."""
 
     def setUp(self):
         super().setUp()
         _run("--backup", "--state-dir", self.state, "--into", self.into)
         self.archive = self._archives()[0]
 
-    def test_it_refuses_while_both_values_are_unset(self):
-        proc = _run("--ship", self.archive)
+    def ship(self, **env):
+        return _run("--ship", self.archive, env=env)
+
+    def test_it_refuses_while_everything_is_unset(self):
+        proc = self.ship()
         self.assertEqual(2, proc.returncode)
         self.assertIn("REFUSING to ship", proc.stderr)
         self.assertIn("BACKUP_TARGET", proc.stderr)
@@ -207,29 +214,95 @@ class ShippingOffHostRefusesWithBothNames(_Estate):
         self.assertIn("Nothing was sent", proc.stderr)
 
     def test_a_target_without_encryption_still_refuses(self):
-        """The 6b decision is open. A destination is not permission to send
-        300 real companies there in the clear."""
-        proc = _run("--ship", self.archive,
-                    env={"BACKUP_TARGET": "backup.example.invalid:/srv"})
+        """A destination is not permission to send 300 real companies in the
+        clear."""
+        proc = self.ship(BACKUP_TARGET="u1@u1.your-storagebox.de:/backups")
         self.assertEqual(2, proc.returncode)
         self.assertIn("BACKUP_ENCRYPTION", proc.stderr)
-        self.assertIn("not ours to publish", proc.stderr)
 
     def test_encryption_without_a_target_still_refuses(self):
-        proc = _run("--ship", self.archive,
-                    env={"BACKUP_ENCRYPTION": "age"})
+        proc = self.ship(BACKUP_ENCRYPTION="age")
         self.assertEqual(2, proc.returncode)
         self.assertIn("BACKUP_TARGET", proc.stderr)
 
-    def test_with_both_set_it_still_sends_nothing_and_says_why(self):
-        """The transport depends on what the target turns out to be. Writing
-        an scp call against a guessed shape is how the guess becomes the
-        design."""
-        proc = _run("--ship", self.archive,
-                    env={"BACKUP_TARGET": "backup.example.invalid:/srv",
-                         "BACKUP_ENCRYPTION": "age"})
-        self.assertEqual(3, proc.returncode)
-        self.assertIn("Nothing was sent", proc.stderr)
+    def test_age_without_a_recipient_refuses_and_says_where_to_get_one(self):
+        """age encrypts TO a public recipient. Without one there is nothing
+        to encrypt to, and the message has to say where it comes from."""
+        proc = self.ship(BACKUP_TARGET="u1@u1.your-storagebox.de:/backups",
+                         BACKUP_ENCRYPTION="age")
+        self.assertEqual(2, proc.returncode)
+        self.assertIn("BACKUP_AGE_RECIPIENT", proc.stderr)
+        self.assertIn("never reach this host", proc.stderr)
+
+    def test_an_unknown_scheme_is_refused_rather_than_treated_as_none(self):
+        proc = self.ship(BACKUP_TARGET="u1@u1.your-storagebox.de:/backups",
+                         BACKUP_ENCRYPTION="rot13")
+        self.assertEqual(2, proc.returncode)
+        self.assertIn("not a scheme", proc.stderr)
+
+    def test_a_private_key_in_the_recipient_field_is_refused(self):
+        """THE MISTAKE THAT WOULD UNDO THE WHOLE DESIGN. Pasting the identity
+        instead of the recipient puts the private key in secrets.env, on the
+        host - the one thing the laptop-only key exists to prevent."""
+        proc = self.ship(
+            BACKUP_TARGET="u1@u1.your-storagebox.de:/backups",
+            BACKUP_ENCRYPTION="age",
+            BACKUP_AGE_RECIPIENT="AGE-SECRET-KEY-1ZZNOTAREALKEY")
+        self.assertEqual(2, proc.returncode)
+        self.assertIn("PRIVATE", proc.stderr)
+        self.assertNotIn("1ZZNOTAREALKEY", proc.stdout,
+                         "the refusal echoed the key it was refusing")
+
+    @unittest.skipIf(shutil.which("age"), "age IS installed; this asserts the "
+                                          "missing-binary refusal")
+    def test_a_missing_age_binary_refuses_and_never_ships_plaintext(self):
+        """THE QUIET FAILURE THIS GUARDS. An encryptor that is not installed
+        must not degrade to shipping the plaintext while the log says
+        'shipped'."""
+        proc = self.ship(BACKUP_TARGET="u1@u1.your-storagebox.de:/backups",
+                         BACKUP_ENCRYPTION="age",
+                         BACKUP_AGE_RECIPIENT="age1zznotarealrecipient")
+        self.assertNotEqual(0, proc.returncode)
+        self.assertIn("not installed", proc.stderr)
+        self.assertIn("ever shipped unencrypted", proc.stderr)
+        self.assertFalse([f for f in os.listdir(self.into)
+                          if f.endswith(".age")],
+                         "an .age file exists despite age being absent")
+
+
+class TheEncryptionRoundTripsWhereTheKeyIs(_Estate):
+    """Only runnable where `age` is installed. On the host it is expected to
+    be installed and the PRIVATE key deliberately absent, so the decrypt half
+    of this cannot run there - which is the design, not a gap."""
+
+    @unittest.skipUnless(shutil.which("age"), "age is not installed here")
+    def test_an_encrypted_archive_decrypts_back_to_the_same_tree(self):
+        import subprocess
+        bk = self._module()
+        keyfile = os.path.join(self.tmp, "identity.txt")
+        gen = subprocess.run(["age-keygen", "-o", keyfile],
+                             capture_output=True, text=True)
+        self.assertEqual(0, gen.returncode, gen.stderr)
+        recipient = ""
+        for line in (gen.stderr + gen.stdout).splitlines():
+            if "age1" in line:
+                recipient = line.split()[-1].strip()
+        self.assertTrue(recipient.startswith("age1"), gen.stderr)
+
+        archive = bk.backup(self.state, self.into)
+        sealed = bk.encrypt(archive, recipient)
+        with io.open(sealed, "rb") as fh:
+            self.assertEqual(bk.AGE_MAGIC, fh.read(len(bk.AGE_MAGIC)))
+        self.assertEqual(0, bk.verify_encrypted(sealed, keyfile, self.state))
+
+    def test_verify_encrypted_refuses_without_an_identity(self):
+        """Run on the host, this is what it must say: the private key lives
+        on the laptop, so the host cannot verify its own backup."""
+        proc = _run("--verify-encrypted", os.path.join(self.tmp, "x.age"),
+                    "--identity", os.path.join(self.tmp, "no-such-identity"),
+                    "--state-dir", self.state)
+        self.assertNotEqual(0, proc.returncode)
+        self.assertIn("REFUSING", proc.stderr)
 
 
 if __name__ == "__main__":
