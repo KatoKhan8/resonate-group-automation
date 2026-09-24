@@ -9,9 +9,41 @@ DEPENDS:
 carry every variable the provider sequence will ask for — and will a row that
 does not be HELD rather than sent with a gap in it?**
 
+> ## CORRECTED 2026-09-25 BY THE PRODUCTION SESSION — READ THIS FIRST
+>
+> **The paragraph below described a two-thread cadence that does not exist and
+> that the code REFUSES.** It was inherited from
+> `PRODUCTION-HANDOFF-2026-09-24-LATE.md` §2, which is wrong on this point.
+> Three independent confirmations: lane B reading its own config at
+> `472960eb`, lane F reading the same config, and the production session
+> running `bisonfactory._sequence_steps` on master.
+>
+> **The truth, and it is a THREE-way correction:**
+>
+> 1. **There is no `SUBJECT_2` and no new-thread step.** All four steps carry
+>    `{SUBJECT_1}` and `thread_reply_pattern` is `[false, true, true, true]`.
+>    Fed a pattern with a `false` in position 4 and a distinct subject,
+>    `_sequence_steps` raises: *"step 4 is not a thread reply but carries a
+>    distinct subject. Only the opener owns a subject."*
+> 2. **The step key is NOT the variable number.** em4 sits at position 3 and
+>    reads **`{BODY_3}`**; em5 sits at position 4 and reads **`{BODY_4}`**.
+>    So the variables S7 must add are `body_3` and `body_4` — **not**
+>    `subject_2`, `body_4` and `body_5`.
+> 3. **A threaded step STILL CARRIES `email_subject`.** `_sequence_steps`'
+>    own docstring says so. "em2 no subject" below is wrong; subject omission
+>    is not how threading is detected, the flag is.
+>
+> **TASK-295 carries the corrected table** and instructs the worker to read
+> the mapping from the config at run time rather than from any document,
+> including this one. Do that here too.
+>
+> Everything else in this task stands: the blank/`'None'`/unrendered-`{`
+> checks, the held-not-sent requirement, and the terminal `wait_in_days` of 1.
+
 State, 2026-09-24 night. The cadence moves to **em1, em2, em4, em5** —
-`breakup` is retired. em4 opens a NEW thread (`thread_reply` false,
-`SUBJECT_2`); em5 replies into it (true). `work/stage/s7-copy.jsonl` carries
+`breakup` is retired. ~~em4 opens a NEW thread (`thread_reply` false,
+`SUBJECT_2`); em5 replies into it (true).~~ **(corrected above)**
+`work/stage/s7-copy.jsonl` carries
 **`subject_1` and `body_1..3` only**. em4 and em5 need **`subject_2`, `body_4`
 and `body_5`**, and on 40 live leads checked tonight those variables are
 **empty — not the literal string `'None'`** the morning handoff warned about.
@@ -39,13 +71,16 @@ files is how a half-applied cadence happens twice.
    the literal `'None'`, rows with an unrendered `{` surviving.
 3. Assert the threading invariant for the four steps **as data**:
 
-       em1   SUBJECT_1, thread_reply false
-       em2   no subject, thread_reply true
-       em4   SUBJECT_2, thread_reply false     <- a NEW thread
-       em5   no subject, thread_reply true
+       em1   pos 1   {SUBJECT_1}   {BODY_1}   thread_reply false
+       em2   pos 2   {SUBJECT_1}   {BODY_2}   thread_reply true
+       em4   pos 3   {SUBJECT_1}   {BODY_3}   thread_reply true
+       em5   pos 4   {SUBJECT_1}   {BODY_4}   thread_reply true
 
-   `thread_reply_pattern` must have **four** entries. Three is the current
-   value and it is the bug.
+   `thread_reply_pattern` must have **four** entries and the correct value is
+   `[false, true, true, true]`. Three entries is the pre-change value.
+   **Read this mapping from the config at run time and assert against that**,
+   not against this table — a table in a task file is the thing that was
+   wrong here in the first place.
 4. Assert the **final step's `wait_in_days` is 1, never 0.** Campaign 485 was
    left at 0 steps by exactly that.
 5. Exit non-zero, naming the variable and the row count, when any row would
