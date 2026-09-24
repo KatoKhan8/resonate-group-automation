@@ -451,6 +451,32 @@ def _write_state(mon, state_dir, pid=None, exit_code=None,
     os.replace(tmp, path)
 
 
+def record_started(name, pid, state_dir=None):
+    """Record that SOMETHING started this monitor. Public, and not only ours.
+
+    WITNESS 1 IS "A LIVE PID FROM A STATE FILE WRITTEN AFTER THE BOOT", and
+    until 2026-09-24 only `supervise.py` wrote that file. This estate is
+    started by `scripts/start_monitors.py`, so `work/supervisor/` did not
+    exist at all and **no monitor could ever hold witness 1** - including
+    while `start_monitors --status` reported all twenty UP on `beat+process`
+    and the table `cold_start --verify` prints showed every one of them
+    beating within seconds of being asked.
+
+    That is why `--verify` answered `0 of 20 monitors have two witnesses` on
+    a demonstrably healthy estate, four handoffs running, and why the reboot
+    drill was correctly refused each time: the instrument was broken before
+    any reboot, and adopting `46474c6c` fixed the NAME half of it while
+    leaving this half untouched.
+
+    The fix is here rather than in the process model. Making the supervisor
+    the only thing allowed to start a monitor would have meant changing how a
+    live estate is run, mid-day, to satisfy a measuring instrument. Whoever
+    starts a monitor knows its name and its pid, and recording that is the
+    whole of witness 1.
+    """
+    _write_state({"name": name}, state_dir, pid=pid)
+
+
 def _read_state(name, state_dir=None):
     directory = state_dir or _state_dir()
     path = os.path.join(directory, "%s.json" % name)

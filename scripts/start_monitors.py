@@ -250,18 +250,39 @@ def status(out=print):
     return down
 
 
-def spawn(argv):
-    """Detached, so it outlives this process and the terminal that ran it."""
+def spawn(argv, name=None):
+    """Detached, so it outlives this process and the terminal that ran it.
+
+    RECORDS THE SUPERVISOR STATE FILE when `name` is given, because that file
+    IS witness 1 and nothing else on this deployment writes it. `supervise.py`
+    did, and `supervise.py` is not what starts this estate - so
+    `work/supervisor/` did not exist, every monitor held one witness at most,
+    and `cold_start --verify` reported `0 of 20` against an estate whose every
+    beat was seconds old. Starting a monitor and not recording that you did is
+    what made the drill unrunnable.
+    """
     log = os.path.join(WORK, f"w-{os.path.basename(argv[0])}.out")
     flags = 0
     if os.name == "nt":
         flags = (getattr(subprocess, "DETACHED_PROCESS", 0)
                  | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
     handle = open(log, "a", encoding="utf-8")
-    return subprocess.Popen([sys.executable] + argv, cwd=ROOT,
+    proc = subprocess.Popen([sys.executable] + argv, cwd=ROOT,
                             stdout=handle, stderr=subprocess.STDOUT,
                             stdin=subprocess.DEVNULL,
                             creationflags=flags, close_fds=True)
+    if name:
+        # Never let a bookkeeping failure take down a start. A monitor that is
+        # running and unrecorded reads DOWN, which is the safe direction; one
+        # that failed to start because its state file could not be written is
+        # a monitoring tool causing the outage it exists to report.
+        try:
+            from src import supervisor
+            supervisor.record_started(name, proc.pid)
+        except Exception as exc:                                # noqa: BLE001
+            print(f"  WARN  {name}: state not recorded "
+                  f"({type(exc).__name__}) - it will read DOWN")
+    return proc
 
 
 def start(live=False, only=None, out=print):
@@ -282,7 +303,7 @@ def start(live=False, only=None, out=print):
             out(f"  PLAN  {name:<20} would start: py -3 {' '.join(argv)}")
             started.append(name)
             continue
-        proc = spawn(argv)
+        proc = spawn(argv, name)
         started.append(name)
         out(f"  START {name:<20} pid {proc.pid}")
     return started, skipped
@@ -348,7 +369,7 @@ def restart(names, out=print):
                 out(f"  STOP  {name:<20} pid {pid} FAILED: {exc}")
                 rc = 1
         time.sleep(2)
-        proc = spawn(argv)
+        proc = spawn(argv, name)
         out(f"  START {name:<20} pid {proc.pid}")
     return rc
 
