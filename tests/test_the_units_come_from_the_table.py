@@ -190,8 +190,25 @@ class TheUnitComesFromTheTable(unittest.TestCase):
         unit until somebody regenerated, which is the hand-written list
         again wearing systemd's clothes."""
         written = sorted(os.listdir(self.out))
-        self.assertEqual(["MONITOR-TABLE.txt", "resonate-supervisor.service"],
-                         written)
+        self.assertEqual(["MONITOR-TABLE.txt", "resonate-supervisor.service",
+                          "resonate-webhook.service"], written)
+
+    def test_the_receiver_gets_a_unit_so_it_survives_a_reboot(self):
+        """FOUND DURING THE SHADOW DEPLOY. The receiver was started by hand to
+        prove it answered - and proving it answers is not the same as it
+        being there tomorrow. With no unit, the first unattended 02:00 reboot
+        leaves Caddy proxying to a closed port and every webhook answered
+        with a 502 nobody is watching for."""
+        with io.open(os.path.join(self.out, "resonate-webhook.service"),
+                     encoding="utf-8") as fh:
+            text = fh.read()
+        lines = [l.strip() for l in text.splitlines()
+                 if l.strip() and not l.strip().startswith("#")]
+        self.assertIn("EnvironmentFile=/etc/resonate/secrets.env", lines)
+        self.assertIn("Restart=always", lines)
+        self.assertTrue([l for l in lines if "webhook_receiver.py" in l])
+        self.assertTrue([l for l in lines if "--host 127.0.0.1" in l],
+                        "the receiver must be loopback-only; Caddy fronts it")
 
     def test_the_manifest_says_it_is_a_record_and_not_an_input(self):
         """Nothing reads it back. A generated file that looks like config is

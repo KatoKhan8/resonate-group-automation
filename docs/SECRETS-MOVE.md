@@ -104,6 +104,39 @@ matters most: a transport failure is NOT a bad key.
 - [ ] `WEB_PORT`  *(app)*
       8765 by default. A platform usually supplies this as $PORT
 
+## INFRA — not in `config.VARIABLES`, and read by the tooling
+
+Nothing in `src/` reads any of these. They are listed because
+a variable nobody lists is a variable nobody sets.
+
+- [ ] `BACKUP_TARGET`  *(before the first off-host backup)*
+      user@host:/path of the Storage Box. SSH, not SMB.
+- [ ] `BACKUP_ENCRYPTION`  *(with BACKUP_TARGET)*
+      `age`. Any other value is refused rather than treated as none.
+- [ ] `BACKUP_AGE_RECIPIENT`  *(with BACKUP_TARGET)*
+      the age PUBLIC key (age1...). NEVER the private key: the private half is generated on the operator's laptop and must never reach this host. The consequence is deliberate - the host can encrypt and cannot decrypt, so it cannot verify its own backups.
+- [ ] `BACKUP_SSH_PORT`  *(optional)*
+      23 by default, which is what a Hetzner Storage Box speaks.
+- [ ] `PUBLIC_HOSTNAME`  *(before Caddy starts)*
+      the name on the certificate. DNS must already resolve to this host: TLS-ALPN issuance happens at startup, and a failure is rate-limited per ACCOUNT for a week.
+- [ ] `WEBHOOK_SIGNING_SECRET`  *(before the receiver accepts anything)*
+      HMAC-SHA256 shared secret. Without it every POST is refused rather than recorded unverified. Generate it on the host - it is not a value that needs to come from anywhere else.
+
+### The Storage Box password — where and when
+
+**It does not go in this file, and it is not typed on the
+host more than once.** Install the host's ssh public key on
+the Storage Box, and authentication afterwards is by key:
+
+    # ON THE HOST, once. -s because a Storage Box has no shell.
+    ssh-copy-id -s -p 23 <user>@<user>.your-storagebox.de
+
+Type it at the interactive prompt **only**. Never as a command
+argument — that puts it in shell history and in `ps` — and
+never into a file. Hetzner's web UI can install the key
+instead, which avoids typing it on the host at all, and is
+the better route if it is available to you.
+
 ## What is deliberately NOT in this file
 
 - **Claude Code's credential.** It is a user credential for an
@@ -116,4 +149,4 @@ matters most: a transport failure is NOT a bad key.
 - **Host addresses and the ssh user.** `hosts/production.env`,
   gitignored, never printed.
 
-31 variables, from `config.VARIABLES`.
+31 application variables from `config.VARIABLES`, plus 6 infra variables declared in the generator.

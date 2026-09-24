@@ -150,6 +150,23 @@ EMAIL_ASSIGN_SENDER = "bison.assign_sender"
 EMAIL_SET_LIMITS = "bison.set_limits"
 EMAIL_PAUSE = "bison.pause"
 EMAIL_STOP_LEAD = "bison.stop_lead"
+#: RESUME. Declared and DELIBERATELY NOT IN `SUPPORTED`.
+#:
+#: Resuming is a SENDING action - it is the verb that puts a paused sequence
+#: back in front of people - so enabling it is an operator authorization and
+#: not this module's to grant. CLAUDE.md records one such grant being spent:
+#: "487 WAS RESUMED AND RECOVERED ... That grant is now SPENT: do not resume
+#: 487 again under any outcome."
+#:
+#: `bison.resume_campaign` is the transport and already carries its own
+#: expect_leads check. `heyreach.resume` has NO ROUTE AT ALL: /campaign/Resume
+#: answers 400 and is deliberately absent from `heyreach.WRITE_ROUTES` - "Pause
+#: is what lifts it. Resume comes after, or not at all." It is declared here
+#: so that asking for it produces a NAMED refusal with a ledger row, rather
+#: than a resume that quietly does nothing on the LinkedIn side.
+EMAIL_RESUME = "bison.resume"
+LINKEDIN_RESUME = "heyreach.resume"
+
 EMAIL_ACTIVATE = "bison.activate"
 
 OPERATIONS = {
@@ -386,6 +403,25 @@ OPERATIONS = {
         "cannot be restarted by re-attaching the same campaign (422), so a "
         "stop cannot be silently undone by a routine re-stage; and a lead "
         "that is `in_sequence` anywhere cannot be attached elsewhere (422)"),
+    EMAIL_RESUME: ("email", False,
+        "DECLARED AND SEALED. `bison.resume_campaign` is the transport and "
+        "carries its own `expect_leads` readback. It is NOT in SUPPORTED, "
+        "because resuming is the verb that puts a paused sequence back in "
+        "front of people - a sending action - and enabling it is an operator "
+        "authorization rather than this module's to grant. CLAUDE.md records "
+        "one such grant already spent: 487 was resumed once and must not be "
+        "resumed again under any outcome. Declared so that asking for it "
+        "refuses BY NAME and leaves a ledger row, rather than a resume that "
+        "quietly changes local status while the provider stays paused."),
+    LINKEDIN_RESUME: ("linkedin", False,
+        "DECLARED AND SEALED, AND THERE IS NO ROUTE TO ENABLE. "
+        "/campaign/Resume answers 400 and is deliberately absent from "
+        "heyreach.WRITE_ROUTES: 'Pause is what lifts it. Resume comes after, "
+        "or not at all.' This entry exists so a LinkedIn resume produces a "
+        "named refusal with a ledger row instead of silently doing nothing - "
+        "which is what happened before, because nothing asked the provider "
+        "at all. Enabling it needs a route first, and that is a separate "
+        "decision from this one."),
     EMAIL_PAUSE: ("email", False,
         "SUPPORTED, AT CAMPAIGN GRANULARITY - AND NO LONGER THE ONLY STOP. "
         "An earlier version of this entry said stopping one person meant "
@@ -1848,7 +1884,133 @@ def _require_approved_words(operation, authorization, step, payload):
                 f"words must be the same words")
 
 
-def perform(operation, *, authorization=None, tenant=None, campaign=None,
+#: Where every attempt through this door is recorded. Resolved per call so a
+#: test can point it elsewhere; listed in `store.STATE_OVERRIDES` so it moves
+#: with the rest of the state when `use_directory()` moves them.
+PROVIDER_WRITES_LEDGER = "PROVIDER_WRITES_LEDGER"
+
+
+def ledger_path():
+    import os as _os
+    from . import store as _store
+    return _os.path.abspath(
+        _os.environ.get(PROVIDER_WRITES_LEDGER)
+        or _os.path.join(_os.path.dirname(_store.queue_path()),
+                         "provider-writes.jsonl"))
+
+
+def _ledger(operation, outcome, *, campaign=None, tenant=None, by=None,
+            detail=""):
+    """Append one row.
+
+    WHY THIS EXISTS. `providers._log_refusal` has always written the
+    REFUSALS, and nothing wrote the successes - so
+    `provider-write-refusals.jsonl` grew only when the system said no, and a
+    write that worked left no trace anywhere. An audit that records one half
+    of a decision cannot answer "what did this process do", which is the only
+    question anybody asks it.
+
+    Every exit from `perform` lands here: refused, failed, unverified and
+    verified alike. A refusal is not an absence of an event; it is an event
+    whose answer was no, and the sealed resume verbs are the case that proves
+    it.
+
+    WHAT IS SWALLOWED, AND WHAT IS EMPHATICALLY NOT.
+
+    Only `OSError`. A full disk or a read-only volume must not turn a refusal
+    into a crash, or - worse - into an exception some caller catches and
+    retries around.
+
+    This began as a bare `except Exception: pass`, copied from
+    `_log_refusal`, and that was wrong twice over:
+
+      1. It hid a bug in this very function. `_store` was used without being
+         imported, every call raised `NameError`, and not one row was
+         written. The only reason it surfaced is that a test asserted a row
+         EXISTS rather than asserting nothing blew up.
+      2. It would have swallowed `ProductionStateUnderTest`, which is the
+         barrier that stops a test writing real client state. A guard whose
+         refusal is caught and discarded is not a guard, and this would have
+         been the loudest writer in the repository quietly bypassing it.
+
+    So the barrier is called OUTSIDE the try, and a programming error here
+    now surfaces instead of hiding.
+    """
+    import datetime
+    import json as _json
+    import os as _os
+    import sys as _sys
+
+    from . import store as _store
+
+    path = ledger_path()
+    # THE BARRIER IS HONOURED BY NOT WRITING, NOT BY RAISING.
+    #
+    # Before any filesystem mutation, including creating the directory. When
+    # a test has not isolated the store, the barrier's whole purpose is that
+    # the row does not land in real client state - and skipping it achieves
+    # exactly that. Re-raising would achieve it too, and would additionally
+    # turn every `WriteRefused` in an un-isolated test into a
+    # ProductionStateUnderTest, which is the ledger deciding the outcome of
+    # the write it was only supposed to record. A ledger must never change
+    # the verdict it is recording.
+    #
+    # This is NOT the bare `except Exception` this function started with. A
+    # programming error here still surfaces; only the barrier is honoured,
+    # and honouring it means the write does not happen.
+    try:
+        _store.refuse_production_write(path)
+    except _store.ProductionStateUnderTest:
+        return
+    row = {
+        "at": datetime.datetime.now(datetime.timezone.utc)
+                  .strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "operation": operation,
+        "outcome": outcome,
+        "campaign": campaign,
+        "tenant": tenant,
+        "by": by,
+        "detail": str(detail)[:300],
+        "pid": _os.getpid(),
+        "argv": [_os.path.basename(str(a)) for a in _sys.argv[:3]],
+    }
+    try:
+        _os.makedirs(_os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8", newline="\n") as fh:
+            fh.write(_json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def perform(operation, **kw):
+    """The single door, with the ledger wrapped around it.
+
+    A WRAPPER RATHER THAN A LINE PER EXIT, deliberately: `_perform` refuses in
+    eight places and returns from two, and a ledger written at each of them is
+    a ledger that loses a row the next time somebody adds a ninth refusal.
+    """
+    try:
+        outcome = _perform(operation, **kw)
+    except WriteRefused as e:
+        _ledger(operation, "refused", campaign=kw.get("campaign"),
+                tenant=kw.get("tenant"), by=kw.get("by"), detail=e)
+        raise
+    except WriteUnverified as e:
+        _ledger(operation, "unverified", campaign=kw.get("campaign"),
+                tenant=kw.get("tenant"), by=kw.get("by"), detail=e)
+        raise
+    except Exception as e:
+        _ledger(operation, "failed", campaign=kw.get("campaign"),
+                tenant=kw.get("tenant"), by=kw.get("by"),
+                detail="%s: %s" % (type(e).__name__, e))
+        raise
+    _ledger(operation, (outcome or {}).get("class") or "performed",
+            campaign=kw.get("campaign"), tenant=kw.get("tenant"),
+            by=kw.get("by"))
+    return outcome
+
+
+def _perform(operation, *, authorization=None, tenant=None, campaign=None,
             payload=None, transport=None, readback=None, expected=None,
             step=None, by="system", provider_campaign_id=None):
     """The single door. Refuses, in this order, before any transport is touched.

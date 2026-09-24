@@ -293,13 +293,28 @@ class TheCaddyfileRefusesWithoutAHostname(unittest.TestCase):
         proc = self.run_it(hostname="203.0.113.10")
         self.assertEqual(2, proc.returncode)
 
-    def test_it_uses_tls_alpn_because_only_443_is_open(self):
-        """provision.sh opens 22 and 443, default deny. HTTP-01 needs 80 and
-        would fail as a certificate that never issues."""
+    def test_it_disables_the_http_challenge_because_only_443_is_open(self):
+        """MEASURED ON THE HOST, after this test's first version passed on a
+        config that did not work.
+
+        It used to assert `tls-alpn-01` appeared in the output, and it did -
+        as `alpn tls-alpn-01`, which is a valid `tls` subdirective that sets
+        the server's ALPN protocol list and has NOTHING to do with ACME.
+        `caddy validate` said "Valid configuration". Caddy then tried HTTP-01
+        against the closed port 80 and failed with "Timeout during connect
+        (likely firewall problem)".
+
+        The directive that actually selects the challenge is
+        `disable_http_challenge`, so that is what is asserted."""
         proc = self.run_it(hostname="webhooks.example.com")
         self.assertEqual(0, proc.returncode, proc.stderr)
-        self.assertIn("tls-alpn-01", proc.stdout)
-        self.assertNotIn("http-01", proc.stdout)
+        directives = [l.strip() for l in proc.stdout.splitlines()
+                      if l.strip() and not l.strip().startswith("#")]
+        self.assertIn("disable_http_challenge", directives)
+        self.assertIn("issuer acme {", directives)
+        self.assertFalse(
+            [l for l in directives if l.startswith("alpn ")],
+            "`alpn` is back, and it does not do what its name suggests here")
 
     def test_only_the_webhook_path_is_proxied(self):
         proc = self.run_it(hostname="webhooks.example.com")

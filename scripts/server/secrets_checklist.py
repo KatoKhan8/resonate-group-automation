@@ -38,6 +38,46 @@ from src import config  # noqa: E402
 
 SECRETS_FILE = "/etc/resonate/secrets.env"
 
+#: INFRA VARIABLES. These are NOT in `config.VARIABLES` and should not be:
+#: that registry is the application's, and nothing in `src/` reads any of
+#: these. They are declared here, next to the tooling that does read them,
+#: and they are on the checklist because the checklist is what somebody works
+#: through at 23:00 - a variable nobody lists is a variable nobody sets.
+#:
+#: (name, when, why)
+INFRA_VARIABLES = (
+    ("BACKUP_TARGET", "before the first off-host backup",
+     "user@host:/path of the Storage Box. SSH, not SMB."),
+    ("BACKUP_ENCRYPTION", "with BACKUP_TARGET",
+     "`age`. Any other value is refused rather than treated as none."),
+    ("BACKUP_AGE_RECIPIENT", "with BACKUP_TARGET",
+     "the age PUBLIC key (age1...). NEVER the private key: the private half "
+     "is generated on the operator's laptop and must never reach this host. "
+     "The consequence is deliberate - the host can encrypt and cannot "
+     "decrypt, so it cannot verify its own backups."),
+    ("BACKUP_SSH_PORT", "optional",
+     "23 by default, which is what a Hetzner Storage Box speaks."),
+    ("PUBLIC_HOSTNAME", "before Caddy starts",
+     "the name on the certificate. DNS must already resolve to this host: "
+     "TLS-ALPN issuance happens at startup, and a failure is rate-limited "
+     "per ACCOUNT for a week."),
+    ("WEBHOOK_SIGNING_SECRET", "before the receiver accepts anything",
+     "HMAC-SHA256 shared secret. Without it every POST is refused rather "
+     "than recorded unverified. Generate it on the host - it is not a value "
+     "that needs to come from anywhere else."),
+)
+
+#: NOT a secret and NOT in this file: the Storage Box PASSWORD. It is typed
+#: once, into an interactive prompt, to install the host's ssh public key on
+#: the Storage Box - and never again. Authentication afterwards is by key. A
+#: password in `secrets.env` would be a reusable credential sitting on the
+#: machine that only ever needed it once.
+NEVER_IN_SECRETS = (
+    ("the Storage Box password", "docs/SECRETS-MOVE.md, 'the password'"),
+    ("the age PRIVATE key", "the operator's laptop only"),
+    ("Claude Code's credential", "a user login, authenticated once per host"),
+)
+
 #: What each classification means for the CUTOVER, which is a different
 #: question from what it means to the application. `live` variables are the
 #: ones that let the estate touch a provider: absent, the app runs and reads
@@ -112,6 +152,30 @@ def checklist():
             if why:
                 out.append("      %s" % why)
         out.append("")
+    out.append("## INFRA — not in `config.VARIABLES`, and read by the tooling")
+    out.append("")
+    out.append("Nothing in `src/` reads any of these. They are listed because")
+    out.append("a variable nobody lists is a variable nobody sets.")
+    out.append("")
+    for name, when, why in INFRA_VARIABLES:
+        out.append("- [ ] `%s`  *(%s)*" % (name, when))
+        out.append("      %s" % why)
+    out.append("")
+    out.append("### The Storage Box password — where and when")
+    out.append("")
+    out.append("**It does not go in this file, and it is not typed on the")
+    out.append("host more than once.** Install the host's ssh public key on")
+    out.append("the Storage Box, and authentication afterwards is by key:")
+    out.append("")
+    out.append("    # ON THE HOST, once. -s because a Storage Box has no shell.")
+    out.append("    ssh-copy-id -s -p 23 <user>@<user>.your-storagebox.de")
+    out.append("")
+    out.append("Type it at the interactive prompt **only**. Never as a command")
+    out.append("argument — that puts it in shell history and in `ps` — and")
+    out.append("never into a file. Hetzner's web UI can install the key")
+    out.append("instead, which avoids typing it on the host at all, and is")
+    out.append("the better route if it is available to you.")
+    out.append("")
     out += [
         "## What is deliberately NOT in this file",
         "",
@@ -125,7 +189,8 @@ def checklist():
         "- **Host addresses and the ssh user.** `hosts/production.env`,",
         "  gitignored, never printed.",
         "",
-        "%d variables, from `config.VARIABLES`." % len(rows),
+        "%d application variables from `config.VARIABLES`, plus %d infra "
+        "variables declared in the generator." % (len(rows), len(INFRA_VARIABLES)),
         "",
     ]
     return "\n".join(out)
@@ -162,8 +227,13 @@ def verify_names(path):
         return 2
 
     rows = variables()
-    known = {r[0] for r in rows}
+    known = {r[0] for r in rows} | {n for n, _w, _y in INFRA_VARIABLES}
     worst = 0
+    print("INFRA (declared in this generator, not config.VARIABLES)")
+    for name, _when, _why in INFRA_VARIABLES:
+        print("  %-8s %-24s (infra)"
+              % ("SET" if name in present else "ABSENT", name))
+    print("")
     for classification in ORDER:
         group = [r for r in rows if r[1] == classification]
         if not group:

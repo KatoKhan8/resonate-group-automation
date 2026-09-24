@@ -65,6 +65,10 @@ SECRETS_FILE = "/etc/resonate/secrets.env"
 HOST_PYTHON = os.environ.get("HOST_PYTHON", "/usr/bin/python3")
 
 SUPERVISOR_UNIT = "resonate-supervisor.service"
+WEBHOOK_UNIT = "resonate-webhook.service"
+#: Loopback only. Caddy terminates TLS in front of it and the
+#: receiver must never be reachable directly.
+WEBHOOK_PORT = 8787
 
 
 def supervisor_unit(app_dir=APP_DIR, user=APP_USER, python=HOST_PYTHON):
@@ -139,6 +143,62 @@ WantedBy=multi-user.target
        "secrets": SECRETS_FILE}
 
 
+def webhook_unit(app_dir=APP_DIR, user=APP_USER, python=HOST_PYTHON,
+                 port=WEBHOOK_PORT):
+    """The record-only receiver, as a unit.
+
+    FOUND DURING THE SHADOW DEPLOY. The receiver was started by hand to prove
+    it answered, and proving it answered is not the same as it being there
+    tomorrow: with no unit it does not survive a reboot, and the first
+    unattended 02:00 reboot would have left Caddy proxying to a closed port
+    and every webhook answered with a 502 nobody was watching for.
+
+    It is deliberately a SEPARATE unit from the supervisor. The receiver
+    records and never acts; the supervisor runs the monitors. Coupling them
+    would mean stopping the estate to restart the receiver, and starting the
+    receiver whenever the estate starts - which is exactly what the shadow
+    phase needs to not happen.
+    """
+    return """\
+[Unit]
+Description=Resonate record-only webhook receiver
+Documentation=file://%(app_dir)s/docs/SERVER-PACKAGE-2B-SYSTEMD-UNITS.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%(user)s
+Group=%(user)s
+WorkingDirectory=%(app_dir)s
+# WEBHOOK_SIGNING_SECRET lives here. Without it the receiver refuses every
+# POST rather than recording an unverified one, which is the right failure
+# but a confusing one to debug if this line is missing.
+EnvironmentFile=%(secrets)s
+ExecStart=%(python)s %(app_dir)s/scripts/server/webhook_receiver.py \\
+    --record-dir %(app_dir)s/work/webhooks --host 127.0.0.1 --port %(port)d
+Environment=PYTHONUNBUFFERED=1
+
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=%(app_dir)s
+
+[Install]
+WantedBy=multi-user.target
+""" % {"app_dir": app_dir, "user": user, "python": python,
+       "secrets": SECRETS_FILE, "port": port}
+
+
 def manifest(table, now=None):
     """What the estate will watch, as a record for the cutover.
 
@@ -190,10 +250,13 @@ def main():
         return 2
 
     unit = supervisor_unit(args.app_dir, args.user, args.python)
+    hook = webhook_unit(args.app_dir, args.user, args.python)
     man = manifest(table)
 
     if args.check or not args.out_dir:
         sys.stdout.write(unit)
+        sys.stdout.write("\n")
+        sys.stdout.write(hook)
         sys.stdout.write("\n")
         sys.stdout.write(man)
         sys.stdout.write("\n")
@@ -207,6 +270,7 @@ def main():
     # places and not all, and the failure names neither line endings nor the
     # machine the file came from.
     for name, text in ((SUPERVISOR_UNIT, unit),
+                       (WEBHOOK_UNIT, hook),
                        ("MONITOR-TABLE.txt", man)):
         path = os.path.join(args.out_dir, name)
         with io.open(path, "w", encoding="utf-8", newline="\n") as fh:

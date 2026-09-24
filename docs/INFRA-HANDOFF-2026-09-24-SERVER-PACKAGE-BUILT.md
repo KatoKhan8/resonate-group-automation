@@ -8,12 +8,22 @@ context.
 
 ## 0. THE TWO THINGS TO READ FIRST
 
-**1. All of 2b–2h is built, tested, and HAS NEVER RUN AGAINST THE HOST.**
-Nothing is installed, nothing is started, no secret is written, no `work/`
-copied. `provision.sh` was written and reviewed too, and running it found
-**six defects — four of which produced a symptom pointing somewhere else**.
-Expect the same here. Item 3, the shadow deploy, is what converts this from a
-plan into something tested, and it is the next thing to do.
+**1. SUPERSEDED THE SAME DAY — THE SHADOW DEPLOY IS DONE.** This section
+said "2b–2h has never run against the host". That was true when it was
+written this morning and is false now. Read
+**`docs/SHADOW-DEPLOY-READINESS-2026-09-24.md`** instead of this file for
+anything about the host: the package is deployed at
+`infra-shadow-2026.09.24e`, the supervisor is installed and NOT started, the
+receiver answers over TLS, and a deliberate reboot was survived.
+
+Running it found **four defects** review and a green suite had both missed —
+including a Caddy directive that `caddy validate` approved and that meant
+something else entirely. The prediction in this paragraph's original text
+was correct; it just stopped being the future.
+
+**The rest of this document below §1 is still accurate** as the record of the
+merge, the baseline and the design decisions. §5's test count of 91 is now
+101.
 
 **2. `46474c6c` is STILL not on master**, four handoffs later. Without it
 `cold_start --verify` looks for each monitor's heartbeat at
@@ -228,8 +238,24 @@ that walk the repository would have seen a file appear mid-run.
 Branch only, never master. Never `config/.env`, `work/` or `src/providers/*` —
 the one written exception, the three `os.environ` call sites, is still not
 exercised. No live writes. No timeout wrappers. Suites to a file with name
-diffs. One merge request per increment, one line in `#resonate-os`. Handoff
-before 150k tokens.
+diffs. One merge request per increment, one line in `#resonate-os`.
+
+**HANDOFF THRESHOLDS, operator directive 2026-09-24, superseding 150k:**
+**600k** — write a handoff and KEEP WORKING. **850k** — write a fresh
+handoff and STOP for `/clear`. Never hand off mid-push or mid-incident;
+finish the unit of work first.
+
+**LANE DIRECTIVE, operator, effective 2026-09-24 until 2026-10-01.** This
+session is **LANE 3, infra**: the shadow deploy, then cutover Monday
+2026-09-28 after 23:00 Europe/Zagreb, then **nothing else until the estate
+has run one clean day on the server**. FROZEN, and to be picked up in
+October rather than now: D8, D9, D10, E, F6, the git history dry run, the
+history PII scan, gateway evaluations, and the env-mutation item 2 at its
+three `os.environ` call sites.
+
+A fresh session in this lane should read
+`docs/SHADOW-DEPLOY-READINESS-2026-09-24.md` before anything: the shadow
+deploy is DONE, and §3 is the one thing still waiting on the operator.
 
 The 2026-09-23 redaction breach stands recorded in the previous handoff §10.
 Every host command since has gone through the rebuilt filter. **Self-test it

@@ -17,7 +17,12 @@ port 80, so it would fail, and the failure arrives as a certificate that
 never issues rather than as anything naming the firewall. TLS-ALPN-01 runs
 entirely over 443, which is the port that is actually open.
 
-    tls { alpn tls-alpn-01 }
+It is selected by DISABLING the HTTP challenge, not by naming ALPN:
+`alpn` is a valid `tls` subdirective that sets the server's protocol
+list and has nothing to do with ACME. Writing it there validated
+cleanly and changed nothing, and Caddy tried HTTP-01 on a closed port.
+
+    tls { issuer acme { disable_http_challenge } }
 
 Opening 80 to use HTTP-01 instead would be the other way to fix it, and it
 is the wrong one: it widens the firewall to satisfy a validation method we
@@ -66,7 +71,20 @@ def caddyfile(hostname, port=RECEIVER_PORT):
 
 %(hostname)s {
 \ttls {
-\t\talpn tls-alpn-01
+\t\t# `disable_http_challenge` IS THE DIRECTIVE THAT SELECTS THE CHALLENGE.
+\t\t# An earlier version of this file wrote `alpn tls-alpn-01` here and was
+\t\t# wrong in the most expensive way available: `alpn` IS a valid `tls`
+\t\t# subdirective - it sets the server's ALPN protocol list - so
+\t\t# `caddy validate` answered "Valid configuration", and Caddy went and
+\t\t# tried HTTP-01 anyway. It failed against the closed port 80 with
+\t\t# "Timeout during connect (likely firewall problem)" - which is exactly
+\t\t# the failure the comment above claimed to be preventing.
+\t\t#
+\t\t# Valid syntax meaning something else entirely is worse than a syntax
+\t\t# error, because the validator agrees with you.
+\t\tissuer acme {
+\t\t\tdisable_http_challenge
+\t\t}
 \t}
 
 \t# EXACTLY ONE PATH IS PROXIED, and it is the record-only receiver. The

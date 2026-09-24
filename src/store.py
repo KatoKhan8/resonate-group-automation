@@ -102,6 +102,11 @@ STATE_OVERRIDES = (
                    # The reply watcher's health, written beside the
                    # checkpoints it reports on and for the same reason.
                    "REPLY_WATCH_STATUS",
+                   # The provider-write ledger. Added 2026-09-24 with the
+                   # resume verb; it is written beside the queue and is just
+                   # as able to be left pointing at a real directory by a
+                   # stale override as anything else here.
+                   "PROVIDER_WRITES_LEDGER",
                    # The provider tag outbox and the agency-wide
                    # do-not-contact index. Neither is row state either, and
                    # both are exactly the kind of file a test would

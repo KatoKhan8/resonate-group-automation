@@ -250,6 +250,38 @@ def status(out=print):
     return down
 
 
+def log_path(name):
+    """One log per MONITOR, not one per script.
+
+    THE DEFECT THIS FIXES. This was `w-{basename(argv[0])}.out`, so it was
+    named after the SCRIPT - and fourteen bison watchers all run
+    `scripts/bison_watch_loop.py`. Every one of them opened the same
+    `w-bison_watch_loop.py.out` in append mode and fourteen processes
+    interleaved into one file, with nothing in a line saying which campaign
+    wrote it.
+
+    The cost is paid exactly when the file is needed. 497 is where the blank
+    emails were found; reading back through a shared log to work out which
+    lines were 497's - while 451, 481, 484, 485, 487, 489 and 491-498 were
+    writing into the same handle - is the difference between a log and a
+    pile. Campaign watchers are also the monitors most likely to be read one
+    at a time, because an incident is about one campaign.
+
+    MEASURED 2026-09-24, from the other end: production tried to establish
+    whether a watcher halt had paused 491 and could not, because the shared
+    file carried interleaved fragments - `REAREAD-ERROR`, `ER-VOLUME 492` -
+    where whole lines should have been. A log that loses writes cannot prove
+    a negative, so "no BLANK-CONTENT line for 491" was not evidence of
+    anything.
+
+    `heyreach_watch` and the static loops are unaffected in practice: they
+    are one process each, so the name was already unique. They still go
+    through here so there is one rule rather than two.
+    """
+    safe = "".join(c if (c.isalnum() or c in "-_") else "-" for c in str(name))
+    return os.path.join(WORK, f"w-{safe}.out")
+
+
 def spawn(argv, name=None):
     """Detached, so it outlives this process and the terminal that ran it.
 
@@ -260,8 +292,12 @@ def spawn(argv, name=None):
     and `cold_start --verify` reported `0 of 20` against an estate whose every
     beat was seconds old. Starting a monitor and not recording that you did is
     what made the drill unrunnable.
+
+    `name` also decides the LOG FILE, one per monitor - see `log_path`. It
+    defaults to the script only so an older caller cannot crash; every caller
+    in this file passes the monitor name.
     """
-    log = os.path.join(WORK, f"w-{os.path.basename(argv[0])}.out")
+    log = log_path(name or os.path.basename(argv[0]))
     flags = 0
     if os.name == "nt":
         flags = (getattr(subprocess, "DETACHED_PROCESS", 0)
