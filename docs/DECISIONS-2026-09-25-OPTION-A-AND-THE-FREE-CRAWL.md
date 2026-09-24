@@ -99,3 +99,64 @@ stays parked rather than deleted, as the previous session left it.
 - **Whether to merge lane D's copylint at all.** It is correct and proved on
   the real send path, and as things stand it refuses every push this system
   can make. Step 1 above is what makes merging it safe rather than blocking.
+
+---
+
+## 5. RUNG 3 — APPROVED 2026-09-25, WITH ONE CORRECTION TO ITS SHAPE
+
+**Operator approval, Zvonimir, 2026-09-25.** The two lane D drafts in
+`docs/MERGE-REQUEST-2026-09-24-COPY-AND-COPYLINT.md` §1.1 and §1.2 are
+approved: `economic_buyer` carrying capability `profitability`,
+`champion` carrying `budgeting`, both resolving `{capability}` to the
+client's own unedited sentence from `productive.yaml` →
+`product.capabilities`.
+
+**The copy is approved. The deployment shape lane D stated for it is not
+possible, and this is measured, not argued.**
+
+Lane D wrote that the pattern becomes `[false, true, true, false, true]` —
+"em4 opens a new thread with `SUBJECT_2`, em5 replies into that". Lane B had
+already established that the two-thread design is refused. Run against the
+real `bisonfactory._sequence_steps` on master, with waits matching the cadence
+gaps so no other guard fires first:
+
+    [False, True, True, False, True], em4 carrying {SUBJECT_2}
+      -> REFUSED: step 4 is not a thread reply but carries a distinct subject
+         ('{SUBJECT_2}' vs opener '{SUBJECT_1}'). Only the opener owns a
+         subject; follow-ups must be thread replies referencing the opener's
+
+    [False, True, True, True, True], one subject throughout
+      -> BUILT 5 steps, no refusal
+         em1 F wait 3 / em2 T wait 4 / em3 T wait 5 / em4 T wait 5 / em5 T wait 1
+
+The invariant is explicit in `bisonfactory.py:288-307`: *"A mixed shape - some
+follow-ups threaded, others opening new threads with their own subjects -
+violates the invariant and is refused."*
+
+**So the approved five-step shape is `[false, true, true, true, true]`,
+every follow-up threaded on the opener's subject.** Rung 3 itself is already
+a thread reply carrying `SUBJECT_1`, so rung 3 is not what breaks — lane D's
+accompanying assumption about em4 is. Nothing in the approved copy changes.
+
+### 5.1 The consequence for tomorrow's new campaigns, which is not obvious
+
+`bison.set_sequence` **APPENDS and nothing can replace it.** Measured
+2026-09-13 on a throwaway campaign: writing one step then another left the
+campaign holding both, and a third write of two steps left four, **renumbered
+1, 3, 2, 4** - the orders interleave rather than following the writes.
+
+So a campaign created tomorrow at **four** steps **cannot later be given rung 3
+cleanly**. Adding it means a second `set_sequence` write, and the ordering is
+not the caller's to choose. Two ways forward, and it is an operator call:
+
+- **Build the new campaigns at FIVE steps in one write.** Requires rung 3's
+  `{our_company}` and `{capability}` template variables and the config entry to
+  exist first — all in `src/cadence.py` and `productive.yaml`, which lane B
+  holds. Lane D declared the dependency rather than editing them, and refused
+  to hardcode "Productive" into shared `TEMPLATES` because it leaks into every
+  other client.
+- **Build at four steps now and give rung 3 to the NEXT cohort's campaigns.**
+  Today's 128 go out on the four-step cadence; nothing is appended later.
+
+This is the same property that makes option A necessary in the first place, and
+it is why campaign 500 cannot be lengthened in place.
