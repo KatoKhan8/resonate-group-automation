@@ -19,10 +19,12 @@ this repository ever started was rejected with 400 `invalid-input` for a
 missing `proxyConfiguration`, so **no Apify actor has ever returned
 evidence here and nobody in this codebase has seen the real output shape.**
 
-`src/researchpack/actors.py` sets `proxyConfiguration` on every input, so
-the runs this starts should be the first that survive. Until somebody runs
-it, the cassettes are a documented guess and the tests say so rather than
-implying otherwise.
+UPDATE, 2026-09-24: it has been run. The three actor ids this package
+carried were guesses and all three answered 404 record-not-found, so the
+runs could never have started for a second reason nobody had found. The ids
+are now verified ones and the cassette carries their real field SHAPE; see
+`docs/RESEARCH-PACK-PILOT-2026-09-24.md`. This script still takes fresh
+rows, and it still costs credits.
 
 ## WHAT IT WRITES, AND WHAT IT DOES NOT
 
@@ -56,6 +58,10 @@ def default_out():
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--domain", default=None)
+    parser.add_argument("--company", default=None,
+                        help="the company NAME. `open_roles` is aimed with "
+                             "it, and the company LinkedIn slug comes out of "
+                             "that run")
     parser.add_argument("--company-url", default=None)
     parser.add_argument("--champion", default=None)
     parser.add_argument("--exec", dest="exec_profile", default=None)
@@ -66,9 +72,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     load_env()
-    planned = [("company_posts", args.company_url
-                or ("https://%s" % args.domain if args.domain else "?")),
-               ("open_roles", args.domain or "?")]
+    planned = [("open_roles", args.company or "?"),
+               ("company_posts", args.company_url
+                or "<the slug the open_roles run returns>"),
+               ("site_content", args.domain or "?")]
     if args.champion:
         planned.append(("person_posts", args.champion))
     if args.exec_profile:
@@ -77,9 +84,12 @@ def main(argv=None):
     print("actors this would run, and the planned cost:")
     for name, target in planned:
         spec = actors.ACTORS[name]
-        print("  %-14s %-4d %s" % (name, spec["cost"], target))
-    print("  %-14s %-4d TOTAL (ledger cents)"
-          % ("", actors.cost_of([n for n, _ in planned])))
+        print("  %-14s %-38s $%.5f  %s"
+              % (name, spec["actor"], actors.usd_per_account(name), target))
+    print("  %-14s %-38s $%.5f  (%d ledger cents, rounded up)"
+          % ("", "TOTAL",
+             sum(actors.usd_per_account(n) for n, _ in planned),
+             actors.cost_of([n for n, _ in planned])))
 
     if args.status or not args.live:
         print("\nnot live: nothing was started and nothing was charged. "
@@ -100,6 +110,7 @@ def main(argv=None):
         return rows
 
     pack = researchpack.build(args.domain, live=True, client=args.client,
+                              company=args.company,
                               champion=args.champion,
                               exec_profile=args.exec_profile,
                               company_url=args.company_url, runner=recorder)
