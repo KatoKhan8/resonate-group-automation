@@ -471,6 +471,11 @@ class EveryMonitorSaysWhereItsBeatLands(unittest.TestCase):
             "digest": "digest.json",
             "slack_agent": "slack-agent.json",
             "slack_followup": "slack-followup.json",
+            # `WATCHER = "weekly-report"` in the loop, so the beat does NOT
+            # land under the monitor name. Pinned here for the same reason
+            # every other row is: a mismatch makes `--verify` poll a file
+            # nothing writes and call the monitor down for ever.
+            "weekly_report": "weekly-report.json",
             # DERIVED, from TABLE_ROWS above - the campaign watchers are no
             # longer hand-listed, but where their beat lands is still pinned.
             "bison_watch_491": "bison-491.json",

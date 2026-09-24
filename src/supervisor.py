@@ -314,6 +314,18 @@ STATIC_MONITORS = [
      "module": "scripts.slack_followup_loop",
      "args": ["--interval", "60"], "interval": 60,
      "heartbeat": {"file": "slack-followup.json"}},
+    # The Monday client report. Added 2026-09-24: the script had existed
+    # since 09-23 and was in no table, so nothing started it and `--status`
+    # could not report it missing - an absent row reads as a healthy estate,
+    # which is the same shape as 493 having no watcher.
+    #
+    # `WATCHER = "weekly-report"` in the loop, so the beat lands in
+    # `weekly-report.json` and the name here must not be guessed from the
+    # monitor name. That mismatch is what `46474c6c` existed to fix.
+    {"name": "weekly_report",
+     "module": "scripts.weekly_report_loop",
+     "args": ["--interval", "300"], "interval": 300,
+     "heartbeat": {"file": "weekly-report.json"}},
     # No `--campaign`: passing one made argparse exit 2 before the first
     # beat. Measured 2026-09-23.
     {"name": "heyreach_watch_%s" % HEYREACH_CAMPAIGN,

@@ -97,6 +97,18 @@ THE_FIVE_THE_HAND_WRITTEN_LIST_MISSED = {
     "bison_watch_485",
 }
 
+#: Added to the static half AFTER this file was written, each with a reason.
+#: Named individually rather than loosening the ceiling to "20 or more",
+#: because the ceiling is the only thing standing between a derived table and
+#: a watcher nobody chose.
+ADDED_SINCE_WITH_A_REASON = {
+    # `scripts/weekly_report_loop.py` existed from 2026-09-23 and was in no
+    # table, so nothing started it and `--status` could not report it
+    # missing. An absent row reads as a healthy estate - the same shape as
+    # 493 having no watcher. Operator instruction 2026-09-24.
+    "weekly_report",
+}
+
 
 def _derived_names():
     """The derived set at today's registry.
@@ -127,7 +139,8 @@ class TheDerivedTableCoversTheIncidentGate(unittest.TestCase):
         """The ceiling. A superset is only defensible while every member of it
         is accounted for; an unexplained extra is a watcher nobody chose."""
         self.assertEqual(
-            THE_INCIDENT_GATES_15 | THE_FIVE_THE_HAND_WRITTEN_LIST_MISSED,
+            THE_INCIDENT_GATES_15 | THE_FIVE_THE_HAND_WRITTEN_LIST_MISSED
+            | ADDED_SINCE_WITH_A_REASON,
             _derived_names())
 
     def test_493_is_watched_although_the_hand_written_list_omits_it(self):
