@@ -46,3 +46,24 @@ a self-report.**
     COST OF A ZERO-FACT RUN:
     PROJECTED MONTHLY AT 19,612:
     WHERE THE PLACEHOLDER FIGURES WERE WRONG:
+
+---
+
+## STATE RECORDED BY LANE E, 2026-09-24 late
+
+    ATTEMPTED BY     a Qwen worker, 2026-09-24
+    STATE            BLOCKED - boundary hit (moved out of TODO/ tonight)
+    ON MASTER        NO
+    NEXT             TASK-289 - second pass. Name the boundary as a RULE,
+                     classify it REAL or SUPPLIABLE, and say which figures
+                     survive.
+
+Two cost figures are in circulation and they are not from the same run: this
+task's own "36 ledger units for $0.0513" (recorded as a PLACEHOLDER) and the
+production session's measured $0.03987/account, $781.94/month at 19,612 -
+3.93x over the $199 Scale budget, of which the website crawler is 72%.
+
+Since then the operator has ruled: site content comes from our own free
+crawler, and Apify runs LinkedIn only. Any calibration that priced the
+website crawler as part of the pack is pricing something we will not buy, so
+the re-price is part of the second pass rather than a re-run of this task.

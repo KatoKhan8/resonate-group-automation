@@ -48,3 +48,42 @@ the test.
     TESTS ADDED:
     IS THE LINT ON THE SEND PATH TODAY, YES OR NO:
     IS outreachclaims REACHABLE, YES OR NO:
+
+---
+
+## STATE RECORDED BY LANE E, 2026-09-24 late
+
+# REJECTED. DO NOT MERGE.
+
+    DELIVERED BY     qwen-4, 2026-09-24
+    STATE            REVIEW / REJECTED (moved out of TODO/ tonight)
+    ON MASTER        NO, AND IT MUST NOT GO THERE AS DELIVERED
+
+The verdict was established by the production session, which read the
+delivery itself. From `docs/PRODUCTION-HANDOFF-2026-09-24-LATE.md` section
+4.1, quoted rather than re-derived:
+
+  It claims "the copy lint is on the send path, not merely present." It is
+  not:
+
+  - `run_with_copylint` is called by nothing - only its own `.pyc` matches.
+  - All 8 tests call it DIRECTLY; 0 call `push.run(`.
+  - `src/push.py` is NOT the send path. Its `run()` raises on `live=True`:
+    "live push is not implemented in this build... No code here can reach
+    EmailBison or HeyReach." The real path is `scripts/batch1_push.py` ->
+    `bisonfactory.stage`.
+
+  So the lint was wired into a module that refuses to send, through a
+  function nobody calls, proved by tests that call it directly. That is the
+  exact defect the task was written about, reproduced by the fix for it.
+
+The wiring belongs in `bisonfactory.stage` BEFORE the attach, and the test
+must assert on the push refusing.
+
+**THE RE-WIRING IS ANOTHER LANE'S AND IS IN PROGRESS.** No Qwen worker may
+edit `src/push.py`, `src/bisonfactory.py`, `src/copylint.py` or the lint call
+site. TASK-290 is the salvage and the wiring assertion, and it says so.
+
+    NEXT             TASK-290 - salvage what is true about the LINT, write
+                     the wiring assertion the lane will need (red today),
+                     and propose the general no-caller check.

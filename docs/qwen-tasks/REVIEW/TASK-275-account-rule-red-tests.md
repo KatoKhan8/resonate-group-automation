@@ -62,3 +62,19 @@ sent to yesterday must never read as untouched.
     TESTS ADDED:
     FAILING AGAINST TODAY'S CODE (expected):
     ANYTHING THE RULE DOES NOT SAY AND YOU HAD TO DECIDE:
+
+---
+
+## STATE RECORDED BY LANE E, 2026-09-24 late
+
+    DELIVERED BY     qwen-2, round 9
+    STATE            REVIEW (moved out of TODO/ tonight; it was still sitting
+                     in TODO/ while finished, which is part of why the pool
+                     read as deeper than it was)
+    ON MASTER        NO
+    NEXT             TASK-288 - second pass. Are the tests red, red for the
+                     reason claimed, and pinning the operator's rule rather
+                     than one the author inferred?
+
+Not to be merged before TASK-288 clears. The rewrite in the production
+session starts from these tests, so a wrong test costs the rewrite.

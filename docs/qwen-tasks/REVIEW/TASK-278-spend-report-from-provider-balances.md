@@ -70,3 +70,20 @@ Test command: `py -3 -m unittest tests.test_spend_report -v`
     PROVIDERS WITH NONE (and the dashboard path):
     TOTAL USD AT LIST, 09-18 TO NOW:
     WHERE OUR LEDGER DISAGREES WITH THE PROVIDER:
+
+---
+
+## STATE RECORDED BY LANE E, 2026-09-24 late
+
+    DELIVERED BY     qwen-5, 2026-09-24
+    STATE            REVIEW (moved out of TODO/ tonight)
+    ON MASTER        NO - `scripts/spend_report.py` does not exist on master.
+                     Checked in this worktree at 24acaff, tip of master.
+    NEXT             TASK-291 - second pass. Per provider: did the figure come
+                     from the provider, from our ledger, or from arithmetic?
+
+TASK-291 BLOCKS TASK-282, which wires the spend report into the Monday
+report. Do not wire a report whose numbers have not been sourced: our ledger
+holds 79 deliverable and 97 reoon rows against 11,417 verification journal
+rows, so a ledger-sourced verification figure is wrong by roughly two orders
+of magnitude and looks entirely plausible.
