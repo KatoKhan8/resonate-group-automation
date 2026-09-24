@@ -21,6 +21,10 @@ script never sets them.
 
     py -3 scripts/stage_s5_verify.py                # all of them
     py -3 scripts/stage_s5_verify.py --limit 200    # a slice
+    py -3 scripts/stage_s5_verify.py --s3 work/stage/mx-amended-PRODUCTIVE-2026-09-07.jsonl
+
+The third form is the 09-07 backlog. The default input is the 09-21 S3 pass
+and no longer agrees with the funnel - see `--s3` in `main`.
 """
 
 import argparse
@@ -51,10 +55,10 @@ SOURCE = os.path.join(ROOT, "work", "Productive",
 MX_OK = ("known_allowed", "unknown_provider")
 
 
-def eligible_domains():
+def eligible_domains(path=None):
     """IN domains whose email channel S4b left open."""
     out = {}
-    with open(S3, encoding="utf-8") as handle:
+    with open(path or S3, encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
             if not line:
@@ -149,8 +153,19 @@ def pair_of(contact):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--workers", type=int, default=3,
+    parser.add_argument("--workers", type=int, default=8,
                         help="concurrency; size against the TIGHTER provider")
+    # THE INPUT IS NAMED, BECAUSE THE DEFAULT ONE IS NO LONGER THE FUNNEL.
+    #
+    # `s3-icp.jsonl` is the 2026-09-21 pass and it carries verdict `out` on
+    # 15,642 domains that the 09-23 amendment moved to `in`; its MX columns
+    # are `None` on every one of them, so this script's own predicate sees
+    # 4,869 eligible domains where the amended pair sees 18,955. The default
+    # is UNCHANGED - repointing it is a spend decision, not a refactor - and
+    # this flag is how the operator makes it without editing code.
+    parser.add_argument("--s3", default=S3,
+                        help="the S3/S4b journal to read eligibility from; "
+                             "default is s3-icp.jsonl, which is the 09-21 pass")
     parser.add_argument("--report-every", type=int, default=900,
                         help="seconds between progress lines; default 15 min")
     args = parser.parse_args(argv)
@@ -172,7 +187,8 @@ def main(argv=None):
           f"secondary={policy['secondary']} catch_all={policy['catch_all']} "
           f"confirmations={policy['required_confirmations']}", flush=True)
 
-    domains = eligible_domains()
+    domains = eligible_domains(args.s3)
+    print(f"  eligibility from {os.path.relpath(args.s3, ROOT)}", flush=True)
     already = done_keys()
     people = [c for c in contacts_for(domains) if c["email"] not in already]
     print(f"S5  eligible domains {len(domains)}  contacts to verify "
@@ -191,20 +207,60 @@ def main(argv=None):
     # HOURS for 9,312 addresses. The work is embarrassingly parallel: every
     # contact is its own dict and `verify` touches nothing shared.
     #
-    # K=8 is chosen against the binding limit rather than the fastest one.
-    # Reoon is the operator's stated 4/sec and each contact makes roughly one
-    # Reoon call, so 8 workers at ~2.9s each is ~2.8 calls/sec - inside the
-    # limit with headroom. K=12 would sit at ~4.1/sec, over it. The same K=8
-    # the measured ContactOut work settled on, for the same reason: the last
-    # few threads buy little and cost latency.
-    # K=3, AND THE BINDING LIMIT IS CONTACTOUT RATHER THAN REOON.
+    # K=8, AND CONTACTOUT IS NOT IN THIS CLIENT'S POLICY AT ALL.
     #
-    # K=8 was sized against Reoon's 4/sec and never checked the primary.
-    # ContactOut's documented limit on this family of routes is 60/min, and
-    # eight workers at ~2.9s each made ~168 calls/min - nearly three times it.
-    # The adapter retried each 429 twice and still lost, so the primary went
-    # missing on 93% of addresses while billing zero credits. Three workers is
-    # ~62/min, at the limit rather than over it.
+    # K=3 was set on 2026-09-21 against ContactOut's 60/min, after eight
+    # workers made ~168 calls/min and the primary went missing on 93% of
+    # addresses. That reasoning was correct about ContactOut and wrong about
+    # this runner: the same operator decision that day removed ContactOut
+    # from Productive's VERIFICATION roles, and `policy_for(config)` above
+    # resolves to primary=deliverable secondary=reoon catch_all=reoon. The
+    # binding limit was sized against a provider this script never calls,
+    # and the estate paid 351 minutes for 8,387 addresses for it.
+    #
+    # WHAT IS DOCUMENTED, AND WHAT IS NOT:
+    #
+    #   Reoon        4/sec, power mode. PROVIDER-ROUTING-POLICY.md, the
+    #                operator's standing order of 2026-09-21. It is the only
+    #                rate number in this repository for either verifier, and
+    #                it is OPERATOR-STATED rather than vendor-published -
+    #                docs/PERF-LATENCY-MODEL-2026-09-18.md classifies Reoon's
+    #                published limit as NOT DOCUMENTED.
+    #   Deliverable  NOT DOCUMENTED ANYWHERE. Not in `src/providers/
+    #                deliverable.py`, which carries the transport contract
+    #                read off the vendor's API page and no rate; not in any
+    #                docs/ evidence file; explicitly UNKNOWN at
+    #                docs/PERF-LATENCY-MODEL-2026-09-18.md:266.
+    #
+    # An unknown limit is not permission to guess one. It is measured, on the
+    # real route, bounded, and classified OBSERVED with its date - the method
+    # `ratelimit.LimitClassification.OBSERVED` exists for and
+    # docs/PERF-CONCURRENCY-MEASURED-2026-09-18.md established.
+    #
+    # MEASURED 2026-09-24, three arms of 100 real addresses each, same estate,
+    # back to back. Every address bought is in the journal and counted toward
+    # the backlog, so the sample is spend rather than waste:
+    #
+    #     K      addr/s   speedup   pair=2    ERROR   verified
+    #     3      0.268      1.0x    100/100     0       49%
+    #     8      1.105      4.1x    100/100     0       50%
+    #     16     1.759      6.6x    100/100     0       45%
+    #
+    # Both verifiers answered on 300 of 300 addresses at every K. The 09-21
+    # failure signature - a pair of one, "the primary is missing" - did not
+    # appear once, which is what distinguishes this from that run.
+    #
+    # K=8 is the default rather than K=16, on three grounds. Each contact
+    # makes about one Reoon call, so K=8 is ~1.1 calls/sec against the stated
+    # 4/sec - a quarter of the documented ceiling, and K=16 is 1.76/sec, still
+    # inside it, so Reoon is not what decides this. Deliverable is, and its
+    # limit is UNKNOWN: K=16 buys 59% over K=8 for twice the pressure on the
+    # provider nobody has a number for, and the knee is already visible
+    # between the two arms. And the escalation rule this repository already
+    # wrote down - "a clean run at K is not permission to run at 2K",
+    # scripts/measure_provider_concurrency.py - makes a bounded clean arm
+    # evidence for that K and not for the next one. K=16 is measured clean and
+    # is available with --workers 16; it is not the standing default.
     lock = threading.Lock()
 
     def one(contact):
