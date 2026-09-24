@@ -23,6 +23,11 @@ mean "unchanged" rather than "died an hour ago":
     MEMBERSHIP  the per-lead status distribution changed. An ACTIVE campaign
                 whose leads read `sending_paused` is not sending, and the
                 campaign row does not say so - see `_membership_states`
+    RECONCILE-FORWARD   our store says this person must hear nothing further
+                and the provider still has them sendable. Followed by
+                RECONCILE-STOPPED or RECONCILE-STOP-REFUSED
+    RECONCILE-REVERSE   the provider says a lead replied or bounced and our
+                store holds no such event. Followed by the write-back
     READ-ERROR  the provider could not be read, after it repeats
 
 WHY `QUEUED` AND `TOUCHED` EXIST, added 2026-09-17, and they are the whole
@@ -179,6 +184,9 @@ def snapshot(provider_id=None):
     # campaign as silent. It is recorded as None (empty) distinct from 0
     # (provider says zero) and distinct from a read error (unknown).
     provider_plan = _provider_sending_plan(provider_id)
+    # ONE WALK, TWO READERS. The counts below and the reconciliation check
+    # both want this; see `_membership_rows`.
+    membership_rows = _membership_rows(provider_id)
     return {
         "status": str(row.get("status") or "").lower(),
         "emails_sent": int(row.get("emails_sent") or 0),
@@ -221,7 +229,13 @@ def snapshot(provider_id=None):
         # are present and in what proportion, and a single number cannot
         # answer it. None when the campaign is too large for a bounded walk:
         # UNKNOWN is a legitimate answer here and zero is not.
-        "membership": _membership_states(provider_id),
+        "membership": _membership_states(membership_rows),
+        # THE ROSTER BEHIND THAT COUNT. Read by `_reconcile_replies` and by
+        # nothing else, never compared for movement, and deliberately NOT
+        # written to the heartbeat - see the `beat` call in `main`. `None`
+        # when the membership could not be read, which the reconciliation
+        # refuses on rather than reading as "nobody replied".
+        "membership_rows": membership_rows,
         # WHAT THE PROVIDER SAYS IT WILL SEND. A dict keyed by day, with
         # values: int (count), None (empty - nothing scheduled), or "error"
         # (could not read). The disagreement line fires when this says empty
@@ -452,6 +466,54 @@ def _halt_on_blank_content(provider_id, state, emit):
     return True
 
 
+def _reconcile_replies(provider_id, state, emit):
+    """Control: our store and the provider must agree about who has replied.
+
+    MEASURED 2026-09-24. Five leads carried `reply_received` AND
+    `reply_classified` in the store - three also `contact_stopped` or
+    `company_paused` - and were still `in_sequence` at the provider in
+    campaigns 491 and 492, both ACTIVE. They were stopped by hand. 23 of the
+    28 flagged records were correctly stopped, so this is a reconciliation
+    gap rather than an ingestion failure: ISSUE-001 is fixed and nothing
+    watched the link below it.
+
+    EVERY CYCLE, AND BEFORE THE FIRST-CYCLE EARLY RETURN, for the same reason
+    the blank-content halt runs there: "a replier is still in sequence" is a
+    standing fact rather than a transition, and a watcher restarted at 21:31
+    must not wait an interval to notice one.
+
+    It costs no extra provider call. `snapshot` has already walked the
+    membership for its own counts and the roster is handed straight over.
+
+    `live=True`. A watcher holds no write scope by default and that is
+    deliberate, so `src/replyreconcile` opens one per lead, scoped to the
+    per-lead stop route alone. Stopping can only mean somebody receives less;
+    enrolling, resuming, pausing and attaching are outside that scope and are
+    refused before the socket is opened.
+
+    WRAPPED, because reconciliation is not worth an outage: the log and the
+    heartbeat are the record of last resort and they must not depend on the
+    store being loadable or the notification layer being up.
+    """
+    rows = state.get("membership_rows")
+    if rows is None:
+        return None
+    try:
+        from src import replyreconcile
+        report = replyreconcile.check(provider_id, membership=rows,
+                                      live=True, by="bison_watch_loop",
+                                      emit=emit)
+    except Exception as exc:                                    # noqa: BLE001
+        emit(f"RECONCILE-FAILED {provider_id}: {type(exc).__name__}: "
+             f"{str(exc)[:150]}")
+        return None
+    try:
+        replyreconcile.announce(report)
+    except Exception as exc:                                    # noqa: BLE001
+        emit(f"RECONCILE-ALERT-FAILED {provider_id} {type(exc).__name__}")
+    return report
+
+
 def _known(*values):
     """True when every value is a real reading rather than an UNKNOWN.
 
@@ -464,18 +526,35 @@ def _known(*values):
     return all(v is not None for v in values)
 
 
-def _membership_states(provider_id):
-    """Per-lead status inside this campaign, counted. None if unreadable.
+def _membership_rows(provider_id):
+    """Per-lead status inside this campaign, RAW. None if unreadable.
 
     `membership()` walks and refuses past `PAGE_CAP` rather than returning a
     page - correct, and it means a client-sized campaign has no cheap answer.
     That refusal is caught and reported as None: a watcher must not die on a
     campaign it cannot count, and must not report a partial count as a whole
     one either.
+
+    SPLIT FROM `_membership_states` SO THE WALK IS PAID FOR ONCE. The
+    reconciliation check needs the same rows this counts, and two reads of one
+    campaign in one cycle would be two readers that can disagree about who is
+    in sequence - which is the defect `CAMPAIGN_QUEUE_PAGE_CAP`'s comment
+    names about the queue, arriving on the membership.
     """
     try:
-        rows = bison.membership(provider_id) or {}
+        return bison.membership(provider_id) or {}
     except Exception:
+        return None
+
+
+def _membership_states(rows):
+    """Those rows, counted by status. None stays None.
+
+    A dict rather than a count, because the question is which statuses are
+    present and in what proportion. UNKNOWN is a legitimate answer and zero
+    is not.
+    """
+    if rows is None:
         return None
     out = {}
     for status in rows.values():
@@ -553,7 +632,14 @@ def main(argv=None):
 
         # EVERY poll, including the ones that emit nothing. This is what makes
         # an empty event log readable as "unchanged" rather than "died".
-        watchsink.beat("bison", campaign=watched, state=current)
+        #
+        # THE PICTURE, NOT THE ROSTER. `membership_rows` is one entry per lead
+        # and the heartbeat is a state summary that is rewritten every poll
+        # and read by humans; `membership` already carries the counts, which
+        # is the fact a heartbeat is for.
+        watchsink.beat("bison", campaign=watched,
+                       state={k: v for k, v in current.items()
+                              if k != "membership_rows"})
 
         # BEFORE the first-cycle early return, deliberately. Every other
         # check here compares against `previous` and so cannot run on the
@@ -562,6 +648,9 @@ def main(argv=None):
         # 21:31 must not wait an interval to notice one. The incident it
         # exists for was true for a day and a half.
         _halt_on_blank_content(watched, current, emit)
+        # Same argument, one link further down the same chain: a replier the
+        # provider still calls sendable is a standing fact, not a transition.
+        _reconcile_replies(watched, current, emit)
 
         if previous is None:
             emit(f"WATCHING {watched} status={current['status']} "
