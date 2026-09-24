@@ -326,6 +326,16 @@ class EveryPostedAlertNamesItsObject(_Repaired):
                           fields={"checkpoint": "12 of 12 monitors up"})
         self.assertEqual(row["status"], notify.PLANNED)
 
+    def test_an_unconfigured_row_keeps_its_own_reason(self):
+        """A workspace with no channel is a configuration problem somebody
+        fixes in a minute. Overwriting that status with "it named nothing"
+        would hide the actionable reason behind the one that is not, and
+        `/admin/slack` counts UNCONFIGURED rows by status."""
+        row = notify.plan(notify.POSITIVE_REPLY, "nowhere-workspace",
+                          fields={})
+        self.assertEqual(row["status"], notify.UNCONFIGURED)
+        self.assertIn("no Slack channel", row["why"])
+
     def test_a_kind_with_no_entry_still_needs_an_identifier(self):
         """The default is not a waiver."""
         self.assertFalse(notify.names_its_object(notify.MX_ANOMALY, {"a": 1})[0])

@@ -849,7 +849,14 @@ def plan(event_type, workspace=None, fields=None, ids=None, actions=(),
     # the missing field names in `why`, so the gap is visible in
     # `/notifications` and in the history, and a developer who broke a
     # builder finds out here rather than from a channel full of nothing.
-    if decision["destination"] in NAMED_DESTINATIONS:
+    #
+    # Only a row that would otherwise POST is gated. A decision that already
+    # says UNCONFIGURED or SUPPRESSED carries a reason `/admin/slack` counts -
+    # "this workspace has no channel" is a configuration problem somebody
+    # fixes, and overwriting it with "it named nothing" would hide the one
+    # that can be acted on behind the one that cannot.
+    if (decision["status"] == PLANNED
+            and decision["destination"] in NAMED_DESTINATIONS):
         named, missing = names_its_object(event_type, payload, ids, workspace)
         if not named:
             decision = dict(decision, status=SUPPRESSED,
