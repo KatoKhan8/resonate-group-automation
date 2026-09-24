@@ -57,7 +57,8 @@ from src import llm                                              # noqa: E402
 from src.providers import load_env                               # noqa: E402
 
 PASS, FAIL, NA = "pass", "fail", "n/a"
-CHECKS = ("numbers", "scope", "terms", "promise", "language", "length")
+CHECKS = ("numbers", "scope", "terms", "promise", "language", "length",
+          "subject")
 
 #: An offer the agent may make. Anything else that reads like a promise is
 #: scored against, because `slackfollowup` is the only mechanism there is.
@@ -71,6 +72,66 @@ PROMISE = re.compile(
     r"i'?ll let you know|coming (?:up|back) to you|"
     r"i'?ll (?:check|look|find out|get back|update|send|post|follow up))",
     re.I)
+
+
+#: SUBJECT. What the question is ABOUT, and what an answer about that
+#: same thing has to say. Each row is (name, asked, answered): if `asked`
+#: matches the question, `answered` must match the reply.
+#:
+#: ## THE CHECK THE FIRST AUDIT DID NOT HAVE
+#:
+#: `numbers` reads the turn's own `guard`, which fires when a figure is
+#: ABSENT from the material. It cannot fire on a figure that is present,
+#: correct, and answers a different question than the one asked. The first
+#: row of the 2026-09-23 replay is exactly that: **`what is running` was
+#: answered with MONITOR HEALTH**, and it scored clean on all six checks,
+#: because every number in it was real.
+#:
+#: So this asserts the answer NAMES THE THING THE QUESTION ASKED ABOUT.
+#: Both languages, because the corpus is mostly Croatian.
+#:
+#: **`n/a` WHERE NO SUBJECT IS FOUND, NEVER `pass`.** "what's the status on
+#: that?" names nothing extractable, and scoring it `pass` would report a
+#: check that had not run as a check that had succeeded - which is the
+#: `terms` column of the last audit, 32 of 32 `n/a` read as 32 passes.
+SUBJECTS = (
+    ("campaign",
+     r"kampanj|campaign|pu[sš]tene|aktivne|\brunning\b|\blive\b|"
+     r"[sš]to se vrti|what'?s? (?:on|going out)",
+     r"kampanj|campaign|\b\d{3}\b"),
+    ("sender",
+     r"\bsender|\bdomen|\bdomain|mailbox|\binbox|[sš]alje",
+     r"\bsender|\bdomen|\bdomain|mailbox|\binbox"),
+    ("lead",
+     r"\blead|kontakt|\bcontact|prospect",
+     r"\blead|kontakt|\bcontact|prospect"),
+    ("meeting",
+     r"\bmeeting|\bpoziv|\bcall\b|sastan",
+     r"\bmeeting|\bpoziv|\bcall|sastan"),
+    ("reply",
+     r"\brepl(?:y|ies|ied)|odgovor",
+     r"\brepl|odgovor"),
+    ("approval",
+     r"approv|odobr|awaiting|[cč]eka",
+     r"approv|odobr|awaiting|[cč]eka"),
+    ("report",
+     r"\breport|izvje[sš]taj|izvu[cć]i",
+     r"\breport|izvje[sš]taj|\bpdf"),
+)
+
+#: A campaign id typed in the question. If somebody asks about 487, an
+#: answer about 489 is wrong however right its numbers are.
+CAMPAIGN_ID = re.compile(r"\b(\d{3})\b")
+
+
+def subjects_of(text):
+    """Which subjects this question is about, and what the answer must say."""
+    low = str(text or "").lower()
+    out = [(name, answered) for name, asked, answered in SUBJECTS
+           if re.search(asked, low, re.I)]
+    for ident in sorted(set(CAMPAIGN_ID.findall(low))):
+        out.append(("id:" + ident, r"\b" + ident + r"\b"))
+    return out
 
 
 def log_path(root=None):
@@ -102,24 +163,77 @@ def questions(path, since=None):
     return out
 
 
+#: A catalogue phrasing: a blockquote line, wrapped in emphasis.
+QUOTE = re.compile(r"^\s*>\s?(.*)$")
+
+#: Longest first, so `**` is tried before `*` and a bold phrasing is not
+#: read as an italic one with a stray asterisk at each end.
+EMPHASIS = ("***", "**", "*", "_")
+
+
+def _unwrap(text):
+    """Strip one matched pair of emphasis markers, or return None.
+
+    None means the block is not closed yet - the catalogue wraps a phrasing
+    that ran onto a second line in ONE pair spanning both lines, so an
+    unclosed opener is the signal to keep reading rather than a malformed
+    entry.
+    """
+    text = text.strip()
+    for mark in EMPHASIS:
+        if text.startswith(mark):
+            if text.endswith(mark) and len(text) > 2 * len(mark):
+                return text[len(mark):-len(mark)].strip()
+            return None
+    return text
+
+
 def catalogue_questions(root=None):
     """The question catalogue's own examples, as a second corpus.
 
     `docs/SLACK-AGENT-QUESTION-CATALOGUE.md` was mined from 6,091 messages.
     Its examples are real phrasings that may not appear in the agent's own
     log, because most of them were asked before the agent existed.
+
+    ## THIS PARSED THE WRONG SHAPE AND SCORED ZERO QUESTIONS
+
+    Until 2026-09-24 the pattern here was `- "quoted line"`. The catalogue
+    has never used that shape: every phrasing in it is a markdown blockquote
+    in emphasis -
+
+        > *jesu puštene kampanje sada?*
+        > **can you please stop sending messages to people who have
+        > replied????**
+
+    - so `--catalogue` contributed NOTHING to every run that passed it, and
+    the run said `replaying 32 question(s)` either way. **A corpus flag that
+    silently adds nothing looks exactly like a corpus with nothing in it.**
+    That is why this raises when it parses none: see `main`.
+
+    Consecutive quote lines are SEPARATE phrasings, not one block - the
+    catalogue lists them back to back with no blank line between - so a
+    line is its own question unless its emphasis is left open, which is the
+    only thing that makes it run on.
     """
     root = root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     path = os.path.join(root, "docs", "SLACK-AGENT-QUESTION-CATALOGUE.md")
     if not os.path.exists(path):
         return []
-    out = []
+    out, pending = [], []
     with open(path, encoding="utf-8") as handle:
         for line in handle:
-            hit = re.match(r'^\s*[-*]\s+"(.+?)"\s*$', line)
-            if hit and len(hit.group(1)) > 8:
-                out.append({"text": hit.group(1), "channel": None,
-                            "user": None, "at": None, "source": "catalogue"})
+            hit = QUOTE.match(line)
+            if not hit:
+                pending = []            # a gap closes an unterminated block
+                continue
+            pending.append(hit.group(1).strip())
+            text = _unwrap(" ".join(pending))
+            if text is None:
+                continue                # emphasis still open: read on
+            pending = []
+            if len(text) > 8:
+                out.append({"text": text, "channel": None, "user": None,
+                            "at": None, "source": "catalogue"})
     return out
 
 
@@ -177,6 +291,19 @@ def score(question, result):
         sentences = len([s for s in re.split(r"[.!?]\s", reply) if s.strip()])
         marks["length"] = PASS if 1 <= sentences <= 8 else FAIL
 
+    # SUBJECT. The right number answering the wrong question. See SUBJECTS.
+    wanted = subjects_of(question["text"])
+    if not reply or not wanted:
+        marks["subject"] = NA
+    else:
+        missed = [name for name, answered in wanted
+                  if not re.search(answered, reply, re.I)]
+        marks["subject"] = FAIL if missed else PASS
+        if missed:
+            # NAME WHAT WAS MISSED. "subject failed" sends the next reader
+            # back to the transcript; "subject: campaign" does not.
+            result["subject_missed"] = missed
+
     return marks
 
 
@@ -218,7 +345,21 @@ def main(argv=None):
 
     corpus = questions(args.log or log_path(), since=args.since)
     if args.catalogue:
-        corpus += catalogue_questions()
+        extra = catalogue_questions()
+        if not extra:
+            # THE CONTROL. `--catalogue` parsed the wrong bullet shape for
+            # its whole life and added zero questions to every run, and the
+            # only visible difference was a count nobody had a second
+            # number to compare against. A corpus flag that finds nothing
+            # is a broken parser far more often than an empty catalogue, so
+            # it stops here instead of quietly replaying the log twice.
+            print("--catalogue parsed NO questions from "
+                  "docs/SLACK-AGENT-QUESTION-CATALOGUE.md. The parser and "
+                  "the document disagree about the shape of a phrasing; "
+                  "fix `catalogue_questions`, do not ignore this.",
+                  file=sys.stderr)
+            return 2
+        corpus += extra
     if args.limit:
         corpus = corpus[:args.limit]
 

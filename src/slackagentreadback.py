@@ -24,6 +24,7 @@ import os
 import datetime as _dt
 import json as _json
 import os as _os
+import threading as _threading
 import time
 
 from . import campaigns as _campaigns
@@ -64,6 +65,101 @@ UNKNOWN = "UNKNOWN"
 QUEUE_PAGE_CAP = 400
 
 
+# ---------------------------------------------------------- readback cache
+
+#: Seconds a provider readback may be reused. MEASURED, not chosen: the
+#: 2026-09-23 replay put p50 at 24.3s and p95 at 132.3s, and 100% of that
+#: was serial provider HTTP. A five-tool turn reads the SAME campaign up to
+#: four times - `sends_today` and `activity_this_week` and `weekly_plan`
+#: each walk the workspace's campaign list - so the repeats are within one
+#: turn, and one turn is well inside a minute even at the p95 this exists
+#: to fix.
+#:
+#: **SIXTY SECONDS IS THE POINT, NOT AN IMPLEMENTATION DETAIL.** It is short
+#: enough that a campaign paused during a conversation is visible in the
+#: next question, and long enough to collapse one turn's repeats. Raising it
+#: buys a little latency and starts answering "is it still sending?" out of
+#: a value from several questions ago.
+READBACK_TTL = 60.0
+
+#: `(route, key) -> (monotonic_at, iso_at, value)`. PER-PROCESS AND NEVER
+#: PERSISTED. A cached "491 sent 494 today" surviving a restart would be
+#: read as today's number tomorrow, and the restart is exactly the moment
+#: nobody is watching.
+_CACHE = {}
+_CACHE_LOCK = _threading.Lock()
+
+#: One lock per key, so two threads asking for the SAME campaign at the same
+#: moment make one request rather than two. This matters on the first turn
+#: after a restart, when the cache is cold and the parallel per-campaign
+#: reads all miss at once - without it the cache saves nothing on precisely
+#: the turn that needs it most.
+_KEY_LOCKS = {}
+
+
+def cache_clear():
+    """Forget everything. For tests, and for a caller that must not reuse."""
+    with _CACHE_LOCK:
+        _CACHE.clear()
+        _KEY_LOCKS.clear()
+
+
+def cache_state():
+    """`{(route, key): age_seconds}` - what is held and how old it is."""
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        return {key: round(now - entry[0], 2) for key, entry in _CACHE.items()}
+
+
+def _key_lock(key):
+    with _CACHE_LOCK:
+        lock = _KEY_LOCKS.get(key)
+        if lock is None:
+            lock = _KEY_LOCKS[key] = _threading.Lock()
+        return lock
+
+
+def cached(route, key, fetch, ttl=None):
+    """`fetch()` at most once per `ttl` per `(route, key)`.
+
+    Returns `(value, fetched_at_iso, age_seconds)`. **`fetched_at_iso` is
+    when the provider was ACTUALLY asked**, never when the cache was read -
+    the whole risk of a cache on this path is a stale number wearing a fresh
+    timestamp, and every caller here stamps its output with what it gets
+    back from this.
+
+    AN ERROR IS NOT CACHED. A provider that just failed will be asked again
+    by the next caller: caching the failure would turn one transient outage
+    into a minute of them, and this module's contract is that a readback
+    which fails SAYS SO rather than returning a cached or invented number.
+    Nothing is written on the raising path, so the previous good value is
+    also left alone rather than being replaced by the failure.
+    """
+    ttl = READBACK_TTL if ttl is None else ttl
+    full = (route, str(key))
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        entry = _CACHE.get(full)
+    if entry and (now - entry[0]) < ttl:
+        return entry[2], entry[1], round(now - entry[0], 2)
+
+    with _key_lock(full):
+        # SECOND LOOK, HOLDING THE KEY LOCK. The thread that waited here was
+        # waiting for the fetch that is now in the cache; asking again would
+        # make the coalescing pointless.
+        now = time.monotonic()
+        with _CACHE_LOCK:
+            entry = _CACHE.get(full)
+        if entry and (now - entry[0]) < ttl:
+            return entry[2], entry[1], round(now - entry[0], 2)
+
+        value = fetch()
+        stamped = (time.monotonic(), _now_iso(), value)
+        with _CACHE_LOCK:
+            _CACHE[full] = stamped
+        return value, stamped[1], 0.0
+
+
 def queue(campaign_id):
     """The provider's pre-send queue for one campaign, walked far enough.
 
@@ -76,10 +172,50 @@ def queue(campaign_id):
     Raises whatever the provider raises. A caller that cannot read a queue
     must report that campaign unreadable; it must never treat the refusal as
     an empty queue, because a campaign nobody could read is not a campaign
-    that sent nothing.
+    that sent nothing. `cached` does not store a raising fetch, so that
+    stays true with the cache in front of it.
+
+    CACHED ON `queue`, SEPARATELY FROM `campaign`. The two routes are read
+    by different callers in different combinations - `sending_domains` wants
+    only the queue, `sends_today` wants only the row - so one key covering
+    both would evict a value the other caller was about to reuse.
     """
     from .providers import bison
-    return bison.scheduled_emails(campaign_id, cap=QUEUE_PAGE_CAP) or []
+    rows, _at, _age = cached(
+        "queue", campaign_id,
+        lambda: bison.scheduled_emails(campaign_id, cap=QUEUE_PAGE_CAP) or [])
+    return rows
+
+
+def sending_schedule(campaign_id, day):
+    """What the provider PLANS to send for one campaign on one named day.
+
+    ## A THIRD PROVIDER READ THAT WAS NOT IN THIS MODULE AT ALL
+
+    Found 2026-09-24 by profiling `weekly_plan` with the campaign and queue
+    reads stubbed out: it still took 3.4 seconds and made **thirty live
+    HTTPS requests**. `slackagenttools._forward_window` called
+    `bison.sending_schedule` directly, three days by ten campaigns, serially
+    - so this module's docstring saying two functions reach the provider and
+    they are "the ONLY provider calls here" was true of THIS FILE and not of
+    the agent. The readback cache and the per-campaign fan-out both missed
+    it for the same reason: it was not here to be found.
+
+    It is here now, so it is cached with the rest and counted against the
+    same provider budget.
+
+    RAISES WHATEVER THE PROVIDER RAISES, `SendingScheduleEmpty` included.
+    That exception is a RESULT - the provider's own "no emails scheduled for
+    this period" - and the caller distinguishes it from a failed read. It is
+    not cached, because `cached` stores nothing on a raising fetch, which
+    means an empty day is re-asked; that is the safe direction, since a day
+    that fills up between two questions must not answer "none scheduled".
+    """
+    from .providers import bison
+    row, _at, _age = cached(
+        "schedule:%s" % day, campaign_id,
+        lambda: bison.sending_schedule(campaign_id, day))
+    return row
 
 
 def newest_reply_id():
@@ -373,14 +509,24 @@ def campaign_by_id(campaign_id):
     READ VERBS ONLY - `campaign` and `scheduled_emails` are GETs. A write
     from this path is refused at the transport by `providerwrites`, which is
     not imported here and whose guard every mutating verb must pass.
+
+    CACHED, AND `read_at` IS THE FETCH TIME RATHER THAN THIS CALL'S.
+    Stamping a reused value with the moment it was reused is the failure
+    mode a readback cache has - the number would be up to a minute old and
+    every report of it would say it was current. `read_age_seconds` carries
+    how old, so a reader who cares can see it without knowing this exists.
     """
     from .providers import bison
-    out = {"read_at": _now_iso(), "campaign_id": str(campaign_id)}
+    out = {"campaign_id": str(campaign_id)}
     try:
-        row = bison.campaign(campaign_id) or {}
+        row, fetched_at, age = cached(
+            "campaign", campaign_id, lambda: bison.campaign(campaign_id) or {})
     except Exception as exc:                                    # noqa: BLE001
+        out["read_at"] = _now_iso()
         out["_error"] = f"campaign readback failed: {type(exc).__name__}"
         return out
+    out["read_at"] = fetched_at
+    out["read_age_seconds"] = age
     out.update({
         "status": row.get("status"),
         "name": row.get("name"),

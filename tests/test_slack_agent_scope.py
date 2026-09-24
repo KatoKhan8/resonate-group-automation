@@ -421,10 +421,7 @@ class TheTurnACTUALLYAppliesTheBackstop(ScopeEnvironment):
         self.assertIsNone(why)
         self.assertNotIn("someone@example.com", checked)
 
-    def test_a_whole_turn_in_a_client_channel_discards_a_leaking_answer(self):
-        """End to end: a model that names another client is not posted."""
-        from src import slackconversation as conversation
-
+    def leaking_model(self):
         class Leaks:
             model = "leaks"
 
@@ -432,14 +429,64 @@ class TheTurnACTUALLYAppliesTheBackstop(ScopeEnvironment):
                 if "Answer with JSON" in prompt:
                     return '{"tools": [{"name": "timeline"}], "clarify": null}'
                 return "Beta and Qwen are both busy with EmailBison."
+        return Leaks()
 
-        result = conversation.respond("how is it going?",
-                                      channel=ALPHA_CHANNEL, user="U_ALPHA",
-                                      model=Leaks(), rows=ROWS)
+    def test_a_whole_turn_in_a_client_channel_discards_a_leaking_answer(self):
+        """End to end: a model that names another client is not posted.
+
+        ## THIS ERRORED FOR A DAY AND THE BACKSTOP WENT UNPROVEN
+
+        `CLIENT_CHANNEL_GAG` was set on 2026-09-23 and returns `reply: None`
+        before any of this runs, so `assertNotIn("Beta", None)` raised a
+        TypeError and the ONLY end-to-end proof of the scope backstop
+        stopped running. It did not go red for a reason anyone would read
+        as "the backstop is unproven" - it went red as a TypeError, which
+        looks like a broken test rather than a missing guarantee.
+
+        **The gag is not what is under test here and must not decide
+        whether this runs.** The gag is a temporary operator decision that
+        is on its way out; the backstop is permanent, and the day the gag
+        lifts is exactly the day this has to have been passing. So it is
+        lifted for the duration and the gag gets its own test below.
+        """
+        from src import slackconversation as conversation
+        import unittest.mock as mock
+
+        with mock.patch.object(conversation, "CLIENT_CHANNEL_GAG", ""):
+            result = conversation.respond("how is it going?",
+                                          channel=ALPHA_CHANNEL,
+                                          user="U_ALPHA",
+                                          model=self.leaking_model(),
+                                          rows=ROWS)
         self.assertEqual(result["scope"], slackscope.CLIENT)
+        self.assertIsNotNone(
+            result["reply"],
+            "the turn produced no answer at all with the gag lifted, so "
+            "this proves nothing about the backstop. See the docstring.")
         self.assertNotIn("Beta", result["reply"])
         self.assertNotIn("Qwen", result["reply"])
         self.assertIn("guard", result)
+
+    def test_the_gag_itself_posts_nothing_to_a_client_channel(self):
+        """The other state, so lifting the gag cannot silently pass both.
+
+        With the gag SET, the same leaking model must not reach the channel
+        at all - and the turn has to say that is why, rather than looking
+        like an answer that happened to be empty.
+        """
+        from src import slackconversation as conversation
+
+        self.assertTrue(conversation.CLIENT_CHANNEL_GAG,
+                        "the gag is lifted. If that is the operator's "
+                        "decision, delete this test with it - do not leave "
+                        "it asserting a state the system is no longer in.")
+        result = conversation.respond("how is it going?",
+                                      channel=ALPHA_CHANNEL, user="U_ALPHA",
+                                      model=self.leaking_model(), rows=ROWS)
+        self.assertEqual(result["scope"], slackscope.CLIENT)
+        self.assertIsNone(result["reply"])
+        self.assertEqual(result["how"], "gagged")
+        self.assertTrue(result.get("gag_reason"))
 
 
 class AddressesNeverLeave(ScopeEnvironment):

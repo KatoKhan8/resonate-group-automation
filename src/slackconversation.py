@@ -520,11 +520,76 @@ def keyword_plan(question, scope):
     return [{"name": name} for name in chosen[:tools.MAX_CALLS_PER_TURN]]
 
 
+#: "What is going on." The question shape that made the model fan out to
+#: five tools and then summarise all five readbacks.
+#:
+#: MEASURED 2026-09-23: all six length failures in the replay were this one
+#: shape, answered in 9-11 sentences against a prompt asking for two to six.
+#: **The cause is not the prompt.** Five tools make a large material and the
+#: model summarises what it is given, so the length rule loses to the volume
+#: of material and the fix belongs at the PLAN. `working_on` answers exactly
+#: this question in ONE call, which makes it an answer-quality fix that also
+#: removes four provider-touching calls from the commonest question there is.
+BROAD_QUESTION = re.compile(
+    r"^\W*(?:so\s+)?(?:"
+    # "what's new" / "what is happening" / "what's the status"
+    r"what(?:'?s|\s+is|\s+are)?\s+"
+    r"(?:new|up|going\s+on|happening|the\s+status|status)"
+    # "what are we working on" - and "we working on", which is how it is
+    # actually typed. `are` optional after the pronoun, not required.
+    r"|what(?:'?s|\s+is|\s+are)?\s+(?:we|you)(?:'?re|\s+are)?\s+"
+    r"(?:working\s+on|doing|up\s+to)"
+    r"|what\s+is\s+running"
+    r"|what\s+can\s+we\s+do(?:\s+now)?"
+    r"|how(?:'?s|\s+is|\s+are)?\s+"
+    r"(?:it\s+going|things|we\s+doing|everything(?:\s+going)?)"
+    r"|status(?:\s+update)?|update"
+    # Croatian. `[sš]t[oa]` covers što, sto, šta and sta - all four are
+    # typed in these channels and a matcher that only knows the diacritic
+    # one scores the half of the corpus that bothers with it.
+    r"|[sš]t[oa]\s+(?:ima|radimo|se\s+(?:radi|vrti|doga[dđ]a))"
+    r"|kaj\s+ima"
+    r"|na\s+[cč]emu\s+(?:smo|radimo)"
+    r"|kak(?:o)?\s+(?:ide|stojimo)(?:\s+sve)?"
+    r"|gdje\s+smo"
+    r")\W*$", re.I)
+
+#: A question that NAMES something is not broad, whatever it opens with.
+#: "what's the status on 487" wants that campaign, and answering it with the
+#: whole-workspace summary is the wrong answer arriving faster.
+NAMES_SOMETHING = re.compile(
+    r"\b\d{3,}\b|@|\b[\w-]+\.(?:com|net|org|io|ai|co|hr|de|eu|"
+    r"com\.au|live|shop|online)\b", re.I)
+
+
+def broad_question(question, scope):
+    """Is this the "what is going on" shape, naming nothing in particular?
+
+    Deliberately narrow: it must match END TO END, so "what's new with the
+    bounce rate on 491" is not caught by the "what's new" at its head. A
+    false positive here answers a specific question with a summary, which
+    is worse than the fan-out it replaces - the fan-out at least contained
+    the answer somewhere.
+    """
+    text = str(question or "").strip()
+    if len(text) > 90 or NAMES_SOMETHING.search(text):
+        return False
+    return bool(BROAD_QUESTION.match(text))
+
+
 def plan(question, scope, past, model=None):
     """`(calls, clarifying question or None, how it was planned)`."""
     catalogue = tools.catalogue(scope)
     if not catalogue.strip():
         return [], None, "no tool is available in this scope"
+    # BEFORE THE MODEL, and that is the second saving. Planning is itself a
+    # model round trip; a question this shape has exactly one right plan,
+    # so asking which tools to use is a call spent to be told what we
+    # already know. Scope still decides: `working_on` is checked against
+    # THIS channel's catalogue rather than assumed available.
+    if broad_question(question, scope) and "working_on" in catalogue:
+        return ([{"name": "working_on", "argument": None}], None,
+                "broad question -> working_on")
     if model is None or isinstance(model, llm.NoModel):
         return keyword_plan(question, scope), None, "keywords (no model)"
     prompt = PLAN_PROMPT.format(budget=tools.MAX_CALLS_PER_TURN,
