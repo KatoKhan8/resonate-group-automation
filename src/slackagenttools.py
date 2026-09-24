@@ -748,16 +748,45 @@ def account_status(scope, argument=None):
     out["ledger_carries_sends"] = ledger_ok
 
     state, evidence = _account_state(record, detail, meetings_here, ledger_ok)
-    if state is None:
-        return dict(
-            out, status=None, status_evidence=evidence,
-            _error="account status is not answerable for this workspace "
-                   "yet: the ledger is not recording provider-confirmed "
-                   "sends, so an account with no touch in it cannot be "
-                   "called untouched. This resolves when the watchers' "
-                   "write-back is live.")
     out["status_evidence"] = evidence
     out["status"] = state
+    if state is None:
+        # ## IT USED TO RETURN HERE, AND THE ANSWER WAS ONE SENTENCE
+        #
+        # The early return meant the personas, the last confirmed touch,
+        # the replies by class and the coverage caveats were NEVER
+        # COMPUTED - not filtered out downstream, never built. So "what is
+        # happening with <domain>" answered with a sentence about a ledger
+        # write-back and not one word about the account, including whether
+        # they had asked to be left alone. All of that is read from LOCAL
+        # state and none of it depends on the ledger witness.
+        #
+        # `_error` makes it worse on one path and it is worth naming
+        # exactly: `render` dumps the whole dict and drops nothing, but
+        # `slackconversation.deterministic_answer` - the no-model and
+        # model-failure path - renders the `_error` line INSTEAD of the
+        # readback. So on the day the model is down, the answer to this
+        # question was one sentence about a write-back.
+        #
+        # **ONE UNANSWERABLE FIELD IS NOT AN UNANSWERABLE ACCOUNT.** This
+        # module already holds that line one level down - `unanswerable` is
+        # its own count in `_account_counts` and is never folded into
+        # `untouched` - and this is the same rule applied to the answer
+        # rather than to the tally. Operator, 2026-09-24: these questions
+        # answer FROM WHAT EXISTS.
+        #
+        # THE INVARIANT IS UNCHANGED AND IS THE WHOLE POINT: `status` stays
+        # None, `untouched` is still never asserted, and the reason is
+        # stated in the material rather than implied by an absence. Only
+        # the KEY moved, from `_error` - which means "this readback
+        # failed" - to one that means "this FIELD has no answer", because
+        # the readback did not fail.
+        out["status_unanswerable"] = (
+            "the account's STATE cannot be asserted for this workspace "
+            "yet: the ledger is not recording provider-confirmed sends, so "
+            "an account with no touch in it cannot be called untouched. "
+            "Everything else below is read from local state and stands. "
+            "This resolves when the watchers' write-back is live.")
 
     personas = []
     for entry in (detail or {}).get("contacts") or []:

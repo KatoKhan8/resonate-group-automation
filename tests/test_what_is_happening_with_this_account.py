@@ -218,10 +218,23 @@ class TheLedgerIsAskedWhetherItIsRecording(AccountStatus):
     def test_untouched_is_withheld_while_the_ledger_is_blind(self):
         """THE POINT OF THE WHOLE CLASS. An account with nothing in the
         ledger, on a workspace whose ledger is not recording sends, is not
-        an untouched account - it is an unanswerable one."""
+        an untouched account - it is an unanswerable one.
+
+        THE KEY MOVED ON 2026-09-24 AND THE INVARIANT DID NOT. This used to
+        assert `out["_error"]`, which is the MECHANISM rather than the
+        guarantee: `_error` means "this readback failed", and
+        `slackconversation` renders that one line and discards the rest of
+        the dict. The readback does not fail - one FIELD has no answer - so
+        the reason now travels on `status_unanswerable` and everything the
+        account does have survives. See the class below.
+        """
         out = self.ask_with_witness([record()], False)
         self.assertIsNone(out["status"])
-        self.assertIn("not recording", out["_error"])
+        self.assertIn("not recording", out["status_unanswerable"])
+        self.assertNotIn(
+            "_error", out,
+            "an unanswerable STATE was reported as a failed READBACK, and "
+            "the material builder throws away everything after it.")
 
     def test_untouched_is_asserted_once_the_ledger_is_trusted(self):
         out = self.ask_with_witness([record()], True)
@@ -622,3 +635,118 @@ class PersonasStepsTouchesAndReplies(AccountStatus):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ============ 7. AN UNANSWERABLE STATE IS NOT AN UNANSWERABLE ACCOUNT
+
+class WhatSurvivesWhenTheStateCannotBeAsserted(AccountStatus):
+    """OPERATOR, 2026-09-24: these questions answer FROM WHAT EXISTS.
+
+    `account_status` used to `return` the moment `_account_state` came back
+    None, on an `_error` key. That is not a cosmetic choice:
+    `slackconversation`'s material builder renders an `_error` line **and
+    discards the rest of the dict**. So "what is happening with <domain>"
+    answered with one sentence about a ledger write-back and not one word
+    about the account - not the personas, not the last confirmed touch, not
+    the replies, not whether they had asked to be left alone.
+
+    None of that depends on the ledger witness. It is all local state.
+
+    **This module already holds the same line one level down**, where
+    `unanswerable` is its own count and is never folded into `untouched`.
+    These tests are that rule applied to the ANSWER rather than the tally.
+    """
+
+    def blind(self, rows, domain="acme.test"):
+        """The witness says the ledger is NOT recording this workspace."""
+        scope = slackscope.Scope(slackscope.INTERNAL, source="test")
+        with mock.patch.object(tools, "_records", lambda slug: [
+                r for r in rows if r.get("client") == slug]),                 mock.patch.object(tools, "_default_workspace",
+                                  lambda: "alpha"),                 mock.patch.object(tools, "_ledger_carries_sends",
+                                  lambda slug, now=None: False),                 mock.patch("src.slackmeetings.by_domain",
+                           lambda workspace=None, **k: []):
+            return tools.account_status(scope, domain)
+
+    def trusting(self, rows, domain="acme.test"):
+        scope = slackscope.Scope(slackscope.INTERNAL, source="test")
+        with mock.patch.object(tools, "_records", lambda slug: [
+                r for r in rows if r.get("client") == slug]),                 mock.patch.object(tools, "_default_workspace",
+                                  lambda: "alpha"),                 mock.patch.object(tools, "_ledger_carries_sends",
+                                  lambda slug, now=None: True),                 mock.patch("src.slackmeetings.by_domain",
+                           lambda workspace=None, **k: []):
+            return tools.account_status(scope, domain)
+
+    def test_the_state_is_still_withheld(self):
+        """FIRST, because everything below is only safe while this holds."""
+        out = self.blind([record()])
+        self.assertIsNone(out["status"])
+        self.assertNotEqual(out.get("status"), tools.UNTOUCHED)
+
+    def test_it_is_not_reported_as_a_failed_readback(self):
+        out = self.blind([record()])
+        self.assertNotIn("_error", out)
+        self.assertTrue(out["status_unanswerable"])
+
+    def test_the_personas_survive(self):
+        out = self.blind([record(contacts=[contact(), contact(key="bo")])])
+        self.assertEqual(len(out["personas"]), 2)
+        self.assertEqual({p["contact"] for p in out["personas"]},
+                         {"ada", "bo"})
+
+    def test_the_confirmed_touches_survive(self):
+        out = self.blind([record(events_=[touch(step=2)])])
+        self.assertIsNotNone(out["last_touch"])
+        self.assertEqual(out["personas"][0]["step"], 2)
+
+    def test_the_replies_survive(self):
+        out = self.blind([record(events_=[touch(), touch(
+            kind=events.REPLY_RECEIVED, step=2)])])
+        self.assertIn("replies_by_class", out)
+
+    def test_the_caveats_travel_with_it(self):
+        """The answer is wider now, so the things it cannot see have to be
+        stated in it rather than implied by an absence."""
+        out = self.blind([record()])
+        self.assertTrue(out["touches_are_confirmed_only"])
+        self.assertIn("CONFIRMED touches only", out["touch_coverage_note"])
+        self.assertIn("states_without_a_source", out)
+
+    def test_a_trusted_ledger_is_unchanged_by_any_of_this(self):
+        """THE CONTROL. If the fall-through had broken the answering path,
+        every test in section 1 would still pass - they use `ask`, which
+        does not pin the witness."""
+        out = self.trusting([record()])
+        self.assertEqual(out["status"], tools.UNTOUCHED)
+        self.assertNotIn("status_unanswerable", out)
+
+    def test_the_readback_the_model_is_handed_carries_the_account(self):
+        """END TO END through the real renderer.
+
+        `tools.render` dumps the whole dict and drops nothing, so the
+        defect was never a filter - it was that the fields did not EXIST.
+        This asserts they reach the prompt.
+        """
+        # NO TOUCH. An account WITH one is answerable even while the
+        # witness says no - "evidence present beats evidence missing" - so
+        # a touched record would test the wrong branch, which is what the
+        # first version of this did.
+        out = self.blind([record(contacts=[contact(key="ada")])])
+        self.assertIsNone(out["status"])
+        text = tools.render([("account_status", "acme.test", out)])
+        self.assertIn("cannot be asserted", text)
+        self.assertIn("ada", text,
+                      "the account itself never reached the model")
+
+    def test_the_no_model_path_no_longer_answers_with_the_refusal_alone(self):
+        """`deterministic_answer` renders an `_error` line INSTEAD of the
+        readback. That is the path taken when the model is down, and it is
+        where an `_error` on this tool cost the whole answer."""
+        from src import slackconversation as conversation
+        out = self.blind([record(contacts=[contact(key="ada")])])
+        scope = slackscope.Scope(slackscope.INTERNAL, source="test")
+        text = conversation.deterministic_answer(
+            [("account_status", "acme.test", out)], scope)
+        self.assertNotIn(
+            "account_status: the account's STATE cannot", text,
+            "the deterministic answer is the refusal line and nothing "
+            "else, which is what `_error` on this tool used to produce")
