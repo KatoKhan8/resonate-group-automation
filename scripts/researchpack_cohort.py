@@ -150,7 +150,7 @@ def source_people(work_dir):
     return people
 
 
-def selection(work_dir, wanted, client):
+def selection(work_dir, wanted, client, cap=True):
     """The accounts `batch1_build` would put in these cohorts tomorrow.
 
     Returns `(by_cohort, held, subjects)`. `by_cohort` maps a cohort name to
@@ -187,9 +187,10 @@ def selection(work_dir, wanted, client):
     subjects = {}
     for cohort in wanted:
         entries = picked.get(cohort, [])
-        cap = COHORTS[cohort]["campaigns"] * PER_CAMPAIGN
+        ceiling = (COHORTS[cohort]["campaigns"] * PER_CAMPAIGN if cap
+                   else len(entries))
         kept = []
-        for email, domain in entries[:cap]:
+        for email, domain in entries[:ceiling]:
             person = people.get(email) or {}
             subject = subjects.get(domain)
             if subject is None:
@@ -216,9 +217,9 @@ def selection(work_dir, wanted, client):
                                  if x),
             })
         by_cohort[cohort] = kept
-        if len(entries) > cap:
-            held["over the %s cohort cap of %d" % (cohort, cap)] += (
-                len(entries) - cap)
+        if len(entries) > ceiling:
+            held["over the %s cohort cap of %d" % (cohort, ceiling)] += (
+                len(entries) - ceiling)
     return by_cohort, held, subjects
 
 
@@ -331,6 +332,19 @@ def main(argv=None):
     parser.add_argument("--budget-usd", type=float, default=2.00,
                         help="the walk STOPS on this. It cannot raise a "
                              "declared ceiling and does not try to")
+    parser.add_argument("--no-cap", action="store_true",
+                        help="ignore the `campaigns x 45` cohort cap and take "
+                             "every approved rendered lead in these cohorts. "
+                             "For a FREE pass - see --sources - where the cap "
+                             "is about how many a campaign can carry rather "
+                             "than about what may be read")
+    parser.add_argument("--sources", default=None,
+                        help="comma separated subset of %s. `site_content` "
+                             "alone is the free pass: it starts no Apify run, "
+                             "writes no ledger row and cannot reach a ceiling"
+                             % ",".join(
+                                 ("open_roles", "company_posts",
+                                  "person_posts", "site_content")))
     parser.add_argument("--resolve-slug", action="store_true",
                         help="after the jobs run fails to yield a slug, ask "
                              "harvestapi/linkedin-company for it")
@@ -367,7 +381,10 @@ def main(argv=None):
     today = spendledger.today()
     committed = spendledger.spent(args.client, day=today)
 
-    by_cohort, held, subjects = selection(work_dir, wanted, args.client)
+    sources = tuple(x.strip() for x in args.sources.split(",")
+                    if x.strip()) if args.sources else None
+    by_cohort, held, subjects = selection(work_dir, wanted, args.client,
+                                          cap=not args.no_cap)
     domains = [d for cohort in wanted for d in by_cohort.get(cohort, [])]
     if args.accounts:
         domains = domains[:args.accounts]
@@ -463,7 +480,7 @@ def main(argv=None):
                 company=subject.get("company"),
                 champion=contact_url(subject, "champion"),
                 exec_profile=contact_url(subject, "exec"),
-                resolve_slug=args.resolve_slug,
+                resolve_slug=args.resolve_slug, sources=sources,
                 runner=measuring_runner(observed))
         except spendledger.BudgetExceeded as refusal:
             # HALTED, NOT WIDENED. The ceiling is the operator's number and
