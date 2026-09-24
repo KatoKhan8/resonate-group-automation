@@ -38,6 +38,141 @@ not reused._
 
 ---
 
+### ISSUE-026 · `emptyrender.scan` called a PAUSED campaign contained
+
+**Status: FIXED 2026-09-24 (`5257adbe`), PRODUCTION_VERIFIED** — the offending
+row was read back from the provider, stopped, and re-read as `stopped`.
+
+The split used an **allowlist** of sendable statuses,
+`{"scheduled", "queued", "pending", ""}`, and filed everything else under
+`already` — a bucket whose own comment read "already sent or stopped".
+`sending_paused` is neither.
+
+Campaign 491 was paused, so all 275 of its undelivered rows read
+`sending_paused`, and blank row 22356723 (lead 204724, `Re: ` / `<p></p>`)
+was counted as contained when the only thing containing it was the
+campaign's pause. One click on resume and it sends.
+
+**Both witnesses reported `pending: 0` and both were wrong in the same way**,
+because the watcher heartbeat and an independent provider read share this
+predicate. Worse: pausing the campaign is what moved the row out of
+`pending`, so the halt erased the evidence of its own necessity.
+
+Fix: a **denylist**, `SETTLED_STATUSES = {sent, stopped, bounced}`. An
+allowlist fails closed on a status nobody anticipated, and failing closed
+here means calling an unknown row safe. A row halts only when it is both
+faulty AND unsettled, so an unrecognised status on good copy costs nothing.
+
+Tests: 6 new on the real rows, 30 in the file; restoring the allowlist
+fails 3. Sweep of all 275: exactly one fault, the known blank.
+
+---
+
+### ISSUE-027 · every external-stop CRITICAL this estate raised named campaign 487
+
+**Status: FIXED 2026-09-24 (`d6a719c2`).**
+
+`_alert_if_stopped_by_someone_else` was called with the module constant
+`PROVIDER_ID` (= 487) instead of `watched`, the loop's `--campaign`
+argument. One script runs nine times over nine campaigns.
+
+The figures came from the real campaign's snapshot, which is what made it
+unreadable rather than merely wrong. 2026-09-23T22:18:46Z:
+
+    {"campaign": "487", "was": "active", "now": "paused",
+     "emails_sent": 322, "leads": 332}
+
+487 has 0 sends and 10 leads and was active throughout. **A CRITICAL naming
+a campaign anybody can see is healthy reads as a false alarm**, and that one
+went unactioned into the morning — which is how the pause of the largest
+sending campaign was not noticed until it was read off the provider the next
+day.
+
+The existing tests could not catch it: they call the function with
+`provider_id` and `watched` set to the same value, so the fixture agreed
+with the bug. The new test reads the CALL SITE by `ast`.
+
+---
+
+### ISSUE-028 · witness 1 was unsatisfiable, so the reboot drill could never pass
+
+**Status: FIXED 2026-09-24 (`c1d93e94`), PRODUCTION_VERIFIED** — `20 of 20
+monitors have two witnesses`, exit 0, on the live estate.
+
+`supervisor.witnesses` wants a live pid from a state file written after the
+boot, plus a fresh beat. **Only `supervise.py` ever wrote that state file,
+and this estate is started by `scripts/start_monitors.py`** — so
+`work/supervisor/` did not exist and no monitor could ever hold witness 1.
+
+`cold_start --verify` therefore answered `0 of 20` while
+`start_monitors --status` read `20 UP` on `beat+process` and the table
+`--verify` prints directly underneath showed every monitor beating within a
+minute. **Four handoffs read this as a reason to refuse the drill.** Refusing
+was right; the diagnosis stopped one layer short. Adopting infra `46474c6c`
+fixed the monitor-name → heartbeat-file map — the NAME half — and the first
+verify after merging it still answered 0 of 20.
+
+Fix: `supervisor.record_started(name, pid)` is public and
+`start_monitors.spawn` calls it. Deliberately not a change to the process
+model: making the supervisor the only thing allowed to start a monitor would
+mean changing how a live estate is run to satisfy a measuring instrument.
+
+Tests assert the CALL SITE by `ast`, because `record_started` alone is easy
+to keep green and what failed for four days is that nobody called it.
+
+---
+
+### ISSUE-029 · a gagged client question reached nobody
+
+**Status: FIXED 2026-09-24 (`c62c6309`).**
+
+`CLIENT_CHANNEL_GAG` is correct and stays. What was not correct is what the
+gagged path did next: one row to `work/slack-agent.jsonl`, one line to
+stdout, return. No Slack post, no ticket, no internal notification.
+
+The gag was set to stop the agent saying something **wrong** to a client. It
+was also stopping the operator finding out the client had **asked** — 11 of
+32 questions in the replay audit, 34% of real traffic, answered with silence
+that nothing reported.
+
+`notify.CLIENT_QUESTION_UNANSWERED`, ACTION_REQUIRED, internal only.
+
+---
+
+### ISSUE-030 · there is no documented route for removing a lead from a campaign
+
+**Status: OPEN, and it BLOCKS the operator-approved remove-lead verb.**
+
+OPERATOR DECISION 2026-09-24 approved a narrow remove-lead-from-campaign
+write verb so the 91 foreign leads could be detached from 491–498 rather
+than only stopped. **It cannot be built on evidence today.**
+
+`docs/BISON-API-ROUTE-EVIDENCE-2026-09-15.md` enumerates 50 routes across
+CODE, PROBED and DOCS evidence and **none of them removes a lead from a
+campaign.** There is `attach-leads`, `attach-lead-list`,
+`stop-future-emails`, and detach routes for senders and tags — no lead
+detach.
+
+**`DELETE /leads/{id}` is not the verb and must not be reached for.** It
+deletes the lead outright, and these 91 are the CLIENT'S OWN leads, months
+old, members of their campaigns 327/328/352. Deleting them would destroy
+client data — considerably worse than leaving them attached.
+
+Inferring `leads/remove-leads` from the `attach-sender-emails` /
+`remove-sender-emails` symmetry is exactly what that document forbids:
+*"No route is inferred from naming patterns alone."* And this module's
+history is three wrong conclusions that a route did not exist, each reached
+by guessing a URL and reading the failure as absence — so a probe can
+establish presence but never absence.
+
+**What unblocks it:** a vendor documentation page for a lead-detach route,
+or an independent implementation (the `remove-sender-emails` precedent was
+adopted on the vendor's own page plus `bcharleson/emailbison-cli`). Until
+one exists, the foreign leads stay **stopped and attached**, which is safe —
+0 sendable rows, verified per lead — and unhygienic.
+
+---
+
 ### ISSUE-025 · adopting a lead by email carries the CLIENT's lead into our campaign
 
 **Status: FIXED in code 2026-09-23 (`7bb23d6d`), NOT production-verified** —
