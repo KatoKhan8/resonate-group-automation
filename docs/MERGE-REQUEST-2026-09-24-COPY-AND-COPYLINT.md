@@ -145,11 +145,15 @@ replacement do not exist yet.
 Commit `c0c63d58` on branch `qwen-worker-4-r9`, "TASK-277: the copy lint is on
 the send path, not merely present". Read in full:
 
+Checked against the files, not against the report:
+
 - it adds `push.run_with_copylint(leads, packs)` to `src/push.py`;
-- `git log --all -S"run_with_copylint" -- src/ tests/` returns **one commit**,
-  its own. Nothing calls it;
-- its 234-line test file calls `run_with_copylint` directly, eight times, and
-  calls `push.run(` zero times;
+- `git grep -n run_with_copylint qwen-worker-4-r9 -- 'src/*' 'scripts/*'
+  'tests/*'` returns **nine lines: one definition and eight test calls.**
+  Nothing in `src/` or `scripts/` calls it. `git log --all -S` over the same
+  name returns one commit, its own;
+- its 234-line test file has 8 `def test_`, makes 8 direct
+  `push.run_with_copylint(...)` calls, and contains `push.run(` **zero** times;
 - and `src/push.py` is not the send path. Its `run()` raises
   `LiveSendNotEnabled` on `live=True`.
 
