@@ -36,8 +36,32 @@ running.
 
 That matters directly to last night's plan. `PRODUCTION-HANDOFF-2026-09-23-OVERNIGHT.md`
 § item 2 makes the adoption proof *"post `--status` showing all UP"* — which is
-exactly the claim a reused pid forges. Use `cold_start` for that check
-tonight, not `supervise --status`.
+exactly the claim a reused pid forges.
+
+**`supervise --status` now applies the same two-witness rule**, from the same
+function, so either command is safe. There is no weaker liveness check left in
+the module to reach for by mistake.
+
+### Two statuses that are new, and one monitor that can never be fully up
+
+    STARTING         process up, no beat yet, started less than one interval
+                     ago. Normal for the first minutes after a restart.
+    UP_ONE_WITNESS   the monitor writes NO heartbeat, so only the pid can be
+                     checked. `bison_mailbox_utilisation` is the real case.
+
+**Every one of the eight monitors writes its beat under a key that is not its
+monitor name** — `reply_watch` beats as `replies`, `heyreach_watch` as
+`heyreach-605732`, and three loops bypass `watchsink` and write
+`work/heartbeat/<name>.json` themselves. The mapping is now declared in
+`supervisor.MONITORS` and pinned by a test. Before that it was guessed, and
+the guess matched **none** of the eight: `--verify` would have polled for ten
+minutes tonight, timed out, and reported a recovery time that meant nothing.
+
+Two findings behind that, neither fixed here because both change running
+production loops: three loops bypass `watchsink` (two mechanisms for one
+job), and **`bison_mailbox_utilisation` writes no heartbeat at all**, so for
+that monitor "gone quiet" and "died" are indistinguishable — which is the
+sentence `src/supervisor.py`'s own docstring opens with.
 
 The second witness is not redundant either: a monitor that is alive but wedged
 keeps its pid and beats nothing, and a beat from before the reboot is a record

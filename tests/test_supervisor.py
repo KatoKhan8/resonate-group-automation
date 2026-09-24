@@ -160,7 +160,14 @@ class StatusTest(_SupervisorTestBase):
         try:
             state = supervisor._monitor_status(mon, self.lock_dir,
                                                self.state_dir)
-            self.assertEqual("UP", state["status"])
+            # UP_ONE_WITNESS, not UP. This fixture sleeps and writes no
+            # heartbeat, and `_monitor_status` is now the two-witness verdict:
+            # a live pid alone is forgeable across a reboot, and a monitor
+            # that cannot prove it is WORKING must not read the same as one
+            # that has. The pid is still reported, which is what this test is
+            # actually about.
+            self.assertEqual("UP_ONE_WITNESS", state["status"])
+            self.assertTrue(state["witness_process"])
             self.assertEqual(proc.pid, state["pid"])
         finally:
             proc.terminate()
@@ -270,25 +277,59 @@ class ProductionWriteTest(_SupervisorTestBase):
 class MonitorTableTest(_SupervisorTestBase):
     """The monitor table is data, not code."""
 
+    #: A registry the derived half can be computed from without touching
+    #: `work/`. Injected rather than read so these tests assert the table's
+    #: SHAPE and do not depend on which campaigns happen to be live.
+    ROWS = [
+        {"campaign_id": "c491", "status": "running", "bison_campaign_id": 491},
+        {"campaign_id": "c489", "status": "completed", "bison_campaign_id": 489,
+         "completed_at": "2026-08-01T00:00:00Z"},
+        {"campaign_id": "hr", "status": "running",
+         "heyreach_campaign_id": 605732},
+    ]
+
+    def _table(self):
+        return supervisor.monitors(rows=self.ROWS,
+                                   sequence_source=lambda p, c: 0)
+
     def test_the_table_is_a_list_of_dicts(self):
-        self.assertIsInstance(supervisor.MONITORS, list)
-        for mon in supervisor.MONITORS:
+        table = self._table()
+        self.assertIsInstance(table, list)
+        for mon in table:
             self.assertIn("name", mon)
             self.assertIn("module", mon)
             self.assertIn("interval", mon)
 
     def test_every_monitor_has_a_unique_name(self):
-        names = [m["name"] for m in supervisor.MONITORS]
+        names = [m["name"] for m in self._table()]
         self.assertEqual(len(names), len(set(names)))
 
     def test_known_monitors_are_present(self):
-        names = {m["name"] for m in supervisor.MONITORS}
-        for expected in ("bison_mailbox_utilisation", "reply_watch",
-                         "notify_deliver", "bison_watch_487",
-                         "bison_watch_489", "heyreach_watch",
-                         "digest", "slack_agent"):
+        """The STATIC loops. The campaign watchers are derived and are
+        asserted in tests/test_the_derived_table_is_the_incident_gates_15.py
+        instead - naming
+        a campaign here would put a second hand-written list in the repo,
+        which is the thing the one-table decision removed."""
+        names = {m["name"] for m in self._table()}
+        for expected in ("reply_watch", "notify_deliver", "digest",
+                         "slack_agent", "slack_followup"):
             self.assertIn(expected, names,
-                          "%s missing from MONITORS" % expected)
+                          "%s missing from the monitor table" % expected)
+
+    def test_bison_mailbox_utilisation_is_not_in_the_table(self):
+        """OPERATOR DECISION 2026-09-23. It writes no heartbeat, so it can
+        never have a second witness and can never be verified; counting it UP
+        on a pid alone is the claim a reused pid forges across a reboot.
+        Whether it is a loop or a nightly job is production's call."""
+        names = {m["name"] for m in self._table()}
+        self.assertNotIn("bison_mailbox_utilisation", names)
+
+    def test_the_derived_half_is_present(self):
+        names = {m["name"] for m in self._table()}
+        self.assertIn("bison_watch_491", names)
+        self.assertIn("heyreach_watch_605732", names)
+        # 489 finished long ago and the source says nothing is in sequence.
+        self.assertNotIn("bison_watch_489", names)
 
 
 class SupervisorIntegrationTest(_SupervisorTestBase):
@@ -341,10 +382,11 @@ class SupervisorIntegrationTest(_SupervisorTestBase):
     def test_status_output_contains_all_monitors(self):
         """--status shows every declared monitor, even the ones that are
         DOWN."""
-        output = supervisor.format_status(supervisor.MONITORS,
+        table = supervisor.STATIC_MONITORS
+        output = supervisor.format_status(table,
                                           self.lock_dir,
                                           self.state_dir)
-        for mon in supervisor.MONITORS:
+        for mon in table:
             self.assertIn(mon["name"], output,
                           "%s missing from --status output" % mon["name"])
         # Every monitor is DOWN since none are running

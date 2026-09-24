@@ -25,9 +25,33 @@ from src import supervisor
 
 
 MON = {"name": "probe_watch", "module": "scripts.probe_watch_loop",
-       "args": [], "interval": 300}
+       "args": [], "interval": 300,
+       "heartbeat": {"file": "probe.json"}}
+
+#: A monitor that writes no heartbeat at all, like the real
+#: `bison_mailbox_utilisation`. It can never have a second witness.
+MON_NO_BEAT = {"name": "probe_silent", "module": "scripts.probe_silent",
+               "args": [], "interval": 300, "heartbeat": None}
 
 BOOT = 1_000_000.0
+
+
+#: Injected registry for the derived half of the table, so these tests assert
+#: the heartbeat CONTRACT and not which campaigns happen to be live today.
+TABLE_ROWS = [
+    {"campaign_id": "c491", "status": "running", "bison_campaign_id": 491},
+    {"campaign_id": "hr", "status": "running", "heyreach_campaign_id": 605732},
+]
+
+
+def _table():
+    """The real table over an injected registry.
+
+    Built from `STATIC_MONITORS` + `campaign_monitors` rather than by calling
+    `supervisor.monitors()`, because tests below PATCH `supervisor.monitors`
+    with this function - calling it here would recurse into the patch."""
+    return list(supervisor.STATIC_MONITORS) + supervisor.campaign_monitors(
+        rows=TABLE_ROWS, sequence_source=lambda p, c: 0)
 
 
 class _ColdStartTest(unittest.TestCase):
@@ -45,6 +69,7 @@ class _ColdStartTest(unittest.TestCase):
             mock.patch.object(supervisor, "_state_dir",
                               lambda: self.state_dir),
             mock.patch.object(supervisor, "_lock_dir", lambda: self.lock_dir),
+            mock.patch("src.watchsink.heartbeat_dir", lambda: self.tmp),
         ]
         for p in self._patches:
             p.start()
@@ -57,13 +82,10 @@ class _ColdStartTest(unittest.TestCase):
         os.utime(path, (written_at, written_at))
         return path
 
-    def write_beat(self, epoch, name=MON["name"]):
-        path = os.path.join(self.tmp, "%s.beat.json" % name)
+    def write_beat(self, epoch, filename="probe.json"):
+        path = os.path.join(self.tmp, filename)
         with open(path, "w", encoding="utf-8") as f:
             json.dump({"epoch": epoch, "state": "ok"}, f)
-        p = mock.patch("src.watchsink.heartbeat_path", lambda *a, **k: path)
-        p.start()
-        self.addCleanup(p.stop)
         return path
 
     def write_lock(self, name, mtime, pid=4321):
@@ -86,7 +108,7 @@ class TwoWitnessesOrItIsNotUp(_ColdStartTest):
         self.write_beat(BOOT + 60)
         self.alive(True)
 
-        w = cold_start.witnesses(MON, BOOT, now=BOOT + 100)
+        w = supervisor.witnesses(MON, BOOT, now=BOOT + 100)
 
         self.assertEqual(w["status"], "UP")
         self.assertTrue(w["witness_process"])
@@ -98,7 +120,7 @@ class TwoWitnessesOrItIsNotUp(_ColdStartTest):
         self.write_beat(BOOT + 60)
         self.alive(True)
 
-        w = cold_start.witnesses(MON, BOOT, now=BOOT + 100)
+        w = supervisor.witnesses(MON, BOOT, now=BOOT + 100)
 
         self.assertNotEqual(w["status"], "UP")
         self.assertEqual(w["status"], "UNKNOWN")
@@ -112,7 +134,7 @@ class TwoWitnessesOrItIsNotUp(_ColdStartTest):
         self.alive(True)
 
         # 300s interval, tolerance 2x, so 700s after the beat is stale.
-        w = cold_start.witnesses(MON, BOOT, now=BOOT + 720)
+        w = supervisor.witnesses(MON, BOOT, now=BOOT + 720)
 
         self.assertEqual(w["status"], "DOWN")
         self.assertTrue(w["witness_process"])
@@ -124,17 +146,23 @@ class TwoWitnessesOrItIsNotUp(_ColdStartTest):
         self.write_beat(BOOT - 30)
         self.alive(True)
 
-        w = cold_start.witnesses(MON, BOOT, now=BOOT + 60)
+        w = supervisor.witnesses(MON, BOOT, now=BOOT + 60)
 
-        self.assertFalse(w["witness_heartbeat"])
-        self.assertEqual(w["status"], "DOWN")
+        self.assertFalse(w["witness_heartbeat"],
+                         "a pre-boot beat was accepted as a witness")
+        # STARTING rather than DOWN: the process is up, it was started less
+        # than one interval ago, and it has legitimately not beaten yet. The
+        # assertion that matters is the one above - the OLD beat did not
+        # count. A monitor still silent after two intervals is DOWN, and
+        # `test_a_live_process_with_no_fresh_beat_is_not_up` covers that.
+        self.assertEqual(w["status"], "STARTING")
 
     def test_a_fresh_beat_with_a_dead_process_is_not_up(self):
         self.write_state(pid=999, written_at=BOOT + 10)
         self.write_beat(BOOT + 60)
         self.alive(False)
 
-        w = cold_start.witnesses(MON, BOOT, now=BOOT + 100)
+        w = supervisor.witnesses(MON, BOOT, now=BOOT + 100)
 
         self.assertEqual(w["status"], "DOWN")
         self.assertIn("started and died", w["why"])
@@ -145,7 +173,7 @@ class TwoWitnessesOrItIsNotUp(_ColdStartTest):
         self.write_beat(BOOT + 60)
         self.alive(True)
 
-        w = cold_start.witnesses(MON, None, now=BOOT + 100)
+        w = supervisor.witnesses(MON, None, now=BOOT + 100)
 
         self.assertEqual(w["status"], "UNKNOWN")
         self.assertIn("boot time unreadable", w["why"])
@@ -212,7 +240,7 @@ class OneInstanceEach(_ColdStartTest):
         plan = {
             "booted_at": BOOT, "uptime_seconds": 10, "boot_time_readable": True,
             "locks": {"stale": [], "live": [], "unknown": []},
-            "monitors": [dict(cold_start.witnesses(MON, BOOT, now=BOOT + 1),
+            "monitors": [dict(supervisor.witnesses(MON, BOOT, now=BOOT + 1),
                               witness_process=True)],
             "up": [], "not_up": ["probe_watch"], "cursors": [],
             "work_dir": self.tmp,
@@ -257,6 +285,7 @@ class ThePlanTouchesNothing(_ColdStartTest):
     def test_a_plain_run_starts_nothing_and_removes_nothing(self):
         old = self.write_lock("reply_watch.lock", BOOT - 100)
         with mock.patch.object(cold_start, "boot_time", lambda: BOOT), \
+             mock.patch.object(supervisor, "monitors", _table), \
              mock.patch.object(supervisor, "_run") as run:
             rc = cold_start.main([])
 
@@ -264,6 +293,32 @@ class ThePlanTouchesNothing(_ColdStartTest):
         run.assert_not_called()
         self.assertTrue(os.path.exists(old),
                         "the default run deleted a lock")
+
+    def test_an_unreadable_registry_refuses_instead_of_reporting_an_estate(self):
+        """The derived half of the table comes from the campaign registry,
+        and `campaigns.load()` answers an ABSENT file with an empty snapshot
+        rather than an error.
+
+        Read straight, that turns "I cannot see the registry" into "there are
+        no campaigns": cold start would come up, find the five static loops,
+        find them healthy, and report the estate recovered while every
+        campaign watcher was missing. Measured 2026-09-23 - this is why
+        `campaign_monitors` checks the file exists before trusting the load.
+        """
+        old = self.write_lock("reply_watch.lock", BOOT - 100)
+
+        def refuse():
+            raise supervisor.RegistryUnreadable("no registry in this test")
+
+        with mock.patch.object(cold_start, "boot_time", lambda: BOOT), \
+             mock.patch.object(supervisor, "monitors", refuse), \
+             mock.patch.object(supervisor, "_run") as run:
+            rc = cold_start.main([])
+
+        self.assertEqual(rc, 2, "an unreadable registry must not exit 0")
+        run.assert_not_called()
+        self.assertTrue(os.path.exists(old),
+                        "the refusal deleted a lock")
 
 
 class TheAutostartCommandSurvivesTheMigration(unittest.TestCase):
@@ -322,7 +377,7 @@ class TheSupervisorHoldsThePowerRequest(unittest.TestCase):
                                lambda: {"error": None}),              mock.patch.object(supervisor, "_supervise",
                                lambda *a, **k: order.append("loop")
                                or "loop ran"):
-            result = supervisor._run(monitors=[])
+            result = supervisor._run(table=[])
 
         self.assertEqual(result, "loop ran")
         self.assertEqual(order, ["acquire", "loop", "release"])
@@ -340,7 +395,7 @@ class TheSupervisorHoldsThePowerRequest(unittest.TestCase):
                                lambda **k: released.append(1)),              mock.patch.object(keepawake, "status",
                                lambda: {"error": None}),              mock.patch.object(supervisor, "_supervise", boom):
             with self.assertRaises(RuntimeError):
-                supervisor._run(monitors=[])
+                supervisor._run(table=[])
 
         self.assertEqual(released, [1],
                          "a crash left the power request held")
@@ -353,9 +408,79 @@ class TheSupervisorHoldsThePowerRequest(unittest.TestCase):
         with mock.patch.object(keepawake, "acquire",
                                lambda **k: False),              mock.patch.object(supervisor, "_supervise",
                                lambda *a, **k: "loop ran anyway"):
-            result = supervisor._run(monitors=[])
+            result = supervisor._run(table=[])
 
         self.assertEqual(result, "loop ran anyway")
+
+
+class EveryMonitorSaysWhereItsBeatLands(unittest.TestCase):
+    """The declaration that stops witness 2 being a guess.
+
+    Measured 2026-09-23: NOT ONE of the eight monitors writes its heartbeat
+    under its own monitor name. reply_watch beats as "replies",
+    heyreach_watch as "heyreach" campaign 605732, and three loops bypass
+    `watchsink` and write `work/heartbeat/<name>.json` themselves. A liveness
+    check that guessed `heartbeat_path(mon["name"])` found nothing for all
+    eight and would have reported the whole estate down forever - which is
+    exactly what the first version of cold_start did.
+    """
+
+    def test_every_monitor_declares_where_its_beat_lands(self):
+        missing = [m["name"] for m in _table()
+                   if "heartbeat" not in m]
+        self.assertEqual(
+            missing, [],
+            "monitor(s) with no `heartbeat` declaration: %r. None is allowed "
+            "and must be written down - it means 'this monitor cannot have a "
+            "second witness', which is a finding, not a default." % (missing,))
+
+    def test_a_declared_beat_resolves_to_a_path(self):
+        for mon in _table():
+            path = supervisor.heartbeat_file(mon)
+            if mon["heartbeat"] is None:
+                self.assertIsNone(path, mon["name"])
+            else:
+                self.assertTrue(path and path.endswith(".json"), mon["name"])
+
+    def test_a_monitor_with_no_heartbeat_cannot_reach_up(self):
+        """`bison_mailbox_utilisation` is real and it is one of these."""
+        w = supervisor.witnesses(MON_NO_BEAT, BOOT, now=BOOT + 10)
+        self.assertNotEqual(w["status"], "UP")
+        self.assertFalse(w["heartbeat_available"])
+        self.assertIn("writes no heartbeat", w["why"])
+
+    def test_one_witness_is_reported_as_one_witness_not_as_up(self):
+        import shutil as _sh
+        tmp = tempfile.mkdtemp(prefix="rga-onewitness-")
+        self.addCleanup(_sh.rmtree, tmp, ignore_errors=True)
+        with mock.patch.object(supervisor, "_state_dir", lambda: tmp),              mock.patch("src.singlewalker._alive", lambda pid: True):
+            path = os.path.join(tmp, "%s.json" % MON_NO_BEAT["name"])
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"pid": 999}, f)
+            os.utime(path, (BOOT + 10, BOOT + 10))
+            w = supervisor.witnesses(MON_NO_BEAT, BOOT, now=BOOT + 20)
+        self.assertEqual(w["status"], "UP_ONE_WITNESS")
+
+    def test_the_real_table_resolves_to_the_files_the_loops_write(self):
+        """Pinned from the loops as they are on 2026-09-23. If a loop changes
+        where it beats, this fails rather than the estate silently reporting
+        every monitor down."""
+        expected = {
+            "reply_watch": "replies.json",
+            "notify_deliver": "notify-deliver.json",
+            "digest": "digest.json",
+            "slack_agent": "slack-agent.json",
+            "slack_followup": "slack-followup.json",
+            # DERIVED, from TABLE_ROWS above - the campaign watchers are no
+            # longer hand-listed, but where their beat lands is still pinned.
+            "bison_watch_491": "bison-491.json",
+            "heyreach_watch_605732": "heyreach-605732.json",
+        }
+        for mon in _table():
+            path = supervisor.heartbeat_file(mon)
+            want = expected[mon["name"]]
+            got = os.path.basename(path) if path else None
+            self.assertEqual(got, want, mon["name"])
 
 
 if __name__ == "__main__":
