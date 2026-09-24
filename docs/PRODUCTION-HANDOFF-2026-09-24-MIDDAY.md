@@ -351,3 +351,75 @@ never seen. Under the allowlist it would have been filed as `already`, i.e.
 contained. Under the denylist of §4 it counts as **pending**, so a blank in
 that state would halt the campaign. It is not blank, and the fix was
 vindicated within hours of landing.
+
+
+---
+
+# ADDENDUM 2 — 2026-09-24 afternoon, lane 1
+
+## B1. THE CLIENT CSVs ARE BUILT AND UPLOADED
+
+Four files in `#resonate-os`, all read-only against `work/`:
+
+    productive-sourced-candidates-2026-09-24.csv        32,951
+      split into
+        (a) productive-agency-shaped-2026-09-24.csv     18,684
+        (b) productive-software-product-2026-09-24.csv  14,267
+    productive-09-07-requalification-IN-2026-09-24.csv  19,612
+
+**CSV 2 stays as built, no verdict changes** — operator decision. The two
+columns `meets 20-person floor` and `in agreed markets` are the disclosure:
+13,324 of 19,612 (67.9%) are under 20 staff, median headcount 10, and 1,164
+sit in countries their own stored reason calls outside the agreed markets.
+
+**The split used no research-pack signals, because there are none.** The
+Apify pilot has not run, so there is no website text and no job-post
+evidence, and nothing in those files claims either. What it used: LinkedIn
+`industry` (every row), `overview` (98.8%) and `specialties` (82.8%).
+
+**Two markers were removed on evidence.** `campaign` — a marketing campaign
+to an agency, a crowdfunding campaign to a platform; it alone put Indiegogo
+in (a). `agencies` plural — a product company writes "trusted by agencies";
+it put AccuRanker, a rank-tracking product, in (a). A marker that fires on
+both sides of the split is not a marker.
+
+**(b) IS NOT A REJECT PILE.** 9,645 of its 14,267 are there because the
+description said nothing either way and 195 have no description at all.
+Unresolved goes to (b) because missing evidence is never positive evidence
+and (a) is the file we assert something about. Only 3,568 are in (b) on
+positive product evidence. The research packs would resolve most of that.
+
+## B2. THE WEEKLY REPORT LOOP — IN NO TABLE, THEN BEATING NOWHERE
+
+`scripts/weekly_report_loop.py` had existed since 09-23 in neither monitor
+table, so nothing started it and `--status` could not report it missing: an
+absent row reads as a healthy estate, exactly as 493 having no watcher did.
+
+Added to `STATIC_MONITORS` and started. **The cutover needs no checklist
+line** — `scripts/server/generate_units.py` reads `supervisor.monitors()`,
+and the manifest now carries 21 rows including `weekly_report
+weekly-report.json static`. A checklist entry would be a second copy of the
+derived table.
+
+Then it read `UP ... never ... process` — one witness, for ever.
+`watchsink.beat(source, campaign=None, state=None, ...)` takes CAMPAIGN
+second and the loop passed its state dict positionally, so every beat landed
+in `weekly-report-zone-Europe-Zagreb-zone_resolved-True.json`. **Alive,
+beating, and indistinguishable from dead to anything polling the declared
+name.** `e644c040`. The new test reads every `*_loop.py` call site, because
+no amount of correct name mapping survives a caller writing somewhere else.
+
+Estate now **21 of 21 on two witnesses**.
+
+## B3. OCTOBER BACKLOG — FROZEN UNTIL 2026-10-01
+
+**Evaluate Meta Muse Spark (`dev.meta.ai`) as the composer model for the
+reply engine.** Design fixed by the operator: the same real inbound replies
+drafted by the current model and by Muse under `prompts/reply_handling.md`,
+scored side by side on register, never-invent, no unkeepable promise,
+length, one soft question, plus cost per draft. **Decision by score, not by
+preference.** Frozen until the FOCUS window ends.
+
+Also frozen and carried: ISSUE-025 / the remove-lead verb (blocked on
+ISSUE-030 regardless), the client-two runbook, ledger write-back beyond the
+status post, the learning doc beyond Friday's scorecard, the reboot drill.
