@@ -93,46 +93,79 @@ class AFailedJobIsAnnounced(OpsChannelTest):
         self.assertEqual(self.rows_of(notify.FAILED_JOB), [])
 
 
-class AnUnmatchedReplyIsAnnounced(OpsChannelTest):
+class AnUnmatchedReplyIsRecorded(OpsChannelTest):
+    """2026-09-24: an unmatched event reaches the LEDGER, not the channel.
+
+    It used to raise one `UNMATCHED_REPLY` each, and between 2026-09-22 and
+    2026-09-24 that was 102 posts carrying five identical fields and naming
+    nothing. The event is now written to `src/unmatched.py`'s ledger with the
+    campaign, the lead and the event type on it; attribution and the one
+    digest per hour happen in `unmatched.flush`, off the ingest path.
+
+    What has NOT changed, and is asserted here as it was before: an unmatched
+    event is still recorded, an unknown event type is still recorded, a
+    matched event still records nothing, and the prospect's words never reach
+    either.
+    """
 
     def event(self, record_id="nobody"):
         return {"type": events.REPLY_RECEIVED, "record_id": record_id,
                 "contact_key": "k", "provider": "emailbison",
                 "provider_event_id": "bison-unmatched-1",
-                "channel": "email", "text": "who is this?"}
+                "channel": "email", "email": "someone@unknown.test",
+                "external_campaign_id": 491, "text": "who is this?"}
 
-    def test_a_reply_for_no_record_reaches_the_operations_channel(self):
+    def ledger(self):
+        from src import unmatched
+        return unmatched.load()
+
+    def test_a_reply_for_no_record_is_written_to_the_ledger(self):
         outcome = inbound.handle(self.event(), [])
         self.assertEqual(outcome["applied"]["status"], "unmatched")
-        rows = self.rows_of(notify.UNMATCHED_REPLY)
+        rows = self.ledger()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["channel"], OPS)
+        self.assertEqual(rows[0]["provider_event_id"], "bison-unmatched-1")
+        self.assertEqual(rows[0]["campaign_id"], 491)
 
-    def test_the_alert_does_not_carry_the_prospects_words(self):
-        """Nobody can say whose words these are, so they go to nobody."""
+    def test_nothing_is_posted_at_ingest(self):
+        """The ingest path plans no notification at all any more."""
         inbound.handle(self.event(), [])
-        payload = self.rows_of(notify.UNMATCHED_REPLY)[0]["payload"]
-        self.assertNotIn("who is this?", str(payload))
+        self.assertEqual(self.rows_of(notify.UNMATCHED_REPLY), [])
+        self.assertEqual(self.rows_of(notify.UNMATCHED_DIGEST), [])
+
+    def test_the_ledger_does_not_carry_the_prospects_words(self):
+        """Nobody can say whose words these are, so they go nowhere."""
+        inbound.handle(self.event(), [])
+        self.assertNotIn("who is this?", str(self.ledger()[0]))
+
+    def test_the_ledger_does_not_carry_the_mailbox_name(self):
+        """The domain says which company answered. The local part is the
+        person, and no alert needs it."""
+        inbound.handle(self.event(), [])
+        row = self.ledger()[0]
+        self.assertEqual(row["lead"], "unknown.test")
+        self.assertNotIn("someone@", str(row))
 
     def test_it_is_idempotent_on_the_providers_own_event_id(self):
         inbound.handle(self.event(), [])
         inbound.handle(self.event(), [])
-        self.assertEqual(len(self.rows_of(notify.UNMATCHED_REPLY)), 1)
+        self.assertEqual(len(self.ledger()), 1)
 
-    def test_an_unknown_event_type_is_announced_too(self):
+    def test_an_unknown_event_type_is_recorded_too(self):
         event = dict(self.event(), type="something_nobody_defined",
                      provider_event_id="bison-unknown-1")
         outcome = inbound.handle(event, [])
         self.assertEqual(outcome["applied"]["status"], "unknown")
-        self.assertEqual(len(self.rows_of(notify.UNMATCHED_REPLY)), 1)
+        self.assertEqual(len(self.ledger()), 1)
 
-    def test_nothing_is_announced_when_the_event_matched(self):
+    def test_nothing_is_recorded_when_the_event_matched(self):
         rec = store.new_record("acme", "domains", MINE, "Acme", "acme.test")
         rec["contacts"] = [{"key": "k", "name": "A", "email": "a@acme.test",
                             "selected": True}]
         store.save([rec])
         inbound.handle(dict(self.event(record_id="acme"),
                             provider_event_id="bison-matched-1"), [rec])
+        self.assertEqual(self.ledger(), [])
         self.assertEqual(self.rows_of(notify.UNMATCHED_REPLY), [])
 
 

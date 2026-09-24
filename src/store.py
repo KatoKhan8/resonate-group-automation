@@ -107,6 +107,12 @@ STATE_OVERRIDES = (
                    # as able to be left pointing at a real directory by a
                    # stale override as anything else here.
                    "PROVIDER_WRITES_LEDGER",
+                   # The unmatched-event ledger. Added 2026-09-24 with the
+                   # notification repair: one row per inbound event nobody
+                   # could match, carrying the verdict that decided whether
+                   # anybody was told. It is the answer to "what did you NOT
+                   # post", which an alert that was never raised cannot give.
+                   "UNMATCHED_LEDGER",
                    # The provider tag outbox and the agency-wide
                    # do-not-contact index. Neither is row state either, and
                    # both are exactly the kind of file a test would

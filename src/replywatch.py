@@ -320,10 +320,37 @@ def _alert(provider, failures, detail):
 
 
 def sweep(providers=None, max_pages=DEFAULT_MAX_PAGES, live=True, env=None):
-    """Every provider, once. One provider's failure never stops another."""
+    """Every provider, once, then the unmatched digest for any closed hour.
+
+    One provider's failure never stops another, and neither stops the digest:
+    events already in the ledger are still worth summarising when a poll
+    failed, and a digest that cannot be built must not take the poll's own
+    status down with it.
+
+    The digest rides this thread for the same reason `digestwatch` rides it -
+    it needs no second timer, and a flush that only happens when somebody
+    remembers is a flush that does not happen.
+
+    Its result is returned under `DIGEST_KEY`, which is NOT a provider name.
+    Every reader of this dict keys it by provider, so the one reserved key is
+    named here and skipped there rather than being left to look like a
+    thirteenth provider that failed.
+    """
     chosen = providers if providers is not None else settings(env)["providers"]
-    return {p: poll_once(p, max_pages=max_pages, live=live, env=env)
-            for p in chosen}
+    out = {p: poll_once(p, max_pages=max_pages, live=live, env=env)
+           for p in chosen}
+    try:
+        from . import unmatched
+        out[DIGEST_KEY] = unmatched.flush()
+    except Exception as exc:                                  # noqa: BLE001
+        # Broad, and deliberately not silent - the same contract the poll
+        # itself keeps. A notification layer may never break ingest.
+        out[DIGEST_KEY] = {"error": f"{type(exc).__name__}: {exc}"[:300]}
+    return out
+
+
+#: The one key in a `sweep` result that is not a provider.
+DIGEST_KEY = "unmatched_digest"
 
 
 def healthy(status=None):
@@ -591,12 +618,22 @@ def main(argv=None):
     results = sweep(providers=tuple(args.provider) if args.provider else None,
                     max_pages=args.max_pages)
     for provider in sorted(results):
+        if provider == DIGEST_KEY:
+            continue
         entry = results[provider]
         state = "ok" if entry.get("healthy") else "FAILED"
         detail = entry.get("last_error") or (
             f"{entry.get('events_inspected')} inspected, "
             f"{entry.get('new_replies_ingested')} ingested")
         print(f"  {provider:12} {state:7} {detail}")
+    digest = results.get(DIGEST_KEY)
+    if isinstance(digest, dict):
+        print(f"  {'digest':12} {'FAILED':7} {digest.get('error')}")
+    else:
+        for hour in digest or []:
+            print(f"  {'digest':12} {hour['hour']} "
+                  f"unmatched={hour['unmatched']} client={hour['theirs']} "
+                  f"{'posted' if hour['posted'] else 'nothing to post'}")
     print("\nPolling reads. Nothing was sent to anyone.")
     return 0 if healthy() else 1
 

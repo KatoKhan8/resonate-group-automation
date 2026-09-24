@@ -30,7 +30,7 @@ import sys
 from . import (accountpolicy, adapters, campaigns, clients, events, leadstop,
                providers,
                notify, ooo,
-               observability, orchestrator, replies, store)
+               observability, orchestrator, replies, store, unmatched)
 
 
 # TASK-238: The only LinkedIn seat we operate and the campaigns on it.
@@ -152,23 +152,38 @@ def _positively_not_ours(event):
     from "a seat of ours created since the readback", and on 2026-09-23 it
     held one seat against 33 live ones. Refusing to drop costs a notification
     nobody needed; dropping wrongly costs a reply nobody saw.
+
+    2026-09-24: THE CAMPAIGN HALF WAS COMPARING TWO DIFFERENT NAMESPACES, and
+    is gone. `owned_campaigns` is built from the HeyReach block of
+    `PROVIDER-CAMPAIGNS.json`; `external_campaign_id` on an EmailBison event
+    is an EmailBison campaign id. Our own campaign 491 is not in
+    `{594061, 599020, 604869, 605487, 605732, 613724...}`, so every
+    unattributable EmailBison reply on a campaign WE RUN read as "positively
+    not ours" and would have been dropped with nobody told. It never fired
+    only because `_owned()` has been refusing on a 32-hour-old readback, which
+    is a timer holding off a silent data loss rather than a guard.
+
+    Campaign ownership is now `unmatched.attribute`, which compares a
+    provider's campaign id against that provider's own registry and cannot
+    make this mistake. What is left here is the SEAT test, which is the only
+    thing this function ever got right: a HeyReach seat is a HeyReach seat.
+
+    And the seat test can now only ever say NOT OURS. We operate 33 of 41
+    seats because the B1 campaigns were put on the client's own seats, and the
+    client's campaigns still run on them - so a seat of ours proves nothing
+    about a conversation, and only a seat that is NOT ours proves anything at
+    all. That was always the polarity of this function; it is now also the
+    whole of it.
     """
     owned, _why = _owned()
     if owned is None:
         return False
-    owned_seats, owned_campaigns = owned
+    owned_seats, _owned_campaigns = owned
 
     seat = event.get("linkedin_account_id")
     if seat is not None:
         try:
             if int(seat) not in owned_seats:
-                return True
-        except (TypeError, ValueError):
-            pass
-    cid = event.get("external_campaign_id")
-    if cid is not None:
-        try:
-            if int(cid) not in owned_campaigns:
                 return True
         except (TypeError, ValueError):
             pass
@@ -418,14 +433,21 @@ def handle(event, recs, rows=None, config=None, post=None, model=None):
                 "campaign": event.get("external_campaign_id"),
             }
         else:
-            outcome["notification"] = notify.notify(
-                notify.UNMATCHED_REPLY, None,
-                fields={"provider": event.get("provider"),
-                        "status": applied["status"],
-                        "why": applied.get("why"),
-                        "held": len(held),
-                        "action": "a person decides; nothing is auto-attributed"},
-                ids={"provider_event_id": event.get("provider_event_id")})
+            # THE LEDGER, NOT A POST.
+            #
+            # This raised one `UNMATCHED_REPLY` per event, and between
+            # 2026-09-22 and 2026-09-24 that was 102 identical posts carrying
+            # provider, "unmatched", "no record for this event", "held: 0"
+            # and a sentence. No campaign, no lead, no event type, no time -
+            # nothing to act on, and 98 of them were the client's own traffic.
+            #
+            # `unmatched.record` writes the event down with what it actually
+            # names, performs NO provider call, and cannot raise. Attribution
+            # and the one-per-hour digest happen in `unmatched.flush`, on the
+            # watcher's thread after the poll, so nothing new sits between a
+            # reply arriving and the cadence to that person stopping.
+            outcome["notification"] = unmatched.record(
+                event, why=applied.get("why"), held=len(held))
     if applied["status"] != "applied":
         return outcome                      # duplicate, unmatched or unknown
 

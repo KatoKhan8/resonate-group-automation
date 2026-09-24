@@ -102,6 +102,51 @@ WARNING = "warning"
 CRITICAL = "critical"
 SEVERITIES = (INFO, ACTION_REQUIRED, WARNING, CRITICAL)
 
+# ------------------------------------------------------- how it is posted
+#
+# OPERATOR DECISION 2026-09-24: there are exactly THREE posting behaviours
+# and nothing else. A severity is a judgement about the event; a tier is what
+# the channel then does with it, and the two were previously the same word,
+# which is why nine WARNING kinds and the 07:00 digest all arrived the same
+# way as a blank-render CRITICAL.
+#
+#   PIN_AND_POST   posts immediately and pins. Hard stops, an external pause,
+#                  a blank render, a bounce threshold: the channel's top is
+#                  reserved for the things somebody has to act on now.
+#   POST_NOW       posts immediately, unpinned. Veto windows and approvals.
+#   DAILY_THREAD   replies under the day's first ops message. Sends,
+#                  milestones, corrections - the things worth having and not
+#                  worth interrupting for.
+PIN_AND_POST = "pin_and_post"
+POST_NOW = "post_now"
+DAILY_THREAD = "daily_thread"
+TIERS = (PIN_AND_POST, POST_NOW, DAILY_THREAD)
+
+#: WARNING POSTS IMMEDIATELY, and that is the one line in this table worth
+#: arguing about. Three behaviours means the fourth severity has to land on
+#: one of them, and the only other candidate is the daily thread - which
+#: would move `campaign_held`, `campaign_qa_failed`, `campaign_paused`,
+#: `sender_capacity_warning`, the two infrastructure warnings,
+#: `verification_degraded`, `mx_security_anomaly` and
+#: `provider_credit_warning` out of the channel and into a thread nobody
+#: opens. Quieting nine real guards is not a repair; it is the failure this
+#: change exists to fix, wearing the other hat.
+POSTING = {
+    CRITICAL: PIN_AND_POST,
+    ACTION_REQUIRED: POST_NOW,
+    WARNING: POST_NOW,
+    INFO: DAILY_THREAD,
+}
+
+
+def posting_for(severity):
+    """The tier this severity posts at. Unknown severities post immediately.
+
+    Fail-loud rather than fail-quiet: a severity nobody mapped is a bug, and
+    burying it in a thread is how the bug stays invisible.
+    """
+    return POSTING.get(severity, POST_NOW)
+
 # ----------------------------------------------------------------- status
 
 PLANNED = "planned"
@@ -174,6 +219,23 @@ LINKEDIN_INFRASTRUCTURE_WARNING = "linkedin_infrastructure_warning"
 VERIFICATION_DEGRADED = "verification_degraded"
 MX_ANOMALY = "mx_security_anomaly"
 UNMATCHED_REPLY = "unmatched_reply_needs_review"
+#: One post an hour for every event nobody could match, instead of one post
+#: each.
+#:
+#: MEASURED 2026-09-22/24: 102 `UNMATCHED_REPLY` posts in 72 hours, all
+#: five fields identical, none of them naming a campaign, a lead or an
+#: event type. 90 were HeyReach conversations in the CLIENT'S half of a
+#: workspace-wide inbox and 12 were EmailBison rows on the client's own
+#: campaigns; 2 were real unmatched replies on a campaign of ours and were
+#: indistinguishable from the rest.
+#:
+#: Its own type rather than a quieter `UNMATCHED_REPLY`, for the reason
+#: `CAMPAIGN_STOPPED_EXTERNALLY` is its own type: an aggregate and a single
+#: occurrence are different statements, and one id per hour is what makes the
+#: digest idempotent when the watcher polls twelve times inside it.
+#: `src/unmatched.py` is the whole of the decision; this is only where it
+#: goes.
+UNMATCHED_DIGEST = "unmatched_events_digest"
 FAILED_JOB = "failed_job_needs_attention"
 PROVIDER_HEALTH_ISSUE = "provider_health_issue"
 # Reply ingestion has stopped. Critical because it is the only failure
@@ -232,6 +294,7 @@ ROUTES = {
     VERIFICATION_DEGRADED: (GLOBAL, WARNING),
     MX_ANOMALY: (GLOBAL, WARNING),
     UNMATCHED_REPLY: (GLOBAL, ACTION_REQUIRED),
+    UNMATCHED_DIGEST: (GLOBAL, ACTION_REQUIRED),
     FAILED_JOB: (GLOBAL, ACTION_REQUIRED),
     PROVIDER_HEALTH_ISSUE: (GLOBAL, CRITICAL),
     REPLY_PROTECTION_FAILED: (GLOBAL, CRITICAL),
@@ -264,6 +327,89 @@ ROUTES = {
 }
 
 EVENT_TYPES = tuple(sorted(ROUTES))
+
+# ---------------------------------------------------- naming the object
+#
+# EVERY POSTED ALERT NAMES THE THING IT IS ABOUT, or it is not posted.
+#
+# Two failures bought this table, three weeks apart, and they are opposite
+# halves of one rule:
+#
+#   `d6a719c2` - every external-stop CRITICAL named campaign 487 while
+#   carrying 491's figures, because the call site passed a module constant
+#   instead of the campaign it was watching. A critical naming the wrong
+#   object is worse than none: it is actively dismissed, and that one was.
+#
+#   2026-09-22/24 - 102 `UNMATCHED REPLY NEEDS REVIEW` posts naming no object
+#   at all: no campaign, no lead, no event type, no time. `Held: 0` on every
+#   one. There was nothing in them to act on and nothing to dismiss either.
+#
+# So: per event type, the fields without which the alert says nothing. All of
+# them must be present and non-empty, in the payload or in the identifiers.
+# A kind that is not in this table is not exempt - it falls to the default
+# below, which is "carry at least one identifier".
+#
+# THE STATUS FEED IS OUT OF SCOPE, and by construction rather than by
+# exception: `_status_payload` REFUSES ids, names and addresses, because that
+# channel has the widest human audience in the product. Requiring it to name
+# an object would be requiring it to break its own contract. It is counts, it
+# says so, and its CRITICAL kind (`STATUS_HARD_STOP`) is raised beside an ops
+# event that does name one.
+# A nested tuple means "any one of these will do" - two providers spell the
+# same object differently and neither spelling is wrong.
+MUST_NAME = {
+    UNMATCHED_DIGEST: ("window", "unmatched", "by_campaign", "by_provider",
+                       "events", "action"),
+    UNMATCHED_REPLY: ("provider", ("campaign", "campaign_id"),
+                      ("lead", "lead_domain", "from_domain"), "event_type",
+                      "provider_event_id", "at", "action"),
+    CAMPAIGN_STOPPED_EXTERNALLY: ("campaign", "was", "now", "action"),
+    CAMPAIGN_BLANK_CONTENT: ("campaign",),
+    CAMPAIGN_QA_FAILED: ("campaign",),
+    CAMPAIGN_APPROVAL_REQUIRED: ("campaign",),
+    REPLY_PROTECTION_FAILED: ("provider", "effect", "action"),
+    PROVIDER_HEALTH_ISSUE: ("provider", "effect", "action"),
+    PROVIDER_CREDIT_WARNING: ("provider",),
+    SENDER_CAPACITY_WARNING: ("sender",),
+    FAILED_JOB: (("job", "job_id"),),
+    # The one alert a client sees. `company` OR `contact_name`: a record thin
+    # enough to carry neither is a record nobody can act on, and a record
+    # carrying one of them names the object perfectly well. Requiring both
+    # would suppress the message this whole module exists to deliver, on a
+    # missing job title.
+    POSITIVE_REPLY: (("company", "contact_name"),),
+}
+
+#: Destinations the gate applies to. See the STATUS note above.
+NAMED_DESTINATIONS = (GLOBAL, WORKSPACE)
+
+
+def _present(have, name):
+    """One requirement, which may be a tuple of acceptable spellings."""
+    names = name if isinstance(name, tuple) else (name,)
+    return any(have.get(n) not in (None, "", [], {}) for n in names)
+
+
+def names_its_object(event_type, payload=None, ids=None, workspace=None):
+    """`(True, ())` when this alert names what it is about, else the gaps.
+
+    Empty string, empty list, empty dict and None are all "not named". A
+    field present and blank is exactly the shape the 95 posts had.
+    """
+    have = dict(payload or {})
+    have.update({k: v for k, v in (ids or {}).items()})
+    if workspace:
+        have.setdefault("workspace", workspace)
+    required = MUST_NAME.get(event_type)
+    if required is None:
+        # The default, and it is not a waiver: an alert with no identifier at
+        # all cannot be acted on, whatever its kind.
+        named = bool([v for v in (ids or {}).values()
+                      if v not in (None, "", [], {})]) or bool(workspace)
+        return named, () if named else ("an identifier",)
+    missing = tuple("/".join(n) if isinstance(n, tuple) else n
+                    for n in required if not _present(have, n))
+    return (not missing), missing
 
 # Which workspace policy switch gates each workspace-bound kind, and what it
 # defaults to. Positive replies are the only one on by default: it is the
@@ -694,6 +840,23 @@ def plan(event_type, workspace=None, fields=None, ids=None, actions=(),
     else:
         payload = _global_payload(fields)
 
+    # AN ALERT THAT NAMES NOTHING IS NOT POSTED.
+    #
+    # Checked on the payload that would actually go out, after the scrub,
+    # because the scrub is what can remove the field that named the object -
+    # and a gate reading the caller's dict would pass an alert whose posted
+    # form is blank. SUPPRESSED rather than dropped: the row is written with
+    # the missing field names in `why`, so the gap is visible in
+    # `/notifications` and in the history, and a developer who broke a
+    # builder finds out here rather than from a channel full of nothing.
+    if decision["destination"] in NAMED_DESTINATIONS:
+        named, missing = names_its_object(event_type, payload, ids, workspace)
+        if not named:
+            decision = dict(decision, status=SUPPRESSED,
+                            why=("this alert names nothing to act on, so it "
+                                 "is recorded and not posted; missing: "
+                                 + ", ".join(missing)))
+
     row = {
         "id": identifier,
         "at": at or store.now(),
@@ -1067,19 +1230,64 @@ def deliver(identifier, config=None):
         return _update(identifier, status=UNCONFIGURED,
                        why="no channel to post to")
 
+    tier = posting_for(row.get("severity"))
     payload = {"kind": row["type"], "channel": row["channel"],
                "text": render(row), "blocks": [], "actions": row["actions"],
                "metadata": dict(row["ids"], notification_id=row["id"])}
+    # THE DAILY THREAD IS OPS ONLY. A positive reply is WORKSPACE and INFO,
+    # and burying the one message a client's channel exists for under a
+    # thread would be this change committing the fault it was written to fix.
+    parent = (thread_parent_ts(row) if tier == DAILY_THREAD
+              and row.get("destination") == GLOBAL else None)
+    if parent:
+        payload["thread_ts"] = parent
     try:
-        slack.post(payload, config)
+        result = slack.post(payload, config) or {}
     except Exception as e:                                  # noqa: BLE001
         return _update(identifier, status=FAILED,
                        attempts=(row.get("attempts") or 0) + 1,
                        last_error=f"{type(e).__name__}: {e}"[:300],
                        why="the transport refused; this stays retryable")
+    # BEST EFFORT, AND NEVER ABLE TO UNDO A DELIVERY. The message is already
+    # in the channel; a workspace without `pins:write` must not turn a
+    # delivered CRITICAL into a FAILED row that a retry would post twice.
+    pinned = None
+    if tier == PIN_AND_POST and result.get("ts"):
+        pinned = slack.pin(row["channel"], result["ts"], config)
     return _update(identifier, status=SENT,
                    attempts=(row.get("attempts") or 0) + 1,
+                   tier=tier, slack_ts=result.get("ts"),
+                   thread_ts=parent, pinned=pinned,
                    why="posted")
+
+
+def thread_parent_ts(row, rows=None):
+    """The `ts` of the day's first ops message, or None to start the thread.
+
+    DERIVED, never stored as its own state - the same argument `digestwatch`
+    makes about whether a period has been delivered. A second file saying
+    "today's thread is 1727..." is a file that can disagree with the channel,
+    and the notification log already knows which message went out first.
+
+    The day is UTC, like `DIGEST_HOUR`, because there is no per-workspace
+    timezone in this build and inventing one here would be a guessed timezone
+    presented as a decision.
+    """
+    day = str(row.get("at") or "")[:10]
+    if not day:
+        return None
+    candidates = [
+        r for r in (rows if rows is not None else load())
+        if r.get("status") == SENT
+        and r.get("channel") == row.get("channel")
+        and str(r.get("at") or "")[:10] == day
+        and r.get("slack_ts") and not r.get("thread_ts")
+        and posting_for(r.get("severity")) == DAILY_THREAD
+        and r.get("destination") == GLOBAL
+        and r.get("id") != row.get("id")]
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda r: str(r.get("at")))[0]["slack_ts"]
 
 
 def retry(identifier, config=None):

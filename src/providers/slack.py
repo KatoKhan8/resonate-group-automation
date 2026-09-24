@@ -429,6 +429,40 @@ def post(payload, config=None):
             "channel": channel}
 
 
+PINS_ADD = "/pins.add"
+
+
+def pin(channel, ts, config=None):
+    """Pin one already-posted message. Returns True, False or None.
+
+    OPERATOR DECISION 2026-09-24: a CRITICAL posts and pins, so the four
+    things somebody has to act on now are at the top of the channel instead
+    of sixty messages down it.
+
+    **IT NEVER RAISES, AND NEVER REPORTS A DELIVERY AS FAILED.** The message
+    is already in the channel by the time this runs. A workspace whose bot
+    has no `pins:write` scope answers `missing_scope`, and turning that into
+    a failed notification would make the caller retry - which would post the
+    CRITICAL a second time. So: True pinned, False the workspace said no
+    (with the reason in the log line, never the payload), None not attempted.
+    """
+    if not live() or not channel or not ts:
+        return None
+    try:
+        status, data = request(
+            "POST", f"{BASE}{PINS_ADD}",
+            {"Authorization": f"Bearer {key(KEY_VAR)}",
+             "Content-Type": "application/json; charset=utf-8"},
+            {"channel": channel, "timestamp": str(ts)})
+    except Exception:                                       # noqa: BLE001
+        return False
+    if not ok(status) or not isinstance(data, dict):
+        return False
+    # `already_pinned` is a success: the message is pinned, which is the
+    # state this function is for, not the act of pinning it.
+    return bool(data.get("ok")) or data.get("error") == "already_pinned"
+
+
 # ------------------------------------------------- interaction verification
 #
 # Slack signs every interactive payload. Verifying that signature is the only
