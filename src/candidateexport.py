@@ -43,9 +43,42 @@ FIELD_MAP = {
 }
 
 
+#: The ONLY ICP verdict a client export may carry. Operator ruling
+#: 2026-09-22: QUALIFIED only, REVIEW to further enrichment.
+EXPORTABLE_ICP = "qualified"
+
+
 def exportable_candidates():
-    """Candidates in 'new' state, ready for this week's export."""
-    return [r for r in candidatelist.load() if r.get("state") == "new"]
+    """Candidates ready for this week's export: NEW **and** QUALIFIED.
+
+    THE VERDICT GATE IS HERE AS WELL AS AT THE WRITER, and that is the whole
+    point of this function's second condition.
+
+    `4afb54d5` implemented the operator's ruling in `nightlysourcing`, which
+    is where records ENTER the candidate list - so no REVIEW record has been
+    added since. It cannot reach the 1,394 REVIEW records that were already
+    in `candidates.jsonl` when it landed, and this function had no verdict
+    condition at all, so every one of them was still exportable.
+
+    MEASURED 2026-09-24, by calling it:
+
+        exportable_candidates()          1508 rows
+        of which icp_status == review    1394
+        rows at icp_score 0.0            1410
+        median headcount                 16,745
+
+    Productive sells to 20+ person marketing and creative agencies. That
+    export is the ISSUE-019 incident a second time, from the other end: the
+    ruling was enforced where records are written and absent where they are
+    read, and the register recorded it as implemented and standing.
+
+    A gate at the writer protects the future. A gate at the reader protects
+    the file as it is. The export needs the second one, because the defective
+    rows are already on disk and no amount of correct writing removes them.
+    """
+    return [r for r in candidatelist.load()
+            if r.get("state") == "new"
+            and str(r.get("icp_status") or "").strip().lower() == EXPORTABLE_ICP]
 
 
 def to_export_rows(candidates):
