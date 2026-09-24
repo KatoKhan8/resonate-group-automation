@@ -23,6 +23,41 @@ The age key pair blocks the backup; the Storage Box password blocks the
 off-host copy. Claude Code's login does not block, it only means the tmux
 sessions open without it.
 
+**3. `infra` IS EIGHT COMMITS BEHIND `master` AND THAT IS THE FIRST JOB.**
+The lane-3 assist was merged into master at `236eeef7`, and master has moved
+on since: the research pack, the copy lint, a slack-agent merge, and two
+changes that bear directly on this handoff (§1a). **Merge master into infra
+before the cutover**, so the tag deployed on Monday carries what production
+is actually running. That merge has not been done and should not be done at
+23:00 on the night.
+
+---
+
+## 1a. WHAT CHANGED AFTER THIS HANDOFF WAS FIRST WRITTEN
+
+**`bison.resume` IS NO LONGER SEALED.** Production added `EMAIL_RESUME` to
+`SUPPORTED` on 2026-09-24 (`e9adfc1e`), as the operator authorization the
+verb's own entry asked for. 491 and 481 were resumed the same day through
+`bison.resume_campaign` directly — verified, and not wrong, but bypassing
+`perform`, which is why the ledger's last row before that was 09-18. So a
+resume at cutover now **reaches the provider and leaves a row** instead of
+refusing. `heyreach.resume` is still sealed and still has no route.
+
+**A FIXTURE I WROTE CARRIED A REAL VENDOR DOMAIN** — the Storage Box
+provider's, in the backup tests, with `6ff9cc94`. Master's hygiene guard went
+red the moment it merged; production fixed it to a reserved `.example` domain
+(`d08cd3e7`) and the same fix is now on infra. The domain is deliberately not
+reproduced here: the guard scans `docs/` too, and writing it in prose to
+explain the mistake would repeat it.
+
+The account number was invented, so no credential left — but the lesson is
+the checking, not the value. **My pre-push leak check compared against the
+exact values in `hosts/production.env`**, and the vendor domain is a
+substring of `BACKUP_TARGET` rather than equal to it, so the check passed
+while the hygiene guard would have failed. Two different questions: "did a
+secret leak" and "is every fixture on a reserved domain". Answering the
+first does not answer the second, and the second is the one with a guard.
+
 ---
 
 ## 1. HOST STATE
@@ -110,8 +145,9 @@ into sourcing is worse than one that did not happen.
 
     22:00Z   6. VERIFY BEFORE STARTING ANYTHING             the table lists the
              py -3 scripts/cold_start.py --verify \         monitors you expect.
-                 --deadline 30                              20 today. FEWER = STOP.
-             cat build/systemd/MONITOR-TABLE.txt
+                 --deadline 30                              READ IT, do not
+             cat build/systemd/MONITOR-TABLE.txt            count to a number
+                                                            written last week.
 
     22:15Z   7. Start the estate                            is-active, THEN
              sudo systemctl enable --now resonate-supervisor cold_start --verify
@@ -137,9 +173,16 @@ into sourcing is worse than one that did not happen.
 
 **Step 6 is the one that earns its place.** Reading the monitor table against
 what you expect is the check that would have caught 496, 497 and 498 going
-unwatched. It should list **20**: production's 15, plus 493, plus the four
-`draft` campaigns. If it lists fewer, something in the registry did not
-arrive and starting is the wrong move.
+unwatched.
+
+It listed **20** on 2026-09-24 — production's 15, plus 493, plus the four
+`draft` campaigns. **Do not treat 20 as the answer on Monday.** The table is
+derived from the registry, 491 and 481 were resumed on the 24th, and the
+whole point of deriving it is that the number moves without anyone editing a
+list. Read the names against what you believe is live; a count that matches
+for the wrong reasons is exactly what a derived table is meant to stop you
+relying on. Fewer names than campaigns you know are sending is the signal to
+stop.
 
 **Step 7: `is-active` is not an estate that is up.** It answers about the
 supervisor process. `cold_start --verify` answers about heartbeats, which is
@@ -287,6 +330,13 @@ server**. These are not forgotten, they are parked:
     git history dry run, and scripts/history_pii_scan.py
     gateway evaluations
     item 2's three os.environ call sites  — still never exercised
+
+**DONE AND MERGED, not frozen** (lane-3 assist, 2026-09-24, `236eeef7`): the
+provider-write ledger, the declared resume verbs, and one log file per bison
+watcher. Two consequences for the cutover rather than for October:
+`work/provider-writes.jsonl` is new and grows on every write, and the
+watchers' logs are now `w-<monitor name>.out` instead of one shared
+`w-bison_watch_loop.py.out` — so tail the campaign you care about.
 
 Two more that are production's rather than this branch's, and are open
 questions rather than tasks:

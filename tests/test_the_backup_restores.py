@@ -216,7 +216,7 @@ class ShippingOffHostRefusesAndNamesWhatIsMissing(_Estate):
     def test_a_target_without_encryption_still_refuses(self):
         """A destination is not permission to send 300 real companies in the
         clear."""
-        proc = self.ship(BACKUP_TARGET="u1@u1.your-storagebox.de:/backups")
+        proc = self.ship(BACKUP_TARGET="u1@u1.backup.example:/backups")
         self.assertEqual(2, proc.returncode)
         self.assertIn("BACKUP_ENCRYPTION", proc.stderr)
 
@@ -228,14 +228,14 @@ class ShippingOffHostRefusesAndNamesWhatIsMissing(_Estate):
     def test_age_without_a_recipient_refuses_and_says_where_to_get_one(self):
         """age encrypts TO a public recipient. Without one there is nothing
         to encrypt to, and the message has to say where it comes from."""
-        proc = self.ship(BACKUP_TARGET="u1@u1.your-storagebox.de:/backups",
+        proc = self.ship(BACKUP_TARGET="u1@u1.backup.example:/backups",
                          BACKUP_ENCRYPTION="age")
         self.assertEqual(2, proc.returncode)
         self.assertIn("BACKUP_AGE_RECIPIENT", proc.stderr)
         self.assertIn("never reach this host", proc.stderr)
 
     def test_an_unknown_scheme_is_refused_rather_than_treated_as_none(self):
-        proc = self.ship(BACKUP_TARGET="u1@u1.your-storagebox.de:/backups",
+        proc = self.ship(BACKUP_TARGET="u1@u1.backup.example:/backups",
                          BACKUP_ENCRYPTION="rot13")
         self.assertEqual(2, proc.returncode)
         self.assertIn("not a scheme", proc.stderr)
@@ -245,7 +245,7 @@ class ShippingOffHostRefusesAndNamesWhatIsMissing(_Estate):
         instead of the recipient puts the private key in secrets.env, on the
         host - the one thing the laptop-only key exists to prevent."""
         proc = self.ship(
-            BACKUP_TARGET="u1@u1.your-storagebox.de:/backups",
+            BACKUP_TARGET="u1@u1.backup.example:/backups",
             BACKUP_ENCRYPTION="age",
             BACKUP_AGE_RECIPIENT="AGE-SECRET-KEY-1ZZNOTAREALKEY")
         self.assertEqual(2, proc.returncode)
@@ -259,7 +259,7 @@ class ShippingOffHostRefusesAndNamesWhatIsMissing(_Estate):
         """THE QUIET FAILURE THIS GUARDS. An encryptor that is not installed
         must not degrade to shipping the plaintext while the log says
         'shipped'."""
-        proc = self.ship(BACKUP_TARGET="u1@u1.your-storagebox.de:/backups",
+        proc = self.ship(BACKUP_TARGET="u1@u1.backup.example:/backups",
                          BACKUP_ENCRYPTION="age",
                          BACKUP_AGE_RECIPIENT="age1zznotarealrecipient")
         self.assertNotEqual(0, proc.returncode)
