@@ -287,6 +287,26 @@ get a research pack is the operator's call.
 
 ---
 
+## 5b. THE FIXED CODE WAS THEN RUN LIVE
+
+The identity fix landed after the 24 accounts were bought, so it had to be
+proved on something it had not already paid for. Account 25 -
+`aciworldwide.com`, the one the killed process never reached - was run on
+2026-09-24 19:50Z against the fixed code: `open_roles`, `company_slug` and
+`site_content` all started, returned, and produced a pack. $0.0385 for that
+account and the 24 cache reads together, of which $0.0001 was its empty jobs
+run.
+
+**The pilot's own cache is quarantined rather than kept.** It holds the
+`open_role` facts made BEFORE the identity fix, 50 of which are another
+company, and a cache is a thing that gets served. It is renamed
+`work/researchpack-pilot-cache.PRE-FIX-DO-NOT-SERVE.json` - the evidence
+survives and nothing reads it. A coverage table computed from it still shows
+the pre-fix `open_roles` figure of 8; the corrected 3 is recomputed from the
+rows, as section 4a says.
+
+---
+
 ## 6. WHAT IS NOT PROVEN HERE
 
 - **A pack is not copy.** `src/copylint.py` is what makes a fact load-bearing
