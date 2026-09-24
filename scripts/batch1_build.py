@@ -109,7 +109,11 @@ COHORTS = {
            "campaigns": 1},
 }
 
-STEP_KEYS = ("em1", "em2", "em3")
+#: FOUR STEPS FROM 2026-09-24. `em3`/`breakup` is retired and the remaining
+#: keys are NOT renumbered: a step key is identity here - approvals are
+#: fingerprinted per key and `push_id` is `record:contact:step:channel` - so
+#: renaming em4 to em3 would hand em4's approvals to a different message.
+STEP_KEYS = ("em1", "em2", "em4", "em5")
 
 #: THE CAMPAIGN CARRIES ITS OWN SEQUENCE, exactly as 489 does.
 #:
@@ -121,12 +125,44 @@ STEP_KEYS = ("em1", "em2", "em3")
 #: provider sequence has three steps and whose cadence has five would silently
 #: drop em4 and em5, and nothing downstream would say so.
 #:
-#: Copied from campaign 489's own row, which is the shape that has sent mail.
+#: Copied from campaign 489's own row, which is the shape that has sent mail,
+#: and lengthened to FOUR steps on 2026-09-24.
+#:
+#: THE DAYS ARE WHAT `email_sequence.steps` DECLARES ITS WAITS AGAINST.
+#: `bisonfactory._sequence_steps` recomputes every gap but the last from these
+#: numbers and refuses a declared `wait_in_days` that does not reproduce it,
+#: so 1/4/8/13 here and 3/4/5/1 there are one fact written twice on purpose.
+#:
+#: ONLY NEW CAMPAIGN ROWS GET THIS. `campaign_row` writes it at creation and
+#: nothing rewrites an existing row, so campaigns 485-500 keep the em1/em2/em3
+#: cadence they were created with. Against the four-key `email_sequence` they
+#: now REFUSE, and a four-step sequence cannot be appended onto a campaign the
+#: provider has already sequenced - `bison.set_sequence` appends and has no
+#: replace. Those campaigns are rebuilt or left three-step; they are not
+#: migrated in place.
+#:
+#: em4 AND em5 NAME NO TEMPLATE AND ARE MARKED `generated`, and that is the
+#: only shape that is true for them. Their copy is PER PERSONA -
+#: `angle_shift_economic_buyer` / `angle_shift_champion` and
+#: `close_economic_buyer` / `close_champion` - so there is no single template
+#: name a campaign-wide step could carry, and writing a made-up family name
+#: like "angle_shift" would be a `TEMPLATES[name]` KeyError the first time
+#: anything built a timeline against this campaign row.
+#:
+#: `generated: true` is not decoration either. `cadence.expand_step` returns
+#: the STORED step for a generated spec and re-renders `TEMPLATES[template]`
+#: over it otherwise - verified by running both branches, not by reading them
+#: - and the stored step is S7's per-lead words. The client's default cadence
+#: `productive_li_heavy_v1` already marks em1..em5 generated, which is the
+#: cadence `approve.approve_step` actually builds against (it is called with
+#: no campaign), so this makes the campaign-scoped path agree with the path
+#: that runs instead of quietly substituting different words on one of them.
 CADENCE_STEPS = [
     {"key": "em1", "day": 1, "channel": "email", "template": "persona_pain"},
     {"key": "em2", "day": 4, "channel": "email",
      "template": "comparable_proof"},
-    {"key": "em3", "day": 8, "channel": "email", "template": "breakup"},
+    {"key": "em4", "day": 8, "channel": "email", "generated": True},
+    {"key": "em5", "day": 13, "channel": "email", "generated": True},
 ]
 
 
@@ -306,6 +342,22 @@ def build_records(selection, icp, verify, mx, people):
             contact["key"] = identity.contact_key(
                 contact, existing=[c.get("key") for c in record["contacts"]])
             record["contacts"].append(contact)
+            # THE S7 JOURNAL IS KEYED BY STEP KEY; THE PROVIDER IS KEYED BY
+            # POSITION. `body_4` here is em4's words because the step is
+            # called em4 - it is NOT the fourth provider variable. em4 is the
+            # THIRD provider step and its words arrive as `{BODY_3}`; em5 is
+            # the fourth and arrives as `{BODY_4}`. The translation happens
+            # once, in `bisonfactory._variables_for`, and nothing on this side
+            # may assume the two numbering schemes agree.
+            #
+            # `body_3` - the retired `breakup` - is still rendered by S7 and
+            # is deliberately not read here. em3 is gone from this cadence.
+            #
+            # EVERY STEP CARRIES `subject_1`. em4 was drafted to open a second
+            # thread with a second subject; the 2026-09-16 threading invariant
+            # in `bisonfactory._sequence_steps` refuses a follow-up that is
+            # not a thread reply and carries a distinct subject, so there is
+            # no `subject_2` to store. See the note in the client config.
             record["cadence"][contact["key"]] = {
                 "em1": {"channel": "email", "template": "persona_pain",
                         "generated": True,
@@ -315,10 +367,16 @@ def build_records(selection, icp, verify, mx, people):
                         "generated": True,
                         "subject": variables["subject_1"],
                         "body": variables["body_2"]},
-                "em3": {"channel": "email", "template": "breakup",
+                "em4": {"channel": "email",
+                        "template": variables["template_4"],
                         "generated": True,
                         "subject": variables["subject_1"],
-                        "body": variables["body_3"]},
+                        "body": variables["body_4"]},
+                "em5": {"channel": "email",
+                        "template": variables["template_5"],
+                        "generated": True,
+                        "subject": variables["subject_1"],
+                        "body": variables["body_5"]},
             }
     return records
 
