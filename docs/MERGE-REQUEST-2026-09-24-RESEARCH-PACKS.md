@@ -54,15 +54,21 @@ Measured with `scripts/researchpack_copylint_gap.py`, which imports
 them rather than describing them — a second copy of the matching would be a
 report that agrees with itself and not with the gate.
 
-| set | leads | carry free-crawl **before** tonight | carry free-crawl **now** | **pass rule 1 now** |
-| --- | --- | --- | --- | --- |
-| the 128 (no queue record) | 128 | **0** | 99 · 77.3% | **72 · 56.2%** |
-| under the cohort caps | 105 | **0** | 95 · 90.5% | **77 · 73.3%** |
-| all UK/EU rendered | 179 | **0** | 148 · 82.7% | **116 · 64.8%** |
+Final, after both passes finished:
 
-So of the 128: **72 would pass rule 1 today and 56 would still refuse the
-push.** Of those 56, **29 have no usable crawled page at all** and the other
-27 have one their step-1 opener does not touch.
+| set | leads | carry a pack fact **before** tonight | carry one **now** | **pass rule 1 now** |
+| --- | --- | --- | --- | --- |
+| the 128 (no queue record) | 128 | **0** | 107 · 83.6% | **80 · 62.5%** |
+| under the cohort caps | 105 | **0** | 102 · 97.1% | **84 · 80.0%** |
+| all UK/EU rendered | 179 | **0** | 156 · 87.2% | **124 · 69.3%** |
+
+So of the 128: **80 would pass rule 1 today and 48 would still refuse the
+push.** Of those 48, **21 have no pack fact at all** and the other 27 have
+one their step-1 opener does not touch.
+
+The 105 under the cohort caps - the set the three campaigns can actually
+carry at 45 each - is the strongest of the three at **84 of 105**, because
+that set is exactly the one the Apify pass also covered.
 
 ### 1.3 The gap was seven minutes and no dollars, and it is already closed
 
@@ -175,17 +181,20 @@ can only stop a walk sooner than a declared ceiling would.
 
 `py -3 scripts/researchpack_ledger_slice.py --since 2026-09-24T21:50:00+00:00`
 
-    133 row(s), 200 credit(s)
-      apify  open_roles      67 row(s)   134 credit(s)
-      apify  person_posts    65 row(s)    65 credit(s)
+    186 row(s), 279 credit(s)
+      apify  open_roles      93 row(s)   186 credit(s)
+      apify  person_posts    92 row(s)    92 credit(s)
       apify  company_posts    1 row(s)     1 credit(s)
 
     first {"at": "2026-09-24T21:52:04+00:00", "day": "2026-09-24",
            "client": "productive", "provider": "apify", "call": "open_roles",
            "expected_cost": 2, "run_id": null}
-    last  {"at": "2026-09-24T23:01:03+00:00", "day": "2026-09-24",
-           "client": "productive", "provider": "apify", "call": "open_roles",
-           "expected_cost": 2, "run_id": null}
+    last  {"at": "2026-09-24T23:18:47+00:00", "day": "2026-09-24",
+           "client": "productive", "provider": "apify", "call": "person_posts",
+           "expected_cost": 1, "run_id": null}
+
+**186 ledger rows and 186 Apify runs in the same window.** They agree one
+for one, which is the whole point of recording at the moment of the call.
 
 Every paid call is one of those rows. **No Apify run in this lane was made
 outside the ledger**, and none was made without `check_budget` first.
@@ -202,24 +211,31 @@ run, from `GET /v2/actor-runs` filtered on `startedAt`.
 
 | actor | runs | status | billed | per account |
 | --- | --- | --- | --- | --- |
-| `harvestapi/linkedin-profile-posts` | 65 | 65 SUCCEEDED | $0.28275 | $0.00435 |
-| `bebity/linkedin-jobs-scraper` | 66 | 66 SUCCEEDED | $0.05170 | $0.00080 |
-| `harvestapi/linkedin-company-posts` | 1 | 1 SUCCEEDED | $0.00530 | $0.00008 |
+| `harvestapi/linkedin-profile-posts` | 92 | 92 SUCCEEDED | $0.40185 | $0.00437 |
+| `bebity/linkedin-jobs-scraper` | 93 | 93 SUCCEEDED | $0.06650 | $0.00072 |
+| `harvestapi/linkedin-company-posts` | 1 | 1 SUCCEEDED | $0.00530 | $0.00006 |
 | `apify~website-content-crawler` | **0** | — | **$0.00000** | **$0.00000** |
-| **TOTAL** | **132** | 132 SUCCEEDED | **$0.33975** | **$0.00523** |
+| **TOTAL** | **186** | 186 SUCCEEDED | **$0.47365** | **$0.00515** |
 
-Over the 65 accounts the walk reached. **$0.00523 per account against the
-pilot's $0.03987** — the site crawl is gone and the LinkedIn half came in
-under its own planned figure too.
+Over all 92 accounts of the capped cohort. **$0.00515 per account against
+the pilot's $0.03987 - a 7.7x reduction.** The site crawl is gone, and the
+LinkedIn half came in under its own planned $0.01098 too, because most jobs
+runs return no items and are billed the start fee alone.
 
-200 credits committed against $0.33975 billed is the ledger's round-up
+279 credits committed against $0.47365 billed is the ledger's round-up
 working as designed: `planned_cost` rounds a sub-cent call UP to one cent,
 which overstates and therefore fails closed.
+
+**At 19,612 accounts this shape is $101 a month against the $199 budget** -
+inside it for the first time, with the site content still covered. That is
+an arithmetic on this cohort's observed rate and not a promise: the rate is
+low partly because `open_roles` returns almost nothing here, and a cohort
+that is hiring would pay for the rows it gets.
 
 ### 3.3 Against the ceilings
 
     per_day                5000     committed today at the start   2125
-    per_run                2000     committed by this lane          200
+    per_run                2000     committed by this lane          279
     per_provider_per_day   none declared
     total                 50000
 
@@ -230,31 +246,38 @@ ceiling refused anything, and none was raised.**
 
 ## 4. COVERAGE PER SOURCE
 
-### 4.1 The Apify walk — 65 accounts of the 92-account capped cohort
+### 4.1 All four sources, over the complete 92-account capped cohort
 
-| source | billed by | covered | of 65 | facts | $ per covered account |
+| source | billed by | covered | of 92 | facts | $ per covered account |
 | --- | --- | --- | --- | --- | --- |
-| `site_content` | **ours** | 51 | **78.5%** | 119 | **$0.00000** |
-| `person_posts` | apify | 53 | **81.5%** | 134 | $0.00534 |
-| `open_roles` | apify | 1 | **1.5%** | 1 | $0.05170 |
-| `company_posts` | apify | 1 | **1.5%** | 3 | $0.00530 |
-| **any fact at all** | | **62** | **95.4%** | | |
+| `person_posts` | apify | 75 | **81.5%** | 193 | $0.00536 |
+| `site_content` | **ours** | 71 | **77.2%** | 159 | **$0.00000** |
+| `open_roles` | apify | 1 | **1.1%** | 1 | $0.06650 |
+| `company_posts` | apify | 1 | **1.1%** | 3 | $0.00530 |
+| **any fact at all** | | **89** | **96.7%** | | |
 
-### 4.2 The finding in that table: `open_roles` bought 66 runs and covered 1 account
+Per profile, from the runner's own table: `person_posts:champion` covered 40
+of the 54 accounts that carry a champion profile, `person_posts:exec` 35 of
+38. The bound there is the ESTATE - whether a contact has a LinkedIn URL at
+all - and not the actor: where a profile URL existed the actor found posts
+about three times in four.
+
+### 4.2 The finding in that table: `open_roles` bought 93 runs and covered 1 account
 
 The pilot measured `open_roles` at 12.5% post-fix on 24 US-heavy accounts.
-On this UK/EU cohort it is **1 of 65**. 66 runs billed $0.05170 — about
-$0.00078 each, which is the start fee and almost no items, so most returned
+On this UK/EU cohort it is **1 of 92**. 93 runs billed $0.06650 — about
+$0.00072 each, which is the start fee and almost no items, so most returned
 **no rows at all**. These are small agencies and they are not posting jobs
 on LinkedIn.
 
 That matters more than its own coverage, because `open_roles` is **the only
 source of the LinkedIn company slug**, which is what makes `company_posts`
-addressable. One slug came out, so `company_posts` covered one account.
+addressable. One slug came out, so `company_posts` was addressable on 1 of
+92 accounts and covered that one.
 
 **The operator's question from the pilot now has a second data point: the
 jobs actor can supply the slug, and on this cohort it does so for 1 account
-in 65.** The opt-in resolver `harvestapi/linkedin-company` reached 50% on
+in 92.** The opt-in resolver `harvestapi/linkedin-company` reached 50% on
 the pilot at $0.00238 per account — **$0.22 for these 92**. It was **not**
 turned on: it is a cost the operator did not ask for, `actors.py` marks it
 opt-in for that reason, and a fallback that turns itself on is a cost
@@ -263,6 +286,8 @@ nobody chose. It is one flag and the price is stated.
 ### 4.3 The free crawl — all 153 UK/EU domains
 
     116 of 153 covered (75.8%) · 277 requests · 334.2 seconds · $0.00000
+
+71 of the 92 capped accounts, counted in §4.1, are a subset of these.
 
 `site_content` is now both the widest source and the only free one. On the
 cohort that matters it covers more accounts than every paid source except
@@ -328,10 +353,14 @@ for a reader to discover.
 
 ## 7. WHAT REMAINS UNVERIFIED
 
-1. **27 of the 92 capped accounts have no Apify pass.** The walk was killed
-   by the harness at 65, exactly as the pilot was killed at 24 of 25.
-   Finishing them is about $0.14 and 12 minutes. Their site content is
-   already read — the free pass covered all 153 domains.
+1. **The 61 UK/EU domains outside the cohort caps have no Apify pass.** All
+   153 have their site content read; the LinkedIn sources were bought only
+   for the 92 the three campaigns can carry. Extending to all 153 is about
+   $0.31 and 25 minutes, and is only worth it if the cap changes.
+   (The first walk WAS killed by the harness at 65 of 92, exactly as the
+   pilot was killed at 24 of 25. It was resumed and completed all 92; the
+   cache made the resume skip the 65 already bought, so nothing was bought
+   twice - 186 runs for 93 jobs targets and 92 profile targets.)
 2. **"The 128" is an inference**, derived in §1.1 and reproducible, but the
    handoff states the number without a derivation. If a different 128 is
    meant, §1.2 carries the 105 and the 179 as well.
