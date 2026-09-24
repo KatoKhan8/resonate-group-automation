@@ -1,5 +1,23 @@
 # Step 4 and step 5 email copy - DRAFTS FOR OPERATOR APPROVAL
 
+> **SUPERSEDED IN TWO PLACES, 2026-09-24 late. Read
+> `docs/MERGE-REQUEST-2026-09-24-CADENCE-FOUR-STEPS.md` before acting on
+> anything below.**
+>
+> 1. **"927 rendered rows" in the paragraph below is wrong.** 927 is the
+>    journal's LINE count. 814 rendered and 113 were held - which the persona
+>    counts four lines down already say, 621 + 193 = 814. The number that
+>    survives lint and the company-name gate as well is 796.
+> 2. **The `SUBJECT_2` / new-thread shape for em4 in section 2 cannot be
+>    staged.** `bisonfactory._sequence_steps` refuses it: "step 3 is not a
+>    thread reply but carries a distinct subject". That invariant is
+>    operator-verified and was not weakened. The four steps shipped are
+>    threaded on `{SUBJECT_1}` throughout and `thread_reply_pattern` is
+>    `[false, true, true, true]`.
+>
+> The four bodies in sections 3 and 4 were approved and ARE wired in, in
+> `src/cadence.TEMPLATES`. The ordering table in section 2 is not.
+
 2026-09-24. Lane 1. **Nothing here is approved and nothing here is wired in.**
 These are TEMPLATES in the register of `src/cadence.py`'s `TEMPLATES`, written
 to be pasted there once approved. `src/cadence.py` was not edited.
