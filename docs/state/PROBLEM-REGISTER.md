@@ -36,22 +36,18 @@ _ISSUE-025 added 2026-09-23 night: the adoption path, and the 76 blank
 emails it sent. `ISSUE-013` was already taken by a closed row - numbers are
 not reused._
 
-_ISSUE-035 added 2026-09-24 lane 1: three Apify actor ids that do not exist,
-and the tests that were green against them. It was written as ISSUE-034 and
-renumbered: master moved under the session and 034 was taken by the
-blank-render gate below. Numbers are not reused, and a duplicate is worse
-than a gap._
-
-_ISSUE-036 added 2026-09-24 lane 1: 70% of the jobs rows a research pack
-would have asserted were a different company._
-
-_ISSUE-037 added 2026-09-24 lane 1: the undeclared-write guard scans the
-harness's own worktrees and reports 54 findings that are copies of declared
-ones._
+_ISSUE-038, 039 and 040 added 2026-09-24 lane 1, and renumbered TWICE:
+master moved under the session and took 034, then 035 and 036, for other
+findings. 037 is left free deliberately - a gap is cheaper than a third
+renumber. **AND MASTER ALREADY CARRIES ISSUE-038's TEXT UNDER THE NUMBER
+034**: another session staged this file mid-edit and committed the row
+before it was numbered. When this branch merges, master's second
+`ISSUE-034 - The research pack named three Apify actors that do not exist`
+is the SAME finding and must be deleted, not kept beside ISSUE-038._
 
 ---
 
-### ISSUE-037 · The undeclared-write guard reports 54 copies of itself · MEDIUM · OPEN
+### ISSUE-040 · The undeclared-write guard reports 54 copies of itself · MEDIUM · OPEN
 
 **Reproduced 2026-09-24.** `tests/test_nothing_writes_to_a_provider.py`
 walks the filesystem from the repository root, and the Claude Code harness
@@ -73,7 +69,7 @@ the worktrees belong to other sessions.
 
 ---
 
-### ISSUE-036 · 70% of the `open_roles` rows were another company, and every one would have become a fact · HIGH · **FIXED**
+### ISSUE-039 · 70% of the `open_roles` rows were another company, and every one would have become a fact · HIGH · **FIXED**
 
 **Measured 2026-09-24 over 24 real accounts** (`docs/RESEARCH-PACK-PILOT-2026-09-24.md`).
 `bebity/linkedin-jobs-scraper` is aimed with `companyName`, which is a TEXT
@@ -103,7 +99,7 @@ the pilot's cached rows, not from a fresh paid run.
 
 ---
 
-### ISSUE-035 · The research pack named three Apify actors that do not exist · HIGH · **FIXED**
+### ISSUE-038 · The research pack named three Apify actors that do not exist · HIGH · **FIXED**
 
 **Confirmed 2026-09-24 by asking Apify.** `src/researchpack/actors.py`, as
 merged, named `apify~linkedin-company-posts-scraper`,

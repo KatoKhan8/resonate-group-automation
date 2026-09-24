@@ -79,7 +79,7 @@ against this task's four questions:
 merely placeholders: the three LinkedIn actor ids were invented and answer
 404, so nothing had ever run. And the `open_roles` coverage this task quotes
 as "8 of 23 domains" is itself too high - 50 of the 71 rows behind it were a
-different company (ISSUE-036), so the corrected figure is 3 of 24.
+different company (ISSUE-039), so the corrected figure is 3 of 24.
 
 `GET /users/me/limits` was not used: `GET /users/me/usage/monthly` carries
 `totalUsageCreditsUsdAfterVolumeDiscount`, which is the same not-self-reported
