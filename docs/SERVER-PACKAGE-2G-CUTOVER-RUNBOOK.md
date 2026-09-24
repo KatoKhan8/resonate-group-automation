@@ -110,8 +110,11 @@ is the question you actually have.
 
 ### 3h. The webhook
 
-    curl -sS https://<PUBLIC_HOSTNAME>/healthz
-    # then a SIGNED test POST, and an oversized one
+    # NOT /healthz - only /webhook* is proxied, by design, so /healthz
+    # returns 403 from outside and is reachable on loopback only. Corrected
+    # 2026-09-24 after the shadow deploy returned 403 here.
+    ssh <user>@<host> 'curl -sS http://127.0.0.1:8787/healthz'
+    # then, from outside: a SIGNED test POST, and an oversized one
 
 Both. The oversized one is the point: it must return a readable 413 naming
 the limit, **not** a broken pipe. See 2f.
