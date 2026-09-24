@@ -485,7 +485,35 @@ Not edited: `config/clients/productive.yaml`, `src/cadence.py`,
 `scripts/batch1_build.py` (LANE B), `config/.env`, `src/providers/*`,
 `scripts/*_watch_loop.py`, anything under `work/`.
 
-## 5. What a reviewer should check first
+## 5. What this lane did NOT do — three tasks, written out, numbers left blank
+
+The pool is at depth 1 and I am not allocating numbers, because 034 was taken
+twice the same evening and the register's own lesson is to allocate before
+writing rather than after. These are ready to number.
+
+**A. The nine fixture files that stage copy with no research.** §2.5 names
+them and `docs/state/LANE-D-BISONFACTORY-FAILURE-DIFF-2026-09-24.json` carries
+all 68 test names. 46 need one `research` row on their fixture record — the
+shape is in `tests/test_the_copy_lint_refuses_the_real_send_path.py`'s
+`OWN_FACT`, four keys. 17 are two leads sharing one body, which is a real
+fixture defect and wants two bodies. Do NOT satisfy either by weakening a
+rule. Required under every option in §2.5.
+
+**B. One sentence in `persona_pain`.** It is the only template of eight that
+pairs a direct address with `{company}`, which makes the company's own name a
+checkable specific inside a claim about the company — 280 of 636 production
+rows, and 179 of 394 crawled packs could not support it (§3.4). The other
+seven templates already show the shape that does not have this problem. One
+sentence, `src/cadence.py`, after lane B.
+
+**C. The 291 rendered rows that match no record.** 31% of `s7-copy.jsonl` is
+copy for an address `work/queue.jsonl` does not hold (§3.3 item 2). Either the
+render ran against a wider input than the queue, or records were dropped after
+rendering, or the addresses were rewritten. This lane measured it and did not
+chase it; no pack-fact check is even attemptable for those rows, and neither
+is a push.
+
+## 6. What a reviewer should check first
 
 1. §2.5. The 68 is the whole question and the rest is detail.
 2. That `_refuse_copylint` really is above `bison.bound_workspace()` in
