@@ -250,9 +250,36 @@ def status(out=print):
     return down
 
 
-def spawn(argv):
+def log_path(name):
+    """One log per MONITOR, not one per script.
+
+    THE DEFECT THIS FIXES. This was `w-{basename(argv[0])}.out`, so it was
+    named after the SCRIPT - and fourteen bison watchers all run
+    `scripts/bison_watch_loop.py`. Every one of them opened the same
+    `w-bison_watch_loop.py.out` in append mode and fourteen processes
+    interleaved into one file, with nothing in a line saying which campaign
+    wrote it.
+
+    The cost is paid exactly when the file is needed. 497 is where the blank
+    emails were found; reading back through a shared log to work out which
+    lines were 497's - while 451, 481, 484, 485, 487, 489 and 491-498 were
+    writing into the same handle - is the difference between a log and a
+    pile. Campaign watchers are also the monitors most likely to be read one
+    at a time, because an incident is about one campaign.
+
+    `heyreach_watch` and the static loops are unaffected in practice: they
+    are one process each, so the name was already unique. They still go
+    through here so there is one rule rather than two.
+    """
+    safe = "".join(c if (c.isalnum() or c in "-_") else "-" for c in str(name))
+    return os.path.join(WORK, f"w-{safe}.out")
+
+
+def spawn(argv, name=None):
     """Detached, so it outlives this process and the terminal that ran it."""
-    log = os.path.join(WORK, f"w-{os.path.basename(argv[0])}.out")
+    # `name` defaults to the script only so an older caller cannot crash;
+    # every caller in this file passes the monitor name.
+    log = log_path(name or os.path.basename(argv[0]))
     flags = 0
     if os.name == "nt":
         flags = (getattr(subprocess, "DETACHED_PROCESS", 0)
@@ -282,7 +309,7 @@ def start(live=False, only=None, out=print):
             out(f"  PLAN  {name:<20} would start: py -3 {' '.join(argv)}")
             started.append(name)
             continue
-        proc = spawn(argv)
+        proc = spawn(argv, name)
         started.append(name)
         out(f"  START {name:<20} pid {proc.pid}")
     return started, skipped
@@ -348,7 +375,7 @@ def restart(names, out=print):
                 out(f"  STOP  {name:<20} pid {pid} FAILED: {exc}")
                 rc = 1
         time.sleep(2)
-        proc = spawn(argv)
+        proc = spawn(argv, name)
         out(f"  START {name:<20} pid {proc.pid}")
     return rc
 

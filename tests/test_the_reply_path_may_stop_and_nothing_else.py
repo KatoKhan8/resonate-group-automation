@@ -29,6 +29,7 @@ authority to enrol, pause, resume and create - giving back exactly what the
 the size of the job, and these tests are what make that a property rather
 than a comment.
 """
+import os
 import unittest
 
 from src import inbound, providers
@@ -122,18 +123,92 @@ class TheGrantReachesTheGuard(unittest.TestCase):
 
 
 class TheStopPathAsksForTheNarrowGrant(unittest.TestCase):
+    """ASSERTED ON BEHAVIOUR, NOT ON THE TEXT OF A FUNCTION.
 
-    def test_stop_at_provider_scopes_to_stop_routes(self):
-        import inspect
-        source = inspect.getsource(inbound._stop_at_provider)
-        self.assertIn("allow_writes", source)
-        self.assertIn("STOP_ROUTES", source)
+    These two tests used to call `inspect.getsource(inbound._stop_at_provider)`
+    and grep it for "allow_writes" and "STOP_ROUTES". The scope later moved
+    into `_stop_one`, where the per-channel work actually happens, and both
+    tests have been failing ever since - carried in the suite baseline as
+    accepted failures - **while the behaviour they were written to protect
+    was correct the whole time.**
+
+    That is the failure mode CLAUDE.md names: "Searching source for words
+    produces a test that fails when somebody writes a comment". It is worse
+    than a false alarm. A guard that fails for a reason nobody believes gets
+    filed under "known", and then it cannot raise its voice on the day the
+    scope really does go missing.
+
+    So the question is asked of the running code instead: at the moment the
+    reply path calls a stopper, what does the write guard actually permit?
+    That holds no matter which function holds the `with`.
+    """
+
+    def _permissions_seen_by(self, channel):
+        """Drive the reply path and capture what the guard allowed INSIDE it."""
+        seen = {}
+
+        def probe(rec, contact, why, **kw):
+            seen["stop_email"], _ = providers.writes_allowed(STOP_EMAIL)
+            seen["stop_linkedin"], _ = providers.writes_allowed(STOP_LINKEDIN)
+            seen["enrol"], _ = providers.writes_allowed(ENROL)
+            seen["pause"], _ = providers.writes_allowed(PAUSE)
+            seen["resume"], _ = providers.writes_allowed(RESUME)
+            seen["create"], _ = providers.writes_allowed(CREATE)
+            return {"stopped": True, "already": False}
+
+        from src import leadstop
+        target = ("stop_contact" if channel == "email"
+                  else "stop_linkedin_contact")
+        original = getattr(leadstop, target)
+        setattr(leadstop, target, probe)
+        try:
+            inbound._stop_at_provider(
+                {"id": "r1"},
+                {"key": "c1", "bison_lead_id": "1", "heyreach_lead_id": "2",
+                 "linkedin": "https://www.linkedin.com/in/example-person/"},
+                rows=[])
+        finally:
+            setattr(leadstop, target, original)
+        return seen
+
+    def test_the_linkedin_stop_is_permitted_where_the_work_happens(self):
+        seen = self._permissions_seen_by("linkedin")
+        self.assertTrue(seen.get("stop_linkedin"),
+                        "the reply path cannot stop a LinkedIn lead")
+
+    def test_the_email_stop_is_permitted_where_the_work_happens(self):
+        seen = self._permissions_seen_by("email")
+        self.assertTrue(seen.get("stop_email"),
+                        "the reply path cannot stop an email lead")
+
+    def test_and_nothing_else_is_permitted_while_it_runs(self):
+        """The other half of the guarantee, and the half worth having."""
+        for channel in ("email", "linkedin"):
+            seen = self._permissions_seen_by(channel)
+            for verb in ("enrol", "pause", "resume", "create"):
+                self.assertFalse(
+                    seen.get(verb),
+                    "the reply path could %s while stopping on %s"
+                    % (verb, channel))
+
+    def test_the_scope_does_not_outlive_the_reply(self):
+        """A grant that leaks past its block would hand the whole loop the
+        authority the 487 guard exists to take away."""
+        self._permissions_seen_by("linkedin")
+        for url in (STOP_EMAIL, STOP_LINKEDIN, ENROL):
+            allowed, _why = providers.writes_allowed(url)
+            self.assertFalse(allowed, "the scope outlived the reply path")
 
     def test_it_does_not_reach_for_the_env_var(self):
-        """`RESONATE_PROVIDER_WRITES=1` here would re-open everything."""
-        import inspect
-        source = inspect.getsource(inbound._stop_at_provider)
-        self.assertNotIn("RESONATE_PROVIDER_WRITES", source)
+        """`RESONATE_PROVIDER_WRITES=1` would re-open everything, so the
+        reply path must not be what sets it. Asserted by RUNNING without it
+        and checking the narrow grant is what did the permitting: a wide
+        grant would have permitted the enrol above too."""
+        self.assertNotIn("RESONATE_PROVIDER_WRITES", os.environ,
+                         "this test is meaningless with the env var set")
+        seen = self._permissions_seen_by("linkedin")
+        self.assertTrue(seen.get("stop_linkedin"))
+        self.assertFalse(seen.get("enrol"))
 
 
 if __name__ == "__main__":

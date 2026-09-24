@@ -820,6 +820,11 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
                     # it the same hour - which is the half of the pair that
                     # keeps the list honest doing its job.
                     "watchsink",
+                    # The provider-write ledger: one row per call through
+                    # `perform`, appended beside the queue. Added 2026-09-24
+                    # and caught by the other half of this pair the same
+                    # hour, exactly like `watchsink` above.
+                    "providerwrites",
                     # The Slack agent writes three files beside the queue:
                     # the knowledge-pack cache, the thread memory and the
                     # change-request journal. Added 2026-09-22, caught by

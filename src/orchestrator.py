@@ -625,7 +625,67 @@ def resume(campaign, by="unknown", role=roles.ADMIN, recs=None, config=None):
     campaigns.set_status(campaign, campaigns.RUNNING, f"resumed by {by}",
                          allow=(campaigns.RUNNING,))
     _note(campaign, events.CAMPAIGN_RESUMED, by=by)
+
+    # THE PROVIDER IS ASKED, AND THE ANSWER IS RECORDED.
+    #
+    # Until 2026-09-24 this function ended at the line above: it cleared the
+    # local pause, wrote a local event, and NEVER TOLD THE PROVIDER. A resumed
+    # campaign therefore read RUNNING here while EmailBison still had it
+    # paused, and nothing anywhere recorded that divergence - `perform` was
+    # never called, so no ledger row existed to notice.
+    #
+    # It does not raise. A resume that cannot reach the provider is still a
+    # local resume, and losing the local state change would trade a visible
+    # divergence for an invisible one. The per-channel outcome is returned
+    # instead, the same shape `pause` uses, so a caller can see that the
+    # provider half did not happen.
+    campaign["resume_at_providers"] = _resume_at_providers(campaign, by)
     return campaign
+
+
+def _resume_at_providers(campaign, by):
+    """Ask each provider to resume. Never raises; classifies instead.
+
+    BOTH VERBS ARE SEALED TODAY and that is the point of calling them. A
+    sealed verb refuses by name and leaves a ledger row, which is strictly
+    better than the silence it replaces: before this, a LinkedIn resume did
+    nothing and said nothing, and there was no way to tell that apart from a
+    resume that worked.
+    """
+    from . import providerwrites
+    from .providers import bison, heyreach
+
+    out = {}
+    for channel, key, operation, transport, readback, expected in (
+            ("email", "bison_campaign_id", providerwrites.EMAIL_RESUME,
+             lambda pid: bison.resume_campaign(pid),
+             lambda pid: {"status": bison.campaign(pid).get("status")},
+             {"status": "running"}),
+            ("linkedin", "heyreach_campaign_id", providerwrites.LINKEDIN_RESUME,
+             lambda pid: heyreach.resume_campaign(pid),
+             lambda pid: {"status": heyreach.campaign_status(pid)},
+             {"status": "IN_PROGRESS"})):
+        provider_id = campaign.get(key)
+        if not provider_id:
+            out[channel] = {"attempted": False, "resumed": False,
+                            "why": "this campaign names no %s" % key}
+            continue
+        try:
+            outcome = providerwrites.perform(
+                operation, campaign=str(campaign.get("campaign_id")),
+                tenant=campaign.get("client"),
+                payload={"campaign_id": provider_id},
+                transport=lambda _p, t=transport, pid=provider_id: t(pid),
+                readback=lambda r=readback, pid=provider_id: r(pid),
+                expected=expected, by=by)
+            out[channel] = {"attempted": True, "resumed": True,
+                            "class": (outcome or {}).get("class")}
+        except Exception as e:
+            # Classified, never swallowed. `perform` has already written the
+            # ledger row for this by the time we get here.
+            out[channel] = {"attempted": True, "resumed": False,
+                            "error": type(e).__name__, "why": str(e)[:200]}
+    return out
 
 
 def complete(campaign, why="finished"):
