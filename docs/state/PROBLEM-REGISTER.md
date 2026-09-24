@@ -36,6 +36,105 @@ _ISSUE-025 added 2026-09-23 night: the adoption path, and the 76 blank
 emails it sent. `ISSUE-013` was already taken by a closed row - numbers are
 not reused._
 
+_ISSUE-034 added 2026-09-24 lane 1: three Apify actor ids that do not exist,
+and the tests that were green against them._
+
+---
+
+### ISSUE-034 · The research pack named three Apify actors that do not exist · HIGH · **FIXED**
+
+**Confirmed 2026-09-24 by asking Apify.** `src/researchpack/actors.py`, as
+merged, named `apify~linkedin-company-posts-scraper`,
+`apify~job-listings-scraper` and `apify~linkedin-profile-posts-scraper`.
+Every one answers **404 `record-not-found`** on `GET /v2/acts/{id}` with the
+live token. `apify~website-content-crawler`, the one id that was not
+invented, answers 200 - so this is the ids, not the credential.
+
+**Why nothing caught it.** `tests/fixtures/cassettes/00-researchpack.json`
+matched on `url_contains: "linkedin-company-posts-scraper"`, so the cassette
+and the code agreed with each other and neither agreed with Apify. Thirty-odd
+tests were green against a provider surface nobody in this codebase had ever
+seen - the same shape as "a green test that cannot fail", one layer further
+out: not an invented fixture for a real actor, an invented fixture for an
+actor that does not exist.
+
+The input shapes were invented with the ids and were wrong in a way that
+matters: `proxyConfiguration` was set on all three, and none of the three
+real actors declares that field. The date field was read by a flat key list
+that cannot see `postedAt.date`, where the real actor puts it, so every post
+would have come back undated.
+
+**Fixed.** Four verified ids, each confirmed with `GET /v2/acts/{id}` and
+then RUN live; input shapes read from each actor's declared input schema; the
+cassette rewritten to the real field SHAPE with identifiers replaced.
+Evidence and the pilot numbers: `docs/RESEARCH-PACK-PILOT-2026-09-24.md`.
+Regression test: `tests/test_researchpack.py::EveryActorIdIsOneApifyKnows`,
+which cannot itself reach the network and says so - it asserts the id SHAPE
+and points at the dated live check, because the three wrong ones all claimed
+to be on Apify's own account.
+
+**A second defect found in the same file and fixed with it.** The person
+cache was keyed on the ROLE (`champion`) and not on the person, so an account
+whose champion changed read the previous champion's posts out of the cache
+and attributed them to the new one. The test that covered this asserted zero
+new runs after a champion change and called that the point of having two
+keys - it was asserting the defect, under a docstring that said the opposite.
+
+---
+
+### ISSUE-034 · the blank-render gate refuses AFTER the attach, so a refusal leaves leads enrolled
+
+**Status: OPEN, and it cost a real divergence on 2026-09-24.**
+
+`bisonfactory.stage` ensures leads, ATTACHES them, and only then reads the
+provider's rendered queue back. So control (a) refuses *after* the write it
+is meant to gate, and the refusal does not roll anything back.
+
+**Measured tonight.** Three pushes, all reporting `REFUSED` and
+`enrolled at the provider 0`:
+
+    campaign   before   after   push report
+    496          9       43     REFUSED (blank-render gate)
+    497          7       20     REFUSED (attach readback)
+    498         13       15     REFUSED (attach readback)
+                        ----
+                         49 leads attached
+
+496 is the pure case: the gate refused on 11 of 17 rendered rows being blank
+— **the incident's own stopped blanks, still sitting in that campaign's
+queue** — and 34 leads went in anyway.
+
+**Two consequences, and the second is worse than the first.**
+
+1. A campaign carrying settled blank rows can never be pushed into again,
+   because the gate counts them. The incident's residue is now a permanent
+   block on 496 until those rows leave the queue, and ISSUE-030 means there
+   is no verb to remove them.
+2. **A refusal reads as "nothing happened" and is not.** The operator was
+   told `enrolled 0` three times while 49 leads went live in three ACTIVE
+   campaigns.
+
+**Not a safety incident, and the distinction matters:** 0 pending blanks in
+all three, verified immediately after and again fifteen minutes later; the
+leads are verified, carry approved copy, and were the cohort cleared through
+the veto window. The fault is that our report of what happened was false.
+
+**The fix is ordering, not a new guard.** The rendered-queue read has to
+happen against a staged-but-unattached state, or the attach has to be
+reversible — and it is not, which is ISSUE-030 again from a third direction.
+
+---
+
+### ISSUE-016 · `attach_leads` reports REFUSED on a write that succeeded · MEDIUM — **RECURRED 2026-09-24, with a cost**
+
+Already in this register. Tonight it produced the 497 and 498 halves of
+ISSUE-034: *"the provider answered 200 but 13 of 16 / 2 of 15 leads are not
+in campaign after 6 readbacks over ~15s"*. Minutes later every one of them
+was there. The readback window is too short for the provider's own
+visibility lag, and the failure mode is not a missing write — it is a
+truthful write reported as a failure, which is the shape that makes an
+operator act on a false negative.
+
 ---
 
 ### ISSUE-032 · the bot cannot post or upload in a Slack Connect channel

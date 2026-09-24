@@ -495,7 +495,111 @@ def _forward_book_room(row):
                                           active_campaign_ids=active)
         if verdict == _sh.ROOM:
             total += int(free or 0)
+    if total:
+        return total
+    return _stale_book_ceiling(row)
+
+
+#: OPERATOR RULE, 2026-09-24. A STAND-IN FOR A STALE CENSUS, NOT A DEFAULT.
+#:
+#: `senderheadroom` returns REFUSED when the forward-book walk is not
+#: complete, fresh and covering, and REFUSED IS NOT ROOM - so the function
+#: above correctly contributes nothing and every campaign reads `room 0`.
+#: That is right, and on 2026-09-24 it meant the estate could not push at all
+#: because the census was 30.4h old against a 24h limit and re-walking it
+#: takes hours: fourteen campaigns, three of them the CLIENT'S OWN, and 352
+#: alone reports ~95,000 rows. They have to be walked because they book the
+#: same mailboxes we send from.
+#:
+#: So room falls back to the provider's own counters:
+#:
+#:     room = (daily_limit - sent_today - our scheduled rows today) x 0.5
+#:
+#: THE HALVING IS THE WHOLE POINT and it is not caution for its own sake.
+#: The client's campaigns 327, 328 and 352 book these same mailboxes, their
+#: bookings are exactly what the stale census cannot tell us, and CLAUDE.md's
+#: worked example is sender 2736 booked 15/15 on the 21st by campaign 327.
+#: Half the apparent room is reserved against bookings we cannot see.
+#:
+#: IT IS REPLACED BY THE CENSUS THE MOMENT ONE COMPLETES - the branch above
+#: wins whenever it can answer at all. If this function starts being the
+#: normal path, the census has stopped completing and that is the bug.
+#: The campaigns whose queues count as OUR committed load today. Derived
+#: from the monitor table rather than hand-listed: a hand-written list is
+#: what left 496, 497 and 498 unwatched, and a campaign missing from THIS one
+#: would have its sends counted as free capacity.
+def _our_campaigns():
+    from src import supervisor
+    out = []
+    for mon in supervisor.monitors():
+        name = str(mon.get("name") or "")
+        if name.startswith("bison_watch_"):
+            tail = name.rsplit("_", 1)[-1]
+            if tail.isdigit():
+                out.append(int(tail))
+    return tuple(sorted(out))
+
+
+STALE_BOOK_RESERVE = 0.5
+
+
+def _stale_book_ceiling(row):
+    """Half of what the provider's own counters say is free today."""
+    import datetime
+    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    used = _sender_load_today(today)
+    limits = _sender_daily_limits()
+    total = 0
+    for entry in (row.get("senders") or {}).get("email") or []:
+        try:
+            sid = int((entry or {}).get("provider_account_id"))
+        except (TypeError, ValueError):
+            continue
+        limit = int(limits.get(sid, PER_MAILBOX_DAY))
+        free = max(0, limit - int(used.get(sid, 0)))
+        total += int(free * STALE_BOOK_RESERVE)
     return total
+
+
+_LOAD_CACHE = {}
+
+
+def _sender_load_today(today):
+    """Per-mailbox rows ALREADY committed today across our campaigns.
+
+    Counts `sent` rows sent today and `scheduled` rows due today, both keyed
+    by the row's own `sender_email.id`. Our commitments only - the client's
+    are the unknown this whole rule reserves against.
+    """
+    if today in _LOAD_CACHE:
+        return _LOAD_CACHE[today]
+    from src.providers import bison as _b
+    used = {}
+    for cid in _our_campaigns():
+        try:
+            rows = _b.scheduled_emails(cid, cap=80)
+        except Exception:                                    # noqa: BLE001
+            # A campaign we cannot read is a campaign whose load is unknown,
+            # and unknown load must not read as free capacity. Skipping it
+            # would do exactly that, so the whole ceiling refuses instead.
+            raise
+        for r in rows:
+            sid = ((r.get("sender_email") or {}) or {}).get("id")
+            if not sid:
+                continue
+            status = str(r.get("status") or "")
+            when = str(r.get("sent_at") or r.get("scheduled_date") or "")
+            if status in ("sent", "scheduled", "queued_for_sending")                     and when.startswith(today):
+                used[int(sid)] = used.get(int(sid), 0) + 1
+    _LOAD_CACHE[today] = used
+    return used
+
+
+def _sender_daily_limits():
+    from src.providers import bison as _b
+    rows, _meta = _b.sender_emails()
+    return {int(r["id"]): int(r.get("daily_limit") or PER_MAILBOX_DAY)
+            for r in rows if r.get("id") is not None}
 
 
 def assign_to_existing(selection):
