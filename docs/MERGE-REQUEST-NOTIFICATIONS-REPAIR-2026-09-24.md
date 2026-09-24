@@ -407,6 +407,42 @@ no other:
     return the whole address, not the domain  -> the no-mailbox test fails
     let an empty registry decide THEIRS       -> three drop tests fail
 
+### 7.1 The whole suite, and what the difference is
+
+`unittest discover` on this branch: **12,568 tests, 92 failures, 10 errors.**
+That is a large pre-existing baseline plus this repository's known cross-test
+contamination, and it is not useful on its own - so the 44 modules that
+contained a failure were re-run in isolation on this branch and on the
+production tree, and the two lists diffed:
+
+    only on master   test_secrets::test_every_state_override_is_in_the_example
+    only on branch   test_the_prototype_cannot_send::…refuses_before_it_imports…
+                     test_review_may_not_reach_the_export::…refused_today
+    everything else  identical, 84 failures on both
+
+The one on master is FIXED here - see below. **Both of the two on this branch
+are worktree artefacts, and each was proved to be one by supplying the file
+it was missing**: the first wants `prototype/` built (`run build.py first`),
+the second reads the REAL `work/candidates.jsonl` by design. With
+production's copies of both in place, all 20 tests pass. This is
+`docs/` folklore already: a worktree has its own empty `work/`.
+
 `tests/test_replies.py::test_every_verdict_carries_its_evidence` fails on
-this branch and fails identically on `68312d2f`. It is `1481a747`'s
+this branch and identically on the production tree. It is `1481a747`'s
 `RULE_HASH` and has nothing to do with this change.
+
+### 7.2 A guard this change found red, and turned back on
+
+`tests/test_secrets.py::test_every_state_override_is_in_the_example` asserts
+that every name in `store.STATE_OVERRIDES` is documented in
+`config/.env.example`. It has been red, so the next omission would have gone
+unnoticed behind the existing ones. **Five were missing** and none of them
+was this change's:
+
+    QUEUE_DB  PROVIDER_WRITES_LEDGER  SLACK_FOLLOWUPS
+    SUPERVISOR_LOCKS  SUPERVISOR_STATE
+
+They are named now, in one commented block, alongside this change's own
+`UNMATCHED_LEDGER`. That test is green again. The other failure in that file,
+`test_no_tracked_file_contains_a_credential_shaped_assignment`
+(`scripts/server/webhook_receiver.py`), is pre-existing and untouched.
