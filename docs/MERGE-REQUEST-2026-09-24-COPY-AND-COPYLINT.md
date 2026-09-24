@@ -162,10 +162,28 @@ written about, reproduced by its own fix. Do not merge `c0c63d58`.**
     src/bisonfactory.py  line 86   _refuse_copylint(plan, recs, report)
                          line 76   report["copylint"] = _copylint_report(plan, recs)   (dry run)
 
-Inside `bisonfactory.stage`, which is what `scripts/batch1_push.py` calls. It
-sits **after `_plan()` and before `bison.bound_workspace()`** — before the
-tenancy read, therefore before the first provider call of any kind, not merely
-before the attach.
+Inside `bisonfactory.stage`. It sits **after `_plan()` and before
+`bison.bound_workspace()`** — before the tenancy read, therefore before the
+first provider call of any kind, not merely before the attach.
+
+`stage` is the chokepoint, so one wiring covers every caller rather than one
+of them. Every call site in the repository, live and dry:
+
+    scripts/batch1_push.py:137            stage(slug, live=bool(args.live))   THE PUSH
+    scripts/repoint_to_all_mailboxes.py:178  stage(slug, live=True)
+    scripts/write_control_campaign.py:156    stage(CAMPAIGN_ID, live=...)
+    scripts/write_control_campaign_v3.py:177 stage(CAMPAIGN_ID, live=...)
+    scripts/batch_preflight.py:160        stage(..., live=False)["plan"]      dry run
+
+The last one is a free win: the preflight is already a dry run, and it now
+carries `report["copylint"]` — so the verdict is readable before `--live`
+rather than during it.
+
+**The LinkedIn path is NOT covered and this lane did not extend it.**
+`heyreachfactory.stage` is a separate function that follows the same
+plan/refuse/write/read-back pattern; the copy that travels to HeyReach in
+merge variables passes no batch lint today. Named here so nobody reads "the
+copy lint is wired" as covering both channels.
 
 That placement is deliberate and it is ISSUE-037's lesson: the blank-render
 gate refuses *after* `_ensure_leads` and its refusal does not roll back, which
@@ -267,7 +285,8 @@ a single identity-checked pack fact, so with this merged, **tomorrow's push of
 128 refuses too**.
 
 So the wiring is right and the lint is right, and merging it as it stands stops
-all sending. The two honest ways forward, and this is yours to pick:
+all sending. Three ways forward, and this is yours to pick. **(c) is the
+cheapest and it is measured, not estimated — read §3.4 before choosing.**
 
 - **(a) Land the research packs first, then merge this unchanged.** Branch
   `researchpack-four-sources-2026-09-24` (`7d7cf5a6`, not merged, not an
@@ -282,6 +301,15 @@ all sending. The two honest ways forward, and this is yours to pick:
   it.** Four rules stay blocking today: `duplicate_first_line`, `empty_step`,
   `dash`, `buzzword`. The 17 duplicate-first-line failures above are real
   defects in those fixtures and would stay red either way.
+
+- **(c) Run the free site crawl over the 128 before pushing them, and merge
+  this unchanged.** No Apify, no credits, no branch merge. The estate already
+  holds crawl research for 394 records and it is exactly the shape
+  `packfacts` reads. **Measured in §3.4: 366 of those 394 (93%) would pass
+  rule 1 today.** This clears `step1_without_pack_fact`, which is 46 of the 68
+  and all of production's 636. It does not clear
+  `untraceable_company_claim` — §3.4 has that number too — and the 17
+  `duplicate_first_line` fixture failures stay, because they are real.
 
 I did not take (b) on my own authority, and I did not soften the lint to make
 the suite green. Widening a rule to let a draft through is the one thing
@@ -386,7 +414,39 @@ Five things in that table are worth your time.
    not sufficient: nearly half of today's crawled packs never say the company's
    name in a form the lint can match.
 
-### 3.4 What this check cannot do, said out loud
+### 3.4 Would a free crawl be enough? 366 of 394, measured
+
+The question option (c) turns on: if the 128 were crawled before the push,
+would the lint let them through? Answered against the 394 records that already
+carry crawl research, by rendering `persona_pain`'s opener for each of them
+and asking `copylint`'s own rule-1 question of it:
+
+    records with crawl research                               394
+      rule 1 - the opener has a token the pack supports       366   (93%)
+      rule 1 - fails                                           28   (7%)
+      own company name traces to its own pack                 215   (55%)
+      own company name does NOT                               179   (45%)
+
+The first pair is the answer: **the crawl already on this estate is enough for
+rule 1 in 93% of cases.** No Apify run, no credits, no branch merge.
+
+The second pair is what it is not enough for. `untraceable_company_claim` asks
+whether every checkable specific in a sentence that addresses the reader
+traces, and on 45% of these packs the company's own NAME does not — the crawl
+snippet is often a navigation dump that never says the name in prose. So the
+128 would still hit §3.3's item 4 wherever the name is two capitalised words.
+
+Two ways to close that, and the second is cheap:
+
+- give `persona_pain`'s closing question a wording that does not pair a direct
+  address with `{company}`, the way the other seven templates already do not
+  (§1.3). One sentence, in `src/cadence.py`, which LANE B holds tonight;
+- or require the crawl to keep a snippet that names the company. That is a
+  crawler change and a bigger one.
+
+Rung 3 as drafted needs neither: it is already clean with no pack at all.
+
+### 3.5 What this check cannot do, said out loud
 
 It inherits `copylint.untraceable`'s reach. It extracts figures, money,
 percentages, dates, quoted phrases and capitalised multi-word names from
@@ -398,11 +458,19 @@ with scale" — passes this and is still a person's judgement call.
 
 ## 4. Files in this branch
 
-    src/bisonfactory.py     +81   the wiring, and the two helpers behind it
-    src/packfacts.py        new   one account's research as a pack, identity-checked
-    scripts/packfact_check.py  new   §3, read-only
-    tests/test_the_copy_lint_refuses_the_real_send_path.py  new  10 tests
-    docs/MERGE-REQUEST-2026-09-24-COPY-AND-COPYLINT.md  new  this file
+`git diff --stat 24acafff HEAD` — 1,299 insertions, 1 deletion, 6 files:
+
+    src/bisonfactory.py                                       82 +-   the wiring
+    src/packfacts.py                                         132 new  identity, not presence
+    scripts/packfact_check.py                                271 new  §3, read-only
+    tests/test_the_copy_lint_refuses_the_real_send_path.py   305 new  10 tests
+    docs/MERGE-REQUEST-2026-09-24-COPY-AND-COPYLINT.md       418 new  this file
+    docs/state/LANE-D-BISONFACTORY-FAILURE-DIFF-2026-09-24.json 92 new  §2.5 BY NAME
+
+The single deletion is the `from . import ...` line that gained `copylint` and
+`packfacts`. The last file exists because this repository has learned twice
+that a baseline which is a COUNT cannot say which tests changed: it carries
+all 68 new failing names and the one pre-existing one.
 
 Not edited: `config/clients/productive.yaml`, `src/cadence.py`,
 `scripts/batch1_build.py` (LANE B), `config/.env`, `src/providers/*`,
