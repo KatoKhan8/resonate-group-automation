@@ -45,6 +45,7 @@ APP_DIR="${APP_DIR:-${APP_HOME}/resonate-group-automation}"
 REPO_URL="${REPO_URL:-}"
 SECRETS_FILE="${SECRETS_FILE:-/etc/resonate/secrets.env}"
 UNIT_NAME="resonate-supervisor.service"
+WEBHOOK_UNIT="resonate-webhook.service"
 UNIT_DIR="${UNIT_DIR:-/etc/systemd/system}"
 # The previously deployed ref, so a rollback has somewhere to go. Outside the
 # checkout ON PURPOSE: a state file inside the tree is a state file a
@@ -251,6 +252,7 @@ else
   GEN="${APP_DIR}/scripts/server/generate_units.py"
   run "python3 '${GEN}' --out-dir '${APP_DIR}/build/systemd' --app-dir '${APP_DIR}' --user '${APP_USER}'"
   run "sudo install -m 0644 -o root -g root '${APP_DIR}/build/systemd/${UNIT_NAME}' '${UNIT_DIR}/${UNIT_NAME}'"
+  run "sudo install -m 0644 -o root -g root '${APP_DIR}/build/systemd/${WEBHOOK_UNIT}' '${UNIT_DIR}/${WEBHOOK_UNIT}'"
   run "sudo systemctl daemon-reload"
   note "the derived table it was generated against:"
   run "cat '${APP_DIR}/build/systemd/MONITOR-TABLE.txt' | sed 's/^/     /'"
@@ -261,7 +263,10 @@ say "9. START, OR DELIBERATELY NOT"
 if [[ $SKIP_UNITS -eq 1 ]]; then
   note "skipped by --skip-units."
 elif [[ $NO_START -eq 1 ]]; then
-  note "--no-start: the unit is INSTALLED and NOT STARTED, and not enabled."
+  note "--no-start: the SUPERVISOR is installed and NOT started."
+  note "The webhook receiver IS started: it records and never acts, and the"
+  note "shadow phase needs it answering while the estate stays down."
+  run "sudo systemctl enable --now ${WEBHOOK_UNIT}"
   note "This is the shadow deploy. Nothing watches and nothing sends."
   note "To start it later:  sudo systemctl enable --now ${UNIT_NAME}"
 else
