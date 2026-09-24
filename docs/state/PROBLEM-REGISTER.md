@@ -36,12 +36,74 @@ _ISSUE-025 added 2026-09-23 night: the adoption path, and the 76 blank
 emails it sent. `ISSUE-013` was already taken by a closed row - numbers are
 not reused._
 
-_ISSUE-034 added 2026-09-24 lane 1: three Apify actor ids that do not exist,
-and the tests that were green against them._
+_ISSUE-035 added 2026-09-24 lane 1: three Apify actor ids that do not exist,
+and the tests that were green against them. It was written as ISSUE-034 and
+renumbered: master moved under the session and 034 was taken by the
+blank-render gate below. Numbers are not reused, and a duplicate is worse
+than a gap._
+
+_ISSUE-036 added 2026-09-24 lane 1: 70% of the jobs rows a research pack
+would have asserted were a different company._
+
+_ISSUE-037 added 2026-09-24 lane 1: the undeclared-write guard scans the
+harness's own worktrees and reports 54 findings that are copies of declared
+ones._
 
 ---
 
-### ISSUE-034 · The research pack named three Apify actors that do not exist · HIGH · **FIXED**
+### ISSUE-037 · The undeclared-write guard reports 54 copies of itself · MEDIUM · OPEN
+
+**Reproduced 2026-09-24.** `tests/test_nothing_writes_to_a_provider.py`
+walks the filesystem from the repository root, and the Claude Code harness
+keeps agent worktrees under `.claude/worktrees/`. Those are full checkouts,
+so every declared write in `src/providers/*` appears again at a path the
+allowlist does not match - 54 findings, all of them the same declared calls
+seen through a second path.
+
+`ALLOWED` is keyed on repo-relative paths, which is correct; the walk is what
+is too broad. The test is currently RED for anybody with a worktree present,
+and this file's own warning applies to it: a guard that cries wolf is a guard
+somebody switches off. It caught a real finding the same day
+(`src/researchpack/pack.py` POST, now declared), which is exactly why it must
+not be left noisy.
+
+**Not fixed here.** Narrowing the walk of a security guard is a decision that
+deserves its own review rather than a drive-by in a research-pack commit, and
+the worktrees belong to other sessions.
+
+---
+
+### ISSUE-036 · 70% of the `open_roles` rows were another company, and every one would have become a fact · HIGH · **FIXED**
+
+**Measured 2026-09-24 over 24 real accounts** (`docs/RESEARCH-PACK-PILOT-2026-09-24.md`).
+`bebity/linkedin-jobs-scraper` is aimed with `companyName`, which is a TEXT
+FILTER, not an identity. Of the 71 rows it returned across the eight accounts
+that got any, **50 were a different company** that merely shares part of a
+name - and on four of those eight accounts, **all ten rows were**.
+
+`actors.slug_from_jobs` already applied an identity test before accepting a
+company's LinkedIn SLUG from a row. The FACTS were made from every row with
+no check at all, so a pack would have asserted that somebody else is hiring
+on five of the eight accounts that had roles - and an `open_role` fact is
+exactly what a first line leans on. This is the wrong-company shape of
+`WRONG-PERSON-REPORT-2026-09-11.md`, one entity up.
+
+**Fixed.** `actors.is_this_company(row, domain, site_key)` is now the one
+identity test - the row's own `companyWebsite` has to be on this record's
+domain - and it is applied to the facts as well as the slug. It FAILS CLOSED:
+a caller with no domain to check against gets no roles rather than unchecked
+ones, and a row with no website field proves nothing and is refused.
+
+Regression: `tests/test_researchpack.py::test_another_companys_job_makes_no_fact`
+and `::test_and_with_no_domain_to_check_against_nothing_passes`, both verified
+by deleting the guard and confirming those two - and only those two - go red.
+
+**Not production-verified.** The corrected coverage figure is recomputed from
+the pilot's cached rows, not from a fresh paid run.
+
+---
+
+### ISSUE-035 · The research pack named three Apify actors that do not exist · HIGH · **FIXED**
 
 **Confirmed 2026-09-24 by asking Apify.** `src/researchpack/actors.py`, as
 merged, named `apify~linkedin-company-posts-scraper`,

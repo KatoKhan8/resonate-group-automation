@@ -1,25 +1,10 @@
 [
  {
-  "call": "researchpack-run-start-company-posts",
-  "note": "PROVENANCE: hand written to Apify's documented run-start schema, like every other entry in this directory - tests/base.py calls these 'hand written provider fixtures'. NOT captured from a live run. No Apify actor run in this repository has ever succeeded: providers/apify.start_run records that every run it started was rejected with 400 invalid-input for a missing proxyConfiguration, so there is nothing to capture from. scripts/capture_researchpack.py takes the real ones and costs credits.",
-  "match": {
-   "method": "POST",
-   "url_contains": "linkedin-company-posts-scraper"
-  },
-  "status": 201,
-  "response": {
-   "data": {
-    "id": "run-company-posts",
-    "status": "READY",
-    "defaultDatasetId": "ds-company-posts"
-   }
-  }
- },
- {
   "call": "researchpack-run-start-open-roles",
+  "note": "PROVENANCE, rewritten 2026-09-24. The FIELD SHAPE of every dataset row below was taken from real runs of these four actors from this account on 2026-09-24 - the run ids are in docs/RESEARCH-PACK-PILOT-2026-09-24.md - and the identifiers were then replaced with reserved-domain and invented equivalents, because tests/test_fixture_hygiene.py refuses a real company or person in a tracked file and is right to. So the shape is a capture and the content is not, which is the only combination this repository allows. What this file replaced was neither: it was written to three actor ids that answer 404 record-not-found, so nothing it asserted could ever have run.",
   "match": {
    "method": "POST",
-   "url_contains": "job-listings-scraper"
+   "url_contains": "linkedin-jobs-scraper"
   },
   "status": 201,
   "response": {
@@ -31,10 +16,25 @@
   }
  },
  {
+  "call": "researchpack-run-start-company-posts",
+  "match": {
+   "method": "POST",
+   "url_contains": "linkedin-company-posts"
+  },
+  "status": 201,
+  "response": {
+   "data": {
+    "id": "run-company-posts",
+    "status": "READY",
+    "defaultDatasetId": "ds-company-posts"
+   }
+  }
+ },
+ {
   "call": "researchpack-run-start-person-posts",
   "match": {
    "method": "POST",
-   "url_contains": "linkedin-profile-posts-scraper"
+   "url_contains": "linkedin-profile-posts"
   },
   "status": 201,
   "response": {
@@ -46,18 +46,18 @@
   }
  },
  {
-  "call": "researchpack-run-status-company-posts",
-  "note": "One SUCCEEDED per run id, each naming ITS OWN dataset. A generic status reply made the run fall through to apify.json's catch-all `/datasets/` entry and read another actor's rows - which is what a shared match does when the ids do not discriminate.",
+  "call": "researchpack-run-start-site-content",
+  "note": "The pack runs the website crawler too - the fourth source. This entry must sort BEFORE apify.json's own crawler entry, which is what the 00- prefix is for.",
   "match": {
-   "method": "GET",
-   "url_contains": "/actor-runs/run-company-posts"
+   "method": "POST",
+   "url_contains": "website-content-crawler"
   },
-  "status": 200,
+  "status": 201,
   "response": {
    "data": {
-    "id": "run-company-posts",
-    "status": "SUCCEEDED",
-    "defaultDatasetId": "ds-company-posts"
+    "id": "run-site-content",
+    "status": "READY",
+    "defaultDatasetId": "ds-site-content"
    }
   }
  },
@@ -78,8 +78,22 @@
   }
  },
  {
+  "call": "researchpack-run-status-company-posts",
+  "match": {
+   "method": "GET",
+   "url_contains": "/actor-runs/run-company-posts"
+  },
+  "status": 200,
+  "response": {
+   "data": {
+    "id": "run-company-posts",
+    "status": "SUCCEEDED",
+    "defaultDatasetId": "ds-company-posts"
+   }
+  }
+ },
+ {
   "call": "researchpack-run-status-person-posts",
-  "note": "One SUCCEEDED per run id, each naming ITS OWN dataset. A generic status reply made the run fall through to apify.json's catch-all `/datasets/` entry and read another actor's rows - which is what a shared match does when the ids do not discriminate.",
   "match": {
    "method": "GET",
    "url_contains": "/actor-runs/run-person-posts"
@@ -94,31 +108,23 @@
   }
  },
  {
-  "call": "researchpack-dataset-company-posts",
-  "note": "Three rows, and the third is deliberately unusable: no url, so no claim made from it could be traced. The pack must DROP it rather than keep the count up.",
+  "call": "researchpack-run-status-site-content",
   "match": {
    "method": "GET",
-   "url_contains": "ds-company-posts"
+   "url_contains": "/actor-runs/run-site-content"
   },
   "status": 200,
-  "response": [
-   {
-    "url": "https://www.linkedin.test/feed/update/1",
-    "text": "We have opened a second delivery team in Berlin and are taking on platform work through Q4.",
-    "publishedAt": "2026-09-02T09:14:00Z"
-   },
-   {
-    "url": "https://www.linkedin.test/feed/update/2",
-    "text": "Our engineering team wrote up how we cut deploy times from forty minutes to six.",
-    "publishedAt": "2026-08-19T11:02:00Z"
-   },
-   {
-    "text": "A post with no permalink in the payload."
+  "response": {
+   "data": {
+    "id": "run-site-content",
+    "status": "SUCCEEDED",
+    "defaultDatasetId": "ds-site-content"
    }
-  ]
+  }
  },
  {
   "call": "researchpack-dataset-open-roles",
+  "note": "THE FIRST ROW IS A DIFFERENT COMPANY. `companyName` is a text filter, so a search for one name returns another company's jobs, and that row's `companyUrl` is another company's LinkedIn page. `actors.slug_from_jobs` must walk past it and take the slug from the row whose `companyWebsite` is on the record's own domain. Without this row the slug test passes on a list of one and proves nothing.",
   "match": {
    "method": "GET",
    "url_contains": "ds-open-roles"
@@ -126,16 +132,92 @@
   "status": 200,
   "response": [
    {
-    "jobUrl": "https://careers.acme.test/senior-platform-engineer",
+    "id": "4467598001",
     "title": "Senior Platform Engineer",
-    "description": "Own our deploy pipeline and Kubernetes footprint.",
-    "datePosted": "2026-09-10"
+    "jobUrl": "https://www.linkedin.com/jobs/view/4467598001",
+    "companyName": "Acme Test Holdings",
+    "companyUrl": "https://www.linkedin.com/company/acme-test-holdings?trk=public_jobs_topcard-org-name",
+    "companyWebsite": "https://elsewhere.test/",
+    "publishedAt": "2026-09-15",
+    "location": "Berlin, Germany",
+    "description": "A job at a company that merely shares part of a name."
    },
    {
-    "jobUrl": "https://careers.acme.test/data-engineer",
-    "title": "Data Engineer",
-    "description": "Build the reporting warehouse.",
-    "datePosted": "2026-09-05"
+    "id": "4467598838",
+    "title": "Senior Delivery Manager, Platform",
+    "jobUrl": "https://www.linkedin.com/jobs/view/4467598838",
+    "companyName": "Acme Test Ltd",
+    "companyUrl": "https://www.linkedin.com/company/acme-test?trk=public_jobs_topcard-org-name",
+    "companyWebsite": "https://acme.test/",
+    "publishedAt": "2026-09-17",
+    "location": "Berlin, Germany",
+    "contractType": "Full-time",
+    "description": "We are building out the platform team that supports our delivery work.",
+    "companyEmployeeCount": "84",
+    "companyIndustries": "Software Development"
+   },
+   {
+    "id": "4467598999",
+    "title": "Support Engineer",
+    "companyName": "Acme Test Ltd",
+    "companyUrl": "https://www.linkedin.com/company/acme-test?trk=public_jobs_topcard-org-name",
+    "companyWebsite": "https://acme.test/",
+    "publishedAt": "2026-09-18",
+    "description": "A listing with no jobUrl in the payload."
+   }
+  ]
+ },
+ {
+  "call": "researchpack-dataset-company-posts",
+  "note": "Three rows, and the third is deliberately unusable: no permalink, so no claim made from it could be traced. The pack must DROP it rather than keep the count up. Note `postedAt.date` - the date is NESTED, which the flat key list this package used to carry could not see.",
+  "match": {
+   "method": "GET",
+   "url_contains": "ds-company-posts"
+  },
+  "status": 200,
+  "response": [
+   {
+    "type": "post",
+    "id": "7508906975041077248",
+    "linkedinUrl": "https://www.linkedin.com/posts/acme-test-activity-7508906975041077248-c7C_",
+    "content": "We have opened a second delivery team in Berlin and are taking on platform work through Q4.",
+    "author": {
+     "id": "10608457",
+     "universalName": "acme-test",
+     "type": "company",
+     "name": "Acme Test Ltd",
+     "linkedinUrl": "https://www.linkedin.com/company/acme-test"
+    },
+    "postedAt": {
+     "timestamp": 1788426840000,
+     "date": "2026-09-02T09:14:00.000Z",
+     "postedAgoShort": "3w"
+    },
+    "engagement": {"likes": 11, "comments": 1, "shares": 1}
+   },
+   {
+    "type": "post",
+    "id": "7508790566948847616",
+    "linkedinUrl": "https://www.linkedin.com/posts/acme-test-activity-7508790566948847616-qEQS",
+    "content": "Our engineering team wrote up how we cut deploy times from forty minutes to six.",
+    "author": {
+     "universalName": "acme-test",
+     "type": "company",
+     "name": "Acme Test Ltd",
+     "linkedinUrl": "https://www.linkedin.com/company/acme-test"
+    },
+    "postedAt": {
+     "timestamp": 1787222520000,
+     "date": "2026-08-19T11:02:00.000Z",
+     "postedAgoShort": "1mo"
+    },
+    "engagement": {"likes": 4, "comments": 0, "shares": 0}
+   },
+   {
+    "type": "post",
+    "id": "7508790566948847000",
+    "content": "A post with no permalink in the payload.",
+    "postedAt": {"date": "2026-08-01T00:00:00.000Z"}
    }
   ]
  },
@@ -148,9 +230,72 @@
   "status": 200,
   "response": [
    {
-    "postUrl": "https://www.linkedin.test/posts/ada-1",
-    "text": "Six months into rebuilding our onboarding and the thing that surprised me is how much of it was reporting.",
-    "postedAt": "2026-09-12T08:00:00Z"
+    "type": "post",
+    "id": "7508687765971320832",
+    "linkedinUrl": "https://www.linkedin.com/posts/ada-example-activity-7508687765971320832-hPoa",
+    "content": "Three years of running delivery on fixed-scope contracts, and the thing that broke was never the estimate.",
+    "author": {
+     "universalName": "ada-example",
+     "type": "profile",
+     "name": "Ada Example",
+     "linkedinUrl": "https://www.linkedin.com/in/ada-example"
+    },
+    "postedAt": {
+     "timestamp": 1789516800000,
+     "date": "2026-09-12T08:00:00.000Z",
+     "postedAgoShort": "1w"
+    },
+    "engagement": {"likes": 37, "comments": 6, "shares": 1}
+   },
+   {
+    "type": "post",
+    "id": "7508687765971320111",
+    "linkedinUrl": "https://www.linkedin.com/posts/ada-example-activity-7508687765971320111-kQ2z",
+    "content": "We are hiring a platform team and I would rather explain the constraint than the perk.",
+    "author": {
+     "universalName": "ada-example",
+     "type": "profile",
+     "name": "Ada Example",
+     "linkedinUrl": "https://www.linkedin.com/in/ada-example"
+    },
+    "postedAt": {
+     "timestamp": 1788912000000,
+     "date": "2026-09-05T08:00:00.000Z",
+     "postedAgoShort": "2w"
+    },
+    "engagement": {"likes": 12, "comments": 2, "shares": 0}
+   }
+  ]
+ },
+ {
+  "call": "researchpack-dataset-site-content",
+  "note": "THE SECOND ROW IS A 404 AND ITS BODY IS THE SITE'S OWN NAVIGATION. `SOURCE_PATHS` guesses several paths per source precisely because it does not know which exist, so this is the normal case rather than the exception - two of five pages 404'd on the first live run. A pack that counted it would raise an account's evidence on the strength of a page that is not there.",
+  "match": {
+   "method": "GET",
+   "url_contains": "ds-site-content"
+  },
+  "status": 200,
+  "response": [
+   {
+    "url": "https://acme.test/about",
+    "loadedUrl": "https://acme.test/about",
+    "crawl": {"httpStatusCode": 200, "loadedTime": "2026-09-24T10:00:00.000Z"},
+    "metadata": {"title": "About Acme Test Ltd"},
+    "text": "Acme Test Ltd has delivered platform and delivery work for regulated clients since 2014, from Berlin and Dublin."
+   },
+   {
+    "url": "https://acme.test/our-team",
+    "loadedUrl": "https://acme.test/our-team",
+    "crawl": {"httpStatusCode": 404},
+    "metadata": {"title": "Page not found"},
+    "text": "Case Studies About Us Meet The Team Contact"
+   },
+   {
+    "url": "https://acme.test/careers",
+    "loadedUrl": "https://acme.test/careers",
+    "crawl": {"httpStatusCode": 200},
+    "metadata": {"title": "Careers"},
+    "text": "We are hiring platform engineers and a delivery manager for the Berlin team."
    }
   ]
  }

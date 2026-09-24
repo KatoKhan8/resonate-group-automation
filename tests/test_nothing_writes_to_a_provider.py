@@ -60,6 +60,16 @@ ALLOWED = {
     # being switched off by a reader who assumes it cries wolf.
     ("src/providers/glm.py", "POST"),
     ("src/providers/apify.py", "POST"),
+    # THE RESEARCH PACK STARTS APIFY RUNS ITSELF, and for a reason the
+    # allowlist should carry rather than assume. `apify.start_run` builds the
+    # website crawler's input - `startUrls`, `maxCrawlPages` - and the pack
+    # drives three other actors whose inputs have nothing in common with it,
+    # so it posts its own run and imports the polling. Same verb, same
+    # vendor, same posture as the row above: it starts a bounded, billable
+    # READ of a public page, and no person is contacted by it. It was
+    # undeclared from the day the package merged; the guard caught it the
+    # first time the suite was run after it.
+    ("src/researchpack/pack.py", "POST"),
     ("src/providers/slack.py", "POST"),
     ("src/providers/contactout.py", "POST"),
     ("src/providers/aiark.py", "POST"),

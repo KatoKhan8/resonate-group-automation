@@ -10,8 +10,26 @@ What it is not, and the code enforces every line of this:
   - not a replacement for ContactOut. It runs last, and only on a stated need.
   - not a crawler. It is bounded by pages, items, characters and time.
   - not a way past a login, a paywall, a CAPTCHA or a robots restriction.
-  - not a fetcher of arbitrary URLs. A URL must belong to the record's own
-    company domain, resolve to a public address, and use http or https.
+  - not a fetcher of arbitrary URLs. A URL must belong to an ALLOWED domain -
+    the record's own company domain for a site crawl, or one of the named
+    research hosts below - resolve to a public address, and use http or https.
+
+THE ONE WIDENING, 2026-09-24, and what it did NOT touch.
+
+`check_url` used to take a single `allowed_domain` and was always given the
+record's own company domain. `src/researchpack` runs three LinkedIn actors -
+company posts, open roles, a person's posts - whose targets are by
+construction on `linkedin.com` and never on the prospect's domain, so the
+single-domain form could not express "this target, for this actor". It now
+takes a domain OR a tuple of domains and the caller states which, which
+means the allowlist is still an allowlist and still stated at the call site.
+
+`RESEARCH_HOSTS` below is the whole of the widening. The SSRF posture is
+unchanged and deliberately so: scheme, embedded credentials, port, loopback
+names, internal suffixes, literal private/reserved addresses and the DNS
+resolution check all still run, in the same order, for every URL including a
+LinkedIn one. A widened DOMAIN allowlist cannot reach a private address,
+because the address guards do not consult it.
 
 Off by default. A client that has not asked for it never scrapes.
 
@@ -85,6 +103,16 @@ POLL_INTERVAL = (RUN_TIMEOUT + FINALISE_MARGIN) / max(1, POLL_ATTEMPTS - 1)
 
 ALLOWED_SCHEMES = ("http", "https")
 
+# THE ONLY HOSTS OFF THE RECORD'S OWN DOMAIN THAT ANY CALLER MAY ASK FOR.
+#
+# Named here rather than passed as a string by whoever wants one, so the set
+# of places this integration will point an actor at is readable in one line
+# and grows only by a reviewed edit to this module. A caller still has to pass
+# it - nothing is implicitly allowed - which is why `candidate_urls` and
+# `evidence_from_items`, both of which mean the company's own site, are
+# unchanged and still pass a single domain.
+RESEARCH_HOSTS = ("linkedin.com",)
+
 SOURCES = ("company_website", "about", "team", "careers", "blog", "news")
 
 # Paths worth looking at, per source. Nothing is guessed from a model's output.
@@ -147,7 +175,12 @@ def resolve_all(host):
 
 
 def check_url(url, allowed_domain=None, resolve=True):
-    """Refuse anything that is not a public page on the company's own domain.
+    """Refuse anything that is not a public page on an ALLOWED domain.
+
+    `allowed_domain` is the record's own company domain, or a tuple of
+    domains for a caller that legitimately needs more than one - see
+    `RESEARCH_HOSTS`. Passing nothing still checks everything except the
+    domain, which is what the address guards are for.
 
     Raises UnsafeURL rather than returning a boolean, so a caller cannot use the
     result by accident.
@@ -173,9 +206,16 @@ def check_url(url, allowed_domain=None, resolve=True):
         raise UnsafeURL(f"port {parsed.port} is not 80 or 443")
 
     if allowed_domain:
-        allowed = allowed_domain.lower().rstrip(".")
-        if host != allowed and not host.endswith("." + allowed):
-            raise UnsafeURL(f"{host} is not on {allowed}")
+        # A string is one domain; anything else is a set of them. Both forms
+        # are an allowlist - there is no value meaning "any domain" other
+        # than passing nothing, which the address guards above still police.
+        names = ((allowed_domain,) if isinstance(allowed_domain, str)
+                 else tuple(allowed_domain))
+        allowed = [str(d).lower().rstrip(".") for d in names if d]
+        if not allowed:
+            raise UnsafeURL("an empty domain allowlist allows nothing")
+        if not any(host == a or host.endswith("." + a) for a in allowed):
+            raise UnsafeURL(f"{host} is not on {' or '.join(allowed)}")
 
     if resolve:
         addresses = resolve_all(host)

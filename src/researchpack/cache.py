@@ -80,16 +80,24 @@ def get(domain, profile=None, now=None, data=None):
     return entry
 
 
-def put(domain, facts, profile=None, cost=0, now=None):
-    """Record a completed lookup. Returns the entry written."""
+def put(domain, facts, profile=None, cost=0, now=None, extra=None):
+    """Record a completed lookup. Returns the entry written.
+
+    `extra` is for the small non-fact residue of a run that would otherwise
+    have to be re-bought: the jobs run's `companyUrl`/`companyWebsite` pair,
+    which is what makes the company posts addressable. It is merged UNDER
+    the entry's own keys, so nothing passed in can overwrite `retrieved_at`
+    and forge freshness.
+    """
     target = path()
     store.refuse_production_write(target)
     data = load()
-    entry = {"domain": str(domain).strip().lower(),
-             "profile": profile or None,
-             "retrieved_at": now or store.now(),
-             "facts": list(facts or []),
-             "cost": int(cost or 0)}
+    entry = dict(dict(extra or {}),
+                 domain=str(domain).strip().lower(),
+                 profile=profile or None,
+                 retrieved_at=now or store.now(),
+                 facts=list(facts or []),
+                 cost=int(cost or 0))
     data[key_for(domain, profile)] = entry
     tmp = target + ".tmp"
     os.makedirs(os.path.dirname(target), exist_ok=True)
