@@ -126,9 +126,11 @@ class AStoredVerdictIsCheckableNow(unittest.TestCase):
         """Same release, different rules. This is the case the release name
         could never catch."""
         self.assertFalse(replyverdict.is_confirmed(
-            # Hex letters, not twelve zeros: `+000000000000` reads as a
-            # phone number to the hygiene guard, and the guard is right to
-            # say so rather than be widened for a fixture.
+            # Hex letters rather than a run of zeros: a plus sign followed
+            # by twelve digits reads as a phone number to the hygiene guard,
+            # which is right to say so rather than be widened for a fixture.
+            # The guard reads COMMENTS too, so this one does not spell the
+            # rejected value out either.
             {"classifier": "rules-4+deadbeefcafe"}))
 
     def test_no_writer_stamps_the_bare_release_name(self):
