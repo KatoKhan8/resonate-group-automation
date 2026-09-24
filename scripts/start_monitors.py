@@ -145,7 +145,17 @@ def beat_path(name):
         if mon["name"] == name:
             return supervisor.heartbeat_file(mon)
     return None
-
+#:
+#: slack-agent's branch re-added a hand-written `MONITORS` list here, with
+#: `weekly-report` appended to it. That half of the intent is KEPT and the
+#: list is not: the Monday report is in `supervisor.STATIC_MONITORS` on
+#: master, so the derived table carries it - 21 monitors - and adding it to
+#: a second table would recreate the two-table disagreement this file's
+#: comment above is entirely about. Its note "no heartbeat, and that is
+#: fine" is also out of date: the loop passed its state dict into `beat`'s
+#: `campaign` slot, so it beat into
+#: `weekly-report-zone-Europe-Zagreb-zone_resolved-True.json`; fixed in
+#: `e644c040`, and it now holds two witnesses like everything else.
 
 TASK_NAME = "ResonateMonitors"
 

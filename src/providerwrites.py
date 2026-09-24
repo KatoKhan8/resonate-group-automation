@@ -537,7 +537,7 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
              # reported as a stop. It is in REPEATABLE for the same reason -
              # a second call can only mean somebody receives less.
              LINKEDIN_STOP_LEAD,
-             # ENABLED 2026-09-24 BY OPERATOR AUTHORIZATION, Zvonimir Beslic.
+             # ENABLED 2026-09-24 BY OPERATOR AUTHORIZATION.
              # Its own entry said enabling is an operator authorization rather
              # than this module's to grant; this is that authorization,
              # recorded here so it survives a context reset.

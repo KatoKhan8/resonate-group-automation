@@ -18,8 +18,58 @@ So `working_on` composes readbacks this channel could already have asked for
 one at a time, and the tests below are mostly about what it REFUSES to say.
 """
 import unittest
+from unittest import mock
 
 from src import slackagenttools as tools, slackscope
+
+
+#: THIS MODULE ASSERTED AGAINST AMBIENT STATE AND ONLY PASSED IN COMPANY.
+#:
+#: Measured 2026-09-24: green in the full suite, **9 of 16 red when run on
+#: its own**, because `tools.run(client(), "working_on")` read whatever
+#: knowledge pack and records the process happened to have. In a full run a
+#: neighbouring module had built them; alone there was nothing, so
+#: `self.out` came back without `accounts` and seven tests raised KeyError.
+#:
+#: `tests/slackbase.py` is written about exactly this - "a test file that
+#: isolates nothing passes when it runs after one that does" - and the
+#: module it names, `test_slack_agent_numbers`, had the same shape.
+#:
+#: So the fixtures are pinned here. A test for a client-facing answer that
+#: cannot run by itself is not evidence about the answer.
+PACK = {
+    "built_at": "2026-09-21T00:00:00Z",
+    "workspaces": {
+        "productive": {"provider_campaign_ids": [], "name": "Productive"},
+        "contactout": {"provider_campaign_ids": [], "name": "ContactOut"},
+    },
+}
+
+RECORDS = [
+    {"id": "acme-test", "lane": "domains", "client": "productive",
+     "company": "Acme", "domain": "acme.test", "state": "verified",
+     "contacts": [{"key": "ada", "name": "Ada Tester", "email":
+                   "ada@acme.test", "persona": "delivery", "selected": True}],
+     "events": []},
+]
+
+
+class PinnedState(unittest.TestCase):
+    """One fixture, shared, so every class below runs on its own."""
+
+    def setUp(self):
+        self._pack = tools.knowledge.pack
+        tools.knowledge.pack = lambda *a, **k: PACK
+        self.addCleanup(setattr, tools.knowledge, "pack", self._pack)
+        self._records = mock.patch.object(
+            tools, "_records",
+            lambda slug: [r for r in RECORDS if r.get("client") == slug])
+        self._records.start()
+        self.addCleanup(self._records.stop)
+        # The workspace-level witness is module-level and cached, so a
+        # verdict left by another test decides this one's answer.
+        tools._LEDGER_WITNESS.clear()
+        self.addCleanup(tools._LEDGER_WITNESS.clear)
 
 
 def client(slug="productive"):
@@ -31,9 +81,10 @@ def internal():
     return slackscope.Scope(slackscope.INTERNAL, source="test")
 
 
-class ItAnswersTheThreeParts(unittest.TestCase):
+class ItAnswersTheThreeParts(PinnedState):
 
     def setUp(self):
+        super().setUp()
         self.out = tools.run(client(), "working_on")
 
     def test_it_says_which_campaigns_are_running(self):
@@ -69,10 +120,11 @@ class ItAnswersTheThreeParts(unittest.TestCase):
         self.assertIn("unanswerable", self.out["accounts"])
 
 
-class WhatItRefusesToSay(unittest.TestCase):
+class WhatItRefusesToSay(PinnedState):
     """The half that matters."""
 
     def setUp(self):
+        super().setUp()
         self.out = tools.run(client(), "working_on")
 
     def test_our_own_backlog_is_a_COUNT_and_not_a_list(self):
@@ -103,7 +155,7 @@ class WhatItRefusesToSay(unittest.TestCase):
         scope.check_outbound(tools.render([("working_on", None, self.out)]))
 
 
-class ItIsScopedLikeEveryOtherClientTool(unittest.TestCase):
+class ItIsScopedLikeEveryOtherClientTool(PinnedState):
 
     def test_it_is_offered_to_a_client(self):
         self.assertIn("working_on", tools.for_scope(client()))

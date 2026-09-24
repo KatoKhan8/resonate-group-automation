@@ -261,16 +261,26 @@ def handle(event, seen, dry_run=False, model=None):
              "reason": result.get("gag_reason")})
         # THE GAG MUST NOT SWALLOW THE QUESTION TOO.
         #
-        # Until 2026-09-24 this returned here, having written a log line and
-        # one stdout line. No Slack post, no ticket, no notification - so a
-        # client asking us something produced nothing a person would ever
-        # see. The gag exists to stop the agent saying something WRONG to a
-        # client; it was also stopping the operator finding out the client
-        # had asked. 11 of 32 questions in the replay audit - 34% of real
-        # traffic - were client questions answered with silence.
+        # TWO SESSIONS FIXED DIFFERENT HALVES OF THIS AND THE MERGE KEEPS
+        # BOTH. slack-agent moved the gag BELOW the request intake in
+        # `slackconversation`, so a client CHANGE REQUEST no longer reaches
+        # this branch at all - it raises a ticket and `_post_extras`
+        # announces it on the normal path. That is the better fix for
+        # requests and it is upstream of here.
+        #
+        # What still lands here is a client QUESTION the agent may not
+        # answer. slack-agent's note said silence is the decision for those.
+        # Production disagrees, and the disagreement is recorded rather than
+        # resolved quietly: the replay audit measured 11 of 32 real questions
+        # - 34% of traffic - getting no answer, and under the request-intake
+        # fix alone they still get none and still raise nothing. The gag
+        # exists to stop the agent saying something WRONG to a client; it
+        # should not also stop the operator learning the client ASKED.
         #
         # This is an INTERNAL write. Nothing here reaches the client channel,
-        # so it is safe while the gag stands and stays useful after it lifts.
+        # so it cannot undo the scoping it sits behind, and it stays useful
+        # after the gag lifts. If the operator rules that silence is right,
+        # delete this block - not the `log()` above it.
         try:
             from src import notify as _notify
             _notify.notify(

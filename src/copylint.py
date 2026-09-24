@@ -1,0 +1,284 @@
+"""Refuse a BATCH of copy, and say how much of it was wrong.
+
+    from src import copylint
+    report = copylint.check_batch(leads, packs)
+    if report["refused"]:
+        ...                       # regenerate; never widen a rule
+
+Operator, 2026-09-24, lane 1.
+
+## IT IS A BATCH LINT, AND `src/lint.py` IS A DRAFT LINT
+
+`lint.check(rec, key, step)` answers "may THIS draft ship" - greeting,
+length, placeholders, attachments, banned phrases. It is per draft and it
+cannot see the two things that only exist across a batch: whether two
+leads open with the same sentence, and whether a claim is supported by
+that lead's own research.
+
+So this composes rather than replaces. `BANNED_PHRASES` and
+`SUBSTITUTED_PUNCTUATION` are IMPORTED from `lint`, because a second copy
+of either would drift and the drift would show up as copy that passes one
+lint and fails the other.
+
+## COUNTS, NOT JUST A REFUSAL
+
+The operator asked for counts and the reason is operational: "the batch is
+refused" tells somebody to regenerate 50 leads. "Forty-eight leads are
+clean, two share a first line and one cites a fact that is not in its
+pack" tells them what to fix. Every rule reports the leads it fired on.
+
+**A REFUSAL IS STILL A REFUSAL.** `CLAUDE.md`: never widen a lint rule to
+make a draft pass - regenerate the draft. Counts exist to direct the
+regeneration, not to make a partial pass shippable.
+
+## WHAT THE TRACEABILITY CHECK CAN AND CANNOT DO
+
+It extracts SPECIFICS from a draft - figures, dates, quoted phrases and
+proper nouns - and requires each to appear in one of that lead's pack
+facts. That catches the failure that actually happens: a model inventing a
+plausible detail about a company nobody researched.
+
+It does NOT understand claims. A sentence that is wrong in a way carrying
+no specific ("you must be struggling with scale") passes this and is a
+judgement call for a person. Said out loud because a lint that is believed
+to check more than it does is worse than one nobody trusts.
+"""
+import re
+
+from .lint import BANNED_PHRASES, SUBSTITUTED_PUNCTUATION
+
+#: How many steps a sequence must have. Operator: five.
+STEPS_EXPECTED = 5
+
+#: Buzzwords on top of `lint.BANNED_PHRASES`, which already carries the
+#: opener clichés and two of these. Single words, matched on a word
+#: boundary, so "leverage" fires and "leveraged buyout" in a quoted pack
+#: fact is the caller's problem to have quoted.
+BUZZWORDS = (
+    "synergy", "synergies", "game-changer", "gamechanger", "leverage",
+    "leveraging", "best-in-class", "cutting-edge", "world-class",
+    "seamless", "seamlessly", "robust", "revolutionary", "disruptive",
+    "innovative", "holistic", "paradigm", "turnkey", "bandwidth",
+    "low-hanging", "move the needle", "circle back", "deep dive",
+    "unlock", "unlocking", "supercharge", "empower", "streamline",
+    "thought leader", "thought leadership", "value-add", "value add",
+    "mission-critical", "next-generation", "state-of-the-art",
+)
+
+#: THE DASH RULE. The typographic dashes come from `lint`, and the spaced
+#: hyphen is here because that is what an em dash becomes once anything
+#: normalises it - the tell survives the substitution.
+#:
+#: A HYPHEN INSIDE A WORD IS NOT A DASH. "follow-up", "best-in-class" and
+#: "data-driven" all contain one and none of them is the thing being
+#: refused, so the pattern requires whitespace on both sides.
+DASH_RE = re.compile(r"(?:%s)|(?:\s[-]\s)"
+                     % "|".join(re.escape(d) for d in SUBSTITUTED_PUNCTUATION
+                                if d in ("—", "–", "‑")))
+
+#: What counts as a SPECIFIC: something a reader could check. Figures,
+#: money, percentages, dates, quoted phrases, and capitalised multi-word
+#: names. These are what a model invents when it has no pack to lean on.
+SPECIFIC_RES = (
+    re.compile(r"\b\d[\d,.]*\s*%"),
+    re.compile(r"[$€£]\s?\d[\d,.]*\s*[kmb]?\b", re.I),
+    re.compile(r"\b\d[\d,.]{1,}\b"),
+    re.compile(r"\b(?:january|february|march|april|may|june|july|august|"
+               r"september|october|november|december)\b", re.I),
+    re.compile(r"\"([^\"]{8,80})\""),
+    re.compile(r"\b(?:[A-Z][a-z]{2,}\s){1,3}[A-Z][a-z]{2,}\b"),
+)
+
+#: Words that make a sentence a claim ABOUT THE COMPANY rather than about
+#: us. A specific inside one of these has to trace; a specific in "we work
+#: with 40 agencies" is a claim about us and is not this lint's business.
+COMPANY_CLAIM = re.compile(
+    r"\b(you|your|they|their|announced|launched|hiring|opened|raised|"
+    r"shipped|released|grew|expanded|acquired|published|posted)\b", re.I)
+
+_WORD = re.compile(r"[a-z0-9]+")
+
+
+def _norm(text):
+    return " ".join(_WORD.findall(str(text or "").lower()))
+
+
+def first_line(body):
+    for line in str(body or "").splitlines():
+        line = line.strip()
+        if line:
+            return line
+    return ""
+
+
+def steps_of(lead):
+    """The lead's five steps, as a list, whatever shape it arrived in."""
+    steps = lead.get("steps")
+    if isinstance(steps, dict):
+        return [steps.get(k) for k in sorted(steps)]
+    return list(steps or [])
+
+
+def _body(step):
+    if isinstance(step, dict):
+        return step.get("body") or step.get("text") or ""
+    return step or ""
+
+
+def pack_text(pack):
+    """Every snippet in one lead's pack, lower-cased and flattened."""
+    facts = (pack or {}).get("facts") or []
+    return _norm(" ".join(str(f.get("snippet") or "") for f in facts))
+
+
+def specifics_in(text):
+    """Checkable details in a piece of copy, de-duplicated."""
+    found = []
+    for pattern in SPECIFIC_RES:
+        for match in pattern.finditer(str(text or "")):
+            value = match.group(1) if match.groups() else match.group(0)
+            value = value.strip()
+            if value and value not in found:
+                found.append(value)
+    return found
+
+
+def _traces(value, supported):
+    """Is this specific supported, allowing for a sentence-initial capital?
+
+    THE OVER-FIRE THIS EXISTS FOR. The proper-noun pattern cannot tell a
+    name from the capitalised first word of a sentence, so "Your Senior
+    Platform Engineer role" is extracted whole and never matches a pack
+    that says "Senior Platform Engineer". Dropping the leading token and
+    retrying costs nothing a real invention would survive: an invented
+    name does not become traceable by losing its first word.
+    """
+    token = _norm(value)
+    if not token:
+        return True
+    if token in supported:
+        return True
+    parts = token.split(" ")
+    return len(parts) > 2 and " ".join(parts[1:]) in supported
+
+
+def untraceable(body, pack):
+    """Specifics in a COMPANY CLAIM that no pack fact supports."""
+    supported = pack_text(pack)
+    out = []
+    for sentence in re.split(r"(?<=[.!?])\s+", str(body or "")):
+        if not COMPANY_CLAIM.search(sentence):
+            continue
+        for value in specifics_in(sentence):
+            if not _traces(value, supported):
+                out.append(value)
+    return out
+
+
+def buzzwords_in(text):
+    low = " %s " % _norm(text)
+    hits = [w for w in BUZZWORDS if " %s " % _norm(w) in low]
+    hits += [p for p in BANNED_PHRASES if _norm(p) and _norm(p) in low]
+    return sorted(set(hits))
+
+
+#: Every rule, in the order the report lists them. Name, and the sentence
+#: a person reads when it fires.
+RULES = (
+    ("step1_without_pack_fact",
+     "step 1 opens with a line no pack fact supports"),
+    ("duplicate_first_line",
+     "two or more leads open with the same sentence"),
+    ("untraceable_company_claim",
+     "a claim about the company is not traceable to a pack fact"),
+    ("empty_step",
+     "one of the %d steps is empty" % STEPS_EXPECTED),
+    ("dash",
+     "a dash used as punctuation"),
+    ("buzzword",
+     "a buzzword or banned phrase"),
+)
+
+
+def check_batch(leads, packs=None, steps_expected=STEPS_EXPECTED):
+    """`{refused, leads, clean, counts, offenders, rules}` for one batch.
+
+    `packs` maps a lead id to its research pack. A lead with NO pack is not
+    quietly excused: it cannot open step 1 with a supported line, so it
+    fires the first rule. A batch generated before the packs were built is
+    exactly the batch this is for.
+    """
+    packs = packs or {}
+    leads = list(leads or [])
+    offenders = {name: [] for name, _ in RULES}
+    seen_first = {}
+
+    for lead in leads:
+        lead_id = str(lead.get("id") or lead.get("contact") or "?")
+        pack = packs.get(lead_id) or lead.get("pack") or {}
+        steps = steps_of(lead)
+
+        bodies = [_body(s) for s in steps]
+        if len(steps) != steps_expected or any(
+                not str(b or "").strip() for b in bodies):
+            offenders["empty_step"].append(lead_id)
+
+        opener = first_line(bodies[0] if bodies else "")
+        # STEP 1 HAS TO OPEN ON SOMETHING THEY SAID. The whole point of a
+        # research pack is the first line; a pack that exists and is not
+        # used in the opener has bought nothing.
+        supported = pack_text(pack)
+        opener_tokens = [t for t in _WORD.findall(opener.lower())
+                         if len(t) > 4]
+        if not supported or not any(t in supported for t in opener_tokens):
+            offenders["step1_without_pack_fact"].append(lead_id)
+
+        if opener:
+            key = _norm(opener)
+            if key in seen_first:
+                for who in {seen_first[key], lead_id}:
+                    if who not in offenders["duplicate_first_line"]:
+                        offenders["duplicate_first_line"].append(who)
+            else:
+                seen_first[key] = lead_id
+
+        whole = "\n".join(bodies)
+        if untraceable(whole, pack):
+            offenders["untraceable_company_claim"].append(lead_id)
+        if DASH_RE.search(whole):
+            offenders["dash"].append(lead_id)
+        if buzzwords_in(whole):
+            offenders["buzzword"].append(lead_id)
+
+    counts = {name: len(offenders[name]) for name, _ in RULES}
+    dirty = set()
+    for ids in offenders.values():
+        dirty.update(ids)
+    return {
+        "leads": len(leads),
+        "clean": len(leads) - len(dirty),
+        "refused": bool(dirty),
+        "counts": counts,
+        "offenders": {k: sorted(v) for k, v in offenders.items()},
+        "rules": dict(RULES),
+    }
+
+
+def report_lines(report):
+    """The counts a person reads. Refusal first, then what to fix."""
+    out = ["%s: %d of %d leads clean"
+           % ("REFUSED" if report["refused"] else "PASSED",
+              report["clean"], report["leads"])]
+    for name, why in RULES:
+        count = report["counts"].get(name, 0)
+        if not count:
+            continue
+        ids = report["offenders"][name]
+        out.append("  %-26s %3d  %s%s"
+                   % (name, count, ", ".join(ids[:6]),
+                      " ..." if len(ids) > 6 else ""))
+        out.append("  %-26s      %s" % ("", why))
+    if not report["refused"]:
+        out.append("  every lead opened on a pack fact and no two opened "
+                   "the same way")
+    return out

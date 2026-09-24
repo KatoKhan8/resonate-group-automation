@@ -151,5 +151,69 @@ class TestThePlanIsActuallyOneCall(Environment):
         self.assertNotIn("working_on", [c["name"] for c in calls])
 
 
+class TestTheShapeREALTRAFFICARRIVESIN(Environment):
+    """THE TEST THAT WAS MISSING, AND IT MADE THE FEATURE INERT.
+
+    Every phrasing in the class above is typed the way a person writes in a
+    document. Nobody addresses a bot that way. Real questions arrive as
+
+        <@U0C3CBAP6BB> what is running
+
+    and `NAMES_SOMETHING` matches a bare `@`, so the guard written to reject
+    "what's new with 491" rejected the entire corpus. **Replaying the 33
+    real questions on 2026-09-24 showed the broad route taken ZERO times**,
+    with all eighteen tests green.
+
+    `requests.strip_mentions` already existed and three other modules
+    already called it. The defect was the fixture.
+    """
+
+    #: Verbatim from `work/slack-agent.jsonl`, mention and all.
+    REAL = (
+        "<@U0C3CBAP6BB> what is running",
+        "<@U0C3CBAP6BB> what are you working on ?",
+        "<@U0C3CBAP6BB> what can we do now ?",
+        "<@U0C3CBAP6BB> what's new?",
+        "What are you working on now? <@U0C3CBAP6BB>",
+        "what's next? <@U0C3CBAP6BB>",
+        "<@U0C3CBAP6BB> what is running right now? *Sent using* <@U0ASV6PQ>",
+    )
+
+    def test_every_real_broad_question_takes_the_route(self):
+        for text in self.REAL:
+            with self.subTest(text=text):
+                self.assertTrue(
+                    conversation.broad_question(text, self.internal()),
+                    "%r is how the question ARRIVES. A matcher that only "
+                    "works on the tidied-up version is not in the path."
+                    % text)
+
+    #: Also verbatim, and also carrying a mention. The guard still has to
+    #: hold once the mention stops defeating it.
+    REAL_SPECIFIC = (
+        "<@U0C3CBAP6BB> which three campaigns are awaiting my approval?",
+        "<@U0C3CBAP6BB> how many leads have been processed",
+        "<@U0C3CBAP6BB> where can I buy kebab?",
+        "<@U0C3CBAP6BB> what is running right now, and which monitors are up?",
+        "<@U0C3CBAP6BB> do we have any inboxes in prod",
+        "<@U0C3CBAP6BB> what was sent today?",
+    )
+
+    def test_a_real_specific_question_still_fans_out(self):
+        for text in self.REAL_SPECIFIC:
+            with self.subTest(text=text):
+                self.assertFalse(
+                    conversation.broad_question(text, self.internal()),
+                    "%r was routed to the whole-workspace summary" % text)
+
+    def test_the_mention_alone_does_not_make_a_question_broad(self):
+        """The control on the stripping: removing mentions must not turn
+        a question INTO a broad one."""
+        self.assertFalse(conversation.broad_question(
+            "<@U0C3CBAP6BB>", self.internal()))
+        self.assertFalse(conversation.broad_question(
+            "<@U0C3CBAP6BB> <@U0ASV6PQ>", self.internal()))
+
+
 if __name__ == "__main__":
     unittest.main()

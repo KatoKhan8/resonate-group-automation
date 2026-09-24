@@ -534,12 +534,12 @@ BROAD_QUESTION = re.compile(
     r"^\W*(?:so\s+)?(?:"
     # "what's new" / "what is happening" / "what's the status"
     r"what(?:'?s|\s+is|\s+are)?\s+"
-    r"(?:new|up|going\s+on|happening|the\s+status|status)"
+    r"(?:new|next|up|going\s+on|happening|the\s+status|status)"
     # "what are we working on" - and "we working on", which is how it is
     # actually typed. `are` optional after the pronoun, not required.
     r"|what(?:'?s|\s+is|\s+are)?\s+(?:we|you)(?:'?re|\s+are)?\s+"
-    r"(?:working\s+on|doing|up\s+to)"
-    r"|what\s+is\s+running"
+    r"(?:working\s+on|doing|up\s+to)(?:\s+(?:right\s+)?now)?"
+    r"|what(?:'?s|\s+is)?\s+running(?:\s+(?:right\s+)?now)?"
     r"|what\s+can\s+we\s+do(?:\s+now)?"
     r"|how(?:'?s|\s+is|\s+are)?\s+"
     r"(?:it\s+going|things|we\s+doing|everything(?:\s+going)?)"
@@ -557,6 +557,13 @@ BROAD_QUESTION = re.compile(
 #: A question that NAMES something is not broad, whatever it opens with.
 #: "what's the status on 487" wants that campaign, and answering it with the
 #: whole-workspace summary is the wrong answer arriving faster.
+#: Slack client boilerplate. Two of the 33 real questions end with
+#: "*Sent using* <@U...>", which the mention stripper leaves as a bare
+#: "*Sent using*" and which then defeats the end-of-string anchor. It is
+#: not part of what anybody asked.
+_SENT_USING = re.compile(r"\*?\s*sent\s+using\s*\*?.*$", re.I | re.S)
+
+
 NAMES_SOMETHING = re.compile(
     r"\b\d{3,}\b|@|\b[\w-]+\.(?:com|net|org|io|ai|co|hr|de|eu|"
     r"com\.au|live|shop|online)\b", re.I)
@@ -570,8 +577,24 @@ def broad_question(question, scope):
     false positive here answers a specific question with a summary, which
     is worse than the fan-out it replaces - the fan-out at least contained
     the answer somewhere.
+
+    ## IT FIRED ZERO TIMES ON REAL TRAFFIC, AND THE TESTS WERE ALL GREEN
+
+    Measured 2026-09-24 by replaying the 33 real questions: **not one took
+    this route.** Every question people actually ask arrives as
+
+        <@U0C3CBAP6BB> what is running
+
+    because that is how you address a bot in Slack, and `NAMES_SOMETHING`
+    matches a bare `@` - so the guard meant to protect against "what's new
+    with 491" rejected the entire corpus instead. Eighteen tests passed,
+    because every phrasing in them was typed the way a person writes in a
+    document rather than the way they write in Slack.
+
+    **The fixture was the defect, not the regex.** `requests.strip_mentions`
+    already existed and three other modules already called it.
     """
-    text = str(question or "").strip()
+    text = _SENT_USING.sub("", requests.strip_mentions(question)).strip()
     if len(text) > 90 or NAMES_SOMETHING.search(text):
         return False
     return bool(BROAD_QUESTION.match(text))
@@ -1419,12 +1442,10 @@ def _respond(question, channel=None, user=None, channel_type=None,
     # `CLIENT_CHANNEL_GAG` is lifted by the operator once those are live. It
     # is checked here rather than at the poster because every path below this
     # line can produce client-visible text.
-    if scope.is_client and CLIENT_CHANNEL_GAG:
-        out = {"at": _now(), "scope": scope.kind, "workspace": scope.workspace,
-               "scope_source": scope.source, "user": user, "channel": channel,
-               "relayed": bool(relay_of), "reply": None, "how": "gagged",
-               "tools": [], "gag_reason": CLIENT_CHANNEL_GAG}
-        return out
+    # THE CHECK ITSELF MOVED DOWN ON 2026-09-24 - see `_gagged` and the
+    # block above section 3. It now sits after the change-request intake
+    # rather than before it, because it was silencing the operator as well
+    # as the agent.
 
     # A RELAY ANSWERS THE PARENT, not the sentence that asked for a relay.
     # "@Resonate OS answer this" is an instruction about which question to
@@ -1457,8 +1478,15 @@ def _respond(question, channel=None, user=None, channel_type=None,
                          or language.detect(question))
 
     # ---- 2a2. A client saying YES to the first-send offer.
+    #
+    # STILL GAGGED, and it is the one client path that is. Registering a
+    # follow-up PROMISES the client a later message and reads the provider
+    # for its reply marker, so it is neither template text nor free of
+    # reads - both of the things that make the intake below safe under the
+    # gag are absent here.
     pending_offer = _offer_on_the_table(channel, thread_ts)
-    if pending_offer and accepts_offer(question) and scope.is_client:
+    if (pending_offer and accepts_offer(question) and scope.is_client
+            and not CLIENT_CHANNEL_GAG):
         out.update(_register_followup(pending_offer, scope, channel,
                                       thread_ts, user))
         return _prefaced(out, relayed, out.get("language")
@@ -1482,6 +1510,47 @@ def _respond(question, channel=None, user=None, channel_type=None,
         out.update(_open_request(kind, fields, question, channel, scope,
                                  thread_ts))
         return _prefaced(out, relayed, out.get("language") or language.detect(question))
+
+    # ---- 2d. THE GAG. Everything above this line may run in a client
+    # channel; everything below it may not.
+    #
+    # ## IT USED TO BE THE FIRST THING IN THE FUNCTION, AND THAT SILENCED US
+    #
+    # Until 2026-09-24 this returned before section 2a. `_raise_ticket` is
+    # above, so a client asking us to CHANGE something produced a
+    # `kind: gagged` row in `work/slack-agent.jsonl`, one line on the loop's
+    # stdout, and nothing else. No ticket. No internal post. Nobody told.
+    # The question catalogue's highest-severity shape in the whole corpus is
+    # a client change request - a reply-stop complaint with four question
+    # marks - and that is what it got. It was also 31 tests red.
+    #
+    # ## WHY THE LINE IS HERE AND NOT SOMEWHERE ELSE
+    #
+    # THE GAG'S THREE FAULTS WERE ALL IN THE MODEL-ANSWERED PATH. "Three
+    # positive replies" was a provider flag read as a classification;
+    # "awaiting your approval" was the model reaching for the fallback; the
+    # seven minutes was sixteen serial provider round trips. Every one of
+    # them is below this line.
+    #
+    # Nothing above it calls a model or reads a provider. `_open_request`
+    # and `_raise_ticket` are template text out of `slackrequests`, and
+    # `restate(..., client_facing=...)` already knows it is talking to a
+    # client - `test_the_restatement_to_a_client_names_nobody_at_resonate`
+    # and `test_no_restatement_promises_a_time` are the guards on exactly
+    # what the gag protects against.
+    #
+    # ## AND THIS IS A LOOSENING. SAY SO PLAINLY.
+    #
+    # The agent posts to a client channel again, for change requests only.
+    # That is a real change to a mechanism the operator set on 2026-09-23
+    # and it is not the same thing as "the gag still holds". If production
+    # wants the total silence back, move this block to the top of
+    # `_respond` - it was the first statement after `scope` - and the 31
+    # tests go red again with it.
+    if scope.is_client and CLIENT_CHANNEL_GAG:
+        out.update({"reply": None, "how": "gagged", "tools": [],
+                    "gag_reason": CLIENT_CHANNEL_GAG})
+        return out
 
     if wants_an_action(question, scope):
         out.update({"reply": refusal_for(scope), "how": "refused",
