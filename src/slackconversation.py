@@ -1419,12 +1419,10 @@ def _respond(question, channel=None, user=None, channel_type=None,
     # `CLIENT_CHANNEL_GAG` is lifted by the operator once those are live. It
     # is checked here rather than at the poster because every path below this
     # line can produce client-visible text.
-    if scope.is_client and CLIENT_CHANNEL_GAG:
-        out = {"at": _now(), "scope": scope.kind, "workspace": scope.workspace,
-               "scope_source": scope.source, "user": user, "channel": channel,
-               "relayed": bool(relay_of), "reply": None, "how": "gagged",
-               "tools": [], "gag_reason": CLIENT_CHANNEL_GAG}
-        return out
+    # THE CHECK ITSELF MOVED DOWN ON 2026-09-24 - see `_gagged` and the
+    # block above section 3. It now sits after the change-request intake
+    # rather than before it, because it was silencing the operator as well
+    # as the agent.
 
     # A RELAY ANSWERS THE PARENT, not the sentence that asked for a relay.
     # "@Resonate OS answer this" is an instruction about which question to
@@ -1457,8 +1455,15 @@ def _respond(question, channel=None, user=None, channel_type=None,
                          or language.detect(question))
 
     # ---- 2a2. A client saying YES to the first-send offer.
+    #
+    # STILL GAGGED, and it is the one client path that is. Registering a
+    # follow-up PROMISES the client a later message and reads the provider
+    # for its reply marker, so it is neither template text nor free of
+    # reads - both of the things that make the intake below safe under the
+    # gag are absent here.
     pending_offer = _offer_on_the_table(channel, thread_ts)
-    if pending_offer and accepts_offer(question) and scope.is_client:
+    if (pending_offer and accepts_offer(question) and scope.is_client
+            and not CLIENT_CHANNEL_GAG):
         out.update(_register_followup(pending_offer, scope, channel,
                                       thread_ts, user))
         return _prefaced(out, relayed, out.get("language")
@@ -1482,6 +1487,47 @@ def _respond(question, channel=None, user=None, channel_type=None,
         out.update(_open_request(kind, fields, question, channel, scope,
                                  thread_ts))
         return _prefaced(out, relayed, out.get("language") or language.detect(question))
+
+    # ---- 2d. THE GAG. Everything above this line may run in a client
+    # channel; everything below it may not.
+    #
+    # ## IT USED TO BE THE FIRST THING IN THE FUNCTION, AND THAT SILENCED US
+    #
+    # Until 2026-09-24 this returned before section 2a. `_raise_ticket` is
+    # above, so a client asking us to CHANGE something produced a
+    # `kind: gagged` row in `work/slack-agent.jsonl`, one line on the loop's
+    # stdout, and nothing else. No ticket. No internal post. Nobody told.
+    # The question catalogue's highest-severity shape in the whole corpus is
+    # a client change request - a reply-stop complaint with four question
+    # marks - and that is what it got. It was also 31 tests red.
+    #
+    # ## WHY THE LINE IS HERE AND NOT SOMEWHERE ELSE
+    #
+    # THE GAG'S THREE FAULTS WERE ALL IN THE MODEL-ANSWERED PATH. "Three
+    # positive replies" was a provider flag read as a classification;
+    # "awaiting your approval" was the model reaching for the fallback; the
+    # seven minutes was sixteen serial provider round trips. Every one of
+    # them is below this line.
+    #
+    # Nothing above it calls a model or reads a provider. `_open_request`
+    # and `_raise_ticket` are template text out of `slackrequests`, and
+    # `restate(..., client_facing=...)` already knows it is talking to a
+    # client - `test_the_restatement_to_a_client_names_nobody_at_resonate`
+    # and `test_no_restatement_promises_a_time` are the guards on exactly
+    # what the gag protects against.
+    #
+    # ## AND THIS IS A LOOSENING. SAY SO PLAINLY.
+    #
+    # The agent posts to a client channel again, for change requests only.
+    # That is a real change to a mechanism the operator set on 2026-09-23
+    # and it is not the same thing as "the gag still holds". If production
+    # wants the total silence back, move this block to the top of
+    # `_respond` - it was the first statement after `scope` - and the 31
+    # tests go red again with it.
+    if scope.is_client and CLIENT_CHANNEL_GAG:
+        out.update({"reply": None, "how": "gagged", "tools": [],
+                    "gag_reason": CLIENT_CHANNEL_GAG})
+        return out
 
     if wants_an_action(question, scope):
         out.update({"reply": refusal_for(scope), "how": "refused",

@@ -259,6 +259,12 @@ def handle(event, seen, dry_run=False, model=None):
         log({"kind": "gagged", "message_id": message_id, "channel": channel,
              "user": user, "thread": thread,
              "reason": result.get("gag_reason")})
+        # NOTHING IS POSTED FROM HERE, and as of 2026-09-24 nothing needs
+        # to be. A client CHANGE REQUEST no longer reaches this branch at
+        # all - `slackconversation` moved the gag below the request intake,
+        # so a ticket is raised and `_post_extras` announces it on the
+        # normal path. What still lands here is a client question the agent
+        # is not allowed to answer, and for that, silence is the decision.
         return True
 
     if dry_run:

@@ -334,6 +334,9 @@ def main(argv=None):
     parser.add_argument("--since", default=None)
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--catalogue", action="store_true")
+    parser.add_argument("--lift-gag", action="store_true",
+                        help="answer client questions in this process, to "
+                             "measure the scope the target is stated in")
     parser.add_argument("--no-model", action="store_true")
     parser.add_argument("--out", default=None,
                         help="write the scored rows as JSON here")
@@ -342,6 +345,32 @@ def main(argv=None):
 
     load_env()
     model = llm.NoModel() if args.no_model else None
+
+    # --lift-gag. THE TARGET IS STATED IN CLIENT SCOPE AND CLIENT SCOPE
+    # ANSWERS IN 0.0 SECONDS.
+    #
+    # `CLIENT_CHANNEL_GAG` returns before anything is planned, so a replay
+    # of real traffic measures the gag rather than the latency - the
+    # 2026-09-23 run scored 11 of 32 at `how: gagged`, every one a client.
+    # And the gag is not to be lifted in production until the latency is
+    # fixed, so the number that would justify lifting it cannot be taken
+    # while it is set. That is a circle, and this is the way out of it.
+    #
+    # IT IS SAFE HERE FOR ONE REASON AND IT IS STRUCTURAL: THIS SCRIPT
+    # POSTS NOTHING. `conversation.respond` returns a dict; the only thing
+    # in this repository that writes to Slack is the loop, and the loop is
+    # not imported here. Lifting the gag in THIS process cannot reach a
+    # client channel, because no code path from here to Slack exists.
+    #
+    # It is also only this process. Nothing is written to config, the
+    # constant is rebound in memory, and the running loop is untouched -
+    # a merge is not a deploy and neither is this.
+    if args.lift_gag:
+        conversation.CLIENT_CHANNEL_GAG = ""
+        print("--lift-gag: client channels will be ANSWERED in this "
+              "process. Nothing is posted - this script has no write path "
+              "to Slack - and the running loop is unaffected.")
+        sys.stdout.flush()
 
     corpus = questions(args.log or log_path(), since=args.since)
     if args.catalogue:
