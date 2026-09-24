@@ -467,16 +467,19 @@ with scale" — passes this and is still a person's judgement call.
 
 ## 4. Files in this branch
 
-`git diff --stat 24acafff HEAD` — 1,299 insertions, 1 deletion, 6 files:
+Six files. Run `git diff --stat 24acafff HEAD` for the sizes rather than
+trusting a number typed here, which is stale the moment this file is edited
+again:
 
-    src/bisonfactory.py                                       82 +-   the wiring
-    src/packfacts.py                                         132 new  identity, not presence
-    scripts/packfact_check.py                                271 new  §3, read-only
-    tests/test_the_copy_lint_refuses_the_real_send_path.py   305 new  10 tests
-    docs/MERGE-REQUEST-2026-09-24-COPY-AND-COPYLINT.md       418 new  this file
-    docs/state/LANE-D-BISONFACTORY-FAILURE-DIFF-2026-09-24.json 92 new  §2.5 BY NAME
+    src/bisonfactory.py                     MODIFIED  the wiring, +2 imports
+    src/packfacts.py                        new       identity, not presence
+    scripts/packfact_check.py               new       §3, read-only
+    tests/test_the_copy_lint_refuses_the_real_send_path.py  new  10 tests
+    docs/MERGE-REQUEST-2026-09-24-COPY-AND-COPYLINT.md      new  this file
+    docs/state/LANE-D-BISONFACTORY-FAILURE-DIFF-2026-09-24.json  new  §2.5 BY NAME
 
-The single deletion is the `from . import ...` line that gained `copylint` and
+`src/bisonfactory.py` is the only file changed rather than added, and its one
+deleted line is the `from . import ...` line that gained `copylint` and
 `packfacts`. The last file exists because this repository has learned twice
 that a baseline which is a COUNT cannot say which tests changed: it carries
 all 68 new failing names and the one pre-existing one.
