@@ -158,10 +158,24 @@ window is the one failure with a client-visible cost.
 
 ---
 
-## 6. WHAT THIS RUNBOOK DOES NOT CLAIM
+## 6. WHAT THIS RUNBOOK DOES AND DOES NOT CLAIM
 
-None of 2b–2f has been run against the host. `provision.sh` had been written
-and reviewed too, and running it found six defects — four of which produced a
-symptom pointing somewhere else entirely. **Expect this document to be wrong
-somewhere, and expect the wrongness to name the wrong thing.** The shadow
-deploy (item 3) is what converts it from a plan into something tested.
+**Updated 2026-09-24, after the shadow deploy.** 2b–2f have now been run
+against the host, and running them found four defects that review and a green
+suite had both missed — see `docs/SHADOW-DEPLOY-READINESS-2026-09-24.md` §1.
+One of them, a Caddy directive that validated cleanly and meant something
+else, is the kind this document cannot protect you from.
+
+So the steps above are tested rather than imagined, with three exceptions
+that are **not** yet evidence:
+
+- **3d, copying `work/`.** Only `work/campaigns.jsonl` has been copied. The
+  queue has never moved.
+- **3g, starting the estate.** No monitor has ever run on this host.
+- **3i, the tmux sessions.** Two of the three worktrees do not exist there
+  yet and `Linger=no`.
+
+Those three are the cutover's real content. Expect one of them to be wrong in
+a way that names the wrong thing — that has now happened five times in this
+package, and the two most expensive were a guard whose evidence was correct
+and whose conclusion was not, and a config the validator approved.
