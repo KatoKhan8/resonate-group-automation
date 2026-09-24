@@ -7,8 +7,15 @@ Lane B (Bison/cadence), background agent, own locked worktree.
     files     config/clients/productive.yaml
               scripts/batch1_build.py
               scripts/stage_s7_copy.py
+              tests/test_a_five_step_campaign_sends_five_different_emails.py
+              tests/test_angle_subjects_are_readable.py
+              docs/STEPS-4-5-DRAFTS-2026-09-24.md      (correction header)
               tests/test_the_cadence_is_four_steps_everywhere.py      NEW
               scripts/verify_s7_four_step_render.py                   NEW
+
+No `src/` file was modified. `src/cadence.py`, `src/bisonfactory.py` and
+`src/configdiff.py` were read closely and deliberately left alone — see §2.1
+and §6.1.
 
 **NO PROVIDER WRITE HAPPENED.** No EmailBison, no HeyReach, no Apify, no
 credential read. Nothing was merged and nothing was pushed.
@@ -388,7 +395,29 @@ See §6. One pass only, diffed by name.
    build no longer reads it. Kept so a re-run stays comparable with every
    earlier journal, and because `breakup` remains correct for a three-step
    cadence. Delete it if the journal should carry only what ships.
-5. **The two lint-refused leads and the sixteen company-name holds were left
+5. **I SPLIT A TEST RATHER THAN DELETING HALF OF IT, AND SOMEBODY SHOULD
+   CHECK THAT.** `tests/test_angle_subjects_are_readable.test_the_budget_is_real`
+   was **already red on master** — `git diff 24acafff..HEAD` over
+   `src/cadence.py`, `src/lint.py` and that test file is empty, so it is not
+   mine. It asserted, per template, that every `{angle_word}` subject sits
+   exactly on the 60-character line. True while `comparable_proof` (prefix
+   27, 27 + 32 = 59) was the only such template; the four step-4/step-5
+   templates merged tonight have prefixes of 22 and 24, so they fit with 3 to
+   5 characters of SLACK and all four went red for being safer than the
+   constant requires.
+
+   I did not widen it. I split it: `test_the_budget_is_real` keeps the safety
+   half per template (32 fits everywhere) and a new `test_the_budget_is_tight`
+   asserts the constant is the largest safe value over the SET (at least one
+   template goes over at 33). Both directions were attacked and both go red —
+   32→33 fails the first, 32→31 fails the second.
+
+   **The judgement to check is whether "every angle_word subject should sit on
+   the line" was a deliberate copy rule rather than an artefact of there being
+   one template.** If it was deliberate, the fix is to lengthen the four new
+   subjects, not to split the test — and that is new copy, which needs
+   approval.
+6. **The two lint-refused leads and the sixteen company-name holds were left
    held.** Correct fail-closed behaviour and both pre-existing. The
    alternative is correcting `Company` values in the supplier file — two for
    lint, thirteen records for the hostname rule — which is an operator's call
