@@ -82,6 +82,68 @@ keys - it was asserting the defect, under a docstring that said the opposite.
 
 ---
 
+### ISSUE-035 · a deliberate stop by us reads to the collision gate as an account-level hold
+
+**Status: OPEN. Tomorrow's first item, with the account-rule rewrite, tests
+first and a GLM review before merge — OPERATOR DECISION 2026-09-24.**
+
+Tonight's containment created the block on its own remediation, and the
+sequence is worth keeping because neither step was wrong:
+
+1. 49 leads attached to 496/497/498 despite all three pushes reporting
+   REFUSED (ISSUE-034).
+2. Per operator decision, a campaign carrying settled blank rows from the
+   incident takes no new leads. All three carry them — 11, 9 and 4 — so all
+   63 staged leads were STOPPED. Read back clean.
+3. Re-pushing them into a fresh campaign then refused:
+
+       13 contact(s) collided with the client's own estate:
+       <contact>: hold - a campaign at this account ended early (stopped)
+
+**The gate is right and cannot know it.** A campaign that ended early at an
+account is exactly the signal it exists to catch. It has no way to tell *"we
+stopped this ourselves, an hour ago, deliberately, to move them"* from
+*"something went wrong at this account"*.
+
+**The fix, and it pairs with the account-rule rewrite rather than standing
+alone:** a stop carrying OUR OWN reason plus an operator-recorded move is not
+an account-level hold. Both changes are teaching the same system to
+distinguish a deliberate act of ours from an observed fault, so they want one
+review, not two.
+
+**Until then the 63 stay stopped.** They are safe — nothing sendable, copy
+intact, verified — and not re-pushable.
+
+---
+
+### ISSUE-036 · `find_campaigns_by_name` cannot find a campaign this system just created
+
+**Status: OPEN, LOW, and it undermines an orphan-recovery path that exists
+for a serious reason.**
+
+Campaign 500 was created tonight from the canonical name
+
+    RESONATE - PRODUCTIVE - EMAIL - EU-HOURS - BATCH1B - LUKA
+
+and the provider stored it as
+
+    RESONATE - PRODUCTIVE - EMAIL - EU-HOURS - BATCH1B - LUKA [productive/productive-email-batch1b-luka]
+
+`bison.find_campaigns_by_name(<planned name>)` then returned **0**.
+
+That lookup is not decoration. `bisonfactory` uses it to recover a campaign
+that "was created and never recorded" — the case where a create succeeded and
+the binding did not — and it refuses outright when it finds more than one.
+A search that cannot match the provider's own stored form will report zero
+orphans every time, so the recovery path silently never fires and the
+ambiguity guard never sees the campaigns it is meant to arbitrate.
+
+Campaign 500 itself is inert: created, sequenced (4775/4776/4777), **0 leads,
+paused**, left in place deliberately rather than deleted — deletion is a
+provider write nobody asked for.
+
+---
+
 ### ISSUE-034 · the blank-render gate refuses AFTER the attach, so a refusal leaves leads enrolled
 
 **Status: OPEN, and it cost a real divergence on 2026-09-24.**
