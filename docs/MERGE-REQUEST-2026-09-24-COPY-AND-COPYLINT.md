@@ -143,9 +143,8 @@ replacement do not exist yet.
 ### 2.1 What was wrong with TASK-277, confirmed by reading it
 
 Commit `c0c63d58` on branch `qwen-worker-4-r9`, "TASK-277: the copy lint is on
-the send path, not merely present". Read in full:
-
-Checked against the files, not against the report:
+the send path, not merely present". Checked against the files on that branch,
+not against the report:
 
 - it adds `push.run_with_copylint(leads, packs)` to `src/push.py`;
 - `git grep -n run_with_copylint qwen-worker-4-r9 -- 'src/*' 'scripts/*'
@@ -303,17 +302,23 @@ cheapest and it is measured, not estimated — read §3.4 before choosing.**
   pass — and it is a change to the contract you merged this morning
   (*"A lead with NO pack is not quietly excused"*), so **this lane did not make
   it.** Four rules stay blocking today: `duplicate_first_line`, `empty_step`,
-  `dash`, `buzzword`. The 17 duplicate-first-line failures above are real
-  defects in those fixtures and would stay red either way.
-
+  `dash`, `buzzword`.
 - **(c) Run the free site crawl over the 128 before pushing them, and merge
   this unchanged.** No Apify, no credits, no branch merge. The estate already
   holds crawl research for 394 records and it is exactly the shape
   `packfacts` reads. **Measured in §3.4: 366 of those 394 (93%) would pass
-  rule 1 today.** This clears `step1_without_pack_fact`, which is 46 of the 68
-  and all of production's 636. It does not clear
-  `untraceable_company_claim` — §3.4 has that number too — and the 17
-  `duplicate_first_line` fixture failures stay, because they are real.
+  rule 1 today.** That clears production's 636 — the push goes out. It does
+  not clear `untraceable_company_claim`, and §3.4 has that number and the one
+  sentence that fixes it.
+
+  **It does not clear the 68 tests, and nothing except the tests can.** A
+  crawl over production leads changes no fixture: the 46
+  `step1_without_pack_fact` failures each need a `research` row on their
+  fixture record, and the 17 `duplicate_first_line` ones are two leads sharing
+  one body, which is a real defect in the fixture. That is a day of work in 9
+  files this lane was not sent to change, and it is the same work under (a),
+  (b) and (c). **Whichever is chosen, those 9 files are a task to write, not a
+  thing to discover during a merge.**
 
 I did not take (b) on my own authority, and I did not soften the lint to make
 the suite green. Widening a rule to let a draft through is the one thing
