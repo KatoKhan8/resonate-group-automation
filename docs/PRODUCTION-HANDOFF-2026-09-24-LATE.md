@@ -144,8 +144,12 @@ second-pass reviews of tonight's four deliveries.
 The operator is waiting to reply by email. **I could not signal, and would not
 have signalled a meaningless pass.**
 
-    HeyReach 613744  zbeslic  leadCampaignStatus: "Finished"
+    HeyReach 613744  <the test identity>  leadCampaignStatus: "Finished"
     EmailBison       no lead on the corrected address at all
+
+(The slug and addresses are in `src/testidentity.py`, the hygiene guard's one
+exempt file. They are deliberately not repeated here — the guard refused an
+earlier draft of this handoff for carrying them.)
 
 A stop against a **finished** lead returns "already settled" — a pass by
 construction. That is the shape of the first blank-content halt, which alerted
