@@ -111,6 +111,73 @@ def model_for_agent():
     return model if model.configured() else llm.NoModel()
 
 
+#: A FASTER MODEL FOR COMPOSING A CLIENT ANSWER. Operator, 2026-09-24.
+#:
+#: MEASURED FIRST: the 2026-09-24 replay put client p50 at 25.4s and p95 at
+#: 37.8s against a 15s/30s target, and the provider work is already done - a
+#: 0-tool turn costs 4.4s and a 1-tool turn 26.2s while the A/B says its
+#: reads are 5.4s. The remainder is one model call, and no amount of
+#: caching or parallelism touches it.
+CLIENT_MODEL_VAR = "SLACK_AGENT_CLIENT_MODEL"
+CLIENT_ANSWER_MODEL = "anthropic/claude-sonnet-5"
+
+#: WHAT STAYS ON THE STRONGER MODEL, EVEN IN A CLIENT CHANNEL.
+#:
+#: **THE CATALOGUE MARKS NOTHING "REASONING-HEAVY".** The operator's
+#: instruction was to keep Opus for what the catalogue marks that way, and
+#: the marking does not exist - checked before building to it, which is the
+#: rule that has now paid four times on this branch. So it is DEFINED here,
+#: from the corpus rather than from taste, and it is deliberately small.
+#:
+#: Each of the three is a turn where a cheaper model has more to get wrong
+#: than sentences:
+#:
+#:   RELAY        somebody asking the agent to answer on behalf of a third
+#:                person. The 74.1s outlier in the replay - the only turn
+#:                over 60s - is one, and it is also the only client turn
+#:                that FAILED `numbers`.
+#:   WIDE         four or more tools ran, so the material is several
+#:                readbacks that have to be reconciled rather than reported.
+#:   EXPLAIN      the question asks for a mechanism rather than a figure.
+#:
+#: Decided AFTER the tools have run, on what the turn actually did, rather
+#: than guessed from the question text alone. Two of the three could not be
+#: known before that.
+EXPLAIN = re.compile(
+    r"\b(explain|why\s+(?:is|are|did|does|do)|how\s+does|how\s+do\s+you|"
+    r"objasni|zašto|kako\s+(?:radi|funkcionira))\b", re.I)
+
+#: Tools in one turn at or above which the answer stays on the stronger
+#: model. Four, because the replay's four- and five-tool turns are where
+#: every `numbers` failure and every length failure over 30 lines sat.
+WIDE_TURN_TOOLS = 4
+
+
+def reasoning_heavy(question, tool_count=0, relayed=False):
+    """Does this turn keep the stronger model? See the comment above."""
+    if relayed or (tool_count or 0) >= WIDE_TURN_TOOLS:
+        return True
+    return bool(EXPLAIN.search(requests.strip_mentions(question)))
+
+
+def answer_model(scope, model, question, tool_count=0, relayed=False):
+    """The model that WRITES the reply. Planning is unchanged.
+
+    Returns `model` untouched for internal scope, for a reasoning-heavy
+    turn, for `NoModel`, and whenever the faster model is not configured -
+    so every path that cannot be made faster stays exactly as it was.
+    """
+    if not scope.is_client or isinstance(model, llm.NoModel):
+        return model
+    if reasoning_heavy(question, tool_count, relayed):
+        return model
+    name = (os.environ.get(CLIENT_MODEL_VAR) or CLIENT_ANSWER_MODEL).strip()
+    if not name:
+        return model
+    faster = llm.OpenAICompatibleModel(model=name, timeout=TIMEOUT_SECONDS)
+    return faster if faster.configured() else model
+
+
 # --------------------------------------------------------- thread memory
 
 def _thread_key(channel, thread_ts):
@@ -723,6 +790,32 @@ def licence_for(scope):
     return INTERNAL_LICENCE
 
 
+#: THE LENGTH RULE, AND IT IS SHORTER FOR A CLIENT. Operator, 2026-09-24.
+#:
+#: The 2026-09-23 replay's six length failures were all one question shape
+#: and the fix was believed to be the PLAN - route the broad ones to a
+#: single tool and the material stops being five readbacks. The 2026-09-24
+#: replay says that was half true: `length` is 6 of 33, and **five of the
+#: six TOOK the broad route and still answered long.** So the volume of
+#: material was a cause and is not the only one.
+#:
+#: A client answer is also the one that costs the most to read and the most
+#: to write - fewer sentences is fewer tokens is less latency, which is the
+#: increment this sits in. Internal keeps the wider budget: a colleague
+#: asking "what is running" wants the detail.
+LENGTH_RULE = {
+    slackscope.CLIENT: (
+        "  - TWO TO FOUR SENTENCES. Not five. If you cannot say it in "
+        "four, say the single most important thing and stop - a client "
+        "would rather ask a second question than read a paragraph they "
+        "did not ask for. The one offer below does not count toward this."),
+    slackscope.INTERNAL: (
+        "  - Two to six sentences unless the question needs more."),
+    slackscope.UNBOUND: (
+        "  - Two to six sentences unless the question needs more."),
+}
+
+
 ANSWER_PROMPT = """You are Resonate OS, answering in Slack.
 
 {tone}
@@ -740,7 +833,7 @@ ANSWER_PROMPT = """You are Resonate OS, answering in Slack.
   - Prose, in short paragraphs. No tables and no bullet lists unless the
     answer is genuinely a list of things.
   - Never print an email address.
-  - Two to six sentences unless the question needs more.
+{length}
   - End with ONE offer of the natural next step, as a short question.
   - If something in the material is worth knowing and they did not ask,
     mention it in one sentence. One only.
@@ -1558,7 +1651,13 @@ def _respond(question, channel=None, user=None, channel_type=None,
         return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     model = model_for_agent() if model is None else model
+    # TIMED, so the next latency increment argues from a measurement rather
+    # than a subtraction. "~21s is answer composition" was inferred by
+    # taking the A/B's provider figure off a turn total; these two numbers
+    # say it outright, and they reach the replay's scored rows.
+    _planning_started = time.time()
     calls, clarify, how_planned = plan(question, scope, past, model)
+    out["seconds_planning"] = round(time.time() - _planning_started, 2)
     out["planned"] = how_planned
     if clarify:
         out.update({"reply": clarify, "how": "clarify", "tools": []})
@@ -1615,16 +1714,28 @@ def _respond(question, channel=None, user=None, channel_type=None,
         licence=licence_for(scope),
         tone=TONE[scope.kind], language=language.instruction(question),
         listing_notice=LISTING_NOTICE if listing else "",
+        length=LENGTH_RULE.get(scope.kind, LENGTH_RULE[slackscope.INTERNAL]),
         banter=BANTER_NOTICE if is_banter(question) else "",
         offer=OFFER_NOTICE if offerable else "",
         history=render_history(past), material=material,
         question=str(question or "")[:2000])
+    # THE COMPOSING MODEL, WHICH IS NOT NECESSARILY THE PLANNING ONE.
+    # Chosen here rather than at the top because two of the three things
+    # that keep the stronger model - how many tools ran, and whether this
+    # is a relay - are not known until now.
+    writer = answer_model(scope, model, question,
+                          tool_count=len(out.get("tools") or []),
+                          relayed=relayed)
+    out["answer_model"] = getattr(writer, "model", None)
+    _answer_started = time.time()
     try:
-        text = model.complete(prompt)
+        text = writer.complete(prompt)
     except Exception as exc:                                    # noqa: BLE001
+        out["seconds_answering"] = round(time.time() - _answer_started, 2)
         out.update({"reply": stamp(plain, zone=out.get("zone")),
                     "how": "deterministic (model %s)" % type(exc).__name__})
         return _prefaced(out, relayed, out.get("language") or language.detect(question))
+    out["seconds_answering"] = round(time.time() - _answer_started, 2)
 
     checked, why = guard(text, material, scope,
                          allow_addresses=scope.is_client)
@@ -1659,7 +1770,10 @@ def _respond(question, channel=None, user=None, channel_type=None,
         return _prefaced(out, relayed, out.get("language") or language.detect(question))
 
     try:
-        second = model.complete(
+        # THE SAME WRITER. A retry that repaired the answer on a different
+        # model than wrote it would make the scorecard unreadable: a turn
+        # would be scored against a model that produced half of it.
+        second = writer.complete(
             RETRY_PROMPT.format(offending=why.split(":", 1)[-1].strip(),
                                 answer=str(text)[:3000], material=material))
     except Exception as exc:                                    # noqa: BLE001
