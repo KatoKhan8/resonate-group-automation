@@ -490,3 +490,59 @@ class EveryMonitorSaysWhereItsBeatLands(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ABeatMustLandUnderTheDECLAREDNAME(unittest.TestCase):
+    """`weekly_report` was alive and beating into a file nothing reads.
+
+    `watchsink.beat(source, campaign=None, state=None, ...)` takes CAMPAIGN
+    second. `scripts/weekly_report_loop.py` passed its state dict
+    positionally, so the beat landed in
+
+        work/heartbeat/weekly-report-zone-Europe-Zagreb-zone_resolved-True.json
+
+    while `--verify` polled `weekly-report.json` and found nothing. The loop
+    was running, logging every cycle, and indistinguishable from dead to
+    anything that reads the declared name.
+
+    This is the defect `46474c6c` fixed for the monitor-name map arriving a
+    third time, through an argument POSITION rather than a naming scheme -
+    and the reason the check is on the call site is that no amount of correct
+    mapping survives a caller writing somewhere else.
+    """
+
+    def _beat_calls(self, script):
+        import ast
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "scripts", script)
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read())
+        return [n for n in ast.walk(tree)
+                if isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "beat"]
+
+    def test_no_loop_passes_a_dict_as_the_campaign(self):
+        """A campaign id is a scalar. A dict there is a misplaced state."""
+        scripts = [f for f in os.listdir(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "scripts")) if f.endswith("_loop.py")]
+        offenders = []
+        for script in scripts:
+            for call in self._beat_calls(script):
+                if len(call.args) >= 2 and isinstance(call.args[1], ast.Dict):
+                    offenders.append(script)
+        self.assertEqual(
+            [], offenders,
+            "these loops pass state into the `campaign` slot, so their beat "
+            "lands under a name nothing polls: %s" % sorted(set(offenders)))
+
+    def test_the_weekly_report_loop_beats_with_a_keyword(self):
+        calls = self._beat_calls("weekly_report_loop.py")
+        self.assertTrue(calls, "the loop should still beat")
+        for call in calls:
+            self.assertLessEqual(
+                len(call.args), 1,
+                "pass state as `state=`, never positionally")
+            self.assertIn("state", [kw.arg for kw in call.keywords])

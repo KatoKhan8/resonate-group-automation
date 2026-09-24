@@ -249,8 +249,17 @@ def main(argv=None):
     while True:
         try:
             tick(dry_run=args.dry_run, only=args.workspace)
-            watchsink.beat(WATCHER, {"zone": watch.TIMEZONE,
-                                     "zone_resolved": watch.zone_is_real()})
+            # `state=`, NOT the second positional. `beat(source, campaign,
+            # state, ...)` takes `campaign` second, so passing the state dict
+            # positionally made the path
+            # `weekly-report-zone-Europe-Zagreb-zone_resolved-True.json`.
+            # The loop was alive and beating into a file nothing reads, which
+            # is indistinguishable from dead to anything that polls the
+            # declared name - the same failure `46474c6c` fixed for the
+            # name map, arriving through an argument position instead.
+            watchsink.beat(WATCHER, state={
+                "zone": watch.TIMEZONE,
+                "zone_resolved": watch.zone_is_real()})
         except Exception:                                       # noqa: BLE001
             traceback.print_exc()
         if args.once:
