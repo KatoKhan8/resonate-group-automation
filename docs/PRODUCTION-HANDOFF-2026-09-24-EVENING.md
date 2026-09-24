@@ -115,18 +115,26 @@ the apparent room is reserved against them. This rule is a stand-in and is
 
 ## 5. THE TEST IDENTITY WAS ON THE WRONG DOMAIN
 
-`testidentity.EMAILS` held `zvonimir@resonate.co`. The operator's address is
-on **`resonategroup.co`**. `notify.py` calls `testidentity.matches` to
-SUPPRESS everything about that identity, so a test reply is never counted as
-a prospect reply nor surfaced to a client.
+`testidentity.EMAILS` recorded the operator's address on **the wrong
+domain** — a near-miss of the real one, close enough that nobody reading it
+would notice. The addresses themselves are in `src/testidentity.py`, which is
+the guard's one exempt file; they are deliberately not repeated here.
 
-`matches("zvonimir@resonategroup.co")` returned **False**. Tonight's
-email→LinkedIn measurement would have had the operator's own reply counted as
-a real prospect reply and eligible to reach a client channel — the exact
-outcome the module exists to prevent.
+`notify.py` calls `testidentity.matches` to SUPPRESS everything about that
+identity, so a test reply is never counted as a prospect reply nor surfaced
+to a client. Matching the operator's **real** address returned **False**.
 
-Both domains are now held: leads 204966 and 204967 genuinely carry
-`resonate.co` at the provider, so dropping those would un-suppress them.
+Tonight's email→LinkedIn measurement would therefore have had the operator's
+own reply counted as a real prospect reply and eligible to reach a client
+channel — the exact outcome the module exists to prevent, defeated by a
+misspelling of the identity it protects.
+
+**Both domains are now held.** Leads 204966 and 204967 genuinely carry the
+original at the provider, confirmed 2026-09-24, so dropping those entries
+would un-suppress the two leads the module was written for.
+
+**It was found by the operator correcting me in passing, not by any check.**
+Nothing asserts that the recorded identity resolves to a real mailbox.
 
 ---
 
