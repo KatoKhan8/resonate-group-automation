@@ -123,6 +123,68 @@ class ItDeploysATagAndOnlyATag(_DeployFixture):
         self.assertFalse(os.path.exists(self.state))
 
 
+class AFirstDeployHasNoCheckoutToReadYet(_DeployFixture):
+    """FOUND BY RUNNING IT ON THE HOST, not by review.
+
+    Every other test here starts from a fixture that already has a checkout,
+    so `--check` always had a tree to `cd` into. On a real first deploy there
+    is none: `--check` does not execute the clone, so the `cd` that follows
+    found nothing and the dry run died with "REFUSING: ... does not exist" -
+    at the exact moment a dry run is most worth having, before the first
+    deploy of all.
+    """
+
+    def deploy_fresh(self, *args, expect=0):
+        """Like `deploy`, but pointed at a directory that does not exist."""
+        import subprocess
+        fresh = os.path.join(self.tmp, "not-cloned-yet")
+        env = dict(os.environ)
+        env.update(APP_DIR=_bashpath(fresh),
+                   STATE_FILE=_bashpath(self.state),
+                   STAGING_COPY=_bashpath(self.staging),
+                   SECRETS_FILE=_bashpath(os.path.join(self.tmp, "secrets")),
+                   REPO_URL=_bashpath(self.origin))
+        proc = subprocess.run(
+            [BASH, _bashpath(DEPLOY), "--skip-units"] + list(args),
+            cwd=self.tmp, env=env, capture_output=True, text=True)
+        self.assertEqual(expect, proc.returncode,
+                         "stdout:\n%s\nstderr:\n%s" % (proc.stdout, proc.stderr))
+        return proc, fresh
+
+    def test_check_survives_having_no_checkout_yet(self):
+        proc, fresh = self.deploy_fresh("--check", "--tag", "v2")
+        self.assertIn("WOULD", proc.stdout)
+        self.assertNotIn("does not exist", proc.stderr)
+        self.assertFalse(os.path.exists(fresh), "--check created something")
+
+    def test_check_says_it_is_describing_rather_than_reading(self):
+        """A dry run that silently stops describing is worse than one that
+        fails: you read the steps it did print and assume they are all."""
+        proc, _ = self.deploy_fresh("--check", "--tag", "v2")
+        self.assertIn("does not exist yet", proc.stdout)
+
+    def test_a_real_first_deploy_clones_and_checks_out_the_tag(self):
+        proc, fresh = self.deploy_fresh("--tag", "v2")
+        self.assertTrue(os.path.isdir(os.path.join(fresh, ".git")))
+        with open(os.path.join(fresh, "marker.txt"), encoding="utf-8") as fh:
+            self.assertEqual("v2", fh.read().strip())
+
+    def test_a_first_deploy_without_a_repo_url_refuses(self):
+        """It will not invent a remote."""
+        import subprocess
+        fresh = os.path.join(self.tmp, "no-url")
+        env = dict(os.environ)
+        env.update(APP_DIR=_bashpath(fresh),
+                   STATE_FILE=_bashpath(self.state),
+                   STAGING_COPY=_bashpath(self.staging))
+        env.pop("REPO_URL", None)
+        proc = subprocess.run(
+            [BASH, _bashpath(DEPLOY), "--skip-units", "--tag", "v2"],
+            cwd=self.tmp, env=env, capture_output=True, text=True)
+        self.assertNotEqual(0, proc.returncode)
+        self.assertIn("REPO_URL", proc.stderr)
+
+
 class TheRollbackIsExercisedAndNotJustWritten(_DeployFixture):
 
     def test_a_rollback_returns_the_tree_to_the_previous_tag(self):

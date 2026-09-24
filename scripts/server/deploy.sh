@@ -32,6 +32,7 @@
 set -euo pipefail
 
 CHECK=0
+JUST_CLONED=0
 ROLLBACK=0
 NO_START=0
 FORCE=0
@@ -97,9 +98,27 @@ if [[ ! -d "${APP_DIR}/.git" ]]; then
    for the deploy key. This script will not invent one."
   say "1a. FIRST DEPLOY — cloning"
   run "git clone --no-checkout '${REPO_URL}' '${APP_DIR}'"
+  JUST_CLONED=1
 fi
 
-cd "${APP_DIR}" 2>/dev/null || die "${APP_DIR} does not exist."
+# FOUND BY RUNNING IT, not by review. In --check the clone above is printed
+# rather than executed, so on a genuine first deploy there is no directory to
+# enter - and this died with "REFUSING: ... does not exist" at the exact
+# moment a dry run is most worth having: before the first deploy of all.
+#
+# The dry run therefore continues in a DESCRIBING mode, and says so. A dry
+# run that silently stops describing is worse than one that fails, because
+# you read the steps it did print and assume they are all of them.
+NO_CHECKOUT=0
+if [[ -d "${APP_DIR}/.git" ]]; then
+  cd "${APP_DIR}"
+elif [[ $CHECK -eq 1 ]]; then
+  NO_CHECKOUT=1
+  note "--check: ${APP_DIR} does not exist yet, so everything below is"
+  note "described from this script rather than read from the tree."
+else
+  die "${APP_DIR} does not exist."
+fi
 
 if [[ ! -f "${SECRETS_FILE}" ]]; then
   note "WARNING: ${SECRETS_FILE} does not exist."
@@ -117,7 +136,20 @@ say "2. THE WORKING TREE MUST BE CLEAN"
 # honest response is to REFUSE AND SHOW IT, not to discard it. `git checkout`
 # would silently destroy a change made at 23:00 by somebody who then goes to
 # bed believing it is live.
-DIRTY="$(git status --porcelain 2>/dev/null || true)"
+# SECOND DEFECT FOUND BY RUNNING IT. `git clone --no-checkout` leaves an
+# EMPTY working tree with a fully populated index, so `git status
+# --porcelain` reports every file in the repository as deleted. The
+# dirty-tree guard below then fired on a pristine first clone and refused
+# the deploy - "the host's working tree has uncommitted changes", naming
+# files nobody had touched, on a directory that had existed for one second.
+#
+# There is nothing to protect on a tree that has never been checked out.
+DIRTY=""
+if [[ $NO_CHECKOUT -eq 0 && $JUST_CLONED -eq 0 ]]; then
+  DIRTY="$(git status --porcelain 2>/dev/null || true)"
+elif [[ $JUST_CLONED -eq 1 ]]; then
+  note "freshly cloned, no working tree yet - nothing to preserve."
+fi
 if [[ -n "${DIRTY}" ]]; then
   if [[ $FORCE -eq 1 ]]; then
     note "--force: discarding uncommitted changes on the host:"
@@ -134,7 +166,11 @@ fi
 # --------------------------------------------------------------------------
 say "3. WHAT IS DEPLOYED NOW"
 
-CURRENT="$(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo 'nothing')"
+if [[ $NO_CHECKOUT -eq 1 ]]; then
+  CURRENT="nothing (first deploy)"
+else
+  CURRENT="$(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo 'nothing')"
+fi
 note "current: ${CURRENT}"
 if [[ -f "${STATE_FILE}" ]]; then
   note "recorded: $(cat "${STATE_FILE}")"
@@ -145,6 +181,8 @@ fi
 # --------------------------------------------------------------------------
 if [[ $ROLLBACK -eq 1 ]]; then
   say "4. ROLLBACK"
+  [[ $NO_CHECKOUT -eq 0 ]] || die \
+    "there is no checkout at ${APP_DIR} to roll back."
   [[ -f "${STATE_FILE}" ]] || die \
     "no ${STATE_FILE}, so there is no previous deploy to return to.
    A rollback that guesses is not a rollback."
