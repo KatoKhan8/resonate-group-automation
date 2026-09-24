@@ -1,11 +1,60 @@
-# Slack agent — handoff, 2026-09-24 midday
+# Slack agent — handoff, 2026-09-24
 
 Supersedes `SLACK-AGENT-HANDOFF-2026-09-24-MORNING.md` and every earlier one.
 Written to the test `CLAUDE.md` sets: a fresh session on another machine,
 with a clone and the secrets supplied separately, should be able to read
 this and say what happened and what to do next.
 
-**Branch `slack-agent` at `8f85ec2f`, pushed and verified.** It merges
+---
+
+## 0. THE OPERATOR DIRECTIVE — READ THIS BEFORE ANYTHING ELSE
+
+**2026-09-24, valid to 2026-10-01. Three lanes, everything else frozen.
+THIS SESSION IS LANE 2, the agent.**
+
+Lane 2 is: lift the gag (with rules-4 from lane 1), the Monday weekly
+report with PDF, reply-engine drafts visible in `#replies-productive`, and
+"what are we working on" / "what is happening with <domain>" answering
+**from what exists**.
+
+**FROZEN IN LANE 2:** the portal, the OSS survey beyond the automated
+Friday run, internal-mode extras, Phase D item 4 until the ledger
+write-back exists, and **latency below what is measured now**.
+
+Handoff thresholds changed the same day: write one at 600k tokens and keep
+working, write a fresh one at 850k and stop for `/clear`. Never mid-push,
+never mid-incident.
+
+### 0a. THE LATENCY WORK IS FROZEN AND PARKED, NOT LOST
+
+Branch **`slack-agent-latency-parked`** at **`3c5c0528`**, pushed. It was
+half-built when the directive landed and is committed there rather than on
+`slack-agent`, because `answer_model` is wired into `_respond` and merging
+it would ship frozen work.
+
+**IT IS WIRED AND UNMEASURED.** Sonnet for client answer composition, a
+two-to-four-sentence client length rule, and a `reasoning_heavy` escape
+(relay / four-or-more tools / explanation) that keeps the stronger model.
+**No replay has been run against it**, so there is no evidence it holds
+quality — which was the operator's own condition for keeping it. Do not
+merge it on the strength of it looking right.
+
+Two things in it worth separating when it thaws:
+
+- **THE CATALOGUE MARKS NOTHING "REASONING-HEAVY".** The instruction
+  assumed a marking that does not exist. The parked branch DEFINES one
+  from the corpus. That definition is the part to argue with first.
+- **`seconds_planning` / `seconds_answering`** is instrumentation, not a
+  latency change. It turns "~21s is answer composition" from a subtraction
+  into a measurement, and it is the piece worth rescuing independently of
+  whatever happens to the rest.
+
+Streaming / edit-in-place was never started and is blocked regardless:
+`src/providers/slack.py` has `POST_MESSAGE = "/chat.postMessage"` and no
+`chat.update`, and `src/providers/*` is forbidden to this branch. It is
+production's, exactly like the file-upload route.
+
+**Branch `slack-agent` at `9175243c`, pushed and verified.** It merges
 master at `522495b3`; master has since moved to at least `d6a719c2` —
 fetch and check before writing anything.
 
@@ -317,15 +366,24 @@ no subject is extractable, never `pass`.
 
 ---
 
-## 9. WHAT TO DO NEXT, IN ORDER
+## 9. WHAT TO DO NEXT, IN ORDER — LANE 2 ONLY
 
-1. **The model, not the reads.** §7 - ~21s of every turn is one answer
-   call, and the target needs ~10s of it back. Measure a smaller model or
-   a shorter answer prompt before building either.
-2. Item 3 — the missed-mention sweep, with §6's two constraints, and
-   **report the count before building anything.**
-3. Item 5's window decision (10 days or 7), which is an argument. §5.
-4. Items 3b/4 — client deliverables, the Monday dry run with the PDF.
+**§0 outranks this list.** Anything below that is not lane 2 is frozen
+until 2026-10-01 and stays here for October.
+
+1. **Tell production to start `weekly-report`.** §10. Monday is 2026-09-28
+   and nothing has started the loop, so as things stand there is no report.
+2. `working_on` and `account_status` answering FROM WHAT EXISTS — the
+   tools exist (§5); the question is what they do while the ledger
+   write-back does not.
+3. Reply-engine drafts visible in `#replies-productive`.
+4. Lifting the gag, which waits on rules-4 from lane 1. **Note it is
+   already PARTLY lifted**: change requests reach the operator again as of
+   `fcced109`; answers are still gagged. §4a.
+
+FROZEN, AND HERE FOR OCTOBER: the missed-mention sweep (§6's two
+constraints still apply when it thaws), item 5's 10-vs-7 window decision
+(§5), and the whole latency increment (§0a).
 5. **Tell production the gag was loosened.** §4a. It is done, not pending,
    and it changes when a safety mechanism they set returns. The revert is
    one block move.
@@ -333,3 +391,56 @@ no subject is extractable, never `pass`.
    five of six took the broad route and still answered long.
 7. A guard that `docs/requests/` is empty after the suite. §4a - the same
    accident has now happened twice.
+
+---
+
+## 10. THE MONDAY REPORT — DRY RUN DONE, ONE THING PRODUCTION MUST DO
+
+Walked Monday 2026-09-28 end to end against a copy of production's `work/`,
+clock pinned as an absolute instant rather than derived from the zone under
+test. Committed at `9175243c`.
+
+**THE DECISION MACHINERY IS SOUND and was not touched.** Preview 07:30 →
+window open 07:45 → delivered 08:00 → `already_done` 08:05; a stop holds;
+an anonymous stop is refused; a tick that first runs after 08:00 refuses to
+post, because nobody had the window in which to stop it. 28 existing tests
+in `test_the_monday_report_can_be_stopped.py` already cover it.
+
+**PRODUCTION MUST START THE LOOP.** It was in no supervision table at all —
+not started on boot, not restarted, never reported by `--status`. It is in
+`start_monitors.MONITORS` now as `weekly-report` at a 300s interval, and
+`--status` currently says `weekly-report NEVER`. **Nothing has started it,
+so as things stand Monday produces no report.** Lane 3 cuts over that same
+night after 23:00 Zagreb, so it needs starting on the old host for Monday
+morning and confirming on the new one afterwards.
+
+That is the THIRD time this gap has been closed here. `digest_loop` and
+`slack_followup_loop` were both found not running for the same reason, and
+both comments sit two lines above the new entry.
+
+### 10a. Two defects the dry run found
+
+- **The PDF cover was dated by the BUILD, not by its Monday.** The filename
+  used `monday`; the cover used `report["read_at"]`. On a punctual Monday
+  they agree and nothing shows; on a retried or late one the client gets a
+  document naming the wrong week. Fixed, and it now carries `report_id`
+  too, because a person attaches this by hand.
+- **Nothing checked the client document against the client backstop.** It
+  is the one artefact here that reaches a client unmediated. It passes.
+  The test has a control beside it, because the obvious way to write that
+  check is already on the lesson list: `assertNotIn(b"...")` against a
+  Flate-compressed PDF passes on the compression rather than the absence.
+  The helper inflates the streams and reads the text operators.
+
+### 10b. The ledger gap degrades correctly, and stays production's
+
+The report says **"1,522 account(s) cannot be placed ... This is NOT a
+count of untouched accounts and must not be read as one."** That is the
+write-back blocker showing up honestly. Per the directive it is lane 1's
+and frozen beyond what the status post needs — do not build around it.
+
+### 10c. Still production's
+
+`src/providers/slack.py` has no file-upload route, so the PDF is written to
+`work/reports/` and a person attaches it. The preview text says so out loud
+rather than leaving it to be discovered on a Monday.
