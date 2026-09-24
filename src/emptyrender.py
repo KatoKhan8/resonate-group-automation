@@ -154,12 +154,29 @@ def classify_row(row):
     return found
 
 
-#: Row statuses that can still reach a person. A `sent` row is already a
-#: fact and a `stopped` one cannot send, so neither is grounds for halting a
-#: campaign - but both are reported, because the count of what already went
-#: out is the incident and the count of what is stopped is the evidence it
-#: was contained.
-PENDING_STATUSES = frozenset({"scheduled", "queued", "pending", ""})
+#: Row statuses that are SETTLED - the row is a fact and cannot become a
+#: message. A `sent` row has already gone, a `stopped` one cannot go, and a
+#: `bounced` one went and failed. Everything else can still reach a person.
+#:
+#: THIS IS A DENYLIST, AND IT USED TO BE AN ALLOWLIST. Until 2026-09-24 the
+#: rule was `PENDING_STATUSES = {"scheduled", "queued", "pending", ""}` and
+#: every status outside it fell to `already` - the bucket whose own comment
+#: read "already sent or stopped". `sending_paused` is neither. Campaign 491
+#: was paused, so its whole queue read `sending_paused`, and blank row
+#: 22356723 (lead 204724, `Re: ` / `<p></p>`) was filed as contained when the
+#: only thing containing it was the campaign's pause. Resuming 491 would have
+#: sent it. Both witnesses - the watcher heartbeat and a direct provider read
+#: - agreed on "0 pending" and both were wrong in the same way, because they
+#: share this predicate.
+#:
+#: An allowlist of sendable statuses fails CLOSED on a status nobody thought
+#: of, and failing closed here means calling an unknown row safe. The
+#: denylist fails the other way: a status this module has never seen is
+#: treated as able to send, which at worst halts a campaign for a row that
+#: was never going anywhere. Only a row that is BOTH faulty AND unsettled
+#: halts anything, so an unrecognised status on well-rendered copy costs
+#: nothing.
+SETTLED_STATUSES = frozenset({"sent", "stopped", "bounced"})
 
 
 def scan(rows):
@@ -173,6 +190,12 @@ def scan(rows):
     halt on `pending` while still reporting `already`. A scan that returned
     one list would make a campaign whose blanks have all been stopped look
     exactly like one about to send more.
+
+    `already` MEANS SETTLED, NOT DORMANT. A row is `already` only when the
+    provider says `sent`, `stopped` or `bounced` - see `SETTLED_STATUSES`.
+    A paused campaign's rows are `sending_paused`, which is dormant: the only
+    thing holding them is a campaign status an operator can change in one
+    click. They count as `pending`.
     """
     pending, already = [], []
     for row in rows or []:
@@ -186,7 +209,7 @@ def scan(rows):
                  "step": row.get("sequence_step_id"),
                  "status": status,
                  "faults": faults}
-        (pending if status in PENDING_STATUSES else already).append(entry)
+        (already if status in SETTLED_STATUSES else pending).append(entry)
     return {"pending": pending, "already": already}
 
 

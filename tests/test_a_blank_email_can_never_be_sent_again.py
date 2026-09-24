@@ -52,6 +52,26 @@ FOLLOWUP_BLANK = {"id": 22356508, "sequence_step_id": 4770, "status": "stopped",
                   "thread_reply": True, "email_subject": "Re: ",
                   "email_body": "<p></p>", "lead": {"id": 167865}}
 
+#: The row that proved `already` did not mean contained. Campaign 491 was
+#: paused on 2026-09-23, so every one of its 275 undelivered rows read
+#: `sending_paused` - including this blank, which the allowlist filed under
+#: `already` next to the sent and the stopped. Nothing had stopped it. The
+#: campaign's pause had. Read back from the provider 2026-09-24T07:5xZ.
+PAUSED_BLANK = {"id": 22356723, "sequence_step_id": 4752,
+                "status": "sending_paused", "thread_reply": True,
+                "email_subject": "Re: ", "email_body": "<p></p>",
+                "lead": {"id": 204724}}
+
+#: The same campaign, the same paused status, copy that rendered correctly.
+#: 274 of the 275 looked like this, and none of them may halt anything.
+PAUSED_GOOD = {"id": 22356784, "sequence_step_id": 4752,
+               "status": "sending_paused", "thread_reply": True,
+               "email_subject": "Re: the ops stack",
+               "email_body": "<p>Garth, the teams I work with that look most "
+                             "like Medical Marketing Service, Inc tend to "
+                             "arrive at the same place.</p>",
+               "lead": {"id": 204700}}
+
 OPENER_GOOD = {"id": 22352260, "sequence_step_id": 4769, "status": "sent",
                "thread_reply": False,
                "email_subject": "profitability visible on Monday not two "
@@ -168,6 +188,52 @@ class TheScanSplitsWhatCanStillSendFromWhatCannot(unittest.TestCase):
                                   OPENER_GOOD, FOLLOWUP_GOOD])
         self.assertEqual(len(found["already"]), 2)
         self.assertEqual(found["pending"], [])
+
+
+class APausedCampaignIsDormantNotContained(unittest.TestCase):
+    """491 row 22356723, and the day `already` stopped meaning "settled".
+
+    The allowlist that shipped with the gate called four statuses sendable
+    and everything else `already`. A paused campaign's rows are none of the
+    four, so a blank sat in the bucket labelled "already sent or stopped"
+    while being neither - one operator click from going out. Both witnesses
+    reported `pending: 0` and both were reading this predicate.
+    """
+
+    def test_the_paused_blank_is_pending_not_already(self):
+        found = emptyrender.scan([PAUSED_BLANK])
+        self.assertEqual(len(found["pending"]), 1, "a paused blank can send")
+        self.assertEqual(found["already"], [])
+        self.assertEqual(found["pending"][0]["row"], 22356723)
+        self.assertEqual(found["pending"][0]["lead"], 204724)
+
+    def test_sending_paused_is_not_a_settled_status(self):
+        self.assertNotIn("sending_paused", emptyrender.SETTLED_STATUSES)
+        self.assertEqual(emptyrender.SETTLED_STATUSES,
+                         frozenset({"sent", "stopped", "bounced"}))
+
+    def test_a_status_nobody_has_seen_counts_as_able_to_send(self):
+        """The denylist's whole point: fail toward halting, not toward calm."""
+        for unknown in ("sending_resumed", "deferred", "held", "retrying", "?"):
+            found = emptyrender.scan([dict(PAUSED_BLANK, status=unknown)])
+            self.assertEqual(len(found["pending"]), 1, unknown)
+
+    def test_well_rendered_paused_copy_still_halts_nothing(self):
+        """274 of 491's 275 were fine. An unsettled status is not a fault."""
+        found = emptyrender.scan([PAUSED_GOOD])
+        self.assertEqual(found["pending"], [])
+        self.assertEqual(found["already"], [])
+
+    def test_the_sent_and_the_stopped_are_still_already(self):
+        found = emptyrender.scan([OPENER_BLANK, FOLLOWUP_BLANK])
+        self.assertEqual(found["pending"], [])
+        self.assertEqual(len(found["already"]), 2)
+
+    def test_the_491_queue_shape_splits_one_from_the_other(self):
+        """The real read: one blank, one settled blank, one good, all paused."""
+        found = emptyrender.scan([PAUSED_BLANK, PAUSED_GOOD, FOLLOWUP_BLANK])
+        self.assertEqual([e["row"] for e in found["pending"]], [22356723])
+        self.assertEqual([e["row"] for e in found["already"]], [22356508])
 
 
 class TheWatcherHaltsAndTheGuardRefuses(unittest.TestCase):
