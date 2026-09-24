@@ -144,7 +144,13 @@ provider write nobody asked for.
 
 ---
 
-### ISSUE-034 · the blank-render gate refuses AFTER the attach, so a refusal leaves leads enrolled
+### ISSUE-037 · the blank-render gate refuses AFTER the attach, so a refusal leaves leads enrolled
+
+**Renumbered from ISSUE-034 on 2026-09-24.** Two sessions took 034 the same
+evening for different findings - this one and "the research pack named three
+Apify actors that do not exist", which is above and already FIXED. This row
+moved because that one was published first. The collision is the argument for
+allocating a number in the register before writing the row, not after.
 
 **Status: OPEN, and it cost a real divergence on 2026-09-24.**
 
