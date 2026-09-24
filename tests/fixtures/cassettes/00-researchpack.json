@@ -1,0 +1,157 @@
+[
+ {
+  "call": "researchpack-run-start-company-posts",
+  "note": "PROVENANCE: hand written to Apify's documented run-start schema, like every other entry in this directory - tests/base.py calls these 'hand written provider fixtures'. NOT captured from a live run. No Apify actor run in this repository has ever succeeded: providers/apify.start_run records that every run it started was rejected with 400 invalid-input for a missing proxyConfiguration, so there is nothing to capture from. scripts/capture_researchpack.py takes the real ones and costs credits.",
+  "match": {
+   "method": "POST",
+   "url_contains": "linkedin-company-posts-scraper"
+  },
+  "status": 201,
+  "response": {
+   "data": {
+    "id": "run-company-posts",
+    "status": "READY",
+    "defaultDatasetId": "ds-company-posts"
+   }
+  }
+ },
+ {
+  "call": "researchpack-run-start-open-roles",
+  "match": {
+   "method": "POST",
+   "url_contains": "job-listings-scraper"
+  },
+  "status": 201,
+  "response": {
+   "data": {
+    "id": "run-open-roles",
+    "status": "READY",
+    "defaultDatasetId": "ds-open-roles"
+   }
+  }
+ },
+ {
+  "call": "researchpack-run-start-person-posts",
+  "match": {
+   "method": "POST",
+   "url_contains": "linkedin-profile-posts-scraper"
+  },
+  "status": 201,
+  "response": {
+   "data": {
+    "id": "run-person-posts",
+    "status": "READY",
+    "defaultDatasetId": "ds-person-posts"
+   }
+  }
+ },
+ {
+  "call": "researchpack-run-status-company-posts",
+  "note": "One SUCCEEDED per run id, each naming ITS OWN dataset. A generic status reply made the run fall through to apify.json's catch-all `/datasets/` entry and read another actor's rows - which is what a shared match does when the ids do not discriminate.",
+  "match": {
+   "method": "GET",
+   "url_contains": "/actor-runs/run-company-posts"
+  },
+  "status": 200,
+  "response": {
+   "data": {
+    "id": "run-company-posts",
+    "status": "SUCCEEDED",
+    "defaultDatasetId": "ds-company-posts"
+   }
+  }
+ },
+ {
+  "call": "researchpack-run-status-open-roles",
+  "note": "One SUCCEEDED per run id, each naming ITS OWN dataset. A generic status reply made the run fall through to apify.json's catch-all `/datasets/` entry and read another actor's rows - which is what a shared match does when the ids do not discriminate.",
+  "match": {
+   "method": "GET",
+   "url_contains": "/actor-runs/run-open-roles"
+  },
+  "status": 200,
+  "response": {
+   "data": {
+    "id": "run-open-roles",
+    "status": "SUCCEEDED",
+    "defaultDatasetId": "ds-open-roles"
+   }
+  }
+ },
+ {
+  "call": "researchpack-run-status-person-posts",
+  "note": "One SUCCEEDED per run id, each naming ITS OWN dataset. A generic status reply made the run fall through to apify.json's catch-all `/datasets/` entry and read another actor's rows - which is what a shared match does when the ids do not discriminate.",
+  "match": {
+   "method": "GET",
+   "url_contains": "/actor-runs/run-person-posts"
+  },
+  "status": 200,
+  "response": {
+   "data": {
+    "id": "run-person-posts",
+    "status": "SUCCEEDED",
+    "defaultDatasetId": "ds-person-posts"
+   }
+  }
+ },
+ {
+  "call": "researchpack-dataset-company-posts",
+  "note": "Three rows, and the third is deliberately unusable: no url, so no claim made from it could be traced. The pack must DROP it rather than keep the count up.",
+  "match": {
+   "method": "GET",
+   "url_contains": "ds-company-posts"
+  },
+  "status": 200,
+  "response": [
+   {
+    "url": "https://www.linkedin.test/feed/update/1",
+    "text": "We have opened a second delivery team in Berlin and are taking on platform work through Q4.",
+    "publishedAt": "2026-09-02T09:14:00Z"
+   },
+   {
+    "url": "https://www.linkedin.test/feed/update/2",
+    "text": "Our engineering team wrote up how we cut deploy times from forty minutes to six.",
+    "publishedAt": "2026-08-19T11:02:00Z"
+   },
+   {
+    "text": "A post with no permalink in the payload."
+   }
+  ]
+ },
+ {
+  "call": "researchpack-dataset-open-roles",
+  "match": {
+   "method": "GET",
+   "url_contains": "ds-open-roles"
+  },
+  "status": 200,
+  "response": [
+   {
+    "jobUrl": "https://careers.acme.test/senior-platform-engineer",
+    "title": "Senior Platform Engineer",
+    "description": "Own our deploy pipeline and Kubernetes footprint.",
+    "datePosted": "2026-09-10"
+   },
+   {
+    "jobUrl": "https://careers.acme.test/data-engineer",
+    "title": "Data Engineer",
+    "description": "Build the reporting warehouse.",
+    "datePosted": "2026-09-05"
+   }
+  ]
+ },
+ {
+  "call": "researchpack-dataset-person-posts",
+  "match": {
+   "method": "GET",
+   "url_contains": "ds-person-posts"
+  },
+  "status": 200,
+  "response": [
+   {
+    "postUrl": "https://www.linkedin.test/posts/ada-1",
+    "text": "Six months into rebuilding our onboarding and the thing that surprised me is how much of it was reporting.",
+    "postedAt": "2026-09-12T08:00:00Z"
+   }
+  ]
+ }
+]
