@@ -418,7 +418,8 @@ def main(argv=None):
     for name, count in sorted(angles_seen.items(), key=lambda kv: -kv[1]):
         print(f"    {name[:58].ljust(58)} {count:>5}")
     print(f"\n  written to {args.out}")
-    print("\n  The words are 489's approved copy with merge fields resolved. "
+    print("\n  em1/em2 are campaign 489's approved copy and em4/em5 are the "
+          "templates approved 2026-09-24, both with merge fields resolved. "
           "No model was called.")
     return 0
 
