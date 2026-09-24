@@ -131,6 +131,31 @@ The harness needs a flag for that, and it is the next thing on this branch
 rather than something already in this merge request. Until then, every
 latency number here — live or stub — is about the internal half.
 
+### 1b-ii. AND THE LIVE NUMBERS NOW EXIST — `docs/AGENT-REPLAY-2026-09-24.md`
+
+**THE TARGET IS NOT MET.** Client scope, 11 of the 33 real questions,
+`--lift-gag`, live provider, live model:
+
+    client p50   25.4s     target 15s
+    client p95   37.8s     target 30s
+
+What did change, against the honest baseline — the published p50 of 24.3s
+included ELEVEN GAGGED 0.0s ANSWERS, so the comparable figure is the
+baseline's median over the 21 it actually answered, ≈108s:
+
+    turns over 82s    11 of 21 answered   ->   0 of 33
+    p95                        132.3s     ->   37.8s
+    max                        176.0s     ->   74.1s
+
+**AND THE BOTTLENECK MOVED.** "100% of the latency is serial provider HTTP"
+was true on 2026-09-23 and is false now: a 0-tool turn costs 4.4s, a 1-tool
+broad-route turn costs 26.2s, and the A/B says `working_on` is 5.4s of it —
+so **~21s of every turn is answer composition**, one model call, untouched
+by this increment. The next latency increment is about the model.
+
+`terms` is also no longer unscoreable: 11 real client answers checked
+against the backstop, none leaked, against 32 `n/a` last time.
+
 ---
 
 ## 2. WHAT IS IN IT
