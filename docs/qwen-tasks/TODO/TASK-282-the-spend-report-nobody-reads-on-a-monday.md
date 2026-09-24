@@ -1,9 +1,11 @@
 PRIORITY: P1
-DEPENDS: TASK-278 (delivered, in REVIEW, not on master) and TASK-291 (its
-second-pass review). DO NOT START until TASK-278 is merged or the reviewer
-has cleared it — you are wiring a thing that does not exist on master yet.
+DEPENDS: TASK-278, TASK-291
 
 # TASK-282 — the spend report nobody reads on a Monday
+
+> **DISPATCH NOTE.** Blocked on TASK-278 and TASK-291. **DO NOT START** until
+> TASK-278 is merged to master or TASK-291 has cleared it — you would be
+> wiring a thing that does not exist on master yet.
 
 ## The question this answers
 

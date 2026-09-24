@@ -1,5 +1,5 @@
 PRIORITY: P0
-DEPENDS: ISSUE-034 (closed), the operator's 2026-09-24 Apify ruling
+DEPENDS:
 
 # TASK-279 — the 19,612 packs arrive in chunks or they do not arrive
 

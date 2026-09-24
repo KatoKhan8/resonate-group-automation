@@ -1,5 +1,5 @@
 PRIORITY: P0
-DEPENDS: TASK-277 (delivered by qwen-4 — **REJECTED, DO NOT MERGE**)
+DEPENDS:
 
 # TASK-290 — second pass: the copy lint was wired into a module that refuses to send
 

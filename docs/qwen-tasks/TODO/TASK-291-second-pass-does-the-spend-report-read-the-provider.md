@@ -1,8 +1,11 @@
 PRIORITY: P1
-DEPENDS: TASK-278 (delivered by qwen-5, now in REVIEW/, NOT on master).
-BLOCKS: TASK-282 — do not wire the report into Monday until this clears.
+DEPENDS:
 
 # TASK-291 — second pass: does the spend report read the provider, or read us?
+
+> **DISPATCH NOTE.** Reviews TASK-278 (delivered by qwen-5, now in `REVIEW/`,
+> NOT on master). **This task BLOCKS TASK-282** — the Monday wiring waits on
+> this verdict. Dispatchable now; do not give it to qwen-5, which wrote it.
 
 ## The question this answers
 

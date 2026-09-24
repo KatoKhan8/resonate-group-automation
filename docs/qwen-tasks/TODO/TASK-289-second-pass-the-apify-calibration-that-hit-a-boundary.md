@@ -1,5 +1,5 @@
 PRIORITY: P1
-DEPENDS: TASK-276 (BLOCKED — boundary hit, now in BLOCKED/)
+DEPENDS:
 
 # TASK-289 — second pass: the Apify calibration that hit a boundary
 

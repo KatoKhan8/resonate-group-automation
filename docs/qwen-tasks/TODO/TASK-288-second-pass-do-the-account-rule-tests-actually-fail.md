@@ -1,6 +1,5 @@
 PRIORITY: P0
-DEPENDS: TASK-275 (delivered by qwen-2 at round 9, now in REVIEW/, NOT on
-master)
+DEPENDS:
 
 # TASK-288 — second pass: do the account-rule tests actually fail, and for the right reason?
 

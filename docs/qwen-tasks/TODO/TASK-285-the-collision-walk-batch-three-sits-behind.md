@@ -1,5 +1,5 @@
 PRIORITY: P0
-DEPENDS: TASK-275's red tests (delivered, in REVIEW)
+DEPENDS:
 
 # TASK-285 — the collision walk batch 3 is sitting behind
 

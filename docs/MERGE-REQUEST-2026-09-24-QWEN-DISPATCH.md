@@ -14,17 +14,28 @@ code and made no provider read or write.**
 
 ## 1. TODO DEPTH, BEFORE AND AFTER
 
-    DISPATCHABLE DEPTH   before  1      <- CRITICAL. The rule is >= 10;
-                                           below 5 is a CRITICAL.
-                         after   13
+Three instruments, and they do not agree. All three are reported, because the
+disagreement between them is itself a finding.
 
-    RAW FILE COUNT in docs/qwen-tasks/TODO/
-                         before  33
-                         after   42
+    HANDOFF'S DISPATCHABLE DEPTH   before  1     <- CRITICAL. The rule is
+                                                    >= 10; below 5 is a
+                                                    CRITICAL.
 
-**The two numbers disagree and both are true.** The handoff records the
-dispatchable depth as 1; the directory held 33 files. The gap is the finding,
-not a bookkeeping detail:
+    scripts/task_registry.py       before  33 QUEUED / 33 READY
+    (the canonical instrument,     after   41 QUEUED / 41 READY
+     regenerated in this branch)           TASK-282 correctly BLOCKED on
+                                           TASK-278 and TASK-291
+
+    RAW FILE COUNT in TODO/        before  33
+                                   after   42
+
+**The registry is the number to quote: 33 → 41 READY, with 12 of tonight's 13
+immediately claimable.** `backlog healthy (>=16 ready for 8 workers): True`.
+
+**The handoff's "1" and the registry's "33" disagree, and both were written in
+good faith.** The handoff counted the tasks IT had written that were still
+open; the registry counts every file in `TODO/` whose dependencies are met.
+Neither is wrong and neither alone is a usable depth, because:
 
 - **Four finished tasks were still filed in `TODO/`.** TASK-275, 277 and 278
   were delivered tonight and TASK-276 was blocked, and all four sat in `TODO/`
@@ -43,11 +54,35 @@ not a bookkeeping detail:
   which**, which is why the pool reads as deep and dispatches as empty.
 
 That triage is **TASK-287** (§2), which audits the problem register and the
-queue in one sweep. Until it runs, treat the dispatchable depth as **13** —
-the thirteen written tonight — and do not assume the other 29 are available.
+queue in one sweep. Until it runs, the **13 written tonight are the depth you
+can rely on**, and the registry's other 28 READY entries should be treated as
+unverified rather than available.
 
     REVIEW/   14 files (was 11)
     BLOCKED/   3 files (was 2)
+
+### The DEPENDS line is machine-read, and nine of mine were prose
+
+Caught by running `scripts/task_registry.py` after writing the files, not by
+reading them. It parses `DEPENDS:` as a comma-separated list of task ids and
+marks a task BLOCKED when any entry is not in DONE. Nine of the thirteen
+carried prose — `DEPENDS: ISSUE-034 (closed), the operator's Apify ruling`,
+`DEPENDS: TASK-275's red tests (delivered, in REVIEW)` — every one of which
+splits into a string that will never appear in DONE.
+
+**All nine read as BLOCKED and would have been invisible to
+`scripts/claim_task.py`, which is how a worker takes a task.** Ten tasks
+written to fix a CRITICAL, four of them dispatchable. That is the same shape
+as everything else in this repository's register: a thing that is correct in
+itself and unreadable by the one consumer that matters.
+
+Fixed in this branch. `DEPENDS:` now carries task ids or nothing, and the
+prose moved into a `DISPATCH NOTE` block in the body where it is for a person.
+Only TASK-282 keeps a real dependency — `TASK-278, TASK-291` — and the
+registry blocks it correctly.
+
+`docs/state/TASK-REGISTRY.json` is regenerated in this branch and is derived,
+never hand-edited.
 
 ---
 

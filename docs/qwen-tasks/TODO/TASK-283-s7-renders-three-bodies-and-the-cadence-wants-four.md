@@ -1,5 +1,5 @@
 PRIORITY: P0
-DEPENDS: the cadence completion (Lane B owns it — see FORBIDDEN)
+DEPENDS:
 
 # TASK-283 — S7 renders three bodies and the cadence now wants four
 

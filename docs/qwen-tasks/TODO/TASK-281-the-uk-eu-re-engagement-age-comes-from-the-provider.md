@@ -1,5 +1,5 @@
 PRIORITY: P0
-DEPENDS: the `last_touch` cache retirement (tomorrow's item 1)
+DEPENDS:
 
 # TASK-281 — the UK/EU re-engagement age comes from the provider, not the cache
 
