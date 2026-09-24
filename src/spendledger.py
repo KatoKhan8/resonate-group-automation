@@ -114,8 +114,31 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
     # control refusing to record because of that would be the worst possible
     # failure: the call still happens, and nothing counts it.
     os.makedirs(os.path.dirname(path()), exist_ok=True)
-    with open(path(), "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    # ONE WRITER AT A TIME, AND IT IS NOT A PRECAUTION.
+    #
+    # This was a bare append, which is atomic only by luck. On 2026-09-24 S5
+    # was wired into this ledger and ran eight workers against it; 1,957 rows
+    # in, one write TORE - the file kept a complete row and then an orphaned
+    # eleven-byte tail, `id": null}`, with the head of its own row gone.
+    #
+    # The consequence is the whole reason this needs a lock rather than a
+    # tolerant reader. `load()` refuses an unreadable ledger instead of
+    # reading it as empty, and `check()` reads it before every paid call - so
+    # ONE torn byte sequence stopped every verification for that client, and
+    # the run that caused it bought nothing further. That refusal is correct
+    # and stays: a spend control that opens when its own state is damaged is
+    # the failure this module was written against. What must not happen is
+    # the damage, and the damage is a write that two threads can interleave.
+    #
+    # `store.lock` rather than a `threading.Lock`, because the writers are in
+    # different PROCESSES as often as in different threads - the enrich loops,
+    # the monitors and this stage all bill the same client - and an in-process
+    # lock would have looked like a fix while leaving the cross-process race
+    # exactly where it was. It is an exclusive-create advisory lock held for
+    # one append, microseconds, and it reclaims a lock left by a dead process.
+    with store.lock(for_path=path()):
+        with open(path(), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
     return row
 
 
