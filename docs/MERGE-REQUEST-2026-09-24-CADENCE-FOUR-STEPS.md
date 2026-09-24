@@ -334,7 +334,19 @@ See §6. One pass only, diffed by name.
    shape it would write was reproduced in the verifier and driven through
    `lint.check` and `bisonfactory`, which is the chain that matters, but the
    script itself has not run against the new constants.
-6. **A latent mismatch I found and did NOT fix, because it is out of scope.**
+6. **Other scripts still hardcode `("em1","em2","em3")` and I left them
+   alone, because each is scoped to a campaign that really is three steps.**
+   Checked one by one: `activate_control_campaign.py`,
+   `apply_control_approval.py` and `build_us_cohort_row_and_approvals.py`
+   target 484/485/489; `next_ready_cohort.py` says so in its own comment —
+   "Email takes them from campaign 487's own `cadence_steps`, which are
+   em1..em3" — and names `productive-email-control-v3` as the shape campaign.
+   All four stay correct for those campaigns and all four will UNDER-REPORT
+   readiness the first time a four-step campaign exists. That is a follow-on,
+   not a regression, and it is a second reason §3 matters.
+   `scripts/render_preview.py` still previews the `{SUBJECT_3}` shape; it was
+   not run tonight (see 3 above).
+7. **A latent mismatch I found and did NOT fix, because it is out of scope.**
    `batch1_build` stores `contact["angle"]` as the angle PHRASE, and
    `cadence.angle_words` does `angles.get(contact["angle"])` expecting the
    KEY — so that lookup misses and falls back to the first configured angle.
