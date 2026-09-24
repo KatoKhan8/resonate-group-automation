@@ -228,8 +228,24 @@ that walk the repository would have seen a file appear mid-run.
 Branch only, never master. Never `config/.env`, `work/` or `src/providers/*` —
 the one written exception, the three `os.environ` call sites, is still not
 exercised. No live writes. No timeout wrappers. Suites to a file with name
-diffs. One merge request per increment, one line in `#resonate-os`. Handoff
-before 150k tokens.
+diffs. One merge request per increment, one line in `#resonate-os`.
+
+**HANDOFF THRESHOLDS, operator directive 2026-09-24, superseding 150k:**
+**600k** — write a handoff and KEEP WORKING. **850k** — write a fresh
+handoff and STOP for `/clear`. Never hand off mid-push or mid-incident;
+finish the unit of work first.
+
+**LANE DIRECTIVE, operator, effective 2026-09-24 until 2026-10-01.** This
+session is **LANE 3, infra**: the shadow deploy, then cutover Monday
+2026-09-28 after 23:00 Europe/Zagreb, then **nothing else until the estate
+has run one clean day on the server**. FROZEN, and to be picked up in
+October rather than now: D8, D9, D10, E, F6, the git history dry run, the
+history PII scan, gateway evaluations, and the env-mutation item 2 at its
+three `os.environ` call sites.
+
+A fresh session in this lane should read
+`docs/SHADOW-DEPLOY-READINESS-2026-09-24.md` before anything: the shadow
+deploy is DONE, and §3 is the one thing still waiting on the operator.
 
 The 2026-09-23 redaction breach stands recorded in the previous handoff §10.
 Every host command since has gone through the rebuilt filter. **Self-test it
