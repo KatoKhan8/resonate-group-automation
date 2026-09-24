@@ -534,12 +534,12 @@ BROAD_QUESTION = re.compile(
     r"^\W*(?:so\s+)?(?:"
     # "what's new" / "what is happening" / "what's the status"
     r"what(?:'?s|\s+is|\s+are)?\s+"
-    r"(?:new|up|going\s+on|happening|the\s+status|status)"
+    r"(?:new|next|up|going\s+on|happening|the\s+status|status)"
     # "what are we working on" - and "we working on", which is how it is
     # actually typed. `are` optional after the pronoun, not required.
     r"|what(?:'?s|\s+is|\s+are)?\s+(?:we|you)(?:'?re|\s+are)?\s+"
-    r"(?:working\s+on|doing|up\s+to)"
-    r"|what\s+is\s+running"
+    r"(?:working\s+on|doing|up\s+to)(?:\s+(?:right\s+)?now)?"
+    r"|what(?:'?s|\s+is)?\s+running(?:\s+(?:right\s+)?now)?"
     r"|what\s+can\s+we\s+do(?:\s+now)?"
     r"|how(?:'?s|\s+is|\s+are)?\s+"
     r"(?:it\s+going|things|we\s+doing|everything(?:\s+going)?)"
@@ -557,6 +557,13 @@ BROAD_QUESTION = re.compile(
 #: A question that NAMES something is not broad, whatever it opens with.
 #: "what's the status on 487" wants that campaign, and answering it with the
 #: whole-workspace summary is the wrong answer arriving faster.
+#: Slack client boilerplate. Two of the 33 real questions end with
+#: "*Sent using* <@U...>", which the mention stripper leaves as a bare
+#: "*Sent using*" and which then defeats the end-of-string anchor. It is
+#: not part of what anybody asked.
+_SENT_USING = re.compile(r"\*?\s*sent\s+using\s*\*?.*$", re.I | re.S)
+
+
 NAMES_SOMETHING = re.compile(
     r"\b\d{3,}\b|@|\b[\w-]+\.(?:com|net|org|io|ai|co|hr|de|eu|"
     r"com\.au|live|shop|online)\b", re.I)
@@ -570,8 +577,24 @@ def broad_question(question, scope):
     false positive here answers a specific question with a summary, which
     is worse than the fan-out it replaces - the fan-out at least contained
     the answer somewhere.
+
+    ## IT FIRED ZERO TIMES ON REAL TRAFFIC, AND THE TESTS WERE ALL GREEN
+
+    Measured 2026-09-24 by replaying the 33 real questions: **not one took
+    this route.** Every question people actually ask arrives as
+
+        <@U0C3CBAP6BB> what is running
+
+    because that is how you address a bot in Slack, and `NAMES_SOMETHING`
+    matches a bare `@` - so the guard meant to protect against "what's new
+    with 491" rejected the entire corpus instead. Eighteen tests passed,
+    because every phrasing in them was typed the way a person writes in a
+    document rather than the way they write in Slack.
+
+    **The fixture was the defect, not the regex.** `requests.strip_mentions`
+    already existed and three other modules already called it.
     """
-    text = str(question or "").strip()
+    text = _SENT_USING.sub("", requests.strip_mentions(question)).strip()
     if len(text) > 90 or NAMES_SOMETHING.search(text):
         return False
     return bool(BROAD_QUESTION.match(text))
