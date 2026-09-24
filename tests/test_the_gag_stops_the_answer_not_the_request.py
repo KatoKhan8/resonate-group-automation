@@ -23,6 +23,7 @@ import unittest
 import unittest.mock as mock
 
 from src import slackconversation as conversation
+from src import slackrequests as requests
 from src import slackscope
 from tests.slackbase import IsolatedState
 
@@ -52,8 +53,19 @@ class GagTest(IsolatedState, unittest.TestCase):
     def setUp(self):
         self.isolate()
         self.addCleanup(self.restore)
-        self._prev = os.environ.get(slackscope.INTERNAL_CHANNELS_VAR)
-        os.environ[slackscope.INTERNAL_CHANNELS_VAR] = INTERNAL
+        # THE TICKET DIRECTORY IS NOT MOVED BY `isolate()`. It has its own
+        # override, and `slackrequests` carries a comment saying this exact
+        # thing already happened once - real tickets written into the
+        # repository's `docs/requests/` and deleted by hand. This test
+        # raises a REAL ticket, so it happened again here before this line
+        # existed. Two files, `git status`, deleted.
+        self._prev = {}
+        for key, value in (
+                (slackscope.INTERNAL_CHANNELS_VAR, INTERNAL),
+                (requests.REQUESTS_DIR_VAR,
+                 os.path.join(self._isolated, "requests"))):
+            self._prev[key] = os.environ.get(key)
+            os.environ[key] = value
         self.addCleanup(self._restore_channels)
         self.assertTrue(
             conversation.CLIENT_CHANNEL_GAG,
@@ -62,10 +74,11 @@ class GagTest(IsolatedState, unittest.TestCase):
             "and delete them deliberately, do not retune them.")
 
     def _restore_channels(self):
-        if self._prev is None:
-            os.environ.pop(slackscope.INTERNAL_CHANNELS_VAR, None)
-        else:
-            os.environ[slackscope.INTERNAL_CHANNELS_VAR] = self._prev
+        for key, value in (self._prev or {}).items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
     def ask(self, text, thread="T1"):
         return conversation.respond(text, channel=ALPHA, user="U_ALPHA",
