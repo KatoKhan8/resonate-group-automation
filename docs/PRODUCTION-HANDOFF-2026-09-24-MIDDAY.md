@@ -257,3 +257,97 @@ swallowed the question along with the answer.
 And the one that keeps recurring: **four of today's five findings were
 invisible to a green suite, and every one of them was visible in the provider
 or on the live estate.**
+
+
+---
+
+# ADDENDUM — 2026-09-24 afternoon
+
+## A1. LANE FREEZE, operator, valid to 2026-10-01
+
+This session is **lane 1, production: supply and quality only.** Engineering
+allowed: what a push today needs (rules-4, the lint, the account stop) and
+hard-stop fixes.
+
+**Frozen, and to be carried into October:** ISSUE-025 / the remove-lead verb
+(also blocked on ISSUE-030 regardless), the client-two runbook, ledger
+write-back beyond what the status post needs, the learning doc beyond
+Friday's scorecard, git hygiene beyond keeping the guard green, and the
+reboot drill.
+
+## A2. rules-4 SHIPPED — `1481a747`
+
+`replies.VERSION` is `rules-4` and `replies.RULE_HASH` is
+`rules-4+<12 hex>`, a digest **derived** from every `*_PATTERNS` group,
+`RULES` with its order and confidences, and the two scalars that change a
+verdict without touching a pattern. All six verdict writers stamp the hash;
+a test asserts no seventh stamps `VERSION`.
+
+`replyverdict.current_rule_identity()` now answers, exactly as its docstring
+promised it would, **without being edited**. A fresh verdict is confirmable;
+the stale `rules-3` row is not. This closes the gag's third fault. Phase D
+item 4 still waits on the ledger write-back, which is frozen.
+
+## A3. 491 — THE PROVIDER-SIDE HYPOTHESIS IS CLOSED, AND IT IS NEGATIVE
+
+Checked at the operator's request before asking Productive again:
+
+- **No auto-pause rule exists.** The campaign record carries no bounce
+  threshold, no complaint threshold, no auto-pause flag and no
+  warmup-protection field. `max_emails_per_day` and `max_new_leads_per_day`
+  are **945, not zero**.
+- **No mailbox is disconnected.** All 63 read `Connected`, `daily_limit` 15
+  on every one, warmup enabled on every one. **This provider's sender schema
+  has no last-error field at all** — that is a schema fact, not a null read.
+- **Bounce cannot have tripped anything.** 491 itself is 1 in 322 (0.31%);
+  across its 63 mailboxes lifetime 451 in 60,056 (0.75%); worst single
+  mailbox 1.26%. All under the 1.5% rule. Unsubscribes 0.
+- **No account or campaign event in a window spanning the pause.** 750
+  events walked back to `2026-09-23T18:52:29Z`: EMAIL_SENT,
+  EMAIL_SEND_FAILED, EMAIL_BOUNCED, LEAD_FIRST_CONTACTED, LEAD_REPLIED,
+  BLACKLISTED_DOMAIN_ADDED. **Zero ACCOUNT, CAMPAIGN or PAUSE events.**
+- The one event near the pause — `EMAIL_BOUNCED` at `22:13:59Z`, 92 seconds
+  before it — belongs to **campaign 327, the client's own**, not ours.
+
+**A NEGATIVE THAT IS NOT EVIDENCE, stated so nobody quotes it as one:** the
+63 mailboxes all carry `updated_at` from *today* 10:00–11:00Z, overwritten
+by activity from the client's campaigns that share the roster. That field
+**cannot** speak to last night, and "no mailbox was updated in the window"
+must not be reported as a finding. The event feed is what carries the
+negative.
+
+**Conclusion: no provider rule paused 491. It was a human in Productive.**
+
+## A4. FOUR LIVE CREDENTIALS WERE IN `work/slack-history/`
+
+14 distinct secret-shaped values across 3 files. By provider:
+
+    Anthropic             2    none live
+    OpenAI project key    1    none live
+    OpenAI file handle    1    not a credential
+    OpenRouter            1    STILL LIVE
+    Slack bot token       2    1 of 2 STILL LIVE
+    Slack app token       1    STILL LIVE
+    unclassified          6    1 of 6 STILL LIVE
+
+"Still live" means **the value is byte-identical to one in `config/.env`
+today** — the only test that answers "must this be rotated", and it is a
+stronger statement than a date. **Four need rotating and that is the
+operator's action.**
+
+Archive redacted in place, markers naming the provider so a reader knows
+what was removed. The redactor verifies the **output** and does so **before**
+touching disk — 2026-09-23 is why: a correct filter with the check in the
+wrong place let one value through. It also refused its first run because it
+was validating `_cursors.json` as JSONL, which is the abort behaving
+correctly. Verified after writing: 0 of 14 values remain on disk.
+
+`work/` is gitignored, so none of this was ever in git.
+
+## A5. A NEW QUEUE STATUS APPEARED THE SAME DAY
+
+The estate read shows `queued_for_sending: 1` — a status this codebase had
+never seen. Under the allowlist it would have been filed as `already`, i.e.
+contained. Under the denylist of §4 it counts as **pending**, so a blank in
+that state would halt the campaign. It is not blank, and the fix was
+vindicated within hours of landing.
