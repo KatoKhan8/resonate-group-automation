@@ -258,6 +258,37 @@ class FourStepsEverywhere(unittest.TestCase):
                     f"{cleared[name]!r} in the same payload")
 
 
+    def test_the_comparator_expects_what_the_writer_writes(self):
+        """`configdiff` is the activation preflight and mirrors the writer.
+
+        `_expected_lead_variables` reimplements `_variables_for`'s naming and
+        its threaded-subject rule. Two implementations of one fact drift, and
+        when they drift the campaign is staged correctly and then REFUSED at
+        activation for carrying exactly what it was told to carry - which is
+        the shape of the bug that put `record_id`/`contact_key`/`client` in
+        the diff. Four steps is a length neither has been run at, so they are
+        compared here rather than assumed to still agree.
+
+        `_expected_lead_variables` drops empty values by design, so the
+        comparison is over the NON-EMPTY entries of each side.
+        """
+        from src import configdiff
+
+        sequence = bisonfactory._sequence_steps(self.configured,
+                                                self.cadence_steps)
+        copy = [{"step_key": s["step_key"], "subject": "subject for " + s["step_key"],
+                 "body": "body for " + s["step_key"]} for s in sequence]
+        lead = {"record_id": "rec", "contact_key": "who", "copy": copy}
+        attribution = {"record_id": "rec", "contact_key": "who",
+                       "client": "productive"}
+        written = {v["name"]: v["value"] for v in bisonfactory._variables_for(
+            lead, {"client": "productive"}, sequence=sequence)}
+        expected = configdiff._expected_lead_variables(
+            copy, sequence, attribution=attribution)
+        self.assertEqual({k: v for k, v in written.items() if v},
+                         {k: v for k, v in expected.items() if v})
+
+
 class TheYamlIsTheSourceOfThoseKeys(unittest.TestCase):
     """`clients.load` may overlay defaults, so the file itself is checked too.
 
