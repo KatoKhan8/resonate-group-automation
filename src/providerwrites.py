@@ -537,6 +537,28 @@ SUPPORTED = (LINKEDIN_PAUSE, EMAIL_PAUSE, EMAIL_STOP_LEAD,
              # reported as a stop. It is in REPEATABLE for the same reason -
              # a second call can only mean somebody receives less.
              LINKEDIN_STOP_LEAD,
+             # ENABLED 2026-09-24 BY OPERATOR AUTHORIZATION, Zvonimir Beslic.
+             # Its own entry said enabling is an operator authorization rather
+             # than this module's to grant; this is that authorization,
+             # recorded here so it survives a context reset.
+             #
+             # WHY IT WAS ASKED FOR, and it is bookkeeping rather than reach.
+             # 491 and 481 were resumed on 2026-09-24 through
+             # `bison.resume_campaign` DIRECTLY, which is not wrong - the
+             # transport carries its own `expect_leads` readback and both were
+             # verified - but it bypasses `perform`, and `perform` is what
+             # writes the action ledger. MEASURED the same afternoon: the
+             # ledger's last row was 2026-09-18 and a successful resume
+             # minutes earlier had added nothing. So when the question "who
+             # paused 491 at 22:15Z" was asked, the ledger could not answer,
+             # and its silence was mistaken for evidence of absence twice.
+             #
+             # A verb routed through `perform` leaves a row whether it
+             # succeeds or fails. That is the whole gain here: resuming is no
+             # more permitted than it was - `expect_leads` still refuses when
+             # the provider disagrees, and 487's spent grant still stands -
+             # but it stops being invisible afterwards.
+             EMAIL_RESUME,
              EMAIL_CREATE_CAMPAIGN, EMAIL_SET_SEQUENCE,
              # Enabled 2026-09-14. Not prospect-facing: a sequence written
              # onto a campaign holding nobody reaches nobody, and no wired
