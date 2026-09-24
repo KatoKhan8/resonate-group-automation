@@ -52,7 +52,24 @@ CONTACT_KEYS = frozenset({"zvonimir-beslic"})
 #: a measurable stop. 204967 is the second, created and attached to 491 for
 #: the operator's re-run. Both stay here permanently: the exclusion is about
 #: who this is, not about which test is current.
-LEAD_IDS = frozenset({204966, 204967})
+LEAD_IDS = frozenset({204966, 204967, 205079, 205081})
+#:
+#: 205079 was created 2026-09-24 late on `zvonimir@resonategroup.co` for the
+#: email->LinkedIn direction of the stop measurement, and adding it here was
+#: NOT optional bookkeeping. `matches(205079)` was False the moment the lead
+#: existed, and an EmailBison event is the one input that can arrive carrying
+#: the lead id and nothing else - no address, no contact key. So the
+#: operator's own test reply would have been counted as a prospect reply and
+#: been eligible for the client channel: the exact outcome of the 09-23
+#: misspelled-domain incident, reproduced by the fix for it. Checked by
+#: asserting on the id ALONE rather than on the row that also carries the
+#: address, because the row always passes.
+#:
+#: 205081 joined it minutes later, on `zvonimir+stoptest@resonategroup.co`.
+#: EmailBison REFUSES a lead in two campaigns (422, "either in another
+#: campaign"), so the dedicated 24h test campaign 501 needed its own lead and
+#: 205079 could not be moved. Same reasoning as 205079: the id alone must
+#: match, because an EmailBison event can carry nothing else.
 
 #: The LinkedIn profile, matched case-insensitively on the vanity segment so
 #: `/in/zbeslic`, the full https URL and a trailing slash all resolve.

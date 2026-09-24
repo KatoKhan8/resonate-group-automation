@@ -41,6 +41,117 @@ and the tests that were green against them._
 
 ---
 
+### ISSUE-041 · A cross-channel stop can report success having never called the provider · HIGH · **FIXED**
+
+**Numbering note.** 038, 039 and 040 are taken on `researchpack-pilot-2026-09-24-lane1`
+for the Apify findings. This row starts at 041 deliberately: ISSUE-034 was
+already taken twice in one evening and renumbered to 037, and guessing the next
+free number from master alone is how that happened.
+
+`inbound._stop_at_provider` gates the LinkedIn stop on
+`contact["heyreach_lead_id"]`. When the field is absent it returns
+`{"attempted": False, "stopped": False, "why": "this contact carries no
+heyreach_lead_id..."}`, and `summarise_stops` renders that as `"linkedin: no
+lead"` — which the code explicitly and correctly does NOT treat as a refusal,
+because most contacts are staged on one channel only.
+
+**MEASURED 2026-09-24 late: ZERO of the contacts in `work/queue.jsonl` carry
+`heyreach_lead_id`.** Not few — none. So *every* cross-channel stop this
+estate has ever run reported `linkedin: no lead` without calling
+`heyreach.stop_lead_in_campaign` once, which is consistent with that
+function's own docstring saying it has NEVER BEEN LIVE-VALIDATED.
+
+The danger is the reading, not the code: a reply that reports
+`"email: stopped; linkedin: no lead"` looks like a working cross-channel stop
+and is indistinguishable from one. This is the same shape as the first
+blank-content halt, which alerted and halted nothing and read as working.
+
+Evidence: a store walk over every contact; the operator's own test identity
+carried `key`, `email`, `linkedin`, `bison_lead_id` and nothing else.
+Fixed for the test identity by binding the field; the GENERAL fix is that
+staging a LinkedIn lead must write `heyreach_lead_id` back onto the contact,
+and the 825 enrollment across 33 seats is the first time that matters at scale.
+
+---
+
+### ISSUE-042 · `_campaign_of` resolved a campaign channel-blind · HIGH · **FIXED**
+
+`leadstop._campaign_of(rec, rows)` returned the FIRST campaign row holding the
+record, whatever channel that row was for. A contact staged on both channels
+would have its LinkedIn stop handed the EMAIL row, which names no
+`heyreach_campaign_id`, and `stop_linkedin_contact` would raise StopRefused
+about a lead that was perfectly stoppable through a row sitting later in the
+same list. `leadstop.sweep` had the same defect twice over: it resolved the
+campaign ONCE, channel-blind, and passed it explicitly to both stops, which
+overrides the callee's own resolution.
+
+**NOT a live failure on 2026-09-24, and that is stated rather than inflated:**
+zero of 1,582 records sat in both an email row and a HeyReach row, so no stop
+has yet been misrouted. The 825 enrollment across 33 seats is precisely the
+plan that creates the first records in both — and it is the plan gated on the
+cross-channel stop working.
+
+Fixed: `_campaign_of(..., requires=<provider field>)` skips rows that cannot
+serve the channel. **Skipping cannot make a stop worse** — a row lacking the
+field could only ever produce a refusal at the next line, so this turns
+refusals into stops and never the reverse.
+Regression test `tests/test_a_linkedin_stop_is_not_handed_the_email_campaign.py`,
+verified RED (3 failures) with the fix removed and green with it.
+
+---
+
+### ISSUE-043 · `attach_leads` raises on a write that succeeded · MEDIUM
+
+`bison.attach_leads` reads membership back 6 times over ~15s and raises
+`ProviderError` when the lead is absent. **Measured 2026-09-24 late: the
+campaign-membership index took ~30 seconds.** Attaching lead 205079 to 491
+answered 200, raised "1 of 1 leads are not in campaign 491 after 6 readbacks
+over ~15s", and the lead was present on the next poll at t+30s with the
+campaign count moved 332 -> 333.
+
+`find_lead_by_email`'s docstring already records that the LEAD index lags
+creation by about a second. This is a different index and it is thirty times
+slower. The failure direction matters: a caller that believes the raise will
+re-attach, or will treat a good push as failed and re-push. Widen the readback
+window on this route, or classify "absent within the window" as UNCONFIRMED
+rather than FAILED.
+
+---
+
+### ISSUE-044 · A new test lead is not suppressed until its id is added by hand · MEDIUM
+
+`testidentity.matches()` answers on ANY binding, but an **EmailBison event can
+arrive carrying the lead id and nothing else** — no address, no contact key.
+So a newly created test lead is unsuppressed until its id is added to
+`LEAD_IDS` by hand, and nothing asserts that.
+
+Measured 2026-09-24 late: `matches(205079)` was False the moment the lead
+existed, while `matches` on its address was True. The operator's own test
+reply would have been counted as a prospect reply and been eligible for
+Productive's own channel — the exact 09-23 misspelled-domain incident,
+reproduced by the process that fixed it. Caught only because the id was
+checked ALONE rather than on the row that also carries the address; the row
+always passes. Same again for 205081 twenty minutes later.
+
+---
+
+### ISSUE-045 · Nothing in the estate can send outside 09:00-17:00 · MEDIUM
+
+**Measured 2026-09-24 late, all 15 EmailBison campaigns:** every one is
+09:00-17:00 Mon-Fri in its own timezone (America/New_York, Europe/London,
+Europe/Zagreb). At 21:36 UTC every single one was closed.
+
+Two consequences. Any out-of-hours live measurement needs a campaign built for
+it — the cross-channel stop measurement was blocked on exactly this and needed
+dedicated campaign 501 with a 00:00-23:59 window. And the standing intention of
+"continuous pushing the same hour a cohort clears" is not achievable inside
+these windows: a cohort clearing at 18:00 local waits until 09:00 the next
+working day. HeyReach is already set 07:00-23:00 seven days; the email side is
+not, and the two halves of a cross-channel cadence are therefore on very
+different clocks.
+
+---
+
 ### ISSUE-034 · The research pack named three Apify actors that do not exist · HIGH · **FIXED**
 
 **Confirmed 2026-09-24 by asking Apify.** `src/researchpack/actors.py`, as

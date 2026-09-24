@@ -52,7 +52,8 @@ def stop_contact(rec, contact, why, *, campaign=None, rows=None, live=False,
             f"is nobody at the provider to stop. If they were ever staged, "
             f"reconcile the binding first - do NOT search by address and "
             f"guess")
-    campaign = campaign or _campaign_of(rec, rows)
+    campaign = campaign or _campaign_of(rec, rows,
+                                        requires="bison_campaign_id")
     if campaign is None:
         raise StopRefused(
             f"record {(rec or {}).get('id')!r} is in no campaign, so there is "
@@ -141,7 +142,8 @@ def stop_linkedin_contact(rec, contact, why, *, campaign=None, rows=None,
             f"contact {(contact or {}).get('key')!r} on record "
             f"{(rec or {}).get('id')!r} carries no `heyreach_lead_id`, so "
             f"there is nobody at HeyReach to stop")
-    campaign = campaign or _campaign_of(rec, rows)
+    campaign = campaign or _campaign_of(rec, rows,
+                                        requires="heyreach_campaign_id")
     if campaign is None:
         raise StopRefused(
             f"record {(rec or {}).get('id')!r} is in no campaign, so there "
@@ -236,7 +238,15 @@ def sweep(recs=None, rows=None, live=False, by="system"):
     report = {"checked": 0, "stopped": [], "already": [], "failed": [],
               "live": bool(live)}
     for rec in recs:
-        campaign = _campaign_of(rec, rows)
+        # RESOLVED PER CHANNEL, NOT ONCE. One channel-blind lookup passed to
+        # both stops is the same defect `_campaign_of(requires=...)` fixes,
+        # reintroduced here by the explicit `campaign=` argument: a contact on
+        # both channels would have had its LinkedIn stop handed the email row.
+        # Passing the row explicitly overrides the callee's own resolution, so
+        # the fix has to be made here too rather than inherited.
+        email_campaign = _campaign_of(rec, rows, requires="bison_campaign_id")
+        linkedin_campaign = _campaign_of(rec, rows,
+                                         requires="heyreach_campaign_id")
         for contact in rec.get("contacts") or []:
             # TASK-235: count every staged contact, not just email-staged
             # ones. A contact with only heyreach_lead_id was previously
@@ -259,7 +269,8 @@ def sweep(recs=None, rows=None, live=False, by="system"):
             if has_email:
                 report["checked"] += 1
                 try:
-                    out = stop_contact(rec, contact, why, campaign=campaign,
+                    out = stop_contact(rec, contact, why,
+                                       campaign=email_campaign,
                                        rows=rows, live=live, by=by)
                 except (StopRefused, StopUnverified, ProviderError) as e:
                     report["failed"].append(
@@ -280,7 +291,7 @@ def sweep(recs=None, rows=None, live=False, by="system"):
                 report["checked"] += 1
                 try:
                     out = stop_linkedin_contact(
-                        rec, contact, why, campaign=campaign,
+                        rec, contact, why, campaign=linkedin_campaign,
                         rows=rows, live=live, by=by)
                 except (StopRefused, StopUnverified, ProviderError) as e:
                     report["failed"].append(
@@ -313,9 +324,35 @@ def _must_stop(rec, contact, eligibility, executionguard):
     return None
 
 
-def _campaign_of(rec, rows=None):
+def _campaign_of(rec, rows=None, requires=None):
+    """The record's campaign - optionally only one that can serve a channel.
+
+    `requires` names the provider-campaign field the CALLER needs
+    (`bison_campaign_id` for email, `heyreach_campaign_id` for LinkedIn).
+
+    WITHOUT IT THIS RETURNED THE FIRST ROW HOLDING THE RECORD, WHATEVER
+    CHANNEL IT WAS FOR. A contact staged on both channels would have its
+    LinkedIn stop resolved to the EMAIL campaign, which names no HeyReach
+    campaign, and `stop_linkedin_contact` would raise StopRefused - "campaign
+    ... names no HeyReach campaign" - about a lead that was perfectly
+    stoppable through the row sitting later in the same list.
+
+    NOT A LIVE FAILURE ON 2026-09-24, and the measurement is the reason to fix
+    it rather than a reason not to: ZERO of 1,582 records sat in both an email
+    row and a HeyReach row, so no stop has yet been misrouted. The 825
+    enrollment across 33 seats is precisely the plan that creates the first
+    records in both, and it is the plan gated on the cross-channel stop
+    working.
+
+    SKIPPING CANNOT MAKE A STOP WORSE. A row lacking the field could only ever
+    produce a refusal at the next line; passing over it either finds a row
+    that CAN serve the channel or returns None and refuses exactly as before.
+    So this turns refusals into stops and never the reverse.
+    """
     for campaign in campaigns.load() if rows is None else rows:
         if rec.get("id") in (campaign.get("record_ids") or []):
+            if requires and not campaign.get(requires):
+                continue
             return campaign
     return None
 
