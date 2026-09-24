@@ -207,3 +207,59 @@ already been quoted.
 the double-enrolment clash, the stale forward book, the write-scope refusal —
 were all correct, and in two of them my first instinct was that the guard was
 being over-cautious. Checking took minutes and the guard won every time.
+
+
+---
+
+# TOMORROW, IN THIS ORDER — operator, 2026-09-24 night
+
+Not a wish list. This is the order, and 1 gates 2 gates 3.
+
+## 1. RETIRE THE `last_touch` CACHE
+
+The last confirmed touch for **any** decision — collision recency,
+re-engagement age, account gaps — is read from **the provider's sent rows at
+decision time**, never from a cache older than the current cycle.
+
+**Test required: a lead sent to yesterday can never read as untouched for 90
+days.**
+
+Why, measured tonight: `work/stage/last-touch.json` is a cached copy that is
+never refreshed. 145 of 2,081 rows are staler than the live lead, 133 by 7+
+days, the worst by 111. **Lead 133283's inventory age read 111 days; its last
+confirmed send was 2026-09-22T19:40:34Z, from our own campaign 491.** Thirteen
+leads emailed one or two days ago sat in a cohort qualified as
+"contacted 90+ days ago".
+
+This is first because every rule below depends on knowing when somebody was
+last written to.
+
+## 2. THE ACCOUNT RULE AND THE COLLISION GATE, TOGETHER
+
+One change, one review — they teach the same system the same distinction.
+
+    same contact                                  NEVER twice
+    same account, new persona                     allowed after 5 days
+                                                  with no human reply
+    third persona                                 7 days after that
+    any reply or unsubscribe at the account       stops all others
+    a stop carrying OUR OWN reason plus an
+      operator-recorded move                      is NOT an account-level hold
+
+**Tests first. GLM review before merge.** The last clause is ISSUE-035: the
+gate is right to hold an account where a campaign ended early, and it cannot
+currently tell a deliberate move of ours from an observed fault.
+
+## 3. THEN, AND ONLY THEN
+
+- The 63 into fresh campaigns — **500 already exists, empty and paused, for
+  Luka**; Bojan and Jakov need theirs. They are blocked on 2, not on capacity.
+- The US batch: 5 steps if the operator has approved steps 4-5, packs where
+  they exist.
+
+## AND A STANDING WORKING RULE
+
+**Every code-editing background agent gets its own git worktree. The main
+checkout belongs to the foreground session alone.** Set after agents left the
+main checkout on a feature branch, which sent a production commit to that
+branch and pushed an unrelated agent's work to master instead.
