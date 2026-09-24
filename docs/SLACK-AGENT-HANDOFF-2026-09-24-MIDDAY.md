@@ -16,7 +16,7 @@ fetch and check before writing anything.
 **THE BRANCH WAS NEVER GREEN, AND THE LAST HANDOFF DID NOT SAY SO.**
 
     full suite, pre-merge tip 20586a63      136 failures
-    full suite, this branch a87e787c        123 failures
+    full suite, this branch 041a1fbb         82 failures
 
 Nothing in the morning handoff is untrue about it; it simply never ran the
 whole suite, and "hygiene 13 of 13, the slack modules green" reads exactly
@@ -24,10 +24,36 @@ like a green suite to the next reader. It was read that way here for most
 of a session.
 
 **Compare these as SETS BY NAME, never as counts.** Against the 136:
-**3 introduced, 16 fixed.** All three introduced are MASTER'S — verified
+**4 introduced, 58 fixed.** Three of the four are MASTER'S — verified
 against master alone at `d6a719c2` — where `heyreach.stop_lead` is enabled
 by one commit and asserted unsupported by two tests, plus a linkedin
-field-name test. Ten of the sixteen fixed are `test_what_are_we_working_on`.
+field-name test. The fourth is §1a.
+
+Of the 58: 31 are the gag/ticket flow (§4a), ten are
+`test_what_are_we_working_on`, and the rest follow from the merge.
+
+### 1a. ONE INTERMITTENT, DIAGNOSED AND STILL OPEN
+
+    FAIL test_a_checkpoint_costs_what_it_changed
+         .ConcurrencyGlmFound.test_concurrent_appends_do_not_lose_entries
+    AssertionError: append raised under contention:
+        [PermissionError(13, 'Permission denied')]
+
+`qj.append` from four threads, 25 appends each. **Not caused by anything on
+this branch** — no code here touches the queue journal — and it appears in
+neither the 136 baseline nor the 123 run, so it is a first sighting rather
+than a regression this merge carries.
+
+NOT DISMISSED, and not solved either. Tried: five runs of the module alone
+(clean), and eight concurrent copies of it in two rounds (clean). It did
+not reproduce. `PermissionError(13)` on Windows is what a file-replace
+hits when something else holds the handle for an instant, so the suspect
+is the journal's own lock/replace path under load rather than the test.
+
+**What is still owed on it:** an isolated full-suite run, which is the
+third of the three diagnoses `CLAUDE.md` requires and the one not done
+here. Until then it is an open intermittent on a WRITE path, which is the
+kind that matters.
 
 `scripts/suite_verdict.txt` is TRACKED and is written by `run_suite.py` in
 whichever checkout runs it. The copy in git is production's from another
