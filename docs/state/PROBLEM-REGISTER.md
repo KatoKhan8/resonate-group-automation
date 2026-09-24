@@ -78,7 +78,43 @@ person", and the earlier line in this row overstated the limit.
 
 ---
 
-### ISSUE-033 · campaign 481 holds five EMPTY sequence steps and nine un-variabled foreign leads
+### ISSUE-033 · REFUTED — 481 was refused on two findings that were both mine and both wrong
+
+**Status: REFUTED 2026-09-24, same day, by re-reading the provider. 481 is
+RESUMED and clean. Kept because a disproven hypothesis that is deleted gets
+resurrected, and because the two mistakes are different and both worth
+naming.**
+
+**MISTAKE 1 — I read keys that do not exist.** A sequence step carries
+`email_subject` and `email_body`. My script read `subject` and `body`, got
+`None` from both, and I reported "ALL FIVE EMPTY - subject '', body length
+0" as a measurement. The real steps are `{SUBJECT_1}` / `<p>{BODY_1}</p>`
+through `{SUBJECT_5}`, identical in shape to 491's. **A `.get()` on an absent
+key returns None, and None is not evidence of emptiness** - the provider's
+own reply was in hand and I did not check its keys against it.
+
+**MISTAKE 2 — I joined two counts in prose and called it a finding.** I
+counted 9 foreign leads among 23, counted 9 `sending_paused` among 23, and
+wrote "the 9 sending_paused leads are the 9 foreign ones". Cross-tabulated:
+
+    sending_paused   ours=True   has_copy=True    9   <- sendable, fine
+    stopped          ours=False  has_copy=False   9   <- foreign, contained
+    stopped          ours=True   has_copy=True    5
+
+The foreign leads were already stopped. **Two counts that match in size are
+not the same set**, and nothing checked.
+
+**The containment script is what caught it.** It selected targets by reading
+each lead rather than by trusting the membership label, found 0 to stop, and
+did nothing. Written the obvious way - "stop the 9 `sending_paused`" - it
+would have stopped nine healthy leads on a false premise. Select by the
+property you care about, never by the label you inferred it from.
+
+**What survives:** "an empty queue is not a clean queue". 481 had 0 queued
+rows, so nothing had been render-checked; that is true of every resumed
+campaign until its scheduler builds rows and the watcher scans them.
+
+The original, wrong text follows so the correction is legible.
 
 **Status: OPEN. 481 stays PAUSED. The blank-render gate refused it on
 2026-09-24 against an explicit operator instruction to un-pause everything,
