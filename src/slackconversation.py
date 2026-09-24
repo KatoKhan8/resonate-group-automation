@@ -1385,7 +1385,23 @@ def _prefaced(out, relayed, code):
 def respond(question, channel=None, user=None, channel_type=None,
             thread_ts=None, model=None, rows=None, relay_of=None):
     """One whole turn. Returns a dict; posts nothing and writes no state
-    but the thread memory."""
+    but the thread memory.
+
+    THE READBACK CACHE IS OPEN FOR EXACTLY THIS. `readback.turn()` is what
+    makes the 60-second cache active: outside a turn every read goes to the
+    provider, as it did before the cache existed. The repeats it removes
+    are all inside one turn - a five-call turn reads the same campaign up
+    to four times - so this is the whole of the saving and none of the
+    staleness, because the next question starts cold.
+    """
+    with tools.readback.turn():
+        return _respond(question, channel=channel, user=user,
+                        channel_type=channel_type, thread_ts=thread_ts,
+                        model=model, rows=rows, relay_of=relay_of)
+
+
+def _respond(question, channel=None, user=None, channel_type=None,
+             thread_ts=None, model=None, rows=None, relay_of=None):
     scope = slackscope.resolve(channel=channel, user=user,
                                channel_type=channel_type, rows=rows)
 

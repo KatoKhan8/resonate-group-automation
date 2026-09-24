@@ -19,6 +19,7 @@ loop imports this module and nothing else for data; the forbidden set is
 asserted against every agent source by
 ``tests.test_slack_agent_cannot_act``.
 """
+import contextlib
 import json
 import os
 import datetime as _dt
@@ -97,6 +98,57 @@ _CACHE_LOCK = _threading.Lock()
 _KEY_LOCKS = {}
 
 
+#: HOW DEEP INSIDE A TURN WE ARE. The cache is OFF outside one.
+#:
+#: ## IT WAS PROCESS-GLOBAL FOR HALF A DAY AND IT BROKE THE SUITE
+#:
+#: Built first as a plain 60-second process cache, which is correct in
+#: production - one loop, one turn at a time, minutes apart - and wrong
+#: everywhere else. A test that stubs the provider, calls a tool, restubs
+#: and calls again gets the FIRST stub's answer, because the key is only
+#: `(route, id)` and sixty seconds is forever in a suite. It cost 154
+#: failures in the full run and none of them named the cache.
+#:
+#: **A TURN IS ALSO THE HONEST LIFETIME.** The measurement that justified
+#: this says a five-call turn reads the same campaign up to four times -
+#: every repeat it removes is INSIDE one turn, so scoping it to a turn
+#: keeps the entire saving and gives up nothing that was ever measured. It
+#: also retires the risk the last handoff named: an answer to "is it still
+#: sending?" can no longer come out of a value from a previous question.
+#:
+#: Process-global rather than thread-local ON PURPOSE: the per-campaign
+#: fan-out reads from pool threads, and a thread-local flag would leave
+#: every one of them uncached. That is sound because the loop serves one
+#: turn at a time (`scripts/slack_agent_loop.py` is sequential); if that
+#: ever stops being true this must become a context variable, and the
+#: symptom would be two turns sharing a readback.
+_TURN_DEPTH = [0]
+
+
+@contextlib.contextmanager
+def turn():
+    """Reuse provider readbacks for the duration of ONE turn.
+
+    Outside this, `cached` is a pass-through and every read goes to the
+    provider - which is what every caller did before the cache existed.
+    """
+    _TURN_DEPTH[0] += 1
+    if _TURN_DEPTH[0] == 1:
+        cache_clear()
+    try:
+        yield
+    finally:
+        _TURN_DEPTH[0] -= 1
+        if _TURN_DEPTH[0] <= 0:
+            _TURN_DEPTH[0] = 0
+            cache_clear()
+
+
+def caching():
+    """Is a turn open? Read by tests that assert the scoping, not by tools."""
+    return _TURN_DEPTH[0] > 0
+
+
 def cache_clear():
     """Forget everything. For tests, and for a caller that must not reuse."""
     with _CACHE_LOCK:
@@ -135,6 +187,11 @@ def cached(route, key, fetch, ttl=None):
     Nothing is written on the raising path, so the previous good value is
     also left alone rather than being replaced by the failure.
     """
+    if not _TURN_DEPTH[0]:
+        # NO TURN IS OPEN, so this is a direct caller - a script, the
+        # briefing loop, a test - and it gets exactly what it got before
+        # the cache existed. See `_TURN_DEPTH`.
+        return fetch(), _now_iso(), 0.0
     ttl = READBACK_TTL if ttl is None else ttl
     full = (route, str(key))
     now = time.monotonic()

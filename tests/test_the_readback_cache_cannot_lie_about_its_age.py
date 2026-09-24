@@ -23,6 +23,7 @@ import time
 import unittest
 
 from src import slackagentreadback as readback
+from tests.slackbase import IsolatedState
 
 
 class Counter:
@@ -43,11 +44,23 @@ class Counter:
         return self.value
 
 
-class TestItIsActuallyACache(unittest.TestCase):
+class InATurn(unittest.TestCase):
+    """The cache is only live inside `readback.turn()`.
+
+    Outside one, `cached` is a pass-through - see `_TURN_DEPTH`. Every test
+    below that is ABOUT caching therefore has to open a turn, and the two
+    classes at the bottom are about the scoping itself.
+    """
 
     def setUp(self):
         readback.cache_clear()
+        self._turn = readback.turn()
+        self._turn.__enter__()
+        self.addCleanup(self._turn.__exit__, None, None, None)
         self.addCleanup(readback.cache_clear)
+
+
+class TestItIsActuallyACache(InATurn):
 
     def test_the_second_read_does_not_reach_the_provider(self):
         fetch = Counter("rows")
@@ -83,12 +96,9 @@ class TestItIsActuallyACache(unittest.TestCase):
         self.assertEqual(readback.READBACK_TTL, 60.0)
 
 
-class TestItCannotLieAboutHowOldTheValueIs(unittest.TestCase):
+class TestItCannotLieAboutHowOldTheValueIs(InATurn):
     """THE FAILURE MODE THIS WHOLE FILE EXISTS FOR."""
 
-    def setUp(self):
-        readback.cache_clear()
-        self.addCleanup(readback.cache_clear)
 
     def test_a_reused_value_keeps_the_time_it_was_actually_fetched(self):
         fetch = Counter()
@@ -109,11 +119,8 @@ class TestItCannotLieAboutHowOldTheValueIs(unittest.TestCase):
         self.assertEqual(age, 0.0)
 
 
-class TestAFailureIsNotCached(unittest.TestCase):
+class TestAFailureIsNotCached(InATurn):
 
-    def setUp(self):
-        readback.cache_clear()
-        self.addCleanup(readback.cache_clear)
 
     def test_the_error_is_raised_to_the_caller(self):
         fetch = Counter(boom=RuntimeError("provider down"))
@@ -140,12 +147,9 @@ class TestAFailureIsNotCached(unittest.TestCase):
         self.assertEqual(boom.calls, 0, "a live value was discarded to re-ask")
 
 
-class TestConcurrentReadsCoalesce(unittest.TestCase):
+class TestConcurrentReadsCoalesce(InATurn):
     """The cold first turn: five parallel reads of one campaign, one fetch."""
 
-    def setUp(self):
-        readback.cache_clear()
-        self.addCleanup(readback.cache_clear)
 
     def test_eight_threads_on_one_key_make_one_request(self):
         fetch = Counter("rows", delay=0.1)
@@ -190,10 +194,11 @@ class TestItIsNeverPersisted(unittest.TestCase):
 
     def test_clearing_it_empties_it(self):
         readback.cache_clear()
-        readback.cached("campaign", 491, Counter())
-        self.assertTrue(readback.cache_state())
-        readback.cache_clear()
-        self.assertEqual(readback.cache_state(), {})
+        with readback.turn():
+            readback.cached("campaign", 491, Counter())
+            self.assertTrue(readback.cache_state())
+            readback.cache_clear()
+            self.assertEqual(readback.cache_state(), {})
 
     def test_using_the_cache_writes_no_file_anywhere(self):
         """A per-process cache that wrote itself down would survive the
@@ -241,3 +246,118 @@ class TestItIsNeverPersisted(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestItIsScopedToOneTurn(unittest.TestCase):
+    """THE PROPERTY THAT COST 154 FAILURES BEFORE IT EXISTED.
+
+    The first version was a plain process-global 60-second cache. That is
+    correct in production - one loop, one turn at a time, minutes apart -
+    and wrong everywhere else: a test that stubs the provider, calls a
+    tool, restubs and calls again got the FIRST stub's answer. The full
+    suite went from green to 154 failures and **not one of them named the
+    cache**; they named `'unreadable' != 40` in a module about scheduling.
+
+    Scoping it to a turn keeps the whole measured saving, because every
+    repeat it removes is inside one turn, and retires the staleness risk
+    the last handoff named at the same time.
+    """
+
+    def setUp(self):
+        readback.cache_clear()
+        self.addCleanup(readback.cache_clear)
+
+    def test_outside_a_turn_nothing_is_cached(self):
+        fetch = Counter()
+        readback.cached("campaign", 491, fetch)
+        readback.cached("campaign", 491, fetch)
+        self.assertEqual(
+            fetch.calls, 2,
+            "a read outside a turn was served from cache. Every direct "
+            "caller - a script, the briefing loop, a test that stubs the "
+            "provider - must get what it got before the cache existed.")
+        self.assertFalse(readback.caching())
+
+    def test_inside_a_turn_it_is(self):
+        """The control: if nothing were ever cached the test above passes
+        and the cache is decoration."""
+        fetch = Counter()
+        with readback.turn():
+            readback.cached("campaign", 491, fetch)
+            readback.cached("campaign", 491, fetch)
+            self.assertTrue(readback.caching())
+        self.assertEqual(fetch.calls, 1)
+
+    def test_a_new_turn_starts_cold(self):
+        """A campaign paused between two questions is visible in the
+        second one. This is the staleness risk, closed."""
+        fetch = Counter()
+        with readback.turn():
+            readback.cached("campaign", 491, fetch)
+        with readback.turn():
+            readback.cached("campaign", 491, fetch)
+        self.assertEqual(fetch.calls, 2)
+
+    def test_the_turn_is_closed_even_when_the_turn_raises(self):
+        fetch = Counter()
+        with self.assertRaises(ValueError):
+            with readback.turn():
+                readback.cached("campaign", 491, fetch)
+                raise ValueError("the turn blew up")
+        self.assertFalse(readback.caching())
+        self.assertEqual(readback.cache_state(), {})
+
+    def test_nesting_does_not_end_the_turn_early(self):
+        """`working_on` calls `sends_today`; if either opened its own turn
+        the inner one must not clear the outer one's readbacks."""
+        fetch = Counter()
+        with readback.turn():
+            readback.cached("campaign", 491, fetch)
+            with readback.turn():
+                readback.cached("campaign", 491, fetch)
+            readback.cached("campaign", 491, fetch)
+        self.assertEqual(fetch.calls, 1)
+        self.assertFalse(readback.caching())
+
+
+class TestAWholeTurnOpensOne(IsolatedState, unittest.TestCase):
+
+    def setUp(self):
+        # A real turn reads the knowledge pack and a stale pack is REBUILT
+        # AND WRITTEN, so this has to isolate the store or `store`'s own
+        # guard refuses it. See tests/slackbase.py.
+        self.isolate()
+        self.addCleanup(self.restore)
+
+    def test_respond_opens_a_turn(self):
+        """Without this the cache is unreachable in production and every
+        number in the merge request is about a code path nothing takes."""
+        from src import slackconversation as conversation
+        from src import slackscope
+
+        saw = []
+
+        class Model:
+            model = "m"
+
+            def complete(self, prompt, temperature=0):
+                saw.append(readback.caching())
+                return '{"tools": [], "clarify": null}'
+
+        import os
+        previous = os.environ.get(slackscope.INTERNAL_CHANNELS_VAR)
+        os.environ[slackscope.INTERNAL_CHANNELS_VAR] = "C_TURNTEST"
+
+        def restore():
+            if previous is None:
+                os.environ.pop(slackscope.INTERNAL_CHANNELS_VAR, None)
+            else:
+                os.environ[slackscope.INTERNAL_CHANNELS_VAR] = previous
+        self.addCleanup(restore)
+
+        conversation.respond("are the monitors alive?",
+                             channel="C_TURNTEST", user="U", model=Model())
+        self.assertTrue(saw and all(saw),
+                        "the model ran outside a readback turn, so nothing "
+                        "in the turn was cached")
+        self.assertFalse(readback.caching(), "the turn was left open")
