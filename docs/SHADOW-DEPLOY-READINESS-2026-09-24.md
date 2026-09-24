@@ -159,8 +159,9 @@ once.** You asked where; the honest answer is *ideally nowhere on the host*:
 
 ### 3c. The GitHub deploy key
 
-I added one so the host could clone: **read-only**, titled
-`resonate-production-host (read-only, added 2026-09-24)`, id `164308397`.
+I added one so the host could clone: **read-only**, **id `164308397`**.
+Its title names the host, so it is not reproduced here; the id identifies it
+without printing a host value.
 The private half was generated on the host and never left it. Revoke it in
 Settings → Deploy keys if you would rather do this differently.
 
