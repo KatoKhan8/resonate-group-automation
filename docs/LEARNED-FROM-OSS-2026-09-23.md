@@ -308,8 +308,10 @@ documents are `ENGAGEMENT-HYGIENE.md`, `GO-LIVE-CHECKLIST.md` and
   variant_from_step, thread_reply}` (`providers/bison.py:1467-1513`);
   `bison.headers()` :34 is the API's HTTP auth header, not a mail header. So
   the gate can assert a **link in `email_body`** or a provider-level setting
-  outside this module, and TASK-271 requires the honest one: refuse the
-  cadence, and say which of the two the estate is relying on.
+  outside this module. TASK-271 originally required the honest one - refuse
+  the cadence, and say which of the two the estate is relying on. **That gate
+  was dropped on 2026-09-24; see the operator decision at the end of this
+  section.**
 - **The 180-day silence is declared and dead.** `src/replyengine.py:138-139`
   `POST_DECLINE_QUESTIONS = 1`, `DECLINE_QUIET_DAYS = 180`, quoting the
   operator. **Neither constant is referenced anywhere else** — not `src/`, not
@@ -329,8 +331,28 @@ belongs in gate 4 (:563-600). Note `killswitch.py:277-293` explicitly warns
 that wiring a gate into `eligibility.decide` instead is a dead end, because
 dry previews would then refuse everything.
 
-→ **TASK-271**, size M. The document is the deliverable; the gate is the half
-that makes it true.
+→ **TASK-271**, size M. The document is the deliverable.
+
+> **THE `List-Unsubscribe` GATE IS DROPPED. OPERATOR DECISION, 2026-09-24:**
+> *"there will be no unsubscribe link in any campaign. The opt-out mechanism
+> is the REPLY."*
+>
+> So the gate has nothing left to assert. Both of the two honest things it
+> could have checked — a link in `email_body`, or a named provider-level
+> setting — are now decided against, and a gate that refuses every cadence on
+> a policy the operator has deliberately chosen is a gate that gets switched
+> off in a week.
+>
+> What replaces it is not a header but a classifier, and the requirement moved
+> with it: `replies.UNSUBSCRIBE_PATTERNS` must read a removal request in every
+> language this estate sends to, the suppression must cross workspaces, and it
+> must take effect inside 15 minutes. See
+> `docs/MERGE-REQUEST-2026-09-24-THE-REPLY-IS-THE-UNSUBSCRIBE.md`.
+>
+> The paragraph above about the missing header stays TRUE and stays USEFUL:
+> `COMPLIANCE.md` still has to say, in as many words, that this estate has no
+> `List-Unsubscribe` header and no provider field to set one in, because that
+> is a fact a reader of a compliance document is entitled to.
 
 ---
 

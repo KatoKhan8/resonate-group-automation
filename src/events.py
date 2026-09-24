@@ -72,9 +72,24 @@ ACCOUNT_SUPPRESSED = "account_suppressed"
 REVIEW_REQUIRED = "review_required"
 REFERRED_CONTACT_ACTIVATED = "referred_contact_activated"
 
+# OPERATOR DECISION, 2026-09-24: there is no unsubscribe link in any campaign,
+# so the REPLY is the opt-out mechanism, and a removal request has to hold in
+# every workspace rather than in the one that happened to receive it.
+#
+# `CONTACT_SUPPRESSED` above records what happened to this record. These two
+# record what happened to the AGENCY-WIDE list, which is the part that crosses
+# a tenancy boundary - and they are two events rather than one because
+# "written" and "could not be written" must never print the same. A removal
+# request that reached only this record is still live in every other
+# workspace, and that is the state somebody has to be told about.
+AGENCY_SUPPRESSION_RECORDED = "agency_suppression_recorded"
+AGENCY_SUPPRESSION_REFUSED = "agency_suppression_refused"
+
 REPLY_EFFECT_EVENTS = (COMPANY_PAUSED, CONTACT_HELD, CONTACT_STOPPED,
                        CONTACT_SUPPRESSED, ACCOUNT_SUPPRESSED,
-                       REVIEW_REQUIRED, REFERRED_CONTACT_ACTIVATED)
+                       REVIEW_REQUIRED, REFERRED_CONTACT_ACTIVATED,
+                       AGENCY_SUPPRESSION_RECORDED,
+                       AGENCY_SUPPRESSION_REFUSED)
 
 # Provider, cost, verification and research events.
 # Campaign lifecycle. A campaign is approved, invalidated, launched, paused

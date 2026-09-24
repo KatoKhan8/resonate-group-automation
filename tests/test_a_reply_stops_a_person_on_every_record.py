@@ -115,15 +115,50 @@ class TheSamePersonOnTwoRecords(QueueTest):
         self.assertEqual(out["applied"]["status"], "unmatched")
 
     def test_but_every_record_holding_that_person_stops(self):
+        """REWRITTEN 2026-09-24, because the outcome got STRONGER.
+
+        The fixture reply is `"please stop, we are not interested"` - the
+        exact words of the 2026-09-12 reproduction - and until today that read
+        NEGATIVE, so this branch gave it the reversible ambiguous-reply hold.
+
+        The operator's 2026-09-24 decision removed the unsubscribe link and
+        made the reply the whole opt-out mechanism, and `please stop` as a
+        complete clause is now an unsubscribe. So the person who said it is
+        SUPPRESSED on both records rather than held on both, and is on the
+        agency-wide list besides.
+
+        The assertion moved; the thing this file is about did not. Being known
+        twice still must not make somebody harder to stop, and the hold path
+        is still exercised - by `test_an_unclassifiable_reply_is_only_held`
+        below, which is what that path is for.
+        """
         recs = store.load()
         out = inbound.handle(a_reply(), recs)
-        self.assertEqual(len(out["held_unattributed"]), 2,
+        self.assertEqual(len(out["suppressed_unattributed"]), 2,
                          "the reply stopped nothing on either record")
         for rec in recs:
             contact = rec["contacts"][0]
-            self.assertTrue(contact.get("paused"),
+            self.assertTrue(contact.get("unsubscribed"),
                             f"{rec['id']} kept running to somebody who "
                             f"asked it to stop")
+            self.assertEqual(contact["suppressed"]["reason"],
+                             accountpolicy.UNSUBSCRIBE)
+
+    def test_an_unclassifiable_reply_is_only_held(self):
+        """The guard this branch was built for, kept under its own name.
+
+        An unread reply is not an unsubscribe. Only a classified removal
+        request suppresses; everything else takes the reversible hold, which
+        is what a person can undo in the time it takes to read the reply.
+        """
+        recs = store.load()
+        out = inbound.handle(
+            a_reply(text="Thanks - could you resend the deck?"), recs)
+        self.assertEqual(out["suppressed_unattributed"], [])
+        self.assertEqual(len(out["held_unattributed"]), 2)
+        for rec in recs:
+            contact = rec["contacts"][0]
+            self.assertFalse(contact.get("unsubscribed"))
             self.assertEqual(contact["paused"]["reason"],
                              accountpolicy.AMBIGUOUS_REPLY)
 
@@ -158,7 +193,11 @@ class TheSamePersonOnTwoRecords(QueueTest):
         out = inbound.handle(
             a_reply(email=None, linkedin=PROFILE, channel="linkedin",
                     provider="heyreach"), recs)
-        self.assertEqual(len(out["held_unattributed"]), 2)
+        # Suppressed rather than held since 2026-09-24 - see
+        # `test_but_every_record_holding_that_person_stops`. What this case
+        # is about is the CORRELATION KEY: a HeyReach reply carries a profile
+        # and no address, and both records still have to be reached.
+        self.assertEqual(len(out["suppressed_unattributed"]), 2)
 
     def test_a_reply_from_a_stranger_holds_nobody(self):
         """The other half: a guard that held everybody would be deleted."""
@@ -168,15 +207,20 @@ class TheSamePersonOnTwoRecords(QueueTest):
         for rec in recs:
             self.assertFalse(rec["contacts"][0].get("paused"))
 
-    def test_a_second_copy_of_the_same_reply_holds_nothing_again(self):
-        """Idempotent: `_hold_contact` refuses to re-hold, so a provider
-        redelivering an event does not rewrite the reason or the timestamp."""
+    def test_a_second_copy_of_the_same_reply_changes_nothing_again(self):
+        """Idempotent: the transition refuses to re-apply, so a provider
+        redelivering an event does not rewrite the reason or the timestamp.
+
+        Renamed from `..._holds_nothing_again` when the fixture reply became
+        an unsubscribe on 2026-09-24. The property is the same one.
+        """
         recs = store.load()
         inbound.handle(a_reply(), recs)
-        first = recs[0]["contacts"][0]["paused"]["since"]
+        first = recs[0]["contacts"][0]["suppressed"]["since"]
         out = inbound.handle(a_reply(at="2026-09-12T11:00:00+00:00"), recs)
         self.assertEqual(out["held_unattributed"], [])
-        self.assertEqual(recs[0]["contacts"][0]["paused"]["since"], first)
+        self.assertEqual(out["suppressed_unattributed"], [])
+        self.assertEqual(recs[0]["contacts"][0]["suppressed"]["since"], first)
 
 
 if __name__ == "__main__":

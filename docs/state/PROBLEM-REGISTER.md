@@ -39,6 +39,93 @@ not reused._
 _ISSUE-034 added 2026-09-24 lane 1: three Apify actor ids that do not exist,
 and the tests that were green against them._
 
+_ISSUE-037, 038 and 039 added 2026-09-24 lane 1, all found while making the
+reply the only opt-out mechanism. ISSUE-037 is **ISSUE-024 recurring**._
+
+---
+
+### ISSUE-037 · The unsubscribe classifier was English-only, and suppression stopped at the workspace · CRITICAL · **FIXED, not yet PRODUCTION_VERIFIED**
+
+**This is ISSUE-024 recurring on the one path that now carries the whole
+opt-out obligation.** "The channel-exclusion list was English-only in a
+Croatian workspace" closed 2026-09-22. On 2026-09-24 the operator decided
+there would be **no unsubscribe link in any campaign** and that the REPLY is
+the opt-out mechanism — and `replies.UNSUBSCRIBE_PATTERNS` held **14 entries,
+every one English**.
+
+**Measured, not asserted.** `work/qualified-supply.jsonl` is 32,951 sourced
+rows across exactly 20 countries; `work/learning-replies.jsonl` is 179,715
+real reply rows whose domains include `.de .pl .cz .fi .nl .se .no .dk .fr
+.it .si .lt .ee .lv .hu .hr .gr .rs`. A removal request in any of them read
+`unknown`, and `unknown` suppresses nobody.
+
+**And the suppression did not cross a workspace.** `reply.on_unsubscribe` is
+`(STOP, CONTACT)`, so `unsubscribed = True` was written on one contact on one
+record. `src/agencydnc.py` — the only mechanism that holds a do-not-contact
+across a tenancy boundary — had **no production caller at all**: every
+`agencydnc.add` in the repository was in a test file.
+
+Fixed in `src/replies.py` (a diacritic fold, ~150 attested phrases across 20
+languages in two tiers, the risky bare tokens anchored to a clause),
+`src/accountpolicy.py` (`_suppress_agency_wide`, writing both the email
+ADDRESS and the LinkedIn ACCOUNT with reason `REQUESTED`) and
+`src/inbound.py`. `RULE_HASH` moved `rules-4+63ac5f605770` ->
+`rules-4+d4ddb2f3dc53`, so verdicts stored before it are correctly no longer
+confirmable. Tests:
+`tests/test_an_unsubscribe_is_read_in_every_language_we_send_to.py` (18) and
+`tests/test_an_unsubscribe_crosses_every_workspace_inside_fifteen_minutes.py`
+(19). Full argument, sources and stated gaps in
+`docs/MERGE-REQUEST-2026-09-24-THE-REPLY-IS-THE-UNSUBSCRIBE.md`.
+
+**NOT production-verified: no reply has been ingested live through this
+code.** And `ACCOUNT_DNC_PATTERNS` is still English-only — the same defect one
+row up the priority table, named in the merge request as the next increment.
+
+### ISSUE-038 · `inbound.ingest` saved nothing when every reply in a page was unattributable · HIGH · **FIXED**
+
+    if own and any(o["applied"]["status"] == "applied" for o in outcomes):
+        store.save(recs, expect_digest=base)
+
+`inbound.handle` writes real state for a reply it refuses to attribute — a
+hold on every record carrying that person (the ISSUE from 2026-09-12), and
+since 2026-09-24 a permanent suppression when the reply is a removal request.
+Both are in-memory mutations of `recs`, and the only save was gated on some
+event **in the same page** having matched a record. **A page whose replies
+were all unattributable saved nothing**, and the stop existed until the
+process moved on.
+
+**It never showed as a failure because the test supplies the save that
+production does not.** `test_a_reply_stops_a_person_on_every_record` calls
+`handle` directly and then writes the records back itself
+(`with store.transaction() as rows: rows[:] = recs`). The register's own
+recurring shape: a guard proved by a harness that does the guarding.
+
+Fixed by asking "did anything change" rather than "did anything match".
+Regression test goes through `ingest` — the function production calls — and
+re-reads the file:
+`AnUnattributableOptOutSurvivesTheProcess.test_ingest_persists_a_suppression_it_could_not_attribute`.
+
+### ISSUE-039 · A bare `gdpr` made a buying question an unsubscribe, and a wrapped quote header defeated every whole-message anchor · MEDIUM · **FIXED**
+
+Two smaller defects in `src/replies.py`, both reproduced 2026-09-24.
+
+**`classify("Is your platform GDPR compliant?")` returned `unsubscribe` at
+0.95.** `\bgdpr\b` matched and UNSUBSCRIBE outranks QUESTION and POSITIVE.
+Already wrong; much more expensive once an unsubscribe became permanent and
+agency-wide. Narrowed for PRECISION — the regulation's name must now sit
+beside an act (delete, erase, remove, object, withdraw, opt out) — which
+TASK-076's note explicitly permits and distinguishes from widening for
+recall. Nothing is lost: a reply whose entire content is the bare word is
+still caught by the standalone-token tier.
+
+**`_ON_WROTE = r"^On .+\bwrote:"` cannot match a Gmail attribution that
+wraps**, and `.` does not cross a newline. So for the estate's one real
+bare-stop reply the quote start fell through to the first `>` line and
+`extract_prospect_text` returned **94 characters instead of 9** — the reply
+plus the attribution. That defeats every whole-message anchor in the module at
+once (`^stop$`, `^no$`, `^nope$`), which is exactly how a one-word opt-out
+went unread. Bounded fix: at most two continuation lines.
+
 ---
 
 ### ISSUE-034 · The research pack named three Apify actors that do not exist · HIGH · **FIXED**

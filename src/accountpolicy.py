@@ -482,14 +482,147 @@ def _suppress_contact(rec, contact, outcome, at, why):
     `unsubscribed` is the field the eligibility gate and the channel
     evaluator already read, so an unsubscribe honoured here is honoured
     everywhere without a second list to keep in step.
+
+    "Everywhere" MEANT "everywhere in this record". A contact field is a
+    fact about one row in one workspace's queue, so the same person imported
+    by another workspace tomorrow reads as contactable - which is the whole
+    reason `agencydnc` exists. `_suppress_agency_wide` below is what carries
+    a removal request across that boundary, and it is called from here so
+    that the two can never disagree about who has asked to be left alone.
     """
     if contact.get("unsubscribed"):
+        # Already suppressed HERE, which says nothing about the agency list -
+        # a record suppressed before 2026-09-24 has no agency entry at all.
+        # The cross-workspace write is idempotent and is attempted anyway.
+        _suppress_agency_wide(rec, contact, outcome, at)
         return False
     contact["unsubscribed"] = True
     contact["suppressed"] = {"since": at, "reason": outcome, "why": why}
     _touch(rec, events.CONTACT_SUPPRESSED, contact_key=contact.get("key"),
            at=at, outcome=outcome)
+    _suppress_agency_wide(rec, contact, outcome, at)
     return True
+
+
+#: Which classifier outcomes are allowed to write to the AGENCY-WIDE list.
+#:
+#: Only a removal request. `agencydnc`'s own docstring is explicit that it is
+#: "not a mirror of reply state" and that "a reply in one workspace does not
+#: put anybody here" - because knowing that sarah@acme.test is on the list
+#: tells the asking workspace that somebody, somewhere, is talking to her.
+#:
+#: OPERATOR DECISION, 2026-09-24 OVERRIDES THAT FOR EXACTLY ONE SHAPE OF
+#: REPLY. There is no unsubscribe link in any campaign, so the reply IS the
+#: opt-out mechanism, and an opt-out that stops at a tenancy boundary is not
+#: an opt-out - the next workspace to import this person writes to them
+#: again. What is written is still only a one-way hash and a category, so the
+#: privacy model is unchanged: no name, no company, no workspace, no record.
+#:
+#: NOTHING ELSE MAY REACH THIS. "Not interested" is an answer about this
+#: quarter and stays inside the workspace that received it; only "leave me
+#: alone" is an answer about us, and only it crosses.
+AGENCY_SUPPRESSION_OUTCOMES = (UNSUBSCRIBE, ACCOUNT_DNC)
+
+
+def _suppress_agency_wide(rec, contact, outcome, at):
+    """Put this person's own identifiers on the agency-wide list.
+
+    ## What "the address AND the account" means here
+
+    OPERATOR, 2026-09-24: an unsubscribe "permanently suppresses the address
+    AND the account, across workspaces". `agencydnc.keys_for` takes exactly
+    two kinds of strong identifier and no others - an email ADDRESS and a
+    LinkedIn ACCOUNT - so both are written, and a person who opts out by
+    email is not written to on LinkedIn tomorrow by another workspace that
+    only ever knew their profile URL.
+
+    It is deliberately NOT a domain or a company. `agencydnc` has no kind for
+    one, a hash of a domain would suppress colleagues who asked for nothing,
+    and the company-wide request already has its own classification
+    (`account_do_not_contact`) which suppresses the record through
+    `_suppress_account`. Widening one person's removal request into a
+    permanent agency-wide ban on their employer is not something an operator
+    can take back, so it is refused here and named in the merge request.
+
+    ## Why this cannot raise, and why it is not a silent fallback either
+
+    It sits inside `apply_reply`, which is called from `inbound.ingest`
+    between `store.digest()` and `store.save(expect_digest=...)`. An
+    exception here would abandon the reply event, the classification and the
+    local suppression - trading the strong local guarantee for the weaker
+    global one. So the failure is CAUGHT, and then it is RECORDED as
+    `AGENCY_SUPPRESSION_REFUSED` on the record and written to the record's
+    log. A removal request that reached only this workspace is a real, live
+    compliance gap and must never look like success.
+
+    **NOTHING ALERTS ON THAT EVENT YET, and saying so is the point.** It is
+    auditable rather than announced: it is in `events.REPLY_EFFECT_EVENTS`, so
+    every consumer of that tuple sees it, and `replywatch` does not raise on
+    it the way it raises on a refused provider stop. Wiring that alert is a
+    separate, small change; claiming it exists would be the "existence is not
+    function" defect this repository collects.
+
+    Returns `{"written": [...], "already": [...], "refused": [...]}`, kinds
+    only - never the identifier, which is the one thing this file's privacy
+    model exists to keep out of logs.
+    """
+    from . import agencydnc
+
+    report = {"written": [], "already": [], "refused": []}
+    if outcome not in AGENCY_SUPPRESSION_OUTCOMES:
+        return report
+    try:
+        index = agencydnc.load()
+    except Exception as exc:                                # noqa: BLE001
+        index = None
+        report["refused"].append({"kind": "*", "why": f"{type(exc).__name__}"})
+    # `keys_for` is `agencydnc`'s own definition of a strong identifier, and
+    # asking it rather than reading the contact's fields means this cannot
+    # start suppressing on something the list would never match on - a name,
+    # a phone number, a company. It drops anything unusable, so an empty
+    # result IS "there is nobody here we can name".
+    for plain, digest in (agencydnc.keys_for(contact or {}) or {}).items():
+        kind, _, value = str(plain).partition(":")
+        if index is not None and digest in index:
+            report["already"].append(kind)
+            continue
+        try:
+            agencydnc.add(kind, value, reason=agencydnc.REQUESTED, at=at)
+        except Exception as exc:                            # noqa: BLE001
+            report["refused"].append(
+                {"kind": kind, "why": f"{type(exc).__name__}: {exc}"[:160]})
+        else:
+            report["written"].append(kind)
+
+    # RECORDED means something was WRITTEN. A re-check that finds every
+    # identifier already on the list writes nothing and says nothing: this
+    # function is reached again on every replay of an already-suppressed
+    # contact, `_touch` carries no `provider_event_id` so nothing dedupes it,
+    # and an event per replay is how an audit log stops being readable.
+    if report["written"]:
+        _touch(rec, events.AGENCY_SUPPRESSION_RECORDED,
+               contact_key=(contact or {}).get("key"), at=at, outcome=outcome,
+               written=",".join(report["written"]),
+               already=",".join(report["already"]) or None)
+    if report["refused"]:
+        _touch(rec, events.AGENCY_SUPPRESSION_REFUSED,
+               contact_key=(contact or {}).get("key"), at=at, outcome=outcome,
+               why="; ".join(f"{r['kind']}: {r['why']}"
+                             for r in report["refused"])[:300])
+        store.log(rec, "suppressed",
+                  f"{outcome}: the agency-wide list could NOT be written - "
+                  f"this removal request holds in this workspace only",
+                  contact=(contact or {}).get("key"))
+    if not (report["written"] or report["already"] or report["refused"]):
+        # No email and no LinkedIn profile on the contact: there is no strong
+        # identifier to hash, so nothing can cross. Said out loud rather than
+        # returned as an empty success.
+        _touch(rec, events.AGENCY_SUPPRESSION_REFUSED,
+               contact_key=(contact or {}).get("key"), at=at, outcome=outcome,
+               why="the contact carries no email and no LinkedIn profile, so "
+                   "there is no strong identifier to suppress agency-wide")
+        report["refused"].append({"kind": "*", "why": "no strong identifier"})
+    return report
 
 
 AMBIGUOUS_REPLY = "reply_attribution_ambiguous"

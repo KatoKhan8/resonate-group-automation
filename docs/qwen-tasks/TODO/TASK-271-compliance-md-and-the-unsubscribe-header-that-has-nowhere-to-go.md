@@ -7,6 +7,35 @@ legitimate-interest basis, per-client DPA) and what the operator must do;
 plus a fail-loud gate for `List-Unsubscribe` header presence on every
 cadence.
 
+## THE HEADER GATE IS DROPPED. OPERATOR DECISION, 2026-09-24
+
+> *"There will be no unsubscribe link in any campaign. The opt-out mechanism
+> is the REPLY."*
+
+**This task is now the DOCUMENT only.** Do not implement the
+`List-Unsubscribe` gate described under "THE GATE" below; that section is
+kept, struck through in effect rather than deleted, because it records the
+measurement that a header cannot be set through this provider at all - which
+`COMPLIANCE.md` still has to say out loud.
+
+The obligation the gate was standing in for did not go away, it moved to the
+classifier and was implemented on 2026-09-24:
+
+- `replies.UNSUBSCRIBE_PATTERNS` reads a removal request in every language
+  this estate sends to, not only English;
+- `accountpolicy._suppress_agency_wide` carries the suppression ACROSS
+  WORKSPACES through `agencydnc`, which nothing in production wrote to before;
+- the latency is measured rather than argued, in
+  `tests/test_an_unsubscribe_stops_the_mail_inside_fifteen_minutes.py`.
+
+See `docs/MERGE-REQUEST-2026-09-24-THE-REPLY-IS-THE-UNSUBSCRIBE.md`.
+
+**What `COMPLIANCE.md` must now say about unsubscribe**, and it is a stronger
+sentence than the original one: this estate sets no `List-Unsubscribe` header,
+has no provider field through which to set one, ships no unsubscribe link, and
+the reply classifier is therefore the entire opt-out mechanism - with the
+languages it covers, the ones it does not, and the 15-minute figure all named.
+
 `COMPLIANCE.md` does not exist. Confirmed by search. Write it at repo root,
 beside `ENGAGEMENT-HYGIENE.md` and `GO-LIVE-CHECKLIST.md`.
 
@@ -35,6 +64,9 @@ it; it is the difference between a gate and the appearance of one.
    reply somebody has to classify."* Opt-out today is
    `UNSUBSCRIBE_PATTERNS` :157 plus `accountpolicy.apply_reply()` :604 — a
    classifier, not a header.
+   **2026-09-24: that is now the DESIGN rather than the gap.** The classifier
+   is multilingual and the suppression crosses workspaces; what the document
+   must carry is which languages are covered and which are not.
 2. **The 180-day silence is declared and dead.**
    `src/replyengine.py:138-139` holds `POST_DECLINE_QUESTIONS = 1` and
    `DECLINE_QUIET_DAYS = 180`, quoting the operator. **Neither constant is
@@ -88,6 +120,7 @@ would then refuse everything.
 
 ## SCOPE DISCIPLINE
 
+**Superseded by the 2026-09-24 decision at the top: the gate is not built.**
 This task writes the document and **one** gate. It does not implement the
 180-day silence, the consent store or the DPA record — it writes down that
 they do not exist. Implementing them is separate work and must not be
@@ -98,12 +131,13 @@ smuggled in behind a documentation task.
 Full offline suite, zero new failures and zero new errors against the master
 baseline, diffed by test NAME both directions.
 
-Required tests: a cadence with no unsubscribe affordance is refused; the
+Required tests: ~~a cadence with no unsubscribe affordance is refused; the
 refusal names the `compliance` gate and carries the passed-gate trace; a
 cadence relying on a provider-level setting must name it or be refused; a dry
-preview is **not** refused by this gate; and a test that reads
-`DECLINE_QUIET_DAYS` and asserts it has no enforcing caller, so the day
-somebody wires it up this test goes red and the document gets corrected.
+preview is **not** refused by this gate~~ — **all four dropped 2026-09-24 with
+the gate** — and a test that reads `DECLINE_QUIET_DAYS` and asserts it has no
+enforcing caller, so the day somebody wires it up this test goes red and the
+document gets corrected.
 
 ## FILES FORBIDDEN
 

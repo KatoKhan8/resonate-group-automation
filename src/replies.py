@@ -27,6 +27,7 @@ and decide the clear cases for free. Tests never reach a model.
 """
 import hashlib
 import re
+import unicodedata
 
 #: The RELEASE name. It is NOT an identity for the rules and must never be
 #: used as one - see `RULE_HASH` at the foot of this module. `rules-3`
@@ -161,10 +162,31 @@ ACCOUNT_DNC_PATTERNS = (
     r"\bcompany[- ]wide (?:opt[- ]?out|do not contact)\b",
 )
 
-UNSUBSCRIBE_PATTERNS = (
+_ENGLISH_UNSUBSCRIBE = (
     r"\bunsubscribe\b", r"\bopt[- ]?out\b", r"\bremove me\b",
     r"\btake me off\b", r"\bstop (?:emailing|contacting|messaging)\b",
-    r"\bdo not (?:contact|email|message) me\b", r"\bgdpr\b",
+    r"\bdo not (?:contact|email|message) me\b",
+    # A BARE `gdpr` WAS AN UNSUBSCRIBE, AND "is your tool GDPR compliant?" IS
+    # A BUYING QUESTION.
+    #
+    # Measured 2026-09-24: `classify("Is your platform GDPR compliant?")`
+    # returned `unsubscribe` at 0.95, because `\bgdpr\b` matched and
+    # UNSUBSCRIBE outranks QUESTION and POSITIVE. That was already wrong. From
+    # today it is much more expensive: an unsubscribe suppresses the person
+    # PERMANENTLY and AGENCY-WIDE, so this false positive would make a
+    # prospect who asked a compliance question unreachable by every client we
+    # have, for good.
+    #
+    # NARROWED FOR PRECISION, WHICH TASK-076 PERMITS AND DISTINGUISHES FROM
+    # WIDENING FOR RECALL. The regulation's name now has to sit beside an act
+    # - delete, erase, remove, object, withdraw, opt out. Nothing real is
+    # lost: a reply whose entire content is the bare word is still caught, by
+    # `STANDALONE_STOP_PATTERNS` below.
+    r"\b(?:gdpr|dsgvo|rgpd|rodo|gdpr-?compliance)\b[^.?!]{0,60}"
+    r"\b(?:delete|erase|remove|removal|object|objection|withdraw|"
+    r"unsubscribe|opt[- ]?out|suppress)\w*\b",
+    r"\b(?:delete|erase|remove|object|withdraw|unsubscribe|opt[- ]?out)\w*\b"
+    r"[^.?!]{0,60}\b(?:gdpr|dsgvo|rgpd|rodo)\b",
     # TASK-020: common phrasings from the unmatched 35%. Every one of these
     # is a removal request in words, and the estate has no unsubscribe link
     # so opt-out arrives only as a reply somebody has to classify.
@@ -204,8 +226,440 @@ UNSUBSCRIBE_PATTERNS = (
     # removed and nothing else, and the estate contains them. Anchored to the
     # whole message so it cannot fire inside a sentence - which is exactly
     # what the bare pattern got wrong.
+    #
+    # 2026-09-24: KEPT, and superseded in practice by
+    # `STANDALONE_STOP_PATTERNS` below, which anchors to a CLAUSE rather than
+    # to the whole message. The real reply that prompted this - EmailBison
+    # 1609395, `"no. stop."` - is two clauses and this pattern cannot see it.
+    # Nothing is removed: a guard that has stopped being the only one is
+    # still a guard.
     r"^stop[\s.!]*$",
+    # 2026-09-24, from the sourcing pass: English opt-out phrasings this list
+    # did not carry. Sources are listed per language in the merge request's
+    # appendix.
+    r"\bcease and desist\b",
+    # `right OF erasure` is the ICO's own wording and what people paste.
+    r"\bright (?:to|of) (?:erasure|be forgotten)\b",
+    r"\b(?:delete|erase) (?:my|all) (?:personal )?"
+    r"(?:data|details|information|records?|name|address)\b",
+    r"\bremove my (?:name|details|address|data|e-?mail) from\b",
+    r"\bobject(?:ing)? to the processing\b",
+    r"\bwithdraw(?:ing)? (?:my|said|the) consent\b",
+    r"\bcancel (?:my )?subscription\b",
+    r"\bstop (?:all )?(?:further )?(?:communication|correspondence)\b",
+    r"\bdo not (?:e-?mail|write|contact) (?:me )?again\b",
+    r"\bfrom (?:your|their|the) (?:mailing list|database|records)\b"
+    r"[^.?!]{0,20}$",
 )
+
+
+# ---------------------------------------------------------------------------
+# EVERY LANGUAGE THIS ESTATE SENDS TO.
+#
+# ## ISSUE-024, recurring on the one path that now carries the obligation
+#
+# "The channel-exclusion list was English-only in a Croatian workspace",
+# closed 2026-09-22. Same class of defect, same system: on 2026-09-24
+# `UNSUBSCRIBE_PATTERNS` held fourteen entries and every one was English,
+# while the estate sends to twenty countries and has received replies from
+# .de, .pl, .cz, .fi, .nl, .se, .no, .dk, .fr, .it, .si, .lt, .ee, .lv, .hu,
+# .hr, .gr and .rs. A removal request in any of them read `unknown`, and
+# `unknown` does not suppress anybody.
+#
+# ## THE LANGUAGES ARE DERIVED, NOT CHOSEN
+#
+# Measured against the live supply on 2026-09-24 rather than picked from a
+# list. `work/qualified-supply.jsonl` is 32,951 sourced rows across exactly
+# twenty countries; `work/learning-replies.jsonl` is 179,715 real reply rows
+# whose domains name the country-code TLDs that have actually answered.
+# `LANGUAGE_COVERAGE` below carries both, so the day the estate sources a new
+# country the coverage table is what disagrees with it.
+#
+# ## TWO TIERS, AND THE SECOND ONE IS THE WHOLE SAFETY ARGUMENT
+#
+# Four independent sourcing passes arrived at the same rule, and so did this
+# module on its own two days ago when it removed the bare English `stop`:
+#
+#   TIER A, here: MULTIWORD and usually first-person. `me desabonner`,
+#       `borrenme de la lista`, `aus dem verteiler streichen`,
+#       `non voglio piu ricevere`, `zahtevam izbris podatkov`,
+#       `wnosze sprzeciw`, `leiratkozas`. These carry their own context and
+#       may match anywhere in a message.
+#
+#   TIER B, `STANDALONE_STOP_PATTERNS`: BARE TOKENS. `stop`, `abmelden`,
+#       `afmelden`, `baja`, `sair`, `odjava`, `lopeta`, `διαγραφη`. Every one
+#       of these is an ordinary word in its own language - `abmelden` is
+#       "log out", `afmelden` is declining a meeting, `baja` is sick leave in
+#       an out-of-office, `sair` is "to leave", `odjava` is a hotel
+#       check-out, `stop` is a metal alloy in Polish - so none of them may
+#       ever fire inside a sentence.
+#
+# ## WHAT IS DELIBERATELY REFUSED
+#
+#   "not interested" in every language. `nie jestem zainteresowany`,
+#   `nemam zajem`, `nem erdekel`, `non sono interessato`, `no me interesa`,
+#   `kein Interesse`, `ikke interesseret`. They are answers about the offer,
+#   and they are NEGATIVE here already. An unsubscribe is permanent and
+#   agency-wide; a refusal is neither.
+#
+#   Bare cancel-verbs - `cancelar`, `cancellare`, `annuler`, `annuleren`,
+#   `absagen`, `zrusit`, `atsaukti`, `torol` - because they are
+#   overwhelmingly about a MEETING. "I need to cancel Thursday's call" is a
+#   live deal.
+#
+#   Italian `basta`. It means "that is enough" AND "it suffices", and the
+#   second is standard business Italian in sentences that are buying signals:
+#   "basta che mi confermi la data", "mi basta sapere il prezzo". There is no
+#   form of it this can match safely, so it is refused entirely.
+#
+#   Spanish `baja` and French `arret` inside a sentence, because both are
+#   OUT-OF-OFFICE vocabulary - "estoy de baja hasta el 15", "je suis en arret
+#   maladie" - and this classifier's single largest input class is
+#   autoresponders.
+#
+# ## PATTERNS ARE WRITTEN FOLDED
+#
+# They are matched against `fold(body)`, so they are written lowercase and
+# without diacritics: `odhlasit odber` reads both `odhlásit odběr` and the
+# `odhlasit odber` somebody types on a foreign keyboard. A test asserts every
+# pattern here is already in folded form, because one that is not would
+# silently never match.
+# ---------------------------------------------------------------------------
+
+#: Language -> (name, the countries it is for, coverage note). The countries
+#: are the measured ones; the note is what a reader has to know before
+#: believing the coverage.
+LANGUAGE_COVERAGE = {
+    "en": ("English", ("US", "UK", "IE", "AU", "NZ", "CA"), "full"),
+    "de": ("German", ("DE", "AT", "CH"), "full"),
+    "fr": ("French", ("FR", "BE", "CH", "CA"), "full"),
+    "nl": ("Dutch", ("NL", "BE"), "full"),
+    "it": ("Italian", ("IT", "CH"), "full"),
+    "es": ("Spanish", ("ES",), "full"),
+    "pt": ("Portuguese", ("PT",), "partial: pt-BR vocabulary is carried, but "
+                                 "only one real pt reply sentence could be "
+                                 "attested"),
+    "sv": ("Swedish", ("SE",), "full"),
+    "da": ("Danish", ("DK",), "full"),
+    "no": ("Norwegian", ("NO",), "full"),
+    "fi": ("Finnish", ("FI",), "full"),
+    "et": ("Estonian", ("EE",), "full"),
+    "pl": ("Polish", ("PL",), "full"),
+    "cs": ("Czech", ("CZ",), "full"),
+    "sk": ("Slovak", ("SK",), "partial: no attested Slovak consumer reply "
+                              "sentence was found; labels and DPA wording "
+                              "only"),
+    "hu": ("Hungarian", ("HU",), "full"),
+    "lt": ("Lithuanian", ("LT",), "full"),
+    "lv": ("Latvian", ("LV",), "partial: no attested Latvian reply sentence "
+                               "was found; labels and DPA wording only"),
+    "hr": ("Croatian / Serbian / Bosnian", ("HR", "RS", "BA"),
+           "partial: Latin script only. Serbian CYRILLIC is NOT covered - a "
+           "1:1 fold cannot transliterate it and a partial transliteration "
+           "would be worse than none"),
+    "sl": ("Slovenian", ("SI",), "full"),
+    "el": ("Greek", ("GR",), "partial: Greek script only. GREEKLISH - Greek "
+                             "typed in Latin letters - is NOT covered; its "
+                             "transliterations are inconsistent and "
+                             "enumerating them would be guessing"),
+}
+
+#: Tier A. Multiword opt-out phrases, safe to match anywhere in a message.
+#: Written folded. English extras live in `_ENGLISH_UNSUBSCRIBE` above.
+OPT_OUT_PHRASES = {
+    "de": (
+        r"\bnewsletter (?:abbestellen|abmelden)\b",
+        r"\b(?:vom|aus dem|aus ihrem) (?:newsletter|verteiler|"
+        r"e-?mail-?verteiler|mailverteiler)\b[^.?!]{0,30}"
+        r"\b(?:abmelden|streichen|austragen|nehmen|loschen)\b",
+        r"\b(?:abmelden|streichen|austragen|nehmen|loschen)\b[^.?!]{0,30}"
+        r"\b(?:vom|aus dem|aus ihrem) (?:newsletter|verteiler)\b",
+        r"\bbitte abmelden\b",
+        r"\bkeine weiteren (?:e-?mails|mails|nachrichten)\b",
+        r"\bwiderspruch gegen\b[^.?!]{0,50}"
+        r"\b(?:direktwerbung|werbung|verarbeitung)\b",
+        r"\bwiderrufe?\b[^.?!]{0,50}\beinwilligung\b",
+        r"\beinwilligung\b[^.?!]{0,50}\bwiderruf",
+        r"\b(?:losche|loschen sie|loschen)\b[^.?!]{0,25}"
+        r"\bmeine (?:daten|e-?mail-?adresse|adresse)\b",
+        r"\bmeine (?:personenbezogenen )?daten\b[^.?!]{0,25}\bgelosch",
+        r"\bnicht mehr kontaktieren\b",
+    ),
+    "nl": (
+        r"\bafmelden voor (?:de |het |uw |je |jullie )?"
+        r"(?:nieuwsbrief|nieuwsbrieven|mailing\w*|maillijst|mailinglijst|"
+        r"maillist|mailinglist|e-?mails|mails)\b",
+        r"\b(?:me|mij) (?:graag )?uitschrijven\b[^.?!]{0,40}"
+        r"\b(?:lijst|mailinglijst|mailinglist|maillist|nieuwsbrief|mailing)\b",
+        r"\buitschrijven (?:op|van|uit) de "
+        r"(?:mailinglijst|mailinglist|maillist|lijst|nieuwsbrief)\b",
+        r"\bik maak bezwaar tegen\b[^.?!]{0,70}"
+        r"\b(?:directmarketing|direct marketing|verwerking)\b",
+    ),
+    "fr": (
+        r"\bme (?:desabonner|desinscrire)\b",
+        r"\bse desabonner\b",
+        r"\b(?:desabonnez|desinscrivez|retirez|supprimez)[- ]moi\b",
+        r"\bne (?:souhaite|veux|desire) plus recevoir\b",
+        r"\bne plus recevoir (?:d'?|de )?(?:e-?mails?|mails?|courriels?|"
+        r"publicites?|messages?)\b",
+        r"\bsupprimer mes (?:coordonnees|donnees)\b",
+        r"\bliste de diffusion\b[^.?!]{0,40}"
+        r"\b(?:desinscri|desabonn|retirer|supprimer)\w*",
+        r"\b(?:desinscri|desabonn|retirer|supprimer)\w*[^.?!]{0,40}"
+        r"\bliste de diffusion\b",
+    ),
+    "it": (
+        r"\bannulla iscrizione\b",
+        r"\bcancellami\b", r"\bdisiscrivi(?:ti|mi)\b", r"\bdisiscrizione\b",
+        r"\brimuovetemi\b",
+        r"\bnon voglio piu'? ricevere\b",
+        r"\bcancella\w*[^.?!]{0,25}\b(?:dalla lista|dalla mailing|"
+        r"il mio indirizzo|la mia iscrizione|newsletter)\b",
+        r"\bcancellazione (?:della )?newsletter\b",
+        r"\b(?:cancell|rimuov)\w*[^.?!]{0,30}\bdalla (?:vostra )?lista\b",
+    ),
+    "es": (
+        r"\bdar(?:me|se) de baja\b",
+        r"\bbaja de (?:la )?(?:lista|newsletter|suscripcion)\b",
+        r"\b(?:cancelar|anular) (?:la |mi )?suscripcion\b",
+        r"\bno mas correos\b",
+        r"\bbo?rre(?:n|nme|me)? de (?:la|su|esta) lista\b",
+        r"\bborrar(?:me)? de (?:la|su|esta) lista\b",
+        r"\bme borraran de\b[^.?!]{0,25}\blista\b",
+        r"\bno deseo recibir\b",
+        r"\bno quiero recibir (?:mas|ningun)\b",
+        r"\beliminen? mi (?:correo|e-?mail|direccion)\b",
+        r"\beliminar mis datos\b",
+    ),
+    "pt": (
+        r"\bcancelar (?:a )?(?:inscricao|subscricao)\b",
+        r"\banular (?:a )?subscricao\b",
+        r"\bdescadastr\w*\b",
+        r"\b(?:retirar|retire|remover|remova) (?:o )?meu e-?mail\b",
+    ),
+    "sv": (
+        r"\bavsluta prenumeration\w*\b",
+        r"\bavprenumerera\b", r"\bavregistrera\b", r"\bavanmala\b",
+        r"\bsluta skicka\b[^.?!]{0,35}"
+        r"\b(?:reklam|mail|e-?post|utskick|nyhetsbrev)\w*\b",
+        r"\bradera mina (?:uppgifter|personuppgifter)\b",
+        r"\binvand\w* mot direktmarknadsforing\b",
+    ),
+    "da": (
+        r"\b(?:afmeld|frameld)\w*\b[^.?!]{0,25}"
+        r"\b(?:nyhedsbrev\w*|listen|mailinglisten|maillisten)\b",
+        r"\bafmeld mig\b", r"\bframeld mig\b",
+        r"\bafmelding af nyhedsbrev\w*\b",
+        r"\bsamtykke\b[^.?!]{0,35}\btilbage\b",
+        r"\btilbagekald\w*\b[^.?!]{0,35}\bsamtykke\b",
+        r"\bslet mig\b", r"\bslet mine (?:oplysninger|data)\b",
+    ),
+    "no": (
+        r"\bmeld (?:meg|deg) av\b",
+        r"\bavmelding\b", r"\bavmeld (?:meg )?nyhetsbrev\w*\b",
+        r"\bavslutt abonnement\w*\b",
+        r"\breservere meg mot\b",
+        r"\btrekke samtykket?\b",
+        r"\bslett meg\b", r"\bslett mine (?:opplysninger|data)\b",
+    ),
+    "fi": (
+        r"\bperu(?:uta)? (?:tilaus|tilaukseni|uutiskirje\w*)\b",
+        r"\blopeta (?:tilaus|tilaukseni|uutiskirje\w*)\b",
+        r"\bpoista minut\b", r"\bpoista tietoni\b",
+        r"\btietojeni poistaminen\b",
+        r"\bsuoramarkkinointikielto\b",
+        r"\bkiellan suoramarkkinoinnin\b",
+        r"\bpostituslista\w*\b[^.?!]{0,30}\bpoista\w*\b",
+        r"\bpoista\w*\b[^.?!]{0,30}\bpostituslista\w*\b",
+        r"\bvastusta\w*\b[^.?!]{0,50}\bsuoramarkkinointi\w*\b",
+    ),
+    "et": (
+        r"\b(?:listist|nimekirjast) lahkuda\b",
+        r"\bsoovin listist lahkuda\b",
+        r"\b(?:uudiskirja|turundusteate|tellimuse)\w*[^.?!]{0,25}\bloobu\w*\b",
+        r"\bloobu\w*\b[^.?!]{0,25}\b(?:uudiskirja|tellimus\w*|turundus\w*)\b",
+        r"\btuhista tellimus\b", r"\btellimuse tuhistamine\b",
+        r"\bnousoleku tagasivotmine\b",
+    ),
+    "pl": (
+        r"\bwypisz (?:mnie|sie)\b", r"\bwypisuje sie\b",
+        r"\bwypis(?:anie|ac) mnie\b",
+        r"\bzrezygnuj z subskrypcji\b",
+        r"\brezygnacja z (?:newslettera|subskrypcji|mailingu)\b",
+        r"\banuluj subskrypcje\b",
+        r"\busuniecie (?:moich danych|mojego adresu)\b",
+        r"\busun (?:mnie z listy|moj adres)\b",
+        r"\bprosze o usuniecie\b",
+        r"\bnie wyrazam zgody na przetwarzanie\b",
+        r"\bwnosze sprzeciw\b",
+        r"\bcofam zgode\b",
+        r"\bzadam zaprzestania\b",
+    ),
+    "cs": (
+        r"\bodhlasit odber\b", r"\bodhlasit se z odberu\b",
+        r"\bodhlas(?:te|it) me\b", r"\bodhlaseni odberu\b",
+        r"\bodhlasuji se\b",
+        r"\bnepreji si (?:zasilat|dostavat|posilat)\b",
+        r"\bzrusit odber\b",
+    ),
+    "sk": (
+        r"\bzrusit odber\b", r"\bzrusenie odberu\b",
+        r"\bodhlasit sa z odberu\b", r"\bodhlasenie odberu\b",
+        r"\bodhlaste ma\b",
+        r"\bnezelam si (?:dostavat|zasielat)\b",
+        r"\bnamietat spracuvanie\b",
+    ),
+    "hu": (
+        # `leiratkoz-` is the one root in this whole table with no ordinary
+        # non-unsubscribe sense, and Hungarian is agglutinative, so the root
+        # is matched and the suffixes follow.
+        r"\bleiratkoz\w*\b",
+        r"\bnem kerek tobb (?:hirlevelet|levelet|e-?mailt)\b",
+        r"\badataim\w*[^.?!]{0,25}\btorl\w*\b",
+        r"\btorl\w*[^.?!]{0,25}\badataim\w*\b",
+    ),
+    "lt": (
+        # The verb is inflected and the NOUN is what makes it safe:
+        # `atsisakyti` alone is "to decline" and "turesiu atsisakyti
+        # susitikimo" is somebody moving a meeting.
+        r"\batsisak(?:yti|au|ome|yk|ome)\b[^.?!]{0,30}"
+        r"\b(?:naujienlaiskio|naujienlaiskiu|prenumeratos)\b",
+        r"\batsaukti (?:prenumerata|sutikima)\b",
+        r"\bnebenori(?:u|me) gauti\b",
+        r"\bpasalin\w* mane\b",
+        r"\bisbraukt\w*[^.?!]{0,35}\bsaras\w*\b",
+        r"\bnesutinku\b[^.?!]{0,70}\basmens duomen\w*\b",
+    ),
+    "lv": (
+        r"\batrakst(?:ities|os|isos)\b",
+        r"\batteikties no (?:jaunumiem|abonesanas|komercial\w+ pazinojum\w+|"
+        r"e-?pasta jaunum\w+)\b",
+        r"\banulet abonementu\b",
+        r"\bpartraukt\b[^.?!]{0,45}\bsut\w*\b",
+    ),
+    "hr": (
+        r"\bodjava s(?:a)? (?:mailing |newsletter )?liste\b",
+        r"\botkazi pretplatu\b",
+        r"\bulazem prigovor\b",
+        r"\bprigovor\b[^.?!]{0,50}\b(?:marketing\w*|izravn\w+)\b",
+        r"\bprotivim se obradi\b",
+        r"\bpovlacim\b[^.?!]{0,30}\b(?:privolu|pristanak|suglasnost)\b",
+        r"\bzahtijevam brisanje\b",
+        r"\bbrisanje (?:svih )?(?:mojih )?(?:osobnih )?podataka\b",
+        r"\bizbrisite\b[^.?!]{0,35}\bpodatke\b",
+        r"\bne zelim (?:vise )?primati\b",
+    ),
+    "sl": (
+        r"\bodjava (?:od|z) (?:e-?novic|novic|obvestil)\b",
+        r"\bodjavite se od prejemanja\b",
+        r"\bne zelim (?:vec )?prejemati\b",
+        r"\bzelim izbrisati svoje podatke\b",
+        r"\bzahtevam izbris podatkov\b",
+        r"\bizbris (?:mojih )?(?:osebnih )?podatkov\b",
+        r"\bumak(?:nem|ni) privolitev\b", r"\bumik privolitve\b",
+        r"\bugovarjam obdelavi\b",
+    ),
+    "el": (
+        r"\bαπεγγραφη\b",
+        r"\bδιαγραφη απο\b[^.?!]{0,35}"
+        r"\b(?:λιστα|λιστας|newsletter|παραληπτ\w*)\b",
+        r"\bνα διαγραφω απο τη λιστα\b",
+        r"\bδιαγραψτε με\b",
+        r"\bξεγραφτ\w*\b",
+        r"\bδεν επιθυμω να λαμβανω\b",
+        r"\bκαταργηση εγγραφης\b",
+        r"\bδικαιωμα (?:εναντιωσης|στη ληθη)\b",
+        r"\bανακληση της συγκαταθεσης\b",
+    ),
+}
+
+UNSUBSCRIBE_PATTERNS = _ENGLISH_UNSUBSCRIBE + tuple(
+    pattern for language in sorted(OPT_OUT_PHRASES)
+    for pattern in OPT_OUT_PHRASES[language])
+
+
+# ------------------------------------------------- Tier B: standalone tokens
+#
+# A token here is an unsubscribe ONLY when a whole CLAUSE consists of nothing
+# but it, optionally preceded by a politeness word. Not "somewhere in the
+# message" - that is what this module removed on 2026-09-23 after a bare
+# `stop` escalated "please stop asking" into a removal request.
+#
+# WHY A CLAUSE AND NOT THE WHOLE MESSAGE. `^stop[\s.!]*$` was the whole
+# message, and the estate's one real bare-stop reply is `"no. stop."` - two
+# clauses - so the anchor that was supposed to catch it could not. A signature
+# with no `--` separator defeats it the same way: `_strip_signature` leaves
+# `"Stop.\n\nMvh\nJohan"` intact and the whole-message anchor sees four lines.
+#
+# A clause is delimited by sentence punctuation. `normalise` has already
+# collapsed newlines into spaces by the time these run, so `.`, `!`, `?`, `;`,
+# `,` and `:` are the boundaries. The clause must be EXACTLY the token, which
+# is what keeps "please stop asking", "stop by our office", "we had to stop
+# the project" and "full stop" out: in each of those the clause is longer than
+# the token.
+_CLAUSE_OPEN = r"(?:^|(?<=[.!?;,:]))\s*"
+_CLAUSE_CLOSE = r"\s*(?=[.!?;,:]|$)"
+
+#: Politeness that may sit in front of a bare token without making it a
+#: sentence. Folded, like everything else here.
+_POLITE = (r"please|pls|plz|kindly|bitte|prosim|prosze|molim|molim vas|svp|"
+           r"s'?il vous plait|por favor|per favore|kerem|tack|takk|tak|"
+           r"kiitos|palun|alstublieft|a\.?u\.?b|prasau|ludzu|parakalo|"
+           r"gracias|obrigado|danke|hvala|koszonom|dziekuje|dekuji|dakujem")
+
+#: The bare tokens, by language. EVERY ONE of these is an ordinary word in
+#: its own language - that is precisely why they are here and not in Tier A.
+#: Sourced and risk-assessed per language; the merge request carries the
+#: counter-example sentence that put each one in this tier.
+#:
+#: NOTHING THAT IS ALREADY SAFE ANYWHERE IS REPEATED HERE. `leiratkoz-`,
+#: `απεγγραφη`, `atrakstities`, `avregistrera`, `avmelding`, `descadastr-`,
+#: `disiscrivimi`, `unsubscribe`, `opt out`, `remove me` and `dar(me) de baja`
+#: are Tier A: they carry no ordinary sense in their own language and are
+#: matched wherever they appear. Listing them again here would say they were
+#: risky, which would be a false statement about the language sitting in a
+#: table people read to decide what is risky.
+STANDALONE_STOP_TOKENS = {
+    # English. The loanwords every one of these markets also uses - `stop`,
+    # `unsubscribe` - are reached from here and from Tier A respectively.
+    "en": ("stop", "stopall", "unsubscribed", "unsub", "quit", "revoke",
+           "cease", "gdpr"),
+    "de": ("abmelden", "abbestellen", "abmeldung", "abbestellung",
+           "austragen", "stopp"),
+    "nl": ("afmelden", "uitschrijven", "afmelding"),
+    "fr": ("desabonnement", "desinscription", "desabonner", "arret"),
+    # `basta` is REFUSED outright - see the note above.
+    "it": ("cancellazione",),
+    # `baja` is sick leave in an out-of-office, which is most of this inbox.
+    # As a whole clause from a prospect it is the unsubscribe token Spanish
+    # actually uses.
+    "es": ("baja",),
+    "pt": ("sair",),
+    "sv": ("avsluta", "stopp"),
+    "da": ("afmeld", "frameld", "afmelding"),
+    "no": ("avmeld", "stopp"),
+    "fi": ("lopeta", "peru", "peruuta"),
+    "et": ("loobun", "stopp"),
+    "pl": ("wypisz", "rezygnacja"),
+    "cs": ("odhlasit", "odhlasit se", "odhlaseni"),
+    "sk": ("odhlasit", "odhlasenie", "namietam"),
+    # HUNGARIAN HAS NO ENTRY HERE, and that is a finding rather than an
+    # omission: `leiratkoz-` has no ordinary non-unsubscribe sense, so every
+    # form of it is Tier A and none of it is risky.
+    "lt": ("atsisakau", "atsisakyti"),
+    "lv": ("atteikties",),
+    "hr": ("odjava", "odjavi me", "odjavite me"),
+    "sl": ("odjava", "odjavite me"),
+    "el": ("διαγραφη", "στοπ"),
+}
+
+STANDALONE_STOP_PATTERNS = tuple(
+    "%s(?:(?:%s)\\s+)?(?:%s)%s" % (_CLAUSE_OPEN, _POLITE,
+                                   re.escape(token).replace(r"\ ", " "),
+                                   _CLAUSE_CLOSE)
+    for language in sorted(STANDALONE_STOP_TOKENS)
+    for token in STANDALONE_STOP_TOKENS[language])
 OUT_OF_OFFICE_PATTERNS = (
     r"\bout of (?:the )?office\b", r"\bautomatic reply\b", r"\bauto[- ]?reply\b",
     r"\bon (?:annual |parental |sick )?leave\b", r"\bon holiday\b",
@@ -924,6 +1378,91 @@ def classify_taxonomy(text):
     return None
 
 
+# --------------------------------------------------------------- the fold
+#
+# ISSUE-024, WHICH IS WHY THIS EXISTS.
+#
+# "The channel-exclusion list was English-only in a Croatian workspace",
+# closed 2026-09-22. `scripts/slack_history.py` read `#računi` - invoices -
+# straight past, because its safety list was English and its matcher could
+# not see that `racuni` and `računi` are the same word. The fix there was a
+# five-character translation table for Croatian and terms in both languages.
+#
+# This is the same defect on the path that now carries the entire opt-out
+# obligation, so it gets the same fix generalised: a person who writes
+# `odhlásit` and a person who writes `odhlasit` have both asked to be
+# removed, and a classifier that reads only one of them is the Croatian
+# workspace again.
+#
+# ## The fold is ONE CHARACTER IN, ONE CHARACTER OUT, and that is deliberate
+#
+# Evidence is sliced out of the ORIGINAL text by the match's own offsets -
+# so an alert shows what the person actually typed, accents and all, rather
+# than the stripped form we matched on. That only works if folding cannot
+# move an index, which is why `ß` folds to `s` rather than `ss` and `æ` to
+# `a` rather than `ae`. Neither appears inside any opt-out token below; both
+# would silently break every offset after them if they expanded.
+#
+# ## What it does NOT do
+#
+# It does not transliterate between scripts. Greek stays Greek - `διαγραφή`
+# folds to `διαγραφη` and never to `diagrafi` - because a Latin
+# transliteration of a Greek word is a guess about spelling conventions, and
+# guessing is how a pattern starts matching things nobody wrote. Greeklish is
+# named in the coverage table as NOT covered rather than approximated.
+_FOLD_EXTRA = {
+    # Letters NFD does not decompose, because the stroke or the shape is the
+    # letter rather than a mark on one. Folded to the letter a person types
+    # when their keyboard cannot produce them.
+    "ß": "s", "ẞ": "s",          # German
+    "ø": "o", "Ø": "o",          # Danish, Norwegian
+    "æ": "a", "Æ": "a",          # Danish, Norwegian
+    "œ": "o", "Œ": "o",          # French
+    "đ": "d", "Đ": "d",          # Croatian, Serbian, Bosnian
+    "ð": "d", "Ð": "d",          # Icelandic, Faroese
+    "þ": "t", "Þ": "t",
+    "ł": "l", "Ł": "l",          # Polish
+    "ı": "i", "İ": "i",          # Turkish dotless/dotted i
+}
+
+
+def _fold_char(character):
+    """One character in, exactly one character out. See the note above."""
+    lowered = character.lower()
+    if len(lowered) != 1:
+        lowered = lowered[0]
+    if lowered in _FOLD_EXTRA:
+        return _FOLD_EXTRA[lowered]
+    stripped = "".join(
+        c for c in unicodedata.normalize("NFD", lowered)
+        if not unicodedata.combining(c))
+    return stripped[0] if stripped else lowered
+
+
+def fold(text):
+    """Lowercased and stripped of diacritics, for MATCHING only.
+
+    Never for storage, never for display, and never for evidence: what a
+    person wrote is what an alert has to show.
+    """
+    return "".join(_fold_char(c) for c in text or "")
+
+
+def _folded_hits(body, patterns):
+    """`_hits`, but against the folded body - and evidence from the original.
+
+    The fold is index-preserving, so a match found in the folded text names
+    the same span in `body`. That is the whole reason it is index-preserving.
+    """
+    folded = fold(body)
+    found = []
+    for pattern in patterns:
+        match = re.search(pattern, folded, re.I)
+        if match:
+            found.append(body[match.start():match.end()].strip().lower())
+    return found
+
+
 def normalise(text):
     # TASK-066: LinkedIn (and many mobile clients) use the Unicode right
     # single quotation mark (U+2019, ') instead of the ASCII apostrophe.
@@ -955,8 +1494,36 @@ def normalise(text):
 # ---------------------------------------------------------------------------
 
 # Quote-header patterns: the line that introduces a quoted block.
+#
+# THE HEADER WRAPS, AND THAT COST THE CLEAREST OPT-OUT IN THE CORPUS.
+#
+# Measured 2026-09-24 against `work/reply-drafts.jsonl`, the real inbound
+# bodies EmailBison delivered on 2026-09-22/23. One of the 28 is a prospect
+# answering a sequence with `no. stop.` - and Gmail wrote its attribution
+# across two lines:
+#
+#     no. stop.
+#
+#     On Tue, Sep 22, 2026 at 3:34 PM <our sender> <...>
+#     wrote:
+#     > Hey <first name>,
+#
+# `^On .+\bwrote:` cannot match that, because `.` does not cross a newline.
+# So the header was not recognised, the quote start fell through to the first
+# `>` line, and the "prospect's own words" came back as
+# `"no. stop.\n\nOn Tue, ... \nwrote:"` - 94 characters instead of 9.
+#
+# That defeats every WHOLE-MESSAGE anchor in this module at once. `^stop$`,
+# `^no$`, `^nope$` and every standalone opt-out token added on 2026-09-24 are
+# anchored precisely so a risky one-word pattern cannot fire inside a
+# sentence; an extractor that leaves a quote header attached means the anchor
+# never gets the chance. The reply above classified `unknown` at 0.00.
+#
+# Bounded rather than greedy: at most two continuation lines and 200
+# characters each, so this reads a wrapped attribution and does not run away
+# through a whole message looking for the word "wrote".
 _ON_WROTE = re.compile(
-    r"^On .+\bwrote:", re.M)
+    r"^On\b[^\n]{0,200}(?:\n[^\n]{0,200}){0,2}?\bwrote:", re.M)
 _OUTLOOK_SEP = re.compile(
     r"^-{5,}Original Message-+$", re.M | re.I)
 
@@ -1156,6 +1723,21 @@ def classify_rules(text):
                 "classifier": RULE_HASH}
     for category, patterns, confidence in RULES:
         hits = _hits(body, patterns)
+        if category == UNSUBSCRIBE:
+            # THE OPT-OUT GROUP IS MATCHED AGAINST THE FOLDED BODY, and the
+            # standalone tokens are tested HERE, at UNSUBSCRIBE's own place in
+            # the priority table - the same way the bare acknowledgement is
+            # tested at AUTOMATED's, and for the same reason. Putting either
+            # before the loop would let it outrank `ACCOUNT_DNC`, which sits
+            # above this row because "remove our whole company" has to beat
+            # "remove me".
+            #
+            # `_folded_hits` rather than `_hits`: `odhlásit` and `odhlasit`,
+            # `Leiratkozás` and `leiratkozas`, `proszę` and `prosze` are the
+            # same request, and ISSUE-024 is what happens when a safety list
+            # cannot see that.
+            hits = (_folded_hits(body, patterns)
+                    + _folded_hits(body, STANDALONE_STOP_PATTERNS))
         if category == AUTOMATED and not hits and _is_bare_acknowledgement(body):
             # OPERATOR, 2026-09-22: "'thanks for your email' with no
             # content" is automated. It is checked HERE, at AUTOMATED's own

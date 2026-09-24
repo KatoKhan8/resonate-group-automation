@@ -280,10 +280,77 @@ class AgencySuppressionSaysNothingAboutWhy(HygieneTest):
         with self.assertRaises(ValueError):
             agencydnc.add("email", "x@y.test", "because-i-said-so")
 
-    def test_a_reply_does_not_put_anybody_on_the_agency_list(self):
-        """Client history stays inside the client's tenancy."""
-        rec = self.replied(self.record(), JOHN, ap.UNSUBSCRIBE)
-        self.assertEqual(len(agencydnc.Index()), 0)
+    def test_an_ordinary_reply_does_not_put_anybody_on_the_agency_list(self):
+        """Client history stays inside the client's tenancy.
+
+        REWRITTEN 2026-09-24. This asserted it of EVERY reply including an
+        unsubscribe, which was right until the operator removed the
+        unsubscribe link from every campaign and made the reply the whole
+        opt-out mechanism. An opt-out that stops at a tenancy boundary is not
+        an opt-out: the next workspace to import this person writes to them
+        again.
+
+        So the guarantee is narrowed to what it still is, and the narrowing
+        is the exception rather than the rule - every outcome below is an
+        answer about this quarter's OFFER and stays where it was heard.
+        """
+        for outcome in (ap.POSITIVE, ap.NEUTRAL, ap.NEGATIVE, ap.NOT_NOW,
+                        ap.NOT_ICP, ap.WRONG_PERSON, ap.LEFT_COMPANY,
+                        ap.EXISTING_CLIENT, ap.REFERRAL, ap.UNKNOWN):
+            with self.subTest(outcome=outcome):
+                self.setUp()
+                self.replied(self.record(), JOHN, outcome)
+                self.assertEqual(len(agencydnc.Index()), 0)
+
+    def test_only_a_removal_request_crosses_the_tenancy_boundary(self):
+        """OPERATOR, 2026-09-24. The one shape of reply that crosses.
+
+        Asked through `keys_for`, which is `agencydnc`'s own definition of a
+        strong identifier - the profile URL is canonicalised on the way in, so
+        hashing the raw string here would test a different question.
+        """
+        for outcome in ap.AGENCY_SUPPRESSION_OUTCOMES:
+            with self.subTest(outcome=outcome):
+                self.setUp()
+                rec = self.replied(self.record(), JOHN, outcome)
+                john = rec["contacts"][0]
+                index = agencydnc.load()
+                keys = agencydnc.keys_for(john)
+                self.assertEqual(sorted(k.split(":")[0] for k in keys),
+                                 ["email", "linkedin"])
+                for plain, digest in keys.items():
+                    self.assertIn(digest, index, plain.split(":")[0])
+
+    def test_a_company_wide_stop_carries_every_colleague_across(self):
+        """`account_do_not_contact` means the COMPANY asked, so all of them.
+
+        `_suppress_account` suppresses every contact individually, and each
+        one's identifiers cross with it. Sarah never replied; the company
+        spoke for her, which is the whole difference between this class and
+        `unsubscribe`.
+        """
+        rec = self.replied(self.record(), JOHN, ap.ACCOUNT_DNC)
+        index = agencydnc.load()
+        for contact in rec["contacts"]:
+            for plain, digest in agencydnc.keys_for(contact).items():
+                self.assertIn(digest, index, f"{contact['key']}: {plain}")
+
+    def test_what_crosses_still_leaks_nothing(self):
+        """The privacy model is unchanged, and that is load-bearing.
+
+        A one-way hash and a closed reason category. No name, no company, no
+        workspace, no record id, no campaign - so the file cannot be read as
+        a directory of another client's prospects.
+        """
+        self.replied(self.record(), JOHN, ap.UNSUBSCRIBE)
+        with open(self.dnc, encoding="utf-8") as handle:
+            body = handle.read()
+        for leak in ("john", "acme", "productive", "linkedin", "smith",
+                     "unsubscribe"):
+            self.assertNotIn(leak, body.lower(), leak)
+        entry = agencydnc.load()[
+            agencydnc.fingerprint("email", "john@acme.test")]
+        self.assertEqual(entry["reason"], agencydnc.REQUESTED)
 
 
 # ------------------------------------------------------------- tenancy

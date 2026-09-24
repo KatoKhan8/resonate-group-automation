@@ -394,13 +394,66 @@ def handle(event, recs, rows=None, config=None, post=None, model=None):
         # attribution is still not made: no reply event, no classification,
         # no claim that any of these records received anything. A hold is
         # reversible by the person who reads the reply. A send is not.
-        held = []
+        #
+        # AND A REMOVAL REQUEST IS SUPPRESSED, NOT MERELY HELD.
+        #
+        # OPERATOR DECISION 2026-09-24: there is no unsubscribe link, the
+        # reply IS the opt-out, and the suppression has to cross workspaces.
+        # THE CROSS-WORKSPACE CASE IS EXACTLY THIS BRANCH. One person worked
+        # by two of our workspaces is two records, `match_record` refuses to
+        # say which one the reply answers - correctly - and until today the
+        # whole outcome of "unsubscribe me" from that person was a HOLD that
+        # an operator clears the moment they have read it.
+        #
+        # The refusal is about WHICH RECORD, and a removal request does not
+        # depend on the answer. The text says what it says whoever it was
+        # addressed to, so it is classified here - reading costs nothing and
+        # claims nothing - and only the two stop classes are acted on:
+        #
+        #     unsubscribe / account_do_not_contact -> suppressed everywhere
+        #                                             this person is held,
+        #                                             and on the agency list
+        #     everything else                      -> held, exactly as before
+        #
+        # This does not treat an unread reply as an unsubscribe, which is the
+        # thing `hold_for_unattributed_reply`'s docstring warns against: a
+        # positive, a refusal and an out-of-office all still take the hold.
+        #
+        # NOTHING IS SUPPRESSED FOR SOMEBODY WE DO NOT HOLD. `correspondents`
+        # returning nothing means this reply is not to us - the HeyReach key
+        # is workspace-wide and most of that inbox is the client's own
+        # traffic (REFUTED-006) - and putting a stranger's address on the
+        # agency-wide list would suppress, for every client we have, a person
+        # we never wrote to.
+        held, suppressed = [], []
         if events.is_reply(event):
+            reading = replies.classify(_text_of(event), model=model,
+                                       subject=event.get("subject"))
+            outcome["classification"] = reading
+            removal = reading.get("classification") in (
+                replies.UNSUBSCRIBE, replies.ACCOUNT_DNC)
             for candidate, contact in events.correspondents(recs, event):
-                if accountpolicy.hold_for_unattributed_reply(
+                if removal:
+                    # `changed` rather than "we called it": a redelivered
+                    # event must report nothing, exactly as
+                    # `hold_for_unattributed_reply` reports nothing when the
+                    # contact is already held. `ingest`'s save is keyed off
+                    # this list, and a replay that reported a change would
+                    # rewrite the queue for no reason.
+                    moved = accountpolicy.apply_reply(
+                        candidate, contact.get("key"),
+                        accountpolicy.CLASSIFIER_OUTCOME[
+                            reading["classification"]],
+                        at=event.get("at"), channel=event.get("channel"),
+                        workspace=candidate.get("client"))
+                    if moved.get("changed"):
+                        suppressed.append((candidate.get("id"),
+                                           contact.get("key")))
+                elif accountpolicy.hold_for_unattributed_reply(
                         candidate, contact, at=event.get("at")):
                     held.append((candidate.get("id"), contact.get("key")))
         outcome["held_unattributed"] = held
+        outcome["suppressed_unattributed"] = suppressed
         # TASK-238: An event on a seat or campaign that is NOT ours is
         # dropped - no notification raised. The hold above is NOT skipped:
         # an unattributable reply still stops the cadence to that person
@@ -551,7 +604,28 @@ def ingest(payloads, provider, recs=None, rows=None, config=None, post=None,
             event.setdefault("provider_workspace", provider_workspace)
     outcomes = [handle(e, recs, rows=rows, config=config, post=post, model=model)
                 for e in neutral]
-    if own and any(o["applied"] and o["applied"]["status"] == "applied"
+    # THE SAVE CONDITION WAS `applied`, AND AN UNATTRIBUTABLE REPLY IS NOT
+    # `applied`.
+    #
+    # `handle` writes real state for a reply it refuses to attribute: a hold
+    # on every record carrying that person since the 2026-09-12 ambiguous-reply
+    # fix, and since 2026-09-24 a permanent suppression when the reply is a
+    # removal request. Both are in-memory mutations of `recs`, and the only
+    # save was gated on some event in the SAME PAGE having matched a record.
+    #
+    # So a page whose replies were all unattributable saved nothing, and the
+    # stop existed until the process moved on. It has never shown up as a test
+    # failure because `test_a_reply_stops_a_person_on_every_record` calls
+    # `handle` directly and writes the records back itself
+    # (`with store.transaction() as rows: rows[:] = recs`) - the test supplies
+    # the save that production does not.
+    #
+    # Asking "did anything change" rather than "did anything match" is the
+    # whole fix. `expect_digest` still refuses a clobber, so a save that was
+    # not needed costs one comparison.
+    if own and any((o["applied"] and o["applied"]["status"] == "applied")
+                   or o.get("held_unattributed")
+                   or o.get("suppressed_unattributed")
                    for o in outcomes):
         store.save(recs, expect_digest=base)
     return outcomes
