@@ -136,3 +136,62 @@ class TestAttributionIsPositiveEvidenceOnly(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheAlertMustNameTheCAMPAIGNTHATSTOPPED(unittest.TestCase):
+    """2026-09-23T22:18:46Z: 491 paused, and the CRITICAL said 487.
+
+    `_alert_if_stopped_by_someone_else` was called with the module constant
+    `PROVIDER_ID` (487) rather than `watched`, the loop's own `--campaign`
+    argument. One loop script runs nine times over nine campaigns, so every
+    external-stop alert the estate has ever raised named 487 - while carrying
+    the REAL campaign's `emails_sent` and `leads`, which is what made it
+    unreadable rather than merely wrong. The 491 alert said 322 sends and 332
+    leads against a campaign that has 0 and 10. A critical alert naming a
+    healthy campaign reads as a false alarm, and that one was never actioned.
+
+    Every other emit in the cycle already used `watched`. This one did not,
+    and the existing tests above could not see it: they call the function
+    directly with provider_id and watched set to the SAME value, so the
+    fixture agreed with the bug.
+    """
+
+    def test_the_call_site_passes_watched_not_the_module_constant(self):
+        """Read by `ast`: importing the loop pulls in providers."""
+        import ast
+        import os
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "scripts", "bison_watch_loop.py")
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read())
+        calls = [n for n in ast.walk(tree)
+                 if isinstance(n, ast.Call)
+                 and isinstance(n.func, ast.Name)
+                 and n.func.id == "_alert_if_stopped_by_someone_else"]
+        self.assertEqual(len(calls), 1, "one call site expected")
+        first = calls[0].args[0]
+        self.assertIsInstance(first, ast.Name)
+        self.assertEqual(
+            first.id, "watched",
+            "the alert must name the campaign this loop watches, not the "
+            "module default - PROVIDER_ID is 487 for all nine watchers")
+
+    def test_the_identifier_and_the_figures_describe_one_campaign(self):
+        """The 491 alert's shape, asserted end to end."""
+        self.watch = _load()
+        self.lines, self.notified = [], []
+        self.watch._we_did_it = lambda *a, **k: (False, "no pause step")
+        from src import notify
+        real = notify.notify
+        notify.notify = lambda *a, **k: self.notified.append((a, k))
+        self.addCleanup(setattr, notify, "notify", real)
+        self.watch._alert_if_stopped_by_someone_else(
+            491, "491", "active",
+            {"status": "paused", "emails_sent": 322, "leads": 332},
+            self.lines.append)
+        fields = self.notified[0][1]["fields"]
+        self.assertEqual(fields["campaign"], "491")
+        self.assertEqual(fields["emails_sent"], 322)
+        self.assertIn("491", self.lines[0])
+        self.assertNotIn("487", str(fields))

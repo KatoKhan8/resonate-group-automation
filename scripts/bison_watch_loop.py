@@ -580,8 +580,16 @@ def main(argv=None):
                 milestone(PROVIDER_ID, "sequence_finished",
                           status=current["status"],
                           emails_sent=current["emails_sent"])
+            # `watched`, NOT `PROVIDER_ID`. The module constant is 487 and
+            # this loop runs nine times over nine `--campaign` values, so
+            # passing it named campaign 487 in EVERY external-stop alert the
+            # estate has ever raised. On 2026-09-23T22:18:46Z the 491 watcher
+            # reported 491's own pause as `{"campaign": "487", "emails_sent":
+            # 322, "leads": 332}` - 487 has 0 sends and 10 leads. A CRITICAL
+            # naming a campaign that is demonstrably fine reads as a false
+            # alarm, and that one went unactioned into the morning.
             _alert_if_stopped_by_someone_else(
-                PROVIDER_ID, watched, previous["status"], current, emit)
+                watched, watched, previous["status"], current, emit)
         if current["leads"] != previous["leads"]:
             emit(f"COHORT {watched} leads {previous['leads']} -> {current['leads']}")
         if current["emails_sent"] > previous["emails_sent"]:
