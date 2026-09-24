@@ -165,6 +165,23 @@ def client_channels(rows=None):
 INTERNAL_WORKER_TERMS = (
     "claude code", "qwen", "glm", "grok", "buggie",
     "subagent", "model worker",
+    # BARE `claude`, ADDED 2026-09-23 by an adversarial sweep of the client
+    # scope. `claude code` was here and `claude` was not, while `qwen`,
+    # `glm` and `grok` - the other three model workers - all were. So
+    #
+    #     "Claude is reviewing the branch."
+    #
+    # reached a client channel untouched. That is an omission rather than a
+    # decision: the agent is called Resonate OS to a client, and which model
+    # writes its code is not the client's business.
+    #
+    # THE TRADE-OFF, STATED. `Claude` is also a French given name, so a
+    # client answer about a contact called Claude would now be refused and
+    # the client would get the fallback. That direction is the safe one -
+    # a refusal is visible and recoverable, a disclosure is not - and
+    # `TASK-249` already establishes that this agent answers about an
+    # account and never names a person, so the collision should not arise.
+    "claude",
 )
 
 #: Engineering and incident vocabulary.

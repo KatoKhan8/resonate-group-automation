@@ -197,18 +197,58 @@ def names_the_test_identity_on_purpose(path):
 
 
 def tracked_files():
-    """Every file git actually tracks. Untracked local state is not our problem.
+    """Every file a push would carry: tracked, AND new but not ignored.
 
     Walking the filesystem instead would scan `work/`, `out/` and the real
     `config/suppress.local.txt` - all gitignored, all full of real data by
     design - and this guard would fail permanently on an operator's machine
     while proving nothing about what a push would carry.
+
+    ## `ls-files` ALONE COULD NOT SEE A FILE UNTIL IT WAS COMMITTED
+
+    Found 2026-09-23, the hard way, by this guard's own author. A new
+    handoff document was written, the guard was run and reported 13 of 13,
+    and the document was then committed - carrying a real name. The guard
+    was right about every file it looked at and had not looked at that one,
+    because `git ls-files` lists only what is already tracked.
+
+    **So the green was about the previous state of the repository.** The
+    natural order of work - write the file, run the check, commit - is
+    exactly the order in which this check could not fail.
+
+    `--others --exclude-standard` adds files that are NEW and NOT ignored:
+    precisely the set that a `git add` would sweep up. `work/` and the other
+    gitignored trees stay out, because `--exclude-standard` honours
+    `.gitignore`, which is the property the docstring above depends on.
     """
-    out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+    tracked = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+                             capture_output=True, text=True,
+                             check=True).stdout
+    # NEW AND NOT IGNORED. A second call rather than one combined invocation,
+    # because `ls-files -o` without `-c` returns ONLY the others and silently
+    # dropping the tracked set is the failure this is fixing, one level down.
+    new = subprocess.run(["git", "ls-files", "-z", "--others",
+                          "--exclude-standard"], cwd=ROOT,
                          capture_output=True, text=True, check=True).stdout
-    return [p for p in out.split("\0")
-            if p and p.endswith(TEXT_SUFFIXES) and p != SELF
-            and p not in HYGIENE_EXEMPT]
+    #: THE EXEMPTION IS APPLIED AT THE THREE IDENTITY CHECKS, NOT HERE.
+    #: Master's `tracked_files` dropped `HYGIENE_EXEMPT` from the corpus
+    #: outright. That is wider than the exemption that was argued for: it
+    #: also stops these two files being checked for phone numbers, live
+    #: account figures, client domains and CRM narrative, so a real PROSPECT
+    #: landing in `src/testidentity.py` would not fail anything. The
+    #: exemption was granted for the NAME, the HANDLE and the ADDRESS of the
+    #: test identity, and `names_the_test_identity_on_purpose` is called at
+    #: exactly those three checks. So the files stay in the corpus.
+    seen, out = set(), []
+    for chunk in (tracked, new):
+        for path in chunk.split("\0"):
+            if not path or path == SELF or path in seen:
+                continue
+            if not path.endswith(TEXT_SUFFIXES):
+                continue
+            seen.add(path)
+            out.append(path)
+    return out
 
 
 def read(path):
@@ -440,9 +480,6 @@ class TestSecretsAreNotTracked(unittest.TestCase):
         self.assertEqual(bad, [], f"runtime state tracked: {bad}")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TestTheExemptionStaysNarrow(unittest.TestCase):
     """An exemption is a hole in a guard. These keep it the size it was
@@ -485,7 +522,13 @@ class TestTheExemptionStaysNarrow(unittest.TestCase):
         """
         needles = ("zbeslic", "beslic")
         hits = []
-        for path, text in corpus():           # corpus() already drops exempt
+        for path, text in corpus():
+            # ELSE. The corpus deliberately still CARRIES the two exempt
+            # files - they are checked for prospects, client domains and
+            # account figures like anything else - so this test skips them
+            # itself rather than relying on `tracked_files` to drop them.
+            if names_the_test_identity_on_purpose(path):
+                continue
             low = text.lower()
             for needle in needles:
                 if needle in low:
@@ -495,3 +538,14 @@ class TestTheExemptionStaysNarrow(unittest.TestCase):
             "the test identity is named outside the two exempt files. "
             "Reference testidentity's constants or say 'the test identity':\n"
             + "\n".join(sorted(set(hits))))
+
+
+# AT THE END, AND IT HAS TO BE. Until this merge the block sat above
+# `TestTheExemptionStaysNarrow`, so `python tests/test_fixture_hygiene.py`
+# called `unittest.main()` before that class existed and collected 13 tests
+# instead of 17 - the four guarding the exemption's size silently among the
+# missing, and a clean "Ran 13 tests" the only thing anyone saw. Import via
+# `-m unittest` ran all 17, which is why it was green both ways and wrong in
+# one. Anything appended below this line does not run.
+if __name__ == "__main__":
+    unittest.main()

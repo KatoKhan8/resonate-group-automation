@@ -129,6 +129,58 @@ def _campaigns_to_read(entry, cap):
     return ids[:cap], max(0, len(ids) - cap)
 
 
+#: Per-campaign provider reads in flight at once.
+#:
+#: MEASURED 2026-09-23: `sends_today` 21.72s over 8 campaigns and
+#: `activity_this_week` 44.81s over 10, and **100% of the agent's latency
+#: was serial provider HTTP** - sixteen to twenty round trips, one after
+#: another, at roughly 1.4s each.
+#:
+#: **THIS BOUNDS THE BURST, NOT THE RATE, AND THE DIFFERENCE MATTERS.** The
+#: provider's documented limit is 60 calls a minute. Six in flight against
+#: a ~1.4s call is about four a second while a fan-out is running, which is
+#: fine for the twenty-odd calls one turn makes and is NOT a per-minute
+#: budget: nothing here would stop twenty turns in a minute from exceeding
+#: it. If that ever happens the fix is a shared token bucket, and this
+#: comment is here so the next person does not read a concurrency bound as
+#: one.
+PROVIDER_FANOUT = 6
+
+
+def _fan_out(ids, read, workers=None):
+    """`read(id)` for every id, concurrently, ANSWERS IN THE ORDER GIVEN.
+
+    Returns `[(id, value, exception_or_None)]`. The exception is HANDED
+    BACK rather than raised or swallowed, because the serial loops this
+    replaces each treat a failed campaign differently - some record it
+    unreadable, some skip it - and a helper that picked one of those would
+    silently change what every caller reports.
+
+    ORDER IS THE CALLER'S, not completion order. `_campaigns_to_read`
+    hands over newest-first and several answers are built by walking that
+    list until a cap; reordering it here would change which campaigns a
+    capped answer is about, invisibly.
+    """
+    ids = list(ids)
+    if len(ids) < 2:
+        # One campaign is not worth a thread, and zero must not create a
+        # pool at all - `ThreadPoolExecutor(max_workers=0)` raises.
+        return [(i, *_read_one(read, i)) for i in ids]
+    from concurrent.futures import ThreadPoolExecutor
+    workers = min(workers or PROVIDER_FANOUT, len(ids))
+    with ThreadPoolExecutor(max_workers=workers,
+                            thread_name_prefix="readback") as pool:
+        out = list(pool.map(lambda i: (i, *_read_one(read, i)), ids))
+    return out
+
+
+def _read_one(read, campaign_id):
+    try:
+        return read(campaign_id), None
+    except Exception as exc:                                    # noqa: BLE001
+        return None, exc
+
+
 def _sender_domain(row):
     """The sending DOMAIN of one queue row, or `None`.
 
@@ -1881,14 +1933,29 @@ def activity_this_week(scope, argument=None):
         datetime.timedelta(seconds=WEEK_SECONDS)
 
     rows, sent_week, lifetime, unreadable = [], 0, 0, 0
-    for campaign_id in ids:
+    # PARALLEL, PER CAMPAIGN. The two reads for ONE campaign stay in order -
+    # `_sent_since` walks the same queue `campaign_by_id` just read, so with
+    # the 60s readback cache in front of it the second is free - and the
+    # campaigns run alongside each other. Measured serial at 44.81s over
+    # ten campaigns, the single largest tool cost in the 2026-09-23 replay.
+    def _both(campaign_id):
         detail = readback.campaign_by_id(campaign_id)
+        if detail.get("_error"):
+            return detail, None
+        return detail, _sent_since(campaign_id, cutoff)
+
+    for campaign_id, pair, exc in _fan_out(ids, _both):
+        if exc is not None:
+            unreadable += 1
+            rows.append({"campaign_id": campaign_id,
+                         "_error": "%s" % type(exc).__name__})
+            continue
+        detail, week = pair
         if detail.get("_error"):
             unreadable += 1
             rows.append({"campaign_id": campaign_id,
                          "_error": detail["_error"]})
             continue
-        week = _sent_since(campaign_id, cutoff)
         counter = detail.get("emails_sent")
         if isinstance(counter, int):
             lifetime += counter
@@ -2011,9 +2078,26 @@ def lead_counts(scope, argument=None):
     enrolled_total = sent_total = replied_total = emails_week = 0
     people_week = set()
 
-    for campaign_id in wanted:
-        row = {"campaign_id": campaign_id}
+    # PARALLEL READS, SERIAL ACCUMULATION. The three provider reads for one
+    # campaign run alongside the other campaigns' - but the totals below
+    # are summed in the caller's order, on one thread, because a running
+    # total updated from a pool is a race whose symptom is a number that is
+    # merely a bit wrong, which is the hardest kind here to ever notice.
+    def _read(campaign_id):
         detail = readback.campaign_by_id(campaign_id)
+        if detail.get("_error"):
+            return detail, None, None
+        return (detail, _provider_membership(campaign_id),
+                _week_activity(campaign_id, cutoff))
+
+    for campaign_id, triple, exc in _fan_out(wanted, _read):
+        row = {"campaign_id": campaign_id}
+        if exc is not None:
+            unreadable += 1
+            row["_error"] = type(exc).__name__
+            rows.append(row)
+            continue
+        detail, enrolled, week = triple
         if detail.get("_error"):
             unreadable += 1
             row["_error"] = detail["_error"]
@@ -2030,7 +2114,6 @@ def lead_counts(scope, argument=None):
         sent_total += row.get("sent_lifetime") or 0
         replied_total += row.get("replied_lifetime") or 0
 
-        enrolled = _provider_membership(campaign_id)
         if enrolled is None:
             unreadable += 1
             row["enrolled_unreadable"] = True
@@ -2038,7 +2121,6 @@ def lead_counts(scope, argument=None):
             row["enrolled"] = enrolled
             enrolled_total += enrolled
 
-        week = _week_activity(campaign_id, cutoff)
         if week is None:
             queue_unreadable += 1
             row["last_7_days_unreadable"] = True
@@ -2605,8 +2687,13 @@ def sends_today(scope, argument=None):
     entry = (knowledge.pack().get("workspaces") or {}).get(slug) or {}
     ids, hidden = _campaigns_to_read(entry, SENDS_TODAY_CAP)
     rows = []
-    for campaign_id in ids:
-        row = readback.campaign_by_id(campaign_id)
+    # PARALLEL. `campaign_by_id` never raises - it labels its own failure -
+    # so the exception slot is empty here by construction, and the shape is
+    # kept rather than special-cased so a future raising read is not
+    # silently dropped.
+    for _id, row, exc in _fan_out(ids, readback.campaign_by_id):
+        if exc is not None or not row:
+            continue
         if row.get("emails_sent") or row.get("queue_rows"):
             rows.append(row)
     return {"read_at": _now(), "workspace": slug,
@@ -2666,12 +2753,23 @@ def weekly_plan(scope, argument=None):
 
     running, unreadable = [], 0
     emails_week, people_week = 0, set()
-    for campaign_id in ids:
+
+    # PARALLEL READS, SERIAL ACCUMULATION - see `lead_counts` for why the
+    # totals are summed on one thread.
+    def _read(campaign_id):
         detail = readback.campaign_by_id(campaign_id)
+        if detail.get("_error"):
+            return detail, None
+        return detail, _week_activity(campaign_id, cutoff)
+
+    for campaign_id, pair, exc in _fan_out(ids, _read):
+        if exc is not None:
+            unreadable += 1
+            continue
+        detail, week = pair
         if detail.get("_error"):
             unreadable += 1
             continue
-        week = _week_activity(campaign_id, cutoff)
         row = {"campaign_id": campaign_id, "name": detail.get("name"),
                "status": detail.get("status")}
         if week is not None:
@@ -2755,24 +2853,43 @@ def _forward_window(campaign_ids):
 
     Collapsing the middle two into 0 is the mistake this whole codebase is
     a monument to, so they never meet.
+
+    ## THIRTY SERIAL HTTPS REQUESTS, AND NOBODY WAS COUNTING THEM
+
+    Three days by ten campaigns, one after another, straight to
+    `bison.sending_schedule` - bypassing `slackagentreadback`, which is
+    where the agent's provider reads are supposed to live. Found 2026-09-24
+    by stubbing the campaign and queue reads and profiling `weekly_plan`:
+    it still cost 3.4s and still went to the network. The read now goes
+    through `readback.sending_schedule`, so the 60-second cache covers it
+    and it is counted against the same provider budget as everything else.
+
+    The day-and-campaign pairs are fanned out TOGETHER rather than a day at
+    a time, because three sequential fan-outs of ten would leave two thirds
+    of the wait in place.
     """
-    out = {}
-    for day in FORWARD_DAYS:
-        planned = {}
-        for campaign_id in campaign_ids:
-            try:
-                from .providers import bison
-                row = bison.sending_schedule(campaign_id, day)
-            except Exception as exc:                            # noqa: BLE001
-                planned[campaign_id] = (
-                    "none scheduled"
-                    if type(exc).__name__ == "SendingScheduleEmpty"
-                    else "unreadable")
-                continue
-            value = (row or {}).get("emails_being_sent")
-            planned[campaign_id] = value if isinstance(value, int) \
-                else "unreadable"
-        out[day] = planned
+    pairs = [(day, campaign_id) for day in FORWARD_DAYS
+             for campaign_id in campaign_ids]
+
+    def read(pair):
+        day, campaign_id = pair
+        return readback.sending_schedule(campaign_id, day)
+
+    out = {day: {} for day in FORWARD_DAYS}
+    for (day, campaign_id), row, exc in _fan_out(pairs, read):
+        if exc is not None:
+            # THE THREE STATES STAY APART. "none scheduled" is the
+            # provider's own empty answer and a result; "unreadable" is a
+            # failed read. Collapsing either into 0 is the mistake this
+            # codebase is a monument to.
+            out[day][campaign_id] = (
+                "none scheduled"
+                if type(exc).__name__ == "SendingScheduleEmpty"
+                else "unreadable")
+            continue
+        value = (row or {}).get("emails_being_sent")
+        out[day][campaign_id] = value if isinstance(value, int) \
+            else "unreadable"
     return out
 
 

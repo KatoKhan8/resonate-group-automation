@@ -201,12 +201,34 @@ class ClarifyingQuestions(IsolatedState, unittest.TestCase):
         self.restore()
 
     def test_a_clarifying_question_is_asked_and_nothing_is_read(self):
-        result = conversation.respond("how is it going?",
+        """An AMBIGUOUS question, which is what clarifying is for.
+
+        This used "how is it going?", which is now routed straight to
+        `working_on` without a model call - and the plan prompt has always
+        said "a broad question is not ambiguous; answer it", so that route
+        agrees with the instruction rather than overriding it. But it meant
+        this test no longer reached the clarify path. A question naming a
+        campaign nobody can identify does.
+        """
+        result = conversation.respond("how is the new one doing?",
                                       channel="C_INTERNAL", user="U",
                                       model=self.AsksToClarify())
         self.assertEqual(result["how"], "clarify")
         self.assertEqual(result["tools"], [])
         self.assertIn("Which campaign", result["reply"])
+
+    def test_a_broad_question_is_answered_rather_than_clarified(self):
+        """The other half, and the behaviour that replaced it.
+
+        The planner is told a broad question is not ambiguous. A model that
+        asks to clarify one anyway must not be able to stall the turn.
+        """
+        result = conversation.respond("how is it going?",
+                                      channel="C_INTERNAL", user="U",
+                                      model=self.AsksToClarify())
+        self.assertNotEqual(result["how"], "clarify")
+        self.assertEqual([t.get("name") for t in result["tools"]],
+                         ["working_on"])
 
 
 class WhenThereIsNoModel(IsolatedState, unittest.TestCase):
@@ -311,13 +333,32 @@ class AModelThatFailsDoesNotTakeTheAnswerWithIt(IsolatedState, unittest.TestCase
         self.assertIn("deterministic", result["how"])
 
     def test_the_planner_falls_back_to_keywords(self):
+        """A broken planner still answers.
+
+        NOT "what is running?" any more, and the swap is the point. That
+        question is now short-circuited to `working_on` BEFORE the model is
+        asked (`conversation.broad_question`), so it never reached the
+        broken planner and this stopped testing the fallback at all while
+        staying green on the `how` string. A question that actually needs
+        the planner is the only thing that exercises what this is for.
+
+        It is also the §2e defect in miniature: the keyword fallback for
+        "running" is `monitors`, so the old input here is exactly the
+        question that got answered with monitor health.
+        """
         calls, clarify, how = conversation.plan(
-            "what is running?",
+            "are the monitors alive?",
             slackscope.Scope(slackscope.INTERNAL, source="test"),
             [], self.Broken())
         self.assertIsNone(clarify)
         self.assertTrue(calls)
         self.assertIn("keywords", how)
+
+    def test_the_question_it_uses_is_one_the_planner_actually_sees(self):
+        """The guard on the test above, so the swap cannot silently undo."""
+        self.assertFalse(conversation.broad_question(
+            "are the monitors alive?",
+            slackscope.Scope(slackscope.INTERNAL, source="test")))
 
 
 if __name__ == "__main__":
