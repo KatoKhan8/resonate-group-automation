@@ -25,9 +25,16 @@ failure degrades to it rather than to `neutral`.
 The model adapter is a seam, not a dependency: deterministic rules run first
 and decide the clear cases for free. Tests never reach a model.
 """
+import hashlib
 import re
 
-VERSION = "rules-3"
+#: The RELEASE name. It is NOT an identity for the rules and must never be
+#: used as one - see `RULE_HASH` at the foot of this module. `rules-3`
+#: survived two rule changes on 2026-09-23 unchanged (`0b78fd68` rewrote a
+#: pattern and moved two phrases out of NEGATIVE; `83a30652` added QUESTION
+#: and SEND_INFO across 210 lines), so a verdict stored before them and one
+#: stored after carry the same string and compare equal.
+VERSION = "rules-4"
 
 POSITIVE = "positive"
 # TASK-020: should `positive` split into `positive` and `meeting`? The
@@ -912,7 +919,7 @@ def classify_taxonomy(text):
                     "confidence": confidence,
                     "reason": f"taxonomy: matched {category} phrase",
                     "evidence": [match.group(0).strip().lower()],
-                    "classifier": VERSION,
+                    "classifier": RULE_HASH,
                 }
     return None
 
@@ -1146,7 +1153,7 @@ def classify_rules(text):
     if not body:
         return {"classification": UNKNOWN, "confidence": 0.0,
                 "reason": "empty reply", "evidence": [],
-                "classifier": VERSION}
+                "classifier": RULE_HASH}
     for category, patterns, confidence in RULES:
         hits = _hits(body, patterns)
         if category == AUTOMATED and not hits and _is_bare_acknowledgement(body):
@@ -1174,7 +1181,7 @@ def classify_rules(text):
         if hits:
             return {"classification": category, "confidence": confidence,
                     "reason": f"matched {len(hits)} {category} phrase(s)",
-                    "evidence": hits[:4], "classifier": VERSION}
+                    "evidence": hits[:4], "classifier": RULE_HASH}
     return None
 def _excerpt(text, limit=200):
     body = normalise(text)
@@ -1303,7 +1310,7 @@ def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD,
             return {"classification": OUT_OF_OFFICE, "confidence": 0.9,
                     "reason": "the subject line announces an autoresponder",
                     "evidence": [str(subject)[:120]],
-                    "classifier": VERSION,
+                    "classifier": RULE_HASH,
                     "extract_method": extracted.get("method"),
                     "subject_detected": True,
                     "body_would_have_been": found}
@@ -1329,7 +1336,7 @@ def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD,
         except Exception as e:                       # a model is never trusted
             verdict = {"classification": UNKNOWN, "confidence": 0.0,
                        "reason": f"classifier failed: {type(e).__name__}",
-                       "evidence": [], "classifier": VERSION}
+                       "evidence": [], "classifier": RULE_HASH}
 
     if verdict is None:
         # "No rule matched" is UNKNOWN, not NEUTRAL. NEUTRAL means "we read
@@ -1340,7 +1347,7 @@ def classify(text, model=None, threshold=CONFIDENCE_THRESHOLD,
         # coverage they actually are. TASK-020, measured 2026-09-14.
         verdict = {"classification": UNKNOWN, "confidence": 0.0,
                    "reason": "no rule matched and no classifier was available",
-                   "evidence": [], "classifier": VERSION}
+                   "evidence": [], "classifier": RULE_HASH}
 
     # Below the bar, nobody is woken up and a human decides.
     if verdict["classification"] in ALERTING and verdict["confidence"] < threshold:
@@ -1581,3 +1588,62 @@ def _campaign_for(rec):
     except Exception:                                       # noqa: BLE001
         return None
     return None
+
+
+# ------------------------------------------------------------- rule identity
+#
+# WHAT A STORED VERDICT HAS TO CARRY FOR ANYBODY TO TRUST IT LATER.
+#
+# `src/replyverdict.py` asks this module for something that identifies the
+# RULE SET rather than the release, by name, so that it needs no edit on the
+# day it appears. Until today there was none, so `is_confirmed` was False for
+# every stored verdict and `confirmed_positives` was zero - which was the
+# TRUE answer to "how many stored positives can we prove are current", and
+# why Phase D item 4 correctly posted nothing.
+#
+# The fault this closes is a real one that reached a client: the agent
+# reported three positive replies where our own classifier says zero. A
+# guard comparing `classifier == VERSION` looks correct and is a rubber
+# stamp, because the release name does not move when the rules do.
+#
+# DERIVED FROM EVERY PATTERN GROUP, NOT A HAND-MAINTAINED LIST. The failure
+# being fixed is precisely that somebody added two whole categories and
+# nothing downstream could tell. A digest that had to be remembered would
+# fail the same way the version string did, so this walks the module: every
+# `*_PATTERNS` tuple, `RULES` with its order and confidences, and the two
+# scalars that change a verdict without changing a pattern.
+#
+# ORDER IS PART OF THE IDENTITY. `RULES` is a priority list - NOT_NOW sits
+# above POSITIVE deliberately - so reordering it changes what a reply is
+# classified as and must change the digest. Pattern GROUPS are sorted by
+# name because their order is an accident of where they sit in the file.
+
+
+def _rule_material():
+    """Everything that can change a verdict, in a stable order."""
+    material = []
+    for name in sorted(k for k in globals() if k.endswith("_PATTERNS")):
+        material.append(name)
+        material.extend(str(pattern) for pattern in globals()[name])
+    # RULES keeps its own order: it is a priority list, not a set.
+    for category, patterns, confidence in RULES:
+        material.append("%s|%r|%d" % (category, confidence, len(patterns)))
+    material.append("CONFIDENCE_THRESHOLD=%r" % (CONFIDENCE_THRESHOLD,))
+    material.append("BARE_ACK_MAX=%r" % (BARE_ACKNOWLEDGEMENT_MAX_CHARS,))
+    return "".join(material)
+
+
+def rule_digest():
+    """A short digest over the rules. Any pattern edit moves it."""
+    return hashlib.sha256(
+        _rule_material().encode("utf-8")).hexdigest()[:12]
+
+
+#: THE IDENTITY A STORED VERDICT CARRIES, and what `replyverdict` compares.
+#:
+#: Release name AND digest, because a bare hash in a log tells a reader
+#: nothing about which rules ran, and a bare release name is what got us
+#: here. Changing a single pattern changes the second half and leaves the
+#: first, which is the correct behaviour: the rules moved, the release did
+#: not, and a verdict from before the change is no longer confirmable.
+RULE_HASH = "%s+%s" % (VERSION, rule_digest())
