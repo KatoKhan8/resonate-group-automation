@@ -43,9 +43,9 @@ import json
 import os
 import unittest
 
-from src import researchpack, spendledger, store
+from src import researchpack, spendledger, store, webfetch
 from src.providers import apify
-from src.researchpack import actors, cache, facts
+from src.researchpack import actors, cache, facts, site as sitesource
 from tests.base import ProviderTest
 
 COMPANY = "https://www.linkedin.com/company/acme-test"
@@ -66,9 +66,48 @@ class PackTest(ProviderTest):
 
     def full(self, **over):
         kw = dict(live=True, client="productive", company="Acme Test Ltd",
-                  champion=CHAMPION)
+                  champion=CHAMPION, crawler=site_reader())
         kw.update(over)
         return researchpack.build("acme.test", **kw)
+
+
+#: A `site_page` row is not hand-written here. `webfetch._page` - the real
+#: function, on real markup - produces it, so the keys `site.research` reads
+#: are the keys the crawler writes and neither this file nor a future rename
+#: can drift them apart. See `SiteContentIsOursAndFree` below for what is
+#: and is not proven by that.
+SITE_MARKUP = (
+    "<html><head><title>Acme Test</title></head><body><main>"
+    "<h1>Acme Test Ltd</h1><p>%s</p></main></body></html>")
+
+
+def site_page(url, field="company_website", status=200, words=None):
+    return webfetch._page(url, field, status,
+                          SITE_MARKUP % (words or ("we build things. " * 40)),
+                          webfetch.settings())
+
+
+def site_reader(outcome=webfetch.HTTP_SUCCESS, pages=None):
+    """A stand-in for `webfetch.research`, with the same signature.
+
+    THE ENVELOPE IS THE PART A DOUBLE CANNOT PROVE, and this file says so
+    rather than implying otherwise: the keys below are `webfetch.research`'s
+    own `finish()` keys, read from the source, and the live run recorded in
+    `docs/MERGE-REQUEST-2026-09-24-RESEARCH-PACKS.md` is what actually
+    exercised them against real sites.
+    """
+    if pages is None:
+        pages = [site_page("https://acme.test/"),
+                 site_page("https://acme.test/about", field="about")]
+
+    def crawler(domain, config=None, now=None):
+        return {"domain": domain, "outcome": outcome, "pages": list(pages),
+                "stats": {"requests": len(pages) + 1, "bytes": 4096,
+                          "pages_kept": len(pages), "seconds": 0.4,
+                          "outcomes": [outcome]},
+                "retrieved_at": now or "2026-09-24T00:00:00+00:00",
+                "fallback_worthy": outcome in webfetch.FALLBACK_WORTHY}
+    return crawler
 
 
 class EveryActorIdIsOneApifyKnows(unittest.TestCase):
@@ -90,13 +129,40 @@ class EveryActorIdIsOneApifyKnows(unittest.TestCase):
                 self.assertRegex(actor, r"^[A-Za-z0-9_.-]+[~/][A-Za-z0-9_.-]+$")
 
     def test_the_four_the_operator_asked_for_are_all_here(self):
-        self.assertTrue(
-            {"company_posts", "open_roles", "person_posts", "site_content"}
-            <= set(actors.ACTORS))
+        """All four sources, but only three of them are Apify's."""
+        self.assertEqual(set(actors.SOURCES),
+                         {"company_posts", "open_roles", "person_posts",
+                          "site_content"})
+        self.assertTrue({"company_posts", "open_roles", "person_posts"}
+                        <= set(actors.ACTORS))
+
+    def test_no_actor_is_a_website_crawler_any_more(self):
+        """THE RULING, MADE UNREPRESENTABLE RATHER THAN DOCUMENTED.
+
+        `apify~website-content-crawler` was 72% of the per-account bill -
+        $0.02888 of $0.03987 - and the operator ruled on 2026-09-24 that
+        site content comes from our own crawler and Apify runs LinkedIn
+        only. An entry disabled by a flag is one edit from returning; this
+        asserts there is no entry to re-enable, and that asking the input
+        builder for one is an error rather than a payload.
+        """
+        for name, spec in actors.ACTORS.items():
+            with self.subTest(actor=name):
+                self.assertNotIn("website", spec["actor"])
+                self.assertNotIn("crawler", spec["actor"])
+        self.assertNotIn("site_content", actors.ACTORS)
+        with self.assertRaises(KeyError):
+            actors.build_input("site_content", ["https://acme.test/"])
+
+    def test_the_free_source_names_our_own_crawler_and_no_price(self):
+        spec = actors.FREE_SOURCES["site_content"]
+        self.assertEqual(spec["provider"], sitesource.PROVIDER)
+        self.assertEqual(spec["usd_per_account"], 0.0)
 
     def test_each_source_declares_the_kind_of_fact_it_makes(self):
         kinds = {spec["kind"] for spec in actors.ACTORS.values()
                  if spec["kind"]}
+        kinds |= {spec["kind"] for spec in actors.FREE_SOURCES.values()}
         self.assertEqual(kinds, set(facts.KINDS))
 
     def test_the_slug_resolver_asserts_nothing_and_says_so(self):
@@ -137,21 +203,19 @@ class TheRunLifecycleIsTheProvidersOwn(PackTest):
         payload = actors.build_input("person_posts", CHAMPION)
         self.assertFalse(payload["includeReposts"])
 
-    def test_only_the_crawler_is_sent_a_proxy_configuration(self):
-        """It is the only one of the four whose input schema declares one.
+    def test_no_input_carries_a_proxy_configuration_at_all(self):
+        """`proxyConfiguration` was the WEBSITE CRAWLER's field.
 
-        The crawler REFUSES a run without it - 400 `invalid-input` - which is
-        how this provider appeared to work for months and returned nothing.
-        The three LinkedIn actors route their own requests and do not declare
-        the field at all, so sending it is inventing input.
+        The three LinkedIn actors do not declare it - they route their own
+        requests - so sending it was inventing input for three actors that
+        would have rejected or ignored it. With the crawler gone from this
+        registry there is no actor left that declares the field, so no
+        payload built here may carry one.
         """
-        self.assertEqual(
-            actors.build_input("site_content", ["https://acme.test/"]
-                               )["proxyConfiguration"],
-            {"useApifyProxy": True})
         for name, target in (("company_posts", COMPANY),
                              ("open_roles", "Acme Test Ltd"),
-                             ("person_posts", CHAMPION)):
+                             ("person_posts", CHAMPION),
+                             ("company_slug", "Acme Test Ltd")):
             with self.subTest(actor=name):
                 self.assertNotIn("proxyConfiguration",
                                  actors.build_input(name, target))
@@ -160,8 +224,7 @@ class TheRunLifecycleIsTheProvidersOwn(PackTest):
         """Datacenter unless a specific actor is blocked, and nothing was."""
         for name, target in (("company_posts", COMPANY),
                              ("open_roles", "Acme Test Ltd"),
-                             ("person_posts", CHAMPION),
-                             ("site_content", ["https://acme.test/"])):
+                             ("person_posts", CHAMPION)):
             with self.subTest(actor=name):
                 payload = actors.build_input(name, target)
                 proxy = payload.get("proxyConfiguration") or {}
@@ -207,10 +270,13 @@ class TheLinkedinTargetStillGoesThroughTheUrlGuard(PackTest):
         self.assertEqual(self.cassette.calls, [])
         self.assertEqual(spendledger.load(), [])
 
-    def test_the_company_site_crawl_is_still_bounded_to_its_own_domain(self):
-        """The widening is for the LinkedIn actors. `site_content` means the
-        record's OWN site and its allowlist did not move."""
-        self.assertIsNone(actors.ACTORS["site_content"]["hosts"])
+    def test_the_company_site_read_is_still_bounded_to_its_own_domain(self):
+        """The widening is for the LinkedIn actors. `site_content` means
+        the record's OWN site, and now it does not reach Apify at all."""
+        self.assertTrue(sitesource.on_this_domain("https://www.acme.test/x",
+                                                  "acme.test"))
+        self.assertFalse(sitesource.on_this_domain("https://elsewhere.test/x",
+                                                   "acme.test"))
         with self.assertRaises(apify.UnsafeURL):
             apify.check_url("https://elsewhere.test/about",
                             allowed_domain="acme.test", resolve=False)
@@ -310,16 +376,24 @@ class EveryFactCarriesItsProvenance(PackTest):
             researchpack.run_actor("open_roles", "Acme Test Ltd",
                                    client="productive"), [])
 
-    def test_a_page_that_did_not_load_is_not_evidence(self):
-        """The body of a 404 is the site's own navigation, which reads as
-        ordinary company copy. Two of five pages 404'd on the first live
-        crawl, so this is the normal case."""
-        found = researchpack.run_actor("site_content",
-                                       ["https://acme.test/about"],
-                                       client="productive")
-        urls = [f["source_url"] for f in found]
-        self.assertNotIn("https://acme.test/our-team", urls)
-        self.assertEqual(len(found), 2)
+    def test_a_page_that_did_not_load_never_reaches_the_pack(self):
+        """WHERE THIS GUARD MOVED TO, AND WHY IT IS STRONGER THERE.
+
+        The body of a 404 is the site's own navigation, which reads as
+        ordinary company copy; two of five guessed pages 404'd on the
+        first live Apify crawl and were kept. The paid crawler returned a
+        row for every URL it was given and the pack had to filter on
+        `crawl.httpStatusCode`. `webfetch.research` never yields a non-200
+        at all - it drops the page before `_page` is reached - so the only
+        rows `site.research` can see answered 200, and this reads the
+        status off what it did get rather than trusting that.
+        """
+        out = self.full()
+        pages = [f for f in out["facts"] if f["kind"] == "site_page"]
+        self.assertTrue(pages)
+        for fact in pages:
+            with self.subTest(url=fact["source_url"]):
+                self.assertEqual(fact["extra"]["http_status"], 200)
 
     def test_an_undated_post_is_none_rather_than_today(self):
         """Inventing a date makes 'they just announced' a lie the copy can
@@ -432,9 +506,19 @@ class CostReachesTheOneLedger(PackTest):
         self.full()
         rows = spendledger.load()
         calls = [(r["provider"], r["call"]) for r in rows]
-        for name in ("company_posts", "open_roles", "person_posts",
-                     "site_content"):
+        for name in ("company_posts", "open_roles", "person_posts"):
             self.assertIn(("apify", name), calls)
+
+    def test_the_free_site_read_writes_no_ledger_row(self):
+        """A zero-cost row for a provider that cannot charge would make
+        the next audit reconcile against an invoice with no line for it."""
+        out = self.full()
+        self.assertIn("site_content", out["free"])
+        self.assertNotIn("site_content", out["bought"])
+        for row in spendledger.load():
+            with self.subTest(row=row["call"]):
+                self.assertNotEqual(row["call"], "site_content")
+                self.assertNotEqual(row["provider"], "local_http")
 
     def test_the_ledger_cent_is_never_zero_and_never_understates(self):
         """The ledger's unit is an integer and every LinkedIn run here costs
@@ -457,7 +541,7 @@ class CostReachesTheOneLedger(PackTest):
         out = self.full()
         self.assertEqual(out["cost"],
                          actors.cost_of(["open_roles", "company_posts",
-                                         "person_posts", "site_content"]))
+                                         "person_posts"]))
 
     def test_and_the_exact_dollars_travel_beside_the_rounded_cents(self):
         out = self.full()
@@ -496,6 +580,167 @@ class DryRunIsTheDefault(PackTest):
         out = researchpack.build("acme.test", company="Acme Test Ltd")
         self.assertIn("unasked question", out["note"])
 
+
+class TheCeilingIsCHECKEDAndNotOnlyRECORDED(PackTest):
+    """THE HALF THAT WAS MISSING, 2026-09-24 lane C.
+
+    `run_actor` wrote a `spendledger` row for every paid call and never
+    asked `spendledger.check` anything, so productive's declared
+    `per_day: 5000` bounded nothing on this path - the ledger filled up and
+    the runs kept starting. That is the repository's own recurring shape:
+    a thing computed correctly that nothing downstream reads.
+
+    Each test below was verified by removing `check_budget` from
+    `run_actor` and confirming it goes red, and red for its own reason
+    rather than because a different guard fired first.
+    """
+
+    TINY = {"budget": {"per_day": 1}}
+
+    def test_a_call_that_would_cross_the_ceiling_is_refused(self):
+        with self.assertRaises(spendledger.BudgetExceeded) as caught:
+            researchpack.run_actor("open_roles", "Acme Test Ltd",
+                                   client="productive", domain="acme.test",
+                                   config=self.TINY)
+        self.assertIn("per_day", str(caught.exception))
+
+    def test_and_nothing_was_started_and_nothing_was_recorded(self):
+        """A ceiling consulted after the money is spent is a report."""
+        with self.assertRaises(spendledger.BudgetExceeded):
+            researchpack.run_actor("open_roles", "Acme Test Ltd",
+                                   client="productive", domain="acme.test",
+                                   config=self.TINY)
+        self.assertEqual(self.cassette.calls, [])
+        self.assertEqual(spendledger.load(), [])
+
+    def test_the_ceiling_counts_what_this_walk_has_already_committed(self):
+        """NOT ONLY WHAT WAS THERE AT THE START. `check` re-reads the
+        ledger, so a walk that spends its way to the ceiling stops at it."""
+        config = {"budget": {"per_day": actors.planned_cost("open_roles")}}
+        researchpack.run_actor("open_roles", "Acme Test Ltd",
+                               client="productive", domain="acme.test",
+                               config=config)
+        self.assertEqual(len(spendledger.load()), 1)
+        with self.assertRaises(spendledger.BudgetExceeded):
+            researchpack.run_actor("open_roles", "Acme Test Ltd",
+                                   client="productive", domain="acme.test",
+                                   config=config)
+
+    def test_an_unattributed_run_cannot_buy_anything(self):
+        """`spendledger.check` refuses a falsy client by its own contract -
+        an unscoped budget is one client paying for another's run - and that
+        refusal is kept rather than smoothed over."""
+        with self.assertRaises(spendledger.BudgetExceeded):
+            researchpack.run_actor("company_posts", COMPANY)
+        self.assertEqual(self.cassette.calls, [])
+        self.assertEqual(spendledger.load(), [])
+
+    def test_the_refusal_reaches_the_caller_of_build(self):
+        """NOT swallowed into a thin pack. A budget refusal that looked like
+        a source returning nothing would read as a quiet estate."""
+        with self.assertRaises(spendledger.BudgetExceeded):
+            self.full(config=self.TINY)
+
+    def test_the_free_site_read_is_not_subject_to_a_ceiling(self):
+        """A ceiling on a call that cannot be billed would stop a pack for
+        a reason that does not exist."""
+        out = researchpack.build("acme.test", live=True, client="productive",
+                                 config=self.TINY, crawler=site_reader(),
+                                 sources=("site_content",))
+        self.assertEqual(out["free"], ["site_content"])
+        self.assertGreater(out["by_kind"]["site_page"], 0)
+        self.assertEqual(spendledger.load(), [])
+
+
+class SiteContentIsOursAndFree(PackTest):
+    """The operator ruling, exercised rather than restated.
+
+    WHAT THESE PROVE AND WHAT THEY DO NOT. The page rows are built by
+    `webfetch._page` itself on real markup, so the fields `site.research`
+    reads are the fields the crawler writes. The ENVELOPE - `outcome`,
+    `pages`, `stats` - is a double, and a double cannot prove the crawler
+    returns that shape. What proves it is the live run over 92 real
+    accounts recorded in `docs/MERGE-REQUEST-2026-09-24-RESEARCH-PACKS.md`.
+    """
+
+    def test_a_site_read_touches_no_provider_at_all(self):
+        out = researchpack.build("acme.test", live=True, client="productive",
+                                 crawler=site_reader(),
+                                 sources=("site_content",))
+        self.assertEqual(self.cassette.calls, [])
+        self.assertEqual(out["cost"], 0)
+        self.assertEqual(out["usd"], 0.0)
+
+    def test_every_site_fact_carries_a_url_and_something_to_quote(self):
+        found, outcome = sitesource.research("acme.test",
+                                             crawler=site_reader())
+        self.assertTrue(found)
+        self.assertEqual(outcome["usd"], 0.0)
+        for fact in found:
+            with self.subTest(url=fact["source_url"]):
+                self.assertEqual(fact["kind"], "site_page")
+                self.assertTrue(fact["source_url"].startswith("https://"))
+                self.assertTrue(fact["snippet"].strip())
+                self.assertEqual(fact["extra"]["actor"], "local_http")
+
+    def test_a_crawled_page_is_never_dated(self):
+        """`retrieved_at` is when WE looked. Passing it as `published_at`
+        would make every site fact read as published today, and 'they just
+        announced' is exactly the claim a date licenses."""
+        found, _ = sitesource.research("acme.test", crawler=site_reader())
+        for fact in found:
+            with self.subTest(url=fact["source_url"]):
+                self.assertIsNone(fact["published_at"])
+
+    def test_a_page_off_this_domain_makes_no_fact(self):
+        """THE IDENTITY QUESTION, ASKED HERE TOO. `webfetch.same_domain`
+        already bounds the crawl, and 'cannot happen' is what was said about
+        the job rows before 50 of 71 turned out to be another company."""
+        reader = site_reader(pages=[
+            site_page("https://elsewhere.test/about", field="about"),
+            site_page("https://acme.test/about", field="about")])
+        found, outcome = sitesource.research("acme.test", crawler=reader)
+        self.assertEqual([f["source_url"] for f in found],
+                         ["https://acme.test/about"])
+        self.assertEqual(outcome["off_domain_pages_dropped"], 1)
+
+    def test_a_site_that_needs_javascript_is_said_rather_than_scored(self):
+        """`urllib` cannot run the page and a shell is not evidence about
+        the company inside it. The classification is the reason, and it is
+        `webfetch`'s rather than one this package guessed at."""
+        out = researchpack.build("acme.test", live=True, client="productive",
+                                 sources=("site_content",),
+                                 crawler=site_reader(
+                                     outcome=webfetch.JS_RENDERING_REQUIRED,
+                                     pages=[]))
+        self.assertIn("site_content", out["unaddressable"])
+        self.assertIn(webfetch.JS_RENDERING_REQUIRED,
+                      out["unaddressable"]["site_content"])
+        self.assertEqual(out["by_kind"]["site_page"], 0)
+
+    def test_a_blocked_site_is_not_a_reason_to_spend(self):
+        """The paid crawler was the fallback for exactly this, and the
+        ruling took that decision away. There is no branch that can buy one."""
+        out = researchpack.build("acme.test", live=True, client="productive",
+                                 sources=("site_content",),
+                                 crawler=site_reader(outcome=webfetch.BLOCKED,
+                                                     pages=[]))
+        self.assertEqual(out["bought"], [])
+        self.assertEqual(self.cassette.calls, [])
+        self.assertEqual(spendledger.load(), [])
+
+    def test_a_second_build_re_reads_nothing(self):
+        """Free is not costless: it is requests against somebody's server."""
+        reads = []
+
+        def counting(domain, config=None, now=None):
+            reads.append(domain)
+            return site_reader()(domain, config=config, now=now)
+
+        for _ in range(2):
+            researchpack.build("acme.test", live=True, client="productive",
+                               sources=("site_content",), crawler=counting)
+        self.assertEqual(len(reads), 1)
 
 class TheCassetteSaysWhatItIs(unittest.TestCase):
     """The provenance note is load-bearing, so it is asserted."""

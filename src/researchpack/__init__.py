@@ -9,10 +9,15 @@ sources, from Apify actors that need no LinkedIn session.
                               company="Acme Ltd")
 
 The four are `open_roles`, `company_posts`, `person_posts` for a champion
-and an exec, and `site_content` - the company's own site, through the
-crawler this repository already had. `actors.py` says what each one costs
-and where its id was verified; `docs/RESEARCH-PACK-PILOT-2026-09-24.md`
-says what each one actually covered over 25 real accounts.
+and an exec, and `site_content`.
+
+THE FIRST THREE ARE APIFY. THE FOURTH IS OURS. Operator ruling, 2026-09-24,
+on the pilot's measurement that `apify~website-content-crawler` was 72% of
+the per-account bill: site content comes from our own free crawler and Apify
+runs LinkedIn only. `site.py` wraps `src/webfetch.py` for it, `actors.py`
+carries only the LinkedIn actors and says what each costs and where its id
+was verified, and `docs/RESEARCH-PACK-PILOT-2026-09-24.md` says what each
+one actually covered over 25 real accounts.
 
 ## WHY IT IS NOT UNDER `src/providers/`
 
@@ -36,8 +41,9 @@ nobody cites is research nobody reads, and a lint with no pack to check
 against can only count dashes.
 """
 from .facts import KINDS, UnusableFact, fact_id, make          # noqa: F401
-from .pack import PackRefused, build, run_actor                # noqa: F401
-from . import actors, cache, facts, pack                       # noqa: F401
+from .pack import PackRefused, build, check_budget, run_actor  # noqa: F401
+from . import actors, cache, facts, pack, site                 # noqa: F401
 
-__all__ = ["build", "run_actor", "PackRefused", "KINDS", "make", "fact_id",
-           "UnusableFact", "actors", "cache", "facts", "pack"]
+__all__ = ["build", "run_actor", "check_budget", "PackRefused", "KINDS",
+           "make", "fact_id", "UnusableFact", "actors", "cache", "facts",
+           "pack", "site"]

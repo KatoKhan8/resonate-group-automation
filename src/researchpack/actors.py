@@ -1,5 +1,18 @@
 """Which Apify actors this pack may run, what each costs, and what it reads.
 
+## APIFY RUNS LINKEDIN ONLY. THE SITE IS OURS, AND IT IS FREE
+
+Operator ruling, 2026-09-24, on the pilot's own numbers:
+`apify~website-content-crawler` was 72% of the per-account bill - $0.02888
+of $0.03987 - and it is the one source this repository already had a free
+reader for. It is DELETED from `ACTORS` below rather than disabled, and
+`site_content` now comes from `src/researchpack/site.py`, which wraps
+`src/webfetch.py`. See `FREE_SOURCES`.
+
+So every entry in `ACTORS` is a LinkedIn actor, and the per-account Apify
+bill for this estate is the $0.01098 the three LinkedIn sources and the
+opt-in slug resolver cost, not $0.03987.
+
 ## EVERY ACTOR ID HERE WAS ASKED OF APIFY, NOT REMEMBERED
 
 Operator, 2026-09-24: "do not guess an actor id". The three ids this module
@@ -42,21 +55,21 @@ records.
 
 ## COST IS AN ARITHMETIC, NOT A GUESS
 
-All four actors bill PAY_PER_EVENT and this account is on the SCALE plan at
-tier SILVER, so the per-event prices are the SILVER rows of each actor's
-`eventTieredPricingUsd`, read from `GET /v2/acts/{id}`:
+Every actor left here bills PAY_PER_EVENT and this account is on the SCALE
+plan at tier SILVER, so the per-event prices are the SILVER rows of each
+actor's `eventTieredPricingUsd`, read from `GET /v2/acts/{id}`:
 
     company_posts / person_posts   start $0.00005 + $0.00175 per post
                                    ($0.001 "no-result" when a target has none)
     open_roles                     start $0.00005 + $0.00110 per job
     company_slug                   start $0.00005 + $0.00350 per company
-    site_content                   compute units, measured per run
 
-MEASURED per account over 24 real accounts on 2026-09-24: site $0.02888,
-roles $0.00335, person posts $0.00265, company posts $0.00260, slug resolver
-$0.00238 - $0.03987 in total, which is $781.94 at 19,612 accounts against a
-$199 budget. The full arithmetic and the options are in
-`docs/RESEARCH-PACK-PILOT-2026-09-24.md`.
+MEASURED per account over 24 real accounts on 2026-09-24: roles $0.00335,
+person posts $0.00265, company posts $0.00260, slug resolver $0.00238 -
+**$0.01098 of Apify per account** now that the site crawl is ours, which is
+$215 at 19,612 accounts against a $199 budget rather than $781.94. The site
+crawl that made up the other $0.02888 is gone; the full arithmetic and the
+options are in `docs/RESEARCH-PACK-PILOT-2026-09-24.md`.
 
 `usd_per_account` is that arithmetic at this entry's own limit. `cost` is the
 same number in the spend ledger's integer cents, ROUNDED UP: the ledger's
@@ -160,37 +173,40 @@ ACTORS = {
                "why `includeReposts` is false: a repost is somebody else's "
                "sentence and quoting it back as theirs is a wrong claim",
     },
-    # ---------------------------------------------------------------- 4
+}
+
+# ------------------------------------------------- 4, AND NOT AN ACTOR
+#
+# THE WEBSITE CRAWLER IS GONE FROM THIS REGISTRY, BY RULING.
+#
+# `apify~website-content-crawler` was the fourth entry here until
+# 2026-09-24. The pilot measured it at $0.02888 per account - 72% of the
+# whole bill, $566 of the $781.94 a month that all four sources on 19,612
+# accounts would cost against a $199 budget - while the three LinkedIn
+# sources and the slug resolver together are $215. The operator ruled:
+# site content comes from our own free crawler, and Apify runs LinkedIn
+# only.
+#
+# It is DELETED rather than flagged off. A registry entry with a price and
+# an `enabled: False` beside it is a cost one edit away from returning, and
+# `tests/test_researchpack.py` asserts that no entry above names a website
+# crawler at all. `src/researchpack/site.py` is where `site_content` now
+# comes from and it names no actor, starts no run and writes no ledger row.
+FREE_SOURCES = {
     "site_content": {
-        "actor": "apify~website-content-crawler",
+        "provider": "local_http",           # `src/webfetch.py`
         "kind": "site_page",
-        "needs_session": False,
-        "proxy": True,
-        "hosts": None,                      # the record's OWN domain only
-        "limit": 5,
-        # COMPUTE UNITS, NOT EVENTS, AND MEASURED RATHER THAN QUOTED.
-        # $0.69316 over 24 accounts in the 2026-09-24 pilot, two of which
-        # failed and were billed anyway. It is 72% of the whole per-account
-        # bill and the reason all four sources on all 19,612 accounts does
-        # not fit in $199: see `docs/RESEARCH-PACK-PILOT-2026-09-24.md`.
-        # It varies with the site, so this is this estate's average.
-        "usd_per_run": 0.02888,
-        "usd_per_item": 0.0,
-        "fields": {"url": ("url", "loadedUrl"),
-                   "body": ("text", "markdown", "content"),
-                   # A crawled page carries no publication date worth
-                   # trusting, and `crawledAt` is when WE looked.
-                   "date": ()},
-        # A PAGE THAT DID NOT LOAD IS NOT EVIDENCE ABOUT THE COMPANY. The
-        # crawler returns a row for every URL it was given, and the body of a
-        # 404 is the site's own navigation - which reads as ordinary company
-        # copy. `providers.apify.evidence_from_items` already drops these;
-        # the pack builds facts by a different route and would not have.
-        "status_field": "crawl.httpStatusCode",
+        "usd_per_account": 0.0,
         "why": "the company's own words on its own site: the one source "
-               "that needs no LinkedIn presence at all",
+               "that needs no LinkedIn presence at all, and now the one "
+               "source that costs nothing",
     },
 }
+
+#: The four sources a pack is built from, however each is fetched. A caller
+#: that wants "everything" asks for this rather than for `ACTORS`, which is
+#: three LinkedIn actors and an opt-in resolver.
+SOURCES = ("open_roles", "company_posts", "person_posts", "site_content")
 
 #: The profiles a person-level actor may be run for. Named rather than
 #: free-text so a pack cannot quietly grow a third person per account,
@@ -247,18 +263,9 @@ def build_input(name, target, limit=None):
             "scrapeReactions": False,
             "scrapeComments": False,
         }
-    if name == "site_content":
-        return {
-            "startUrls": [{"url": u} for u in (target if isinstance(target, (list, tuple))
-                                               else [target])],
-            "maxCrawlPages": limit,
-            "maxResults": limit,
-            "maxCrawlDepth": 1,
-            # The crawler REFUSES a run without one - 400 `invalid-input`,
-            # confirmed live on 2026-09-07. No `apifyProxyGroups`, so this is
-            # Apify's automatic DATACENTER pool and not residential.
-            "proxyConfiguration": {"useApifyProxy": True},
-        }
+    # There is no `site_content` branch. It is not an Apify actor any more
+    # and asking this function to build its input is a caller still holding
+    # the old shape, which is worth a KeyError rather than a payload.
     raise KeyError(name)
 
 

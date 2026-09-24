@@ -28,7 +28,17 @@ failure to be worked around: the pack records `company_posts` as
 UNADDRESSABLE, with the reason, and buys nothing. Measured coverage of that
 case is in `docs/RESEARCH-PACK-PILOT-2026-09-24.md`.
 
-## COST IS RECORDED AT THE MOMENT OF THE CALL, THROUGH THE ONE LEDGER
+## THREE OF THE FOUR ARE APIFY. THE FOURTH IS OURS AND IT IS FREE
+
+Operator ruling, 2026-09-24: site content comes from our own crawler and
+Apify runs LinkedIn only, because the paid website crawler was 72% of the
+per-account bill. `site_content` therefore does not go through `take` or
+`run_actor` at all - see `take_site` and `src/researchpack/site.py`. It
+starts no run, asks no ceiling and writes no ledger row, and it is reported
+in `free` rather than in `bought` so that the coverage table and the spend
+table cannot disagree about the same source.
+
+## COST IS CHECKED AND THEN RECORDED, THROUGH THE ONE LEDGER
 
 `CLAUDE.md`: "Every paid call goes through enrich's `spend()`, which writes
 the waterfall ledger. A provider call that skips it is invisible to the
@@ -40,6 +50,12 @@ calls `spendledger.record` - the module-level API that closure itself
 writes through. A run served from cache records NOTHING, because nothing
 was bought.
 
+AND IT IS CHECKED, WHICH IT WAS NOT. Recording without checking meant the
+declared ceilings - productive's `per_day: 5000` - bounded nothing on this
+path. `check_budget` now runs before every Apify call and `BudgetExceeded`
+propagates out of `build`, so a caller halts on a ceiling rather than being
+handed a thin pack that looks like a quiet estate.
+
 ## EVERY FACT CARRIES ITS PROVENANCE OR IT IS NOT STORED
 
 See `facts.make`. A pack is worth having because a first line can be traced
@@ -47,7 +63,7 @@ back through it, and `src/copylint.py` is the thing that traces.
 """
 from .. import spendledger, store
 from . import actors as actorspec
-from . import cache, facts
+from . import cache, facts, site
 
 
 class PackRefused(RuntimeError):
@@ -140,9 +156,55 @@ def _checked(name, target):
     return apify.check_url(str(target), allowed_domain=hosts, resolve=False)
 
 
+def _config_for(client, config=None):
+    """The client's own config, for the ceilings `spendledger.check` reads.
+
+    Loaded once per `build` and passed down, rather than re-read per run:
+    `clients.load` touches the filesystem and a per-actor reload would make
+    a ceiling depend on when in the walk it was asked.
+
+    A client whose config cannot be loaded gets `{}`, which `caps()` reads
+    as every ceiling UNDECLARED and therefore unlimited - so this never
+    fails OPEN silently. It is logged as the caller's problem instead: the
+    check below still refuses outright when there is no client at all, and
+    a client that exists but has no `budget:` block is a real, stated
+    "unlimited" that `spendledger.report` already prints as such.
+    """
+    if config is not None:
+        return config
+    if not client:
+        return {}
+    from .. import clients
+    try:
+        return clients.load(client)
+    except Exception:
+        return {}
+
+
+def check_budget(client, cost, config=None, provider="apify"):
+    """May this call be made? Raises `spendledger.BudgetExceeded` if not.
+
+    THE HALF THAT WAS MISSING. `run_actor` recorded every paid call in the
+    ledger and never asked it anything, so the client's declared ceilings -
+    `per_day: 5000` for productive - bounded nothing on this path: the
+    ledger filled up and the runs kept starting. Recording is the audit;
+    checking is the control, and a control nobody calls is the "computed
+    correctly and nothing downstream reads it" shape `CLAUDE.md` names.
+
+    It is checked BEFORE the record and before the call, because a ceiling
+    that is consulted after the money is spent is a report.
+
+    NO CLIENT IS A REFUSAL, not a pass. `spendledger.check` raises on a
+    falsy client by its own contract - "an unscoped budget is one client
+    paying for another's run" - and that refusal is kept rather than
+    smoothed over, so an unattributed run cannot buy anything.
+    """
+    return spendledger.check(client, config or {}, cost, provider=provider)
+
+
 def run_actor(name, target, subject=None, client=None, runner=None,
-              raw=None, domain=None):
-    """One actor run. Records the planned cost BEFORE reading the result.
+              raw=None, domain=None, config=None):
+    """One actor run. Checks the ceiling, then records the planned cost.
 
     `runner` is the seam the cassette tests drive: it takes
     `(actor, payload, limit)` and returns the dataset rows. The default
@@ -160,11 +222,16 @@ def run_actor(name, target, subject=None, client=None, runner=None,
             "%s needs a logged-in session; this pack reads public surfaces "
             "only" % name)
     payload = actorspec.build_input(name, _checked(name, target))
+    cost = actorspec.planned_cost(name)
+    # ASKED BEFORE ANYTHING IS SPENT. `BudgetExceeded` propagates out of
+    # `build` on purpose: the caller halts on the ceiling rather than this
+    # module trimming the pack down to fit, which would make a budget
+    # refusal look like a source that returned nothing.
+    check_budget(client, cost, config=config)
     # BEFORE the call, not after. A run that starts and then fails still
     # cost something, and a ledger that records only successes understates
     # spend in exactly the runs worth auditing.
-    spendledger.record(client or "unattributed", "apify", name,
-                       actorspec.planned_cost(name))
+    spendledger.record(client, "apify", name, cost)
     rows = _items((runner or _live_runner)(spec["actor"], payload,
                                            spec["limit"]), spec["limit"])
     if raw is not None:
@@ -250,38 +317,47 @@ def _profile_key(name, profile, target=None):
     return "%s:%s" % (profile, _vanity(target))
 
 
-def _site_urls(domain, limit):
-    """The company's own pages, chosen by `providers.apify` and not here.
-
-    `candidate_urls` already answers "which pages of this domain is this
-    integration willing to look at", already runs `check_url` against the
-    record's own domain, and is already bounded. A second list of guessed
-    paths in this module would be the same truth in two places.
-    """
-    from ..providers import apify
-    return [u["url"] for u in apify.candidate_urls(
-        domain, apify.SOURCES, max_pages=limit)]
+#: `_site_urls` is gone with the paid crawler. It guessed `/about`,
+#: `/team`, `/careers` and handed the list to Apify; `webfetch` reads the
+#: homepage's OWN links instead and never requests a path blind - which is
+#: the defect its module docstring was written about, where two of five
+#: guessed paths 404'd and the 404's navigation text was kept as evidence.
 
 
 def build(domain, live=False, champion=None, exec_profile=None, client=None,
           runner=None, now=None, company_url=None, company=None,
-          sources=None, resolve_slug=False):
+          sources=None, resolve_slug=False, config=None, crawler=None):
     """One account's pack. Cache first, actors only with `live=True`.
 
     `company` is the company's NAME and is what `open_roles` is aimed with.
     Without it there is no roles run, and without a roles run there is no
     slug - so `company_posts` is unaddressable unless `company_url` is
     supplied directly. The pack says which of those happened.
+
+    `config` is the client's config, and the only thing read out of it is
+    the `budget:` block `spendledger.check` needs. Left out, it is loaded
+    from the client name once, here, rather than per run.
+
+    `crawler` is the free site reader's seam, the same signature
+    `webfetch.research` has. `runner` is the Apify one. They are separate
+    because they are different providers with different failure modes, and
+    one double standing in for both would let a test about LinkedIn silently
+    decide what the site crawl returns.
     """
     domain = str(domain or "").strip().lower().lstrip("@")
     if not domain:
         raise PackRefused("a research pack needs a domain")
     now = now or store.now()
+    config = _config_for(client, config)
     out = {"domain": domain, "built_at": now, "facts": [], "cost": 0,
            "usd": 0.0, "cached": [], "bought": [], "skipped": [],
+           # WHAT WAS READ FOR NOTHING, KEPT APART FROM WHAT WAS BOUGHT.
+           # `site_content` is in every pack and in no invoice; folding it
+           # into `bought` would make the coverage table and the spend
+           # table disagree about the same run.
+           "free": [], "site": None,
            "unaddressable": {}, "slug": company_url or None}
-    wanted = list(sources or ("open_roles", "company_posts", "person_posts",
-                              "site_content"))
+    wanted = list(sources or actorspec.SOURCES)
 
     def take(name, target, profile=None, raw=None):
         """Cache, then buy, then record. Returns True if anything was had."""
@@ -299,7 +375,8 @@ def build(domain, live=False, champion=None, exec_profile=None, client=None,
             return False
         rows = []
         found = run_actor(name, target, subject=profile, client=client,
-                          runner=runner, raw=rows, domain=domain)
+                          runner=runner, raw=rows, domain=domain,
+                          config=config)
         if raw is not None:
             raw.extend(rows)
         out["facts"].extend(found)
@@ -313,6 +390,51 @@ def build(domain, live=False, champion=None, exec_profile=None, client=None,
         cache.put(domain, found, profile=key,
                   cost=actorspec.planned_cost(name), now=now, extra=extra)
         return True
+
+    def take_site():
+        """`site_content`, from OUR crawler. No ceiling, no ledger, no bill.
+
+        It does not go through `take` and it deliberately does not look
+        like it does. `take` checks a budget, writes a spend row and adds
+        to `bought`; every one of those would be a lie about a free HTTP
+        read, and the ledger row in particular - a zero-cost row for a
+        provider that cannot charge - would make the next audit reconcile
+        rows against an invoice that has no line for them.
+
+        It is still CACHED, under the same 30-day TTL. Free is not costless:
+        it is requests against somebody's web server, and re-reading the
+        same five pages for every rebuild is rude as well as slow.
+        """
+        label = site.NAME
+        hit = cache.get(domain, profile=label, now=now)
+        if hit:
+            out["facts"].extend(hit.get("facts") or [])
+            out["cached"].append(label)
+            out["site"] = hit.get("site") or {"outcome": "cached",
+                                              "provider": site.PROVIDER}
+            return True
+        if not live:
+            # SKIPPED, EVEN THOUGH IT IS FREE. `live=False` means "read the
+            # cache and touch nothing", and a module that reaches the open
+            # internet on a dry run is a module whose dry run is not one.
+            out["skipped"].append(label)
+            return False
+        found, outcome = site.research(domain, config=config, now=now,
+                                       crawler=crawler)
+        out["facts"].extend(found)
+        out["free"].append(label)
+        out["site"] = outcome
+        if not found:
+            # THE CLASSIFICATION IS THE REASON, and `webfetch` produced it
+            # rather than this module guessing at one. JS_RENDERING_REQUIRED,
+            # BLOCKED and HTTP_INSUFFICIENT are different facts about a
+            # company and only the first two are worth a human looking.
+            out["unaddressable"][label] = (
+                "our crawler read %s and came away with no usable page: %s"
+                % (domain, outcome.get("outcome")))
+        cache.put(domain, found, profile=label, cost=0, now=now,
+                  extra={"site": outcome})
+        return bool(found)
 
     job_rows = []
     if "open_roles" in wanted:
@@ -362,12 +484,7 @@ def build(domain, live=False, champion=None, exec_profile=None, client=None,
                     % profile)
 
     if "site_content" in wanted:
-        urls = _site_urls(domain, actorspec.ACTORS["site_content"]["limit"])
-        if urls:
-            take("site_content", urls)
-        else:
-            out["unaddressable"]["site_content"] = (
-                "no candidate url on %s survived the url guard" % domain)
+        take_site()
 
     out["fact_count"] = len(out["facts"])
     out["by_kind"] = {k: len([f for f in out["facts"] if f["kind"] == k])
