@@ -58,10 +58,31 @@ LEAD_IDS = frozenset({204966, 204967})
 #: `/in/zbeslic`, the full https URL and a trailing slash all resolve.
 LINKEDIN_SLUGS = frozenset({"zbeslic"})
 
-#: The addresses on the EmailBison leads. The second is plus-addressed
+#: The addresses on the EmailBison leads. The plus-addressed ones exist
 #: because the provider holds 204966 against the bare address already.
+#:
+#: BOTH DOMAINS, AND THE SECOND IS THE REAL ONE. Leads 204966 and 204967 were
+#: created on `resonate.co` - confirmed against the provider 2026-09-24 - and
+#: the operator's actual address is on `resonategroup.co`. The wrong domain
+#: was recorded here on 2026-09-23 and nothing noticed, because no test reply
+#: had arrived since.
+#:
+#: WHAT IT WOULD HAVE COST, had it not been caught before tonight's
+#: measurement: `notify.py` calls `testidentity.matches` to SUPPRESS anything
+#: about this identity, so the operator's own test reply is never counted as
+#: a prospect reply nor surfaced to the client. A reply from
+#: `resonategroup.co` matched nothing, so it would have been treated as a
+#: real prospect replying - counted in the reply figures, and eligible to
+#: reach a client channel. That is the exact outcome this module exists to
+#: prevent, and the identity it was protecting was misspelled.
+#:
+#: The `resonate.co` entries STAY. The leads at the provider carry them, so
+#: removing them would un-suppress the two leads this module was written for.
 EMAILS = frozenset({"zvonimir@resonate.co",
-                    "zvonimir+stoptest2@resonate.co"})
+                    "zvonimir+stoptest2@resonate.co",
+                    "zvonimir@resonategroup.co",
+                    "zvonimir+stoptest@resonategroup.co",
+                    "zvonimir+stoptest2@resonategroup.co"})
 
 WHY = ("operator instruction 2026-09-23: /in/zbeslic and lead 204966 are the "
        "cross-channel stop TEST identity and are excluded from every reply "
