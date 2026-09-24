@@ -151,6 +151,20 @@ CAMPAIGN_STOPPED_EXTERNALLY = "campaign_stopped_externally"
 #: CAMPAIGN_PAUSED for the reason CAMPAIGN_STOPPED_EXTERNALLY is: an event
 #: that also covers our deliberate pauses is an event nobody can read.
 CAMPAIGN_BLANK_CONTENT = "campaign_blank_content"
+#: A client asked the agent something and the gag swallowed it.
+#:
+#: MEASURED 2026-09-24. `CLIENT_CHANNEL_GAG` stops the agent saying anything
+#: to a client channel, correctly - it was set because the agent reported
+#: three positive replies where our own classifier says zero. But the gagged
+#: path wrote a log line and returned: no Slack post, no ticket, no internal
+#: notification. So it also stopped the OPERATOR finding out the client had
+#: asked, and 11 of 32 real questions in the replay audit - 34% of traffic -
+#: were client questions that got no answer and raised nothing.
+#:
+#: ACTION_REQUIRED and not CRITICAL: a person must answer it, and it is not
+#: an outage. Internal only - it carries the question so somebody can answer
+#: by hand, and nothing about it reaches the client.
+CLIENT_QUESTION_UNANSWERED = "client_question_unanswered"
 CAMPAIGN_COMPLETED = "campaign_completed"
 WORKSPACE_CREATED = "workspace_created"
 WORKSPACE_CONFIG_ISSUE = "workspace_configuration_issue"
@@ -208,6 +222,7 @@ ROUTES = {
     CAMPAIGN_PAUSED: (GLOBAL, WARNING),
     CAMPAIGN_STOPPED_EXTERNALLY: (GLOBAL, CRITICAL),
     CAMPAIGN_BLANK_CONTENT: (GLOBAL, CRITICAL),
+    CLIENT_QUESTION_UNANSWERED: (GLOBAL, ACTION_REQUIRED),
     CAMPAIGN_COMPLETED: (GLOBAL, INFO),
     WORKSPACE_CREATED: (GLOBAL, INFO),
     WORKSPACE_CONFIG_ISSUE: (GLOBAL, WARNING),

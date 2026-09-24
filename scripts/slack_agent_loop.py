@@ -259,6 +259,31 @@ def handle(event, seen, dry_run=False, model=None):
         log({"kind": "gagged", "message_id": message_id, "channel": channel,
              "user": user, "thread": thread,
              "reason": result.get("gag_reason")})
+        # THE GAG MUST NOT SWALLOW THE QUESTION TOO.
+        #
+        # Until 2026-09-24 this returned here, having written a log line and
+        # one stdout line. No Slack post, no ticket, no notification - so a
+        # client asking us something produced nothing a person would ever
+        # see. The gag exists to stop the agent saying something WRONG to a
+        # client; it was also stopping the operator finding out the client
+        # had asked. 11 of 32 questions in the replay audit - 34% of real
+        # traffic - were client questions answered with silence.
+        #
+        # This is an INTERNAL write. Nothing here reaches the client channel,
+        # so it is safe while the gag stands and stays useful after it lifts.
+        try:
+            from src import notify as _notify
+            _notify.notify(
+                _notify.CLIENT_QUESTION_UNANSWERED, None,
+                fields={"workspace": result.get("workspace") or "unknown",
+                        "channel": channel,
+                        "question": str(text or "")[:400],
+                        "why": "client channel answering is paused"},
+                actions=("Answer this in the client's thread by hand.",
+                         "The agent will not, and did not, post anything."),
+                ids={"message_id": message_id, "thread": thread or ""})
+        except Exception as exc:                              # noqa: BLE001
+            emit(f"GAG-ALERT-FAILED {message_id}: {type(exc).__name__}")
         return True
 
     if dry_run:
