@@ -32,10 +32,19 @@ from src import candidateexport                                # noqa: E402
 
 REVIEW = {"domain": "a.example", "state": "new", "icp_status": "review",
           "icp_score": 0.0, "headcount": 96438}
+#: Carries `_sourced_at` because these fixtures exercise the VERDICT gate.
+#: Without it they would also trip the provenance gate below, and a test that
+#: can fail for two reasons proves neither.
 QUALIFIED = {"domain": "b.example", "state": "new", "icp_status": "qualified",
-             "icp_score": 41.0, "headcount": 44}
+             "icp_score": 41.0, "headcount": 44,
+             "_sourced_at": "2026-09-22T17:48:00Z"}
 EXPORTED = {"domain": "c.example", "state": "exported",
-            "icp_status": "qualified", "icp_score": 38.0, "headcount": 60}
+            "icp_status": "qualified", "icp_score": 38.0, "headcount": 60,
+            "_sourced_at": "2026-09-22T17:48:00Z"}
+#: The retired pool's shape: QUALIFIED, and no provenance at all.
+LEGACY_QUALIFIED = {"domain": "legacy.example", "state": "new",
+                    "icp_status": "qualified", "icp_score": 0.0,
+                    "headcount": 121205}
 
 
 class TheReaderGatesOnTheVERDICT(unittest.TestCase):
@@ -88,7 +97,8 @@ class ThisDoesNotUnblockTheExport(unittest.TestCase):
         from src import candidatelist
         telecom = {"domain": "e.example", "state": "new",
                    "icp_status": "qualified", "icp_score": 0.0,
-                   "headcount": 121205}
+                   "headcount": 121205,
+                   "_sourced_at": "2026-09-22T17:48:00Z"}
         real = candidatelist.load
         candidatelist.load = lambda: [telecom]
         self.addCleanup(setattr, candidatelist, "load", real)
@@ -100,3 +110,68 @@ class ThisDoesNotUnblockTheExport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+SOURCED_QUALIFIED = {"domain": "f.example", "state": "new",
+                     "icp_status": "qualified", "icp_score": 33.0,
+                     "headcount": 44, "_sourced_at": "2026-09-22T17:48:00Z"}
+
+
+class TheLegacyPoolIsRetiredFromEveryExportPath(unittest.TestCase):
+    """OPERATOR DECISION 2026-09-24, ISSUE-031.
+
+    The 1,508-row pool is retired. It is not a tuning problem: 58 of its 114
+    QUALIFIED rows scored 0.0 while passing structurally, and its median
+    QUALIFIED headcount is 16,996 for a client who sells to 20+ person
+    agencies. The sourced chain is the only source until `candidates.jsonl`
+    is rebuilt from it.
+
+    The gate is PROVENANCE rather than a flag, so it clears itself: a rebuilt
+    row carries `_sourced_at` and passes without anybody remembering to flip
+    anything back.
+    """
+
+    def _with(self, rows):
+        from src import candidatelist
+        real = candidatelist.load
+        candidatelist.load = lambda: list(rows)
+        self.addCleanup(setattr, candidatelist, "load", real)
+        return candidateexport
+
+    def test_a_legacy_qualified_row_REFUSES_rather_than_exporting(self):
+        mod = self._with([LEGACY_QUALIFIED])
+        with self.assertRaises(mod.RetiredCandidatePool):
+            mod.exportable_candidates()
+
+    def test_it_refuses_LOUDLY_rather_than_returning_empty(self):
+        """An empty CSV reads as a quiet week, not as a stopped export."""
+        mod = self._with([LEGACY_QUALIFIED])
+        try:
+            mod.exportable_candidates()
+        except mod.RetiredCandidatePool as exc:
+            self.assertIn("retired pool", str(exc))
+            self.assertIn("_sourced_at", str(exc))
+        else:
+            self.fail("returned instead of refusing")
+
+    def test_a_row_from_the_sourced_chain_exports(self):
+        mod = self._with([SOURCED_QUALIFIED])
+        got = mod.exportable_candidates()
+        self.assertEqual([r["domain"] for r in got], ["f.example"])
+
+    def test_ONE_legacy_row_stops_the_whole_export(self):
+        """A partially rebuilt pool must not quietly ship its good half."""
+        mod = self._with([SOURCED_QUALIFIED, LEGACY_QUALIFIED])
+        with self.assertRaises(mod.RetiredCandidatePool):
+            mod.exportable_candidates()
+
+    def test_a_retired_REVIEW_row_never_reaches_the_provenance_check(self):
+        """REVIEW is dropped first, so it cannot even trigger the refusal."""
+        mod = self._with([REVIEW, SOURCED_QUALIFIED])
+        self.assertEqual([r["domain"] for r in mod.exportable_candidates()],
+                         ["f.example"])
+
+    def test_the_real_pool_on_disk_is_refused_today(self):
+        """Not a fixture: the actual file, which is why this was written."""
+        with self.assertRaises(candidateexport.RetiredCandidatePool):
+            candidateexport.exportable_candidates()

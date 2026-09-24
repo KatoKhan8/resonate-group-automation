@@ -47,6 +47,26 @@ FIELD_MAP = {
 #: 2026-09-22: QUALIFIED only, REVIEW to further enrichment.
 EXPORTABLE_ICP = "qualified"
 
+#: The field only the sourced chain writes. `qualify_sourced_supply.py`
+#: stamps it; nothing that produced the legacy pool ever did.
+#:
+#: PROVENANCE RATHER THAN A FLAG, so the retirement clears ITSELF. A boolean
+#: somebody has to remember to flip is a boolean that stays flipped, and the
+#: last thing this export needs is a second piece of state that drifts from
+#: the thing it describes.
+SOURCED_PROVENANCE = "_sourced_at"
+
+
+class RetiredCandidatePool(Exception):
+    """The pool on disk is the retired one and may not be exported.
+
+    RAISED RATHER THAN RETURNING AN EMPTY LIST, and that is the decision
+    worth keeping. An empty CSV is indistinguishable from "no new candidates
+    this week" - it looks like a quiet week rather than a stopped export, and
+    this repository has shipped that confusion before: an evaluator reported
+    INSUFFICIENT_DATA for ever because nothing wrote the field it read.
+    """
+
 
 def exportable_candidates():
     """Candidates ready for this week's export: NEW **and** QUALIFIED.
@@ -76,9 +96,26 @@ def exportable_candidates():
     the file as it is. The export needs the second one, because the defective
     rows are already on disk and no amount of correct writing removes them.
     """
-    return [r for r in candidatelist.load()
+    rows = [r for r in candidatelist.load()
             if r.get("state") == "new"
             and str(r.get("icp_status") or "").strip().lower() == EXPORTABLE_ICP]
+
+    # OPERATOR DECISION 2026-09-24, ISSUE-031: the 1,508-row pool is RETIRED
+    # from every export path. It is not a tuning problem - 58 of its 114
+    # QUALIFIED rows scored 0.0 while passing structurally, and its median
+    # QUALIFIED headcount is 16,996 for a client who sells to 20+ person
+    # agencies. The sourced chain is the only source until it is rebuilt.
+    legacy = [r for r in rows if not r.get(SOURCED_PROVENANCE)]
+    if legacy:
+        raise RetiredCandidatePool(
+            "%d of %d exportable rows carry no `%s`, so they come from the "
+            "retired pool rather than the sourced chain. The weekly export "
+            "is STOPPED by operator decision 2026-09-24 (ISSUE-031, and "
+            "ISSUE-023 underneath it). Rebuild `candidates.jsonl` from "
+            "`qualify_sourced_supply.py` - this refusal clears itself when "
+            "the rows carry that field."
+            % (len(legacy), len(rows), SOURCED_PROVENANCE))
+    return rows
 
 
 def to_export_rows(candidates):
