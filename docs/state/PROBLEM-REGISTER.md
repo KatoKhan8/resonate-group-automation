@@ -63,7 +63,19 @@ Productive sells to 20+ person marketing and creative agencies.
 file as it is** — and the defective rows were already on disk, where no amount
 of correct writing reaches them. The gate is now in both places.
 
-**It does not unblock the export.** After the fix the function returns 114
+**RETIRED, operator decision 2026-09-24 (`a3c02e08`).** The whole 1,508-row
+pool is out of every export path. `exportable_candidates()` now RAISES
+`RetiredCandidatePool` rather than returning an empty list - an empty CSV
+reads as a quiet week rather than a stopped export, and this project has
+shipped that confusion before.
+
+**Gated on PROVENANCE, not a flag, so it clears itself.**
+`qualify_sourced_supply.py` stamps `_sourced_at` and nothing that produced
+the legacy pool ever did, so a rebuilt row passes with nobody remembering to
+flip anything back. ONE legacy row stops the whole export: a partially
+rebuilt pool must not quietly ship its good half.
+
+**It did not unblock the export.** Before the retirement the fix left 114
 rows, and those are ISSUE-023. `ThisDoesNotUnblockTheExport` asserts the
 zero-scoring enterprise row still passes, so a green suite is never read as
 permission.
