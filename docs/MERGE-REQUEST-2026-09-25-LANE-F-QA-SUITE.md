@@ -222,6 +222,23 @@ This was verified by **running both tools**, after committing the files and
 after committing this document with the AFTER numbers still unchecked. Lane E's
 lesson was not "write the DEPENDS line correctly", it was "run the tool".
 
+### A finding that fell out of regenerating it
+
+**The committed `docs/state/TASK-REGISTRY.json` at `24acafff` was forty tasks
+behind the files it derives from.** It listed 232 tasks and `ready_count: 18`;
+regenerating it against the same tree gives 280 tasks and, before lane F wrote
+anything, `ready_count: 33`. TASK-238 through TASK-278 all existed as files on
+that commit and none of them was in the JSON.
+
+Diffed both directions: **nothing was lost** — every task in the old file is in
+the new one — so this is staleness, not corruption. But the file is the
+machine-readable answer to "what is the backlog", it says of itself that it is
+*"derived, never hand-edited"*, and it had been believed while being 40 tasks
+out of date. **A ledger somebody has to remember to regenerate is a ledger that
+drifts**, which is the same sentence the script's own docstring opens with.
+Worth a hook or a line in the status cycle; noted here rather than fixed,
+because the fix is somebody's task and not a side effect of this one.
+
 When lane E's thirteen are integrated alongside these eight, the pool's READY
 count is higher again; lane E measured 41 READY on its own branch after its
 fix. Neither number is the integrated one, and the registry says so itself:
