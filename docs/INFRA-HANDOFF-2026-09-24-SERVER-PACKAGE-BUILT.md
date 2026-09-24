@@ -8,12 +8,22 @@ context.
 
 ## 0. THE TWO THINGS TO READ FIRST
 
-**1. All of 2b–2h is built, tested, and HAS NEVER RUN AGAINST THE HOST.**
-Nothing is installed, nothing is started, no secret is written, no `work/`
-copied. `provision.sh` was written and reviewed too, and running it found
-**six defects — four of which produced a symptom pointing somewhere else**.
-Expect the same here. Item 3, the shadow deploy, is what converts this from a
-plan into something tested, and it is the next thing to do.
+**1. SUPERSEDED THE SAME DAY — THE SHADOW DEPLOY IS DONE.** This section
+said "2b–2h has never run against the host". That was true when it was
+written this morning and is false now. Read
+**`docs/SHADOW-DEPLOY-READINESS-2026-09-24.md`** instead of this file for
+anything about the host: the package is deployed at
+`infra-shadow-2026.09.24e`, the supervisor is installed and NOT started, the
+receiver answers over TLS, and a deliberate reboot was survived.
+
+Running it found **four defects** review and a green suite had both missed —
+including a Caddy directive that `caddy validate` approved and that meant
+something else entirely. The prediction in this paragraph's original text
+was correct; it just stopped being the future.
+
+**The rest of this document below §1 is still accurate** as the record of the
+merge, the baseline and the design decisions. §5's test count of 91 is now
+101.
 
 **2. `46474c6c` is STILL not on master**, four handoffs later. Without it
 `cold_start --verify` looks for each monitor's heartbeat at
