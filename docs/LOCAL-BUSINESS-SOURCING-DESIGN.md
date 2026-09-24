@@ -97,7 +97,7 @@ otherwise has not read the caching clause.
 
 Croatia is in the EU and most target markets are. Local business records are
 **personal data** far more often than enterprise ones: the owner's name is the
-business name, the mobile is the business number, `marko@marko-dental.hr` is a
+business name, the mobile is the business number, `marko@marko-dental.example` is a
 person.
 
 - **Legal basis.** Legitimate interest, Art 6(1)(f), is the usual basis for

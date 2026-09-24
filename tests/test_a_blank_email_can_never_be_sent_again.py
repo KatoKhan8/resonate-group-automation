@@ -66,10 +66,15 @@ PAUSED_BLANK = {"id": 22356723, "sequence_step_id": 4752,
 #: 274 of the 275 looked like this, and none of them may halt anything.
 PAUSED_GOOD = {"id": 22356784, "sequence_step_id": 4752,
                "status": "sending_paused", "thread_reply": True,
+               # SHAPE, NOT THE ROW'S REAL COPY. The live row renders a
+               # real prospect's first name and their employer, and a
+               # tracked file may not carry either. What this fixture has to
+               # preserve is that the merge fields RESOLVED - the fault
+               # classes all turn on emptiness, not on who is named.
                "email_subject": "Re: the ops stack",
-               "email_body": "<p>Garth, the teams I work with that look most "
-                             "like Medical Marketing Service, Inc tend to "
-                             "arrive at the same place.</p>",
+               "email_body": "<p>Firstname, the teams I work with that look "
+                             "most like Example Agency Ltd tend to arrive at "
+                             "the same place.</p>",
                "lead": {"id": 204700}}
 
 OPENER_GOOD = {"id": 22352260, "sequence_step_id": 4769, "status": "sent",
