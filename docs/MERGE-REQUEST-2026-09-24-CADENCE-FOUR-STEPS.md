@@ -33,9 +33,15 @@ credential read. Nothing was merged and nothing was pushed.
     -----
       796   survive every gate this script can ask
 
-**ASK FOR 796, NOT 814, AND NEVER 927.** Each of those four numbers is the
-answer to a different question and only the last one is the answer to "how
-many leads can be pushed".
+**ASK FOR 796, NOT 814, AND NEVER 927.** Each of those numbers answers a
+different question.
+
+**AND 796 IS STILL NOT "HOW MANY CAN BE PUSHED"** — I would be repeating the
+exact mistake to say it is. 796 is what survives every gate reachable from a
+worktree with no `work/`. The verification pair, suppression, collision and
+fatigue gates were never asked, and the handoff records 167 leads held on the
+verification pair alone last time. **Only `batch1_build --plan` answers the
+push question, and its number will be lower.** §5.2.
 
 **927 was never the rendered count.** It is the journal's line count:
 814 rendered plus 113 held. `docs/STEPS-4-5-DRAFTS-2026-09-24.md` says
