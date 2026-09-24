@@ -446,3 +446,40 @@ Deliberately not taken from that branch, because they belong to other lanes:
 `src/replyreconcile.py` and its test, `scripts/bison_watch_loop.py`, the
 reply-reconciliation merge request, and `docs/state/PROBLEM-REGISTER.md`
 (its rows there renumber against master's).
+
+---
+
+## 9. HOW TO MERGE THIS
+
+Branch `worktree-agent-aea4a82ef07084898`, HEAD `89ac0d8b` at the time this
+section was written. **Not merged, not pushed.**
+
+**Branched from master at `24acafff`, and master has moved to `b3112872`
+since.** `git diff master..HEAD` therefore shows deletions of every file
+master gained in between - lane F's QA suite, the qwen task files,
+`src/leadstop.py`, `src/testidentity.py`. **Those are not deletions this
+branch makes**; it simply predates them. Merge it. Do not check this tree
+out over master.
+
+The 18 files this branch actually changes, measured against its own base:
+
+    src/researchpack/{site.py,actors.py,pack.py,__init__.py}
+    tests/test_researchpack.py
+    tests/test_nothing_writes_to_a_provider.py
+    scripts/researchpack_{cohort,copylint_gap,ledger_slice,reconstruct}.py
+    docs/MERGE-REQUEST-2026-09-24-RESEARCH-PACKS.md
+    scripts/suite_verdict.txt
+
+plus the lane-1 files adopted byte-identical and listed in section 8.
+
+**`scripts/suite_verdict.txt` is the one hunk to drop if anybody has a
+fresher one.** It is a shared, tracked, whole-file artefact of whoever ran
+the suite last; mine was measured at `d5dd6d66` and says so in its commit.
+Two lanes each merging their own verdict is how the stale one in section 6.1
+came to exist.
+
+`docs/state/PROBLEM-REGISTER.md` was deliberately NOT touched. The two rows
+this work belongs under - the invented actor ids and the wrong-company job
+rows - are ISSUE-035 and ISSUE-036 on
+`researchpack-four-sources-2026-09-24`, and those numbers collide with
+master's. Renumbering is the register owner's call, not this lane's.
