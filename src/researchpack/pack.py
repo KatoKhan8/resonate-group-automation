@@ -46,9 +46,18 @@ def _items(run_output, limit):
 #: Where a row's url, body and date live, across the three actors. Tried in
 #: order. Written as data rather than a chain of `or`s so a new actor is a
 #: line here and the tests can assert the whole surface.
-URL_KEYS = ("url", "postUrl", "link", "jobUrl")
-BODY_KEYS = ("text", "description", "title", "content")
-DATE_KEYS = ("publishedAt", "postedAt", "date", "datePosted")
+#: `linkedinUrl` is harvestapi's permalink field, and its absence
+#: here dropped EVERY profile post on the 2026-09-24 capture - 9
+#: raw rows, 0 usable facts, reported as "this profile has nothing
+#: to say". Read off the real rows, not guessed.
+URL_KEYS = ("url", "postUrl", "link", "jobUrl", "linkedinUrl")
+#: `description_text` before `title`: the jobs actor carries a 7k
+#: character description and a short title, and the description is
+#: what a first line can actually be built from.
+BODY_KEYS = ("text", "content", "description_text",
+             "description", "title")
+DATE_KEYS = ("publishedAt", "postedAt", "date_posted", "date",
+             "datePosted")
 
 
 def _first(row, keys):
@@ -91,18 +100,32 @@ def run_actor(name, target, subject=None, client=None, runner=None):
             "%s needs a logged-in session; this pack reads public surfaces "
             "only" % name)
     payload = actorspec.build_input(name, target)
-    # BEFORE the call, not after. A run that starts and then fails still
-    # cost something, and a ledger that records only successes understates
-    # spend in exactly the runs worth auditing.
-    spendledger.record(client or "unattributed", "apify", name, spec["cost"])
-    rows = (runner or _live_runner)(spec["actor"], payload, spec["limit"])
+    # ## RECORDED WHEN A RUN EXISTS, NOT WHEN A REQUEST IS SENT
+    #
+    # The first version recorded before the call, reasoning that a run
+    # which starts and then fails still cost something. That is true and it
+    # was the wrong place: on 2026-09-24 three live captures came back 404
+    # from `POST /acts/<id>/runs` - the actor ids were wrong - and the
+    # ledger took six rows of spend for runs Apify never created. A ledger
+    # that overstates is no better than one that understates; both make the
+    # spend audit something nobody can reconcile.
+    #
+    # So the record happens once the provider has given us a run id, which
+    # is the moment Apify starts charging. A run that then fails or times
+    # out IS still recorded, because by then it exists.
+    rows = (runner or _live_runner)(
+        spec["actor"], payload, spec["limit"],
+        on_started=lambda: spendledger.record(
+            client or "unattributed", "apify", name, spec["cost"]))
     return _facts_from(name, _items(rows, spec["limit"]), subject=subject)
 
 
-def _live_runner(actor, payload, limit):
+def _live_runner(actor, payload, limit, on_started=None):
     """Start, poll, read. The polling is `providers.apify`'s."""
     from ..providers import apify
     run = _start(actor, payload)
+    if on_started:
+        on_started()
     finished = apify.wait_for(run["id"])
     dataset = (finished or {}).get("dataset_id") or run.get("dataset_id")
     return apify.dataset_items(dataset, limit)
@@ -123,7 +146,19 @@ def _start(actor, payload):
                       {"token": token, "timeout": apify.RUN_TIMEOUT}),
         {}, payload)
     if not ok(status):
-        raise ProviderError("apify start %s: %s" % (actor, status))
+        # THE BODY IS THE WHOLE POINT OF A 400. The first version raised
+        # the status code alone, so a live capture on 2026-09-24 could
+        # report "400" and nothing about WHICH field was invalid - which is
+        # the one thing a person needs to fix it. Apify answers with
+        # `{"error": {"type": ..., "message": ...}}`.
+        detail = ""
+        try:
+            body = mapping(data, "apify start error").get("error") or {}
+            detail = " %s: %s" % (body.get("type") or "?",
+                                  str(body.get("message") or "")[:400])
+        except Exception:                                       # noqa: BLE001
+            detail = " %s" % str(data)[:400]
+        raise ProviderError("apify start %s: %s%s" % (actor, status, detail))
     run = mapping(data, "apify start").get("data") or {}
     if not run.get("id"):
         raise ProviderError("apify start returned no run id")

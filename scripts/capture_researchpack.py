@@ -63,6 +63,9 @@ def main(argv=None):
     parser.add_argument("--out", default=None)
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--status", action="store_true")
+    parser.add_argument("--only", default=None,
+                        help="comma-separated actor names; the rest are not "
+                             "run and not charged")
     args = parser.parse_args(argv)
 
     load_env()
@@ -73,6 +76,15 @@ def main(argv=None):
         planned.append(("person_posts", args.champion))
     if args.exec_profile:
         planned.append(("person_posts", args.exec_profile))
+    # `--only` EXISTS BECAUSE ONE ACTOR CANNOT BE TARGETED FROM OUR DATA.
+    # Measured 2026-09-24 over the whole store: 1,543 records carry ZERO
+    # company-level LinkedIn urls, and `linkedin-company-posts-scraper`
+    # needs one. Running it against `https://<domain>` - a website, not a
+    # LinkedIn company page - spends money on a call we already know is
+    # aimed at the wrong thing.
+    only = [n.strip() for n in (args.only or "").split(",") if n.strip()]
+    if only:
+        planned = [(n, t) for n, t in planned if n in only]
 
     print("actors this would run, and the planned cost:")
     for name, target in planned:
@@ -93,16 +105,23 @@ def main(argv=None):
     os.makedirs(out_dir, exist_ok=True)
     captured = {}
 
-    def recorder(actor, payload, limit):
+    def recorder(actor, payload, limit, on_started=None):
         from src.researchpack.pack import _live_runner
-        rows = _live_runner(actor, payload, limit)
+        rows = _live_runner(actor, payload, limit, on_started=on_started)
         captured[actor] = rows
         return rows
 
-    pack = researchpack.build(args.domain, live=True, client=args.client,
-                              champion=args.champion,
-                              exec_profile=args.exec_profile,
-                              company_url=args.company_url, runner=recorder)
+    total = 0
+    facts_found = 0
+    for name, target in planned:
+        subject = "champion" if target == args.champion else (
+            "exec" if target == args.exec_profile else None)
+        found = researchpack.run_actor(name, target, subject=subject,
+                                       client=args.client, runner=recorder)
+        total += actors.ACTORS[name]["cost"]
+        facts_found += len(found)
+        print("  %-14s %d usable fact(s)" % (name, len(found)))
+    pack = {"cost": total, "fact_count": facts_found}
 
     for actor, rows in captured.items():
         name = actor.replace("~", "-").replace("/", "-") + ".json"

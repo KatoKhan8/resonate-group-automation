@@ -1,10 +1,10 @@
 [
  {
   "call": "researchpack-run-start-company-posts",
-  "note": "PROVENANCE: hand written to Apify's documented run-start schema, like every other entry in this directory - tests/base.py calls these 'hand written provider fixtures'. NOT captured from a live run. No Apify actor run in this repository has ever succeeded: providers/apify.start_run records that every run it started was rejected with 400 invalid-input for a missing proxyConfiguration, so there is nothing to capture from. scripts/capture_researchpack.py takes the real ones and costs credits.",
+  "note": "PROVENANCE, 2026-09-24. The actor ids, the INPUT field names and the ROW STRUCTURE below are captured from live runs against the real Apify API on three accounts from that night's cohort - `GET /acts/<id>` returns 200 for each, every input field comes from the actor's published schema, and the row keys and nesting (note `postedAt` is an OBJECT, not a string) are exactly what the actors returned. The VALUES are replaced: the real rows named a real company, its domain and a real person, and a tracked fixture is not the place for any of them. scripts/capture_researchpack.py re-takes them; work/ is gitignored and is where they land.",
   "match": {
    "method": "POST",
-   "url_contains": "linkedin-company-posts-scraper"
+   "url_contains": "harvestapi~linkedin-company-posts"
   },
   "status": 201,
   "response": {
@@ -19,7 +19,7 @@
   "call": "researchpack-run-start-open-roles",
   "match": {
    "method": "POST",
-   "url_contains": "job-listings-scraper"
+   "url_contains": "fantastic-jobs~career-site-job-listing-api"
   },
   "status": 201,
   "response": {
@@ -34,7 +34,7 @@
   "call": "researchpack-run-start-person-posts",
   "match": {
    "method": "POST",
-   "url_contains": "linkedin-profile-posts-scraper"
+   "url_contains": "harvestapi~linkedin-profile-posts"
   },
   "status": 201,
   "response": {
@@ -103,17 +103,29 @@
   "status": 200,
   "response": [
    {
-    "url": "https://www.linkedin.test/feed/update/1",
-    "text": "We have opened a second delivery team in Berlin and are taking on platform work through Q4.",
-    "publishedAt": "2026-09-02T09:14:00Z"
+    "id": "c-1",
+    "type": "post",
+    "linkedinUrl": "https://www.linkedin.test/posts/acme_activity-1",
+    "content": "We have opened a second delivery team in Berlin and are taking on platform work through Q4.",
+    "postedAt": {
+     "timestamp": 1757000000000,
+     "date": "2026-09-02T09:14:00.000Z"
+    }
    },
    {
-    "url": "https://www.linkedin.test/feed/update/2",
-    "text": "Our engineering team wrote up how we cut deploy times from forty minutes to six.",
-    "publishedAt": "2026-08-19T11:02:00Z"
+    "id": "c-2",
+    "type": "post",
+    "linkedinUrl": "https://www.linkedin.test/posts/acme_activity-2",
+    "content": "Our engineering team wrote up how we cut deploy times from forty minutes to six.",
+    "postedAt": {
+     "timestamp": 1755000000000,
+     "date": "2026-08-19T11:02:00.000Z"
+    }
    },
    {
-    "text": "A post with no permalink in the payload."
+    "id": "c-3",
+    "type": "post",
+    "content": "No permalink on this row."
    }
   ]
  },
@@ -126,18 +138,34 @@
   "status": 200,
   "response": [
    {
-    "jobUrl": "https://careers.acme.test/senior-platform-engineer",
+    "id": "job-1",
     "title": "Senior Platform Engineer",
-    "description": "Own our deploy pipeline and Kubernetes footprint.",
-    "datePosted": "2026-09-10"
+    "organization": "Acme Delivery",
+    "organization_url": "http://www.acme.test",
+    "org_linkedin_slug": "acme-delivery",
+    "domain_derived": "acme.test",
+    "url": "https://acme.applytojob.test/apply/aaa/Senior-Platform-Engineer",
+    "description_text": "Own our deploy pipeline and Kubernetes footprint. We ship to production several times a day and want that to stay true.",
+    "date_posted": "2026-09-18T00:00:00",
+    "date_created": "2026-09-18T18:51:50.661221",
+    "source": "jazzhr",
+    "source_type": "ats",
+    "employment_type": [
+     "FULL_TIME"
+    ]
    },
    {
-    "jobUrl": "https://careers.acme.test/data-engineer",
+    "id": "job-2",
     "title": "Data Engineer",
-    "description": "Build the reporting warehouse.",
-    "datePosted": "2026-09-05"
+    "organization": "Acme Delivery",
+    "org_linkedin_slug": "acme-delivery",
+    "domain_derived": "acme.test",
+    "url": "https://acme.applytojob.test/apply/bbb/Data-Engineer",
+    "description_text": "Build the reporting warehouse.",
+    "date_posted": "2026-09-05T00:00:00"
    }
-  ]
+  ],
+  "note": "Real fantastic-jobs shape. The date field is `date_posted` with an underscore, the body worth quoting is `description_text` rather than the short `title`, and `org_linkedin_slug` is the field that could close the company_posts targeting gap."
  },
  {
   "call": "researchpack-dataset-person-posts",
@@ -148,10 +176,39 @@
   "status": 200,
   "response": [
    {
-    "postUrl": "https://www.linkedin.test/posts/ada-1",
-    "text": "Six months into rebuilding our onboarding and the thing that surprised me is how much of it was reporting.",
-    "postedAt": "2026-09-12T08:00:00Z"
+    "id": "6635982682562134016",
+    "entityId": "6635982682562134016",
+    "type": "post",
+    "linkedinUrl": "https://www.linkedin.test/posts/ada-tester_activity-663598",
+    "shareLinkedinUrl": "https://www.linkedin.test/feed/update/urn:li:share:66359826",
+    "content": "Six months into rebuilding our onboarding and the surprise is how much of it turned out to be reporting.",
+    "postedAt": {
+     "timestamp": 1758700000000,
+     "date": "2026-09-12T08:00:00.000Z",
+     "postedAgoShort": "1w"
+    },
+    "author": {
+     "name": "Ada Tester",
+     "publicIdentifier": "ada-tester",
+     "linkedinUrl": "https://www.linkedin.test/in/ada-tester"
+    },
+    "engagement": {
+     "likes": 4,
+     "comments": 1,
+     "shares": 0
+    }
+   },
+   {
+    "id": "6635982682562134017",
+    "type": "post",
+    "linkedinUrl": "https://www.linkedin.test/posts/ada-tester_activity-663599",
+    "content": null,
+    "postedAt": {
+     "timestamp": 1756000000000,
+     "date": "2026-08-24T09:00:00.000Z"
+    }
    }
-  ]
+  ],
+  "note": "Real harvestapi shape. `linkedinUrl` is the permalink - its absence from URL_KEYS dropped all 9 rows of the first capture - and `postedAt` is an object whose `date` carries the ISO string. The second row has no content, which is what 2 of 9 real rows looked like."
  }
 ]

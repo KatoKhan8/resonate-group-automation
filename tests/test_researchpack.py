@@ -3,20 +3,22 @@ Apify run lifecycle - start, poll, read the dataset.
 
 ## WHAT "CASSETTE" MEANS HERE, SAID PLAINLY
 
-`tests/base.py` calls these "hand written provider fixtures", and
-`tests/fixtures/cassettes/00-researchpack.json` is hand written to Apify's
-documented schema. **It is not captured from a live run.** There is nothing
-to capture from: `providers/apify.start_run` records that every run this
-repository ever started was rejected with 400 `invalid-input` for a missing
-`proxyConfiguration`, so no Apify actor has ever returned evidence here.
+**THE STRUCTURE IS CAPTURED. THE VALUES ARE NOT.** On 2026-09-24 three
+accounts from that night's cohort were run live against the real Apify
+API. The actor ids, the input field names and the row structure in
+`00-researchpack.json` are what came back. Every VALUE is replaced,
+because the real rows named a real company, its domain and a real person,
+and a tracked fixture is not the place for any of them.
 
-`scripts/capture_researchpack.py` takes the real ones. It costs credits and
-has not been run.
+That capture is the only reason this package works. The first version of
+it was written from plausible guesses and **every one of them was wrong**:
+three actor ids that returned 404, input fields with invented names, a
+`timeRange` the actor rejected with 400, a permalink field (`linkedinUrl`)
+missing from the url map so all nine real posts were dropped as
+unusable, and a `postedAt` that is an OBJECT rather than a string.
 
-That distinction is the whole reason this docstring exists. A fixture
-presented as a capture is the "fixtures are invented" failure this
-repository already has on its list, and it is worse for a provider whose
-output shape nobody in this codebase has ever actually seen.
+`scripts/capture_researchpack.py` re-takes them. It costs credits and
+writes under `work/`, which is gitignored.
 
 ## WHAT IS ASSERTED
 
@@ -81,20 +83,39 @@ class TheRunLifecycleIsTheProvidersOwn(PackTest):
             client="productive")
         post = [c for c in self.cassette.calls if c["method"] == "POST"][0]
         body = post["body"] or {}
-        self.assertIn("companyUrl", body)
+        self.assertIn("targetUrls", body)
         self.assertNotIn("startUrls", body)
         self.assertNotIn("maxCrawlPages", body)
 
-    def test_every_run_carries_the_proxy_configuration(self):
-        """WITHOUT IT THE RUN IS REJECTED BEFORE IT STARTS, which is how
-        this provider appeared to work for months and returned nothing."""
+    def test_no_proxy_configuration_is_sent_to_these_actors(self):
+        """`providers/apify` requires it because the WEBSITE CRAWLER does.
+
+        These three declare no required fields and the two LinkedIn ones
+        are "No Cookies" actors - checked against their published input
+        schemas on 2026-09-24. The first version of this package sent it to
+        all three, which was a rule inherited from a different actor and
+        never true here.
+        """
         for name, target in (("company_posts", "https://li.test/company/a"),
                              ("open_roles", "acme.test"),
                              ("person_posts", "https://li.test/in/ada")):
             with self.subTest(actor=name):
-                payload = actors.build_input(name, target)
-                self.assertEqual(payload["proxyConfiguration"],
-                                 {"useApifyProxy": True})
+                self.assertNotIn("proxyConfiguration",
+                                 actors.build_input(name, target))
+
+    def test_the_input_field_names_are_the_actors_own(self):
+        """GUESSED ONCE, AND EVERY RUN 404ed. See `actors.build_input`."""
+        self.assertIn("targetUrls",
+                      actors.build_input("person_posts", "https://li/in/a"))
+        self.assertIn("domainFilter",
+                      actors.build_input("open_roles", "acme.test"))
+
+    def test_company_posts_is_not_targetable_from_what_we_store(self):
+        """1,543 records, ZERO company-level LinkedIn urls. Measured."""
+        self.assertFalse(actors.targetable("company_posts", {}))
+        self.assertTrue(actors.targetable("open_roles", {}))
+        self.assertTrue(actors.targetable(
+            "company_posts", {"linkedin": "https://li.test/company/a"}))
 
 
 class EveryFactCarriesItsProvenance(PackTest):
@@ -242,16 +263,38 @@ class DryRunIsTheDefault(PackTest):
 
 
 class TheCassetteSaysWhatItIs(unittest.TestCase):
-    """The provenance note is load-bearing, so it is asserted."""
+    """The provenance note is load-bearing, so it is asserted.
 
-    def test_it_does_not_claim_to_be_a_live_capture(self):
+    It changed on 2026-09-24 and the change is the point: the cassette WAS
+    hand written to a guessed schema, three live captures proved most of
+    that guess wrong, and the note now records what is captured (ids,
+    input field names, row structure) and what is replaced (every value).
+    """
+
+    def test_it_says_which_half_is_captured_and_which_is_replaced(self):
         path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "fixtures", "cassettes", "00-researchpack.json")
         with open(path, encoding="utf-8") as handle:
             entries = json.load(handle)
         note = entries[0].get("note") or ""
-        self.assertIn("NOT captured from a live run", note)
+        self.assertIn("captured from live runs", note)
+        self.assertIn("VALUES are replaced", note)
         self.assertIn("capture_researchpack", note)
+
+    def test_no_real_company_or_person_survived_into_it(self):
+        """The real rows named a real company, its domain and a real
+        person. A tracked fixture is not the place for any of them, and
+        `test_fixture_hygiene` only knows the domains somebody already
+        added to its list."""
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "fixtures", "cassettes", "00-researchpack.json")
+        with open(path, encoding="utf-8") as handle:
+            body = handle.read().lower()
+        for leaked in ("worktrucksolutions", "applytojob.com",
+                       "antoine", "bieniek"):
+            self.assertNotIn(leaked, body)
+        self.assertIn(".test", body, "the fixture should use reserved "
+                                     "domains, so this check has teeth")
 
 
 if __name__ == "__main__":
