@@ -5,7 +5,7 @@ Written to the test `CLAUDE.md` sets: a fresh session on another machine,
 with a clone and the secrets supplied separately, should be able to read
 this and say what happened and what to do next.
 
-**Branch `slack-agent` at `a87e787c`, pushed and verified.** It merges
+**Branch `slack-agent` at `8f85ec2f`, pushed and verified.** It merges
 master at `522495b3`; master has since moved to at least `d6a719c2` —
 fetch and check before writing anything.
 
@@ -108,28 +108,49 @@ ways, wrong in one. The block is at the end of the file now.
 
 ---
 
-## 4. WHAT PRODUCTION OWES — ONE IS NEW AND IT IS THE BIGGEST
+## 4. THE GAG, AND WHAT PRODUCTION STILL OWES
 
-### 4a. A CLIENT CHANGE REQUEST CURRENTLY REACHES NOBODY
+### 4a. A CLIENT CHANGE REQUEST REACHED NOBODY — FIXED, AND IT IS A LOOSENING
 
-`CLIENT_CHANNEL_GAG` returns at `slackconversation.py:1406`. `_raise_ticket`
-is at **1454**. So in a client channel the turn returns before the ticket
-is written, and `scripts/slack_agent_loop.py:254` writes a `kind: gagged`
-row to `work/slack-agent.jsonl`, emits one line to stdout, and returns.
-**No Slack post, no ticket, no internal notification.**
+`CLIENT_CHANNEL_GAG` returned before section 2a of `_respond`, and
+`_raise_ticket` is below it. So a client asking us to CHANGE something
+produced a `kind: gagged` row, one line on the loop's stdout, and nothing
+else: no ticket, no internal post, nobody told. The question catalogue's
+highest-severity shape in the whole corpus is a client change request. It
+was also 31 of the 123 failures.
 
-The question catalogue names the highest-severity shape in the whole corpus
-as a client change request — a reply-stop complaint with four question
-marks. Today that produces a log line. The gag was set to stop the agent
-saying something wrong to a client; it also stopped the operator finding
-out the client asked.
+**OPERATOR DECISION 2026-09-24: fixed on this branch.** The gag moved to
+sit AFTER the change-request intake. All 31 pass.
 
-It is also **31 of the 123** — `test_slack_request_tickets`, 12 of them
-naming `gagged` directly.
+**SAY THE LOOSENING OUT LOUD.** The agent posts to a client channel again,
+for change requests only. The argument: the gag's three faults were all in
+the MODEL-ANSWERED path — a provider flag read as a classification, the
+model reaching for the fallback, sixteen serial round trips — and nothing
+above the new line calls a model or reads a provider. `_open_request` and
+`_raise_ticket` are template text out of `slackrequests`, and
+`restate(client_facing=...)` already has its own guards
+(`..._names_nobody_at_resonate`, `..._promises_a_time`).
 
-**The cheapest fix is to let the ticket path run before the gag returns**,
-because a ticket is an internal write and not client-visible text. That is
-production's decision and it is the gag's fourth outstanding item.
+One client path stays behind the gag: accepting the first-send offer,
+because registering a follow-up promises a later message AND reads the
+provider.
+
+**TO PUT THE SILENCE BACK:** move the 2d block to the top of `_respond`,
+where it was the first statement after `scope`. The 31 go red with it. It
+is written at the block, and
+`tests/test_the_gag_stops_the_answer_not_the_request.py` pins both halves
+so the size of the hole is visible rather than inferred.
+
+Writing that test caught two things worth keeping: a `ROWS` shape
+`slackscope.resolve` does not understand does not raise — the channel
+resolves UNBOUND and an unbound turn is never gagged, so four assertions
+passed against a scope the test was not about; and the test wrote **two
+real tickets into `docs/requests/`**, because `isolate()` moves the store
+and the ticket directory has its own `SLACK_REQUESTS_DIR`. `slackrequests`
+carries a comment saying that happened once before and the files were
+deleted by hand. It says so at the constant that fixes it, and it still did
+not prevent the second occurrence. **A guard asserting `docs/requests/` is
+empty after the suite is the thing that would**, and it is not built.
 
 ### 4b. The three from the morning handoff, re-checked rather than assumed
 
@@ -198,24 +219,58 @@ reported as one.
 
 ---
 
-## 7. THE MEASUREMENT THAT IS STILL OWED, AND WHY IT IS CIRCULAR
+## 7. THE LIVE REPLAY IS DONE — `docs/AGENT-REPLAY-2026-09-24.md`
 
-The operator's target is **p50 under 15s, p95 under 30s IN CLIENT SCOPE.**
-Client scope returns gagged at 0.0s, so a live replay measures the gag. And
-the gag is not to lift until the latency is fixed.
+**THE TARGET IS NOT MET.** Client scope, 11 of 33 real questions, live
+provider, live model, `--lift-gag`, nothing posted:
 
-**The replay is the way out, because it posts nothing.** Lifting the gag
-inside the replay process is not lifting it in production — there is no
-Slack write on that path, and provider reads are the only live thing about
-it. `scripts/slack_agent_replay.py` needs a `--lift-gag` flag; it is not
-written yet, and it is the next thing.
+    client p50   25.4s     target 15s
+    client p95   37.8s     target 30s
 
-`scratchpad/replay_after.sh` is drafted and NOT RUN: it copies production's
-`work/` rather than pointing at it (thirty-three replayed turns write thread
-memory) and points `WORKSPACES`, `SLACK_THREADS` and the rest into the copy,
-because **the worktree's own `work/` is stale and thin and a client probe
-run there resolves UNBOUND.** Production's log now holds **33** questions
-since 2026-09-21, one more than the morning's 32.
+The comparison is NOT 24.3s → 26.6s: the published baseline p50 included
+eleven gagged 0.0s answers. Over the 21 it answered the baseline median was
+≈108s. So: turns over 82s **11 of 21 → 0 of 33**, p95 **132.3s → 37.8s**,
+five-tool turn **108.3s → 35.7s**.
+
+**AND THE BOTTLENECK MOVED. "100% of the latency is serial provider HTTP"
+IS NOW FALSE** — it was true when written. A 0-tool turn costs 4.4s, a
+1-tool broad-route turn costs 26.2s, and the A/B says `working_on` is 5.4s
+of it, so **~21s of every turn is answer composition**: one model call,
+untouched by this increment and immune to caching or parallelism. The next
+latency increment is about the model — a smaller one for short answers,
+streaming, or a shorter answer prompt. Measure first; that rule has paid
+three times on this branch now.
+
+### 7a. And the route that was supposed to fix the length failures
+
+`length` is 6 of 33, and **five of the six TOOK the broad route and still
+answered long**. The plan was the cause of the volume and is not the whole
+cause of the length. That is now a prompt problem, separable from the plan,
+which it was not before.
+
+### 7b. What the run cost to get right
+
+Three live runs. The first resolved **zero client scopes** because the copy
+list said `workspaces.json` and the file is `workspaces.jsonl` — so it
+measured the scope the target is not stated in. The second measured
+pre-fix code and was killed at 6 of 33.
+
+`scratchpad/replay_after.sh` carries the setup; `--lift-gag` is on the
+harness and is safe structurally, not by promise: the script has no write
+path to Slack, because `respond` returns a dict and the loop is not
+imported there.
+
+### 7c. THE ROUTE SHIPPED INERT, AND EIGHTEEN TESTS SAID OTHERWISE
+
+The broad-question route fired **zero times** on the first replay. Every
+real question arrives as `<@U0C3CBAP6BB> what is running`, and the guard
+that rejects "what's new with 491" matches a bare `@` — so it rejected the
+whole corpus. `requests.strip_mentions` already existed and three other
+modules already called it. **The fixture was the defect.** Fixed at
+`21222253`; the tests now use phrasings copied verbatim out of
+`work/slack-agent.jsonl`, mentions and all, and the route fires 8 of 33.
+
+This is the argument for the replay over the suite, in one example.
 
 ---
 
@@ -238,10 +293,17 @@ no subject is extractable, never `pass`.
 
 ## 9. WHAT TO DO NEXT, IN ORDER
 
-1. `--lift-gag` on the replay harness, then the live replay, then post the
-   real p50/p95 against the 24.3s / 132.3s baseline. §7.
+1. **The model, not the reads.** §7 - ~21s of every turn is one answer
+   call, and the target needs ~10s of it back. Measure a smaller model or
+   a shorter answer prompt before building either.
 2. Item 3 — the missed-mention sweep, with §6's two constraints, and
    **report the count before building anything.**
 3. Item 5's window decision (10 days or 7), which is an argument. §5.
 4. Items 3b/4 — client deliverables, the Monday dry run with the PDF.
-5. Raise 4a with production. It is larger than anything on this branch.
+5. **Tell production the gag was loosened.** §4a. It is done, not pending,
+   and it changes when a safety mechanism they set returns. The revert is
+   one block move.
+6. The `length` failures are now a PROMPT problem, not a plan problem. §7a -
+   five of six took the broad route and still answered long.
+7. A guard that `docs/requests/` is empty after the suite. §4a - the same
+   accident has now happened twice.
