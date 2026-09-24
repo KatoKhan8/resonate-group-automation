@@ -450,8 +450,57 @@ See §6. One pass only, diffed by name.
 
 ---
 
-## 8. SUITE
+## 8. SUITE — AND A MISTAKE I MADE MEASURING IT
 
-Recorded in §6 of this file's companion section below, written after the run
-completed. **A count was not read mid-run**: grepping `^FAIL:` while the suite
-is running always returns 0.
+**The trustworthy evidence is the targeted module runs, not the full pass.**
+
+### 8.1 What I ran, and what is good
+
+Every module that touches `email_sequence`, the threading invariant, the
+productive config or the cadence, run to completion:
+
+    test_the_cadence_is_four_steps_everywhere      13   OK   (new)
+    test_threaded_sequence
+    test_bison_campaign_write
+    test_lead_variables
+    test_task081_thread_reply                      69   OK   (together)
+    test_staging_a_campaign_twice_builds_one
+    test_staging_refuses_colliding_contacts
+    test_two_campaigns_do_not_collide_at_the_provider
+    test_five_subject_variants_the_provider_already_rotates
+    test_eight_step_cadence                       107   OK   (together)
+    test_a_five_step_campaign_sends_five_different_emails
+    test_angle_subjects_are_readable               38   OK   (after §6.5)
+
+227 tests, green. Plus the three deliberate breakages in §4.2, each of which
+went red for its own reason.
+
+### 8.2 THE MISTAKE: I CONTAMINATED THE FULL PASS
+
+I started `py -3 -m tests.offline` and then, while it was still running,
+started targeted module runs in the same checkout. `CLAUDE.md` says plainly:
+*"`unittest discover` and `tests.offline` both bind loopback and build demo
+estates; run back to back they still overlap during teardown, and one HTTP
+test fails intermittently."* I did it concurrently, which is worse than back
+to back.
+
+**So the failure names that full pass produces cannot be attributed.** A
+failure in it may be mine, may be environmental (this worktree has no `work/`
+and no `config/.env`, which the brief warns accounts for many of the ~108
+known ones), or may be my own concurrent runs stealing a port. I stopped the
+concurrent job when I noticed, which does not undo the overlap.
+
+**I am not reporting a number from it, and nobody should read one.** Reading
+a contaminated count as a verdict is the failure mode this document spends
+§0 on.
+
+### 8.3 What the foreground session should do instead
+
+Run one clean pass on the merged result, alone, and diff BY NAME against the
+same command at `24acafff` — `scripts/suite_baseline.py --measure` writes the
+names, which `docs/state/SUITE-BASELINE-2026-09-23-MERGED.json` does not: its
+`failures` and `errors` are INTEGERS (97 and 73), and two equal counts
+compare equal while a different set fails.
+
+A mid-run `grep '^FAIL:'` returns 0 whatever is happening, because `unittest`
+prints the blocks only at the end. Wait for the verdict line.
