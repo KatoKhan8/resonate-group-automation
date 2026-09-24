@@ -340,6 +340,44 @@ cohort that matters it covers more accounts than every paid source except
 - Neutering `site.on_this_domain` turns exactly one test red,
   `test_a_page_off_this_domain_makes_no_fact`. Restored, green again.
 
+### 6.1 The full suite, ONE pass, and the verdict file that nearly fooled me
+
+`py -3 scripts/run_suite.py --offline --timeout 2400`, measured at
+`d5dd6d66`:
+
+    12,561 tests - 98 failures, 10 errors - 108 distinct - 1207.1s - not timed out
+
+**`test_researchpack` and `test_nothing_writes_to_a_provider` appear ZERO
+times in that verdict.** Both are green in the full run; 65 and 6 tests.
+
+**THE TRAP, AND IT CAUGHT ME FOR ONE TOOL CALL.**
+`scripts/suite_verdict.txt` is a TRACKED, COMMITTED file. Ten minutes into
+my run I read it and found `failures=110`, `wall_seconds=1972.6` - a
+complete, plausible verdict. It was the one committed at `a374500b`, hours
+old, and `git status` said the file was unmodified, which is what gave it
+away. A suite that is still running leaves last time's verdict sitting
+there looking finished. The number above is from the file AFTER
+`git status` showed it modified.
+
+### 6.2 Why none of the 108 is attributable to this change
+
+Not asserted from the count. **Nothing in `src/` outside the package
+imports `researchpack`** - `grep -rn researchpack --include=*.py src/`
+returns the package itself and one comment in `src/providers/apify.py`.
+There is no import path from this change to any other module, so no test
+outside `tests/test_researchpack.py` can reach it, and none of the failing
+modules imports it.
+
+Diffed BY NAME against the committed verdict at `a374500b`: 39 names fail
+now that did not then, and none is in a module that touches this package.
+They are cadence, resume-ledger, secrets and export modules - consistent
+with master's half-applied cadence described in the late handoff §2 - and
+five of them are `test_ownership_readback_staleness`, which the 09-23
+baseline already recorded as order-dependent and passing standalone. **That
+diff is against a different commit on a different branch and is master
+drift, not a measurement of this branch.** The import argument above is the
+one that actually answers the question.
+
 **WHAT THE SITE TESTS PROVE AND WHAT THEY DO NOT.** The page rows in them are
 built by `webfetch._page` itself on real markup, so the fields
 `site.research` reads are the fields the crawler writes. The **envelope** —
