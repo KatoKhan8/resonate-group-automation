@@ -38,6 +38,39 @@ not reused._
 
 ---
 
+### ISSUE-032 · the bot cannot post or upload in a Slack Connect channel
+
+**Status: OPEN, FROZEN until October by the FOCUS window. Client deliverables
+go through a person until it is solved.**
+
+Measured 2026-09-24 against `#productive-resonate-outbound` (`C0ADUMGQX8S`),
+which is externally shared with The Productive Company:
+
+    slack_complete_file_upload  ->  mcp_externally_shared_channel_restricted
+
+and the message tool documents the same restriction for posting. So the bot
+can neither attach a file nor send a message there.
+
+**THE OBVIOUS WORKAROUND IS WORSE THAN NOTHING, and that is the part worth
+recording.** Posting the internal `#resonate-os` file links into the client
+channel looks like a fix and is not: a Slack file link is not an access
+grant, those files live in the Resonate workspace, and the client is not in
+that channel. The client would see a message announcing three files and
+three links that do not resolve, in front of them. Not attempted.
+
+**Candidates, for October:**
+
+1. A Resonate-side channel shared TO the client, so the files live on our
+   side of the boundary and the bot posts into its own workspace.
+2. The Slack Connect file API with the scope that permits it, if one exists -
+   this needs checking rather than assuming, because the refusal above is
+   from the MCP layer and may or may not reflect a Slack-level limit.
+
+**Today's route: a person posts.** The operator sent the three files and the
+message by hand on 2026-09-24.
+
+---
+
 ### ISSUE-031 · the QUALIFIED-only ruling was enforced at the writer and absent at the reader
 
 **Status: FIXED 2026-09-24 (`d7f3128a`). The export remains STOPPED on
