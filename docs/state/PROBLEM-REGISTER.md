@@ -38,6 +38,49 @@ not reused._
 
 ---
 
+### ISSUE-031 · the QUALIFIED-only ruling was enforced at the writer and absent at the reader
+
+**Status: FIXED 2026-09-24 (`d7f3128a`). The export remains STOPPED on
+ISSUE-023, which this does not touch.**
+
+**ISSUE-019 a second time, from the other end.** `4afb54d5` implemented the
+operator's ruling in `nightlysourcing`, where records ENTER the candidate
+list, and **this register recorded it as "implemented and standing"**. It is,
+for records added after it landed.
+
+`candidates.jsonl` already held **1,394 REVIEW records** at that moment, and
+`candidateexport.exportable_candidates()` filtered on `state == "new"` and
+nothing else. Measured 2026-09-24 **by calling the function**:
+
+    exportable_candidates()          1508 rows
+    of which icp_status == review    1394
+    rows at icp_score 0.0            1410
+    median headcount               16,745
+
+Productive sells to 20+ person marketing and creative agencies.
+
+**A gate at the writer protects the future. A gate at the reader protects the
+file as it is** — and the defective rows were already on disk, where no amount
+of correct writing reaches them. The gate is now in both places.
+
+**It does not unblock the export.** After the fix the function returns 114
+rows, and those are ISSUE-023. `ThisDoesNotUnblockTheExport` asserts the
+zero-scoring enterprise row still passes, so a green suite is never read as
+permission.
+
+**AND THE TWO POOLS HAD BEEN CONFLATED.** The 48,017-domain chain does not
+use `candidates.jsonl` at all. `work/qualified-supply.jsonl` is a different,
+later pool and is sound on every measure the other one fails:
+
+                          candidates.jsonl   qualified-supply.jsonl
+    icp_score == 0.0            58 of 114            0 of 32,951
+    median headcount               16,996                     44
+    in the 20-200 band            0 of 114         29,763 (90.3%)
+
+So supply proceeds on the sourced pool; the legacy weekly export does not.
+
+---
+
 ### ISSUE-026 · `emptyrender.scan` called a PAUSED campaign contained
 
 **Status: FIXED 2026-09-24 (`5257adbe`), PRODUCTION_VERIFIED** — the offending
