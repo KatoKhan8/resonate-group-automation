@@ -89,8 +89,28 @@ def _report_for(slug):
 
 
 def _write_pdf(slug, name, report, monday):
+    """The PDF for ONE Monday, dated by that Monday rather than by now.
+
+    ## THE FILENAME USED `monday` AND THE COVER DID NOT
+
+    Found in the 2026-09-24 dry run. `weeklyreportpdf.build` defaults the
+    reporting period to `report["read_at"]`, which is the moment the report
+    was BUILT, so the document said "The week to 2026-09-24" while the file
+    beside it was named for the 28th. On a Monday that ticks on time the
+    two agree and nothing shows. On a tick that runs late - a restart, a
+    retried Monday, the 08:05 beat after an 07:30 failure - the client gets
+    a document whose cover names the wrong week.
+
+    `monday` was already in this function, used for the filename only.
+    `report_id` is passed for the same reason: a client document that a
+    person is going to attach by hand should say which report it is.
+    """
     os.makedirs(REPORT_DIR, exist_ok=True)
-    raw = weeklyreportpdf.build(report, name)
+    raw = weeklyreportpdf.build(report, name, meta={
+        "period": "The week to %s" % monday,
+        "generated_by": "Resonate OS",
+        "report_id": watch.report_id(slug, monday),
+    })
     target = os.path.join(REPORT_DIR, "weekly-%s-%s.pdf" % (slug, monday))
     with open(target, "wb") as handle:
         handle.write(raw)

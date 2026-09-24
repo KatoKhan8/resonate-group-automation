@@ -111,6 +111,25 @@ MONITORS = [
     # a quiet loop, and the offer must not be made on a heartbeat that no
     # process is writing.
     ("slack-followup",   ["scripts/slack_followup_loop.py", "--interval", "60"]),
+    # THE MONDAY REPORT, ADDED 2026-09-24, AND IT HAD NEVER BEEN STARTED.
+    #
+    # `weeklyreportwatch` and `weeklyreportpdf` were written, tested, and in
+    # this table's absence would have fired for the first time on Monday
+    # 2026-09-28 only if somebody remembered to start the process by hand -
+    # and a reboot would have taken it away again with nothing to bring it
+    # back. That is the third time this exact gap is being closed here: the
+    # comment above records `slack_followup_loop` missing for the same
+    # reason, and `digest_loop` before it.
+    #
+    # FIVE MINUTES IS INSIDE THE WINDOW. The preview is due at 07:30 and the
+    # post at 08:00, and `decide` refuses to post at all if the 07:30
+    # preview never ran - so the interval has to guarantee a tick between
+    # them. 300s lands at worst five minutes after 07:30, which is inside
+    # the half hour the stop window occupies.
+    #
+    # No heartbeat, and that is fine here: `state()` above is UP if EITHER
+    # witness says so, and a live process is proof of life on its own.
+    ("weekly-report",    ["scripts/weekly_report_loop.py", "--interval", "300"]),
 ]
 
 TASK_NAME = "ResonateMonitors"
