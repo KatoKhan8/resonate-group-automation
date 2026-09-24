@@ -66,8 +66,46 @@ three links that do not resolve, in front of them. Not attempted.
    this needs checking rather than assuming, because the refusal above is
    from the MCP layer and may or may not reflect a Slack-level limit.
 
-**Today's route: a person posts.** The operator sent the three files and the
-message by hand on 2026-09-24.
+**AMENDED 2026-09-24: the bot CAN draft there, it cannot send.**
+`slack_send_message` is refused, and its own error names the route:
+`slack_send_message_draft` succeeds against the same channel and lands the
+text in the operator's Drafts, one click from sent. So a client deliverable
+can be composed, scope-checked and staged by the bot; only the send is human.
+That is a materially better position than "client deliverables go through a
+person", and the earlier line in this row overstated the limit.
+
+**Files still cannot go that way** - only text. The three CSVs went by hand.
+
+---
+
+### ISSUE-033 · campaign 481 holds five EMPTY sequence steps and nine un-variabled foreign leads
+
+**Status: OPEN. 481 stays PAUSED. The blank-render gate refused it on
+2026-09-24 against an explicit operator instruction to un-pause everything,
+which is the gate working.**
+
+    sequence steps      5      ALL FIVE EMPTY - subject '', body length 0
+    leads              23
+      foreign (no record_id / contact_key)      9
+      those same 9 missing subject_1, body_1    9
+    membership         stopped 14, sending_paused 9
+    queue rows          0   -> blank_render_verified = FALSE, never a pass
+
+**The 9 `sending_paused` leads are the 9 foreign ones**, held by nothing but
+the campaign's pause - ISSUE-026's shape exactly. Resuming 481 sends 9 blank
+emails to the client's own leads: the 2026-09-22/23 incident reproduced in
+full, and the steps being empty templates means no variable fix would save
+it.
+
+**An empty queue is not a clean queue.** 481's queue has zero rows, so the
+gate reads `blank_render_verified: False` and refuses rather than passing on
+an absence of evidence. This is the first time that clause has done real work.
+
+**To make 481 safe rather than merely paused:** stop the 9 leads, so the
+containment is a lead-level stop instead of a campaign status anybody can
+lift. It forfeits no outreach - all five steps are empty. The copy has to be
+written and the foreign leads detached (ISSUE-030, frozen) before 481 is
+anything but a trap.
 
 ---
 
@@ -1212,6 +1250,33 @@ half is unchanged: operator approval per batch of 500 READY, before any push.
 No write was made to 489 at any point today. It re-planned itself on
 2026-09-20T22:01Z and sent on its own schedule. The pause/resume proposed on
 Sunday and correctly refused would have achieved nothing except risk.
+
+---
+
+## OPERATOR DECISIONS — 2026-09-24
+
+**491 RESUMED, on the operator's authority.** Zvonimir Bešlić, 2026-09-24.
+The client did not answer within the stated window and the technical case was
+clean: 0 blank rows sendable, 273 of 273 leads carrying every used variable,
+0 foreign leads, watcher live. Recorded on the provider write itself as the
+`allow_writes` reason, so the authority travels with the action rather than
+living only here. Read back `paused -> active`, 274 `sending_paused` became
+274 `scheduled`, 0 pending blanks.
+
+**Who paused it is still unknown and that is now a closed question**, not a
+pending one: no provider rule did it (no auto-pause setting exists, limits
+were 945 not zero, all 63 mailboxes `Connected`, no account or campaign event
+in a feed window spanning the pause, 1 bounce in 322), and no Resonate
+session did it. It was a person in the client's workspace.
+
+**CREDENTIAL ROTATION DEFERRED.** Zvonimir Bešlić, 2026-09-24. Five values
+were found live - OpenRouter, a Slack bot token, a Slack app token, a 24-char
+value from `work/slack-history/`, and the Apify proxy password this session
+printed into a transcript. **The operator has deferred rotation**, judging
+the on-disk redaction sufficient for now. Do not raise it under NEEDS ME
+again and do not block work on it. Recorded here so a later session finds the
+decision rather than rediscovering the exposure and escalating it a third
+time.
 
 ---
 
