@@ -281,6 +281,25 @@ And the rules those 68 fire on, counted from the refusals:
     step1_without_pack_fact   46
     duplicate_first_line      17
 
+**The one full-suite pass agrees, by name.** `py -3 scripts/run_suite.py
+--offline`, one pass, 1,279.9s, not timed out:
+
+    FAILED - 111 failure(s), 68 error(s) of 12527      exit 1
+
+    full suite failing names                                 179
+      of which this lane's 68                                 68   ALL of them
+      this lane's 68 that the full run did NOT reproduce        0
+      failing for reasons unrelated to any file this lane touched  111
+        test_e2e 14 · test_preproduction 6 · test_enrich 5 ·
+        test_a_resume_leaves_a_ledger_row 5 · test_for_prompt_quality 5 ·
+        test_ownership_readback_staleness 5 · and 26 more modules
+
+So **179 = 111 + 68**, and the 68 are exactly the set measured against HEAD~1,
+with none appearing or disappearing under full discovery. The 111 are not this
+lane's: the previously committed `scripts/suite_verdict.txt` recorded 110 on a
+different tree, which corroborates rather than proves — that file is stale and
+was not used as a baseline.
+
 **Every one of them is "this fixture stages copy with no research pack behind
 it".** That is not a fixture problem that happens to be in tests. It is the
 estate: §3 measures that **0 of 636** production leads with rendered copy have
