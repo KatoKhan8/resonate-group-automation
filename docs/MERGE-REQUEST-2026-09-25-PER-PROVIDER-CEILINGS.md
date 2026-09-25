@@ -723,48 +723,38 @@ loss immediately. Doing it first would have cost thirty seconds.
 
 ---
 
-## 11. What was run, and what was already red
+## 11. What was run: the full suite, twice, diffed by NAME
 
-466 tests across every spend-touching suite, run together:
-`test_enrich`, `test_verification`, `test_icp_spend_gate`, `test_researchpack`,
-`test_research_spend`, `test_research_audit`, `test_a_spend_needs_a_ceiling`,
-`test_a_shard_is_priced_before_it_is_bought`, `test_a_cap_that_survives_the_run`,
-`test_the_second_client_runs_on_the_same_engine`,
-`test_a_run_holds_itself_to_the_declared_per_run`,
-`test_a_provider_ceiling_refuses_before_the_call`, `test_preproduction`,
-`test_evidence_reconstruction`, `test_list_staging`.
+**A count is not a baseline.** These two runs differ by 3 failures and 2
+errors, which reads like noise — and inside that "noise" were five tests that
+had been green and were not any more, two of them naming `ai_ark`. Only the
+set difference found them. Counts would have let the regression in §9.1 ship.
 
-**Eleven were already red on master and none of them is this lane's.** That
-was checked rather than assumed, because "it was already broken" is the
-easiest wrong thing to say about a failing test:
+| | tests | failures | errors | distinct failing names |
+| --- | ---: | ---: | ---: | ---: |
+| base `02cbefe7` | 12,610 | 99 | 23 | **122** |
+| branch, before the §9.1 fix | 12,676 | 102 | 25 | **127** |
+| branch, final | 12,676 | 99 | 23 | **122** |
 
-* `test_enrich` — 5 failures (`trap_2`, `both_verifiers`, `still_ships`,
-  `dry_run`, `decision_makers`). Confirmed by stashing this lane's source
-  files and re-running: the same set fails without any of it.
-* `test_preproduction` — 4 failures and 2 errors. Confirmed by checking the
-  five changed source files out at `02cbefe7` and re-running: identical set.
-* `test_invariants` — `test_nothing_was_written_by_that` errors on a missing
-  `work/` directory and `test_emailbison_posts_only_to_routes_it_declares`
-  fails. Both are present on master in this worktree; the first is the
-  worktree's own empty `work/`, which is the same gitignored-state hazard as
-  §9.4.
-* The five suites §10 sent me to — `test_two_writers_cannot_tear_the_spend_ledger`,
-  `test_mutation_anchors`, `test_no_test_leaves_the_environment_changed`,
-  `test_nothing_writes_to_a_provider`, `test_secrets` — run at `02cbefe7`:
-  **5 failures**. Run on this branch after the lock was restored: **4, a
-  strict subset**. The two that were mine are gone. (`test_mutation_anchors`
-  names `src/notify.py`, `src/events.py` and `src/assignment.py`; nothing in
-  this lane touches them.)
+```
+comm -13 red-base.txt red-final.txt   ->  (empty)   nothing newly red
+comm -23 red-base.txt red-final.txt   ->  (empty)   nothing newly green
+```
 
-**A full `unittest discover` of 12,670 tests was attempted and its result
-discarded**, because I checked source files out at `02cbefe7` for a baseline
-while it was still running and swapped the tree under it. Its 103 failures
-are not a measurement of anything. The targeted runs above are, and they are
-paired with baselines at the same commit.
+**The two sets are identical.** This branch adds 66 tests, breaks none of the
+12,610 that were there, and fixes none of the 122 that were already red —
+those belong to other lanes and to this worktree's own empty `work/`
+(`test_invariants.test_nothing_was_written_by_that`), which is the same
+gitignored-state hazard as §9.4.
 
-Everything this lane touched is green, and the 64 tests in the new file pass
-five runs in a row — the concurrency pair included, which is the one that
-could plausibly flake.
+Both runs were on an untouched tree. Two earlier full runs were **discarded**:
+I checked source files out at `02cbefe7` for a baseline while each was
+running and swapped the tree under it, and a number produced that way is not
+evidence of anything.
+
+Alongside: 20 guards removed one at a time with the suite run against each —
+every one red, baseline and post-restore green (§6) — and the 64 tests in the
+new file pass five consecutive runs, the concurrency pair included.
 
 ---
 
