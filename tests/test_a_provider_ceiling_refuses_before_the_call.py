@@ -467,8 +467,16 @@ class TheSwapIsAtomic(Ledgered):
         self.assertEqual([], missing)
 
     def test_every_provider_the_ledger_has_ever_paid_is_declared(self):
-        """A provider with spend history and no ceiling is the gap the
-        refusal above would find in production rather than here.
+        """No provider this estate pays may be without a lifetime ceiling.
+
+        THIS TEST USED TO ASSERT THE OPPOSITE, and asserting the gap is how
+        the gap shipped. It pinned `["aiark", "blitz"]` as undeclared and
+        called that an open item for an operator - while `check` was
+        refusing every one of their calls. Measured afterwards: that
+        silently disabled aiark's contact fallback and blitz's headcount
+        lookup and turned five green e2e tests red. A test that documents a
+        hole is not the same as a test that closes it, and this one was
+        being read as though it were.
 
         Uses the measured ground truth, which is the list of providers this
         estate has actually paid.
@@ -476,10 +484,11 @@ class TheSwapIsAtomic(Ledgered):
         config = self.shipped()
         undeclared = [p for p in GROUND_TRUTH
                       if not spendledger.declares(config, p, "total")]
-        self.assertEqual(["aiark", "blitz"], sorted(undeclared),
-                         "the set of providers with spend and no declared "
-                         "ceiling changed; every one of them is refused on "
-                         "its next paid call until an operator declares it")
+        self.assertEqual([], sorted(undeclared),
+                         "a provider with spend history has no declared "
+                         "lifetime ceiling, so every one of its calls is "
+                         "refused - which is a silent feature regression, "
+                         "not a safe default")
 
 
 # ============================================ 3. K workers and one `per_run`

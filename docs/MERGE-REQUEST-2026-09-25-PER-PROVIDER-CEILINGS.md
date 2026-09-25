@@ -25,13 +25,20 @@ spend, every refusal names the scope AND the provider, every progress block
 carries the per-provider balance, and a CRITICAL fires once at 10,000
 CheapVerifier credits remaining.
 
-**Four things need reading before this merges, and two of them need an
-operator. They are in §9:** `blitz` and `aiark` are refused on their next
-paid call until somebody names them (9.1); the ledger mixes CENTS and
-CREDITS and the client-wide `per_day` sums both (9.2); the S5 pass lost its
-per-invocation bound as a direct consequence of the decision (9.3); and the
-empty-worktree-ledger hazard is lane S's `LedgerNotCredible`, not a second
-check written here (9.4).
+**Four things need reading before this merges, and two need an operator.
+They are in §9:** `blitz` and `aiark` had no declared ceiling, which refused
+every one of their calls and silently removed two features — fixed, but the
+ceiling they now carry is the pre-swap one carried forward, not a decision
+(9.1); the ledger mixes CENTS and CREDITS and the client-wide `per_day` sums
+both (9.2); the S5 pass lost its per-invocation bound as a direct consequence
+of the decision (9.3); and the empty-worktree-ledger hazard is lane S's
+`LedgerNotCredible`, not a second check written here (9.4).
+
+**Two regressions in this lane were found by tests, not by me**, and both are
+written up rather than tidied away: §10, where a whole-file rewrite deleted
+the ledger's cross-process lock, and §9.1, where a guard I called
+conservative turned out to remove product behaviour. Both were caught only
+because something compared this branch against a baseline.
 
 ---
 
@@ -535,29 +542,45 @@ visible rather than hidden.
 
 ## 9. Open items — read before merging
 
-### 9.1 `blitz` and `aiark` are refused on their next paid call
+### 9.1 `blitz` and `aiark` had no ceiling, and refusing them broke the product
 
-Both have spend history (232 and 70 credits) and **neither is named in the
-operator's decision**, so neither has a declared `total`. Under §4 that means
-their next paid call raises `MissingCeiling` rather than proceeding against no
-ceiling at all.
+**This was written up as an open item and it was a regression.** Both have
+spend (232 and 70) and neither is in the operator's decision table, so under
+§4 neither had a declared `total` and `check` refused every one of their
+calls.
 
-**What that looks like in a run, precisely.** Both reach the ledger through
-`enrich.spend` (`aiark-people-search` at `enrich.py:1038`, `blitz-company` at
-`:1080`), and that closure catches `BudgetExceeded`, writes a
-`PROVIDER_CALL_SKIPPED` event with `reason: durable budget: ...`, and returns
-False. So the run does not crash: **the call is skipped and the record
-continues without that provider's data** — aiark's contact fallback when
-ContactOut found nobody, and blitz's headcount when the company record has a
-number with no band. Quiet in the output, loud in the event log. Worth naming
-because "refused" could be read as "the run stops", and it does not.
+I documented that as "the conservative direction" and moved on. It is not
+conservative. Measured: it **silently disabled aiark's contact fallback and
+blitz's headcount lookup**, and turned five green tests red —
+`test_ai_ark_ran_only_where_contactout_found_nobody`,
+`test_the_ai_ark_fallback_finds_what_contactout_missed`,
+`test_the_cold_record_got_a_specific_hook`,
+`test_the_other_companies_carry_on_after_a_pause`,
+`test_accepting_a_connection_releases_day_8_and_shortens_day_10`. Both reach
+the ledger through `enrich.spend`, which catches `BudgetExceeded`, writes a
+`PROVIDER_CALL_SKIPPED` event and returns False — so the run does not stop,
+it just quietly stops buying, and the record carries on missing the data.
 
-That is the conservative direction and it is deliberate — better a named skip
-than spend against no ceiling — but it is a live behaviour change, so it is
-here rather than in an event log nobody is reading. **The operator needs to
-name them**: a number, or `total: unlimited` if they are deliberately uncapped
-like ContactOut. `test_every_provider_the_ledger_has_ever_paid_is_declared`
-pins the current set so it cannot drift unnoticed.
+Only the full-suite **set diff** against a baseline at `02cbefe7` found it.
+The counts would not have: 122 failing names at base, 127 on the branch —
+"+5" says nothing, the five names say everything.
+
+**What the config does now, and what it is not.** `blitz` and `aiark` each
+declare `total: 50000`. That is **not a new policy number**: it is the client
+`total` that was in force for those two providers the moment before this swap
+removed it, carried forward unchanged. It invents nothing, it cannot be
+mistaken for a considered figure at their spend levels (232 and 70 all-time),
+and it keeps the invariant that every provider this estate pays has a
+declared lifetime ceiling.
+
+**It still needs an operator.** Either name them in the decision table or say
+`total: unlimited` deliberately, the way ContactOut is said. What must not
+happen again is the third option I took by accident: leave them undeclared
+and let a spend control quietly remove a feature.
+
+`test_every_provider_the_ledger_has_ever_paid_is_declared` now asserts the
+list is **empty**. It previously asserted it contained exactly `aiark` and
+`blitz` — a test that documents a hole, being read as though it closed one.
 
 ### 9.2 THE LEDGER MIXES UNITS: Apify's rows are cents, everyone else's are credits
 

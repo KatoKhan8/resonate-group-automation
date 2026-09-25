@@ -776,6 +776,31 @@ budget:
     apify:
       total: unlimited
       per_day: 5000
+    # BLITZ AND AIARK ARE NOT IN THE OPERATOR'S DECISION, AND THIS IS NOT A
+    # DECISION EITHER - IT IS THE CEILING THEY ALREADY HAD, CARRIED FORWARD.
+    #
+    # Both have spend (blitz 232, aiark 70) and neither is named in the
+    # 2026-09-25 table. Until today they were bounded by the client `total`
+    # of 50,000, which that decision REMOVED. That leaves two bad options
+    # and no good one: leave them undeclared and `check` refuses every one
+    # of their calls - measured, it silently disables aiark's contact
+    # fallback and blitz's headcount lookup, and turned five green e2e
+    # tests red - or write `unlimited` and let a cap nobody decided parse
+    # as no cap, which is the exact thing this change exists to prevent.
+    #
+    # So neither. 50,000 is the number that was in force for these two
+    # providers the moment before the swap, carried forward unchanged. It
+    # invents no policy, it cannot be mistaken for a considered figure at
+    # their spend levels, and it keeps the invariant that every provider
+    # this estate pays has a declared lifetime ceiling.
+    #
+    # THIS NEEDS AN OPERATOR. Either name them in the decision table or say
+    # `unlimited` deliberately, the way ContactOut is said. Tracked in
+    # docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md section 9.1.
+    blitz:
+      total: 50000
+    aiark:
+      total: 50000
 
 # HOW OFTEN ONE PERSON, AND ONE COMPANY, MAY HEAR FROM PRODUCTIVE.
 #
