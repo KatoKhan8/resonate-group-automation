@@ -113,14 +113,72 @@ journals as it goes and re-reads its own journal on start.
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
+    BRANCH: qwen-worker-r9
+    COMMIT: 18e5b4ba (script+tests), 36dab728 (merge resolution)
     INPUT SET AND ROW COUNT:
-    CHUNK RUN (size, domains attempted, packs built, refused + reason):
-    RESUME PROOF (how the run was killed, rows re-bought on restart):
-    SPEND LEDGER ROWS FOR THIS RUN (provider, count, USD):
-    MEASURED USD/ACCOUNT vs 0.03987:
-    ACTOR ID + HTTP STATUS FROM GET /v2/acts/{id}:
+      Cannot read from this worktree - work/ is gitignored and absent.
+      The S3 ICP file (work/stage/s3-icp-amended-PRODUCTIVE-2026-09-07.jsonl)
+      lives in Claude's worktree. LIVE RUN IS OWED from there.
+    CHUNK RUN: OWED - requires the ICP file and Apify credentials.
+      The script, its 17 tests, and the resume/budget/report mechanics are
+      built and green. The live chunk that proves the actors is Claude's run.
+    RESUME PROOF: OWED - requires the live run. The resume mechanic is
+      tested: test_journal_is_read_and_existing_domains_skipped,
+      test_a_refused_domain_is_not_re_asked, test_journal_append_is_per_domain.
+      The SIGINT handler sets _interrupted=True and the chunk loop checks it
+      before each domain, leaving the journal consistent.
+    SPEND LEDGER ROWS FOR THIS RUN: N/A (no live run)
+    MEASURED USD/ACCOUNT vs 0.03987: OWED from live run.
+      LinkedIn-only planned cost: 9 cents/account ($0.09) - company_posts=5 +
+      open_roles=4. The baseline $0.03987 included the website crawler (72%
+      of cost); removing it should bring the rate well under that figure.
+    ACTOR ID + HTTP STATUS: OWED from live run.
     PROJECTED TOTAL FOR 19,612 AT THE MEASURED RATE:
+      At LinkedIn-only planned cost: 19,612 x $0.09 = $1,765.08
+      (vs $781.94 at the measured $0.03987 with the website crawler)
+      The actual rate will be measured by the live run.
     grep -rn pack_fetch scripts/ src/:
-    WORKSPACES COPY USED (path, taken at):
+      scripts/pack_fetch.py:4:    py -3 scripts/pack_fetch.py --chunk 25 --max-chunks 1
+      scripts/pack_fetch.py:5:    py -3 scripts/pack_fetch.py --chunk 25 --budget-usd 5.00
+      scripts/pack_fetch.py:6:    py -3 scripts/pack_fetch.py --report
+      tests/test_pack_fetch_chunks.py: 33 references (imports and uses pack_fetch.*)
+    WORKSPACES COPY USED: N/A - no live run from this worktree.
+    
+    TESTS: 17 new tests in tests/test_pack_fetch_chunks.py, all green.
+      107 total across pack_fetch + researchpack + spendledger, all green.
+      Pre-existing invariant failures (reviewapproval, emailbison) unrelated.
+    
+    FILES CHANGED:
+      scripts/pack_fetch.py (NEW, 421 lines)
+      tests/test_pack_fetch_chunks.py (NEW, 353 lines)
+      src/spendledger.py (merge conflict resolution: kept both unit and **extra)
+    
+    FINDINGS:
+      1. The script is built and tested but the LIVE RUN EVIDENCE is owed.
+         The work/ directory is gitignored and absent from this worktree,
+         so the S3 ICP input file cannot be read here. Claude must run
+         `py -3 scripts/pack_fetch.py --chunk 25 --max-chunks 1 --live`
+         from Claude's worktree to produce the live evidence.
+      2. The website crawler is OFF by default. All three current actors
+         (company_posts, open_roles, person_posts) are LinkedIn/job actors.
+         The --override-site-crawler-ruling flag gates future website
+         crawler actors.
+      3. The spend ledger consistency check compares ledger rows for the
+         run against journal cost totals and warns on disagreement.
+      4. The budget projection uses planned cost/account (9 cents for
+         LinkedIn-only), not a price page estimate.
+    
+    RISKS:
+      - The live run has not been executed from this worktree.
+      - The merge with remote qwen-worker-r9 required resolving a conflict
+        in src/spendledger.py (record function signature). Both the unit
+        parameter and **extra kwargs are preserved.
+    
+    RECOMMENDED CLAUDE ACTION:
+      Run the live chunk from Claude's worktree:
+        py -3 scripts/pack_fetch.py --chunk 25 --max-chunks 1 --live
+      Then resume to prove zero re-bought rows:
+        py -3 scripts/pack_fetch.py --chunk 25 --max-chunks 1 --live
+      Then run the budget refusal test:
+        py -3 scripts/pack_fetch.py --chunk 25 --budget-usd 0.10
+      Attach the journal, logs, and spend ledger rows to this task.
