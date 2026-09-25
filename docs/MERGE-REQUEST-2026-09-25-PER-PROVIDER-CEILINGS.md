@@ -658,7 +658,49 @@ that does not cover these ceilings.
 
 ---
 
-## 10. What was run, and what was already red
+## 10. The worst thing that happened in this lane
+
+**I deleted the spend ledger's cross-process lock, and no test I wrote
+noticed.**
+
+This change rewrote `src/spendledger.py` whole, from a copy read *before* the
+rebase that brought in Lane N's fix for a real production tear — 2026-09-24,
+S5 at eight workers, 1,957 rows in, one append tore and left an orphaned
+eleven-byte tail. `load()` refuses an unreadable ledger and `check()` reads it
+before every paid call, so that one torn line stopped every verification for
+the client and the run bought nothing further. The fix was `store.lock`,
+cross-process because the enrich loops, the monitors and the staging runners
+bill the same client from different processes.
+
+**A whole-file write of a stale read does not conflict. It reverts.** The
+money path lost its lock in the first commit of this lane and stayed that way
+through six more.
+
+Why nothing in the lane caught it:
+
+* Every test I wrote isolates the store with `store.use_directory`, and none
+  of them races two writers on one append.
+* My concurrency tests cover **a different lock**. `spendledger._LOCK`
+  serialises *reservations* inside one process so K workers cannot each see
+  the same room. `store.lock` serialises the *append* across processes so the
+  bytes of two rows cannot interleave. **Neither covers the other's case**,
+  and having written a careful concurrency test I had stopped asking what
+  else concurrency could mean here.
+
+`tests/test_two_writers_cannot_tear_the_spend_ledger.py` caught it —
+`QueueLocked not raised`, and 473 of 480 rows surviving eight concurrent
+writers. That test was already on master, already correct, and is unchanged.
+The lock is restored verbatim.
+
+**The general lesson, for whoever rewrites a file here next:** re-read the
+file *after* the last rebase, or diff your rewrite against `master` line by
+line before committing. I did the second thing — `git diff master HEAD --
+src/spendledger.py | grep '^-'` — only after a test failed, and it showed the
+loss immediately. Doing it first would have cost thirty seconds.
+
+---
+
+## 11. What was run, and what was already red
 
 466 tests across every spend-touching suite, run together:
 `test_enrich`, `test_verification`, `test_icp_spend_gate`, `test_researchpack`,
@@ -683,6 +725,19 @@ easiest wrong thing to say about a failing test:
   fails. Both are present on master in this worktree; the first is the
   worktree's own empty `work/`, which is the same gitignored-state hazard as
   §9.4.
+* The five suites §10 sent me to — `test_two_writers_cannot_tear_the_spend_ledger`,
+  `test_mutation_anchors`, `test_no_test_leaves_the_environment_changed`,
+  `test_nothing_writes_to_a_provider`, `test_secrets` — run at `02cbefe7`:
+  **5 failures**. Run on this branch after the lock was restored: **4, a
+  strict subset**. The two that were mine are gone. (`test_mutation_anchors`
+  names `src/notify.py`, `src/events.py` and `src/assignment.py`; nothing in
+  this lane touches them.)
+
+**A full `unittest discover` of 12,670 tests was attempted and its result
+discarded**, because I checked source files out at `02cbefe7` for a baseline
+while it was still running and swapped the tree under it. Its 103 failures
+are not a measurement of anything. The targeted runs above are, and they are
+paired with baselines at the same commit.
 
 Everything this lane touched is green, and the 64 tests in the new file pass
 five runs in a row — the concurrency pair included, which is the one that
@@ -690,7 +745,7 @@ could plausibly flake.
 
 ---
 
-## 11. Files
+## 12. Files
 
 | file | what changed |
 | --- | --- |
