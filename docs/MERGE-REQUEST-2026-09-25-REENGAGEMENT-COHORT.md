@@ -7,8 +7,13 @@ created, enrolled, activated, paused, stopped or written. No paid call was
 made and the spend ledger is untouched.
 
     branch      worktree-agent-a665dface2ba16da0
-    HEAD        2a445eef  (this document is the tip commit)
-    base        24acafff  "The handoff carried the test identity slug"
+    last content commit   2a445eef
+    base                  24acafff  "The handoff carried the test identity slug"
+
+A sha written INTO the document can never name the commit that contains it,
+so this names the last content commit and the branch is the reference. The
+tip is one or two stamping commits beyond it; `git log` on the branch is
+authoritative.
 
 **Counts, provider ids, campaign ids and timestamps only.** No prospect name,
 address, company name, domain or LinkedIn URL appears in this document. The
