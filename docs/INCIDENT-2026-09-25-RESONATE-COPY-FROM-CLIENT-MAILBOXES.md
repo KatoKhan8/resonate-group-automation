@@ -176,11 +176,16 @@ irrelevant.
 The nav-chrome quotes have their own cause. The render used the 400-char
 pack cache, and on most pages the first 400 characters are the menu.
 Measured over the 10,480 fact-carrying rows in
-`work/researchpack-us-{cold,cohortJ,CALIBRATION}-2026-09-25.jsonl`: **70.4%
-of them contain no complete declarative sentence at all** under the first
-version of gate 3, 60.7% under the final one. Those are the leads that
-should be HELD, and there is no version of this system in which they can be
+`work/researchpack-us-{cold,cohortJ,CALIBRATION}-2026-09-25.jsonl`: **60.8%
+of them contain no complete declarative sentence at all** - 6,374 of
+10,480 - and that is after four rules were loosened for over-refusing real
+prose; the first version held 70.4%. Those are the leads that must be
+HELD, and there is no version of this system in which they can be
 personalised from that cache.
+
+The other 39.2% is the answer to "then what do we send": 4,106 rows do
+carry a quotable body sentence with a source URL behind it, so a
+personalised cohort is still possible at roughly two fifths the size.
 
 ---
 

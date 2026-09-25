@@ -247,8 +247,8 @@ LANGUAGE_RUN = 2
 #: Each has a finite verb, a subject in front of it and a title-case ratio
 #: under half, because the prose on the end dilutes the ratio. What none of
 #: them can hide is the RUN: four capitalised words with nothing between
-#: them is a navigation bar in every one of these and in none of the 3,636
-#: spans the gate accepts.
+#: them is a navigation bar in every one of these, and in none of the
+#: 4,106 cached rows the gate accepts a sentence from.
 MAX_CAPITALISED_RUN = 4
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z'’\-]*")
