@@ -280,7 +280,7 @@ on all 36, including the ones that send — the null-`created_at` hazard in the
 register did not reproduce on this route today. Ordering by id anyway.)
 
 **Campaign 502 is being loaded by a human right now.** Observed live:
-57 leads at 08:42Z → 66 at 08:43Z → **76 at 08:58Z**, status `draft`,
+57 leads at 08:42Z → 66 at 08:43Z → 76 at 08:58Z → **77 at 09:01Z**, status `draft`,
 `PRODUCTIVE - SOFTWARE DEVELOPMENT - CONNECTED - JELENA - SEPTEMBER 25`,
 created 08:21:47Z today. Whoever pushes must not assume 502 is inert, and its
 76 leads will start reading `in_sequence` the moment it leaves draft — a lead on
@@ -409,6 +409,48 @@ unreadable (§4a), that failure is not preventable by pre-filtering — it can
 only be made cheap. Push in small batches and let `_attach_refusal`'s
 per-lead diagnosis (capped at 50) name the holder, rather than sending 179 and
 learning that one of them is suppressed.
+
+---
+
+## 10. VERIFICATION — run after the commit, against a second code path
+
+The register's rule is that a validator which agrees with you has proved
+nothing. So the exclusion counts were re-derived from the raw estate dump by a
+second pass that shares no code with the cohort builder — it re-reads
+`_laneJ_bison_leads.jsonl` and re-classifies from scratch:
+
+    US addresses found in estate: 9765
+    replied 968   bounced 394   in_sequence 3832   unsubscribed 0
+    union excluded 4905
+    survivors 12407 of 17312
+
+Identical on every line.
+
+Structural assertions on the emitted file, which assert the EFFECT rather than
+the string:
+
+| assertion | result |
+|---|---|
+| rows | 12,407 |
+| unique addresses (no duplicate person) | 12,407, 0 duplicates |
+| distinct domains | 10,418 |
+| **survivors carrying an excluding membership status** | **0** |
+| rows contradicting their own `exclusions` block | 0 |
+| rows missing `provenance` or `provider_read` | 0 |
+| supply-companion rows carrying an excluded class | 0 of 15,354 |
+
+Live state re-read at **09:01:01Z**, after the commit:
+
+- `/leads` `meta.total` = **28,118** — unchanged, so the walk is still a
+  complete census of the estate it describes.
+- `productive` spent today: **0**. Caps unchanged:
+  `per_run 2000 / per_day 5000 / total 50000`. Nothing was spent and no
+  ceiling was raised.
+- **Campaign 502 is at 77 leads** (57 → 66 → 76 → 77 across this session),
+  still `draft`. Still being loaded by a human.
+- The free crawl has written nothing since **08:52:29Z** — stalled 8.5
+  minutes and counting at 900 of 16,247 domains. The 179-pushable figure is
+  computed against 609 packed domains and will only move when it resumes.
 
 ---
 
