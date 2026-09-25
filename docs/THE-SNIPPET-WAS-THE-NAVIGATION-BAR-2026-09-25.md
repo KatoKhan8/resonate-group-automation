@@ -22,6 +22,14 @@ same crawl, re-truncated both ways:
 The last row is the honest one and it is why this document does not stop at
 the row above it.
 
+**And one row in that table should not be read as grounding at all.** A
+control run afterwards - matching each domain's opener against a DIFFERENT
+company's pack - shows rule 1 passing against a stranger's pack 75.7% of the
+time at 400 and **93.9%** at 2000. The pass-rate gain is very largely the
+gate getting easier to satisfy. The anchor, asked the same way, matches the
+wrong company's pack **zero times at either cap.** See the control section
+below; it is the most useful thing this lane measured.
+
 ## WHY THE ANCHOR AND NOT THE PASS RATE
 
 Rule 1 asks whether any opener token over four characters appears anywhere
@@ -56,6 +64,38 @@ Lane H held 103 of 128, 52 for "no quotable span on any admitted page" and 31
 for "no site page admitted to this pack" - which is what a 400-character
 navigation bar looks like from the renderer's side. On this cohort that hold
 reason collapses from 295 domains to 35 in the first 2,048.
+
+## THE CONTROL, AND WHY THE RULE-1 GAIN IS NOT THE HEADLINE
+
+Five times the snippet is five times the chance of an accidental token
+match, so the rising pass rate needed a control before it could be reported
+as quality. The control is to match each domain's openers against **a
+different domain's pack**. On the 313 domains carrying both:
+
+| | rule 1 vs its own pack | vs somebody else's | anchor >= 4 own | vs somebody else's |
+|---|---|---|---|---|
+| cap 400 | 278 | **237 (75.7%)** | 4 | **0** |
+| cap 2000 | 304 | **294 (93.9%)** | 9 | **0** |
+
+**Rule 1 barely discriminates, and raising the cap makes it worse.** At 400
+an opener passes against a stranger's pack three times in four. At 2000 it
+is fourteen times in fifteen. The ratio of right-pack to wrong-pack passes
+falls from 1.17 to 1.03.
+
+So the 94 domains the cap adds to the rule-1 count are very largely
+accident, **and this document does not offer that number as grounding.** It
+is the brief's own point, now measured from the other side: the word tracks
+the SIC code, and 10,565 of the 12,407 contacts share one sector.
+
+**The anchor discriminates perfectly.** A contiguous run of four or more
+opener words appears in the right company's pack 4 times at 400 and 9 at
+2000, and in the wrong company's pack **zero times at either cap**. A shared
+phrase is not vocabulary; it is a quotation or it is nothing.
+
+This is why the honest summary of the cap change is the quotable-span row
+and not the pass-rate row. 56.8% to 93.4% is a real gain because it is a
+gain in material that only the right company's site could have supplied.
+49.4% to 54.0% is mostly the gate getting easier to satisfy.
 
 ## WHY 400 WAS THE WRONG NUMBER
 
