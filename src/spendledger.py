@@ -133,6 +133,29 @@ UNLIMITED = "unlimited"
 # rather than on a failure.
 CRITICAL_REMAINING = {"cheapverifier": 10_000}
 
+# THIS LEDGER DOES NOT SPEAK ONE UNIT, AND PRETENDING IT DOES IS A LIE AN
+# OPERATOR READS.
+#
+# `researchpack/actors.py` prices every Apify actor run in INTEGER CENTS -
+# its own comment says "in the same integer cents the rest of the spend
+# ledger speaks", which was never true of the rest of it - and writes that
+# figure into these rows. Every other provider writes CREDITS. So Apify's
+# 447 all-time is 447 cents and Deliverable's 8,262 is 8,262 credits, and a
+# ceiling is in whatever unit its provider's rows are in.
+#
+# NOTHING HERE CONVERTS. Picking a rate is an operator's decision, not a
+# default; what this does is refuse to print one number as though the two
+# were the same thing. The client-wide totals DO sum both, which is why the
+# client `per_day` is a tripwire rather than a budget - see
+# docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md.
+DEFAULT_UNIT = "credits"
+LEDGER_UNITS = {"apify": "cents"}
+
+
+def unit(provider):
+    """What this provider's rows are denominated in."""
+    return LEDGER_UNITS.get(provider, DEFAULT_UNIT)
+
 
 class BudgetExceeded(RuntimeError):
     """A durable ceiling would be crossed. Refused, never trimmed."""
@@ -705,6 +728,7 @@ def balances(client, config, rows=None, day=None, run_id=None):
                 committed(client, provider=provider, run_id=run_id, rows=rows)),
             "critical_at": CRITICAL_REMAINING.get(provider),
             "balance_is_money": provider in CRITICAL_REMAINING,
+            "unit": unit(provider),
         }
     return out
 
@@ -751,7 +775,7 @@ def progress_block(client, config, rows=None, day=None, run_id=None):
     """
     rows = load() if rows is None else rows
     lines = [f"PROVIDER BALANCE  client={client}  run={run_id or current_run()}"
-             f"  (expected credits)"]
+             f"  (expected spend, each row in ITS OWN unit)"]
     for provider, b in balances(client, config, rows=rows, day=day,
                                 run_id=run_id).items():
         marker = "  <-- ACCOUNT BALANCE" if b["balance_is_money"] else ""
@@ -759,15 +783,18 @@ def progress_block(client, config, rows=None, day=None, run_id=None):
             f"  {provider:<16} left {_cell(b['remaining'], b['ceilings']['total'])}"
             f"   today {_cell(b['remaining_today'], b['ceilings']['per_day'])}"
             f"   run {_cell(b['remaining_this_run'], b['ceilings']['per_run'])}"
-            f"{marker}")
+            f"   [{b['unit']}]{marker}")
         if b["held"]:
             lines.append(f"  {'':<16} ({b['held']} credit(s) held by calls in "
                          f"flight, not yet ledgered)")
     c = client_balance(client, config, rows=rows, day=day, run_id=run_id)
+    mixed = len({b["unit"] for b in balances(client, config, rows=rows,
+                                             day=day, run_id=run_id).values()})
     lines.append(
         f"  {'CLIENT-WIDE':<16} left {_cell(c['remaining'], c['ceilings']['total'])}"
         f"   today {_cell(c['remaining_today'], c['ceilings']['per_day'])}"
-        f"   run {_cell(c['remaining_this_run'], c['ceilings']['per_run'])}")
+        f"   run {_cell(c['remaining_this_run'], c['ceilings']['per_run'])}"
+        f"   [{'MIXED UNITS - a tripwire, not an amount' if mixed > 1 else DEFAULT_UNIT}]")
     for alert in alerts(client, config, rows=rows):
         lines.append("  " + alert["text"])
     return "\n".join(lines)

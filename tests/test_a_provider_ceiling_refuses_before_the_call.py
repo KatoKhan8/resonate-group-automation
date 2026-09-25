@@ -867,6 +867,33 @@ class EveryProgressBlockCarriesTheBalance(Ledgered):
         self.assertIn("held by calls in flight", block)
         self.assertIn("93000", block)                # 100,000 - 7,000 held
 
+    def test_every_line_carries_the_unit_its_numbers_are_in(self):
+        """Apify's rows are cents and everyone else's are credits.
+
+        A block headed "expected credits" with a cents row in it is a lie an
+        operator reads, and the client line - which sums both - must not
+        present itself as an amount at all.
+        """
+        block = spendledger.progress_block(CLIENT, AS_SHIPPED)
+        by = {ln.split()[0]: ln for ln in
+              (l.strip() for l in block.splitlines()) if ln}
+
+        self.assertIn("[cents]", by["apify"])
+        self.assertIn("[credits]", by["deliverable"])
+        self.assertIn("MIXED UNITS", by["CLIENT-WIDE"])
+        self.assertNotIn("(expected credits)", block)
+
+    def test_a_single_unit_estate_is_not_told_its_units_are_mixed(self):
+        """The control: MIXED is a fact about this config, not a constant."""
+        only_credits = {"budget": {"per_day": 200_000, "providers": {
+            "deliverable": {"total": 500_000}, "reoon": {"total": 500_000}}}}
+
+        block = spendledger.progress_block(CLIENT, only_credits)
+        line = [ln for ln in block.splitlines() if "CLIENT-WIDE" in ln][0]
+
+        self.assertIn("[credits]", line)
+        self.assertNotIn("MIXED", line)
+
     def test_an_undeclared_ceiling_says_unlimited_rather_than_a_number(self):
         """`None` is unlimited and must SAY so. Deliverable declares no
         `per_run`; printing 0, or a default nobody chose, would both lie."""
