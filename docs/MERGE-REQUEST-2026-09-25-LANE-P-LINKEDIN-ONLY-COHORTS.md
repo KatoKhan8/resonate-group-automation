@@ -251,6 +251,25 @@ chose. Two consequences:
   (prospect-local), `Europe/London` for P-1. If the operator means the seat's
   own local time, that value has to come from the roster attestation.
 
+### How the foreground executes P-1, and where it must stop
+
+| step | verb | permission | state today |
+|---|---|---|---|
+| 1 | `heyreach.create_list(name)` | `LINKEDIN_CREATE_LIST` | SUPPORTED, unconditional - an empty list is inert |
+| 2 | `liststaging.assert_list_safe(list_id)` then `heyreach.add_leads_to_list` | `LINKEDIN_ADD_LEAD_TO_LIST` | SUPPORTED, conditional on the list being unbound - read at the moment of the write |
+| 3 | `heyreach.create_campaign(name, list_id, [116968], schedule=..., sequence=...)` | `LINKEDIN_CREATE_CAMPAIGN` | SUPPORTED. One-way: binding the list ends its staging safety property |
+| 4 | `heyreach.activate_campaign(id, expect_leads=2)` | `LINKEDIN_ACTIVATE` | **REFUSED.** `_is_the_authorized_linkedin_canary` admits HeyReach campaign **604869 and nothing else** |
+
+**So P-1 can be staged to DRAFT today and cannot be made to send.** Making it
+send needs an operator grant that names the new campaign id and the exposure
+(2 people, one seat), in the same shape as the 2026-09-16 grant for 604869.
+Nobody should discover that at step 4.
+
+The adjacent shortcut is closed too, and correctly: adding the two leads to
+the seat's existing IN_PROGRESS campaign would both break cohort homogeneity
+and be refused by `LINKEDIN_ADD_LEAD`, whose condition demands a provider
+read proving the destination cannot send - and only DRAFT proves that.
+
 ### Expected readback, per campaign
 
 * `campaign_read(id).status` == `DRAFT` immediately after create, holding
@@ -290,7 +309,10 @@ chose. Two consequences:
    of everything this lane found - the cheapest people in the estate.
 3. **Supply.** 74 survivors at 12 accounts is not a sourcing pipeline. The
    2026-09-18 finding stands: expansion is a sourcing problem.
-4. **"Seat-local".** Unanswerable from the provider; name the source.
+4. **Activation.** `LINKEDIN_ACTIVATE` admits campaign 604869 and nothing
+   else. P-1 stages to DRAFT without a decision; it sends only with a grant
+   naming the new campaign id and the exposure.
+5. **"Seat-local".** Unanswerable from the provider; name the source.
 
 ## 8. Request volume
 
