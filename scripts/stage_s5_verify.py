@@ -120,6 +120,31 @@ S3_DEFAULT = "mx-amended-PRODUCTIVE-2026-09-07.jsonl"
 MX_OK = ("known_allowed", "unknown_provider")
 
 
+def run_lock_path():
+    """One S5 pass at a time, per workspace.
+
+    THE INCIDENT, 2026-09-25. A chunked run was stopped and restarted; the
+    stop killed the shell and NOT the python child it had spawned, so an old
+    pass kept buying while a new one started, and for a while three were
+    verifying the same cohort at once. They interleaved their output in the
+    same log, which is how it was noticed - not by any control.
+
+    Nothing was overspent, because `spendledger.check` re-reads the ledger
+    before every call and so enforces `per_day` no matter how many processes
+    are asking. But `per_run` is enforced per PROCESS, by this runner, so
+    three concurrent passes are three times the declared per-run ceiling; and
+    two passes read the same journal at startup, so both take the same
+    pending addresses and buy some of them twice.
+
+    The lock is taken for the whole pass rather than per call - this is a
+    mutual-exclusion question about PASSES, and a lock held per call would
+    have permitted exactly the overlap that happened. It is advisory and
+    reclaimed if a process dies holding it, so a crash cannot wedge the
+    stage.
+    """
+    return os.path.join(work_dir(), "s5-verify.run")
+
+
 def read_addresses(path):
     """The address set a cohort file names, keyed as the journal keys them.
 
@@ -327,6 +352,28 @@ def ledger_record(contact):
 
 
 def main(argv=None):
+    """One pass, and only one at a time. See `run_lock_path`.
+
+    `timeout=0` so a second pass REFUSES rather than queueing behind the
+    first. Queueing would be worse than it sounds: the waiting pass read its
+    pending set before it blocked, so it would wake holding a list the pass
+    ahead of it has already bought, and buy it again.
+    """
+    load_env()
+    try:
+        with store.lock(timeout=0, for_path=run_lock_path()):
+            return _verify_pass(argv)
+    except store.QueueLocked:
+        print(f"REFUSED: another S5 pass holds {run_lock_path()}.\n"
+              f"  One pass at a time per workspace - concurrent passes buy "
+              f"the same addresses twice and multiply the per_run ceiling by "
+              f"the number of them. If no pass is running, the lock is stale "
+              f"and is reclaimed on its own; check for an orphaned process "
+              f"before removing it by hand.", flush=True)
+        return 1
+
+
+def _verify_pass(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--workers", type=int, default=8,

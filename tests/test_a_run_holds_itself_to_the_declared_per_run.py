@@ -222,6 +222,45 @@ class PerRunAndCohortTest(unittest.TestCase):
         self.assertIsNotNone(declared, "productive declares no per_run")
         self.assertIn(f"per_run self-enforced at {declared}", output)
 
+    def test_a_second_pass_refuses_rather_than_buying_the_same_addresses(self):
+        """The 2026-09-25 incident: a stop killed the shell, not its child.
+
+        An old pass kept buying while a new one started, and three were
+        verifying the same cohort at once. `per_day` was never at risk -
+        `spendledger.check` re-reads the ledger before every call - but
+        `per_run` is enforced per process, so three passes are three times
+        the declared ceiling, and two passes that read the same journal at
+        startup take the same pending addresses and buy them twice.
+        """
+        self.write_stage()
+        self.write_source(self.addresses(4))
+
+        out = io.StringIO()
+        with store.lock(for_path=s5.run_lock_path()):
+            with contextlib.redirect_stdout(out):
+                code = s5.main(["--workers", "1"])
+
+        self.assertEqual(1, code, "a concurrent pass was allowed to run")
+        self.assertIn("REFUSED", out.getvalue())
+        self.assertEqual([], self.calls,
+                         "the refused pass bought something anyway")
+        self.assertEqual(0, spendledger.spent("productive",
+                                              day=spendledger.today()))
+
+    def test_the_lock_is_released_so_the_next_pass_runs(self):
+        """A refusal must not be a one-way door."""
+        self.write_stage()
+        self.write_source(self.addresses(2))
+
+        self.run_s5()
+        self.assertTrue(self.bought())
+        self.calls.clear()
+
+        # A second, sequential pass is fine - it is CONCURRENT ones that are
+        # refused - and it re-buys nothing, so it asks for nothing.
+        self.run_s5()
+        self.assertEqual(set(), self.bought())
+
     def test_per_run_is_still_not_enforced_by_the_ledger_itself(self):
         """The gap this runner works around, pinned so its removal is noticed.
 
