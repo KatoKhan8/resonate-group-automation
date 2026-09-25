@@ -471,6 +471,28 @@ a thing that will surprise somebody at 3am. The next piece of work is
 template id and the bound mailbox's owner as the signature, which is the
 point at which a legitimate push starts passing again.
 
+**THE REFUSE-LIST REFUSES THE CLIENT'S OWN APPROVED TEMPLATES, AND THAT
+NEEDS AN OPERATOR DECISION.** `I work with` is on the list. It is also in
+two templates in `cadence.TEMPLATES` that the client's cadence selects:
+
+```
+comparable_proof   "the teams I work with that look most like {company}"
+linkedin_intro     "hi {first_name}, i work with {sector} teams on ..."
+```
+
+`linkedin_intro` is the LinkedIn connection note - the first thing a
+prospect ever reads from this system. So `refused_term` firing on 685 of
+the 775 live leads is mostly this phrase, not mostly the Resonate pitch;
+the five leads carrying the actual incident copy are counted in section 1
+separately for that reason.
+
+Two ways out and they are not equivalent. Either the phrase comes off the
+refuse-list - in which case the list stops catching the voice that made
+the incident recognisable - or it comes out of those two templates and
+every lead that already carries it is regenerated. **Not decided here.**
+A lane does not edit a client's approved copy and does not narrow a list
+the operator wrote, and either choice is visible in the review file first.
+
 **`src/copylint.py` still has no caller.** It was not wired by this lane
 either. It answers different questions from these three and both are
 wanted.
