@@ -625,31 +625,75 @@ pending-is-chargeable, the complete-read guard and its half-read refusal, the
 invalid-drop, the pair policy, the unconfigured refusal, the credential
 registration, and the rate-limit honesty.
 
-### Regression baseline, by name and not by count
+### Regression baseline, by NAME and not by count
 
-Run over the identical set of 19 modules this lane touches or could affect —
-verification, waterfall, invariants, fixture hygiene, secrets, provider
-writes, mutation anchors:
+Run over **57 modules, 1,388 tests** — every module that appeared in the
+first full-suite run, plus everything this lane touches. Both sides run in
+isolation, module-for-module, master vs branch:
 
-| | tests | failures |
-|---|---|---|
-| master `76f29779` | 419 | **6** |
-| this branch | 463 | **6** |
-
-**The same six, by name, on both.** All pre-existing, none introduced here:
+| | failing tests |
+|---|---|
+| master `76f29779` | 89 |
+| this branch | 83 |
 
 ```
-test_decide_blocks_a_bounced_address
-test_emailbison_posts_only_to_routes_it_declares
-test_no_tracked_file_contains_a_credential_shaped_assignment
-test_every_state_override_is_in_the_example
-test_every_http_write_in_the_repository_is_declared   (src/researchpack/pack.py)
-test_every_guard_appears_exactly_once
+NEW FAILURES INTRODUCED BY THIS BRANCH: 0
+PRE-EXISTING FAILURES THIS BRANCH FIXES: 6   (all in test_preproduction)
 ```
 
-The 44 extra tests are this lane's. A count alone would have hidden this:
-the branch briefly carried **two** extra failures that the count could have
-been read as noise, and both were real — see below.
+The six it fixes were already red on master for the same reason this lane
+had to solve anyway: the fixture estates were verified by a pair Productive
+stopped requiring on 2026-09-21, and nothing pinned the roles. Fixing them
+was not the goal; it is what pinning correctly does.
+
+**A count would have hidden all of this.** The first full-suite run reported
+164 failures and the temptation was to call it concurrency — another lane
+was running its own `unittest discover` at the time, which CLAUDE.md warns
+overlaps on loopback and demo estates. It was not concurrency. Re-run in
+isolation, **48 of them were real**, and finding that out required comparing
+sets of names rather than totals.
+
+### THE CASCADE, AND WHY IT HAPPENED
+
+Moving the primary turned 48 tests red across `approve`, `push`, `render`,
+`cadence`, `lint` and `enrich` — **none of them about verification**. It is
+the migration consequence of §6 arriving in the suite: every fixture in
+`tests/fixtures/` carries `(contactout, deliverable)` confirmations, so a
+primary that never answered for those contacts leaves every fixture lead
+held, `lint.sendable` refuses, `approve.pending` offers nothing, `push.run`
+builds an empty payload, and `render` has nothing to write. All correct, and
+none of it what those tests check.
+
+Fixed where this repository already fixes it — `tests/base.fixture_config`
+pins the verification ROLES exactly as it has pinned the cadence NAME since
+2026-09-13, when the same thing happened over `productive_li_heavy_v1` and
+turned 134 tests red. Its docstring already said a test that IS about the
+live config should call `clients.load` directly and say why, and the three
+files that ARE about the new order do exactly that — so nothing about the
+new order is masked.
+
+`test_cadence` builds its config by hand and names the roles itself.
+`test_e2e` **pins different roles on purpose**: it runs the waterfall against
+cassettes rather than reading stored verdicts, and was adapted on 09-21 to
+deliverable-primary, which is what its cassettes assert against. Inheriting
+the default there looked *better* — 3 failures against master's 14 — and
+that is exactly why it was rejected: the lower number came from running a
+scenario the module was never written for, silently "fixing" eleven failures
+that are pre-existing on master. **A pin that improves a count by changing
+what the test exercises is a pin that hides breakage.**
+
+### A cache with no caller, found on the way
+
+`lint.forget_policies()` exists to clear `lint._POLICY_CACHE`, and its
+docstring says it is "for tests that rewrite a client config mid-run".
+**Nothing in `src/` or `tests/` called it.**
+
+So the first test in a process to lint a `productive` record decided the
+policy for every test after it. `test_the_opener_asserts_nothing` passed
+alone and failed in a batch, depending on module ordering — the shape of
+intermittent failure this repository's own rules say to diagnose rather than
+dismiss. It now calls `forget_policies` in `setUp` and again on cleanup,
+which gives the mechanism its first caller.
 
 ### Three guards caught real defects in this lane's work
 
@@ -792,6 +836,10 @@ Two incidental notes:
 | `tests/test_productive_verification_roles.py` | updated to the new order |
 | `tests/test_approval_uses_the_clients_verification_policy.py` | updated pair; migration test added |
 | `tests/test_double_verification.py` | verification roles pinned for the fixture estate |
+| `tests/base.py` | `fixture_config` pins the verification roles, as it already pinned the cadence |
+| `tests/test_cadence.py` | names the roles itself; it builds its config by hand |
+| `tests/test_e2e.py` | pins the roles its cassettes were written against |
+| `tests/test_the_opener_asserts_nothing.py` | fixture updated to the client's current pair; `lint.forget_policies` given its first caller |
 
 No other provider module was touched. `config/.env` was read, never written,
 and no value was printed.
@@ -814,4 +862,66 @@ and no value was printed.
 
 ## 15. VERDICT AND HEAD
 
-<!-- FINAL-STATUS -->
+**Branch** `worktree-agent-a9fe2f7a7ad9343aa`, rebased on master `76f29779`.
+Not merged, not pushed by this lane.
+
+**Four commits:**
+
+```
+a5d50144  CheapVerifier provider, and the 404 that is an answer
+01c45d9d  The provider existed and the ledger refused it
+e0d27a7d  Three guards caught this lane, and one of them caught somebody else's data
+53d5a9dc  The fixture estate was verified by the pair I just replaced
+          + this document's final revision
+```
+
+**HEAD sha: see the final commit recorded by `git log -1` on that branch —
+`6a1a1e73` at the time of writing.**
+
+### Test verdict
+
+| | |
+|---|---|
+| modules compared, master vs branch, in isolation | **57** |
+| tests | **1,388** |
+| failing on master `76f29779` | 89 |
+| failing on this branch | 83 |
+| **new failures introduced** | **0** |
+| pre-existing failures fixed | 6 |
+
+**No full-suite `run_suite.py` verdict is claimed.** Two attempts were made.
+The first was invalidated by this lane — master was checked out underneath a
+running suite to take a baseline, so its result was discarded rather than
+reported. The second completed but ran concurrently with another session's
+`unittest discover`, which CLAUDE.md warns overlaps on loopback and demo
+estates; its 164 failures were then re-derived module by module in isolation,
+which is how the 48 real ones were found and fixed. Another lane has had a
+suite running continuously since, so a clean full run was not available. The
+57-module isolated comparison above is what this lane stands behind, and it
+is stronger evidence than a single contended run: it is per-name, on both
+sides, reproducible.
+
+### Redaction, final
+
+27 files created or changed by this lane, scanned against all 12,407 cohort
+addresses, their domains, and every credential in `config/.env`, with the
+filter proven to fire on a planted value of each class first:
+
+```
+planted address     detected: True
+planted domain      detected: True
+planted credential  detected: True
+
+RESULT: CLEAN - 0 addresses, 0 domains, 0 credentials
+```
+
+`tests/test_fixture_hygiene` — the repository's own rule, which needs no list
+of real names — also passes on every one of them.
+
+### The one-line summary
+
+The module is built, measured, cassetted from real responses, wired into the
+policy, the waterfall ledger and the credential registry, and proven not to
+spend when it must not. **The run did not happen and must not happen today:
+the day's declared ceiling was already crossed by 9,365 credits before this
+lane started, and no ceiling was raised.**

@@ -52,22 +52,32 @@ def contact(angle="operations", **over):
            # it. `is_sendable` recomputes from the evidence and ignores the
            # stored state, so the evidence is what the fixture has to carry.
            #
-           # THE PRIMARY IS DELIVERABLE, not ContactOut. This record names
-           # client `productive`, and Productive moved its verification roles
-           # on 2026-09-21 - primary Deliverable, secondary Reoon, ContactOut
-           # removed from verification entirely. Since lint now asks the
-           # CLIENT's policy rather than the default one, a (contactout,
-           # reoon) fixture on a Productive record is no longer a verified
-           # address, and this test was refusing at `recipient_not_sendable`
-           # before it reached the opener it exists to check.
+           # THE PAIR HAS TO BE THE CLIENT'S CURRENT ONE, and this is the
+           # second time that has moved. This record names client
+           # `productive`, and `lint` asks the CLIENT's policy rather than
+           # the default - so a pair the client no longer requires is not a
+           # verified address here, and the step is refused at
+           # `recipient_not_sendable` before the opener this test exists to
+           # check is ever read.
+           #
+           #   2026-09-21  primary Deliverable, secondary Reoon. The
+           #               (contactout, reoon) fixture stopped clearing.
+           #   2026-09-25  primary CheapVerifier, secondary Deliverable,
+           #               Reoon the third opinion. (deliverable, reoon)
+           #               stopped clearing, for the same reason.
+           #
+           # `(cheapverifier, deliverable)` is the pair the client's policy
+           # names first, and `verification.pair_accepted` agrees with it.
+           # Unlike the cadence and role pins elsewhere in the suite this
+           # fixture is written out by hand and reaches lint through the
+           # record's own client, so it is updated rather than pinned.
            "verification": {"evidence": [
-               {"provider": "deliverable", "status": "valid",
+               {"provider": "cheapverifier", "status": "valid",
                 "email": "ada@acmestudio.example", "catch_all": False,
                 "disposable": False, "at": "2026-09-09T00:00:00+00:00"},
-               {"provider": "reoon", "status": "valid",
+               {"provider": "deliverable", "status": "valid",
                 "email": "ada@acmestudio.example", "catch_all": False,
-                "disposable": False, "safe_to_send": True,
-                "at": "2026-09-09T00:00:00+00:00"}]},
+                "disposable": False, "at": "2026-09-09T00:00:00+00:00"}]},
            "mx": {"status": "known_allowed", "email_eligible": True}}
     row.update(over)
     return row
@@ -75,6 +85,27 @@ def contact(angle="operations", **over):
 
 class TheOpenerClaimsNothingAboutThem(unittest.TestCase):
     def setUp(self):
+        # A CACHE NOTHING INVALIDATES, and it made this test order-dependent.
+        #
+        # `lint.policy_for_record` memoises the client's verification policy
+        # in a module-level `_POLICY_CACHE`, and `lint.forget_policies` was
+        # written to clear it - its docstring says "for tests that rewrite a
+        # client config mid-run". Measured 2026-09-25: **nothing in src/ or
+        # tests/ called it.**
+        #
+        # So the first test in the process to lint a `productive` record
+        # decides the policy for every test after it. Dozens of them run
+        # under `pin_client_config`, which pins the verification roles to
+        # what the FIXTURE estates carry - so in a full run this test read a
+        # pinned policy, and its fixture, which is written against the
+        # client's REAL current pair, was refused. Alone it passed; in a
+        # batch it failed; and which it did depended on module ordering.
+        #
+        # That is the shape of an intermittent failure this repository's own
+        # rules say to diagnose rather than dismiss. Clearing the cache here
+        # is the mechanism that was built for it finally having a caller.
+        lint.forget_policies()
+        self.addCleanup(lint.forget_policies)
         self.c = contact()
         self.rec = record(contacts=[self.c])
 
