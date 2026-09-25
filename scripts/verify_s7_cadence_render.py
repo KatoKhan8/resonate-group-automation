@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Does the S7 journal survive the NEXT stage's question, for all four steps?
+"""Does the S7 journal survive the NEXT stage's question, at whatever length it is?
 
-    py -3 scripts/verify_s7_four_step_render.py
-    py -3 scripts/verify_s7_four_step_render.py --new work/stage/s7-copy.jsonl \\
+    py -3 scripts/verify_s7_cadence_render.py
+    py -3 scripts/verify_s7_cadence_render.py --new work/stage/s7-copy.jsonl \\
                                                 --old work/stage/s7-copy.jsonl.BAK
 
 READS ONLY. It opens two journals, builds records in memory and calls the real
@@ -19,7 +19,7 @@ wrong headline number in this project's history came from a stage that had
 not asked the next stage's question. So this asks all four, in order, and
 reports the number that survives all of them.
 
-    stage 1  the journal      every variable the four-step build reads is
+    stage 1  the journal      every variable the build reads is
                               present, non-empty, not the string 'None', and
                               carries no unrendered placeholder
     stage 2  the held set     BY EMAIL and in both directions against the
@@ -34,7 +34,7 @@ reports the number that survives all of them.
                               domain-shaped, and it refuses per RECORD, so it
                               takes every contact at that account with it.
                               S7 never calls it - it writes the supplier's
-                              `Company` column straight into four bodies - so
+                              `Company` column straight into every body - so
                               these two gates disagree about the same fact and
                               the later one wins
     stage 4  bisonfactory     _sequence_steps -> _approved_copy ->
@@ -66,15 +66,40 @@ from src import (approval, bisonfactory, cadence, clients,  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STAGE = os.path.join(ROOT, "work", "stage")
 
-#: The journal names the four-step build reads, keyed BY STEP KEY. `body_3`
-#: is the retired `breakup` and is deliberately absent: it is still rendered
-#: and is no longer sent.
-REFERENCED = ("subject_1", "body_1", "body_2", "body_4", "body_5",
-              "template_4", "template_5")
+#: DERIVED FROM THE CADENCE, NEVER LISTED. An earlier version of this file
+#: hardcoded the four-step names and went stale the moment rung 3 landed -
+#: which would have made it check five steps' worth of copy against four
+#: steps' worth of names and report PASS. A verifier that can go stale
+#: silently is worse than none, because it is believed.
 
-#: The provider's variable names, keyed BY POSITION. em4 is the third step
-#: and arrives as `body_3`; em5 is the fourth and arrives as `body_4`.
-AT_THE_PROVIDER = ("subject_1", "body_1", "body_2", "body_3", "body_4")
+def referenced_names(cadence_steps):
+    """The journal fields the build reads, keyed BY STEP KEY.
+
+    `em3` -> `body_3`, and `template_3` as well when the step is `generated`,
+    because a generated step's words are per persona and the record records
+    which template produced them. `subject_1` is the only subject: every
+    follow-up is a thread reply and carries no subject of its own.
+    """
+    names = ["subject_1"]
+    for step in cadence_steps:
+        if step.get("channel") != "email":
+            continue
+        suffix = str(step["key"])[2:]
+        names.append("body_%s" % suffix)
+        if step.get("generated"):
+            names.append("template_%s" % suffix)
+    return tuple(names)
+
+
+def provider_names(sequence):
+    """The provider's variable names, keyed BY POSITION - not by step key.
+
+    At five steps these coincide with the journal's; at four they did not,
+    because `em3` did not exist and `em4` was the third provider step. The
+    two schemes are computed separately on purpose.
+    """
+    return ("subject_1",) + tuple("body_%d" % n
+                                  for n in range(1, len(sequence) + 1))
 
 #: Values that are "empty" to a human and not to `if value`. The morning
 #: handoff warned about the literal `'None'`; 2026-09-24 measured the live
@@ -136,7 +161,7 @@ def cadence_steps():
 
 
 def build_record(email, variables, existing, company):
-    """One record per DOMAIN, with this contact's four steps on it.
+    """One record per DOMAIN, with this contact's steps on it.
 
     Grouped by domain because `scripts/batch1_build.py` groups by domain and
     `lint.check` reads the record, not the row - a second contact at the same
@@ -173,6 +198,9 @@ def build_record(email, variables, existing, company):
         "em2": {"channel": "email", "template": "comparable_proof",
                 "generated": True, "subject": variables["subject_1"],
                 "body": variables["body_2"]},
+        "em3": {"channel": "email", "template": variables["template_3"],
+                "generated": True, "subject": variables["subject_1"],
+                "body": variables["body_3"]},
         "em4": {"channel": "email", "template": variables["template_4"],
                 "generated": True, "subject": variables["subject_1"],
                 "body": variables["body_4"]},
@@ -205,10 +233,13 @@ def main(argv=None):
         bad[why] += 1
         example.setdefault(why, email)
 
+    steps = cadence_steps()
+    referenced_fields = referenced_names(steps)
     print("\nSTAGE 1  every referenced variable, on every rendered row")
+    print("  the build reads %s" % (list(referenced_fields),))
     for email, row in new.items():
         values = row["variables"]
-        for name in REFERENCED:
+        for name in referenced_fields:
             if name not in values:
                 fault(f"{name} ABSENT", email)
             elif values[name] is None:
@@ -221,9 +252,9 @@ def main(argv=None):
         for why, count in bad.most_common():
             print(f"  FAIL {why:<52} {count:>5}   e.g. {example[why]}")
     else:
-        print(f"  PASS  {len(new)} rows x {len(REFERENCED)} variables = "
-              f"{len(new) * len(REFERENCED)} values, none blank, none 'None', "
-              f"none unrendered")
+        print(f"  PASS  {len(new)} rows x {len(referenced_fields)} variables"
+              f" = {len(new) * len(referenced_fields)} values, none blank, "
+              f"none 'None', none unrendered")
 
     print("\nSTAGE 2  the held set, BY EMAIL, both directions")
     if not args.old or not os.path.exists(args.old or ""):
@@ -234,22 +265,41 @@ def main(argv=None):
         old = rendered_by_email(load(args.old))
         regressed = sorted(set(old) - set(new))
         gained = sorted(set(new) - set(old))
+        # TWO DIFFERENT QUESTIONS, AND LUMPING THEM MAKES THE CHECK USELESS.
+        #
+        # `subject_1`, `body_1` and `body_2` are campaign 489's approved copy
+        # and are what the eleven live three-step campaigns are sending right
+        # now. A change there is a change to what a prospect is ALREADY
+        # receiving, and it must be zero.
+        #
+        # `body_3` is a different question. It meant `breakup` until
+        # 2026-09-25 and means RUNG 3 after it, so every row's `body_3`
+        # differing is the intended effect of that change - and a check that
+        # counted it as a fault would be red on every run, which is a check
+        # nobody reads. It is reported on its own line, with its own meaning.
+        LIVE = ("subject_1", "body_1", "body_2")
         moved = [e for e in new if e in old and any(
             new[e]["variables"].get(k) != old[e]["variables"].get(k)
-            for k in ("subject_1", "body_1", "body_2", "body_3"))]
+            for k in LIVE)]
+        recut = [e for e in new if e in old
+                 and new[e]["variables"].get("body_3")
+                 != old[e]["variables"].get("body_3")]
         print(f"  rendered before, held now      {len(regressed):>5}")
         for email in regressed[:args.examples]:
             print(f"      {email}")
         print(f"  held before, rendered now      {len(gained):>5}")
         for email in gained[:args.examples]:
             print(f"      {email}")
-        print(f"  EXISTING copy moved            {len(moved):>5}   "
-              f"(subject_1, body_1..body_3 - live words, and a change here "
-              f"is a change to what a prospect is already receiving)")
+        print(f"  LIVE copy moved                {len(moved):>5}   "
+              f"(subject_1, body_1, body_2 - what the running campaigns are "
+              f"sending. MUST be 0)")
         for email in moved[:args.examples]:
             print(f"      {email}")
+        print(f"  body_3 replaced                {len(recut):>5}   "
+              f"(breakup -> rung 3. Expected to equal the rendered count "
+              f"when the cadence changed, and 0 otherwise)")
 
-    print("\nSTAGE 3  lint.check, the real approval gate, all four steps")
+    print("\nSTAGE 3  lint.check, the real approval gate, every step")
     config = clients.load(args.client)
     lint.forget_policies()
     companies = supplier_companies(new)
@@ -311,7 +361,7 @@ def main(argv=None):
         for field in (step["email_subject"], step["email_body"]):
             referenced.update(m.lower()
                               for m in re.findall(r"\{([A-Z_0-9]+)\}", field))
-    missing_names = referenced - set(AT_THE_PROVIDER)
+    missing_names = referenced - set(provider_names(sequence))
     if missing_names:
         print(f"  NOTE the sequence references {sorted(missing_names)}, which "
               f"this script does not know about. Check them by hand")
@@ -377,7 +427,7 @@ def main(argv=None):
     print(f"  {len(unusable_leads):>5} of those held by the company name")
     print(f"  {len(both):>5} in BOTH sets" + (f": {both}" if both else ""))
     print(f"  {len(survivors):>5} survive every gate this script can ask")
-    print(f"  {built:>5} build a complete four-step provider payload "
+    print(f"  {built:>5} build a complete provider payload "
           f"(payload is about the WORDS; the two gates above are about the "
           f"record, and both still have to pass)")
     print("\n  Not one of these is a send. Only a provider readback is.")
