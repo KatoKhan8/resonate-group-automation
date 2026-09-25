@@ -149,7 +149,52 @@ CRITICAL_REMAINING = {"cheapverifier": 10_000}
 # client `per_day` is a tripwire rather than a budget - see
 # docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md.
 DEFAULT_UNIT = "credits"
-LEDGER_UNITS = {"apify": "cents"}
+LEDGER_UNITS = {"apify": "cents", "anthropic": "microusd"}
+
+#: MICRO-DOLLARS, AND THE REASON IS ARITHMETIC RATHER THAN TASTE.
+#:
+#: `record` stores `expected_cost` as an INT, and every ceiling, `spent()` and
+#: all 17,937 existing rows depend on that. Sonnet costs $0.00256 per lead.
+#: Measured:
+#:
+#:     one lead     $0.00256  -> int() -> 0
+#:     50 leads     $0.128    -> int() -> 0
+#:     1,000 leads  $2.56     -> int() -> 2
+#:
+#: So a dollar-denominated provider writing its native amount into that column
+#: ledgers an entire nightly cohort as ZERO: spend fully visible in the file
+#: and invisible to every control, which is the `per_run` defect in new
+#: clothes. Micro-dollars keep the column integral and lose no precision.
+#:
+#: Making `expected_cost` a float instead would change behaviour for every
+#: provider in order to fix one.
+MICRO = 1_000_000
+
+
+def to_micro_usd(usd):
+    """Dollars -> integer micro-dollars. $0.00256 -> 2560."""
+    return int(round(float(usd or 0) * MICRO))
+
+
+#: USD per one unit of a provider's native currency. `None` means NOBODY HAS
+#: PRICED IT, and that is a real answer: `usd_estimate` then comes back None
+#: with `rate_source: "unknown"` rather than carrying an invented conversion.
+#: A report that sums a made-up rate is the defect this table exists to end.
+USD_PER_UNIT = {
+    "microusd": 1.0 / MICRO,     # exact, by construction
+    "cents": 0.01,               # exact, by definition
+    "credits": None,             # differs per provider and per plan
+}
+
+
+def usd_estimate(expected_cost, unit, rate=None):
+    """`(usd_estimate, rate, rate_source)`. None where nobody has priced it."""
+    if rate is not None:
+        return float(expected_cost or 0) * float(rate), float(rate), "caller"
+    known = USD_PER_UNIT.get(unit)
+    if known is None:
+        return None, None, "unknown"
+    return float(expected_cost or 0) * known, known, "unit_definition"
 
 
 def unit_for(provider):
@@ -300,6 +345,21 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
     # `row_unit` reads the absence as this provider's convention.
     if unit:
         row["unit"] = unit
+    # `usd_estimate` IS WHAT REPORTS SUM. Operator decision, 2026-09-25:
+    # every row carries provider, native unit and usd_estimate, and reports
+    # sum only the last. It is written from the unit the writer declared, so
+    # a row with no unit gets no estimate rather than one derived from a
+    # convention nobody stamped - see the comment above on not defaulting.
+    #
+    # `None` IS A REAL VALUE HERE. Credits are not dollars and the rate
+    # differs per provider and per plan, so an unpriced unit yields None with
+    # `rate_source: "unknown"`. A report that sums an invented conversion is
+    # exactly the defect the unit column was added to end, one column left.
+    if unit:
+        estimate, rate_used, source = usd_estimate(row["expected_cost"], unit)
+        row["usd_estimate"] = estimate
+        row["rate"] = rate_used
+        row["rate_source"] = source
     # OUTSIDE THE BARRIER UNTIL NOW, AND IT COST REAL CLIENT STATE.
     #
     # This builds its own append rather than going through `store.write_jsonl`,
