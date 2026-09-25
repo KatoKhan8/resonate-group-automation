@@ -1002,6 +1002,85 @@ class TheSeamIsWiredIntoTheRealSpendPath(Ledgered):
         ):
             self.assertRaises(spendledger.LedgerUnreadable, call)
 
+    # ---------------------------------------------- the OTHER paid door
+
+    def run_actor(self, config, client=CLIENT):
+        """The real `researchpack.pack.run_actor`, transport replaced."""
+        from src.researchpack import pack
+        self.started = []
+
+        def runner(actor, payload, limit):
+            self.started.append(actor)
+            return []
+
+        return pack.run_actor("company_posts", "https://alpha.test",
+                              client=client, runner=runner, config=config)
+
+    def test_an_apify_run_is_refused_before_the_actor_starts(self):
+        """It RECORDED and never CHECKED - visible to the audit, invisible
+        to every ceiling, which is the shape this whole lane is about."""
+        config = {"budget": {"providers": {"apify": {"per_day": 5}}}}
+        self.seed("apify", 5, day=spendledger.today())
+
+        with self.assertRaises(spendledger.BudgetExceeded) as caught:
+            self.run_actor(config)
+
+        self.assertEqual([], self.started,
+                         "the actor was started and the ceiling consulted "
+                         "afterwards, which is a receipt and not a control")
+        self.assertIn("apify", str(caught.exception))
+        self.assertIn("per_day", str(caught.exception))
+
+    def test_an_apify_run_inside_the_ceiling_starts_and_is_ledgered(self):
+        """The control, and the property the old code had that must not be
+        lost: the row is written BEFORE the run, so a run that starts and
+        then fails is still counted."""
+        config = {"budget": {"providers": {"apify": {"per_day": 5_000,
+                                                     "total": "unlimited"}}}}
+
+        self.run_actor(config)
+
+        self.assertEqual(["apify~linkedin-company-posts-scraper"],
+                         self.started)
+        self.assertEqual(5, self.ledger_total(provider="apify"))
+        self.assertEqual(0, spendledger.reserved(CLIENT),
+                         "the hold outlived the run")
+
+    def test_a_failing_apify_run_is_still_ledgered(self):
+        """`holding()` would have released and lost exactly the rows worth
+        auditing. A run that starts and then fails still cost something."""
+        from src.researchpack import pack
+        config = {"budget": {"providers": {"apify": {"per_day": 5_000,
+                                                     "total": "unlimited"}}}}
+
+        def boom(actor, payload, limit):
+            raise RuntimeError("the actor failed after it started")
+
+        with self.assertRaises(RuntimeError):
+            pack.run_actor("company_posts", "https://alpha.test",
+                           client=CLIENT, runner=boom, config=config)
+
+        self.assertEqual(5, self.ledger_total(provider="apify"))
+        self.assertEqual(0, spendledger.reserved(CLIENT))
+
+    def test_the_apify_ceiling_is_in_CENTS_and_the_shipped_config_says_so(self):
+        """Apify's rows are money; every other provider's are credits.
+
+        `researchpack.actors.ACTORS[*]["cost"]` is integer cents and
+        `run_actor` writes it into this ledger, so `per_day: 5000` is the
+        operator's 5,000 $-cents a day - not 5,000 credits, and not
+        comparable to Deliverable's 95,000. Pinned because a unit that is
+        only true in a comment is a unit that will be compared to the wrong
+        number.
+        """
+        from src import clients
+        from src.researchpack import actors
+
+        self.assertEqual({5, 4, 6}, {a["cost"] for a in actors.ACTORS.values()})
+        self.assertEqual(
+            5000, spendledger.provider_caps(clients.load("productive"),
+                                            "apify")["per_day"])
+
     def test_a_ledger_row_now_says_which_run_bought_it(self):
         """`per_run` could not be enforced from the ledger while every row
         said `run_id: null`."""

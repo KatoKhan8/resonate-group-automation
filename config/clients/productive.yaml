@@ -750,20 +750,32 @@ budget:
     # `scripts/credential_health.py --verify` reads.
     contactout:
       total: unlimited
-    # Apify bills COMPUTE UNITS, not credits, and `COSTS["apify-research"]`
-    # is zero - this ledger cannot see that spend and a number written here
-    # would be a ceiling over nothing. Its real bound is `research.apify`
-    # above: `max_runs_per_batch`, `max_items_per_run`, `max_pages_per_domain`.
+    # APIFY'S NUMBERS IN THIS LEDGER ARE INTEGER CENTS, NOT CREDITS.
     #
-    # THE OPERATOR'S "5,000 $-cents/day" HAS NO HOME YET. Searched for
-    # 2026-09-25: there is no cents-denominated ceiling anywhere in this
-    # repository, and this ledger counts credits. Declaring 5000 here would
-    # silently reinterpret cents as credits, which is worse than no ceiling
-    # because it looks like one. Recorded as an open item in
-    # docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md rather than
-    # guessed at.
+    # `src/researchpack/actors.py` prices each actor run in cents - 5, 4 and
+    # 6 - and `pack.run_actor` writes that figure into this same spend
+    # ledger. So `per_day: 5000` below is the operator's 5,000 $-cents a
+    # day, in the unit Apify's rows already use. It is NOT credits, and it
+    # is NOT comparable to Deliverable's 95,000.
+    #
+    # THAT MIXING IS A REAL HAZARD AND IT IS NAMED, NOT HIDDEN. The
+    # client-wide `per_day` of 200,000 above sums cents and credits, which
+    # is arithmetic over two different units. It is a tripwire rather than a
+    # budget so the sum is still useful as "nothing should ever get near
+    # this", but nobody should read it as an amount. Picking a conversion
+    # rate is an operator decision; see
+    # docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md.
+    #
+    # `total: unlimited` because the operator set a daily figure and no
+    # lifetime one. Written rather than omitted: an absent key is refused.
+    #
+    # The OTHER Apify path - `research.apify` above, the website crawler -
+    # is priced at zero by `COSTS["apify-research"]` and is bounded by
+    # `max_runs_per_batch`, `max_items_per_run` and `max_pages_per_domain`
+    # instead. This ceiling does not see it.
     apify:
       total: unlimited
+      per_day: 5000
 
 # HOW OFTEN ONE PERSON, AND ONE COMPANY, MAY HEAR FROM PRODUCTIVE.
 #
