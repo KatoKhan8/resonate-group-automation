@@ -132,7 +132,7 @@ green with the exit code read off the process.
 
 STATUS: DONE
 
-COMMIT SHA: (to be filled after commit)
+COMMIT SHA: 11a591dd
 
 TESTS:
 - `tests/test_threaded_sequence.py`: 18 tests, all pass
