@@ -65,6 +65,37 @@ ALLOWED = {
     ("src/providers/aiark.py", "POST"),
     ("src/providers/blitz.py", "POST"),
     ("src/providers/deliverable.py", "DYNAMIC"),
+    # CheapVerifier, declared 2026-09-25. Reported DYNAMIC because its `_call`
+    # helper passes a verb parameter to `request(...)`, which no amount of
+    # reading the source can resolve - the same shape as deliverable.py.
+    #
+    # AND THERE IS A REAL POST BEHIND IT, so this row is a decision and not a
+    # formality. `upload()` sends a multipart CSV to `POST /file/upload`
+    # through this module's own `_upload_transport`, because the shared
+    # `providers.request` seam JSON-encodes its body and cannot carry
+    # multipart. That write is a PAID READ in the sense this allowlist cares
+    # about: it submits a list of addresses to a verification vendor and asks
+    # a question about them. It creates nothing at the provider, and it
+    # reaches no prospect - no mail is sent, no profile is touched, and the
+    # only thing that changes on the far side is the vendor's own record of
+    # the file we asked about. It is the same category as contactout, aiark
+    # and blitz, which this vendor happens to spell as an upload.
+    #
+    # It is also guarded the same way the shared transport is:
+    # `_upload_transport` calls `providers.refuse_unauthorized_write` as its
+    # first statement, before the request object exists, so a prospect-facing
+    # host could never be reached through it even if one were ever added.
+    #
+    # WORTH RECORDING: the detector cannot see that POST at all. It matches
+    # `request("POST", ...)`, `requests.post(...)` and
+    # `urlopen(..., method="POST")`, and a write built as
+    # `urllib.request.Request(url, method="POST")` then handed to `urlopen`
+    # matches none of them. The DYNAMIC row above is what makes this module
+    # visible to the guard; a module written the same way WITHOUT a dynamic
+    # verb would pass this test while issuing a real POST. That is a gap in
+    # the detector rather than in this module, and it is named here so the
+    # next person to touch this file knows about it.
+    ("src/providers/cheapverifier.py", "DYNAMIC"),
     ("src/providers/heyreach.py", "POST"),
     # EmailBison gained real write verbs on 2026-09-13, after the routes this
     # repository had written off as absent turned out to be documented. Each

@@ -207,7 +207,7 @@ the length check is deleted.
 
 ## 5. CASSETTE PROVENANCE
 
-Ten cassettes in `tests/cassettes/cheapverifier/`, every one produced by
+Nine cassettes in `tests/cassettes/cheapverifier/`, every one produced by
 `work/cv/record_cassettes.py`, which **makes the call and saves what came
 back**. Each carries a `_provenance` block with the timestamp, the method and
 path, and `"real": true`. The test helper refuses any cassette not marked
@@ -224,7 +224,13 @@ real, so a hand-written one cannot quietly join them.
 | `uploads_results_missing_404` | 404 | `{error,message}` envelope |
 | `uploads_results_bad_status_422` | 422 | allowed-value list |
 | `single_missing_param_400` | 400 | a free 400 on a paid path |
-| `openapi_200` | 200 | the contract itself |
+
+The contract document itself was recorded too, and then **removed and
+untracked**: the vendor's own `TaskDetailsResponse` example embeds two real
+third-party addresses, which `test_fixture_hygiene` caught and this lane's
+cohort-based redaction filter structurally could not. See §11. It lives at
+the vendor's public `/openapi.json` and in gitignored `work/`, verified
+byte-identical to live; no test read it.
 
 Addresses used are `@example.invalid` — a reserved TLD that cannot resolve —
 so nothing real is recorded.
@@ -272,6 +278,56 @@ about scheduling, not about evidence — cannot fail a policy the run satisfies.
 `clients.parse` carries inline scalar lists but not lists of lists, so a pair
 is `a+b` and `pair_accepted` splits it. The same limit keeps the HeyReach
 graph in its own file.
+
+### `PROVIDER-ROUTING-POLICY.md` IS STALE, AND IT WAS STALE BEFORE THIS LANE
+
+Checked rather than assumed, and it is stale by **two** generations. It is
+the operator's standing order, so this lane **did not edit it** — the config
+is fixed and the doc is reported.
+
+It states (lines 163–167 and 240–250):
+
+```
+### Work email verification order
+    1. ContactOut  (email status off the enrich readback)
+    2. Reoon       (4/sec, power mode)
+    3. Deliverable
+
+## The stated order and the configured roles are the same thing
+    primary                 contactout
+    secondary               deliverable
+    catch_all               reoon
+```
+
+**Neither block has been true since 2026-09-21**, when the operator removed
+ContactOut from Productive's verification and the config became
+`primary deliverable / secondary reoon / catch_all reoon`. The document
+asserts the configured roles *are* `contactout / deliverable / reoon` and
+that "no edit was made to `verification.py`, its policy, or the confirmation
+count" — a claim about a config that had already moved underneath it.
+
+As of today it is stale twice over: the live roles are
+`cheapverifier / deliverable / reoon`, and **CheapVerifier does not appear in
+that document at all.**
+
+Two further things in it that are now wrong or unsupported:
+
+- it presents **Reoon at "4/sec, power mode"** as the rate limit. That figure
+  is OPERATOR-STATED, not vendor-published — `docs/PERF-LATENCY-MODEL-2026-09-18.md`
+  classifies Reoon's published limit as NOT DOCUMENTED — and this lane's
+  measurement discipline is the opposite of it.
+- its closing evidence is that "the first verified addresses of the S5 run
+  record `pair: ['contactout', 'reoon']`". That was true of the early
+  2026-09-21 pass and is now a minority: of the 9,107 addresses standing at
+  `verified`, **603 carry `(contactout, reoon)` and 8,504 carry
+  `(deliverable, reoon)`** — the pair the document says is only reached
+  "when those two have not settled it". The evidence it rests on describes
+  7% of the estate.
+
+**Recommended:** the production session updates that document to the new
+order, adds CheapVerifier, and either sources or removes the Reoon rate
+figure. Until then, `policy_for(config)` is the only thing that should be
+read as authoritative — and it is what every gate actually reads.
 
 ### THE MIGRATION CONSEQUENCE — read this before merging
 
@@ -571,13 +627,63 @@ registration, and the rate-limit honesty.
 
 ### Regression baseline, by name and not by count
 
-| | failures |
-|---|---|
-| master `76f29779`, verification-related modules (286 tests) | **1** |
-| this branch, same modules + the new file (325 tests) | **1** |
+Run over the identical set of 19 modules this lane touches or could affect —
+verification, waterfall, invariants, fixture hygiene, secrets, provider
+writes, mutation anchors:
 
-The one failure is the same on both — `test_decide_blocks_a_bounced_address`
-— and is **pre-existing on master**, not introduced here.
+| | tests | failures |
+|---|---|---|
+| master `76f29779` | 419 | **6** |
+| this branch | 463 | **6** |
+
+**The same six, by name, on both.** All pre-existing, none introduced here:
+
+```
+test_decide_blocks_a_bounced_address
+test_emailbison_posts_only_to_routes_it_declares
+test_no_tracked_file_contains_a_credential_shaped_assignment
+test_every_state_override_is_in_the_example
+test_every_http_write_in_the_repository_is_declared   (src/researchpack/pack.py)
+test_every_guard_appears_exactly_once
+```
+
+The 44 extra tests are this lane's. A count alone would have hidden this:
+the branch briefly carried **two** extra failures that the count could have
+been read as noise, and both were real — see below.
+
+### Three guards caught real defects in this lane's work
+
+Each was found by running the repository's own invariant tests rather than
+by review, and each is fixed in the code:
+
+1. **`test_nothing_writes_to_a_provider`** — the bulk upload is a real HTTP
+   POST and nobody had declared it. Now declared in `ALLOWED` with the
+   reasoning, alongside a note that the detector **cannot see** a write built
+   as `urllib.request.Request(method="POST")` + `urlopen` — it matches only
+   `request("POST", …)`, `requests.post(…)` and `urlopen(…, method="POST")`.
+   This module is visible to the guard only because its `_call` helper takes
+   a verb parameter and so reports `DYNAMIC`. **That is a gap in the
+   detector, not in this module**, and it is written down where the next
+   person will find it.
+
+2. **`test_fixture_hygiene`** — the recorded `openapi_200` cassette carried
+   **two real third-party addresses**, `info@gameson.co.uk` and
+   `sales@amberol.co.uk`, because the *vendor's own* `TaskDetailsResponse`
+   example embeds them. This lane's redaction self-test could never have
+   caught it: those domains are not in our cohort, so nothing in our own data
+   matched them. The cassette is removed and untracked — no test read it —
+   and the contract stays where it belongs, at the vendor's public
+   unauthenticated `/openapi.json` and in gitignored
+   `work/cheapverifier-openapi.json`, verified byte-identical to live. **Nine
+   cassettes remain, all real recordings.**
+
+3. **`test_secrets`** — `CHEAPVERIFIER_API_KEY` was registered in
+   `config.VARIABLES` but missing from `config/.env.example`, and
+   `CHEAPVERIFIER_BASE` was in neither. Both fixed; the example file now
+   documents the credential, the billing rule and the 401/403 deviation.
+
+A fourth was caught the same way and has its own section: the waterfall
+ledger refusing the provider outright (§8b).
 
 Six tests did go red on this branch and all six were stale assertions about
 the *old* order. None was weakened:
@@ -652,7 +758,10 @@ Two incidental notes:
 |---|---|
 | `src/providers/cheapverifier.py` | **new** — the module |
 | `tests/test_cheapverifier_reads_a_404_as_nothing_stored.py` | **new** — 41 tests |
-| `tests/cassettes/cheapverifier/*.json` | **new** — 10 recorded responses |
+| `tests/cassettes/cheapverifier/*.json` | **new** — 9 recorded responses |
+| `config/.env.example` | the credential, the billing rule and the 401/403 deviation documented |
+| `tests/test_nothing_writes_to_a_provider.py` | the upload POST declared; the detector gap recorded |
+| `tests/test_secrets.py` | `CHEAPVERIFIER_BASE` named as a contract override |
 | `src/verification.py` | roles, `accepted_pairs`, `pair_accepted`, stored-first call path, local-refusal exemption |
 | `config/clients/productive.yaml` | the new order and both accepted pairs |
 | `src/waterfall.py` | **CheapVerifier registered in the EMAIL_VERIFICATION stage and COST_UNITS — see §8b** |

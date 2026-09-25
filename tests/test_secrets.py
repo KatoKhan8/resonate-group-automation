@@ -58,6 +58,11 @@ def _non_secret_names():
         # something; the adapter's defaults are already correct.
         "DELIVERABLE_RESULT_SHAPE", "DELIVERABLE_BASE", "DELIVERABLE_VERIFY",
         "DELIVERABLE_STATUS", "DELIVERABLE_AUTH", "DELIVERABLE_METHOD",
+        # CheapVerifier's, and there is only one: the base URL. The adapter's
+        # default is read off the provider's own OpenAPI document, so this is
+        # set only if the provider moves the host. The KEY itself is
+        # classified in `config.VARIABLES` and arrives by that route.
+        "CHEAPVERIFIER_BASE",
         # Output and config locations.
         "OUT", "CLIENTS_DIR", "WEB_QUIET",
     )
