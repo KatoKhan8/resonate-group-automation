@@ -289,6 +289,62 @@ def summarise(per_domain):
     }
 
 
+def shuffle_control(rows, order, config, lh, cap, shift=1):
+    """Does each domain's opener pass rule 1 against SOMEBODY ELSE'S pack?
+
+    THE CONTROL A BIGGER SNIPPET NEEDS. Raising the cap puts five times as
+    much text behind every rule-1 match, and more text is easier to match by
+    accident. If the pass rate rose because the packs got longer rather than
+    because they got more specific, then an opener written for one company
+    would pass against the next company's pack just as readily - and the
+    gate would be measuring vocabulary overlap in an industry where 10,565
+    of 12,407 contacts share a sector.
+
+    So each domain's own openers are matched against the pack of the domain
+    `shift` places later in the list. A cross-pass rate that rises with the
+    cap is the finding; one that stays flat says the extra text is carrying
+    the company's own words and not more of everybody's.
+
+    The ANCHOR is the same question asked properly: a contiguous phrase from
+    one company's site appearing on another's is not vocabulary, it is a
+    coincidence, and it should be near zero at both caps.
+    """
+    n = len(order)
+    real = cross = real_anchor = cross_anchor = 0
+    measured = 0
+    for i, domain in enumerate(order):
+        mine = capped(rows[domain], cap)
+        theirs = capped(rows[order[(i + shift) % n]], cap)
+        if not mine.get("facts") or not theirs.get("facts"):
+            continue
+        openers = lanek.openers_for(mine, config)
+        if not openers:
+            continue
+        measured += 1
+        own = copylint.pack_text({"facts": mine["facts"]})
+        other = copylint.pack_text({"facts": theirs["facts"]})
+        hit_own = hit_other = False
+        a_own = a_other = 0
+        for _p, _a, opener in openers:
+            tokens = lanek.rule1_tokens(opener, True)
+            hit_own = hit_own or bool(lanek.matched(tokens, own))
+            hit_other = hit_other or bool(lanek.matched(tokens, other))
+            a_own = max(a_own, lh.anchor_run(
+                opener, {"facts": mine["facts"]}, copylint)[0])
+            a_other = max(a_other, lh.anchor_run(
+                opener, {"facts": theirs["facts"]}, copylint)[0])
+        real += 1 if hit_own else 0
+        cross += 1 if hit_other else 0
+        real_anchor += 1 if a_own >= 4 else 0
+        cross_anchor += 1 if a_other >= 4 else 0
+    return {"measured": measured,
+            "rule1_against_own_pack": real,
+            "rule1_against_the_WRONG_pack": cross,
+            "cross_pass_rate": round(100.0 * cross / (measured or 1), 1),
+            "anchor_ge4_against_own_pack": real_anchor,
+            "anchor_ge4_against_the_WRONG_pack": cross_anchor}
+
+
 def line(label, s, width=34):
     n = s["domains"] or 1
     fac = s["with_usable_fact"] or 1
@@ -323,6 +379,10 @@ def main(argv=None):
     ap.add_argument("--batch", type=int, default=2000)
     ap.add_argument("--client", default="productive")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--control", type=int, default=0,
+                    help="run the wrong-pack control over the first N "
+                         "domains: does an opener pass rule 1 against "
+                         "somebody else's pack just as readily?")
     ap.add_argument("--json", default="")
     ap.add_argument("--cohort-out", default="",
                     help="JSONL of the domains a push could carry, in the "
@@ -383,6 +443,18 @@ def main(argv=None):
                           total["contacts_rule1"]))
         print("  single words: %s" % total["single_word_top"])
         print("  holds: %s" % total["holds"])
+        if args.control:
+            ctl = shuffle_control(rows, order[:args.control], config, lh, cap)
+            total["shuffle_control"] = ctl
+            print("  CONTROL, openers matched against the WRONG company's "
+                  "pack (%d domain(s)): rule 1 passes %d against its own, "
+                  "%d against somebody else's (%.1f%%); anchor >= 4 words "
+                  "%d against its own, %d against somebody else's"
+                  % (ctl["measured"], ctl["rule1_against_own_pack"],
+                     ctl["rule1_against_the_WRONG_pack"],
+                     ctl["cross_pass_rate"],
+                     ctl["anchor_ge4_against_own_pack"],
+                     ctl["anchor_ge4_against_the_WRONG_pack"]))
         report["caps"][str(cap)] = {"total": total, "batches": batches,
                                     "per_domain": [
                                         {"domain": m["domain"],
