@@ -107,3 +107,32 @@ carries the command that produced it.
 
 Post it and stop. Claude reads it and writes the phase 1 plan for the
 operator; you implement nothing until that plan is approved.
+
+## RESULT
+
+**STATUS:** DONE  
+**COMMIT SHA:** a6608214  
+**TESTS:** `python -m unittest tests.test_copylint tests.test_the_sequence_gate_catches_what_copylint_cannot tests.test_learning tests.test_contextpack tests.test_client_approval_is_a_gate -v` → `Ran 129 tests in 0.536s — OK`. Full suite (`python -m unittest discover -s tests -v`) was still running at audit completion (~865s expected per QWEN.md).  
+**FILES CHANGED:** `docs/AUDIT-2026-09-26.md` (created, 556 lines)  
+**FINDINGS:**
+
+Three confirmed bugs:
+1. **Email→LinkedIn stop** (`leadstop.py:172-188`): field was `linkedin_url`, store carries `linkedin`. Code corrected but verb is sealed — never ran live. UNVERIFIED.
+2. **learning.py** (342 lines): imported by zero modules in src/. Computes cohort statistics nobody reads.
+3. **contextpack.py** (590 lines): consumed only by web UI, not by generation pipeline.
+
+Major gaps (not bugs — greenfield):
+- No offer engine (Section 4)
+- No person-relevance for signals (Section 5)
+- No semantic repetition detection (Section 8)
+- No skills system (Section 6)
+- No learning loop (Section 9)
+- No contextual retargeting (Section 10)
+- No Hetzner deployment config in repo (Section 11)
+
+HeyReach cadence: five LinkedIn steps, five email steps, all render when copy is approved. The factory refuses on missing copy — it does NOT silently drop steps. The previous "one step surfacing" finding is not the current behavior.
+
+Cross-channel stop: LinkedIn→email works. Email→LinkedIn is wired, corrected, sealed, and unverified live.
+
+**RISKS:** The email→LinkedIn stop needs live verification before it can be trusted. Unsealing `LINKEDIN_STOP_LEAD` and running a dry-run against a real lead would confirm whether the field fix works.  
+**RECOMMENDED CLAUDE ACTION:** Read `docs/AUDIT-2026-09-26.md` and write the phase 1 plan for the operator.
