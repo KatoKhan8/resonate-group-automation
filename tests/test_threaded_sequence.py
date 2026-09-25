@@ -32,6 +32,7 @@ import unittest
 from src import bisonfactory, campaigns, store, workspaces
 from src.bisonfactory import FactoryRefused
 from src.providers.bison import MAX_SEQUENCE_STEPS
+from tests import packfixture
 from tests.base import QueueTest
 from tests.test_staging_a_campaign_twice_builds_one import FakeBison
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
@@ -76,7 +77,25 @@ def _threaded_config(*, em2_thread_reply=True, em3_thread_reply=True,
     }
 
 
-def _approved(step_key, n):
+COMPANY = "Example"
+DOMAIN = "example.com"
+
+
+def _body(step_key, first):
+    """This step's words. Step 1 is the OPENER and is held to a higher bar.
+
+    The batch copy lint runs before the first provider call and requires
+    step 1 to open on a line this account's own research supports, so
+    `body for em1` cannot be staged any more. The follow-ups only have to be
+    non-empty and clean, and threading - what this module is about - is a
+    property of the SEQUENCE rather than of the words.
+    """
+    if step_key == "em1":
+        return packfixture.html_opener(first, COMPANY)
+    return f"<p>body for {step_key}</p>"
+
+
+def _approved(step_key, first):
     # THE STAMP COVERS THE WORDS. A placeholder fingerprint was enough
     # while staging checked only that an approval existed;
     # `bisonfactory._certified_copy` now hashes the words it is about to
@@ -85,7 +104,7 @@ def _approved(step_key, n):
 
     step = {"channel": "email",
             "subject": f"subject for {step_key}",
-            "body": f"<p>body for {step_key}</p>"}
+            "body": _body(step_key, first)}
     step["approval"] = {"by": "operator", "at": "2026-09-16T00:00:00Z",
                         "fingerprint": _approval.fingerprint(step)}
     return step
@@ -93,10 +112,10 @@ def _approved(step_key, n):
 
 def _record(rid, email, first):
     key = f"{rid}-c1"
-    steps = {k: _approved(k, i) for i, k in enumerate(
-        ("em1", "em2", "em3"), start=1)}
-    return {"id": rid, "client": "productive", "domain": "example.com",
-            "company": "Example", "state": "ready",
+    steps = {k: _approved(k, first) for k in ("em1", "em2", "em3")}
+    return {"id": rid, "client": "productive", "domain": DOMAIN,
+            "company": COMPANY, "state": "ready",
+            "research": [packfixture.own_fact(rid, DOMAIN, COMPANY)],
             "cadence": {key: steps},
             "contacts": [{"key": key, "email": email, "first_name": first,
                           "last_name": "Tester", "sendable": True,
@@ -410,7 +429,7 @@ class ThreadedCampaignStaging(QueueTest):
         self.assertFalse(held.get("subject_3"),
                          f"subject_3 should be empty/absent, got "
                          f"{held.get('subject_3')!r}")
-        self.assertEqual(held.get("body_1"), "<p>body for em1</p>")
+        self.assertEqual(held.get("body_1"), _body("em1", "Ada"))
         self.assertEqual(held.get("body_2"), "<p>body for em2</p>")
         self.assertEqual(held.get("body_3"), "<p>body for em3</p>")
 
@@ -461,7 +480,7 @@ class ThreadedCampaignStaging(QueueTest):
                          "stale subject_2 from non-threaded era must be cleared")
         self.assertEqual(held.get("subject_3"), "",
                          "stale subject_3 from non-threaded era must be cleared")
-        self.assertEqual(held.get("body_1"), "<p>body for em1</p>")
+        self.assertEqual(held.get("body_1"), _body("em1", "Ada"))
         self.assertEqual(held.get("body_2"), "<p>body for em2</p>")
         self.assertEqual(held.get("body_3"), "<p>body for em3</p>")
 

@@ -20,6 +20,7 @@ import unittest
 
 from src import bisonfactory, cadence, campaigns, store, workspaces
 from src import providers
+from tests import packfixture
 from tests.base import QueueTest
 from tests.fakebison import RendersTheQueue
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
@@ -234,6 +235,14 @@ class FakeBison(RendersTheQueue):
 
 CID = "camp-factory"
 
+#: The account the fixture records belong to. Named rather than repeated
+#: because `packfixture.own_fact` is admitted by IDENTITY - the fact is read
+#: off this domain - so a record whose `domain` and whose fact's host drifted
+#: apart would carry research that `packfacts` refuses, and the fixture would
+#: fail the lint while looking like it had a pack.
+COMPANY = "Example"
+DOMAIN = "example.com"
+
 # PINNED, NOT LOADED. These tests used to take whatever
 # `config/clients/productive.yaml` happened to hold, so editing a live
 # client's sending window or sequence broke an idempotency test that has
@@ -249,6 +258,52 @@ CONFIG = {
                        "timezone": "Europe/Zagreb"},
     "providers": {"emailbison": {"workspace": 10}},
 }
+
+
+def record(rid, email, first, grounded=True):
+    """One stageable record: approved words, and the research they lean on.
+
+    THE APPROVED WORDS ARE PART OF A STAGEABLE RECORD, and this fixture did
+    not carry them. The sequence is a template of merge fields, so a contact
+    with no approved email step is staged with an empty subject and an empty
+    body and the readback agrees the campaign is correct - which is the
+    failure `_variables_for` has always described and `_ensure_leads` now
+    refuses. Without this the test asserted that two empty emails were staged
+    idempotently.
+
+    AND SO IS THE RESEARCH THE OPENER LEANS ON. Since 2026-09-25 `stage` runs
+    the batch copy lint before the first provider call, and its first rule is
+    that step 1 opens on a line this account's own research supports.
+    `"A real approved body."` was supported by nothing, which made this
+    fixture a push the product refuses. The fact and the opener both come
+    from `tests.packfixture` so they cannot drift apart, and `grounded=False`
+    is the one case that must stay observable - see
+    `test_a_lead_with_no_pack_fact_reaches_no_provider`.
+
+    MODULE LEVEL, because `test_crash_restart_idempotency` and
+    `test_lead_writes_respect_the_killswitch` had byte-identical copies of it
+    and the copies cost fourteen tests this morning: a second hand-written
+    record is a second place to forget what a stageable record now carries.
+    """
+    from src import approval as _approval
+
+    key = f"{rid}-c1"
+    # THE STAMP COVERS THE WORDS. A placeholder fingerprint was enough while
+    # staging checked only that an approval existed;
+    # `bisonfactory._certified_copy` now hashes the words it is about to stage
+    # and compares, so a stamp that covers nothing is refused.
+    step = {"channel": "email", "subject": f"Hello {first}",
+            "body": packfixture.html_opener(first, COMPANY)}
+    step["approval"] = {"by": "operator", "at": "2026-09-13T00:00:00Z",
+                        "fingerprint": _approval.fingerprint(step)}
+    return {"id": rid, "client": "productive", "domain": DOMAIN,
+            "company": COMPANY, "state": "ready",
+            "research": ([packfixture.own_fact(rid, DOMAIN, COMPANY)]
+                         if grounded else []),
+            "cadence": {key: {"day1": step}},
+            "contacts": [{"key": key, "email": email,
+                          "first_name": first, "last_name": "Tester",
+                          "sendable": True, "verified": True}]}
 
 
 class StagingTwiceBuildsOne(QueueTest):
@@ -272,8 +327,8 @@ class StagingTwiceBuildsOne(QueueTest):
         ws["settings"] = {"policy": {"sending.live": "on"}}
         workspaces.save([ws])
 
-        store.save([self._record("rec-1", "one@example.com", "Ada"),
-                    self._record("rec-2", "two@example.com", "Grace")])
+        store.save([record("rec-1", "one@example.com", "Ada"),
+                    record("rec-2", "two@example.com", "Grace")])
         row = campaigns.new_campaign(CID, "productive", "Factory test")
         # DECLARED, NOT INHERITED. `bisonfactory._plan` refuses a
         # campaign carrying no `cadence_steps`: the fallback through
@@ -327,32 +382,40 @@ class StagingTwiceBuildsOne(QueueTest):
             bisonfactory.stage(CID, config=CONFIG, live=False)
         self.assertEqual(self.bison.created_campaigns, 0)
 
-    @staticmethod
-    def _record(rid, email, first):
-        # THE APPROVED WORDS ARE PART OF A STAGEABLE RECORD, and this fixture
-        # did not carry them. The sequence is a template of merge fields, so
-        # a contact with no approved email step is staged with an empty
-        # subject and an empty body and the readback agrees the campaign is
-        # correct - which is the failure `_variables_for` has always described
-        # and `_ensure_leads` now refuses. Without this the test asserted
-        # that two empty emails were staged idempotently.
-        from src import approval as _approval
+    def test_a_lead_with_no_pack_fact_reaches_no_provider(self):
+        """THE UNGUARDED CASE FOR THE COPY LINT, kept alive on purpose.
 
-        key = f"{rid}-c1"
-        # THE STAMP COVERS THE WORDS. A placeholder fingerprint was enough
-        # while staging checked only that an approval existed;
-        # `bisonfactory._certified_copy` now hashes the words it is about to
-        # stage and compares, so a stamp that covers nothing is refused.
-        step = {"channel": "email", "subject": f"Hello {first}",
-                "body": "<p>A real approved body.</p>"}
-        step["approval"] = {"by": "operator", "at": "2026-09-13T00:00:00Z",
-                            "fingerprint": _approval.fingerprint(step)}
-        return {"id": rid, "client": "productive", "domain": "example.com",
-                "company": "Example", "state": "ready",
-                "cadence": {key: {"day1": step}},
-                "contacts": [{"key": key, "email": email,
-                              "first_name": first, "last_name": "Tester",
-                              "sendable": True, "verified": True}]}
+        Every staging fixture in this suite now carries research, because a
+        push requires a grounded opener and a fixture that carries less is
+        modelling a push that cannot happen. That is the right fix and it
+        has the same cost lane B's cadence fix had an hour earlier: once
+        every fixture satisfies the guard, nothing is left able to OBSERVE
+        the guard firing, and a check that passes because its condition no
+        longer appears in the suite is not a check.
+
+        It is not hypothetical here. Measured on master this morning, all
+        nine tests in
+        `tests/test_the_copy_lint_refuses_the_real_send_path.py` - the
+        module whose entire job is to watch this lint refuse - were being
+        refused by the CADENCE guard instead, one gate earlier, and the
+        suite could not see the copy lint fire anywhere at all.
+
+        ASSERTED BY EFFECT, NOT BY MESSAGE. The lint runs before
+        `bison.bound_workspace()`, so what is checked is that FakeBison
+        built no campaign and created no lead. The wording of the refusal
+        may be changed; "nothing reached the provider" may not.
+        """
+        store.save([record("rec-1", "one@example.com", "Ada",
+                           grounded=False),
+                    record("rec-2", "two@example.com", "Grace",
+                           grounded=False)])
+
+        before_campaigns = self.bison.created_campaigns
+        before_leads = self.bison.created_leads
+        with self.assertRaises(bisonfactory.FactoryRefused):
+            bisonfactory.stage(CID, config=CONFIG, live=True)
+        self.assertEqual(self.bison.created_campaigns, before_campaigns)
+        self.assertEqual(self.bison.created_leads, before_leads)
 
     def test_the_second_run_creates_nothing(self):
         first = bisonfactory.stage(CID, config=CONFIG, live=True)

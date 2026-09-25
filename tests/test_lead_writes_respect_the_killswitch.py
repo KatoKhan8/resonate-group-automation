@@ -26,8 +26,13 @@ from unittest import mock
 from src import bisonfactory, cadence, campaigns, killswitch, store, workspaces
 from src import providers
 from tests.base import QueueTest
+# THE RECORD BUILDER COMES FROM THERE TOO. It used to be a byte-for-byte
+# copy of that module's, and the copy cost five tests on 2026-09-25: the
+# batch copy lint now requires step 1 to open on the account's own
+# research, and a second hand-written record is a second place to forget
+# it. What this module is about is the killswitch, not a record's shape.
 from tests.test_staging_a_campaign_twice_builds_one import (
-    CONFIG, FakeBison, CID)
+    CONFIG, FakeBison, CID, record)
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
 
 
@@ -42,8 +47,8 @@ class KillswitchStopsLeadWrites(QueueTest):
         self.addCleanup(setattr, bisonfactory, "bison", self._real)
         patch_collision_empty(self)
 
-        store.save([self._record("rec-1", "one@example.com", "Ada"),
-                    self._record("rec-2", "two@example.com", "Grace")])
+        store.save([record("rec-1", "one@example.com", "Ada"),
+                    record("rec-2", "two@example.com", "Grace")])
         row = campaigns.new_campaign(CID, "productive", "Factory test")
         # DECLARED, NOT INHERITED. `bisonfactory._plan` refuses a
         # campaign carrying no `cadence_steps`: the fallback through
@@ -56,26 +61,6 @@ class KillswitchStopsLeadWrites(QueueTest):
         row["record_ids"] = ["rec-1", "rec-2"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         campaigns.save([row])
-
-    @staticmethod
-    def _record(rid, email, first):
-        from src import approval as _approval
-
-        key = f"{rid}-c1"
-        # THE STAMP COVERS THE WORDS. A placeholder fingerprint was enough
-        # while staging checked only that an approval existed;
-        # `bisonfactory._certified_copy` now hashes the words it is about to
-        # stage and compares, so a stamp that covers nothing is refused.
-        step = {"channel": "email", "subject": f"Hello {first}",
-                "body": "<p>A real approved body.</p>"}
-        step["approval"] = {"by": "operator", "at": "2026-09-13T00:00:00Z",
-                            "fingerprint": _approval.fingerprint(step)}
-        return {"id": rid, "client": "productive", "domain": "example.com",
-                "company": "Example", "state": "ready",
-                "cadence": {key: {"day1": step}},
-                "contacts": [{"key": key, "email": email,
-                              "first_name": first, "last_name": "Tester",
-                              "sendable": True, "verified": True}]}
 
     def _set_workspace(self, sending_live):
         """Write a workspace row with the given `sending.live` policy."""

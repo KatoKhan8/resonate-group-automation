@@ -574,7 +574,34 @@ def _refuse_copylint(plan, recs, report):
     The refusal text is the LINT'S OWN report, not a sentence written here,
     so it names the leads and the rules the lint named - including a rule
     that did not exist when this function was written.
+
+    AN INCOMPLETE BATCH IS NOT ASKED. If any lead carries no approved copy
+    for a step of this sequence, the push is refused either way - and it is
+    refused BETTER one gate down, because `_ensure_leads` knows WHICH steps
+    are missing and says so ("rec-2/rec-2-c1 missing em3 ... generate and
+    approve the missing steps"). The lint can only report `empty_step`
+    against the lead, because the batch it is handed is a list of bodies
+    with no step keys in it.
+
+    Measured 2026-09-25, an hour after this wiring merged: `empty_step`
+    fired first on every incomplete plan, so the refusal an operator reads
+    for the commonest real failure lost the step name, and the refusal in
+    `_ensure_leads` that carries it became unreachable on the live path - a
+    correct guard nothing can call, which is the defect `CLAUDE.md` names by
+    name. It also masked the tenancy refusal, which `_approved_copy` is
+    positioned where it is specifically to avoid.
+
+    THIS IS NOT A RULE BEING WIDENED. No push that was refused becomes
+    accepted: the batch cannot be staged at all, nothing reaches a provider,
+    and the next run - once the missing steps exist - is linted in full with
+    every rule and still before the first provider call. What changes is
+    only which of two refusals an operator is handed for one condition, and
+    the informative one wins.
     """
+    short = [lead for lead in plan.get("leads") or []
+             if lead.get("missing_copy")]
+    if short:
+        return None
     found = _copylint_report(plan, recs)
     report["copylint"] = found
     if not found["refused"]:
