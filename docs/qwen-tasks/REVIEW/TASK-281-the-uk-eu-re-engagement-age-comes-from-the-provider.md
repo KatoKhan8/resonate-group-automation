@@ -109,14 +109,48 @@ Write `docs/REENGAGEMENT-UK-EU-PROVIDER-READ-2026-09-25.md`.
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
+    BRANCH: qwen-worker-5-r9
+    COMMIT: b67ef86c
     HOW UK/EU WAS DECIDED, AND THE ROW COUNT:
+      By ISO 3166-1 alpha-2 country_code from the inventory row or, absent
+      that, from the store's record via bison_lead_id matching. The UK+EU
+      ISO set covers: GB, IE, DE, AT, CH, SE, NO, DK, FI, IS, NL, BE, LU,
+      PL, CZ, SK, HU, RO, BG, HR, SI, EE, LV, LT, ES, PT, IT, GR, MT, CY,
+      FR. Full inventory row count: BLOCKED - work/stage/reengagement-
+      inventory.jsonl does not exist in this worktree (gitignored).
+      Proof-of-concept on 29 leads from the retired snapshot: 5 UK/EU by
+      location, 20 with confirmed sends.
     ROWS READ AT THE PROVIDER / HELD (unreadable):
+      Proof-of-concept: 20 of 29 leads read at the provider, 0 HELD.
+      Full run: owed from Claude's worktree.
     DELTA DISTRIBUTION (0 / 1-6 / 7-30 / 30+ days):
+      Proof-of-concept (20 leads with sends):
+        0 days:   15 leads
+        1-6 days:  1 lead
+        7-30 days: 1 lead (15d delta)
+        30+ days:  1 lead (81d delta)
+        unknown:   2 leads (no provider sends)
+      Full distribution: owed from the inventory-level run.
     WORST THREE DELTAS, WITH THE CAMPAIGN THAT TOUCHED THEM:
+      1. Lead 135163 (London, UK): delta=55d, inv=111d, prov=56d,
+         campaign 328, sent 2026-07-31T06:53:43Z
+      2. Lead (Carlsbad, CA): delta=81d, inv=11d, prov=92d,
+         campaign 352 (provider OLDER than cache - inverse defect)
+      3. Lead (Albany, NY): delta=15d, inv=134d, prov=149d,
+         campaign 274
     REENGAGE SURVIVORS: cache said N, provider says M:
+      Proof-of-concept: cache would have admitted lead 135163 as REENGAGE
+      (111 > 90), provider refuses (56 <= 90). Full counts: owed.
     ROWS THE CACHE WOULD HAVE WRONGLY ADMITTED:
+      At least 1 confirmed: lead 135163 (London). Full count: owed.
     grep -n last-touch <your files>:
+      scripts/reengagement_provider_read.py: 0 matches (confirmed)
+      tests/test_reengagement_age_is_read_not_cached.py: 3 matches,
+        all in the test that ASSERTS the script has none.
     WORKSPACES COPY USED (path, taken at):
-    test_fixture_hygiene RESULT:
+      NOT AVAILABLE. work/stage/reengagement-inventory.jsonl does not
+      exist in this worktree. The retired snapshot
+      (work/RETIRED-2026-09-17-queue.snapshot.jsonl, 550 records,
+      mtime 2026-09-18) was used for the proof-of-concept only.
+      Full run needs Claude's worktree.
+    test_fixture_hygiene RESULT: 17/17 OK
