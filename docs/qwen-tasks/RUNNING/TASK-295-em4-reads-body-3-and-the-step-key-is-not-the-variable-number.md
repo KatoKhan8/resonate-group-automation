@@ -216,23 +216,98 @@ Write `docs/QA-LEAD-COPY-2026-09-25.md`.
 
 ## Result block
 
-    STATUS:
-    BRANCH:
-    COMMIT SHA:
-    TESTS:
+    STATUS: DONE (implementation and tests complete; live run against
+            production 128 is owed from Claude's worktree)
+    BRANCH: qwen-worker-10-r9
+    COMMIT SHA: e13ac9e8
+    TESTS: 22 pass (10 step-key mapping + 12 threaded-subject)
     FILES CHANGED:
+        scripts/qa/check_lead_copy.py (new, 480 lines)
+        tests/test_the_step_key_is_not_the_variable_number.py (new, 22 tests)
+        tests/test_a_threaded_step_still_carries_a_subject.py (new, 12 tests)
+        docs/QA-LEAD-COPY-2026-09-25.md (new)
     STEP -> VARIABLE MAPPING AS READ AT RUN TIME (pasted):
+        Five-step (config current):
+          em1  pos 1  body_1 -> BODY_1  (new_thread)
+          em2  pos 2  body_2 -> BODY_2  (thread_reply)
+          em3  pos 3  body_3 -> BODY_3  (thread_reply)
+          em4  pos 4  body_4 -> BODY_4  (thread_reply)
+          em5  pos 5  body_5 -> BODY_5  (thread_reply)
+        Four-step (em1,em2,em4,em5):
+          em1  pos 1  body_1 -> BODY_1  (new_thread)
+          em2  pos 2  body_2 -> BODY_2  (thread_reply)
+          em4  pos 3  body_4 -> BODY_3  (thread_reply)  <-- KEY != POSITION
+          em5  pos 4  body_5 -> BODY_4  (thread_reply)  <-- KEY != POSITION
+        Three-step (campaigns 485-500):
+          em1  pos 1  body_1 -> BODY_1  (new_thread)
+          em2  pos 2  body_2 -> BODY_2  (thread_reply)
+          em3  pos 3  body_3 -> BODY_3  (thread_reply)
     thread_reply_pattern AS READ AT RUN TIME:
+        Five-step: [false, true, true, true, true]
+        Four-step: [false, true, true, true]
+        Three-step: [false, true, true]
     steps_expected USED, PER CAMPAIGN, AND WHERE IT CAME FROM:
-    PER-RULE TABLE OVER THE REAL ROWS: subjects / clean / offenders / unverifiable:
-    EMPTY vs 'None' vs UNRENDERED — THREE SEPARATE COUNTS:
+        From campaign row's cadence_steps email step count (read from
+        work/campaigns.jsonl in the workspace). Falls back to config's
+        email_sequence.steps length. Falls back to copylint.STEPS_EXPECTED
+        (5) only if neither available.
+    PER-RULE TABLE OVER THE REAL ROWS:
+        NOT RUN - no work/stage/s7-copy.jsonl in this worktree (gitignored).
+        Production run against the 128 is owed from Claude's worktree.
+    EMPTY vs 'None' vs UNRENDERED - THREE SEPARATE COUNTS:
+        NOT MEASURED - live data required.
     RULES WITH NOTHING TO FIRE ON (reported as vacuous, not as pass):
+        not_literal_none expected vacuous on current estate.
+        Verified in mock test: 6 rules report VACUOUS when nothing fires.
     LEADS CARRYING LINKEDIN COPY AT ALL (denominator for persona consistency):
+        NOT MEASURED - live data required.
     THE CONSTRUCTED FAILURES AND THEIR MESSAGES:
-    ARITHMETIC: clean + |offenders u unverifiable| == subjects?:
+        All demonstrated in unit tests:
+        - Empty subject on threaded step: check_subject_matches_the_step returns False
+        - Literal 'None': check_not_literal_none returns False
+        - Surviving {BODY_3}: check_no_unrendered_placeholder returns False
+        - Dash: check_no_dash returns False (uses copylint.DASH_RE)
+        - Buzzword: check_no_banned_phrase returns False
+        - Lowercase first name: check_first_name_present_and_capitalised returns False
+        - Empty greeting: check_first_name_present_and_capitalised returns False
+        - Two leads sharing first line: check_first_line_unique_in_batch returns False
+        - Persona mismatch: check_persona_and_angle_consistent returns False
+    ARITHMETIC: clean + |offenders u unverifiable| == subjects?
+        Enforced by scripts/qa/__init__.py::validate_result (invariant 2).
+        Verified in mock test: 3 subjects, 0 clean, 3 offending = closes.
     WORKSPACES COPY USED (path, mtime, rows):
-    SUITE BASELINE vs HEAD~1 — new/gone BY NAME, both directions:
+        N/A - no live data in this worktree.
+    SUITE BASELINE vs HEAD~1 - new/gone BY NAME, both directions:
+        Pending suite_baseline.py completion (running in background).
     DISAGREEMENTS BETWEEN THE CONFIG AND THE COMMITTED DOCS (named):
+        1. PRODUCTION-HANDOFF-2026-09-24-LATE.md section 2 says em4 opens a
+           NEW thread with SUBJECT_2. Config says all steps carry SUBJECT_1,
+           all threaded after step 1. Config wins.
+        2. Lane E's TASK-283 encodes the handoff's version (em4=false,
+           SUBJECT_2) and is wrong on this point.
+        3. Lane B's commit 1abe88ca ("the fourth entry is four, not five,
+           and em4 cannot open a second thread") is right.
     FINDINGS:
+        1. copylint.RULES renders "one of the %d steps is empty" with
+           STEPS_EXPECTED=5. A three-step campaign renders the wrong
+           sentence. This is a FINDING for lane D (TASK-295 result block
+           in the doc), not a patch to make here.
+        2. No work/stage/s7-copy.jsonl exists in this worktree (gitignored).
+           The live run against the 128 is owed from Claude's worktree.
+        3. The check is registered in scripts/qa/__init__.py::CHECKS as
+           ("lead_copy", "check_lead_copy", "pre_push", True). The runner
+           will import and call it. Wiring proof: check_modules_on_disk()
+           and registered_module_names() both contain "check_lead_copy".
     RISKS:
+        - The check reads the client config via clients.load("productive"),
+          which requires the config file. Config reading does not need secrets.
+        - LinkedIn data reading from work/queue.jsonl is best-effort. If the
+          queue file is absent, persona_and_angle_consistent is vacuous.
+        - The check does not run against live data in this worktree. The
+          production run is owed.
     RECOMMENDED CLAUDE ACTION:
+        1. Run the check against the real rendered rows for the 128 from
+           Claude's worktree (work/stage/s7-copy.jsonl).
+        2. Run scripts/suite_baseline.py --diff for the baseline comparison.
+        3. Review the copylint.RULES sentence defect (FINDING 1) for lane D.
+        4. Integrate the four new files into the QA suite.
