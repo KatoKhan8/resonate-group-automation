@@ -108,9 +108,14 @@ asked the next stage's question.
 
 ### 0.1 Two leads fail lint, and both are PRE-EXISTING
 
-    bjorg@brandenburg.is         em_dash      Company is "Brandenburg <en dash>
-                                              Creative Agency"
-    whitfield@cognitionads.com   placeholder  Company is "[cognition]"
+    lead A   em_dash      its `Company` value contains an EN DASH
+    lead B   placeholder  its `Company` value is wrapped in SQUARE BRACKETS
+
+(The two addresses are real prospects and are deliberately not written here.
+`scripts/verify_s7_cadence_render.py` names them on stdout when run against
+the live journal, which is where an operator should read them. An earlier
+draft of this document DID carry them and the hygiene guard caught it -
+see section 8.4.)
 
 Proved rather than assumed: the same two leads fail the same two codes on
 em1/em2/em3 in the **3-step** journal, measured with the same gate. They are
@@ -119,10 +124,11 @@ closed. Not this change's regression, and not worth widening a lint rule for.
 
 ### 0.2 Sixteen leads carry a company name `cadence.company_name` refuses
 
-Thirteen records, sixteen leads. `Vibe.co`, `Ladder.io`, `Start.io`,
-`Stellent.AI`, `DO.AGENCY`, `mhp.si`, `GotU.io` and so on — names carrying a
-TLD, which is the exact thing `company_name` refuses so that no prospect is
-addressed by their own hostname.
+Thirteen records, sixteen leads. Every one of them is a company whose own
+name carries a TLD - the shape `<word>.io`, `<word>.co`, `<word>.AI` and so
+on - which is exactly what `company_name` refuses so that no prospect is
+addressed by their own hostname. The names themselves are the client's
+prospect list and are not reproduced here; the verifier prints them.
 
 **Two gates disagree about the same fact and S7 is the one that is wrong.**
 S7 writes the supplier's `Company` column straight into four bodies and never
@@ -132,10 +138,11 @@ RECORD** and drops the whole account from the batch. So these leads render
 beautifully and then vanish at S8, and the number that reaches a provider is
 smaller than the number S7 printed.
 
-Also PRE-EXISTING — `body_1` already says "teams the size of Vibe.co" — and
+Also PRE-EXISTING - `body_1` already renders the same hostname-shaped name
+into the sentence "teams the size of ..." - and
 also correctly failing closed. But several of these are genuine brand names
-(`Vibe.co` really is called Vibe.co), which `company_name`'s own docstring
-admits it cannot tell apart from a hostname. **This is an operator decision
+several of these companies really are named that way, which
+`company_name`'s own docstring admits it cannot tell apart from a hostname. **This is an operator decision
 about data**, and it is worth making before the push because it is 16 leads.
 
 **Cross-tabulated, not subtracted in prose**: 0 leads are in both the lint set
