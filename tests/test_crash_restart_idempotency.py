@@ -17,7 +17,7 @@ The re-run is against THAT state, not a clean one.
 """
 import unittest
 
-from src import bisonfactory, campaigns, store, workspaces
+from src import bisonfactory, cadence, campaigns, store, workspaces
 from src import providers
 from tests.base import QueueTest
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
@@ -50,6 +50,14 @@ class CrashAtSeam(QueueTest):
         store.save([self._record("rec-1", "one@example.com", "Ada"),
                     self._record("rec-2", "two@example.com", "Grace")])
         row = campaigns.new_campaign(CID, "productive", "Factory test")
+        # DECLARED, NOT INHERITED. `bisonfactory._plan` refuses a
+        # campaign carrying no `cadence_steps`: the fallback through
+        # the client config is what let a live campaign be staged
+        # against a cadence it never chose. This is exactly what the
+        # fallback would have produced, so the behaviour under test is
+        # unchanged - the campaign now SAYS what it runs.
+        row["cadence_steps"] = [dict(s) for s in cadence.steps_for(
+            None, config=CONFIG)]
         row["record_ids"] = ["rec-1", "rec-2"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         campaigns.save([row])

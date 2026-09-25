@@ -33,7 +33,7 @@ touched. The fake transport from `tests/fakebison.py` models the estate.
 import unittest
 from unittest import mock
 
-from src import bisonfactory, campaigns, collision, store, workspaces
+from src import bisonfactory, cadence, campaigns, collision, store, workspaces
 from src import providers
 from tests.base import QueueTest
 from tests.fakebison import FakeBison, RendersTheQueue
@@ -351,6 +351,14 @@ class StagingRefusesCollidingContacts(QueueTest):
     def _stage_with(self, records):
         store.save(records)
         row = campaigns.new_campaign(CID, "productive", "Collision test")
+        # DECLARED, NOT INHERITED. `bisonfactory._plan` refuses a
+        # campaign carrying no `cadence_steps`: the fallback through
+        # the client config is what let a live campaign be staged
+        # against a cadence it never chose. This is exactly what the
+        # fallback would have produced, so the behaviour under test is
+        # unchanged - the campaign now SAYS what it runs.
+        row["cadence_steps"] = [dict(s) for s in cadence.steps_for(
+            None, config=CONFIG)]
         row["record_ids"] = [r["id"] for r in records]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         campaigns.save([row])

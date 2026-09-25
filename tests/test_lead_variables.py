@@ -21,7 +21,7 @@ variables - which is the "existence is not function" trap from QWEN.md.
 """
 import unittest
 
-from src import bisonfactory, campaigns, store, workspaces
+from src import bisonfactory, cadence, campaigns, store, workspaces
 from src.providers.bison import MAX_SEQUENCE_STEPS
 from tests.base import QueueTest
 from tests.test_staging_a_campaign_twice_builds_one import FakeBison
@@ -192,6 +192,14 @@ class StaleVariablesClearedOnReconciliation(QueueTest):
         store.save(recs)
 
         row = campaigns.new_campaign(CID, "productive", "Stale vars test")
+        # DECLARED, NOT INHERITED. `bisonfactory._plan` refuses a
+        # campaign carrying no `cadence_steps`: the fallback through
+        # the client config is what let a live campaign be staged
+        # against a cadence it never chose. This is exactly what the
+        # fallback would have produced, so the behaviour under test is
+        # unchanged - the campaign now SAYS what it runs.
+        row["cadence_steps"] = [dict(s) for s in cadence.steps_for(
+            None, config=THREE_STEP_CONFIG)]
         row["record_ids"] = ["rec-1", "rec-2"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         prov = self.fb.create_campaign(
@@ -221,6 +229,14 @@ class StaleVariablesClearedOnReconciliation(QueueTest):
         store.save([rec])
 
         row = campaigns.new_campaign(CID, "productive", "Stale vars test")
+        # DECLARED, NOT INHERITED. `bisonfactory._plan` refuses a
+        # campaign carrying no `cadence_steps`: the fallback through
+        # the client config is what let a live campaign be staged
+        # against a cadence it never chose. This is exactly what the
+        # fallback would have produced, so the behaviour under test is
+        # unchanged - the campaign now SAYS what it runs.
+        row["cadence_steps"] = [dict(s) for s in cadence.steps_for(
+            None, config=THREE_STEP_CONFIG)]
         row["record_ids"] = ["rec-1"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         prov = self.fb.create_campaign(
@@ -256,6 +272,14 @@ class StaleVariablesClearedOnReconciliation(QueueTest):
         store.save([rec])
 
         row = campaigns.new_campaign(CID, "productive", "Stale vars test")
+        # DECLARED, NOT INHERITED. `bisonfactory._plan` refuses a
+        # campaign carrying no `cadence_steps`: the fallback through
+        # the client config is what let a live campaign be staged
+        # against a cadence it never chose. This is exactly what the
+        # fallback would have produced, so the behaviour under test is
+        # unchanged - the campaign now SAYS what it runs.
+        row["cadence_steps"] = [dict(s) for s in cadence.steps_for(
+            None, config=THREE_STEP_CONFIG)]
         row["record_ids"] = ["rec-1"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         prov = self.fb.create_campaign(
@@ -317,6 +341,14 @@ class StaleVariablesClearedOnReconciliation(QueueTest):
         store.save([rec])
 
         row = campaigns.new_campaign(CID, "productive", "Stale vars test")
+        # DECLARED, NOT INHERITED. `bisonfactory._plan` refuses a
+        # campaign carrying no `cadence_steps`: the fallback through
+        # the client config is what let a live campaign be staged
+        # against a cadence it never chose. This is exactly what the
+        # fallback would have produced, so the behaviour under test is
+        # unchanged - the campaign now SAYS what it runs.
+        row["cadence_steps"] = [dict(s) for s in cadence.steps_for(
+            None, config=THREE_STEP_CONFIG)]
         row["record_ids"] = ["rec-1"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         prov = self.fb.create_campaign(

@@ -349,8 +349,65 @@ def _order_of(entry, key):
         return (1, 0, key)
 
 
+def _require_declared_cadence(campaign):
+    """A campaign must declare its OWN cadence, or it is not staged.
+
+    WHAT THIS REPLACED, AND WHY THE OLD PROTECTION WAS AN ACCIDENT. Until
+    2026-09-25 a campaign carrying no `cadence_steps` was caught - when it was
+    caught at all - by `_sequence_steps`, because the client's
+    `email_sequence.steps` keys happened to DIFFER from whatever
+    `cadence.steps_for` fell back to. That is protection by coincidence
+    between two unrelated files. The moment the operator aligned Productive's
+    email days to the client's own `productive_li_heavy_v1` ladder - so that
+    email and LinkedIn run the same clock for the same prospect, which is
+    correct and was asked for - the two agreed, the refusal stopped firing,
+    and nothing was left.
+
+    Measured at that moment: 16 of 28 campaign rows carry no `cadence_steps`,
+    and three of those are real EMAIL campaigns. One is LIVE and ACTIVE at the
+    provider with its sequence already written. `bison.set_sequence` APPENDS -
+    no replace, no per-step delete - so staging it would have left it holding
+    its existing sequence plus five more steps and sending duplicates to a
+    live cohort. One staging call away.
+
+    SO THE REFUSAL IS ABOUT THE CAMPAIGN, NOT ABOUT TWO FILES DISAGREEING.
+    "This campaign never declared its own cadence" is the thing actually worth
+    refusing, it is true independently of what any other file says, and it
+    cannot be dissolved by making two unrelated declarations agree.
+
+    CAMPAIGN-LEVEL AND CLIENT-AGNOSTIC, deliberately. A client-scoped check
+    does not reach this case: `cadence.steps_for` falls back through
+    `_named_sequence` and `_library_sequence`, which ARE client declarations,
+    so "the client declared something" is satisfied while the campaign
+    declared nothing. The dangerous campaign passes a client-scoped check.
+
+    NOTHING IS WRITTEN TO MAKE A ROW PASS. Filling `cadence_steps` in for the
+    sixteen would hand them a cadence nobody chose, which is the same defect
+    one level down. They are refused until somebody decides what they run.
+    """
+    # Deferred like every other `cadence` use in this module: the two import
+    # each other, so a module-level import is a cycle at load time.
+    from . import cadence as _cadence
+
+    if (campaign or {}).get(_cadence.CADENCE_KEY):
+        return
+    raise FactoryRefused(
+        f"campaign {campaign.get('campaign_id')!r} declares no "
+        f"`{_cadence.CADENCE_KEY}` of its own, so the sequence it would send "
+        f"comes from whatever the client's config falls back to rather than "
+        f"from anything this campaign chose. Refusing: the provider's "
+        f"`set_sequence` APPENDS, so a campaign staged against a guessed "
+        f"cadence cannot be corrected afterwards. Declare the steps on the "
+        f"campaign row")
+
+
 def _plan(campaign, recs, config):
     """What this campaign is, from canonical state. No provider call."""
+    # BEFORE ANY CADENCE IS RESOLVED, because resolving it is the thing that
+    # silently substitutes one. A dry run refuses here too: a dry run that
+    # reports a plan and a live run that refuses is the mismatch this exists
+    # to stop.
+    _require_declared_cadence(campaign)
     material = campaigns.material(campaign, recs=recs, config=config)
     # WHICH contacts comes from the approval material, because that is what
     # was blessed. Their NAMES come from the record: `_contact_material`

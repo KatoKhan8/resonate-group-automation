@@ -51,7 +51,8 @@ at which the engine does not yet hold it.
 """
 import unittest
 
-from src import bisonfactory, cadencelibrary, campaigns, store, workspaces
+from src import (bisonfactory, cadence, cadencelibrary, campaigns, store,
+                 workspaces)
 from tests.base import QueueTest
 from tests.test_staging_a_campaign_twice_builds_one import FakeBison
 from tests.test_staging_refuses_colliding_contacts import patch_collision_empty
@@ -371,55 +372,60 @@ class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):
         for n in range(1, len(steps) + 1):
             self.assertIn(f"body_{n}", LEAD_VARIABLES)
 
-    def test_the_control_refuses_the_five_step_library_cadence(self):
-        """The drift this class exists to catch, caught by a refusal.
+    def test_a_campaign_with_no_cadence_of_its_own_is_refused(self):
+        """The scenario this test has always been about, on its real guard.
 
-        `productive.yaml` still names `productive_li_heavy_v1`, whose email
-        half is five steps, because that is the fallback for a campaign that
-        carries no cadence of its own. The CONTROL is four, and it is four
-        DIFFERENT keys - em1, em2, em4, em5 against the library's em1..em5.
-        Staging a campaign with no `cadence_steps` override must therefore
-        REFUSE, not quietly write five provider steps with copy for four -
-        that is campaign 484, where `_ensure_leads` caught it one gate later
-        and all ten contacts were rejected.
+        THE OLD MECHANISM IS GONE AND IT WAS AN ACCIDENT. Until 2026-09-25
+        this asserted that `_sequence_steps(shipped, library)` RAISES,
+        because the control's declared keys differed from the library's -
+        four against five. Rung 3 gave the control an `em3`, and the operator
+        then aligned the days to the client's own ladder so that email and
+        LinkedIn run the same clock for the same prospect. Both sides are now
+        `em1..em5` on 1/4/8/12/21, the refusal stopped firing, and this test
+        went red with "FactoryRefused not raised". Measured, not predicted.
 
-        WHAT THIS GUARD NOW RESTS ON HAS CHANGED, AND THAT IS WORTH KNOWING.
-        Until 2026-09-25 the control had four keys and the library five, so
-        the refusal was about the KEYS. Rung 3 gave the control an `em3` and
-        the key sets are now IDENTICAL - em1..em5 both sides. The only
-        remaining disagreement is the DAYS: the library runs 1/4/8/12/21 and
-        the control 1/4/8/13/18, so `_sequence_steps` refuses on the em3 gap
-        (declared 5, library 8->12 is 4).
+        That protection was never about the campaign. It fired because two
+        unrelated files happened to disagree, and it evaporated the moment
+        somebody made them agree for a good reason.
 
-        So this is a thinner guard than it was. If anybody aligned the days,
-        a campaign carrying no `cadence_steps` of its own would build five
-        provider steps against the library instead of refusing. That is not
-        the disaster it was when campaign 484 did it - all five steps now
-        carry approved copy - but it would mean a campaign running a schedule
-        nobody declared for it, and under option A every new campaign is
-        supposed to carry its own row. Asserted on the reason, not just on
-        the fact of a refusal, so a change to WHY it refuses is visible.
+        SO THE SCENARIO IS UNCHANGED AND THE GUARD IS NEW. What must not
+        happen is a campaign being staged against a cadence it never chose -
+        campaign 484 shipped five provider steps with copy for three, and 481
+        is live with its sequence already written, where `set_sequence`
+        APPENDS and would have left it holding duplicates. That is now
+        refused by `_plan`, on the campaign, before any cadence is resolved.
+
+        Asserted through `_plan` - the real entry point, reached by every
+        stage, dry run included - rather than by reaching into
+        `_sequence_steps`.
+        """
+        from src import clients
+
+        config = clients.load("productive")
+        row = campaigns.new_campaign("camp-no-cadence", "productive", "No cadence")
+        row["record_ids"] = []
+        self.assertNotIn("cadence_steps", row)
+        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
+            bisonfactory._plan(row, [], config)
+        self.assertIn("camp-no-cadence", str(caught.exception))
+
+    def test_the_library_and_the_control_now_agree(self):
+        """Recorded as a FACT, because a reader will assume otherwise.
+
+        Every earlier version of this class rested on these two disagreeing.
+        They no longer do, and that is deliberate: the client's own ladder is
+        what both now describe. Stated here so the next person to read the
+        class does not reintroduce a guard that cannot fire.
         """
         from src import cadence, clients
 
         config = clients.load("productive")
         library = cadence.steps_for({"client": "productive"}, config=config)
-        email_keys = [s.get("key") for s in library
-                      if s.get("channel") == "email"]
-        self.assertEqual(email_keys, ["em1", "em2", "em3", "em4", "em5"])
-        library_days = [s.get("day") for s in library
-                        if s.get("channel") == "email"]
-        control_days = list(CONTROL_DAYS)
-        self.assertNotEqual(
-            library_days, control_days,
-            "the library and the control now agree on BOTH keys and days, so "
-            "a campaign with no cadence_steps would build against the library "
-            "instead of refusing. Decide whether that is intended")
-        with self.assertRaises(bisonfactory.FactoryRefused) as caught:
-            bisonfactory._sequence_steps(self.shipped(), library)
-        reason = str(caught.exception)
-        self.assertIn("em3", reason)
-        self.assertIn("gap", reason)
+        email = [(s.get("key"), s.get("day")) for s in library
+                 if s.get("channel") == "email"]
+        self.assertEqual([k for k, _d in email],
+                         ["em1", "em2", "em3", "em4", "em5"])
+        self.assertEqual([d for _k, d in email], list(CONTROL_DAYS))
 
 
 class TheWordsTravelWithThePerson(QueueTest):
@@ -442,6 +448,14 @@ class TheWordsTravelWithThePerson(QueueTest):
         store.save([record("rec-1", "one@example.com", "Ada"),
                     record("rec-2", "two@example.com", "Grace")])
         row = campaigns.new_campaign(CID, "productive", "Five step")
+        # DECLARED, NOT INHERITED. `bisonfactory._plan` refuses a
+        # campaign carrying no `cadence_steps`: the fallback through
+        # the client config is what let a live campaign be staged
+        # against a cadence it never chose. This is exactly what the
+        # fallback would have produced, so the behaviour under test is
+        # unchanged - the campaign now SAYS what it runs.
+        row["cadence_steps"] = [dict(s) for s in cadence.steps_for(
+            None, config=CONFIG)]
         row["record_ids"] = ["rec-1", "rec-2"]
         row["daily_volume"] = {"email": 5, "linkedin": 0}
         campaigns.save([row])
