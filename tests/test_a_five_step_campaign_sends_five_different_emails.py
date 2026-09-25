@@ -282,13 +282,14 @@ class TheSequenceReproducesTheCadence(unittest.TestCase):
 # - approvals are fingerprinted per key. So the keys and the days are listed
 # as PAIRS rather than generated from a counter, which is what the previous
 # `f"em{n}"` did and what would quietly rename two steps here.
-CONTROL_STEPS = (("em1", 1), ("em2", 4), ("em4", 8), ("em5", 13))
+CONTROL_STEPS = (("em1", 1), ("em2", 4), ("em3", 8), ("em4", 13),
+                 ("em5", 18))
 CONTROL_KEYS = [key for key, _day in CONTROL_STEPS]
 CONTROL_DAYS = tuple(day for _key, day in CONTROL_STEPS)
 CONTROL_CADENCE = tuple(
     {"key": key, "day": day, "channel": "email", "generated": True}
     for key, day in CONTROL_STEPS)
-CONTROL_WAITS = (3, 4, 5)
+CONTROL_WAITS = (3, 4, 5, 5)
 
 
 class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):
@@ -314,13 +315,16 @@ class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):
     484 was created wrong - five steps, three approvals - and refusing is the
     fix that episode earned.
 
-    AND AGAIN ON 2026-09-24: the CONTROL is now FOUR steps, em1, em2, em4,
-    em5, with `breakup` retired. `em3` is gone and the later keys were NOT
-    renumbered, so `CONTROL_STEPS` above lists key/day pairs instead of
-    generating `em{n}` from a counter - generating them would have renamed two
-    steps silently and handed em4's approvals to a different message.
+    AND AGAIN, TWICE. On 2026-09-24 the CONTROL became FOUR steps - em1,
+    em2, em4, em5, `breakup` retired and em3's position left EMPTY because
+    rung 3 was unwritten. On 2026-09-25 rung 3 was approved and took that
+    position as `em3`, making it FIVE. The other keys never moved across
+    either change, which is why `CONTROL_STEPS` lists key/day pairs instead
+    of generating `em{n}` from a counter: generating them would have renamed
+    two steps while the gap existed and handed em4's approvals to rung 3 the
+    moment it landed.
 
-    Four steps is the production-safe CONTROL, not a claim that four is the
+    Five steps is the production-safe CONTROL, not a claim that five is the
     right number. Nothing in this class asserts the number; it asserts that
     whatever number is declared reproduces the cadence it is checked against.
     """
@@ -377,9 +381,22 @@ class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):
         that is campaign 484, where `_ensure_leads` caught it one gate later
         and all ten contacts were rejected.
 
-        The refusal is still asserted to name `em3`, which is precisely the
-        key the two sides disagree about now: the library has it and the
-        control does not.
+        WHAT THIS GUARD NOW RESTS ON HAS CHANGED, AND THAT IS WORTH KNOWING.
+        Until 2026-09-25 the control had four keys and the library five, so
+        the refusal was about the KEYS. Rung 3 gave the control an `em3` and
+        the key sets are now IDENTICAL - em1..em5 both sides. The only
+        remaining disagreement is the DAYS: the library runs 1/4/8/12/21 and
+        the control 1/4/8/13/18, so `_sequence_steps` refuses on the em3 gap
+        (declared 5, library 8->12 is 4).
+
+        So this is a thinner guard than it was. If anybody aligned the days,
+        a campaign carrying no `cadence_steps` of its own would build five
+        provider steps against the library instead of refusing. That is not
+        the disaster it was when campaign 484 did it - all five steps now
+        carry approved copy - but it would mean a campaign running a schedule
+        nobody declared for it, and under option A every new campaign is
+        supposed to carry its own row. Asserted on the reason, not just on
+        the fact of a refusal, so a change to WHY it refuses is visible.
         """
         from src import cadence, clients
 
@@ -388,9 +405,19 @@ class TheShippedConfigurationAgreesWithTheShippedCadence(unittest.TestCase):
         email_keys = [s.get("key") for s in library
                       if s.get("channel") == "email"]
         self.assertEqual(email_keys, ["em1", "em2", "em3", "em4", "em5"])
+        library_days = [s.get("day") for s in library
+                        if s.get("channel") == "email"]
+        control_days = list(CONTROL_DAYS)
+        self.assertNotEqual(
+            library_days, control_days,
+            "the library and the control now agree on BOTH keys and days, so "
+            "a campaign with no cadence_steps would build against the library "
+            "instead of refusing. Decide whether that is intended")
         with self.assertRaises(bisonfactory.FactoryRefused) as caught:
             bisonfactory._sequence_steps(self.shipped(), library)
-        self.assertIn("em3", str(caught.exception))
+        reason = str(caught.exception)
+        self.assertIn("em3", reason)
+        self.assertIn("gap", reason)
 
 
 class TheWordsTravelWithThePerson(QueueTest):

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""The four-step cadence lands in all four places, or it lands nowhere.
+"""The cadence lands in all four places, or it lands nowhere.
 
-2026-09-24. `breakup` is retired and Productive sends em1, em2, em4, em5.
+2026-09-25. `breakup` is retired and Productive sends em1..em5, with em3
+now RUNG 3 - the step that names the product.
 Four files have to agree about that and `bisonfactory` refuses when they do
 not - with a message that names the keys but not the FILE the wrong keys came
 from, which is why the half-applied state cost an evening.
@@ -17,7 +18,7 @@ THE REGRESSION EACH ONE CATCHES, stated so it can be checked by breaking it:
     `CADENCE_STEPS`, and `test_the_config_and_the_builder_agree` goes red
     with the real refusal;
   * shorten `thread_reply_pattern` back to three entries and
-    `test_the_pattern_has_one_entry_per_step` goes red - the fourth step
+    `test_the_pattern_has_one_entry_per_step` goes red - the last step
     silently becomes a new thread, which is the shape the 2026-09-16
     invariant exists to refuse;
   * set the final `wait_in_days` to 0 and `test_the_final_wait_is_one` goes
@@ -58,7 +59,7 @@ def _email_sequence():
     return (clients.load("productive") or {}).get("email_sequence") or {}
 
 
-class FourStepsEverywhere(unittest.TestCase):
+class TheCadenceAgreesEverywhere(unittest.TestCase):
 
     def setUp(self):
         self.cadence_steps, self.step_keys = _builder_cadence_steps()
@@ -82,21 +83,29 @@ class FourStepsEverywhere(unittest.TestCase):
                 "disagree, so every stage against a batch-1 campaign refuses: "
                 f"{refusal}")
         self.assertEqual([s["step_key"] for s in sequence],
-                         ["em1", "em2", "em4", "em5"])
+                         ["em1", "em2", "em3", "em4", "em5"])
 
-    def test_breakup_is_retired_from_this_clients_sequence(self):
-        """em3 is gone from both halves.
+    def test_no_step_claims_to_be_the_last_one(self):
+        """`breakup` is retired, asserted by its SENTENCE not by its name.
 
-        Not a style point. `breakup` says "I will leave it here", and two
-        steps after it make that sentence false on every send - a claim about
+        Not a style point. `breakup` says "I will leave it here", and any
+        step after it makes that sentence false on every send - a claim about
         our own conduct that nothing on the send path can catch, because
         `claims.py` reads claims about the PROSPECT and `outreachclaims` has
         no consumer there.
+
+        Asserted on the rendered bodies rather than on the template NAME,
+        because renaming a template would not change what a prospect reads.
+        `em3` is now rung 3 and is checked to be present, since the key was
+        `breakup`'s until 2026-09-25 and silently losing it would shorten the
+        cadence with nothing saying so.
         """
         sequence = bisonfactory._sequence_steps(self.configured,
                                                 self.cadence_steps)
-        self.assertNotIn("em3", [s["step_key"] for s in sequence])
-        self.assertNotIn("em3", self.step_keys)
+        by_key = {s["step_key"]: s for s in sequence}
+        self.assertIn("em3", by_key)
+        for step in sequence:
+            self.assertNotIn("leave it here", step["email_body"].lower())
 
     def test_the_builder_approves_every_step_the_sequence_will_send(self):
         """`STEP_KEYS` is what gets approved; the sequence is what gets sent.
@@ -178,8 +187,10 @@ class FourStepsEverywhere(unittest.TestCase):
         sequence = bisonfactory._sequence_steps(self.configured,
                                                 self.cadence_steps)
         days = {s["key"]: s["day"] for s in self.cadence_steps}
-        self.assertEqual(days, {"em1": 1, "em2": 4, "em4": 8, "em5": 13})
-        self.assertEqual([s["wait_in_days"] for s in sequence], [3, 4, 5, 1])
+        self.assertEqual(days, {"em1": 1, "em2": 4, "em3": 8, "em4": 13,
+                                "em5": 18})
+        self.assertEqual([s["wait_in_days"] for s in sequence],
+                         [3, 4, 5, 5, 1])
 
     # ------------------------------------------------------- the copy slots
 
@@ -195,8 +206,13 @@ class FourStepsEverywhere(unittest.TestCase):
         sequence = bisonfactory._sequence_steps(self.configured,
                                                 self.cadence_steps)
         by_key = {s["step_key"]: s["email_body"] for s in sequence}
-        self.assertIn("{BODY_3}", by_key["em4"])
-        self.assertIn("{BODY_4}", by_key["em5"])
+        for position, step in enumerate(sequence, start=1):
+            self.assertIn("{BODY_%d}" % position, step["email_body"])
+        # At FIVE steps position and key coincide. They did NOT at four, when
+        # em4 was the third step and read {BODY_3}. Asserting the rule
+        # (position) rather than the coincidence (key).
+        self.assertIn("{BODY_3}", by_key["em3"])
+        self.assertIn("{BODY_5}", by_key["em5"])
 
     def test_every_lead_variable_the_template_reads_is_written(self):
         """The payload carries a value for every merge field the steps name.
@@ -266,7 +282,7 @@ class FourStepsEverywhere(unittest.TestCase):
         when they drift the campaign is staged correctly and then REFUSED at
         activation for carrying exactly what it was told to carry - which is
         the shape of the bug that put `record_id`/`contact_key`/`client` in
-        the diff. Four steps is a length neither has been run at, so they are
+        the diff. Five steps is a length neither has been run at, so they are
         compared here rather than assumed to still agree.
 
         `_expected_lead_variables` drops empty values by design, so the
@@ -289,24 +305,118 @@ class FourStepsEverywhere(unittest.TestCase):
                          {k: v for k, v in expected.items() if v})
 
 
+class RungThreeNamesTheClientsProductAndNotOurs(unittest.TestCase):
+    """`{our_company}` and `{capability}` resolve from the CLIENT's config.
+
+    Rung 3's job is to name the product and one capability. The trap it was
+    written around is that `cadence.TEMPLATES` is shared by every client, so
+    a literal product name in there would make one client's rung 3 name
+    another client's product. Lane D refused to write it inline for exactly
+    that reason and these tests are what keeps the refusal true.
+    """
+
+    def setUp(self):
+        from src import cadence
+
+        self.cadence = cadence
+        self.config = clients.load("productive")
+
+    def test_no_shared_template_hardcodes_the_product_name(self):
+        """The name appears in no template body or subject, for any client.
+
+        Asserted over the WHOLE register rather than over rung 3, because the
+        next template to name a product is the one nobody reviews.
+        """
+        name = (self.config.get("product") or {}).get("name")
+        self.assertTrue(name, "the client config declares no product.name")
+        for key, template in self.cadence.TEMPLATES.items():
+            for field, text in template.items():
+                self.assertNotIn(
+                    name.lower(), str(text).lower(),
+                    f"TEMPLATES[{key!r}].{field} hardcodes {name!r}; every "
+                    f"other client's copy would then name it too")
+
+    def test_both_variables_resolve_for_every_persona(self):
+        """And to the client's own unedited sentence, not a paraphrase."""
+        product = self.config.get("product") or {}
+        capabilities = product.get("capabilities") or {}
+        by_persona = product.get(
+            self.cadence.CAPABILITY_BY_PERSONA_KEY) or {}
+        self.assertTrue(by_persona, "no capability_by_persona configured")
+        for persona, key in by_persona.items():
+            words = self.cadence.product_words({"persona": persona},
+                                               self.config)
+            self.assertEqual(words.get("our_company"), product.get("name"))
+            self.assertEqual(words.get("capability"), capabilities.get(key))
+
+    def test_rung_three_renders_for_every_persona(self):
+        """The real template, through the real renderer, with no gap left."""
+        for persona in ("economic_buyer", "champion"):
+            template = self.cadence.TEMPLATES[f"rung3_{persona}"]
+            values = {"first_name": "Ada", "company": "Ninefields",
+                      "angle_word": "budget burn"}
+            values.update(self.cadence.product_words({"persona": persona},
+                                                     self.config))
+            out = self.cadence.render(template, values)
+            for field, text in out.items():
+                self.assertNotIn("{", text, f"{persona}.{field} left a gap")
+                self.assertTrue(text.strip())
+
+    def test_an_unresolvable_capability_HOLDS_the_step(self):
+        """Fail closed: held, never a paragraph reading ".".
+
+        A persona with no configured capability must make `render` raise, not
+        interpolate an empty string. An empty `{capability}` would ship a
+        lone full stop to a real person and every readback would agree the
+        campaign was correct - which is the blank-render incident exactly.
+        """
+        words = self.cadence.product_words({"persona": "nobody"}, self.config)
+        self.assertNotIn("capability", words)
+        values = {"first_name": "Ada", "company": "Ninefields",
+                  "angle_word": "budget burn"}
+        values.update(words)
+        with self.assertRaises(self.cadence.CadenceError):
+            self.cadence.render(self.cadence.TEMPLATES["rung3_champion"],
+                                values)
+
+    def test_the_capability_map_is_not_nested_in_a_persona(self):
+        """Where it lives is load-bearing, not tidiness.
+
+        `web/api.save_persona` rebuilds a persona as exactly `titles`,
+        `cap_per_domain` and `angles`. A capability kept inside a persona
+        would be dropped the first time somebody edited that persona in the
+        product, and the failure would be silent: rung 3 held, the cadence
+        quietly one step shorter. `angle_labels` sits client-wide for the
+        same reason.
+        """
+        for persona, block in clients.personas(self.config).items():
+            self.assertNotIn(
+                self.cadence.CAPABILITY_BY_PERSONA_KEY, block or {},
+                f"persona {persona!r} carries the capability map; "
+                f"save_persona would drop it")
+        self.assertIn(self.cadence.CAPABILITY_BY_PERSONA_KEY,
+                      self.config.get("product") or {})
+
+
 class TheYamlIsTheSourceOfThoseKeys(unittest.TestCase):
     """`clients.load` may overlay defaults, so the file itself is checked too.
 
     Only for the two facts an overlay could invent: that the steps block
-    names these four keys and nothing else, and that the pattern is a list of
-    four booleans. Everything else is asserted against the built sequence.
+    names these five keys and nothing else, and that the pattern is a list of
+    five booleans. Everything else is asserted against the built sequence.
     """
 
-    def test_the_file_declares_exactly_these_four_steps(self):
+    def test_the_file_declares_exactly_these_five_steps(self):
         path = os.path.join(ROOT, "config", "clients", "productive.yaml")
         with open(path, encoding="utf-8") as handle:
             raw = yaml.safe_load(handle)
         block = raw["email_sequence"]["steps"]
-        self.assertEqual(sorted(block), ["em1", "em2", "em4", "em5"])
-        self.assertEqual([block[k]["order"] for k in ("em1", "em2", "em4", "em5")],
-                         [1, 2, 3, 4])
+        self.assertEqual(sorted(block), ["em1", "em2", "em3", "em4", "em5"])
+        self.assertEqual([block[k]["order"]
+                          for k in ("em1", "em2", "em3", "em4", "em5")],
+                         [1, 2, 3, 4, 5])
         pattern = raw["email_sequence"]["thread_reply_pattern"]
-        self.assertEqual(len(pattern), 4)
+        self.assertEqual(len(pattern), 5)
         self.assertTrue(all(isinstance(v, bool) for v in pattern))
 
 
