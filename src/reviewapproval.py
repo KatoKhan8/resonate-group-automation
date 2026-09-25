@@ -102,6 +102,13 @@ def record(campaign, review_hash, by, source="slack", at=None, note=""):
     `campaign` is the PROVIDER campaign id as a string, because that is what
     the activation call knows. `review_hash` is what `file_hash` produced for
     the file that was actually posted.
+
+    TRAINING CAPTURE (TASK-310). After writing the approval, attempt to capture
+    training pairs from the review file. The capture is best-effort: if the
+    review file has been overwritten by a subsequent render, the hash will not
+    match and no pairs are written. A pair not written when the file is
+    approved is gone for good, so the capture tries the default review file
+    path first.
     """
     who = str(by or "").strip().lower()
     if not who:
@@ -109,9 +116,16 @@ def record(campaign, review_hash, by, source="slack", at=None, note=""):
     row = {"at": at or store.now(), "campaign": str(campaign),
            "review_hash": str(review_hash), "by": who,
            "source": source, "note": note}
+    store.refuse_production_write(path())
     with store.lock(for_path=path()):
         with open(path(), "a", encoding="utf-8") as handle:
             handle.write(json.dumps(row) + "\n")
+    # Training capture: best-effort, never blocks the approval.
+    try:
+        from . import training
+        training.capture_on_approval(campaign, review_hash, row)
+    except Exception:                                        # noqa: BLE001
+        pass
     return row
 
 

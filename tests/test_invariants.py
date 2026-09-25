@@ -814,6 +814,10 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
     SELF_WRITERS = ("agencydnc", "clientreview", "candidatelist", "discovery",
                     "gtm",
                     "observability", "poller", "replywatch", "research",
+                    # The review approval module now writes training pairs
+                    # beside the queue when an approval is recorded. Added
+                    # 2026-09-25 with TASK-310.
+                    "reviewapproval",
                     "signals", "spendledger", "tagsync", "mx",
                     # The watchers' durable events and liveness beats. Added
                     # 2026-09-20 with the module, and this checklist caught
@@ -842,7 +846,11 @@ class TestTheBarrierCoversEveryWriter(PinsTheRealStatePaths,
                     # The supervisor's per-monitor state files. Written
                     # beside the queue. Added 2026-09-22 with TASK-263,
                     # caught by this checklist on the same pass.
-                    "supervisor")
+                    "supervisor",
+                    # The training pair store. Appends approved copy beside
+                    # the queue. Added 2026-09-25 with TASK-310, caught by
+                    # this checklist on the same pass.
+                    "training")
 
     def _real(self, name):
         return os.path.join(store.PRODUCTION_WORK, f"{name}.jsonl")
