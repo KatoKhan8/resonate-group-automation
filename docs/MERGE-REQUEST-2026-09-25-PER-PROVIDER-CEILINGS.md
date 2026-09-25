@@ -146,7 +146,7 @@ operator answered it. The arithmetic that forced it:
   client-wide `per_run` tripwire is wanted it must be at least as large as the
   largest provider `per_run`, or it silently becomes the real ceiling again.
 
-Tests: `TheClientCeilingBindsFirstAndSaysSo` — five tests that pin exactly how
+Tests: `TheClientCeilingBindsFirstAndSaysSo` — six tests that pin exactly how
 a client ceiling outranks a provider ceiling, using the measured numbers, plus
 `test_the_sanity_per_day_is_a_tripwire_and_still_refuses`.
 
@@ -212,7 +212,7 @@ a policy decision and not a side effect of adding per-provider ceilings.
 exactly as it is, so the guard above cannot be read as wider than it is — and
 so that the day somebody decides to close it, one test says so.
 
-Tests: `TheSwapIsAtomic` — 14 tests, including six that read the file that
+Tests: `TheSwapIsAtomic` — 15 tests, including six that read the file that
 actually ships rather than a fixture of it.
 
 ---
@@ -436,7 +436,7 @@ spendledger.settle(hold, actual_credits)   # or release(hold) if cancelled
   the CRITICAL reads.
 * On completion the ledger takes the **real** number, not the estimate.
 
-Tests: `ABulkReservationIsCheckedBeforeTheUploadIsCommitted` — seven tests,
+Tests: `ABulkReservationIsCheckedBeforeTheUploadIsCommitted` — six tests,
 including `test_a_reservation_is_held_and_is_not_spend`,
 `test_the_hold_BITES_or_it_is_only_bookkeeping` (the same call is allowed
 without the hold and refused with it) and
