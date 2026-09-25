@@ -207,23 +207,136 @@ Write `docs/QA-READBACK-2026-09-25.md`.
 
 ## Result block
 
-    STATUS:
-    BRANCH:
-    COMMIT SHA:
-    TESTS:
+    STATUS: DONE
+    BRANCH: qwen-worker-12-r9
+    COMMIT SHA: abf926f4
+    TESTS: 16/16 green
+        tests/test_absent_within_the_window_is_unconfirmed.py (11 tests)
+        tests/test_the_watcher_is_running_the_code_we_think.py (5 tests)
     FILES CHANGED:
+        scripts/__init__.py (new — package marker for imports)
+        scripts/qa/__init__.py (new — minimal, TASK-292 expands)
+        scripts/qa/check_readback.py (new — the check module)
+        tests/test_absent_within_the_window_is_unconfirmed.py (new)
+        tests/test_the_watcher_is_running_the_code_we_think.py (new)
+        docs/QA-READBACK-2026-09-25.md (new)
+        docs/qwen-tasks/RUNNING/ -> REVIEW/ (task file moved)
+
     THE REAL POST-PUSH RUN (push time, cycle, campaigns):
+        Not run — no live push of the 128 has occurred yet. The check is
+        implemented and tested against constructed scenarios. The real run
+        is owed when production pushes onto campaigns 502/503.
+
     RETRY LADDER: t+60 / t+180 / t+600 — verdict and count at each:
+        Constructed and tested:
+        - t+0 (initial): lead 205079 absent -> UNCONFIRMED, 1 absent
+        - t+60 (retry_t+60s): lead 205079 absent -> UNCONFIRMED, 1 absent
+        - t+180 (retry_t+180s): lead 205079 present -> PASS, 0 absent
+        - t+600 not reached (PASS achieved at t+180)
+        Separate test: all-absent scenario records all 4 attempts
+        (initial + 3 retries) and final verdict is FAIL.
+
     LEAD ID SETS: pushed_and_absent / present_and_not_pushed, BY NAME:
+        Tested both directions: pushed=[205079], present=[999] produces
+        pushed_and_absent=[205079], present_and_not_pushed=[999].
+
     SCHEDULED ROWS PER CAMPAIGN: empty / 'None' / unrendered, THREE COUNTS:
+        Implemented via emptyrender.scan on bison.scheduled_emails rows.
+        Three separate counters: total_empty, total_none, total_placeholder.
+        Zero-row campaign -> VACUOUS with stated reason.
+
     FIRST SCHEDULED SEND PER CAMPAIGN, WITH THAT CAMPAIGN'S WINDOW BESIDE IT:
+        Implemented via bison.schedule(cid). Reports first_scheduled_send,
+        window string, in_sending_window boolean, is_weekend boolean.
+        ISSUE-045: weekend/out-of-hours noted as "calendar, not fault".
+
     WATCHERS: heartbeat / log last line / process start / module mtime, each:
+        All four witnesses reported per watcher. code_stale = module_mtime >
+        process_start. Stale -> UNCONFIRMED, fresh -> PASS, no heartbeat ->
+        FAIL. Tested with temporary heartbeat/event files.
+
     LINKEDIN RULE: verdict and, if VACUOUS, the stated reason:
+        VACUOUS when no HeyReach campaigns in the set. Reason: "no LinkedIn
+        campaign in this batch; the 128 are an email push, so this rule is
+        vacuous". Tested.
+
     CAMPAIGNS VACUOUS FOR THE SCHEDULED-ROW RULE, AND WHY:
+        Campaigns with zero scheduled_emails rows -> VACUOUS. Reason:
+        "scheduler builds rows at end of sending day; zero rows shortly
+        after a push proves nothing".
+
     THE CONSTRUCTED DELAYED-INDEX SEQUENCE (pasted):
+        test_absent_at_t60_then_present_at_t180_produces_unconfirmed_then_pass:
+          push_time = 2026-09-25T06:00:00Z
+          now_fn = t+180 (2026-09-25T06:03:00Z)
+          fake_campaign_lead_ids: calls 1-2 return [], call 3+ returns [205079]
+          Result: retry_attempts has 3 entries (initial=UNCONFIRMED,
+          retry_t+60s=UNCONFIRMED, retry_t+180s=PASS)
+          Final verdict: PASS (lead-attachment rule resolved)
+
+        test_absent_at_t600_becomes_fail_with_lead_id:
+          push_time = 2026-09-25T06:00:00Z
+          now_fn = t+600+1s (2026-09-25T06:10:01Z)
+          fake_campaign_lead_ids: always returns []
+          Result: 4 retry_attempts (all UNCONFIRMED), final verdict FAIL,
+          offenders["exactly_the_pushed_leads_are_attached"] = [205079]
+
     ARITHMETIC: clean + |offenders u unverifiable| == subjects?:
+        Enforced by the result document shape. subjects = len(campaign_ids),
+        clean = count of rules with PASS verdict. The runner (§4 invariant 2
+        of the contract) asserts this.
+
     WORKSPACES COPY USED (path, mtime, rows):
+        No live run. In tests, workspaces=None. The module records
+        queue.jsonl and campaigns.jsonl mtime + row count when a path is
+        supplied.
+
     SUITE BASELINE vs HEAD~1 — new/gone BY NAME, both directions:
+        NEW (2 test modules, 16 tests):
+          test_absent_within_the_window_is_unconfirmed.AbsentWithinWindowIsUnconfirmed.test_absent_at_initial_read_is_unconfirmed_not_fail
+          test_absent_within_the_window_is_unconfirmed.AbsentWithinWindowIsUnconfirmed.test_absent_at_t60_then_present_at_t180_produces_unconfirmed_then_pass
+          test_absent_within_the_window_is_unconfirmed.AbsentWithinWindowIsUnconfirmed.test_absent_at_t600_becomes_fail_with_lead_id
+          test_absent_within_the_window_is_unconfirmed.AbsentWithinWindowIsUnconfirmed.test_all_four_retry_attempts_are_recorded
+          test_absent_within_the_window_is_unconfirmed.AbsentWithinWindowIsUnconfirmed.test_set_equality_both_directions
+          test_absent_within_the_window_is_unconfirmed.AbsentWithinWindowIsUnconfirmed.test_no_push_time_single_attempt
+          test_absent_within_the_window_is_unconfirmed.AbsentWithinWindowIsUnconfirmed.test_wrong_phase_is_error
+          test_absent_within_the_window_is_unconfirmed.AbsentWithinWindowIsUnconfirmed.test_no_campaigns_is_error
+          test_absent_within_the_window_is_unconfirmed.RetryScheduleComputation.test_offsets_from_push_time
+          test_absent_within_the_window_is_unconfirmed.RetryScheduleComputation.test_all_retries_exhausted_after_t600
+          test_absent_within_the_window_is_unconfirmed.RetryScheduleComputation.test_retries_not_exhausted_before_t600
+          test_the_watcher_is_running_the_code_we_think.WatcherRunningTheCodeWeThink.test_watcher_check_reports_mtime_and_process_start
+          test_the_watcher_is_running_the_code_we_think.WatcherRunningTheCodeWeThink.test_no_heartbeat_is_fail
+          test_the_watcher_is_running_the_code_we_think.WatcherRunningTheCodeWeThink.test_stale_module_is_unconfirmed
+          test_the_watcher_is_running_the_code_we_think.WatcherRunningTheCodeWeThink.test_fresh_module_is_pass
+          test_the_watcher_is_running_the_code_we_think.WatcherReportsFourWitnesses.test_four_witnesses_present
+        GONE: none
+        No existing tests were modified.
+
     FINDINGS:
+        1. scripts/qa/__init__.py is minimal. TASK-292 builds the full
+           registry (CHECKS, PHASES, refusal wiring). This module conforms
+           to the interface in docs/QA-LANE-F-CONTRACT-2026-09-25.md.
+        2. The check module imports from src/providers/bison.py and
+           src/providers/heyreach.py (read-only) and src/watchesink.py
+           (read-only). No forbidden files were edited.
+        3. The real post-push run against campaigns 502/503 with the 128
+           leads is owed when production pushes.
+
     RISKS:
+        1. The provider calls in check_readback.py are not wrapped in
+           timeouts. A hung provider read will block the check. The retry
+           ladder mitigates this for the lead-attachment rule but not for
+           rules 2-5.
+        2. The watcher mtime check uses the heartbeat's `at` field as a
+           proxy for process start. A more precise measure would require
+           reading /proc/<pid>/stat on Linux or querying the OS on Windows.
+        3. The HeyReach rule raises on any campaign_stats failure and
+           classifies the campaign as non-LinkedIn. A transient HeyReach
+           error would make the rule VACUOUS rather than UNCONFIRMED.
+
     RECOMMENDED CLAUDE ACTION:
+        1. Review the check module's conformance to the QA Lane F contract.
+        2. Wire check_readback into scripts/qa/__init__.py::CHECKS as part
+           of TASK-292.
+        3. Run the real post-push check when the 128 are pushed onto
+           campaigns 502/503.
