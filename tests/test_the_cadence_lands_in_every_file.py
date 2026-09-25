@@ -337,17 +337,34 @@ class RungThreeNamesTheClientsProductAndNotOurs(unittest.TestCase):
                     f"other client's copy would then name it too")
 
     def test_both_variables_resolve_for_every_persona(self):
-        """And to the client's own unedited sentence, not a paraphrase."""
+        """And to the client's own unedited sentence, not a paraphrase.
+
+        EVERY ASSERTION HERE IS AGAINST A NON-EMPTY VALUE FIRST. An earlier
+        version compared `words.get("capability")` with
+        `capabilities.get(key)` and nothing else, so a persona pointed at a
+        capability key that does not exist compared `None` with `None` and
+        PASSED - a validator agreeing with itself about a configuration that
+        would hold every rung-3 step. Found by pointing a persona at
+        `not_a_real_capability` and watching this test stay green.
+        """
         product = self.config.get("product") or {}
         capabilities = product.get("capabilities") or {}
         by_persona = product.get(
             self.cadence.CAPABILITY_BY_PERSONA_KEY) or {}
         self.assertTrue(by_persona, "no capability_by_persona configured")
         for persona, key in by_persona.items():
+            self.assertIn(
+                key, capabilities,
+                f"persona {persona!r} names capability {key!r}, which "
+                f"product.capabilities does not define")
             words = self.cadence.product_words({"persona": persona},
                                                self.config)
-            self.assertEqual(words.get("our_company"), product.get("name"))
-            self.assertEqual(words.get("capability"), capabilities.get(key))
+            self.assertTrue(words.get("our_company"))
+            self.assertTrue(
+                words.get("capability"),
+                f"persona {persona!r} resolves no capability sentence")
+            self.assertEqual(words["our_company"], product.get("name"))
+            self.assertEqual(words["capability"], capabilities[key])
 
     def test_rung_three_renders_for_every_persona(self):
         """The real template, through the real renderer, with no gap left."""
