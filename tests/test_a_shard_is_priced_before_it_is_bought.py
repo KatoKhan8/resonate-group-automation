@@ -205,8 +205,14 @@ class TheRealClientNowDeclaresACeiling(QueueTest):
     """
 
     def test_the_shipped_client_config_declares_a_ceiling(self):
+        # `per_day` 5,000 -> 15,000 on the operator's decision of 2026-09-25,
+        # ~7,575 addresses a day at the measured 1.98 credits/address. The
+        # number is pinned here rather than read loosely because a ceiling
+        # that can drift without a test noticing is not a ceiling; the other
+        # two are UNCHANGED, and `total` is the one that actually binds -
+        # 45,556 of headroom is about three days at the new rate.
         caps = spendledger.caps(clients.load("productive"))
-        self.assertEqual(caps["per_day"], 5000)
+        self.assertEqual(caps["per_day"], 15000)
         self.assertEqual(caps["per_run"], 2000)
         self.assertEqual(caps["total"], 50000)
 
