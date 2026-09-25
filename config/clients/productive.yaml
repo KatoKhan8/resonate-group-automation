@@ -794,13 +794,36 @@ budget:
     # their spend levels, and it keeps the invariant that every provider
     # this estate pays has a declared lifetime ceiling.
     #
-    # THIS NEEDS AN OPERATOR. Either name them in the decision table or say
-    # `unlimited` deliberately, the way ContactOut is said. Tracked in
-    # docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md section 9.1.
+    # DECIDED BY THE OPERATOR, 2026-09-25 EVENING. The carried-forward 50,000
+    # above is superseded; the paragraphs are kept because they record why a
+    # placeholder was chosen rather than a guess, and that reasoning is what
+    # the decision answers.
+    #
+    # BLITZ: NO LEDGER CAP. Record every call, refuse nothing. `unlimited` is
+    # said deliberately here, the way ContactOut says it - this is a decision
+    # that no ceiling applies, which is a different statement from a provider
+    # nobody declared. `check` must not refuse a blitz call; `record` must
+    # still write every one, because the alert below is computed from rows
+    # and a provider that stops writing them goes quiet rather than safe.
     blitz:
-      total: 50000
+      total: unlimited
+      # CRITICAL only when a day runs 3x the trailing seven-day average. An
+      # absolute number would be meaningless with no cap; a multiple of the
+      # recent past catches the runaway, which is the only thing an alert on
+      # an uncapped provider can usefully catch.
+      alert:
+        kind: multiple_of_trailing_average
+        days: 7
+        multiple: 3
+    # AI ARK: a real daily ceiling and no lifetime one.
     aiark:
-      total: 50000
+      per_day: 50000
+      total: unlimited
+      # CRITICAL at 10% of the day's ceiling remaining - 5,000 credits - so
+      # there is warning before a batch halts rather than after.
+      alert:
+        kind: fraction_of_per_day_remaining
+        fraction: 0.10
 
 # HOW OFTEN ONE PERSON, AND ONE COMPANY, MAY HEAR FROM PRODUCTIVE.
 #
