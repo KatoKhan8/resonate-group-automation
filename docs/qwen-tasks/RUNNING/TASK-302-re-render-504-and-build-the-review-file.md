@@ -128,3 +128,71 @@ Posted as **.xlsx and .html** in #resonate-os.
   it as grounded.
 - An empty LinkedIn column presented as "side by side".
 - Any step whose signature is a constant, or is "Zvonimir".
+
+## RESULT BLOCK
+
+**STATUS: BLOCKED - live-state access owed**
+
+**COMMIT SHA:** (pending)
+
+**TESTS:** 9/9 pass in `tests/test_task302_render.py`
+
+**FILES CHANGED:**
+- `scripts/task302_render_504.py` - Stage 1 rendering script
+- `tests/test_task302_render.py` - Tests for the rendering logic
+- `docs/qwen-tasks/RUNNING/TASK-302-re-render-504-and-build-the-review-file.md` - this file
+
+**FINDINGS:**
+
+1. **Stage 1 script written and tested.** `scripts/task302_render_504.py` renders
+   every email step for every lead through `cadence.expand_step` (which uses
+   `cadence.TEMPLATES` and `cadence.template_vars`). It carries the template id
+   on each step, resolves sender name from the mailbox owner via
+   `senderownership.resolve_owner`, applies the pack fact gate (complete sentence
+   with verb, not nav text), and runs `copylint.check_batch` over the result.
+
+2. **Cannot execute against campaign 504.** This worktree has no `work/queue.jsonl`
+   and no `work/campaigns.jsonl`. The `work/` directory exists but holds only
+   `dispatch-interpreter.json`, `lead-batch-economic-buyer.json` (a stale snapshot
+   from 2026-09-14), and `provider-write-refusals.jsonl`. The live queue with
+   campaign 504's 250 leads is in Claude's worktree only.
+
+3. **Stage 1b (LinkedIn enrichment) is a provider call.** ContactOut enrich by
+   email requires API credentials and is a write to the provider. The task says
+   "no ledger cap (operator decision)" but I hold no ContactOut key to call.
+   The task's own measurement says LinkedIn coverage on 504 is 0% (0 of 120
+   sampled leads carry a profile URL).
+
+4. **Stage 2 is explicitly Claude's.** Writing rendered variables onto the 250
+   provider leads and reading them back. The write scope is not open to me.
+
+5. **Stage 3 depends on Stage 2.** "Rows are read back from the provider after
+   stage 2, never from our CSV." Cannot build the review file without the
+   provider readback.
+
+**WHAT IS OWED:**
+
+- **Claude:** run `scripts/task302_render_504.py --campaign 504` from Claude's
+  worktree where `work/queue.jsonl` and `work/campaigns.jsonl` exist. This
+  produces the Stage 1 render output.
+- **Claude:** Stage 1b LinkedIn enrichment via ContactOut.
+- **Claude:** Stage 2 provider write and readback.
+- **Claude:** Stage 3 review file from provider readback.
+
+**RISKS:**
+
+- The rendering script uses `cadence.expand_step` which returns None for
+  generated steps with no stored copy. Campaign 504's leads need to have
+  generated copy (em1, em5) already written and approved on the record, or
+  those steps will render as None.
+- The sender name resolution depends on `senderidentity` rows existing for the
+  campaign's email accounts. If accounts are unattested, sender name will be
+  "UNKNOWN".
+
+**RECOMMENDED CLAUDE ACTION:**
+
+1. Run the rendering script from Claude's worktree
+2. Execute Stage 1b LinkedIn enrichment
+3. Execute Stage 2 provider write/readback
+4. Build the review file (Stage 3)
+5. Post the file and hash for operator approval
