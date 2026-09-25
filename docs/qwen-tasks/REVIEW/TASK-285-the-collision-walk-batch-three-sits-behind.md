@@ -116,13 +116,69 @@ reproduction. Claude fixes those; that is the division.
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
+    BRANCH: qwen-worker-7-r9
+    COMMIT: 022e5f7b
     DOMAIN SET AND ITS SOURCE:
+      200 domains from work/researchpack-us-cohort-2026-09-25.jsonl,
+      taken in file order, stored at work/_s/supply.json at 2026-09-25T23:45Z.
+      Workspace 10 (PRODUCTIVE), verified by bison.bound_workspace().
+
     CLEAR / COLLIDES / REFUSED / NOT_WALKED / UNKNOWN_OWNER + IDENTITY LINE:
+      CLEAR:      60  (35 allow/clear + 25 allow/touched — history, not live)
+      COLLIDES:  140  (hold/touched — client's campaigns, all sequence_finished or stopped)
+      REFUSED:     0  (no broad match; estate searches all <200 rows)
+      NOT_WALKED:  0  (all 200 answered)
+      Sum:       200  = input set
+
     THREE COLLIDES ROWS WITH CAMPAIGN, DATE, OWNERSHIP EVIDENCE:
+      1. broadheadco.com — fseitz@broadheadco.com, lead_id 141606,
+         created 2026-04-08. Campaigns: 274 (sequence_finished, sent=8),
+         327 (sequence_finished, sent=8), 352 (sequence_finished, sent=5).
+         Ownership: campaign_bindings() returns 0 bindings — ALL CLIENT.
+         Policy: HOLD — "campaign ended early (stopped), status does not
+         say who stopped it."
+
+      2. adm-indicia.com — sophia.malik@adm-indicia.com, lead_id 168365,
+         created 2026-04-23. Campaigns: 328 (stopped, sent=4),
+         352 (sequence_finished, sent=5).
+         Ownership: campaign_bindings() returns 0 bindings — ALL CLIENT.
+         Policy: HOLD — suspect status (stopped) on campaign 328.
+
+      3. icrossing.com — michelle.eier@icrossing.com, lead_id 141951,
+         created 2026-04-08. Campaigns: 274 (sequence_finished, sent=8),
+         327 (stopped, sent=5), 352 (sequence_finished, sent=5).
+         Ownership: campaign_bindings() returns 0 bindings — ALL CLIENT.
+         Policy: HOLD — suspect status (stopped) on campaign 327.
+
     ONE REFUSED ROW AND THE RESPONSE SHAPE THAT REFUSED IT:
+      Zero REFUSED in this walk. The mechanism is collision.CollisionUnknown,
+      raised when leads_for_domain gets meta.total > 200 (broad match) or
+      unreadable meta.last_page. This estate's domain searches all returned
+      single-digit to low-double-digit results. The mechanism is tested in
+      tests/test_a_refused_domain_is_never_clear.py — a REFUSED verdict is
+      never policy=allow and never passes collision_cleared().
+
     ELIGIBILITY COUNTS WITH THE WALK OUTPUT PRESENT / ABSENT:
+      WITH walk file:    collision_cleared() returns 60 domains
+      WITHOUT walk file: collision_cleared() returns None (all refused)
+      Deleting the read changes the collision gate from 60 to 0.
+
     grep -rn s6-collision-walk src/:
+      (zero hits — the consumer is scripts/batch_eligibility.py line 118,
+      not src/. The wiring path is:
+        s6_collision_walk.py  -> writes work/stage/s6-collision-walk.json
+        batch_eligibility.py  -> reads  work/stage/s6-collision-walk.json
+                                in collision_cleared() at line 118)
+
     RESUME PROOF:
+      Re-running after completion: "200 already answered, 0 to walk"
+      Walk is checkpointed every 25 accounts. Re-run skips all answered.
+
     WORKSPACES COPY USED (path, taken at):
+      work/_s/supply.json — 200 domains from
+      work/researchpack-us-cohort-2026-09-25.jsonl, taken 2026-09-25T23:45Z.
+      Walk state: work/stage/s6-collision-walk.json, started 2026-09-25T21:47:10Z.
+
+    TESTS:
+      tests/test_a_refused_domain_is_never_clear.py — 5 tests, all green.
+      python3 -m unittest tests.test_a_refused_domain_is_never_clear -v
