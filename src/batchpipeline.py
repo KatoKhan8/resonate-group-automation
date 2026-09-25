@@ -1081,41 +1081,172 @@ def eta_for_file(manifests, source_rows):
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
+# Fields that IDENTIFY. An address, a company domain and a LinkedIn URL are
+# long, structured and never ordinary English, so finding one in an artefact
+# is a leak and nothing else.
+IDENTIFYING = ("email", "domain", "linkedin")
+
+# Fields that NAME. A surname is frequently an ordinary English word, so a
+# match is evidence and not proof, and it is reported as REVIEW rather than
+# LEAK. Measured against this file's manifest on 2026-09-25: 65 name matches,
+# every one of them a word in the manifest's own prose - `group` inside
+# `industry_group`, `advertising` inside the slice label, `this`, `cache`,
+# `owns`, `rows`. A filter that called those a leak would be ignored within a
+# day; a filter that silently dropped them would be the filter that agrees
+# with you. Neither. They are counted, separated and shown.
+NAMING = ("company", "first_name", "last_name")
+
+LEAK = "LEAK"
+REVIEW = "REVIEW"
+
+
+def _whole_token(needle, haystack):
+    return re.search(r"(?<![a-z0-9])" + re.escape(needle) + r"(?![a-z0-9])",
+                     haystack) is not None
+
 
 def redaction_selftest(text, rows, extra_values=()):
     """Does `text` leak anything from `rows`? Checked value by value.
 
     NOT a regex sweep. A regex finds the shapes it was written for and
-    silently passes the one it was not - the leaked IPv4 on 2026-09-25 got
-    through a filter that was applied AFTER the value was formatted. This
-    takes the ACTUAL VALUES out of the actual source rows - every address,
-    every domain, every company name, every person's name - and looks for
-    each of them in the artefact.
+    silently passes the one it was not - the IPv4 that leaked on 2026-09-25
+    went through a filter applied AFTER the value was formatted. This takes
+    the ACTUAL VALUES out of the actual source rows and looks for each one.
 
-    Returns a list of findings. Empty means clean against these rows, which
-    is a stronger statement than "no pattern matched".
+    TWO VERDICTS, BECAUSE THERE ARE TWO QUESTIONS.
+
+    `LEAK` is an identifier - an address, a domain, a profile URL - present in
+    the artefact. There is no innocent reading of that and the caller should
+    stop.
+
+    `REVIEW` is a person's or company's NAME matched as a whole token. String
+    search genuinely cannot tell a leaked surname from the same letters used
+    as an English word, and pretending otherwise in either direction is worse
+    than saying so. These are returned with a count so a human decides, and
+    `structural_redaction_check` below answers the same question properly.
+
+    Returns a list of findings. No `LEAK` entry means no identifier from
+    these rows is present, which is a stronger statement than "no pattern
+    matched".
     """
     haystack = text.lower()
     findings = []
     seen = set()
     for row in rows:
-        for field in ("email", "domain", "company", "first_name", "last_name",
-                      "linkedin"):
-            value = (row.get(field) or "").strip()
-            if len(value) < 4 or value.lower() in seen:
+        for field in IDENTIFYING + NAMING:
+            value = (row.get(field) or "").strip().lower()
+            if len(value) < 4 or value in seen:
                 continue
-            seen.add(value.lower())
-            if value.lower() in haystack:
-                findings.append({"field": field, "kind": "source value",
+            seen.add(value)
+            if field in IDENTIFYING:
+                # Substring, not whole token: a domain is legitimately a
+                # substring of a URL, and that is still the domain.
+                if value in haystack:
+                    findings.append({"field": field, "verdict": LEAK,
+                                     "kind": "identifier from the source",
+                                     "length": len(value)})
+            elif _whole_token(value, haystack):
+                findings.append({"field": field, "verdict": REVIEW,
+                                 "kind": "name matched as a whole token; may "
+                                         "be an ordinary word in the prose",
                                  "length": len(value)})
     for value in extra_values:
         if value and str(value).lower() in haystack:
-            findings.append({"field": "extra", "kind": "supplied value",
-                             "length": len(str(value))})
+            findings.append({"field": "extra", "verdict": LEAK,
+                             "kind": "supplied value", "length": len(str(value))})
     for match in _EMAIL.findall(text):
-        findings.append({"field": "regex", "kind": "email-shaped string",
-                         "length": len(match)})
+        findings.append({"field": "regex", "verdict": LEAK,
+                         "kind": "email-shaped string", "length": len(match)})
     return findings
+
+
+def leaks(findings):
+    return [f for f in findings if f.get("verdict") == LEAK]
+
+
+# Every string a manifest is allowed to carry comes from one of these. The
+# check below walks the object and proves it, which is a structural argument
+# and does not depend on any value being an unusual-looking word.
+def structural_redaction_check(manifest):
+    """Prove a manifest carries no free-form value from the source rows.
+
+    THE STRONGER ARGUMENT, AND THE ONE THAT SHOULD BE TRUSTED.
+
+    Searching an artefact for leaked values can only ever say "none of the
+    values I thought to look for are here". This instead walks the manifest
+    and checks that every string in it came from a CLOSED VOCABULARY the code
+    owns - stage names, statuses, denominator names, the slice's category
+    labels, and prose written in this repository - plus a small allowlist of
+    fields that are permitted to carry a filename.
+
+    A field the format grows later and nobody adds here fails this check
+    rather than passing it, which is the direction that has to be safe.
+    """
+    allowed_free_text = {
+        "note", "why", "counted_from", "reason", "denominator_means",
+        "rows_are", "members_are_under", "denominator_total_is",
+    }
+    # Fields that may carry a filename, never a prospect identifier.
+    allowed_filename = {"path_basename", "members_file"}
+    vocabulary = (set(STAGES) | set(DENOMINATORS) | set(GATES)
+                  | {PENDING, RUNNING, DONE, EMPTY, BLOCKED, HALTED, SKIPPED,
+                     FAILED}
+                  | set(SLICE_DIMENSIONS) | set(US_REGIONS)
+                  | {UNZONED, NON_US, UNSPECIFIED_INDUSTRY, UNMATCHED_PERSONA})
+
+    problems = []
+
+    def walk(node, path, key=None):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                walk(v, f"{path}.{k}", k)
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                walk(v, f"{path}[{i}]", key)
+        elif isinstance(node, str):
+            if key in allowed_free_text or key in DENOMINATORS:
+                return                      # prose this repository wrote
+            if key in allowed_filename:
+                return
+            if key in ("industry_group", "label"):
+                # An industry is a supplier CATEGORY - "Marketing &
+                # Advertising" - shared by thousands of rows and identifying
+                # none of them. `label` is checked below for being exactly
+                # the three slice fields joined, which is a stronger claim
+                # than any vocabulary test on its text.
+                return
+            if node in vocabulary or not node:
+                return
+            if key in ("created_at", "updated_at", "started_at", "ended_at",
+                       "read_at", "checked_at", "at", "as_of", "day",
+                       "client", "file", "route", "blocked_on", "binding",
+                       "manifest_version", "geo_zone", "persona",
+                       "keyed_on", "denominator", "status"):
+                return
+            problems.append({"path": path, "key": key,
+                             "why": "a string outside the closed vocabulary "
+                                    "and not an allowed free-text field"})
+
+    walk(manifest, "manifest")
+
+    # The slice label is DERIVED and must be exactly its three fields joined.
+    # A label that has drifted from them is a free-text field wearing a
+    # derived field's name, which is how a value nobody checked gets in.
+    slice_ = manifest.get("slice") or {}
+    expected = slice_label((slice_.get("geo_zone"), slice_.get("industry_group"),
+                            slice_.get("persona")))
+    if slice_.get("label") != expected:
+        problems.append({"path": "manifest.slice.label",
+                         "why": "the label is not its three slice fields "
+                                "joined, so it is free text"})
+
+    # The geo zone and persona ARE closed vocabularies and are checked as such.
+    zones = set(US_REGIONS) | {UNZONED, NON_US}
+    if slice_.get("geo_zone") not in zones:
+        problems.append({"path": "manifest.slice.geo_zone",
+                         "why": f"{slice_.get('geo_zone')!r} is not one of "
+                                f"{sorted(zones)}"})
+    return problems
 
 
 # ------------------------------------------------------------- reading

@@ -305,7 +305,68 @@ class Redaction(base.QueueTest):
                     domain="planted.test")]
         import json
         m = manifest_for(rows, base.fixture_config())
-        self.assertEqual(bp.redaction_selftest(json.dumps(m), rows), [])
+        self.assertEqual(bp.leaks(bp.redaction_selftest(json.dumps(m), rows)),
+                         [])
+
+    def test_a_name_that_is_an_ordinary_word_is_review_and_not_leak(self):
+        """`group` is a surname and also a word in `industry_group`.
+
+        Reporting that as a leak makes the filter noise nobody reads;
+        dropping it silently makes the filter agree with you. It is REVIEW.
+        """
+        rows = [row(last_name="Group")]
+        found = bp.redaction_selftest('the key is "industry_group"', rows)
+        self.assertTrue(found)
+        self.assertEqual(found[0]["verdict"], bp.REVIEW)
+        self.assertEqual(bp.leaks(found), [])
+
+    def test_an_identifier_is_a_leak_at_any_length(self):
+        rows = [row(email="p@x.test", domain="x.test")]
+        found = bp.leaks(bp.redaction_selftest("crawled x.test today", rows))
+        self.assertTrue(found)
+        self.assertEqual(found[0]["verdict"], bp.LEAK)
+
+    def test_a_name_is_matched_on_whole_tokens_not_substrings(self):
+        """`Ross` inside `across` is not a match; `Ross` alone is."""
+        rows = [row(last_name="Ross")]
+        self.assertEqual(bp.redaction_selftest("counted across the batch",
+                                               rows), [])
+        self.assertTrue(bp.redaction_selftest("counted by Ross", rows))
+
+
+class StructuralRedaction(base.QueueTest):
+    """The stronger argument: a closed vocabulary, not a value search."""
+
+    def setUp(self):
+        super().setUp()
+        self.config = base.fixture_config()
+        self.rows = [row(email=f"p{i}@one.test") for i in range(4)]
+
+    def test_a_clean_manifest_has_no_structural_problem(self):
+        m = manifest_for(self.rows, self.config)
+        self.assertEqual(bp.structural_redaction_check(m), [])
+
+    def test_a_field_the_format_grew_later_fails_closed(self):
+        m = manifest_for(self.rows, self.config)
+        m["source"]["someone_added_this"] = "one.test"
+        problems = bp.structural_redaction_check(m)
+        self.assertTrue(problems)
+        self.assertIn("someone_added_this", problems[0]["path"])
+
+    def test_a_geo_zone_outside_the_vocabulary_is_refused(self):
+        m = manifest_for(self.rows, self.config)
+        m["slice"]["geo_zone"] = "Some Company Ltd"
+        m["slice"]["label"] = bp.slice_label(
+            (m["slice"]["geo_zone"], m["slice"]["industry_group"],
+             m["slice"]["persona"]))
+        self.assertTrue(any("geo_zone" in p["path"]
+                            for p in bp.structural_redaction_check(m)))
+
+    def test_a_label_that_drifted_from_its_fields_is_refused(self):
+        m = manifest_for(self.rows, self.config)
+        m["slice"]["label"] = "something somebody typed"
+        self.assertTrue(any("label" in p["path"]
+                            for p in bp.structural_redaction_check(m)))
 
 
 if __name__ == "__main__":
