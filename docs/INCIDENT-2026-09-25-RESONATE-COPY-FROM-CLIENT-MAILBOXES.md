@@ -153,21 +153,47 @@ Four failures stacked, and the fourth is the one that made the other three
 irrelevant.
 
 1. **The copy was never rendered from `productive.yaml`.** It was
-   hand-written string literals in `work/gencopy.py` in another worktree,
-   lines 174-183, which contains zero references to `productive.yaml`,
-   `cadence.TEMPLATES`, `_variables_for` or approved copy.
+   hand-written string literals in `work/gencopy.py`, lines 173-183 -
+   `"I work with agency founders who want a second source of new
+   business..."`, `"We run the outbound side end to end..."`, and
+   `"\n\nZvonimir"` appended to step 1 and to every follow-up in the loop
+   below it. Read from the file: it contains **zero** references to
+   `productive.yaml`, `cadence.TEMPLATES`, `_variables_for` or anything
+   named `approved`.
 2. **The signature `"Zvonimir"` was hardcoded**, in step 1 and every
    follow-up. Nothing asked who owned the mailbox.
-3. **Copylint could not have caught it.** Its rules -
-   `step1_without_pack_fact`, `duplicate_first_line`,
-   `untraceable_company_claim`, `empty_step`, `dash`, `buzzword` - contain
-   nothing about whose product the copy describes or whose name signs it.
-   Two corrections to the brief, both checked rather than assumed: there
-   are **six** of them, not seven, and **`finality_before_last_step` does
-   not exist** - `grep -rn finality_before_last_step src/ tests/ docs/`
-   returns nothing. The module is also wired to nothing: `grep -rn copylint
-   src/` finds the module, three docstrings and its own test, and no
-   caller. It would not have fired if it had been able to catch this.
+3. **COPYLINT RAN. IT PASSED EVERY ONE OF THEM.** This is the correction
+   that matters most, and it is read off the script itself rather than
+   assumed:
+
+   ```
+   work/gencopy.py:11    from src import copylint
+   work/gencopy.py:207   solo = copylint.check_batch([cand], {...})
+   work/gencopy.py:211   if solo["refused"] or solo.get("warned"):
+   work/gencopy.py:213       dropped["lint:" + ...] += 1;  continue
+   work/gencopy.py:217   rep = copylint.check_batch(leads, {...})
+   ```
+
+   The lint was called per lead, a failing draft was DROPPED and the next
+   candidate taken, and the batch report was printed at the end. So the
+   story is not "the lint did not run" - it ran on all 690 and refused
+   none of them, because its six rules (`step1_without_pack_fact`,
+   `duplicate_first_line`, `untraceable_company_claim`, `empty_step`,
+   `dash`, `buzzword`) contain nothing about whose product the copy
+   describes or whose name signs it.
+
+   Worse, **rule 1 actively certified the nav chrome.**
+   `step1_without_pack_fact` asks whether the opener uses words from the
+   lead's pack. The opener quoted `check out a few of our case studies`,
+   which IS in the pack - so the rule passed, and the lint's verdict was
+   read as evidence the copy was grounded. A gate that asks whether a pack
+   fact was used, and never what KIND of span it is, will bless a
+   navigation bar every time. That is the whole reason gate 3 exists and
+   why it tests the SPAN rather than the fact.
+
+   Two smaller corrections to the brief, both checked: there are **six**
+   rules, not seven, and **`finality_before_last_step` does not exist** -
+   `grep -rn finality_before_last_step src/ tests/ docs/` returns nothing.
 4. **The production gate never ran.** The push used `bison.create_lead` +
    `bison.attach_leads` directly, which bypass `bisonfactory.stage` - so
    `_ensure_leads`, `_refuse_unsupported`, `_approved_copy` and the tenancy
@@ -497,9 +523,12 @@ every lead that already carries it is regenerated. **Not decided here.**
 A lane does not edit a client's approved copy and does not narrow a list
 the operator wrote, and either choice is visible in the review file first.
 
-**`src/copylint.py` still has no caller.** It was not wired by this lane
-either. It answers different questions from these three and both are
-wanted.
+**`src/copylint.py` still has no caller inside `src/`.** The only thing
+that ever called it was the scratch script that caused this, which is its
+own comment on where the gates were. It answers different questions from
+these three - duplicate first lines and untraceable specifics are real
+and neither gate 2 nor gate 3 asks them - so it is still wanted, wired
+into the same place. Not done here.
 
 **Sixteen prospect domains are already committed to git.** The redaction
 self-test (`scripts/copy_audit.py`, run after the review files are written)
