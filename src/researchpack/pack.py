@@ -20,9 +20,14 @@ spend audit, and an audit that reports clean because it watched nothing is
 worse than none."
 
 `enrich.spend` is a closure over one record and cannot be imported, so this
-calls `spendledger.record` - the module-level API that closure itself
-writes through. A run served from cache records NOTHING, because nothing
-was bought.
+goes through `spendledger` directly - the module-level API that closure
+itself writes through. A run served from cache records NOTHING, because
+nothing was bought.
+
+SINCE 2026-09-25 IT ALSO CHECKS, WHICH IT NEVER DID. Recording without
+checking made Apify spend visible to the audit and invisible to every
+ceiling, so the operator's Apify cap would have been a number nothing
+consulted. `run_actor` reserves against the ceiling before the run starts.
 
 ## EVERY FACT CARRIES ITS PROVENANCE OR IT IS NOT STORED
 
@@ -76,14 +81,48 @@ def _facts_from(name, rows, subject=None):
     return out
 
 
-def run_actor(name, target, subject=None, client=None, runner=None):
-    """One actor run. Records the planned cost BEFORE reading the result.
+def _client_config(client):
+    """The client's declared ceilings, or `{}` when there are none to read.
+
+    `{}` is "ungoverned" to `spendledger.check`, which is what an
+    unattributed run has always been. It is not a licence invented here: a
+    client that declares no budget has never had one enforced, and
+    `tests/test_a_provider_ceiling_refuses_before_the_call.py` pins that as
+    a known, separate gap.
+    """
+    if not client or client == "unattributed":
+        return {}
+    try:
+        from .. import clients
+        return clients.load(client) or {}
+    except Exception:                                         # noqa: BLE001
+        return {}
+
+
+def run_actor(name, target, subject=None, client=None, runner=None,
+              config=None):
+    """One actor run. RESERVES the planned cost before the run starts.
 
     `runner` is the seam the cassette tests drive: it takes
     `(actor, payload, limit)` and returns the dataset rows. The default
     reaches `providers.apify`'s run lifecycle, which is IMPORTED rather
     than reimplemented - the polling, the timeout and the SSRF posture live
     there and a second copy of them would drift.
+
+    THIS RECORDED AND NEVER CHECKED UNTIL 2026-09-25. Apify spend reached
+    the ledger and no ceiling was ever consulted, so a declared Apify cap
+    would have been exactly the decoration `per_run` was - a number in a
+    config file with no consumer. It now reserves against the ceiling
+    before the run starts, so the operator's Apify ceiling is enforced
+    rather than reported.
+
+    THE COST HERE IS INTEGER CENTS, NOT CREDITS. `actors.ACTORS[*]["cost"]`
+    is money; every other provider writes credits into the same ledger. So
+    an Apify ceiling is in cents and a Deliverable ceiling is in credits,
+    and the CLIENT-WIDE `per_day` sums the two. See the unit hazard in
+    docs/MERGE-REQUEST-2026-09-25-PER-PROVIDER-CEILINGS.md - it is named
+    there rather than quietly converted here, because picking a conversion
+    rate is not this function's decision to make.
     """
     spec = actorspec.ACTORS[name]
     if spec["needs_session"]:
@@ -91,10 +130,20 @@ def run_actor(name, target, subject=None, client=None, runner=None):
             "%s needs a logged-in session; this pack reads public surfaces "
             "only" % name)
     payload = actorspec.build_input(name, target)
-    # BEFORE the call, not after. A run that starts and then fails still
-    # cost something, and a ledger that records only successes understates
-    # spend in exactly the runs worth auditing.
-    spendledger.record(client or "unattributed", "apify", name, spec["cost"])
+    # RESERVED, THEN SETTLED, THEN RUN - AND THAT ORDER IS DELIBERATE.
+    #
+    # The ceiling is consulted before anything starts, which is the whole
+    # point of the change. But the ledger row is still written BEFORE the
+    # run rather than after it, because a run that starts and then fails
+    # still cost something, and a ledger that records only successes
+    # understates spend in exactly the runs worth auditing. `holding()`
+    # would have released on an exception and lost precisely those rows,
+    # which is right for a per-address verifier call and wrong here.
+    hold = spendledger.reserve(
+        client or "unattributed",
+        config if config is not None else _client_config(client),
+        spec["cost"], provider="apify", call=name)
+    spendledger.settle(hold)
     rows = (runner or _live_runner)(spec["actor"], payload, spec["limit"])
     return _facts_from(name, _items(rows, spec["limit"]), subject=subject)
 
@@ -146,7 +195,7 @@ def _profile_key(name, profile):
 
 
 def build(domain, live=False, champion=None, exec_profile=None, client=None,
-          runner=None, now=None, company_url=None):
+          runner=None, now=None, company_url=None, config=None):
     """One account's pack. Cache first, actors only with `live=True`."""
     domain = str(domain or "").strip().lower().lstrip("@")
     if not domain:
@@ -172,7 +221,7 @@ def build(domain, live=False, champion=None, exec_profile=None, client=None,
             out["skipped"].append(label)
             continue
         found = run_actor(name, target, subject=profile, client=client,
-                          runner=runner)
+                          runner=runner, config=config)
         cost = actorspec.ACTORS[name]["cost"]
         out["facts"].extend(found)
         out["cost"] += cost
