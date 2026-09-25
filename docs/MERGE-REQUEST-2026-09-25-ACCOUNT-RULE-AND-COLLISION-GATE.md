@@ -11,7 +11,8 @@ Commits, oldest first:
 | `83609320` | `APayloadIsNotASend` — the hole mutation testing found |
 | `0c18a154` | this document; corrected the cap named in the gate comment |
 | `76a246c9` | the suite result and its attribution limits |
-| *(head)* | this line |
+| `9d1e40f5` | fixture hygiene — two identity leaks of mine, see §7 |
+| *(head)* | this table |
 
 Not merged, not pushed.
 
@@ -459,6 +460,16 @@ is a narrow arm: allow a contact that is the `referred_contact` of an
   codebase's own `reply.activate_referred_contact` policy says the opposite for
   exactly that one person. I took the conservative reading; it needs an
   operator decision, not my judgement.
+- **I leaked identities into tracked files and only one guard caught it.**
+  The effect tests and this document spelled the operator's test identity
+  (`test_fixture_hygiene` caught that, and the tests now read
+  `testidentity`'s constants instead). §4 also listed 150 real contact keys
+  and company domains in a tracked `docs/` file, which **no guard caught** —
+  the hygiene guard's name list covers the test identity, not the prospect
+  estate. Both are fixed in `9d1e40f5`; the names moved to a gitignored
+  artifact. **Worth a guard of its own:** a tracked file containing more than
+  a handful of strings that match `work/queue.jsonl` contact keys or domains
+  is almost always a mistake, and nothing currently looks.
 - **I did not measure the LinkedIn/HeyReach side against the provider at all.**
   No provider writes were made and no HeyReach read was attempted.
 - **`evaluate` accepts a `config` argument it does not use.** Kept for
