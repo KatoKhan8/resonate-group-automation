@@ -22,7 +22,7 @@ import os
 import re
 import sys
 
-from . import clients as client_config, events, store
+from . import clients as client_config, columns, events, identity, linkedin, store
 
 ROOT = store.ROOT
 # The tracked template. It carries the mechanism and no real customer, because
@@ -123,9 +123,15 @@ def load_suppress(path=None):
 
 
 def from_csv(path):
+    """Yield rows with original header names preserved.
+
+    The `columns` module maps foreign headers onto canonical fields by their
+    original spelling; lowercasing them here would break that mapping. Values
+    are still stripped of surrounding whitespace.
+    """
     with open(path, newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
-            yield {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
+            yield {k.strip(): (v or "").strip() for k, v in row.items() if k}
 
 
 def from_jsonl(path):
@@ -168,7 +174,15 @@ def client_config_exists(client):
 
 
 def run(source, client, lane, suppress_path=None):
-    """Build records from `source` and hand them to the store. Returns a summary."""
+    """Build records from `source` and hand them to the store. Returns a summary.
+
+    For CSV sources, the `columns` module maps foreign headers onto canonical
+    fields. Contact columns (email, linkedin, name, first_name, last_name,
+    title) become contacts on the record. Operational columns (headcount
+    growth, products and services, employee count) are attached to
+    `company_facts`. A LinkedIn URL that is not a profile URL (company page,
+    search result, truncated share link) is refused, not stored.
+    """
     rows = read_rows(source)
     suppress = load_suppress(suppress_path)
     existing = store.load()
@@ -183,15 +197,21 @@ def run(source, client, lane, suppress_path=None):
     run_keys = set()
     records, skipped = [], []
 
-    def add(row_client, row_lane, company, domain, context, signal, raw_id, reason):
+    def add(row_client, row_lane, company, domain, context, signal, raw_id,
+            reason, contacts=None, company_facts=None):
         rid = slug(raw_id or company or domain)
         base, n = rid, 2
         while rid in taken_ids:
             rid = f"{base}-{n}"
             n += 1
         taken_ids.add(rid)
-        rec = store.new_record(rid, row_lane, row_client, company, domain, context, signal)
+        rec = store.new_record(rid, row_lane, row_client, company, domain,
+                               context, signal)
         rec["batch"] = batch
+        if contacts:
+            rec["contacts"] = identity.assign_keys(contacts)
+        if company_facts:
+            rec["company_facts"].update(company_facts)
         if reason:
             rec["state"] = "dropped"
             rec["drop_reason"] = reason
@@ -204,14 +224,123 @@ def run(source, client, lane, suppress_path=None):
         records.append(rec)
         return rec
 
+    # For CSV sources, resolve foreign headers onto canonical fields.
+    # JSONL and dir sources already use canonical names.
+    is_csv = source.lower().endswith(".csv")
+    resolution = None
+    op_cols = {}
+    if is_csv and rows:
+        headers = list(rows[0].keys())
+        resolution = columns.resolve(headers)
+        # Operational columns: unmapped headers that match known patterns.
+        # These are company-level facts, not contact fields.
+        for header in resolution.get("unmapped", []):
+            norm = columns.normalise(header)
+            if "headcountgrowth" in norm or "growth12" in norm:
+                op_cols[header] = "headcount_growth_12m"
+            elif "product" in norm and "service" in norm:
+                op_cols[header] = "products_and_services"
+            elif "employee" in norm and "count" in norm:
+                op_cols[header] = "employee_count"
+            elif norm in ("companysize",):
+                op_cols[header] = "company_size"
+            elif norm in ("companyindustrytags", "industry"):
+                op_cols[header] = "industry_tags"
+
     for row in rows:
-        row_client = row.get("client") or client
-        row_lane = row.get("lane") or lane
-        domain = norm_domain(row.get("domain"))
-        company = row.get("company") or domain
-        context = row.get("context", "")
-        signal = row.get("signal", "")
-        raw_id = row.get("id")
+        if resolution is not None:
+            canonical, source_extra = columns.apply(row, resolution)
+            row_client = (canonical.get("client")
+                          or row.get("client") or client)
+            row_lane = canonical.get("lane") or row.get("lane") or lane
+            domain = norm_domain(canonical.get("domain", ""))
+            company = canonical.get("company") or domain
+            context = source_extra.get("context", "")
+            signal = source_extra.get("signal", "")
+            raw_id = source_extra.get("id") or source_extra.get("Id")
+
+            # Contact columns
+            email_val = (canonical.get("email") or "").strip()
+            li_val = (canonical.get("linkedin") or "").strip()
+            fn_val = (canonical.get("first_name") or "").strip()
+            ln_val = (canonical.get("last_name") or "").strip()
+            name_val = (canonical.get("name") or "").strip()
+            title_val = (canonical.get("title") or "").strip()
+
+            # Validate LinkedIn URL from mapped column: must be a profile.
+            if li_val and not linkedin.canonical(li_val):
+                li_val = ""
+
+            # Value-based promotion: a column called "Url" that was not
+            # mapped by `columns` (too vague) may still hold a LinkedIn
+            # profile. Check the value, not the header.
+            if not li_val:
+                for url_key in ("Url", "URL", "url"):
+                    candidate = (source_extra.get(url_key) or "").strip()
+                    if candidate and linkedin.canonical(candidate):
+                        li_val = linkedin.canonical(candidate)
+                        source_extra.pop(url_key, None)
+                        break
+
+            # Build contact dict
+            contact = {}
+            if email_val:
+                contact["email"] = email_val
+            if li_val:
+                contact["linkedin"] = li_val
+            if name_val:
+                contact["name"] = name_val
+            elif fn_val or ln_val:
+                contact["name"] = f"{fn_val} {ln_val}".strip()
+            if title_val:
+                contact["title"] = title_val
+            # Source provenance: unmapped columns, never read for eligibility.
+            src = {k: v.strip()[:200]
+                   for k, v in source_extra.items()
+                   if v and v.strip()
+                   and k not in ("context", "signal", "id", "Id")}
+            if src:
+                contact["source"] = src
+
+            # Only create a contact if it has actual person data.
+            # Source provenance alone is not a person.
+            if not (email_val or li_val or name_val or fn_val or ln_val
+                    or title_val):
+                contact = {}
+
+            # Operational columns -> company_facts
+            facts = {}
+            for orig_header, fact_key in op_cols.items():
+                val = row.get(orig_header, "").strip()
+                if val:
+                    if fact_key == "headcount_growth_12m":
+                        cleaned = re.sub(r"[^\d.+-]", "", val)
+                        try:
+                            facts[fact_key] = float(cleaned)
+                        except (ValueError, TypeError):
+                            facts[fact_key] = val
+                    elif fact_key == "employee_count":
+                        cleaned = re.sub(r"[^\d]", "", val)
+                        try:
+                            facts[fact_key] = int(cleaned)
+                        except (ValueError, TypeError):
+                            facts[fact_key] = val
+                    else:
+                        facts[fact_key] = val[:500]
+        else:
+            # JSONL or dir source: canonical keys already present
+            row_client = row.get("client") or client
+            row_lane = row.get("lane") or lane
+            domain = norm_domain(row.get("domain"))
+            company = row.get("company") or domain
+            context = row.get("context", "")
+            signal = row.get("signal", "")
+            raw_id = row.get("id")
+            contact = {}
+            facts = {}
+
+        contacts = [contact] if contact else None
+        cf = facts if facts else None
 
         if row_client not in checked_clients:
             if not client_config_exists(row_client):
@@ -225,48 +354,48 @@ def run(source, client, lane, suppress_path=None):
 
         if row_lane not in store.LANES:
             add(row_client, lane, company, domain, context, signal, raw_id,
-                f"unknown lane: {row_lane}")
+                f"unknown lane: {row_lane}", contacts, cf)
             continue
         if not domain:
-            add(row_client, row_lane, company, domain, context, signal, raw_id, "no domain")
+            add(row_client, row_lane, company, domain, context, signal, raw_id,
+                "no domain", contacts, cf)
             continue
         if not is_hostname(domain):
-            # The rule this module defines, applied by this module.
-            #
-            # `HOSTNAME` and `is_hostname` had exactly two consumers -
-            # `discovery` and the web upload - and `run` was not one of them,
-            # so the CLI import path queued whatever survived `norm_domain`
-            # non-empty. Measured: `not a domain`, `=importxml(1)` and the
-            # residue of a spreadsheet injection all became records with that
-            # string as their domain, and then carried it into MX lookups,
-            # provider payloads and client exports. The comment above
-            # `HOSTNAME` says it lives here "so the import path and the
-            # discovery path cannot drift into two different opinions about
-            # what a domain is"; the two import paths had drifted into
-            # exactly that.
             add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "not a usable domain: this is not the shape of a hostname")
+                "not a usable domain: this is not the shape of a hostname",
+                contacts, cf)
             continue
         if domain in suppress:
             add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "suppressed (live account)")
+                "suppressed (live account)", contacts, cf)
             continue
         if key in run_keys:
             add(row_client, row_lane, company, domain, context, signal, raw_id,
-                "duplicate domain")
+                "duplicate domain", contacts, cf)
             continue
 
         run_keys.add(key)
-        add(row_client, row_lane, company, domain, context, signal, raw_id, None)
+        add(row_client, row_lane, company, domain, context, signal, raw_id,
+            None, contacts, cf)
 
     if records:
         store.append(records, note=f"ingested from {origin}")
 
-    return {
+    result = {
         "queued": [r["id"] for r in records if r["state"] == "queued"],
-        "dropped": [(r["id"], r["drop_reason"]) for r in records if r["state"] == "dropped"],
+        "dropped": [(r["id"], r["drop_reason"])
+                    for r in records if r["state"] == "dropped"],
         "skipped": skipped,
     }
+    if resolution is not None:
+        result["column_mapping"] = columns.describe(resolution)
+        result["contacts_found"] = sum(
+            len(r.get("contacts") or []) for r in records)
+        result["linkedin_found"] = sum(
+            1 for r in records
+            for c in (r.get("contacts") or [])
+            if c.get("linkedin"))
+    return result
 
 
 def main(argv=None):
