@@ -113,12 +113,51 @@ addresses, no names).
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
-    CAMPAIGNS WALKED / UNREADABLE:
-    PROVIDER ROWS READ:
-    MATCHED / UNRECORDED / STATE_MISMATCH / NOT_OURS / UNKNOWN:
-    EXHAUSTIVENESS IDENTITY PRINTED (yes/no, the line):
-    THE LEDGER-KEY FUNCTION YOU IMPORTED:
-    WOULD THIS HAVE CAUGHT ISSUE-025's 76 BLANKS:
+    BRANCH: qwen-worker-3-r9
+    COMMIT: 57126ea3
+    CAMPAIGNS WALKED / UNREADABLE: 0 / 0 (no campaigns.jsonl in this worktree;
+      live sweep owed — must run from Claude's worktree where work/ exists)
+    PROVIDER ROWS READ: 0 (live sweep owed)
+    MATCHED / UNRECORDED / STATE_MISMATCH / NOT_OURS / UNKNOWN: all 0 (live
+      sweep owed)
+    EXHAUSTIVENESS IDENTITY PRINTED (yes/no, the line): yes — printed by
+      script for each campaign and in total; asserted in test suite:
+      "EXHAUSTIVENESS: {N} read = ... PASS|FAIL"
+    THE LEDGER-KEY FUNCTION YOU IMPORTED: push.push_id (from src/push.py,
+      line 37: `f"{rec['id']}:{contact_key}:{step_key}:{channel}"`).
+      Prefix match used because step_key is not available from provider data.
+    WOULD THIS HAVE CAUGHT ISSUE-025's 76 BLANKS: Yes — 73 of the 76 were
+      leads the factory never created (no record_id/contact_key in custom
+      variables). On a bound campaign they classify as UNKNOWN (73 rows with
+      no attribution is a loud signal). The 3 later adopted by the factory
+      would be MATCHED. The sweep surfaces the anomaly even though it cannot
+      read rendered content.
     grep -rn reverse_reconcile scripts/ src/:
+      scripts/reverse_reconcile.py:523: argparse.ArgumentParser(prog="reverse_reconcile"
+      (Only the definition — this is a CLI script, not a library. The test
+      imports it directly.)
+
+## FINDINGS
+
+- work/campaigns.jsonl does not exist in this worktree. It is gitignored and
+  lives only in Claude's worktree. The live sweep CANNOT run from here.
+- The script is built, tested (19/19 passing), and ready for live use.
+- To run the live sweep: copy this script to Claude's worktree and run
+  `py -3 scripts/reverse_reconcile.py --live --json`
+
+## RISKS
+
+- The prefix match (record_id:contact_key:channel) is correct but coarser
+  than a full key match. If two different steps for the same person both
+  have ledger rows, the reconciler cannot tell which step the provider row
+  corresponds to. This is inherent — the provider does not expose step_key.
+- The live sweep has not been run. All classifications are tested with fake
+  data. Real provider data may expose edge cases not covered by the test
+  suite (e.g., leads with partial attribution, campaigns with mixed providers).
+
+## RECOMMENDED CLAUDE ACTION
+
+1. Run the live sweep from Claude's worktree.
+2. Review the UNRECORDED and UNKNOWN rows for anomalies.
+3. If any UNRECORDED rows are found, investigate whether they represent
+   writes that happened without a ledger reservation (the ISSUE-025 shape).
