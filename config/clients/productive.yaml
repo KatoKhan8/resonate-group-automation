@@ -669,8 +669,27 @@ sending_window:
   end: "17:00"
   timezone: Europe/Zagreb
 
+# OPERATOR DECISION, 2026-09-25: `per_day` 5,000 -> 15,000 credits.
+#
+# ~7,575 addresses a day at the measured 1.98 credits/address. Cost is
+# reported daily. `total` is UNCHANGED at 50,000 and is the ceiling that
+# actually binds: 4,444 credits are committed against it, so the headroom is
+# 45,556, and the amended 09-07 supply is - to 0.2% - exactly one budget
+# wide. At 15,000/day that budget is gone in three days, so the third day is
+# a decision point and not a surprise.
+#
+# `per_run` IS DECLARED HERE AND IS NOT ENFORCED BY `spendledger.check`.
+# Verified 2026-09-25: `check()` iterates `per_day` and `total` and then
+# tests `per_provider_per_day`; `per_run` is in `spendledger.SCOPES`, is read
+# by `caps()`, and has no consumer on any spend path -
+# `tests/test_the_second_client_runs_on_the_same_engine.py` pins that as a
+# known LEAK. Raising `per_day` to 15,000 is therefore the moment `per_run`
+# stops being harmless: nothing in the code would stop one invocation
+# spending the whole 15,000. Until `check` enforces it, a runner must hold
+# itself to 2,000 per invocation, which is what `--max-credits` on
+# `stage_s5_verify.py` does.
 budget:
-  per_day: 5000
+  per_day: 15000
   per_run: 2000
   total: 50000
 
