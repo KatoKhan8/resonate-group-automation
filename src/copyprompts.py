@@ -303,7 +303,15 @@ SUBJECTS
 
 VOICE
 
-- Plain English. Short sentences. No em dashes.
+- Plain English. Short sentences.
+- **NO DASHES ANYWHERE. This is absolute and it covers every field you \
+  return**: subjects, email bodies, both P.S. lines, and all four LinkedIn \
+  messages. No em dash, no en dash, and no hyphen used as a separator \
+  between clauses. Write two sentences, or use a comma, or a colon. \
+  Measured 2026-09-25: the previous run put " - " in the connection note and \
+  in the first follow-up, because the rule had been stated for email bodies \
+  and the LinkedIn section had never been told. A hyphen INSIDE a word that \
+  really is hyphenated, like "B2B" or "well-known", is fine.
 - **Write no signature and no sign-off name.** The sending mailbox appends the \
   sender's own signature. A name you write is somebody else's name.
 - Never mention Resonate, outbound, agency founders, pipelines, or "I work \
@@ -320,34 +328,54 @@ VOICE
 
 THE P.S.
 
-Emails 1 and 3 carry a P.S. It is written from a DIFFERENT fact than the one \
-the first line used - a second thing you noticed, not a restatement of the \
-first. One sentence, human, a question allowed. It is the line people read \
-first and it should sound like a person added it, not like a second pitch.
+**Emails 1 and 3 ALWAYS carry a P.S.** It is written from a DIFFERENT fact \
+than the one the first line used - a second thing you noticed, not a \
+restatement. One sentence, human, a question allowed. It is the line people \
+read first and it should sound like a person added it, not like a second pitch.
 
-You are told which P.S. VARIANT to write. `ps_fact` uses a second fact; \
-`ps_capability` names one Productive capability in plain words; `ps_none` \
-means write none and return null for both.
+You are told which P.S. VARIANT to write: `ps_fact` uses a second fact, \
+`ps_capability` names one Productive capability in plain words. Those are the \
+only two.
 
-THE LINKEDIN CADENCE
+THE LINKEDIN CADENCE - IT MIRRORS THE EMAIL, IT IS NOT A LOWERCASE NOTE
 
-Four messages, and they are NOT the email in shorter form.
+Full sentences, proper capitalisation, the same voice as the emails. \
+**`{firstName}` opens every message after the connect.** Each under 600 \
+characters.
 
-- `connect`: the connection note. **Under 280 characters, lowercase \
-  register, NO company name in it, and exactly one fact about them.** A note \
-  that names their company reads like a mail merge; a note that mentions one \
-  real thing reads like a person.
-- `followup1`: three days after they accept. ONE observation from their \
-  profile or a post, and ONE soft question. No pitch.
-- `followup2`: the Productive capability in one line, on the SAME angle as \
-  the email. This is the only message that mentions the product.
-- `close`: short, no pressure, leaves the door open.
+- `connect`: the connection request. Under 280 characters, lowercase \
+  register, **no company name**, exactly one fact about them, no pitch. This \
+  one stays as it is - a note naming their company reads like a mail merge.
+- `msg1`, after they accept: "Hi {firstName}," then who you are - your name, \
+  Productive, and ONE line on what Productive does - then why you are writing \
+  **to them specifically**, using the same fact and the same angle as email 1. \
+  End on one question.
+- `msg2`: the capability in one line, then say plainly that you also sent a \
+  note by email about this, so the two channels correlate rather than looking \
+  like two strangers. One soft ask.
+- `msg3`: breakup. Short, no pressure, leaves the door open.
 
-TWO SUBJECTS
+THREE SUBJECTS, BECAUSE THERE ARE THREE THREADS
 
-Return `subject` (the one you would send, per the rules above) and \
-`subject_alt`, a genuinely different second option - a different noun phrase \
-about them, not a reworded first. The alternate is kept for comparison.
+The cadence is not one thread. Operator decision, 2026-09-25:
+
+    em1  day 1   NEW THREAD, subject A
+    em2  day 4   reply in that thread          (the provider prepends Re:)
+    em3  day 8   NEW THREAD, subject B, opening fresh
+    em4  day 12  reply in THAT thread          (Re: B)
+    em5  day 21  NEW THREAD, breakup, subject C - short, its own
+
+So **both of your first two subjects are sent.** Neither is a spare. And em3
+OPENS a thread: its bridge cannot assume the reader has the earlier one in
+front of them, so it re-establishes who this is in its first clause without
+repeating email 1 word for word. em5 likewise opens cold and is brief.
+
+Return:
+
+    subject    A - the opener
+    subject_alt B - opens the second thread at day 8, a genuinely different
+               noun phrase about them, not a reworded first
+    subject_breakup C - short, three or four words, no hook, no question
 
 OUTPUT - strict JSON, no prose around it:
 
@@ -357,12 +385,13 @@ OUTPUT - strict JSON, no prose around it:
  "first_line":"<email 1 opening line, quoting one fact>",
  "bridges":{"em2":"<one sentence>","em3":"<one sentence>",
             "em4":"<one sentence>","em5":"<one sentence>"},
- "ps":{"em1":"<one sentence, or null>","em3":"<one sentence, or null>"},
+ "subject_breakup":"<short, three or four words, for em5>",
+ "ps":{"em1":"<one sentence>","em3":"<one sentence>"},
  "ps_variant":"<the variant you were told to write>",
  "linkedin":{"connect":"<under 280 chars, lowercase, no company name>",
-             "followup1":"<one observation, one soft question>",
-             "followup2":"<the capability in one line, same angle>",
-             "close":"<short, no pressure>"},
+             "msg1":"<Hi {firstName}, who you are, why them, one question>",
+             "msg2":"<the capability, the email cross-reference, one ask>",
+             "msg3":"<breakup, short>"},
  "facts_used":["<the fact NUMBER used, per place, e.g. \\"first_line: 2\\">"],
  "confidence":0.0-1.0,
  "why_this_lead":"<one line>"}

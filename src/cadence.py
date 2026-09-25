@@ -436,7 +436,13 @@ TEMPLATES = {
         "body": "{first_name}, here is the specific thing {our_company} "
                 "does, in one line, so you can decide whether it is worth "
                 "any more of your attention.\n\n"
-                "{capability}.\n\n"
+                # A FULL SENTENCE, NOT A FRAGMENT ON ITS OWN LINE. The
+                # capability strings in productive.yaml are noun phrases -
+                # "margin per project while it is running, not after it
+                # closes" - so `{capability}.` rendered as a headless
+                # fragment sitting alone in the middle of an email. Naming
+                # the subject makes it a sentence and costs two words.
+                "{our_company} shows {capability}.\n\n"
                 "The consequence is the part that matters at your level. A "
                 "project heading under margin is visible while there is "
                 "still a decision to make about it: move somebody, change "
@@ -448,7 +454,13 @@ TEMPLATES = {
         "subject": "how teams your size handle {angle_word}",
         "body": "{first_name}, here is the specific thing {our_company} "
                 "does, in one line.\n\n"
-                "{capability}.\n\n"
+                # A FULL SENTENCE, NOT A FRAGMENT ON ITS OWN LINE. The
+                # capability strings in productive.yaml are noun phrases -
+                # "margin per project while it is running, not after it
+                # closes" - so `{capability}.` rendered as a headless
+                # fragment sitting alone in the middle of an email. Naming
+                # the subject makes it a sentence and costs two words.
+                "{our_company} shows {capability}.\n\n"
                 "The consequence is that the weekly number stops being "
                 "something a person has to build. Nobody exports hours on a "
                 "Thursday afternoon so that Friday has a figure in it, "
