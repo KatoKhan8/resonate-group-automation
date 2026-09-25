@@ -152,9 +152,26 @@ DEFAULT_UNIT = "credits"
 LEDGER_UNITS = {"apify": "cents"}
 
 
-def unit(provider):
-    """What this provider's rows are denominated in."""
+def unit_for(provider):
+    """What this provider's rows are denominated in, BY CONVENTION.
+
+    A display lookup, not a claim stamped on anything. It is how a row
+    written before units existed gets read; a row that carries its own
+    `unit` is believed over this table, always.
+    """
     return LEDGER_UNITS.get(provider, DEFAULT_UNIT)
+
+
+def row_unit(row):
+    """One row's unit: what it says, else its provider's convention.
+
+    Most of the 17,937 rows on disk predate `unit` entirely. A missing unit
+    is read as the convention rather than as an error, because refusing to
+    read history would turn every ceiling off.
+    """
+    if isinstance(row, dict) and row.get("unit"):
+        return row["unit"]
+    return unit_for((row or {}).get("provider"))
 
 
 class BudgetExceeded(RuntimeError):
@@ -250,7 +267,7 @@ def new_run(name=None):
 
 
 def record(client, provider, call, expected_cost, run_id=None, at=None,
-           rows=None):
+           rows=None, unit=None):
     """Append one expected charge. Called at the moment of the call.
 
     Returns the row, so a caller can log it. Appending rather than updating a
@@ -266,6 +283,23 @@ def record(client, provider, call, expected_cost, run_id=None, at=None,
            "client": client, "provider": provider, "call": call,
            "expected_cost": int(expected_cost or 0),
            "run_id": run_id or current_run()}
+    # THE UNIT, WHEN THE WRITER KNOWS IT - AND ABSENT WHEN IT DOES NOT.
+    #
+    # This column is unit-ambiguous and has already produced a wrong number:
+    # `researchpack/actors.py` writes Apify costs in integer CENTS where
+    # Deliverable and Reoon write CREDITS, and a report summed 18,809 /
+    # 14,365 / 31,191 across both as though they were one thing. TASK-308
+    # adds DOLLARS as a third.
+    #
+    # NOT DEFAULTED, DELIBERATELY. Stamping `credits` on every row that does
+    # not say otherwise would retrofit a claim onto providers whose unit is
+    # the operator's call and a separate task - TASK-308 says so in as many
+    # words - and a guess written down is indistinguishable from a
+    # measurement a week later. So a writer that knows passes it, a writer
+    # that does not leaves the row exactly as it has always been, and
+    # `row_unit` reads the absence as this provider's convention.
+    if unit:
+        row["unit"] = unit
     # OUTSIDE THE BARRIER UNTIL NOW, AND IT COST REAL CLIENT STATE.
     #
     # This builds its own append rather than going through `store.write_jsonl`,
@@ -374,12 +408,16 @@ class Hold:
     """
 
     __slots__ = ("token", "client", "provider", "call", "run_id", "day",
-                 "cost", "kind", "resolved")
+                 "cost", "kind", "resolved", "unit")
 
-    def __init__(self, client, provider, call, run_id, day, cost, kind):
+    def __init__(self, client, provider, call, run_id, day, cost, kind,
+                 unit=None):
         self.token = uuid.uuid4().hex
         self.client, self.provider, self.call = client, provider, call
         self.run_id, self.day, self.cost, self.kind = run_id, day, cost, kind
+        # Carried from the reservation to the ledger row so a held call
+        # cannot settle in a different unit from the one it was checked in.
+        self.unit = unit
         self.resolved = False
 
     def __repr__(self):                                       # pragma: no cover
@@ -618,7 +656,7 @@ def check(client, config, cost, provider=None, rows=None, day=None,
 
 
 def reserve(client, config, cost, provider=None, call=None, run_id=None,
-            day=None, kind="call", rows=None):
+            day=None, kind="call", rows=None, unit=None):
     """Claim `cost` credits BEFORE the call, or refuse. Returns a `Hold`.
 
     The check and the claim happen under one lock. That is the entire
@@ -636,7 +674,7 @@ def reserve(client, config, cost, provider=None, call=None, run_id=None,
     with _LOCK:
         check(client, config, cost, provider=provider, rows=rows, day=day,
               run_id=run_id)
-        hold = Hold(client, provider, call, run_id, day, cost, kind)
+        hold = Hold(client, provider, call, run_id, day, cost, kind, unit)
         _HOLDS[hold.token] = hold
         return hold
 
@@ -653,7 +691,7 @@ def settle(hold, actual_cost=None, call=None):
             raise RuntimeError("this hold was already settled or released")
         cost = hold.cost if actual_cost is None else int(actual_cost or 0)
         row = record(hold.client, hold.provider, call or hold.call, cost,
-                     run_id=hold.run_id)
+                     run_id=hold.run_id, unit=hold.unit)
         hold.resolved = True
         _HOLDS.pop(hold.token, None)
         return row
@@ -677,7 +715,7 @@ def release(hold):
 
 @contextlib.contextmanager
 def holding(client, config, cost, provider=None, call=None, run_id=None,
-            day=None, kind="call", rows=None):
+            day=None, kind="call", rows=None, unit=None):
     """Reserve, do the call, settle. The shape every spend path should use.
 
     On the way out it settles at the reserved cost unless the body already
@@ -685,7 +723,7 @@ def holding(client, config, cost, provider=None, call=None, run_id=None,
     raised bought nothing this side of the wire can prove.
     """
     hold = reserve(client, config, cost, provider=provider, call=call,
-                   run_id=run_id, day=day, kind=kind, rows=rows)
+                   run_id=run_id, day=day, kind=kind, rows=rows, unit=unit)
     try:
         yield hold
     except BaseException:
@@ -769,7 +807,15 @@ def balances(client, config, rows=None, day=None, run_id=None):
                 committed(client, provider=provider, run_id=run_id, rows=rows)),
             "critical_at": CRITICAL_REMAINING.get(provider),
             "balance_is_money": provider in CRITICAL_REMAINING,
-            "unit": unit(provider),
+            "unit": unit_for(provider),
+            # WHAT THE ROWS THEMSELVES SAY, which is not always one thing.
+            # A provider whose rows carry two units has a ceiling that means
+            # nothing - you cannot subtract cents from credits - and that
+            # has to be visible rather than averaged into a total.
+            "units_seen": sorted({
+                row_unit(r) for r in rows
+                if isinstance(r, dict) and r.get("client") == client
+                and r.get("provider") == provider}),
         }
     return out
 
@@ -820,6 +866,9 @@ def progress_block(client, config, rows=None, day=None, run_id=None):
     for provider, b in balances(client, config, rows=rows, day=day,
                                 run_id=run_id).items():
         marker = "  <-- ACCOUNT BALANCE" if b["balance_is_money"] else ""
+        if len(b["units_seen"]) > 1:
+            marker = ("  <-- ROWS IN " + " AND ".join(b["units_seen"]).upper()
+                      + "; THIS CEILING CANNOT MEAN ANYTHING") + marker
         lines.append(
             f"  {provider:<16} left {_cell(b['remaining'], b['ceilings']['total'])}"
             f"   today {_cell(b['remaining_today'], b['ceilings']['per_day'])}"

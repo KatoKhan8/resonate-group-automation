@@ -903,6 +903,75 @@ class EveryProgressBlockCarriesTheBalance(Ledgered):
         self.assertIn("[credits]", line)
         self.assertNotIn("MIXED", line)
 
+    def test_a_writer_that_knows_its_unit_can_say_so_on_the_row(self):
+        """The seam TASK-308 needs, so dollars do not land undeclared.
+
+        `researchpack` writes cents into the column `deliverable` writes
+        credits into, and TASK-308 adds dollars. Its acceptance requires a
+        `unit` of `usd` on the row. That has to come from `record`, or the
+        worker writes rows by hand and they stop being rows this module
+        counts - which is how a provider's spend goes invisible to every
+        ceiling while still appearing in the file.
+        """
+        row = spendledger.record(CLIENT, "anthropic", "messages", 3,
+                                 unit="usd")
+
+        self.assertEqual("usd", row["unit"])
+        self.assertEqual("usd", spendledger.row_unit(row))
+        on_disk = [r for r in spendledger.load()
+                   if r["provider"] == "anthropic"]
+        self.assertEqual(["usd"], [r.get("unit") for r in on_disk])
+
+    def test_a_writer_that_does_not_know_leaves_the_row_ALONE(self):
+        """Not defaulted, deliberately.
+
+        TASK-308: "do not retrofit the other providers; that is the
+        operator's call and a separate task." A guess written onto a row is
+        indistinguishable from a measurement a week later, so an unstated
+        unit stays unstated and is read as the provider's convention.
+        """
+        row = spendledger.record(CLIENT, "deliverable", "verify", 1)
+
+        self.assertNotIn("unit", row)
+        self.assertEqual("credits", spendledger.row_unit(row))
+        self.assertEqual("cents", spendledger.row_unit(
+            {"provider": "apify", "expected_cost": 5}))
+
+    def test_a_held_call_settles_in_the_unit_it_was_reserved_in(self):
+        hold = spendledger.reserve(CLIENT, PROVIDERS_ONLY, 2,
+                                   provider="cheapverifier", call="verify",
+                                   unit="usd")
+
+        self.assertEqual("usd", spendledger.settle(hold, 2)["unit"])
+
+    def test_a_provider_whose_rows_carry_two_units_is_called_out(self):
+        """You cannot subtract cents from credits.
+
+        A ceiling over a column holding both means nothing, and that has to
+        be visible rather than averaged into a total - which is exactly what
+        a report did with 18,809.
+        """
+        spendledger.record(CLIENT, "cheapverifier", "verify", 1)
+        spendledger.record(CLIENT, "cheapverifier", "verify", 1, unit="usd")
+
+        block = spendledger.progress_block(CLIENT, PROVIDERS_ONLY)
+        line = [ln for ln in block.splitlines() if "cheapverifier" in ln][0]
+
+        self.assertIn("CANNOT MEAN ANYTHING", line)
+        self.assertEqual(
+            ["credits", "usd"],
+            spendledger.balances(CLIENT, PROVIDERS_ONLY)["cheapverifier"]
+            ["units_seen"])
+
+    def test_a_single_unit_provider_is_not_called_out(self):
+        """The control: the warning is a fact about the rows, not a constant."""
+        spendledger.record(CLIENT, "deliverable", "verify", 1)
+
+        block = spendledger.progress_block(CLIENT, PROVIDERS_ONLY)
+        line = [ln for ln in block.splitlines() if "deliverable" in ln][0]
+
+        self.assertNotIn("CANNOT MEAN ANYTHING", line)
+
     def test_an_undeclared_ceiling_says_unlimited_rather_than_a_number(self):
         """`None` is unlimited and must SAY so. Deliverable declares no
         `per_run`; printing 0, or a default nobody chose, would both lie."""
