@@ -865,18 +865,18 @@ and no value was printed.
 **Branch** `worktree-agent-a9fe2f7a7ad9343aa`, rebased on master `76f29779`.
 Not merged, not pushed by this lane.
 
-**Four commits:**
+**Five commits:**
 
 ```
 a5d50144  CheapVerifier provider, and the 404 that is an answer
 01c45d9d  The provider existed and the ledger refused it
 e0d27a7d  Three guards caught this lane, and one of them caught somebody else's data
 53d5a9dc  The fixture estate was verified by the pair I just replaced
-          + this document's final revision
+e1d1b608  Zero new failures across 57 modules, and a cache that had no caller
 ```
 
-**HEAD sha: see the final commit recorded by `git log -1` on that branch —
-`6a1a1e73` at the time of writing.**
+**HEAD: `e1d1b608`**, plus one final commit carrying this line itself —
+`git rev-parse HEAD` on the branch is authoritative.
 
 ### Test verdict
 
