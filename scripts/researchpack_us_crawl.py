@@ -151,6 +151,75 @@ def read_supply(path, country="United States"):
     return rows
 
 
+def read_cohort(path):
+    """Lane J's US cold survivor file, collapsed to one row per DOMAIN.
+
+    REPOINTED 2026-09-25 11:0xZ. `work/qualified-supply.jsonl` and the 09-07
+    list are different populations: the supply is 32,951 DOMAINS sourced
+    09-22 with no email field, and the 09-07 list is 33,887 CONTACTS with
+    verified addresses. They overlap on 1,484 of the 16,247 US domains, and
+    ZERO of the 16,247 has a contact anywhere in this system. Packing a
+    domain nobody can email is wasted wall-clock however free it is.
+
+    So the target is lane J's provider-confirmed survivors:
+    12,407 contacts on 10,418 domains, each row carrying its own provenance.
+    The crawl is per DOMAIN - `webfetch` reads a company's site, not a
+    person's - so the contacts are counted per domain and carried through,
+    because a domain with four addresses behind it is worth four times as
+    much against the day's ~2,500-address verification ceiling.
+    """
+    per = {}
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            domain = str(row.get("domain") or "").strip().lower().lstrip("@")
+            if not domain:
+                continue
+            readiness = row.get("readiness") or {}
+            flag = row.get("domain_level_flag") or {}
+            entry = per.setdefault(domain, {
+                "domain": domain,
+                "name": row.get("company"),
+                "industry": row.get("industry"),
+                "_slice": None,
+                "_mx_status": readiness.get("mx_status"),
+                "contacts": 0,
+                "already_packed": bool(readiness.get("research_pack_fact")),
+                # True means the estate holds somebody at this domain who
+                # replied, bounced or is in sequence. Not an exclusion of
+                # THIS contact - lane J already cut those - but a reason to
+                # ship the clean domains first.
+                "estate_holds_an_excluded_person": bool(
+                    flag.get("estate_holds_an_excluded_person_at_this_domain")),
+            })
+            entry["contacts"] += 1
+            if not entry["_mx_status"]:
+                entry["_mx_status"] = readiness.get("mx_status")
+    return list(per.values())
+
+
+def prioritise_cohort(rows):
+    """Shippable first, as lane J's own fields define shippable.
+
+    Clean domains before domains where the estate holds an excluded person;
+    then MORE CONTACTS FIRST, because one crawl unlocks every address behind
+    that domain and the binding ceiling today is addresses, not domains;
+    then a readable MX; then the domain, so the order is deterministic and
+    a resumed run walks the same list.
+    """
+    return sorted(rows, key=lambda r: (
+        1 if r.get("estate_holds_an_excluded_person") else 0,
+        -int(r.get("contacts") or 0),
+        MX_RANK.get(r.get("_mx_status"), 8),
+        str(r.get("domain"))))
+
+
 def prioritise(rows):
     """known_allowed first, then the largest `_slice` buckets first.
 
@@ -181,6 +250,11 @@ def pack_one(rec, site, config=None):
         "industry": rec.get("industry"),
         "slice": rec.get("_slice"),
         "mx_status": rec.get("_mx_status"),
+        # Carried through from lane J's cohort so the pack log joins to the
+        # push without re-deriving anything. Absent on a supply-file run.
+        "contacts": rec.get("contacts"),
+        "estate_holds_an_excluded_person":
+            rec.get("estate_holds_an_excluded_person"),
         "retrieved_at": now(),
         "provider": PROVIDER,
         "usd": USD,
@@ -327,7 +401,11 @@ def consolidate(log_path, out_path, profile="site_content"):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--supply", required=True)
+    ap.add_argument("--supply", help="work/qualified-supply.jsonl (domains)")
+    ap.add_argument("--cohort",
+                    help="lane J's US-COLD-COHORT jsonl (contacts). This is "
+                         "the target: a domain with no contact cannot be "
+                         "emailed, so packing it buys nothing.")
     ap.add_argument("--log", required=True, help="append-only JSONL")
     ap.add_argument("--cache", help="consolidated JSON cache to write at the end")
     ap.add_argument("--country", default="United States")
@@ -352,8 +430,20 @@ def main(argv=None):
     print("lane C site.py blob %s (loaded, not forked)" % sha)
     print("webfetch bounds: %s" % json.dumps(webfetch.settings(None)))
 
-    rows = prioritise(read_supply(args.supply, args.country))
-    print("%s: %d domain(s) in the supply" % (args.country, len(rows)))
+    if not (args.supply or args.cohort):
+        ap.error("one of --cohort (contacts, the real target) or --supply")
+    if args.cohort:
+        rows = prioritise_cohort(read_cohort(args.cohort))
+        contacts = sum(int(r.get("contacts") or 0) for r in rows)
+        packed = sum(1 for r in rows if r.get("already_packed"))
+        flagged = sum(1 for r in rows
+                      if r.get("estate_holds_an_excluded_person"))
+        print("cohort: %d domain(s), %d contact(s); %d already carry a pack "
+              "fact; %d domains where the estate holds an excluded person "
+              "(shipped last)" % (len(rows), contacts, packed, flagged))
+    else:
+        rows = prioritise(read_supply(args.supply, args.country))
+        print("%s: %d domain(s) in the supply" % (args.country, len(rows)))
 
     if args.calibrate:
         # A sample taken from the MIDDLE of the priority order, so the
