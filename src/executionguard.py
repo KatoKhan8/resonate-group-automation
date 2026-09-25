@@ -54,9 +54,9 @@ import datetime
 import json
 import sys
 
-from . import (actionledger, approval, cadence, campaigns, claims, clients,
-               collision, configdiff, eligibility, fatigue, killswitch, lint,
-               pilotcaps, providerwrites, store)
+from . import (account_rule, actionledger, approval, cadence, campaigns,
+               claims, clients, collision, configdiff, eligibility, fatigue,
+               killswitch, lint, pilotcaps, providerwrites, store)
 
 # How long a provider read-back stays good. A vendor UI edit can land between
 # verifying a configuration and acting on it, and 594061's own note was changed
@@ -562,6 +562,29 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     gates.append("readback")
 
     # 4. JIT: suppression, collision, fatigue, sender health ------------------
+
+    # THE ACCOUNT RULE RUNS FIRST, AND THE ORDER IS THE POINT.
+    #
+    # Placed after `fatigue` - where it naturally belongs by subject - this
+    # gate is UNREACHABLE for the cases it exists to decide. Measured while
+    # wiring it: `fatigue.account_check` WARNs at
+    # `account.max_active_contacts` (3) and BLOCKs above it, and
+    # `eligibility.decide` turns a WARN into `held`, so a second or third
+    # persona is refused at `eligibility` before the stagger is ever
+    # consulted. The rule would have been a helper returning a verdict nobody
+    # read - which is `stoppedcause.py`, correct since 2026-09-18 and wired to
+    # nothing.
+    #
+    # So it runs at the top of gate 4. The operator's rule is the POLICY about
+    # who may be approached at an account; fatigue is a pacing heuristic and
+    # still runs below, so nothing this allows escapes it. What changes is
+    # which refusal an operator is shown first, and for a persona decision it
+    # should be the rule, by name, with the gap in days.
+    rule = account_rule.evaluate(rec, contact.get("key"))
+    _require("account_rule", rule["verdict"] == account_rule.ALLOW,
+             f"the account rule refuses ({rule['rule']}): {rule['why']}")
+    gates.append("account_rule")
+
     decided = eligibility.decide(rec, contact, step_key, channel=channel)
     _require("eligibility", decided.get("verdict") == "eligible",
              f"eligibility says {decided.get('verdict')}: "
@@ -641,6 +664,10 @@ def authorize(*, operation, channel, campaign, rec, contact, step_key,
     account_decision, account_why = collision.account_policy(account)
     _require("account_collision", account_decision == collision.ALLOW,
              f"the account says {account_decision}: {account_why}")
+    # `collision.account_policy` above answers what the CLIENT'S OWN estate
+    # has done at this account, and `account_rule` at the top of gate 4
+    # answers what WE may do next. The two are ANDed: a `collision` STOP
+    # refuses whatever the account rule said, so the rule can only narrow.
     gates.extend(["collision", "account_collision"])
 
     # 5. CAP, against the durable ledger ------------------------------------
