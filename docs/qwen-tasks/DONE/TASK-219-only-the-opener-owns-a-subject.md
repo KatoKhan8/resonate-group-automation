@@ -127,3 +127,48 @@ The config in the threaded shape; `subject_1`-only variables with every other
 subject emptied; approval and comparator agreeing that sendable content is one
 subject plus three bodies; the five comparator proofs; and both negative tests
 green with the exit code read off the process.
+
+## RESULT
+
+**STATUS:** DONE
+
+**COMMIT SHA:** (pending commit)
+
+**TESTS:**
+- `tests/test_threaded_sequence.py`: 18 tests, all pass
+- `tests/test_lead_variables.py`: 10 tests, all pass
+- `tests/test_compare_bison.py`: 7 tests, all pass
+- `tests/test_no_activation_without_an_exact_match.py`: 54 tests, all pass (3 expected failures)
+- `tests/test_a_five_step_campaign_sends_five_different_emails.py`: 27 tests, all pass
+- `tests/test_the_cadence_lands_in_every_file.py`: 18 tests, all pass
+- `tests/test_a_threaded_sequence_is_threaded_at_every_length.py`: all pass
+- `tests/test_task081_thread_reply.py`: all pass
+- Combined run of all above: 184 tests, OK (7 expected failures)
+
+**FILES CHANGED:**
+- `docs/qwen-tasks/TODO/TASK-219-only-the-opener-owns-a-subject.md` → `docs/qwen-tasks/RUNNING/` → `docs/qwen-tasks/DONE/`
+
+**FILES VERIFIED (already implemented by prior work):**
+- `config/clients/productive.yaml` — all 5 steps reference `{SUBJECT_1}`, `thread_reply_pattern: [false, true, true, true, true]`
+- `src/bisonfactory.py` — `_variables_for` empties threaded follow-up subjects; `_stale_clearances` clears in-range follow-up subjects AND out-of-range positions; `_sequence_steps` validates the threading invariant
+- `src/configdiff.py` — `_expected_lead_variables` empties follow-up subjects for threaded steps; `approved_bison` and `provider_bison` include `thread_replies`; `REQUIRED_BISON` includes `thread_replies`
+- `src/approve.py` / `src/approval.py` — fingerprint covers subject (which is `{SUBJECT_1}` resolved for every step); no independent fingerprint needed for emptied follow-up subjects
+- `tests/test_threaded_sequence.py` — 18 tests covering negative tests, stale clearances, variable shape, and integration
+- `docs/ONLY-THE-OPENER-OWNS-A-SUBJECT-2026-09-16.md` — design decision document
+
+**FINDINGS:**
+1. The implementation was already complete when this task was dispatched. All source code changes, tests, config, and documentation were in place from prior work (TASK-217 and the initial TASK-219 implementation).
+2. The config has 5 steps (not 3 as the task description assumed), with `thread_reply_pattern: [false, true, true, true, true]`. This is the correct threaded shape at the current cadence length.
+3. The five comparator proofs are all satisfied:
+   - Opener subject exactly matches (`{SUBJECT_1}` on both sides)
+   - Bodies match at sequence level (placeholders) and lead level (resolved copy)
+   - `thread_replies` tuple is compared field by field
+   - Stale follow-up subjects are cleared by `_stale_clearances` and verified by the lead copy comparison
+   - Out-of-range bodies are cleared and verified
+4. Both negative tests pass: em2 and em3 with `thread_reply=false` AND a distinct subject are refused by `_sequence_steps`.
+
+**RISKS:**
+- None identified. The implementation is defensive: the invariant is enforced at config validation, variable writing, stale clearing, and comparison.
+
+**RECOMMENDED CLAUDE ACTION:**
+- Rebuild campaign 485 (as noted in the task and the design doc). The config, engine, and tests are ready.
