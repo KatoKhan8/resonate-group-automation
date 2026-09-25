@@ -72,8 +72,12 @@ class ACapThatSpansRuns(unittest.TestCase):
         self.assertIn("per_day", str(caught.exception))
 
     def test_a_provider_ceiling_is_scoped_to_that_provider(self):
+        # `total` added 2026-09-25: a governed client with no lifetime
+        # ceiling anywhere is now refused by `MissingCeiling` before any of
+        # these scoped ceilings are reached, so a fixture that declares none
+        # would be testing that guard instead of this one.
         rows = [row(400, provider="contactout"), row(50, provider="apify")]
-        cfg = {"budget": {"per_provider_per_day": 420}}
+        cfg = {"budget": {"per_provider_per_day": 420, "total": 100_000}}
         with self.assertRaises(sl.BudgetExceeded):
             sl.check("productive", cfg, 50, provider="contactout", rows=rows)
         self.assertTrue(sl.check("productive", cfg, 50, provider="apify",
@@ -81,7 +85,9 @@ class ACapThatSpansRuns(unittest.TestCase):
 
     def test_yesterdays_spend_does_not_consume_todays_ceiling(self):
         rows = [row(900, day="2026-09-09")]
-        self.assertTrue(sl.check("productive", {"budget": {"per_day": 500}},
+        self.assertTrue(sl.check("productive",
+                                 {"budget": {"per_day": 500,
+                                             "total": 100_000}},
                                  100, rows=rows))
 
     def test_but_it_does_consume_the_total(self):

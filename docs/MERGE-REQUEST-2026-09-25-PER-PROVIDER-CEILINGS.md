@@ -177,6 +177,29 @@ This is the same defect class as an empty expectation matching everything and
 an empty ledger reading as an unspent budget: **a missing cap must never parse
 as an unlimited one.**
 
+**And a check that names no provider is refused too**, because with the client
+`total` gone there is no client-wide lifetime ceiling left for it to use — a
+spend check that does not say which provider it is for cannot know which
+ceiling applies. Both real callers (`enrich.spend`, the verification
+waterfall) already pass `provider`. `tests/test_a_shard_is_priced_before_it_is_bought.py`
+carries that case.
+
+### The boundary of this guard, stated rather than implied
+
+The refusal applies to a client that **declares a `budget` block at all**. A
+`budget` block is a statement that this client's spend is governed; once it is,
+the lifetime ceiling has to be there.
+
+A client file with **no `budget` block** is the older, separate condition
+"this client declared no ceilings" — `caps()` reports every scope as UNLIMITED
+and always has. `config/clients/demo.yaml` and `config/clients/contactout.example.yaml`
+are both in that state today. **This lane did not widen that and does not
+close it**, because refusing every client that has never declared a budget is
+a policy decision and not a side effect of adding per-provider ceilings.
+`test_a_client_that_declares_no_budget_at_all_is_a_SEPARATE_gap` pins it
+exactly as it is, so the guard above cannot be read as wider than it is — and
+so that the day somebody decides to close it, one test says so.
+
 Tests: `TheSwapIsAtomic` — 14 tests, including six that read the file that
 actually ships rather than a fixture of it.
 
@@ -221,6 +244,21 @@ exception and settles on a clean exit.
   provider did not charge for releases its hold instead of settling it, and a
   raising provider call releases rather than leaking.
 
+### What was NOT converted, and why that is currently safe
+
+`enrich.spend` — "the one door every provider call goes through" — still does
+check-then-record rather than reserve-then-settle. It is safe today for a
+reason that is worth writing down rather than assuming: **`enrich` and
+`research` contain no concurrency at all** (checked 2026-09-25: no
+`ThreadPoolExecutor`, no `concurrent.futures`, no `Thread`), and it records
+*before* the call rather than after, so the ledger is pessimistic and a worker
+cannot see room another worker has already taken. `verification` was the
+concurrent path and it is the one that was converted.
+
+The moment anything fans `enrich.run` out across workers, that door has to
+move to `holding()` too. Both provider and client ceilings are enforced there
+already — only the reservation is missing.
+
 ### A hazard this introduces, and what to do about it
 
 A run id is per process. A **long-lived process must call
@@ -263,29 +301,45 @@ class `ParallelWorkersCannotShareTheSameRoom`:
   that deleting the guard fails the test instead of hanging the suite — a
   suite that hangs gets killed rather than read.
 
+  That bound was added because of what happened without it, not in
+  anticipation. Run with the ceiling removed, the unbounded version left
+  eight non-daemon threads spinning past the end of the test method;
+  `addCleanup` then restored `store`, and the threads that were still buying
+  wrote **five rows of fabricated spend into the worktree's real
+  `work/spend-ledger.jsonl`** — by a route the write barrier cannot see,
+  because by the time they wrote, the writes were legitimate. Invented
+  credits exhaust a real ceiling. The rows were removed; the production
+  ledger was checked and carries none (`grep -c ceiling-test-client` → 0).
+  **A test that spends money has to be able to stop.**
+
 ### Every test shown to fail when its guard is removed
 
-Fourteen guards were removed one at a time from `src/spendledger.py` and
+Nineteen guards were removed one at a time from `src/spendledger.py` and
 `src/verification.py`, the suite run against each, and the file asserted
 byte-identical to its original afterwards. Baseline green; post-restore green.
 The tooling is not committed (`work/` is gitignored).
 
 | guard removed | tests that went red |
 | --- | ---: |
-| M1 provider ceilings not enforced at all | 15 |
-| M2 client `per_run` dropped from `check` | 2 |
-| M3 provider `per_run` dropped from `check` | 10 |
+| M1 provider ceilings not enforced at all | 9 |
+| M2 client `per_run` dropped from `check` | 1 |
+| M3 provider `per_run` dropped from `check` | 3 |
 | M4 reservations not counted (`committed` == `spent`) | 4 |
 | M5 `reserve` checks but never registers the hold | 7 |
 | M6 a reservation is ledgered as spend | 5 |
 | M7 the CRITICAL threshold is gone | 7 |
 | M8 the CRITICAL fires every time (no once-marker) | 1 |
 | M9 the CRITICAL never re-arms after a top-up | 1 |
-| M10 `per_run` counts every run, not this one | 9 |
+| M10 `per_run` counts every run, not this one | 8 |
 | M11 a ledger row does not say which run bought it | 1 |
 | M12 `holding()` does not release on an exception | 1 |
 | M13 the progress block drops the per-provider balance | 4 |
 | M14 verification checks instead of reserving | 2 |
+| M15 a missing lifetime ceiling parses as unlimited | 2 |
+| M16 an absent key and an explicit `unlimited` look alike | 4 |
+| M17 `MissingCeiling` is not a `BudgetExceeded` | 1 |
+| M18 a ceiling reads the ledger file directly, bypassing `load()` | 1 |
+| M19 the client sanity `per_day` is not enforced | 2 |
 
 The ones that matter individually:
 
@@ -301,6 +355,14 @@ The ones that matter individually:
   fails when somebody writes a comment and passes on a call wired to nothing.
 * **M8** and **M9** separate the two halves of "fires once": one test dies if
   it spams, a different one dies if it never re-arms.
+* **M16** (`declares` returns `True` for every key, so an omission looks like
+  an operator's `unlimited`) kills
+  `test_an_absent_key_and_an_explicit_unlimited_do_not_look_alike` along with
+  both `MissingCeiling` cases — the distinction is load-bearing and not
+  decorative.
+* **M18** (one ceiling reads `store.read_jsonl(path())` instead of `load()`)
+  kills `test_every_ceiling_reads_the_ledger_through_load`, which is the test
+  that keeps lane S's credibility gate covering all of this. See §9.4.
 
 Also updated, because they pinned the LEAK open and it is now closed:
 `tests/test_the_second_client_runs_on_the_same_engine.py` (the
@@ -456,7 +518,34 @@ So `apify` is declared `total: unlimited` in this ledger with the reason
 written beside it, and a cents-denominated ceiling is left as an operator
 decision about which unit it is in and which code enforces it.
 
-### 9.3 The empty-ledger hazard — lane S owns the predicate, this lane owns the seam
+### 9.3 The S5 pass lost its per-invocation bound, and says so
+
+`scripts/stage_s5_verify.py` defaulted `--max-credits` to the client's
+declared `per_run` of 2,000 and held itself to it. **The client `per_run` is
+gone, and the operator declared a provider `per_run` for CheapVerifier only**,
+so for the verification providers that pass actually calls — ContactOut,
+Deliverable, Reoon — there is no per-invocation bound left. What remains is
+`per_day` 95,000 and `total` 500,000 per provider, which are far larger than
+2,000.
+
+This follows directly from the decision and is not something this lane chose,
+but **a pass that quietly stops being bounded where it used to be bounded is
+the kind of change that gets noticed from a bill**. So the runner now prints,
+every time:
+
+```
+  per_run NOT self-enforced this invocation: the client declares none.
+  Per-provider per_run for this waterfall: {'contactout': None,
+  'deliverable': None, 'reoon': None}. The ledger still enforces every
+  declared ceiling by reservation; pass --max-credits to bound this pass.
+```
+
+and its preflight now prints the full per-provider balance block and fires the
+CRITICAL. To get the bound back, either declare `per_run` for those providers
+or pass `--max-credits`. Pinned by
+`test_a_client_that_declares_none_SAYS_the_pass_is_unbounded`.
+
+### 9.4 The empty-ledger hazard — lane S owns the predicate, this lane owns the seam
 
 An agent's worktree has its own `work/`, which is gitignored and therefore
 starts **empty**. Every per-provider `total` here is computed as
@@ -490,9 +579,12 @@ that does not cover these ceilings.
 | `src/spendledger.py` | per-provider ceilings, `per_run` enforcement, reservations (`reserve`/`settle`/`release`/`holding`/`reserve_upload`), `MissingCeiling`, `balances`, `progress_block`, `alerts`/`fire_alerts`, `run_id` on every row |
 | `src/verification.py` | the K=8 money path converted from check-then-record to reserve-then-settle |
 | `config/clients/productive.yaml` | the swap: client `total` and `per_run` removed, `per_day` 200,000 as a tripwire, `budget.providers` declared |
-| `tests/test_a_provider_ceiling_refuses_before_the_call.py` | new — 57 tests |
+| `tests/test_a_provider_ceiling_refuses_before_the_call.py` | new — 58 tests |
 | `tests/test_the_second_client_runs_on_the_same_engine.py` | the `per_run` LEAK case now asserts the refusal |
-| `tests/test_a_run_holds_itself_to_the_declared_per_run.py` | Lane N's "still not enforced" case turned the other way up |
+| `tests/test_a_run_holds_itself_to_the_declared_per_run.py` | Lane N's "still not enforced" case turned the other way up; the runner's default-ceiling case now declares its own `per_run` |
+| `tests/test_a_shard_is_priced_before_it_is_bought.py` | the shipped-config assertions moved to the new model; a no-provider check is pinned as refused |
+| `tests/test_a_cap_that_survives_the_run.py` | two fixtures given a lifetime ceiling so they test their own scope, not `MissingCeiling` |
+| `scripts/stage_s5_verify.py` | the preflight prints the per-provider balance and fires the CRITICAL; the lost per-invocation bound is said out loud |
 
 Not touched: `src/providers/cheapverifier.py` (lane Q),
 `scripts/stage_s5_verify.py`, `scripts/*_watch_loop.py`, `config/.env`.
