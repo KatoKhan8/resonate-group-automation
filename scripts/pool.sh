@@ -31,8 +31,15 @@ LOGS="${POOL_LOGS:-$MAIN/../pool-logs}"
 ROUND="${POOL_ROUND:-r9}"
 mkdir -p "$LOGS"
 
+# RAISED TO 12, 2026-09-25. Measured on this machine: AMD Ryzen 7 7735HS,
+# 16 logical cores, 31.2 GB RAM with 6.4 GB free at the time of the change.
+# RAM is the binding constraint here rather than cores - each worker runs
+# several node processes - so 12 is chosen against free memory, and the
+# status post reports actual usage so the next change is made from a
+# measurement instead of an assumption.
 WORKERS=(resonate-qwen-worker resonate-qwen-2 resonate-qwen-3 resonate-qwen-4 \
-         resonate-qwen-5 resonate-qwen-6 resonate-qwen-7 resonate-qwen-8)
+         resonate-qwen-5 resonate-qwen-6 resonate-qwen-7 resonate-qwen-8 \
+         resonate-qwen-9 resonate-qwen-10 resonate-qwen-11 resonate-qwen-12)
 
 branch_for () {   # worker dir name -> branch name for this round
   case "$1" in
