@@ -7,7 +7,7 @@ created, enrolled, activated, paused, stopped or written. No paid call was
 made and the spend ledger is untouched.
 
     branch      worktree-agent-a665dface2ba16da0
-    HEAD        d043671d  (plus this document)
+    HEAD        cfa8f958  (this document is the tip commit)
     base        24acafff  "The handoff carried the test identity slug"
 
 **Counts, provider ids, campaign ids and timestamps only.** No prospect name,
@@ -37,8 +37,8 @@ and the check is why this document does not carry it.
     of those, whose address has ever been verified               0
 
 **1,031 is an eligible population. It is not a batch, and today it is not a
-push.** §8 says what has to be true first and who owns each item. What I am
-holding, and why, is in §9.
+push.** §9 says what has to be true before it becomes one, who owns each
+item, and what I am holding.
 
 ---
 
@@ -150,8 +150,10 @@ Disjoint. First clause that disqualifies. It sums to the base.
 **The base is 2,131, not 2,081.** Exactly fifty leads entered the estate
 campaigns between the two reads and none left:
 
-    496   9 -> 43   (+34)     497   7 -> 20   (+13)
-    498  13 -> 15   (+2)      491 332 -> 333  (+1)
+    campaign 496    9 leads -> 43 leads    34 added
+    campaign 497    7 leads -> 20 leads    13 added
+    campaign 498   13 leads -> 15 leads     2 added
+    campaign 491  332 leads -> 333 leads    1 added
 
 The three archived April campaigns (262, 263, 264) are unchanged at 591, 329
 and 403. Quoting 2,081 today would be quoting last night's denominator. All
@@ -397,11 +399,26 @@ which the client's own is nearly all.
       unique leads contacted               139
       TOTAL MESSAGE REPLIES                  2
 
-REFUTED-006 recorded **0 replies** on 2026-09-23. It is 2 now. Those are
-almost certainly the two real unmatched replies on 613744 that the
-notifications repair found buried in 103 posts. **They are not cohort
-members** — §5.3 — but they are the first LinkedIn replies this estate has
-taken, and the drop hazard in `inbound` is no longer purely latent.
+REFUTED-006 recorded **0 replies** on 2026-09-23. It is 2 now, and they are
+not where I first assumed. Per campaign:
+
+    613744   connections sent 4, accepted 0, replies 1, leads contacted 5
+    613761   connections sent 4, accepted 1, replies 1, leads contacted 4
+
+My first draft said both were the unmatched replies on 613744 that the
+notifications repair found buried in 103 posts. **The provider says one
+each, on two different campaigns**, and 613744 is the campaign the operator's
+own test identity sits in — so one of these two may be the operator, and
+613761's is something else. I did not open either conversation: that is the
+inbox, it is 26,973 conversations mostly the client's, and identifying a
+correspondent was not this lane's job.
+
+What matters here is narrower and it is measured: **these are the first
+message replies our own LinkedIn campaigns have recorded, they are on
+campaigns the provider says are ours, and neither belongs to a cohort
+member** (§5.3 — the only cohort members HeyReach places anywhere are the
+eight there, and their campaigns are not these two). The drop hazard in `inbound` is no longer purely
+latent.
 
 ### 5.3 The join, and the size of the hole
 
@@ -430,8 +447,12 @@ answered 404 for 1, and reported **0 replies**:
       HeyReach returned 404 and could not answer                1
 
 **Eight of the leads EmailBison called clean are being worked on LinkedIn
-today, five of them by us.** That is the "currently in a live sequence
-anywhere" clause, and EmailBison cannot see it. The gate is applied the same
+today: five in campaigns the readback says are ours (613724, 613729, 613737,
+613749, 613755) and three only in the client's own IN_PROGRESS campaigns.**
+That is the "currently in a live sequence anywhere" clause, and EmailBison
+cannot see any of it. All eight also show a long tail of memberships in the
+client's PAUSED LinkedIn campaigns, which do not exclude and were not
+counted. The gate is applied the same
 way the store-negatives gate is: it may only ever REMOVE a lead the provider
 admitted, never add one, and unreadable removes as well — a 404 is not a
 statement that this person is in no LinkedIn campaign.
@@ -705,7 +726,7 @@ count, and every lead the detector flagged got a fresh per-lead read anyway.
 
 ---
 
-## 8. THE 1,031 IS STABLE ACROSS FOURTEEN HOURS, AND THAT IS A REAL RESULT
+## 8. THE EMAILBISON ANSWER IS STABLE ACROSS FOURTEEN HOURS, AND THE CHECK WAS STILL NECESSARY
 
 The 2026-09-24 staged files and today's fresh read are independent: different
 provider reads, fourteen hours apart, different files on disk. Recomputed at
@@ -723,7 +744,20 @@ The check was necessary and its answer was "nothing moved". That is worth
 saying plainly rather than presenting the re-read as having caught something
 it did not.
 
-What the re-read DID catch is in §5: nine leads EmailBison called clean that
+Two things to be careful about in reading that.
+
+**It is 1,040 on both sides, not 1,031** — the comparison is EmailBison
+clauses against EmailBison clauses, because last night's files carry no
+HeyReach read to compare against. The LinkedIn gate's 9 come off afterwards
+and have no counterpart on the 2026-09-24 side.
+
+**And "the check found nothing" is not "the check was unnecessary".** The
+reasoning in §1 stands on its own: the frozen file cannot eject, 352 did
+send overnight, and the only way to know whether it sent to a cohort member
+was to ask. Tomorrow the answer may differ. A safety check is not retired
+by passing.
+
+What the re-read DID catch is in §5: nine leads EmailBison calls clean that
 the LinkedIn side does not, eight of them mid-sequence today.
 
 ---
