@@ -189,17 +189,28 @@ def analyse(rows, config, s7_openers=None):
     category_only = category_only_best_case = 0
     facts_total = facts_no_source = facts_no_snippet = 0
     facts_no_published_at = facts_nav = nav_only_domains = 0
+    contacts = collections.Counter()
     passing = []
 
     for domain, row in rows.items():
+        # CONTACTS, NOT DOMAINS, ARE WHAT THE PUSH CARRIES. A domain with
+        # four addresses behind it is worth four times as much against the
+        # day's ~2,500-address verification ceiling, so every domain count
+        # below has its contact count beside it. 1 when the log came from a
+        # supply run, which has no contacts at all - and that is the whole
+        # reason this lane was repointed.
+        heads = int(row.get("contacts") or 1)
+        contacts["attempted"] += heads
         outcomes[row.get("outcome")] += 1
         if row.get("outcome") == "UNSAFE_URL":
             unsafe += 1
             continue
         crawled += 1
+        contacts["crawled"] += heads
         facts = row.get("facts") or []
         if not facts:
             continue
+        contacts["with_usable_fact"] += heads
         fact += 1
         for one in facts:
             facts_total += 1
@@ -228,8 +239,12 @@ def analyse(rows, config, s7_openers=None):
         passed = [h for h in hits if h]
         if passed:
             pass_any += 1
+            contacts["rule1_any_angle"] += heads
             passing.append({
                 "domain": domain,
+                "contacts": heads,
+                "estate_holds_an_excluded_person":
+                    row.get("estate_holds_an_excluded_person"),
                 "mx_status": row.get("mx_status"),
                 "slice": row.get("slice"),
                 "facts": len(facts),
@@ -257,6 +272,7 @@ def analyse(rows, config, s7_openers=None):
                 category_only_best_case += 1
         if all(h for h in hits):
             pass_all += 1
+            contacts["rule1_every_angle"] += heads
         if not passed and any(g for g in greeting_hits):
             pass_greeting_only += 1
 
@@ -275,6 +291,7 @@ def analyse(rows, config, s7_openers=None):
         "category_words_only_best_case": category_only_best_case,
         "single_word_top": single_word.most_common(12),
         "words_top": all_words.most_common(20),
+        "contacts": dict(contacts),
         "outcomes": outcomes.most_common(),
         "facts_total": facts_total,
         "facts_without_source_url": facts_no_source,
@@ -358,19 +375,26 @@ def main(argv=None):
     report = analyse(rows, config, load_s7(args.s7))
 
     n = report["attempted"] or 1
-    print("attempted                     %6d" % report["attempted"])
+    c = report["contacts"]
+    print("                              domains        contacts behind them")
+    print("attempted                     %6d         %6d"
+          % (report["attempted"], c.get("attempted", 0)))
     print("  refused by check_url        %6d" % report["unsafe_url"])
-    print("crawled                       %6d  %5.1f%%"
-          % (report["crawled"], 100.0 * report["crawled"] / n))
-    print("with at least one usable fact %6d  %5.1f%%"
-          % (report["with_usable_fact"], 100.0 * report["with_usable_fact"] / n))
+    print("crawled                       %6d  %5.1f%%  %6d"
+          % (report["crawled"], 100.0 * report["crawled"] / n,
+             c.get("crawled", 0)))
+    print("with at least one usable fact %6d  %5.1f%%  %6d"
+          % (report["with_usable_fact"], 100.0 * report["with_usable_fact"] / n,
+             c.get("with_usable_fact", 0)))
     print("  no renderable opener        %6d" % report["no_renderable_opener"])
-    print("PROJECTED rule 1, any angle   %6d  %5.1f%%"
+    print("PROJECTED rule 1, any angle   %6d  %5.1f%%  %6d"
           % (report["rule1_projected_any_angle"],
-             100.0 * report["rule1_projected_any_angle"] / n))
-    print("PROJECTED rule 1, every angle %6d  %5.1f%%"
+             100.0 * report["rule1_projected_any_angle"] / n,
+             c.get("rule1_any_angle", 0)))
+    print("PROJECTED rule 1, every angle %6d  %5.1f%%  %6d"
           % (report["rule1_projected_every_angle"],
-             100.0 * report["rule1_projected_every_angle"] / n))
+             100.0 * report["rule1_projected_every_angle"] / n,
+             c.get("rule1_every_angle", 0)))
     print("  would pass on the GREETING  %6d   (never counted above)"
           % report["rule1_on_the_greeting_alone"])
     passes = report["rule1_projected_any_angle"] or 1
@@ -411,13 +435,14 @@ def main(argv=None):
         # verified today, so known_allowed outranks unknown_provider and
         # the largest slices come first. Nothing here is a permission to
         # send; it is the join key the push needs.
-        sizes = collections.Counter(r["slice"] for r in report["passing"])
         ranked = sorted(report["passing"],
-                        key=lambda r: ({"known_allowed": 0,
-                                        "unknown_provider": 1}.get(
-                                           r["mx_status"], 9),
-                                       -sizes[r["slice"]],
-                                       str(r["slice"]), r["domain"]))
+                        key=lambda r: (
+                            1 if r.get("estate_holds_an_excluded_person")
+                            else 0,
+                            -int(r.get("contacts") or 1),
+                            {"known_allowed": 0,
+                             "unknown_provider": 1}.get(r["mx_status"], 8),
+                            r["domain"]))
         with open(args.cohort_out, "w", encoding="utf-8") as handle:
             for i, row in enumerate(ranked, 1):
                 row = dict(row, rank=i)
