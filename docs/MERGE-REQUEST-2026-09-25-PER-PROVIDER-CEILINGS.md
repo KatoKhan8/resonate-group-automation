@@ -1,7 +1,7 @@
 # Per-provider spend ceilings, enforced before the call
 
 **Lane T — 2026-09-25. Branch `worktree-agent-a5ab2805834c167b3`, rebased onto
-`master` at `02cbefe7`.**
+`master` at `bd2d2432`.**
 
 **The decision this implements is `docs/DECISIONS-2026-09-25-OPTION-A-AND-THE-FREE-CRAWL.md`
 §7.2**, which landed on master while this was being built. This document is
@@ -359,7 +359,7 @@ class `ParallelWorkersCannotShareTheSameRoom`:
 
 ### Every test shown to fail when its guard is removed
 
-Twenty guards were removed one at a time from `src/spendledger.py`,
+Twenty-four guards were removed one at a time from `src/spendledger.py`,
 `src/verification.py` and `src/researchpack/pack.py`, the suite run against each, and the file asserted
 byte-identical to its original afterwards. Baseline green; post-restore green.
 The tooling is not committed (`work/` is gitignored).
@@ -386,6 +386,10 @@ The tooling is not committed (`work/` is gitignored).
 | M18 a ceiling reads the ledger file directly, bypassing `load()` | 1 |
 | M19 the client sanity `per_day` is not enforced | 2 |
 | M20 the Apify door records without checking, as before | 1 |
+| M21 `record` ignores the unit it was given | 3 |
+| M22 `record` retrofits a unit onto every row | 1 |
+| M23 a row's own unit is ignored in favour of the convention | 2 |
+| M24 mixed units on one provider are not reported | 1 |
 
 The ones that matter individually:
 
@@ -627,6 +631,36 @@ zero by `COSTS["apify-research"]`, is bounded by `max_runs_per_batch: 75`,
 `max_items_per_run: 20` and `max_pages_per_domain: 5`, and this ceiling does
 not see it. Unchanged by this lane.
 
+#### The seam TASK-308 needs, built here so it does not have to edit this file
+
+`docs/qwen-tasks/TODO/TASK-308-...` landed on master while this branch was in
+flight and names the same defect independently — dollars would be a **third**
+unit in that column — and its acceptance requires `unit` on the row.
+
+`spendledger.record(..., unit="usd")` now does that, and `reserve`/`settle`/
+`holding` carry a unit through so a held call cannot settle in a different
+one from the one it was checked in. **This is the whole of what was built:
+the seam, not the retrofit.** TASK-308 says "do not retrofit the other
+providers; that is the operator's call and a separate task", so a writer that
+does not pass a unit leaves the row byte-for-byte as it has always been, and
+`row_unit(row)` reads that absence as the provider's convention. A guess
+written onto a row is indistinguishable from a measurement a week later.
+
+`balances()[p]["units_seen"]` reports what a provider's rows **actually say**,
+and the progress line flags a provider carrying two: `<-- ROWS IN CREDITS AND
+USD; THIS CEILING CANNOT MEAN ANYTHING`. You cannot subtract cents from
+credits, and averaging them into a total is exactly how 18,809 became a wrong
+number.
+
+**One warning for whoever implements TASK-308.** Its acceptance command reads
+`r.get('amount', 0)`. **This module's rows carry `expected_cost`, and
+`spent()` reads `expected_cost`.** A row written by hand with `amount` will
+appear in the file, satisfy that command, and be counted as **zero** by every
+ceiling in this module — Anthropic spend visible to the audit and invisible
+to every control, which is precisely the `per_run` defect wearing new
+clothes. Go through `record()`, or change `spent()` deliberately; do not
+write the row by hand.
+
 ### 9.3 The S5 pass lost its per-invocation bound, and says so
 
 `scripts/stage_s5_verify.py` defaulted `--max-credits` to the client's
@@ -766,7 +800,7 @@ new file pass five consecutive runs, the concurrency pair included.
 | `src/verification.py` | the K=8 money path converted from check-then-record to reserve-then-settle |
 | `src/researchpack/pack.py` | the Apify door recorded without ever checking; it now reserves before the run, still ledgering before it |
 | `config/clients/productive.yaml` | the swap: client `total` and `per_run` removed, `per_day` 200,000 as a tripwire, `budget.providers` declared |
-| `tests/test_a_provider_ceiling_refuses_before_the_call.py` | new — 64 tests |
+| `tests/test_a_provider_ceiling_refuses_before_the_call.py` | new — 69 tests |
 | `tests/test_the_second_client_runs_on_the_same_engine.py` | the `per_run` LEAK case now asserts the refusal |
 | `tests/test_a_run_holds_itself_to_the_declared_per_run.py` | Lane N's "still not enforced" case turned the other way up; the runner's default-ceiling case now declares its own `per_run` |
 | `tests/test_a_shard_is_priced_before_it_is_bought.py` | the shipped-config assertions moved to the new model; a no-provider check is pinned as refused |
