@@ -20,7 +20,27 @@ KINDS = ("company_post", "open_role", "person_post", "site_page")
 
 #: How long a snippet may be. Long enough to be quotable, short enough that
 #: nobody pastes a paragraph of somebody else's writing into an email.
-SNIPPET_CHARS = 400
+#:
+#: RAISED FROM 400 TO 2000. Operator, 2026-09-25, on lane K's measurement.
+#: `webfetch.readable_text` returns a page in READING ORDER, so the first 400
+#: characters of a modern site are its navigation bar: of the 14,491 facts
+#: captured on the US cohort at 400, **11,719 (80.9%) were navigation-led**,
+#: and on 4,512 domains EVERY fact was. `copylint.pack_text` then matches
+#: rule 1 against a menu, which is how `software`, `teams` and `services`
+#: came to be the words doing the work.
+#:
+#: Probed on 79 domains at 400 / 1000 / 2000 / 8000 characters: rule-1 passes
+#: 68 -> 74 -> 76 -> 76, passes resting on a SINGLE WORD 18 -> 14 -> 8 -> 4,
+#: menu words per 400 characters 4.16 -> 2.16 -> 1.47 -> 1.25. 2000 takes
+#: nearly all of the grounding 8000 offers at a quarter of the text, and it
+#: is the only step that improves the pass rate and the quality of the pass
+#: in the same direction. Beyond it the curve is flat and the objection in
+#: the line above - nobody should paste a page of somebody else's writing
+#: into an email - starts to bite.
+#:
+#: `webfetch.DEFAULTS["max_text_chars_per_page"]` is 8000, so this cap is
+#: still the binding one and no crawl bound moved to make room for it.
+SNIPPET_CHARS = 2000
 
 _WHITESPACE = re.compile(r"\s+")
 
