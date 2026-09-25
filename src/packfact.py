@@ -343,15 +343,26 @@ def _rule_subordinator(text, tokens):
                 "clause is a fragment" % first)
 
 
-def _bare(token):
-    return "".join(c for c in token.lower() if c.isalpha())
+def _is_contraction(token):
+    """`we're` yes, `were` no. THE APOSTROPHE IS REQUIRED.
+
+    Stripping punctuation before the lookup - which is what the first
+    version did - folds `it's` onto `its`, `we'll` onto `well` and `I'd`
+    onto `id`. All three of those are ordinary words with no verb in them,
+    and a menu reading `Our Products and its Features` would have satisfied
+    the declarative rule by containing a possessive pronoun.
+    """
+    if "'" not in token and "’" not in token:
+        return False
+    return "".join(c for c in token.lower() if c.isalpha()) in \
+        CONTRACTED_SUBJECT_VERB
 
 
 def _rule_declarative(text, tokens):
     # A CONTRACTION CARRIES ITS OWN SUBJECT. `We're`, `they've`, `it's`:
     # one token, subject and finite verb both, and it satisfies this rule
     # wherever it appears including position zero.
-    if any(_bare(t) in CONTRACTED_SUBJECT_VERB for t in tokens):
+    if any(_is_contraction(t) for t in tokens):
         return None
     verb_at = _finite_verb_index(tokens)
     if verb_at < 0:
