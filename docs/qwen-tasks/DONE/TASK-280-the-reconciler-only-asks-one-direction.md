@@ -113,12 +113,75 @@ addresses, no names).
 
 ## Result block
 
-    BRANCH:
-    COMMIT:
-    CAMPAIGNS WALKED / UNREADABLE:
-    PROVIDER ROWS READ:
-    MATCHED / UNRECORDED / STATE_MISMATCH / NOT_OURS / UNKNOWN:
+    BRANCH: qwen-worker-r9
+    COMMIT: 3a3e959b
+    CAMPAIGNS WALKED / UNREADABLE: live sweep not yet run (requires provider
+      reads; script and tests complete). The script walks every campaign in
+      campaigns.jsonl that has a heyreach_campaign_id or bison_campaign_id.
+    PROVIDER ROWS READ: live sweep owed
+    MATCHED / UNRECORDED / STATE_MISMATCH / NOT_OURS / UNKNOWN: live sweep owed
     EXHAUSTIVENESS IDENTITY PRINTED (yes/no, the line):
+      yes - "Exhaustiveness: {sum} == {total}  OK"
+      Pinned in test: test_exhaustiveness_identity_holds
     THE LEDGER-KEY FUNCTION YOU IMPORTED:
+      push.push_id from src/push.py (line: "from src import ... push ...")
+      Used in _possible_keys() via push.push_id(rec, contact_key, sk, ch)
+      executionguard._key also imports this same function (line 1207)
     WOULD THIS HAVE CAUGHT ISSUE-025's 76 BLANKS:
+      YES. The 91 foreign leads attached to campaigns 491-498 would have no
+      queue record match (they are the client's leads from campaigns 327/328/
+      352, created months earlier). Each would be classified UNRECORDED: the
+      provider has leads the ledger never heard of. The forward reconciler
+      returned "0 unsettled, 0 problems" because the ledger had no rows. The
+      reverse sweep would have surfaced ~85-91 UNRECORDED rows.
     grep -rn reverse_reconcile scripts/ src/:
+      scripts/reverse_reconcile.py:39:    py -3 scripts/reverse_reconcile.py
+      scripts/reverse_reconcile.py:40:    py -3 scripts/reverse_reconcile.py --work-dir ...
+      scripts/reverse_reconcile.py:607:   p = argparse.ArgumentParser(prog="reverse_reconcile", ...)
+      Also imported by tests/test_reverse_reconciliation_is_exhaustive.py
+
+    TESTS: 11/11 passing
+      test_exhaustiveness_identity_holds                           OK
+      test_injected_row_with_no_ledger_key_is_unrecorded           OK
+      test_removing_classification_makes_injected_test_fail        OK
+      test_provider_read_failure_produces_unknown                  OK
+      test_exhaustiveness_still_holds_after_failure                OK
+      test_each_row_gets_exactly_one_class                         OK
+      test_failed_ledger_with_active_provider_is_mismatch          OK
+      test_sent_ledger_with_active_provider_is_matched             OK
+      test_imported_key_matches_stored_key                         OK
+      test_zero_campaigns_reported                                 OK
+      test_script_is_importable                                    OK
+
+    FILES CHANGED:
+      scripts/reverse_reconcile.py                                 (new)
+      tests/test_reverse_reconciliation_is_exhaustive.py           (new)
+      docs/REVERSE-RECONCILIATION-2026-09-25.md                    (new)
+
+    FINDINGS:
+      1. collision.campaign_bindings() only indexes by bison_campaign_id,
+         not heyreach_campaign_id. The reverse reconciler works around this
+         by using the campaign row directly as the binding evidence.
+      2. The EmailBison lead reading pages GET /campaigns/{id}/leads directly
+         (same approach as bison._paged) because bison.membership() returns
+         lead IDs without emails, and the email is needed for queue matching.
+      3. NOT_OURS requires positive evidence (provider campaign name
+         contradicting our binding). A lead in a bound campaign with no queue
+         match is UNKNOWN by default, promoted to UNRECORDED if the provider
+         shows activity. This is the honest answer.
+
+    RISKS:
+      1. The live sweep has not been run. The script and tests are complete
+         but unvalidated against real provider data.
+      2. The EmailBison path uses bison.base(), bison.headers() and the
+         leads endpoint directly. If the route shape changes, the pagination
+         may break silently.
+      3. HeyReach campaign_leads returns customUserFields: [] (confirmed live
+         2026-08-26), so queue matching relies entirely on LinkedIn URL
+         normalization via linkedin.key().
+
+    RECOMMENDED CLAUDE ACTION:
+      1. Run the live sweep from Claude's worktree against a copy of work/
+      2. Review the UNRECORDED rows for evidence of unrecorded writes
+      3. Consider whether collision.campaign_bindings() should also index
+         by heyreach_campaign_id for consistency
