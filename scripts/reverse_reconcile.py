@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sweep BACKWARD: provider truth is the input; the ledger is being checked.
+"""Reverse reconciliation: provider truth against the action ledger.
 
 WHY THIS EXISTS.
 
@@ -13,45 +13,44 @@ that the ledger has no ATTEMPTED row for at all. A forward sweep over a
 ledger that never heard of the write returns "0 unsettled, 0 problems" and
 is correct about the rows it read and blind to the incident.
 
-This script sweeps the other direction: for each bound campaign, it reads
-the provider's leads and checks whether the ledger has a row for each one.
+This script sweeps BACKWARD. Provider truth is the input; the ledger is
+the thing being checked.
 
-CLASSIFICATION (mutually exclusive and exhaustive).
+WHAT IT MAY AND MAY NOT CONCLUDE.
 
-    MATCHED          a ledger row exists and its state is consistent
-    UNRECORDED       the provider acted and NO ledger row exists at all
-    STATE_MISMATCH   a ledger row exists and disagrees with provider truth
-    NOT_OURS         proved, not assumed: positive evidence the row belongs
-                     to the client, not to us
-    UNKNOWN          cannot be classified (provider read failure, no queue
-                     match and no ownership evidence either way)
+For each provider-side touch:
 
-Classified rows + UNKNOWN == provider rows read. This identity is printed
-and asserted in the test.
+    MATCHED         a ledger row exists and its state is consistent
+    UNRECORDED      the provider acted and NO ledger row exists at all
+    STATE_MISMATCH  a ledger row exists and disagrees
+    NOT_OURS        provider row belongs to the client, not to us
+    UNKNOWN         cannot be classified (including provider read failure)
 
-DRY RUN BY DEFAULT. Like every other script here that could change
-something. This script writes a report and settles nothing.
+NOT_OURS MUST BE PROVED, NOT ASSUMED. The HeyReach inbox is ~27k
+conversations and mostly the client's. A row you cannot classify is
+UNKNOWN, and UNKNOWN is an outcome, never folded into NOT_OURS.
 
-READ ONLY at every provider. No write, no send, no settle, no resume.
+IT SETTLES NOTHING ON ITS OWN. It writes a report. Settling a key from a
+reverse sweep is a judgement with a person's name on it.
 
-USAGE.
+READ ONLY AT EVERY PROVIDER. DRY RUN BY DEFAULT.
 
     py -3 scripts/reverse_reconcile.py
-    py -3 scripts/reverse_reconcile.py --work-dir /path/to/work/copy
+    py -3 scripts/reverse_reconcile.py --workspaces /path/to/copy
 """
 import argparse
-import hashlib
 import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import (                                                          # noqa: E402
-    actionledger, campaigns as campaigns_mod, linkedin, push, store)
-from src.providers import bison, heyreach                                   # noqa: E402
+from src import (                                                       # noqa: E402
+    actionledger, campaigns, collision, push, store,
+)
+from src.providers import bison, heyreach                               # noqa: E402
 
-# ------------------------------------------------------------------ constants
+# ----------------------------------------------------------------- classes
 
 MATCHED = "MATCHED"
 UNRECORDED = "UNRECORDED"
@@ -59,566 +58,561 @@ STATE_MISMATCH = "STATE_MISMATCH"
 NOT_OURS = "NOT_OURS"
 UNKNOWN = "UNKNOWN"
 
-ALL_CLASSES = (MATCHED, UNRECORDED, STATE_MISMATCH, NOT_OURS, UNKNOWN)
+CLASSES = (MATCHED, UNRECORDED, STATE_MISMATCH, NOT_OURS, UNKNOWN)
 
-# HeyReach lead states that prove the provider acted on the lead.
-# `request_pending` means enrolled but nothing done - it is NOT a touch.
-_HR_ACTIVE_STATES = frozenset({
-    "replied", "accepted", "request_sent", "failed", "ended_no_action",
-})
+# Ledger states that mean the action is live at the provider.
+ACTIVE_STATES = frozenset({actionledger.ATTEMPTED, actionledger.SENT,
+                           actionledger.UNRESOLVED})
+# Ledger states that mean the action did not reach the prospect.
+INACTIVE_STATES = frozenset({actionledger.FAILED, actionledger.ABANDONED})
 
-
-# -------------------------------------------------------------- queue indexing
-
-def _norm_url(url):
-    """Canonical LinkedIn URL, falling back to stripped lowercase."""
-    try:
-        return linkedin.key(url)
-    except (ValueError, Exception):                                         # noqa: BLE001
-        return str(url or "").strip().lower()
+# HeyReach route constant, imported for the raw read that preserves
+# customFields (the trimmed campaign_leads drops them).
+LEADS_ROUTE = "/campaign/GetLeadsFromCampaign"
+HEYREACH_MAX_PAGE = 100
 
 
-def _build_queue_index(recs):
-    """Index queue records by LinkedIn URL and email.
+# --------------------------------------------------------- ledger indexing
 
-    Returns (by_linkedin, by_email) where each maps a normalised identifier
-    to (rec_id, contact_key). A collision (two records, same URL) records
-    the first seen; this is a best-effort index for matching, not a
-    uniqueness constraint.
+def build_ledger_index(ledger_rows):
+    """(record_id, contact_key) -> [ledger rows].
+
+    The ledger key is `push.push_id(rec, contact_key, step_key, channel)`
+    = `record_id:contact_key:step_key:channel`. The provider carries
+    record_id and contact_key but not step_key, so the index is by the
+    prefix the provider CAN confirm.
     """
-    by_linkedin = {}
-    by_email = {}
-    for rec in recs:
-        if not isinstance(rec, dict):
-            continue
-        rec_id = str(rec.get("id") or "")
-        if not rec_id:
-            continue
-        for contact in rec.get("contacts") or ():
-            if not isinstance(contact, dict):
-                continue
-            ck = contact.get("key") or ""
-            li = contact.get("linkedin") or ""
-            if li:
-                norm = _norm_url(li)
-                if norm and norm not in by_linkedin:
-                    by_linkedin[norm] = (rec_id, ck)
-            em = contact.get("email") or ""
-            if em:
-                norm_em = str(em).strip().lower()
-                if norm_em and norm_em not in by_email:
-                    by_email[norm_em] = (rec_id, ck)
-    return by_linkedin, by_email
+    index = {}
+    for row in ledger_rows:
+        key = row.get("key", "")
+        parts = key.split(":")
+        if len(parts) >= 2:
+            pair = (str(parts[0]), str(parts[1]))
+            index.setdefault(pair, []).append(row)
+    return index
 
 
-# --------------------------------------------------------- campaign helpers
+def verify_key(row):
+    """Confirm the ledger key was derived by push.push_id, not by hand.
 
-def _heyreach_id(camp_row):
-    """The HeyReach campaign id from a canonical campaign row, or None."""
-    v = camp_row.get("heyreach_campaign_id")
-    if v in (None, ""):
-        return None
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _bison_id(camp_row):
-    """The EmailBison campaign id from a canonical campaign row, or None."""
-    v = camp_row.get("bison_campaign_id")
-    if v in (None, ""):
-        return None
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _campaign_steps(camp_row):
-    """The (step_key, channel) pairs this campaign may produce.
-
-    Uses `cadence.steps_for` so the same step definitions the write path
-    uses are what the reverse reconciler checks. Falls back to the default
-    cadence when the client config is unreadable.
+    Imports the derivation and checks. Returns True when the stored key
+    matches what the imported function would produce from the row's own
+    fields. A mismatch means the key was derived differently and cannot
+    be trusted for matching.
     """
-    from src import cadence, clients
-
-    config = {}
-    client = str(camp_row.get("client") or "").strip()
-    if client:
-        try:
-            config = clients.load(client)
-        except Exception:                                                   # noqa: BLE001
-            config = {}
-    try:
-        steps = cadence.steps_for(campaign=camp_row, config=config)
-    except Exception:                                                       # noqa: BLE001
-        try:
-            steps = cadence.steps_for(config=config)
-        except Exception:                                                   # noqa: BLE001
-            steps = cadence.STEPS
-    return [(s.get("key", ""), s.get("channel", ""))
-            for s in (steps or ()) if isinstance(s, dict)]
+    rec = {"id": row.get("rec_id")}
+    expected = push.push_id(rec, row.get("contact_key"),
+                            row.get("step_key"), row.get("channel"))
+    return expected == row.get("key")
 
 
-def _possible_keys(camp_row, rec_id, contact_key):
-    """Every ledger key this contact could have in this campaign.
+# -------------------------------------------------- provider reads (raw)
 
-    One per (step_key, channel) pair from the campaign's cadence. Imported
-    `push.push_id` derives each key the same way the write path does.
+def _heyreach_leads_raw(campaign_id):
+    """Page through HeyReach leads, preserving customFields.
+
+    `heyreach.campaign_leads` trims customFields from its output. The
+    reverse reconciler needs them to extract record_id and contact_key,
+    so it reads the raw response through the provider's own _read
+    function, which enforces the route allowlist.
     """
-    rec = {"id": rec_id}
-    return [push.push_id(rec, contact_key, sk, ch)
-            for sk, ch in _campaign_steps(camp_row) if sk and ch]
-
-
-# -------------------------------------------------- ledger state inspection
-
-def _ledger_state(key, ledger_latest):
-    """The latest state of this key in the ledger, or None if absent."""
-    row = ledger_latest.get(key)
-    return row.get("state") if row else None
-
-
-def _classify_key_state(ledger_state, provider_active):
-    """Given a ledger state and whether the provider shows activity, classify.
-
-    Returns MATCHED, STATE_MISMATCH, or UNRECORDED.
-    """
-    if ledger_state is None:
-        return UNRECORDED
-    if ledger_state == actionledger.SENT:
-        return MATCHED
-    if ledger_state in (actionledger.ATTEMPTED, actionledger.UNRESOLVED):
-        if provider_active:
-            return STATE_MISMATCH
-        return MATCHED
-    if ledger_state == actionledger.FAILED:
-        if provider_active:
-            return STATE_MISMATCH
-        return MATCHED
-    if ledger_state == actionledger.ABANDONED:
-        if provider_active:
-            return STATE_MISMATCH
-        return MATCHED
-    if ledger_state == actionledger.UNCONFIRMABLE:
-        if provider_active:
-            return STATE_MISMATCH
-        return MATCHED
-    return MATCHED
-
-
-# ----------------------------------------------- HeyReach lead classification
-
-def _hr_is_active(lead):
-    """Did HeyReach act on this lead? `request_pending` is NOT a touch."""
-    state = lead.get("state") or ""
-    return state in _HR_ACTIVE_STATES
-
-
-def _read_heyreach_leads(hr_campaign_id):
-    """Page through every lead in a HeyReach campaign. Read-only.
-
-    Returns (leads, error). On success error is None. On failure leads is
-    [] and error is a string describing what went wrong.
-    """
-    leads = []
+    all_leads = []
     offset = 0
     total = None
     for _ in range(200):
-        try:
-            page, count = heyreach.campaign_leads(hr_campaign_id, offset=offset)
-        except Exception as e:                                                # noqa: BLE001
-            return [], f"heyreach campaign {hr_campaign_id}: {type(e).__name__}: {e}"
-        if count is not None:
-            total = count
-        leads.extend(page)
-        offset += len(page)
-        if not page or (total is not None and offset >= int(total)):
+        data = heyreach._read(LEADS_ROUTE, {
+            "campaignId": int(campaign_id),
+            "offset": int(offset),
+            "limit": min(HEYREACH_MAX_PAGE, 100),
+        })
+        items = heyreach._collection(data, LEADS_ROUTE)
+        all_leads.extend(items)
+        tc = data.get("totalCount")
+        if tc is not None:
+            total = tc
+        offset += len(items)
+        if offset >= (total or 0) or not items:
             break
-    return leads, None
+    return all_leads, total
 
 
-# --------------------------------------------- EmailBison lead classification
-
-def _read_bison_leads(bison_campaign_id):
-    """Page through every lead in an EmailBison campaign. Read-only.
-
-    Returns (leads, error). Each lead is a dict with at least `email`,
-    `lead_id`, `status`.
-    """
-    from src.providers.bison import leads_endpoint, mapping as bison_mapping
-    from src.providers import request as prov_request, ok as prov_ok
-
-    leads = []
+def _bison_leads_paged(campaign_id):
+    """Page through all Bison campaign leads."""
+    all_leads = []
     page = 1
-    total = None
     while page <= 500:
-        url = f"{leads_endpoint(bison_campaign_id)}?page={page}"
-        try:
-            status, data = prov_request("GET", url, bison.headers())
-        except Exception as e:                                                # noqa: BLE001
-            return [], f"bison campaign {bison_campaign_id}: {type(e).__name__}: {e}"
-        if not prov_ok(status):
-            return [], f"bison campaign {bison_campaign_id}: GET -> {status}"
-        if not isinstance(data, dict):
-            return [], f"bison campaign {bison_campaign_id}: unexpected shape"
-        chunk = bison_mapping(data, "membership").get("data")
-        if not isinstance(chunk, list):
-            return [], f"bison campaign {bison_campaign_id}: data is not a list"
-        leads.extend(r for r in chunk if isinstance(r, dict))
+        status, data = bison.request(
+            "GET",
+            bison.query(bison.leads_endpoint(campaign_id), {"page": page}),
+            bison.headers())
+        if not bison.ok(status):
+            raise bison.ProviderError(
+                f"reverse_reconcile bison leads: GET -> {status}")
+        rows = bison.mapping(data, "reverse_reconcile").get("data")
+        if not isinstance(rows, list):
+            raise bison.ProviderError(
+                "reverse_reconcile bison leads: data is not a list")
+        all_leads.extend(rows)
         meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
-        if total is None:
-            total = meta.get("total")
         try:
-            last = int(meta.get("last_page"))
+            last = int(meta.get("last_page", 1))
         except (TypeError, ValueError):
-            break
+            if not rows:
+                break
+            raise bison.ProviderError(
+                "reverse_reconcile bison leads: no readable last_page")
         if page >= last:
             break
         page += 1
-    return leads, None
+    return all_leads
 
 
-def _bison_lead_is_active(lead):
-    """Did EmailBison act on this lead? Presence in the campaign with a
-    status other than `stopped`/`bounced` counts as active."""
-    st = str(lead.get("status") or "").strip().lower()
-    return st not in ("", "stopped", "bounced")
+def _extract_heyreach_custom_fields(lead_row):
+    """Extract customFields from a raw HeyReach lead response row.
 
-
-# --------------------------------------------------------- ownership evidence
-
-def _prove_not_ours(camp_row, provider_lead, provider_name):
-    """Can we POSITIVELY prove this lead belongs to the client, not us?
-
-    Returns (verdict, evidence_sentence). The verdict is NOT_OURS only when
-    positive evidence exists. If we cannot prove it, the verdict is UNKNOWN.
-
-    A lead in a bound campaign that matches no queue record is UNKNOWN, not
-    NOT_OURS. We cannot prove who added it - the client may have added it
-    manually, or another system may have pushed it. NOT_OURS requires
-    positive evidence: the provider's own campaign name contradicting our
-    binding, or the campaign having no binding at all.
-
-    Evidence used:
-    - The campaign row itself: does it claim this provider campaign id?
-    - collision._ours: does the provider's campaign name match our binding?
+    The response key is `customFields` (not `customUserFields` - that is
+    the request key). Fields may be nested under `linkedInUserProfile`
+    as well, so both locations are checked.
     """
-    from src import collision
-
-    hr_id = _heyreach_id(camp_row)
-    b_id = _bison_id(camp_row)
-
-    # The campaign row we're iterating IS the binding. If the provider
-    # campaign id matches what the row claims, the campaign is bound.
-    if provider_name == "heyreach" and hr_id is not None:
-        campaign_name = provider_lead.get("campaign_name") or ""
-        if campaign_name:
-            # Build a minimal binding dict for _ours
-            binding = {"client": camp_row.get("client"),
-                       "campaign_id": camp_row.get("campaign_id")}
-            ours, why = collision._ours(
-                hr_id, binding, {"name": campaign_name})
-            if not ours:
-                return NOT_OURS, f"heyreach campaign {hr_id}: {why}"
-
-    if provider_name == "bison" and b_id is not None:
-        campaign_name = provider_lead.get("name") or ""
-        if campaign_name:
-            binding = {"client": camp_row.get("client"),
-                       "campaign_id": camp_row.get("campaign_id")}
-            ours, why = collision._ours(
-                b_id, binding, {"name": campaign_name})
-            if not ours:
-                return NOT_OURS, f"bison campaign {b_id}: {why}"
-
-    return UNKNOWN, ("lead in a bound campaign but no queue record matches; "
-                     "cannot prove who added it")
+    out = {}
+    for field in (lead_row.get("customFields")
+                  or (lead_row.get("linkedInUserProfile") or {})
+                  .get("customFields")
+                  or []):
+        if isinstance(field, dict) and field.get("name") is not None:
+            out[str(field["name"])] = field.get("value")
+    return out
 
 
-# -------------------------------------------------------- hashing for reports
+# -------------------------------------------------------- ownership proof
 
-def _hash_contact(value):
-    """SHA-256 prefix for reports. No PII in the output."""
-    return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()[:12]
+def _ownership_evidence(campaign_row, provider_name):
+    """Prove whether a provider campaign is ours.
 
-
-# -------------------------------------------------------- the main sweep
-
-def _sweep_campaign(camp_row, by_linkedin, by_email, ledger_latest):
-    """Walk one bound campaign's provider leads and classify each.
-
-    Returns (rows, error). rows is a list of classification dicts. error is
-    a string if the provider could not be read, else None.
+    Returns (is_ours, evidence_string). Uses collision._ours which
+    requires BOTH the canonical binding AND the provider's own name for
+    the campaign. A campaign we cannot positively disown is UNKNOWN,
+    never NOT_OURS.
     """
-    hr = _heyreach_id(camp_row)
-    bi = _bison_id(camp_row)
-    campaign_id = str(camp_row.get("campaign_id") or "")
-    results = []
+    heyreach_id = campaign_row.get("heyreach_campaign_id")
+    bison_id = campaign_row.get("bison_campaign_id")
 
-    if hr is not None:
-        leads, err = _read_heyreach_leads(hr)
-        if err:
-            return [], err
-        for lead in leads:
-            profile_url = lead.get("profile_url") or ""
-            norm = _norm_url(profile_url) if profile_url else ""
-            match = by_linkedin.get(norm) if norm else None
-            active = _hr_is_active(lead)
+    bindings = collision.campaign_bindings()
 
-            if match:
-                rec_id, contact_key = match
-                keys = _possible_keys(camp_row, rec_id, contact_key)
-                best = _best_classification(keys, ledger_latest, active)
-                results.append({
-                    "campaign_id": campaign_id,
-                    "provider": "heyreach",
-                    "provider_campaign_id": hr,
-                    "contact_hash": _hash_contact(norm),
-                    "provider_lead_id": lead.get("provider_lead_id"),
-                    "provider_state": lead.get("state"),
-                    "classification": best,
-                    "ledger_key": (keys[0] if keys else None),
-                    "ledger_state": (_ledger_state(keys[0], ledger_latest)
-                                     if keys else None),
-                    "evidence": f"queue match on linkedin URL",
-                })
-            else:
-                verdict, evidence = _prove_not_ours(
-                    camp_row, lead, "heyreach")
-                # A lead in a bound campaign with no queue match and no
-                # positive NOT_OURS evidence is UNRECORDED: the provider
-                # has a lead we cannot find a ledger key for.
-                if verdict == UNKNOWN and active:
-                    verdict = UNRECORDED
-                    evidence = ("provider lead in bound campaign but no "
-                                "queue record matches; no ledger key can "
-                                "be derived")
-                results.append({
-                    "campaign_id": campaign_id,
-                    "provider": "heyreach",
-                    "provider_campaign_id": hr,
-                    "contact_hash": _hash_contact(norm),
-                    "provider_lead_id": lead.get("provider_lead_id"),
-                    "provider_state": lead.get("state"),
-                    "classification": verdict,
-                    "ledger_key": None,
-                    "ledger_state": None,
-                    "evidence": evidence,
-                })
+    if heyreach_id is not None:
+        try:
+            hid = int(heyreach_id)
+        except (TypeError, ValueError):
+            return None, f"heyreach_campaign_id {heyreach_id!r} not an int"
+        binding = bindings.get(hid)
+        if binding is None:
+            return None, (f"no canonical campaign claims HeyReach campaign "
+                          f"{hid}")
+        provider_row = {"name": provider_name} if provider_name else {}
+        ours, why = collision._ours(hid, binding, provider_row)
+        return ours, why
 
-    if bi is not None:
-        leads, err = _read_bison_leads(bi)
-        if err:
-            return results, err
-        for lead in leads:
-            email = str(lead.get("email") or "").strip().lower()
-            match = by_email.get(email) if email else None
-            active = _bison_lead_is_active(lead)
+    if bison_id is not None:
+        try:
+            bid = int(bison_id)
+        except (TypeError, ValueError):
+            return None, f"bison_campaign_id {bison_id!r} not an int"
+        binding = bindings.get(bid)
+        if binding is None:
+            return None, (f"no canonical campaign claims Bison campaign "
+                          f"{bid}")
+        provider_row = {"name": provider_name} if provider_name else {}
+        ours, why = collision._ours(bid, binding, provider_row)
+        return ours, why
 
-            if match:
-                rec_id, contact_key = match
-                keys = _possible_keys(camp_row, rec_id, contact_key)
-                best = _best_classification(keys, ledger_latest, active)
-                results.append({
-                    "campaign_id": campaign_id,
-                    "provider": "bison",
-                    "provider_campaign_id": bi,
-                    "contact_hash": _hash_contact(email),
-                    "provider_lead_id": lead.get("id"),
-                    "provider_state": lead.get("status"),
-                    "classification": best,
-                    "ledger_key": (keys[0] if keys else None),
-                    "ledger_state": (_ledger_state(keys[0], ledger_latest)
-                                     if keys else None),
-                    "evidence": f"queue match on email",
-                })
-            else:
-                verdict, evidence = _prove_not_ours(
-                    camp_row, lead, "bison")
-                if verdict == UNKNOWN and active:
-                    verdict = UNRECORDED
-                    evidence = ("provider lead in bound campaign but no "
-                                "queue record matches; no ledger key can "
-                                "be derived")
-                results.append({
-                    "campaign_id": campaign_id,
-                    "provider": "bison",
-                    "provider_campaign_id": bi,
-                    "contact_hash": _hash_contact(email),
-                    "provider_lead_id": lead.get("id"),
-                    "provider_state": lead.get("status"),
-                    "classification": verdict,
-                    "ledger_key": None,
-                    "ledger_state": None,
-                    "evidence": evidence,
-                })
-
-    return results, None
+    return None, "campaign has neither heyreach nor bison binding"
 
 
-def _best_classification(keys, ledger_latest, provider_active):
-    """The most concerning classification across all possible keys.
+# ------------------------------------------------- contact lookup helpers
 
-    Priority: STATE_MISMATCH > MATCHED > UNRECORDED. If ANY key shows a
-    mismatch, the lead is a mismatch. If any key is matched, the lead is
-    matched. If no key exists at all, the lead is unrecorded.
-    """
-    if not keys:
-        return UNRECORDED
-
-    any_exist = False
-    for k in keys:
-        ls = _ledger_state(k, ledger_latest)
-        if ls is not None:
-            any_exist = True
-            cls = _classify_key_state(ls, provider_active)
-            if cls == STATE_MISMATCH:
-                return STATE_MISMATCH
-            if cls == MATCHED:
-                return MATCHED
-
-    if any_exist:
-        return MATCHED
-    return UNRECORDED
-
-
-def _load_ledger_latest(ledger_rows):
-    """Collapse ledger rows to the latest state per key."""
-    latest = {}
-    for row in (ledger_rows or ()):
-        if not isinstance(row, dict):
+def _urls_for_campaign(recs, campaign_row):
+    """{linkedin_url_lower: (record_id, contact_key)} for campaign recs."""
+    by_id = {r["id"]: r for r in recs}
+    out = {}
+    for rid in campaign_row.get("record_ids") or []:
+        rec = by_id.get(rid)
+        if not rec:
             continue
-        k = row.get("key")
-        if k:
-            latest[k] = row
-    return latest
+        for contact in rec.get("contacts") or []:
+            url = (contact.get("linkedin") or "").strip().lower()
+            if url:
+                out[url] = (str(rec["id"]), contact.get("key"))
+    return out
 
 
-def run(work_dir=None):
-    """The full sweep. Returns (report_dict, exit_code)."""
-    if work_dir:
-        store.use_directory(work_dir)
+def _emails_for_campaign(recs, campaign_row):
+    """{email_lower: (record_id, contact_key)} for campaign recs."""
+    by_id = {r["id"]: r for r in recs}
+    out = {}
+    for rid in campaign_row.get("record_ids") or []:
+        rec = by_id.get(rid)
+        if not rec:
+            continue
+        for contact in rec.get("contacts") or []:
+            email = (contact.get("email") or "").strip().lower()
+            if email:
+                out[email] = (str(rec["id"]), contact.get("key"))
+    return out
 
-    camp_rows = list(campaigns_mod.load())
+
+# ---------------------------------------------------- classification core
+
+def _classify_ledger_match(pair, ledger_index):
+    """Classify a provider touch against the ledger.
+
+    `pair` is (record_id, contact_key). Returns one of the five classes
+    and an evidence string.
+    """
+    ledger_rows = ledger_index.get(pair)
+    if not ledger_rows:
+        return UNRECORDED, (f"no ledger row for record_id={pair[0]} "
+                            f"contact_key={pair[1]}")
+
+    has_active = any(r.get("state") in ACTIVE_STATES for r in ledger_rows)
+    all_inactive = all(r.get("state") in INACTIVE_STATES for r in ledger_rows)
+
+    if has_active:
+        return MATCHED, f"ledger has active row ({pair[0]}:{pair[1]})"
+    if all_inactive:
+        return STATE_MISMATCH, (
+            f"provider acted but all ledger rows are "
+            f"{[r.get('state') for r in ledger_rows]}")
+    return MATCHED, f"ledger row present ({pair[0]}:{pair[1]})"
+
+
+def classify_heyreach_campaign(campaign_row, recs, ledger_index):
+    """Classify every provider-side lead in one HeyReach campaign.
+
+    Returns (rows, error). `rows` is a list of classification dicts.
+    `error` is set when the provider could not be read.
+    """
+    hr_id = campaign_row.get("heyreach_campaign_id")
+    if hr_id is None:
+        return [], None
+
+    provider_name = None
     try:
-        recs = store.load()
-    except Exception as e:                                                  # noqa: BLE001
-        return {"error": f"cannot read queue: {e}"}, 1
+        camp_info = heyreach.campaign_by_id(int(hr_id))
+        provider_name = (camp_info or {}).get("name")
+    except Exception:
+        pass
+
+    is_ours, ownership_why = _ownership_evidence(campaign_row, provider_name)
+
     try:
-        ledger_rows = actionledger.load()
-    except Exception as e:                                                  # noqa: BLE001
-        return {"error": f"cannot read ledger: {e}"}, 1
+        leads, total = _heyreach_leads_raw(int(hr_id))
+    except Exception as e:
+        error_rows = []
+        for row in actionledger.load():
+            if str(row.get("campaign_id")) == str(campaign_row.get(
+                    "campaign_id")):
+                error_rows.append({
+                    "class": UNKNOWN,
+                    "reason": f"provider read failed: {type(e).__name__}: {e}",
+                    "provider_lead_id": None,
+                    "record_id": None,
+                    "contact_key": None,
+                    "evidence": "provider unreadable",
+                })
+        if not error_rows:
+            error_rows.append({
+                "class": UNKNOWN,
+                "reason": f"provider read failed: {type(e).__name__}: {e}",
+                "provider_lead_id": None,
+                "record_id": None,
+                "contact_key": None,
+                "evidence": "provider unreadable",
+            })
+        return error_rows, str(e)
 
-    by_linkedin, by_email = _build_queue_index(recs)
-    ledger_latest = _load_ledger_latest(ledger_rows)
+    campaign_rows = []
+    our_urls = _urls_for_campaign(recs, campaign_row)
 
-    bound = [c for c in camp_rows
-             if isinstance(c, dict) and (_heyreach_id(c) or _bison_id(c))]
+    for lead in leads:
+        profile = lead.get("linkedInUserProfile") or {}
+        profile_url = str(profile.get("profileUrl") or "").strip().lower()
+        custom = _extract_heyreach_custom_fields(lead)
+        rec_id = custom.get("record_id")
+        contact_key = custom.get("contact_key")
 
-    all_rows = []
-    unreadable = []
-    errors = []
+        row = {
+            "provider_lead_id": lead.get("id"),
+            "profile_url": profile_url or None,
+            "record_id": rec_id,
+            "contact_key": contact_key,
+            "campaign_id": campaign_row.get("campaign_id"),
+            "provider": "heyreach",
+            "provider_campaign_id": hr_id,
+            "lead_state": heyreach.lead_state(lead).get("state"),
+        }
 
-    for camp in bound:
-        cid = str(camp.get("campaign_id") or "?")
-        rows, err = _sweep_campaign(camp, by_linkedin, by_email,
-                                    ledger_latest)
-        all_rows.extend(rows)
-        if err:
-            unreadable.append({"campaign_id": cid, "error": err})
-            errors.append(err)
-            for r in rows:
-                r["classification"] = UNKNOWN
+        if is_ours is False:
+            row["class"] = NOT_OURS
+            row["evidence"] = f"ownership disproved: {ownership_why}"
+        elif is_ours is None:
+            row["class"] = UNKNOWN
+            row["evidence"] = f"ownership unproven: {ownership_why}"
+        elif not rec_id or not contact_key:
+            row["class"] = UNKNOWN
+            row["evidence"] = ("lead carries no record_id/contact_key "
+                               "customFields; cannot derive ledger key")
+        elif profile_url and profile_url not in our_urls:
+            row["class"] = UNKNOWN
+            row["evidence"] = ("lead URL not in any queue record for this "
+                               "campaign; cannot confirm identity")
+        else:
+            pair = (str(rec_id), str(contact_key))
+            cls, evidence = _classify_ledger_match(pair, ledger_index)
+            row["class"] = cls
+            row["evidence"] = evidence
+            if cls in (MATCHED, STATE_MISMATCH):
+                ledger_rows = ledger_index.get(pair, [])
+                row["ledger_key"] = (ledger_rows[0].get("key")
+                                     if ledger_rows else None)
+                row["key_verified"] = all(
+                    verify_key(lr) for lr in ledger_rows)
 
-    counts = {c: 0 for c in ALL_CLASSES}
-    for r in all_rows:
-        cls = r.get("classification")
-        if cls in counts:
-            counts[cls] += 1
+        campaign_rows.append(row)
 
-    total = len(all_rows)
-    identity = sum(counts.values())
-    identity_ok = identity == total
-
-    report = {
-        "campaigns_walked": len(bound),
-        "campaigns_unreadable": len(unreadable),
-        "unreadable_details": unreadable,
-        "provider_rows_read": total,
-        "counts": counts,
-        "exhaustiveness_identity": f"{identity} == {total}",
-        "exhaustiveness_ok": identity_ok,
-        "classifications": all_rows,
-    }
-    exit_code = 0
-    if not identity_ok:
-        exit_code = 2
-    if errors:
-        exit_code = max(exit_code, 1)
-
-    return report, exit_code
+    return campaign_rows, None
 
 
-def _print_report(report):
-    """Human-readable report to stdout."""
-    if "error" in report:
-        print(f"ERROR: {report['error']}")
-        return
+def classify_bison_campaign(campaign_row, recs, ledger_index):
+    """Classify every provider-side lead in one Bison campaign.
 
-    print(f"Campaigns walked:      {report['campaigns_walked']}")
-    print(f"Campaigns unreadable:  {report['campaigns_unreadable']}")
-    for u in report.get("unreadable_details", []):
-        print(f"  UNREADABLE {u['campaign_id']}: {u['error']}")
-    print(f"Provider rows read:    {report['provider_rows_read']}")
-    counts = report["counts"]
-    print(f"  MATCHED:          {counts[MATCHED]}")
-    print(f"  UNRECORDED:       {counts[UNRECORDED]}")
-    print(f"  STATE_MISMATCH:   {counts[STATE_MISMATCH]}")
-    print(f"  NOT_OURS:         {counts[NOT_OURS]}")
-    print(f"  UNKNOWN:          {counts[UNKNOWN]}")
-    print(f"Exhaustiveness: {report['exhaustiveness_identity']}  "
-          f"{'OK' if report['exhaustiveness_ok'] else 'FAIL'}")
+    Returns (rows, error). `rows` is a list of classification dicts.
+    `error` is set when the provider could not be read.
+    """
+    b_id = campaign_row.get("bison_campaign_id")
+    if b_id is None:
+        return [], None
 
-    unrecorded = [r for r in report.get("classifications", [])
-                  if r.get("classification") == UNRECORDED]
+    provider_name = None
+    try:
+        camp_info = bison.campaign(int(b_id))
+        provider_name = (camp_info or {}).get("name")
+    except Exception:
+        pass
+
+    is_ours, ownership_why = _ownership_evidence(campaign_row, provider_name)
+
+    try:
+        leads = _bison_leads_paged(int(b_id))
+    except Exception as e:
+        error_rows = [{
+            "class": UNKNOWN,
+            "reason": f"provider read failed: {type(e).__name__}: {e}",
+            "provider_lead_id": None,
+            "record_id": None,
+            "contact_key": None,
+            "evidence": "provider unreadable",
+        }]
+        return error_rows, str(e)
+
+    campaign_rows = []
+    email_map = _emails_for_campaign(recs, campaign_row)
+
+    for lead in leads:
+        if not isinstance(lead, dict):
+            continue
+        email = str(lead.get("email") or "").strip().lower()
+        lead_id = lead.get("id")
+
+        row = {
+            "provider_lead_id": lead_id,
+            "email_hash": _hash(email) if email else None,
+            "record_id": None,
+            "contact_key": None,
+            "campaign_id": campaign_row.get("campaign_id"),
+            "provider": "bison",
+            "provider_campaign_id": b_id,
+            "lead_status": bison._status_in(lead, int(b_id)),
+        }
+
+        if is_ours is False:
+            row["class"] = NOT_OURS
+            row["evidence"] = f"ownership disproved: {ownership_why}"
+        elif is_ours is None:
+            row["class"] = UNKNOWN
+            row["evidence"] = f"ownership unproven: {ownership_why}"
+        elif not email:
+            row["class"] = UNKNOWN
+            row["evidence"] = "lead carries no email address"
+        elif email not in email_map:
+            row["class"] = UNKNOWN
+            row["evidence"] = ("lead email not in any queue record for this "
+                               "campaign; cannot derive ledger key")
+        else:
+            rec_id, contact_key = email_map[email]
+            row["record_id"] = rec_id
+            row["contact_key"] = contact_key
+            pair = (str(rec_id), str(contact_key))
+            cls, evidence = _classify_ledger_match(pair, ledger_index)
+            row["class"] = cls
+            row["evidence"] = evidence
+            if cls in (MATCHED, STATE_MISMATCH):
+                ledger_rows = ledger_index.get(pair, [])
+                row["ledger_key"] = (ledger_rows[0].get("key")
+                                     if ledger_rows else None)
+                row["key_verified"] = all(
+                    verify_key(lr) for lr in ledger_rows)
+
+        campaign_rows.append(row)
+
+    return campaign_rows, None
+
+
+# ------------------------------------------------------------- reporting
+
+def _hash(value):
+    """SHA-256 prefix for PII-safe reporting. Never log raw addresses."""
+    import hashlib
+    return hashlib.sha256(str(value or "").encode()).hexdigest()[:12]
+
+
+def print_report(all_rows, campaign_walked, campaign_errors):
+    """Print the reverse reconciliation report."""
+    counts = {c: 0 for c in CLASSES}
+    for row in all_rows:
+        counts[row["class"]] = counts.get(row["class"], 0) + 1
+
+    total_provider = len(all_rows)
+    total_classified = sum(counts.values())
+
+    print(f"\n{'=' * 60}")
+    print("REVERSE RECONCILIATION REPORT")
+    print(f"{'=' * 60}")
+    print(f"\nCampaigns walked:     {len(campaign_walked)}")
+    print(f"Campaigns unreadable: {len(campaign_errors)}")
+    if campaign_errors:
+        for cid, reason in campaign_errors.items():
+            print(f"  - campaign {cid}: {reason}")
+    print(f"\nProvider rows read:   {total_provider}")
+    print(f"\nClassifications:")
+    for cls in CLASSES:
+        print(f"  {cls:20s} {counts[cls]}")
+
+    identity_ok = total_classified == total_provider
+    identity_line = (f"\nEXHAUSTIVENESS: {total_classified} classified "
+                     f"== {total_provider} provider rows read "
+                     f"{'PASS' if identity_ok else 'FAIL'}")
+    print(identity_line)
+    assert identity_ok, (
+        f"exhaustiveness violated: {total_classified} != {total_provider}")
+
+    unrecorded = [r for r in all_rows if r["class"] == UNRECORDED]
     if unrecorded:
-        print(f"\nUNRECORDED rows ({len(unrecorded)}):")
+        print(f"\n--- UNRECORDED rows ({len(unrecorded)}) ---")
         for r in unrecorded[:50]:
-            print(f"  campaign={r['campaign_id']}  provider={r['provider']}:"
-                  f"{r['provider_campaign_id']}  "
-                  f"contact={r['contact_hash']}  "
-                  f"lead={r['provider_lead_id']}  "
-                  f"state={r['provider_state']}  "
-                  f"evidence={r['evidence']}")
+            provider_id = r.get("provider_lead_id") or "?"
+            rec_id = r.get("record_id") or "?"
+            ck = r.get("contact_key") or "?"
+            evidence = r.get("evidence") or ""
+            print(f"  provider_lead={provider_id}  "
+                  f"record_id={rec_id}  contact_key={ck}  "
+                  f"evidence={evidence}")
 
-    mismatches = [r for r in report.get("classifications", [])
-                  if r.get("classification") == STATE_MISMATCH]
-    if mismatches:
-        print(f"\nSTATE_MISMATCH rows ({len(mismatches)}):")
-        for r in mismatches[:50]:
-            print(f"  campaign={r['campaign_id']}  key={r['ledger_key']}  "
-                  f"ledger={r['ledger_state']}  provider={r['provider_state']}")
+    mismatched = [r for r in all_rows if r["class"] == STATE_MISMATCH]
+    if mismatched:
+        print(f"\n--- STATE_MISMATCH rows ({len(mismatched)}) ---")
+        for r in mismatched[:50]:
+            provider_id = r.get("provider_lead_id") or "?"
+            rec_id = r.get("record_id") or "?"
+            ck = r.get("contact_key") or "?"
+            evidence = r.get("evidence") or ""
+            print(f"  provider_lead={provider_id}  "
+                  f"record_id={rec_id}  contact_key={ck}  "
+                  f"evidence={evidence}")
 
+    unknowns = [r for r in all_rows if r["class"] == UNKNOWN]
+    if unknowns:
+        print(f"\n--- UNKNOWN rows ({len(unknowns)}) ---")
+        for r in unknowns[:20]:
+            evidence = r.get("evidence") or ""
+            print(f"  provider_lead={r.get('provider_lead_id') or '?'}  "
+                  f"evidence={evidence}")
+
+    return counts, identity_ok
+
+
+# ------------------------------------------------------------------ main
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="reverse_reconcile",
-                                description=__doc__)
-    p.add_argument("--work-dir",
-                   help="Path to a copy of work/ (production work/ is not "
-                        "touched)")
+    p = argparse.ArgumentParser(
+        prog="reverse_reconcile",
+        description=__doc__)
+    p.add_argument("--workspaces",
+                   help="directory holding queue.jsonl and campaigns.jsonl "
+                        "(production work/ is not touched)")
     p.add_argument("--json", action="store_true",
-                   help="Output JSON instead of human-readable text")
+                   help="emit machine-readable JSON instead of text")
     a = p.parse_args(argv)
 
-    report, rc = run(work_dir=a.work_dir)
+    if a.workspaces:
+        ws = os.path.abspath(a.workspaces)
+        os.environ["QUEUE"] = os.path.join(ws, "queue.jsonl")
+        os.environ["CAMPAIGNS"] = os.path.join(ws, "campaigns.jsonl")
+        os.environ["ACTION_LEDGER"] = os.path.join(ws,
+                                                   "action-ledger.jsonl")
+
+    ledger_rows = actionledger.load()
+    ledger_index = build_ledger_index(ledger_rows)
+    camp_rows = list(campaigns.load())
+    recs = store.load()
+
+    all_rows = []
+    campaign_walked = []
+    campaign_errors = {}
+
+    for camp in camp_rows:
+        cid = camp.get("campaign_id")
+        campaign_walked.append(cid)
+
+        hr_id = camp.get("heyreach_campaign_id")
+        b_id = camp.get("bison_campaign_id")
+
+        if hr_id is not None:
+            rows, error = classify_heyreach_campaign(camp, recs, ledger_index)
+            if error:
+                campaign_errors[cid] = f"heyreach: {error}"
+            all_rows.extend(rows)
+        elif b_id is not None:
+            rows, error = classify_bison_campaign(camp, recs, ledger_index)
+            if error:
+                campaign_errors[cid] = f"bison: {error}"
+            all_rows.extend(rows)
+        else:
+            campaign_errors[cid] = "no provider binding (neither heyreach " \
+                                   "nor bison)"
+
+    counts, identity_ok = print_report(all_rows, campaign_walked,
+                                       campaign_errors)
+
     if a.json:
-        print(json.dumps(report, indent=2, default=str))
-    else:
-        _print_report(report)
-    return rc
+        json_report = {
+            "campaigns_walked": len(campaign_walked),
+            "campaigns_unreadable": len(campaign_errors),
+            "campaign_errors": {str(k): v for k, v in campaign_errors.items()},
+            "provider_rows_read": len(all_rows),
+            "counts": counts,
+            "exhaustiveness_ok": identity_ok,
+            "rows": [{k: v for k, v in r.items()} for r in all_rows],
+        }
+        print(json.dumps(json_report, indent=2, default=str))
+
+    if not identity_ok:
+        return 2
+    has_issues = (counts.get(UNRECORDED, 0) > 0
+                  or counts.get(STATE_MISMATCH, 0) > 0)
+    has_unknown = counts.get(UNKNOWN, 0) > 0
+    if has_issues or has_unknown:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

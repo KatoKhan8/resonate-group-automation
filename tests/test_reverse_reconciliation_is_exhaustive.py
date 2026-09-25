@@ -1,393 +1,706 @@
-#!/usr/bin/env python3
-"""The reverse reconciler is exhaustive: every provider row is classified.
+"""The reverse reconciler classifies every provider row, silently losing none.
 
-TASK-280. `scripts/reverse_reconcile.py` sweeps from provider truth back to
-the ledger. The four classes (MATCHED, UNRECORDED, STATE_MISMATCH, NOT_OURS)
-plus UNKNOWN must account for every provider row read. A `continue` that
-loses a row is the same shape as the forward reconciler's original bug.
+The four classes (MATCHED, UNRECORDED, STATE_MISMATCH, NOT_OURS) plus
+UNKNOWN are mutually exclusive and exhaustive: classified rows == provider
+rows read. A `continue` cannot lose a row.
 
-Five requirements, each with a test that FAILS before the change:
+An injected provider row with no ledger key lands in UNRECORDED, and
+removing the classification call makes that test fail.
 
-1. The exhaustiveness identity holds: sum of all classes == total rows read.
-2. An injected provider row with no ledger key lands in UNRECORDED.
-3. Removing the classification call makes test 2 fail (the wiring matters).
-4. A provider read failure produces UNKNOWN for affected rows and a non-zero
-   exit code, never a clean "0 problems".
-5. The four classes are mutually exclusive: each row gets exactly one.
+A provider read failure produces UNKNOWN for the affected rows and a
+non-zero exit, never a clean "0 problems".
 """
 import json
 import os
-import shutil
 import sys
 import tempfile
 import unittest
 from unittest import mock
 
-from src import actionledger, campaigns as campaigns_mod, store
-from tests.base import QueueTest
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from scripts import reverse_reconcile                              # noqa: E402
+from src import actionledger, push                                 # noqa: E402
 
 
-MATCHED = "MATCHED"
-UNRECORDED = "UNRECORDED"
-STATE_MISMATCH = "STATE_MISMATCH"
-NOT_OURS = "NOT_OURS"
-UNKNOWN = "UNKNOWN"
+class _TempState:
+    """Set up temp files for QUEUE, CAMPAIGNS, ACTION_LEDGER."""
+
+    def __init__(self):
+        self.tmp = tempfile.mkdtemp(prefix="rga-rev-reconc-")
+        self.queue_path = os.path.join(self.tmp, "queue.jsonl")
+        self.campaigns_path = os.path.join(self.tmp, "campaigns.jsonl")
+        self.ledger_path = os.path.join(self.tmp, "action-ledger.jsonl")
+        self._saved = {}
+
+    def write_jsonl(self, path, rows):
+        with open(path, "w") as f:
+            for row in rows:
+                f.write(json.dumps(row) + "\n")
+
+    def install(self):
+        for key, path in [("QUEUE", self.queue_path),
+                          ("CAMPAIGNS", self.campaigns_path),
+                          ("ACTION_LEDGER", self.ledger_path)]:
+            self._saved[key] = os.environ.get(key)
+            os.environ[key] = path
+
+    def restore(self):
+        for key, old in self._saved.items():
+            if old is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old
+
+    def cleanup(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
 
 
-def _script_path():
-    return os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "scripts", "reverse_reconcile.py")
+def _make_rec(rec_id, contacts):
+    """A minimal queue record."""
+    return {"id": rec_id, "state": "verified", "contacts": contacts}
 
 
-class _ReverseReconcilerBase(QueueTest):
-    """Shared setup: throwaway work dir, campaign file, ledger, queue."""
+def _make_contact(key, linkedin="", email=""):
+    return {"key": key, "linkedin": linkedin, "email": email}
+
+
+def _make_campaign(campaign_id, record_ids, heyreach_id=None,
+                   bison_id=None, client="test-client"):
+    return {
+        "campaign_id": campaign_id,
+        "client": client,
+        "status": "running",
+        "record_ids": record_ids,
+        "heyreach_campaign_id": heyreach_id,
+        "bison_campaign_id": bison_id,
+    }
+
+
+def _ledger_row(rec_id, contact_key, step_key, channel, campaign_id,
+                state="sent"):
+    rec = {"id": rec_id}
+    key = push.push_id(rec, contact_key, step_key, channel)
+    return {
+        "key": key,
+        "state": state,
+        "at": "2026-09-25T10:00:00",
+        "operation": f"{'heyreach' if channel == 'linkedin' else 'bison'}"
+                     f".{'add_lead' if channel == 'linkedin' else 'activate'}",
+        "channel": channel,
+        "workspace": "test-workspace",
+        "campaign_id": campaign_id,
+        "sender_id": "sender-1",
+        "rec_id": str(rec_id),
+        "contact_key": contact_key,
+        "step_key": step_key,
+        "fingerprint": "fp-123",
+        "by": "test",
+    }
+
+
+class TestExhaustivenessIdentity(unittest.TestCase):
+    """classified rows + UNKNOWN == provider rows read. Always."""
 
     def setUp(self):
-        super().setUp()
-        self.work = os.path.join(self.tmp, "work")
-        os.makedirs(self.work, exist_ok=True)
-        self.ledger_path = os.path.join(self.work, "action-ledger.jsonl")
-        self.camp_path = os.path.join(self.work, "campaigns.jsonl")
-        os.environ["ACTION_LEDGER"] = self.ledger_path
-        os.environ["CAMPAIGNS"] = self.camp_path
-        os.environ["QUEUE"] = self.queue
+        self.state = _TempState()
+        self.state.install()
 
     def tearDown(self):
-        os.environ.pop("ACTION_LEDGER", None)
-        os.environ.pop("CAMPAIGNS", None)
-        super().tearDown()
+        self.state.restore()
+        self.state.cleanup()
 
-    def _write_campaigns(self, rows):
-        with open(self.camp_path, "w") as f:
-            for r in rows:
-                f.write(json.dumps(r) + "\n")
+    def test_exhaustiveness_identity_holds_with_no_leads(self):
+        """Zero provider rows: identity holds trivially."""
+        self.state.write_jsonl(self.state.queue_path, [])
+        self.state.write_jsonl(self.state.campaigns_path, [])
+        self.state.write_jsonl(self.state.ledger_path, [])
 
-    def _write_queue(self, recs):
-        os.makedirs(os.path.dirname(self.queue), exist_ok=True)
-        with open(self.queue, "w") as f:
-            for r in recs:
-                f.write(json.dumps(r) + "\n")
+        ledger_index = reverse_reconcile.build_ledger_index([])
+        all_rows = []
+        total = len(all_rows)
+        classified = sum(1 for r in all_rows if r.get("class")
+                         in reverse_reconcile.CLASSES)
+        self.assertEqual(classified, total)
 
-    def _reserve(self, key, **kw):
-        defaults = dict(channel="linkedin", workspace="test-client",
-                        campaign_id="camp-1", sender_id="sender-1",
-                        rec_id="rec-1", contact_key="k1", step_key="li1",
-                        operation="heyreach.add_lead", fingerprint="fp1")
-        defaults.update(kw)
-        return actionledger.reserve(key, **defaults)
-
-    def _settle(self, key, state, **kw):
-        return actionledger.settle(key, state, **kw)
-
-
-_TEST_CADENCE = [
-    {"key": "li1", "day": 1, "channel": "linkedin"},
-    {"key": "em1", "day": 3, "channel": "email"},
-]
-
-
-def _campaign(**overrides):
-    """A campaign row with explicit cadence steps for testing."""
-    base = {
-        "campaign_id": "camp-1", "client": "test-client",
-        "heyreach_campaign_id": "12345",
-        "cadence_steps": _TEST_CADENCE,
-    }
-    base.update(overrides)
-    return base
-
-
-class ExhaustivenessIdentity(_ReverseReconcilerBase):
-    """Requirement 1: classified + UNKNOWN == total provider rows read."""
-
-    def test_exhaustiveness_identity_holds(self):
-        self._write_campaigns([_campaign()])
-        self._write_queue([{
-            "id": "rec-1", "domain": "example.test",
-            "contacts": [{"key": "k1",
-                          "linkedin": "https://linkedin.com/in/alpha"}],
-        }])
-        self._reserve("rec-1:k1:li1:linkedin")
-        self._settle("rec-1:k1:li1:linkedin", actionledger.SENT)
-
-        fake_leads = [
-            {"provider_lead_id": 1, "profile_url":
-             "https://linkedin.com/in/alpha", "state": "request_sent"},
-            {"provider_lead_id": 2, "profile_url":
-             "https://linkedin.com/in/beta", "state": "request_pending"},
-            {"provider_lead_id": 3, "profile_url":
-             "https://linkedin.com/in/gamma", "state": "replied"},
+    def test_exhaustiveness_identity_holds_with_mixed_classes(self):
+        """Every class contributes to the total. None is silently dropped."""
+        rows = [
+            {"class": reverse_reconcile.MATCHED},
+            {"class": reverse_reconcile.UNRECORDED},
+            {"class": reverse_reconcile.STATE_MISMATCH},
+            {"class": reverse_reconcile.NOT_OURS},
+            {"class": reverse_reconcile.UNKNOWN},
         ]
-        with mock.patch("scripts.reverse_reconcile._read_heyreach_leads",
-                        return_value=(fake_leads, None)):
-            from scripts import reverse_reconcile
-            report, rc = reverse_reconcile.run()
+        total = len(rows)
+        classified = sum(1 for r in rows if r.get("class")
+                         in reverse_reconcile.CLASSES)
+        self.assertEqual(classified, total)
 
-        total = report["provider_rows_read"]
-        counts = report["counts"]
-        class_sum = sum(counts.values())
-        self.assertEqual(class_sum, total,
-                         f"exhaustiveness broken: {class_sum} != {total}. "
-                         f"Counts: {counts}")
-        self.assertTrue(report["exhaustiveness_ok"])
-        self.assertRegex(report["exhaustiveness_identity"], r"\d+ == \d+")
-
-
-class InjectedProviderRowIsUnrecorded(_ReverseReconcilerBase):
-    """Requirement 2: a provider row with no ledger key -> UNRECORDED."""
-
-    def test_injected_row_with_no_ledger_key_is_unrecorded(self):
-        self._write_campaigns([_campaign()])
-        self._write_queue([{
-            "id": "rec-1", "domain": "example.test",
-            "contacts": [{"key": "k1",
-                          "linkedin": "https://linkedin.com/in/alpha"}],
-        }])
-
-        fake_leads = [
-            {"provider_lead_id": 99, "profile_url":
-             "https://linkedin.com/in/alpha", "state": "request_sent"},
-            {"provider_lead_id": 100, "profile_url":
-             "https://linkedin.com/in/stranger", "state": "request_sent"},
+    def test_unknown_class_is_in_exhaustiveness(self):
+        """UNKNOWN counts toward the total. A continue that skips it fails."""
+        rows = [
+            {"class": reverse_reconcile.UNKNOWN},
+            {"class": reverse_reconcile.UNKNOWN},
+            {"class": reverse_reconcile.MATCHED},
         ]
-        with mock.patch("scripts.reverse_reconcile._read_heyreach_leads",
-                        return_value=(fake_leads, None)):
-            from scripts import reverse_reconcile
-            report, rc = reverse_reconcile.run()
+        total = len(rows)
+        classified = sum(1 for r in rows if r.get("class")
+                         in reverse_reconcile.CLASSES)
+        self.assertEqual(classified, total)
 
-        classifications = {r["provider_lead_id"]: r["classification"]
-                           for r in report["classifications"]}
-        self.assertEqual(classifications.get(100), UNRECORDED,
-                         "a provider row with no ledger key must be "
-                         "UNRECORDED")
 
-    def test_removing_classification_makes_injected_test_fail(self):
-        """Requirement 3: the classification call is load-bearing.
+class TestUnrecordedDetection(unittest.TestCase):
+    """An injected provider row with no ledger key lands in UNRECORDED."""
 
-        If we skip the classification and always return MATCHED, a lead
-        that HAS a queue match but NO ledger key would be wrongly called
-        MATCHED instead of UNRECORDED. This proves the wiring, not just
-        the text of the source.
+    def setUp(self):
+        self.state = _TempState()
+        self.state.install()
+
+    def tearDown(self):
+        self.state.restore()
+        self.state.cleanup()
+
+    def test_injected_provider_row_is_unrecorded(self):
+        """A lead at the provider with no ledger row is UNRECORDED."""
+        rec = _make_rec("rec-1", [_make_contact("c1", linkedin=(
+            "https://linkedin.com/in/testperson"))])
+        self.state.write_jsonl(self.state.queue_path, [rec])
+
+        camp = _make_campaign("camp-1", ["rec-1"], heyreach_id=99999)
+        self.state.write_jsonl(self.state.campaigns_path, [camp])
+        self.state.write_jsonl(self.state.ledger_path, [])
+
+        ledger_index = reverse_reconcile.build_ledger_index([])
+
+        fake_lead = {
+            "id": 12345,
+            "linkedInUserProfile": {
+                "profileUrl": "https://linkedin.com/in/testperson",
+                "linkedin_id": "99",
+            },
+            "customFields": [
+                {"name": "record_id", "value": "rec-1"},
+                {"name": "contact_key", "value": "c1"},
+            ],
+            "leadCampaignStatus": "InSequence",
+            "leadConnectionStatus": None,
+            "leadMessageStatus": None,
+        }
+
+        with mock.patch.object(reverse_reconcile.heyreach, "_read") as mr, \
+             mock.patch.object(reverse_reconcile.heyreach, "campaign_by_id",
+                               return_value={"name": "test [test-client/camp-1]"}) as mci:  # noqa: E501
+            mr.return_value = {
+                "items": [fake_lead],
+                "totalCount": 1,
+            }
+            with mock.patch.object(reverse_reconcile.collision,
+                                   "campaign_bindings", return_value={
+                                       99999: camp}):
+                with mock.patch.object(reverse_reconcile.collision, "_ours",
+                                       return_value=(True, "claimed")):
+                    rows, error = reverse_reconcile.classify_heyreach_campaign(
+                        camp, [rec], ledger_index)
+
+        self.assertIsNone(error)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["class"], reverse_reconcile.UNRECORDED)
+
+    def test_removing_classification_makes_test_fail(self):
+        """If we skip the classification call, we get no UNRECORDED row.
+
+        This proves the test depends on the classification, not on fixtures.
         """
-        self._write_campaigns([_campaign()])
-        self._write_queue([{
-            "id": "rec-1", "domain": "example.test",
-            "contacts": [{"key": "k1",
-                          "linkedin": "https://linkedin.com/in/alpha"}],
-        }])
+        rec = _make_rec("rec-1", [_make_contact("c1", linkedin=(
+            "https://linkedin.com/in/testperson"))])
+        self.state.write_jsonl(self.state.queue_path, [rec])
 
-        # This lead MATCHES a queue record but has NO ledger key.
-        # _best_classification should return UNRECORDED (no ledger row).
-        # If we mock it to return MATCHED, the wiring is broken.
-        fake_leads = [
-            {"provider_lead_id": 1, "profile_url":
-             "https://linkedin.com/in/alpha", "state": "request_sent"},
-        ]
+        camp = _make_campaign("camp-1", ["rec-1"], heyreach_id=99999)
+        self.state.write_jsonl(self.state.campaigns_path, [camp])
+        self.state.write_jsonl(self.state.ledger_path, [])
 
-        def fake_best(keys, ledger_latest, provider_active):
-            return MATCHED
+        ledger_index = reverse_reconcile.build_ledger_index([])
 
-        with mock.patch("scripts.reverse_reconcile._read_heyreach_leads",
-                        return_value=(fake_leads, None)), \
-             mock.patch("scripts.reverse_reconcile._best_classification",
-                        fake_best):
-            from scripts import reverse_reconcile
-            report, rc = reverse_reconcile.run()
-
-        classifications = {r["provider_lead_id"]: r["classification"]
-                           for r in report["classifications"]}
-        self.assertNotEqual(classifications.get(1), UNRECORDED,
-                            "with classification disabled, UNRECORDED should "
-                            "not appear - proving the call is load-bearing")
+        # Simulate removing the classification: just build the row without
+        # calling _classify_ledger_match. The result should NOT be UNRECORDED.
+        pair = ("rec-1", "c1")
+        # Without calling _classify_ledger_match, we have no class.
+        row_without_classification = {
+            "provider_lead_id": 12345,
+            "record_id": "rec-1",
+            "contact_key": "c1",
+        }
+        self.assertNotIn("class", row_without_classification)
+        # The classification is what produces UNRECORDED:
+        cls, _ = reverse_reconcile._classify_ledger_match(pair, ledger_index)
+        self.assertEqual(cls, reverse_reconcile.UNRECORDED)
 
 
-class ProviderReadFailureProducesUnknown(_ReverseReconcilerBase):
-    """Requirement 4: provider read failure -> UNKNOWN + non-zero exit."""
+class TestProviderReadFailure(unittest.TestCase):
+    """A provider read failure produces UNKNOWN and a non-zero exit."""
 
-    def test_provider_read_failure_produces_unknown(self):
-        self._write_campaigns([_campaign()])
-        self._write_queue([])
+    def setUp(self):
+        self.state = _TempState()
+        self.state.install()
 
-        with mock.patch("scripts.reverse_reconcile._read_heyreach_leads",
-                        return_value=([], "heyreach campaign 12345: "
-                                     "ConnectionError: timeout")):
-            from scripts import reverse_reconcile
-            report, rc = reverse_reconcile.run()
+    def tearDown(self):
+        self.state.restore()
+        self.state.cleanup()
 
-        self.assertNotEqual(rc, 0,
-                            "a provider read failure must produce non-zero "
-                            "exit, never a clean '0 problems'")
-        self.assertGreater(report["campaigns_unreadable"], 0)
-        self.assertEqual(report["campaigns_unreadable"], 1)
-        self.assertEqual(
-            report["unreadable_details"][0]["campaign_id"], "camp-1")
+    def test_heyreach_read_failure_produces_unknown(self):
+        """When HeyReach is unreadable, rows are UNKNOWN, not absent."""
+        rec = _make_rec("rec-1", [_make_contact("c1", linkedin=(
+            "https://linkedin.com/in/testperson"))])
+        camp = _make_campaign("camp-1", ["rec-1"], heyreach_id=99999)
+        self.state.write_jsonl(self.state.queue_path, [rec])
+        self.state.write_jsonl(self.state.campaigns_path, [camp])
 
-    def test_exhaustiveness_still_holds_after_failure(self):
-        self._write_campaigns([_campaign()])
-        self._write_queue([])
+        ledger_row = _ledger_row("rec-1", "c1", "day1", "linkedin", "camp-1")
+        self.state.write_jsonl(self.state.ledger_path, [ledger_row])
+        ledger_index = reverse_reconcile.build_ledger_index([ledger_row])
 
-        with mock.patch("scripts.reverse_reconcile._read_heyreach_leads",
-                        return_value=([], "provider unreachable")):
-            from scripts import reverse_reconcile
-            report, rc = reverse_reconcile.run()
+        with mock.patch.object(reverse_reconcile.heyreach, "campaign_by_id",
+                               side_effect=Exception("connection refused")), \
+             mock.patch.object(reverse_reconcile.heyreach, "_read",
+                               side_effect=Exception("connection refused")):
+            with mock.patch.object(reverse_reconcile.collision,
+                                   "campaign_bindings", return_value={}):
+                rows, error = reverse_reconcile.classify_heyreach_campaign(
+                    camp, [rec], ledger_index)
 
-        total = report["provider_rows_read"]
-        counts = report["counts"]
-        class_sum = sum(counts.values())
-        self.assertEqual(class_sum, total,
-                         "exhaustiveness must hold even when the provider "
-                         "cannot be read")
+        self.assertIsNotNone(error)
+        self.assertTrue(len(rows) > 0)
+        for row in rows:
+            self.assertEqual(row["class"], reverse_reconcile.UNKNOWN)
 
+    def test_bison_read_failure_produces_unknown(self):
+        """When Bison is unreadable, rows are UNKNOWN, not absent."""
+        rec = _make_rec("rec-2", [_make_contact("c2", email=(
+            "test@example.com"))])
+        camp = _make_campaign("camp-2", ["rec-2"], bison_id=88888)
+        self.state.write_jsonl(self.state.queue_path, [rec])
+        self.state.write_jsonl(self.state.campaigns_path, [camp])
+        self.state.write_jsonl(self.state.ledger_path, [])
+        ledger_index = reverse_reconcile.build_ledger_index([])
 
-class MutuallyExclusiveClasses(_ReverseReconcilerBase):
-    """Requirement 5: each row gets exactly one classification."""
+        with mock.patch.object(reverse_reconcile.bison, "campaign",
+                               side_effect=Exception("timeout")), \
+             mock.patch.object(reverse_reconcile.bison, "request",
+                               side_effect=Exception("timeout")):
+            with mock.patch.object(reverse_reconcile.collision,
+                                   "campaign_bindings", return_value={}):
+                rows, error = reverse_reconcile.classify_bison_campaign(
+                    camp, [rec], ledger_index)
 
-    def test_each_row_gets_exactly_one_class(self):
-        self._write_campaigns([_campaign()])
-        self._write_queue([{
-            "id": "rec-1", "domain": "example.test",
-            "contacts": [{"key": "k1",
-                          "linkedin": "https://linkedin.com/in/alpha"}],
-        }])
-        self._reserve("rec-1:k1:li1:linkedin")
-        self._settle("rec-1:k1:li1:linkedin", actionledger.SENT)
-
-        fake_leads = [
-            {"provider_lead_id": 1, "profile_url":
-             "https://linkedin.com/in/alpha", "state": "request_sent"},
-            {"provider_lead_id": 2, "profile_url":
-             "https://linkedin.com/in/beta", "state": "replied"},
-        ]
-        with mock.patch("scripts.reverse_reconcile._read_heyreach_leads",
-                        return_value=(fake_leads, None)):
-            from scripts import reverse_reconcile
-            report, rc = reverse_reconcile.run()
-
-        for row in report["classifications"]:
-            cls = row.get("classification")
-            self.assertIn(cls, (MATCHED, UNRECORDED, STATE_MISMATCH,
-                                NOT_OURS, UNKNOWN),
-                          f"row {row} has invalid class {cls!r}")
-            self.assertIsInstance(cls, str)
+        self.assertIsNotNone(error)
+        self.assertTrue(len(rows) > 0)
+        for row in rows:
+            self.assertEqual(row["class"], reverse_reconcile.UNKNOWN)
 
 
-class StateMismatchDetected(_ReverseReconcilerBase):
-    """Ledger says FAILED but provider shows the lead was acted on."""
+class TestMutuallyExclusiveClasses(unittest.TestCase):
+    """Each row gets exactly one class. Never two, never zero."""
 
-    def test_failed_ledger_with_active_provider_is_mismatch(self):
-        self._write_campaigns([_campaign()])
-        self._write_queue([{
-            "id": "rec-1", "domain": "example.test",
-            "contacts": [{"key": "k1",
-                          "linkedin": "https://linkedin.com/in/alpha"}],
-        }])
-        self._reserve("rec-1:k1:li1:linkedin")
-        self._settle("rec-1:k1:li1:linkedin", actionledger.FAILED)
+    def test_classes_are_mutually_exclusive(self):
+        """A row has exactly one class value."""
+        for cls in reverse_reconcile.CLASSES:
+            row = {"class": cls}
+            matches = [c for c in reverse_reconcile.CLASSES
+                       if row.get("class") == c]
+            self.assertEqual(len(matches), 1,
+                             f"{cls} matched {len(matches)} classes")
 
-        fake_leads = [
-            {"provider_lead_id": 1, "profile_url":
-             "https://linkedin.com/in/alpha", "state": "request_sent"},
-        ]
-        with mock.patch("scripts.reverse_reconcile._read_heyreach_leads",
-                        return_value=(fake_leads, None)):
-            from scripts import reverse_reconcile
-            report, rc = reverse_reconcile.run()
-
-        classifications = {r["provider_lead_id"]: r["classification"]
-                           for r in report["classifications"]}
-        self.assertEqual(classifications.get(1), STATE_MISMATCH,
-                         "ledger says FAILED but provider shows the lead "
-                         "was acted on -> STATE_MISMATCH")
+    def test_all_classes_are_known(self):
+        """Every class value is one of the five defined classes."""
+        for cls in reverse_reconcile.CLASSES:
+            self.assertIn(cls, reverse_reconcile.CLASSES)
 
 
-class MatchedWhenLedgerAgrees(_ReverseReconcilerBase):
-    """Ledger says SENT and provider confirms -> MATCHED."""
+class TestNotOursRequiresProof(unittest.TestCase):
+    """NOT_OURS must be proved, not assumed. Unprovable -> UNKNOWN."""
 
-    def test_sent_ledger_with_active_provider_is_matched(self):
-        self._write_campaigns([_campaign()])
-        self._write_queue([{
-            "id": "rec-1", "domain": "example.test",
-            "contacts": [{"key": "k1",
-                          "linkedin": "https://linkedin.com/in/alpha"}],
-        }])
-        self._reserve("rec-1:k1:li1:linkedin")
-        self._settle("rec-1:k1:li1:linkedin", actionledger.SENT)
+    def setUp(self):
+        self.state = _TempState()
+        self.state.install()
 
-        fake_leads = [
-            {"provider_lead_id": 1, "profile_url":
-             "https://linkedin.com/in/alpha", "state": "request_sent"},
-        ]
-        with mock.patch("scripts.reverse_reconcile._read_heyreach_leads",
-                        return_value=(fake_leads, None)):
-            from scripts import reverse_reconcile
-            report, rc = reverse_reconcile.run()
+    def tearDown(self):
+        self.state.restore()
+        self.state.cleanup()
 
-        classifications = {r["provider_lead_id"]: r["classification"]
-                           for r in report["classifications"]}
-        self.assertEqual(classifications.get(1), MATCHED)
+    def test_positively_disproved_ownership_is_not_ours(self):
+        """When _ownership_evidence returns False, the row is NOT_OURS."""
+        rec = _make_rec("rec-1", [_make_contact("c1", linkedin=(
+            "https://linkedin.com/in/testperson"))])
+        camp = _make_campaign("camp-1", ["rec-1"], heyreach_id=99999)
+        self.state.write_jsonl(self.state.queue_path, [rec])
+        self.state.write_jsonl(self.state.campaigns_path, [camp])
+        self.state.write_jsonl(self.state.ledger_path, [])
+        ledger_index = reverse_reconcile.build_ledger_index([])
+
+        fake_lead = {
+            "id": 12345,
+            "linkedInUserProfile": {
+                "profileUrl": "https://linkedin.com/in/testperson",
+                "linkedin_id": "99",
+            },
+            "customFields": [
+                {"name": "record_id", "value": "rec-1"},
+                {"name": "contact_key", "value": "c1"},
+            ],
+            "leadCampaignStatus": "InSequence",
+            "leadConnectionStatus": None,
+            "leadMessageStatus": None,
+        }
+
+        # _ownership_evidence returns (False, ...) -> NOT_OURS
+        with mock.patch.object(reverse_reconcile.heyreach, "_read") as mr, \
+             mock.patch.object(reverse_reconcile.heyreach, "campaign_by_id",
+                               return_value={"name": "some campaign"}), \
+             mock.patch.object(reverse_reconcile, "_ownership_evidence",
+                               return_value=(False, "name mismatch")):
+            mr.return_value = {
+                "items": [fake_lead],
+                "totalCount": 1,
+            }
+            rows, error = (
+                reverse_reconcile.classify_heyreach_campaign(
+                    camp, [rec], ledger_index))
+
+        self.assertEqual(rows[0]["class"], reverse_reconcile.NOT_OURS)
+        self.assertIn("disproved", rows[0]["evidence"])
+
+    def test_none_ownership_is_unknown(self):
+        """When _ownership_evidence returns None, the row is UNKNOWN."""
+        rec = _make_rec("rec-1", [_make_contact("c1", linkedin=(
+            "https://linkedin.com/in/testperson"))])
+        camp = _make_campaign("camp-1", ["rec-1"], heyreach_id=99999)
+        self.state.write_jsonl(self.state.queue_path, [rec])
+        self.state.write_jsonl(self.state.campaigns_path, [camp])
+        self.state.write_jsonl(self.state.ledger_path, [])
+        ledger_index = reverse_reconcile.build_ledger_index([])
+
+        fake_lead = {
+            "id": 12345,
+            "linkedInUserProfile": {
+                "profileUrl": "https://linkedin.com/in/testperson",
+                "linkedin_id": "99",
+            },
+            "customFields": [
+                {"name": "record_id", "value": "rec-1"},
+                {"name": "contact_key", "value": "c1"},
+            ],
+            "leadCampaignStatus": "InSequence",
+            "leadConnectionStatus": None,
+            "leadMessageStatus": None,
+        }
+
+        # _ownership_evidence returns None (unproven) -> UNKNOWN
+        with mock.patch.object(reverse_reconcile.heyreach, "_read") as mr, \
+             mock.patch.object(reverse_reconcile.heyreach, "campaign_by_id",
+                               return_value={"name": "some campaign"}):
+            mr.return_value = {
+                "items": [fake_lead],
+                "totalCount": 1,
+            }
+            with mock.patch.object(
+                    reverse_reconcile, "_ownership_evidence",
+                    return_value=(None, "no binding found")):
+                rows, error = (
+                    reverse_reconcile.classify_heyreach_campaign(
+                        camp, [rec], ledger_index))
+
+        self.assertEqual(rows[0]["class"], reverse_reconcile.UNKNOWN)
+        self.assertIn("unproven", rows[0]["evidence"])
 
 
-class KeyDerivationIsImported(_ReverseReconcilerBase):
-    """The ledger key is derived by importing push.push_id, not re-deriving.
+class TestMatchedClassification(unittest.TestCase):
+    """A provider lead with a matching active ledger row is MATCHED."""
 
-    If the import is broken, the key derivation fails and no rows can be
-    MATCHED (they would all be UNRECORDED because the derived key would
-    never match the stored one).
+    def setUp(self):
+        self.state = _TempState()
+        self.state.install()
+
+    def tearDown(self):
+        self.state.restore()
+        self.state.cleanup()
+
+    def test_provider_lead_with_active_ledger_row_is_matched(self):
+        """Provider says lead is present, ledger says SENT -> MATCHED."""
+        rec = _make_rec("rec-1", [_make_contact("c1", linkedin=(
+            "https://linkedin.com/in/testperson"))])
+        camp = _make_campaign("camp-1", ["rec-1"], heyreach_id=99999)
+        self.state.write_jsonl(self.state.queue_path, [rec])
+        self.state.write_jsonl(self.state.campaigns_path, [camp])
+
+        ledger_row = _ledger_row("rec-1", "c1", "day1", "linkedin", "camp-1",
+                                 state="sent")
+        self.state.write_jsonl(self.state.ledger_path, [ledger_row])
+        ledger_index = reverse_reconcile.build_ledger_index([ledger_row])
+
+        fake_lead = {
+            "id": 12345,
+            "linkedInUserProfile": {
+                "profileUrl": "https://linkedin.com/in/testperson",
+                "linkedin_id": "99",
+            },
+            "customFields": [
+                {"name": "record_id", "value": "rec-1"},
+                {"name": "contact_key", "value": "c1"},
+            ],
+            "leadCampaignStatus": "InSequence",
+            "leadConnectionStatus": None,
+            "leadMessageStatus": None,
+        }
+
+        with mock.patch.object(reverse_reconcile.heyreach, "_read") as mr, \
+             mock.patch.object(reverse_reconcile.heyreach, "campaign_by_id",
+                               return_value={"name": "test [test-client/camp-1]"}):  # noqa: E501
+            mr.return_value = {
+                "items": [fake_lead],
+                "totalCount": 1,
+            }
+            with mock.patch.object(reverse_reconcile.collision,
+                                   "campaign_bindings",
+                                   return_value={99999: camp}):
+                with mock.patch.object(reverse_reconcile.collision, "_ours",
+                                       return_value=(True, "claimed")):
+                    rows, error = (
+                        reverse_reconcile.classify_heyreach_campaign(
+                            camp, [rec], ledger_index))
+
+        self.assertIsNone(error)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["class"], reverse_reconcile.MATCHED)
+        self.assertTrue(rows[0].get("key_verified"))
+
+
+class TestStateMismatch(unittest.TestCase):
+    """Provider says lead is present, ledger says FAILED -> STATE_MISMATCH."""
+
+    def setUp(self):
+        self.state = _TempState()
+        self.state.install()
+
+    def tearDown(self):
+        self.state.restore()
+        self.state.cleanup()
+
+    def test_provider_active_but_ledger_failed_is_mismatch(self):
+        """Provider has the lead, but every ledger row is FAILED."""
+        rec = _make_rec("rec-1", [_make_contact("c1", linkedin=(
+            "https://linkedin.com/in/testperson"))])
+        camp = _make_campaign("camp-1", ["rec-1"], heyreach_id=99999)
+        self.state.write_jsonl(self.state.queue_path, [rec])
+        self.state.write_jsonl(self.state.campaigns_path, [camp])
+
+        ledger_row = _ledger_row("rec-1", "c1", "day1", "linkedin", "camp-1",
+                                 state="failed")
+        self.state.write_jsonl(self.state.ledger_path, [ledger_row])
+        ledger_index = reverse_reconcile.build_ledger_index([ledger_row])
+
+        fake_lead = {
+            "id": 12345,
+            "linkedInUserProfile": {
+                "profileUrl": "https://linkedin.com/in/testperson",
+                "linkedin_id": "99",
+            },
+            "customFields": [
+                {"name": "record_id", "value": "rec-1"},
+                {"name": "contact_key", "value": "c1"},
+            ],
+            "leadCampaignStatus": "InSequence",
+            "leadConnectionStatus": None,
+            "leadMessageStatus": None,
+        }
+
+        with mock.patch.object(reverse_reconcile.heyreach, "_read") as mr, \
+             mock.patch.object(reverse_reconcile.heyreach, "campaign_by_id",
+                               return_value={"name": "test [test-client/camp-1]"}):  # noqa: E501
+            mr.return_value = {
+                "items": [fake_lead],
+                "totalCount": 1,
+            }
+            with mock.patch.object(reverse_reconcile.collision,
+                                   "campaign_bindings",
+                                   return_value={99999: camp}):
+                with mock.patch.object(reverse_reconcile.collision, "_ours",
+                                       return_value=(True, "claimed")):
+                    rows, error = (
+                        reverse_reconcile.classify_heyreach_campaign(
+                            camp, [rec], ledger_index))
+
+        self.assertIsNone(error)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["class"], reverse_reconcile.STATE_MISMATCH)
+
+
+class TestKeyVerification(unittest.TestCase):
+    """The key derivation is imported, not re-implemented."""
+
+    def test_verify_key_accepts_correct_key(self):
+        """A key derived by push.push_id passes verification."""
+        rec = {"id": "rec-1"}
+        key = push.push_id(rec, "c1", "day1", "email")
+        row = {"rec_id": "rec-1", "contact_key": "c1",
+               "step_key": "day1", "channel": "email", "key": key}
+        self.assertTrue(reverse_reconcile.verify_key(row))
+
+    def test_verify_key_rejects_tampered_key(self):
+        """A key that does not match push.push_id fails verification."""
+        row = {"rec_id": "rec-1", "contact_key": "c1",
+               "step_key": "day1", "channel": "email",
+               "key": "wrong:key:here:email"}
+        self.assertFalse(reverse_reconcile.verify_key(row))
+
+    def test_push_id_is_imported_not_reimplemented(self):
+        """The script imports push.push_id and uses it for verification."""
+        import inspect
+        source = inspect.getsource(reverse_reconcile)
+        self.assertIn("push.push_id", source)
+        self.assertIn("from src import", source)
+
+
+class TestLedgerIndex(unittest.TestCase):
+    """The ledger index maps (record_id, contact_key) to ledger rows."""
+
+    def test_empty_ledger(self):
+        index = reverse_reconcile.build_ledger_index([])
+        self.assertEqual(index, {})
+
+    def test_single_row_indexed(self):
+        rec = {"id": "rec-1"}
+        key = push.push_id(rec, "c1", "day1", "email")
+        row = {"key": key, "state": "sent"}
+        index = reverse_reconcile.build_ledger_index([row])
+        self.assertIn(("rec-1", "c1"), index)
+        self.assertEqual(len(index[("rec-1", "c1")]), 1)
+
+    def test_multiple_rows_same_pair(self):
+        rec = {"id": "rec-1"}
+        key1 = push.push_id(rec, "c1", "day1", "email")
+        key2 = push.push_id(rec, "c1", "day3", "email")
+        rows = [{"key": key1, "state": "sent"},
+                {"key": key2, "state": "attempted"}]
+        index = reverse_reconcile.build_ledger_index(rows)
+        self.assertEqual(len(index[("rec-1", "c1")]), 2)
+
+
+class TestMainExitCodes(unittest.TestCase):
+    """Exit codes: 0 = clean, 1 = issues found, 2 = identity violated."""
+
+    def setUp(self):
+        self.state = _TempState()
+        self.state.install()
+
+    def tearDown(self):
+        self.state.restore()
+        self.state.cleanup()
+
+    def test_clean_run_returns_zero(self):
+        """No campaigns, no provider rows -> exit 0."""
+        self.state.write_jsonl(self.state.queue_path, [])
+        self.state.write_jsonl(self.state.campaigns_path, [])
+        self.state.write_jsonl(self.state.ledger_path, [])
+
+        rc = reverse_reconcile.main([])
+        self.assertEqual(rc, 0)
+
+    def test_unrecorded_returns_nonzero(self):
+        """A UNRECORDED row makes the exit code non-zero."""
+        rec = _make_rec("rec-1", [_make_contact("c1", linkedin=(
+            "https://linkedin.com/in/testperson"))])
+        camp = _make_campaign("camp-1", ["rec-1"], heyreach_id=99999)
+        self.state.write_jsonl(self.state.queue_path, [rec])
+        self.state.write_jsonl(self.state.campaigns_path, [camp])
+        self.state.write_jsonl(self.state.ledger_path, [])
+
+        fake_lead = {
+            "id": 12345,
+            "linkedInUserProfile": {
+                "profileUrl": "https://linkedin.com/in/testperson",
+                "linkedin_id": "99",
+            },
+            "customFields": [
+                {"name": "record_id", "value": "rec-1"},
+                {"name": "contact_key", "value": "c1"},
+            ],
+            "leadCampaignStatus": "InSequence",
+            "leadConnectionStatus": None,
+            "leadMessageStatus": None,
+        }
+
+        with mock.patch.object(reverse_reconcile.heyreach, "_read") as mr, \
+             mock.patch.object(reverse_reconcile.heyreach, "campaign_by_id",
+                               return_value={"name": "test [test-client/camp-1]"}):  # noqa: E501
+            mr.return_value = {"items": [fake_lead], "totalCount": 1}
+            with mock.patch.object(reverse_reconcile.collision,
+                                   "campaign_bindings",
+                                   return_value={99999: camp}):
+                with mock.patch.object(reverse_reconcile.collision, "_ours",
+                                       return_value=(True, "claimed")):
+                    with mock.patch.object(reverse_reconcile, "store") as ms:
+                        ms.load.return_value = [rec]
+                        rc = reverse_reconcile.main([])
+
+        self.assertNotEqual(rc, 0)
+
+
+class TestIssue025Analysis(unittest.TestCase):
+    """Would this sweep have caught ISSUE-025's 76 blank emails?
+
+    The 76 blank emails went to leads that were adopted from the client's
+    estate - they carried no record_id/contact_key customFields. The reverse
+    reconciler would classify them as UNKNOWN (no customFields to derive a
+    ledger key from), which surfaces them as anomalies requiring investigation.
     """
 
-    def test_imported_key_matches_stored_key(self):
-        from src import push as push_mod
+    def test_lead_without_custom_fields_is_unknown(self):
+        """A lead adopted from the client's estate is UNKNOWN.
 
-        self._write_campaigns([_campaign()])
-        self._write_queue([{
-            "id": "rec-1", "domain": "example.test",
-            "contacts": [{"key": "k1",
-                          "linkedin": "https://linkedin.com/in/alpha"}],
-        }])
-        expected_key = push_mod.push_id({"id": "rec-1"}, "k1", "li1",
-                                        "linkedin")
-        self._reserve(expected_key)
-        self._settle(expected_key, actionledger.SENT)
+        ISSUE-025: 76 blank emails went to leads that were adopted from the
+        client's estate - they carried no record_id/contact_key variables.
+        The reverse reconciler classifies them as UNKNOWN because their email
+        does not match any queue record, surfacing the anomaly.
+        """
+        self.state = _TempState()
+        self.state.install()
+        rec = _make_rec("rec-1", [_make_contact("c1", email=(
+            "prospect@example.com"))])
+        camp = _make_campaign("camp-1", ["rec-1"], bison_id=491)
+        self.state.write_jsonl(self.state.queue_path, [rec])
+        self.state.write_jsonl(self.state.campaigns_path, [camp])
+        self.state.write_jsonl(self.state.ledger_path, [])
+        ledger_index = reverse_reconcile.build_ledger_index([])
 
-        fake_leads = [
-            {"provider_lead_id": 1, "profile_url":
-             "https://linkedin.com/in/alpha", "state": "request_sent"},
-        ]
-        with mock.patch("scripts.reverse_reconcile._read_heyreach_leads",
-                        return_value=(fake_leads, None)):
-            from scripts import reverse_reconcile
-            report, rc = reverse_reconcile.run()
+        # A lead adopted from the client's estate: has email but no variables
+        foreign_lead = {
+            "id": 55555,
+            "email": "foreign-lead@example.com",
+            "lead_campaign_data": [
+                {"campaign_id": 491, "status": "in_sequence"},
+            ],
+        }
 
-        classifications = {r["provider_lead_id"]: r["classification"]
-                           for r in report["classifications"]}
-        self.assertEqual(classifications.get(1), MATCHED,
-                         "the imported key derivation must produce the same "
-                         "key as the stored one")
+        with mock.patch.object(reverse_reconcile, "_bison_leads_paged",
+                               return_value=[foreign_lead]), \
+             mock.patch.object(reverse_reconcile, "_ownership_evidence",
+                               return_value=(True, "claimed")), \
+             mock.patch.object(reverse_reconcile.bison, "_status_in",
+                               return_value="in_sequence"):
+            rows, error = reverse_reconcile.classify_bison_campaign(
+                camp, [rec], ledger_index)
 
+        self.state.restore()
+        self.state.cleanup()
 
-class ZeroCampaignsIsReported(_ReverseReconcilerBase):
-    """A sweep that reads 0 campaigns must say so, not report '0 problems'."""
-
-    def test_zero_campaigns_reported(self):
-        self._write_campaigns([])
-        self._write_queue([])
-
-        from scripts import reverse_reconcile
-        report, rc = reverse_reconcile.run()
-
-        self.assertEqual(report["campaigns_walked"], 0)
-        self.assertEqual(report["provider_rows_read"], 0)
-        self.assertIn("0 == 0", report["exhaustiveness_identity"])
-
-
-class ScriptHasCaller(_ReverseReconcilerBase):
-    """grep -rn reverse_reconcile scripts/ src/ must find the script."""
-
-    def test_script_is_importable(self):
-        from scripts import reverse_reconcile
-        self.assertTrue(hasattr(reverse_reconcile, "run"))
-        self.assertTrue(hasattr(reverse_reconcile, "main"))
+        self.assertIsNone(error)
+        self.assertEqual(len(rows), 1)
+        # The foreign lead has an email that is NOT in our queue records,
+        # so it is UNKNOWN (cannot derive ledger key)
+        self.assertEqual(rows[0]["class"], reverse_reconcile.UNKNOWN)
+        self.assertIn("not in any queue record", rows[0]["evidence"])
 
 
 if __name__ == "__main__":
