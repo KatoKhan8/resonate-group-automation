@@ -62,6 +62,8 @@ matters most: a transport failure is NOT a bad key.
       company-first enrichment. People-count is free; everything else burns credits
 - [ ] `DELIVERABLE_KEY`  *(providers)*
       verification. Its wire contract has never been validated - see LIVE-VALIDATION-PLAN.md
+- [ ] `GROQ_API_KEY`  *(providers)*
+      the primary reasoning provider - fast, cheap, structured thinking
 - [ ] `HEYREACH_KEY`  *(providers)*
       HeyReach, the LinkedIn platform. Reads only in this build
 - [ ] `LLM_API_KEY`  *(providers)*
@@ -70,6 +72,8 @@ matters most: a transport failure is NOT a bad key.
       the OpenAI-compatible endpoint to call. Set it to point at OpenRouter, a local server, or anything else speaking that shape; unset means no model is configured and generation refuses
 - [ ] `LLM_MODEL`  *(providers)*
       the model id to ask for, in whatever form the endpoint expects
+- [ ] `OPENROUTER_API_KEY`  *(providers)*
+      the fallback reasoning provider; its absence is an explicit refusal
 - [ ] `REOON_KEY`  *(providers)*
       the escalation verifier, reached only when two providers disagree
 - [ ] `SLACK_BOT_TOKEN`  *(slack)*
@@ -149,4 +153,4 @@ the better route if it is available to you.
 - **Host addresses and the ssh user.** `hosts/production.env`,
   gitignored, never printed.
 
-31 application variables from `config.VARIABLES`, plus 6 infra variables declared in the generator.
+33 application variables from `config.VARIABLES`, plus 6 infra variables declared in the generator.

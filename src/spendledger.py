@@ -83,16 +83,21 @@ def today(now=None):
 
 
 def record(client, provider, call, expected_cost, run_id=None, at=None,
-           rows=None):
+           rows=None, **extra):
     """Append one expected charge. Called at the moment of the call.
 
     Returns the row, so a caller can log it. Appending rather than updating a
     running total on purpose: a total is a derived number and a derived number
     that disagrees with its inputs is the thing nobody can debug.
+
+    `**extra` merges additional fields into the row - actual token usage from
+    a model response, for example.  A model call that records only an estimate
+    when the provider returned actual counts is recording the wrong thing.
     """
     row = {"at": at or store.now(), "day": today(),
            "client": client, "provider": provider, "call": call,
            "expected_cost": int(expected_cost or 0), "run_id": run_id}
+    row.update(extra)
     # OUTSIDE THE BARRIER UNTIL NOW, AND IT COST REAL CLIENT STATE.
     #
     # This builds its own append rather than going through `store.write_jsonl`,
