@@ -20,8 +20,9 @@ per-lead lists live in `work/stage/ri-*.json`, which stays gitignored.
 
     PROVIDER-CONFIRMED COHORT, 2026-09-25T08:44Z            1,031
       on distinct accounts                                    762
-      US subset (campaign 264 + 495)                          340 on 162 accounts
-      AU subset (campaigns 262 + 263)                         691 on 600 accounts
+      US subset (campaign 264)                                335 on 162 accounts
+      AU subset (campaigns 262 + 263)                         694 on 600 accounts
+      read in 481                                               4
 
     of those, carrying a research pack fact today                0
     of those, whose account has a colleague in a LIVE campaign  <FILL-COLLIDE>
@@ -61,8 +62,8 @@ last night's evidence.
 
 That is not hypothetical here. Between the snapshot and this morning's read,
 **five campaigns sent mail**: the client's 327 (+64), 328 (+26) and **352
-(+19)**, and our own 489 (+1) and 491 (+1). 352 alone has mailed 947 of this
-cohort. Three campaigns also changed status under us: 495 archived → paused,
+(+19)**, and our own 489 (+1) and 491 (+1). 352 alone has dated sends to 939 of
+this cohort. Three campaigns also changed status under us: 495 archived → paused,
 497 and 498 active → completed, and three new campaigns appeared (500, 501,
 502). Every one of those moves a clause.
 
@@ -131,12 +132,38 @@ Disjoint. First clause that disqualifies. It sums to the base.
                                                                    -----
       check sum                                                    2,131
 
-**The base is 2,131, not 2,081.** Fifty leads entered the estate campaigns
-between the two reads — 496 went from 9 leads to 43, 497 from 7 to 20, 498
-from 13 to 15, and the archived April campaigns each read higher. Quoting
-2,081 today would be quoting last night's denominator.
+**The base is 2,131, not 2,081.** Exactly fifty leads entered the estate
+campaigns between the two reads and none left:
 
-### 3.1 The three denominators that are NOT the same question
+    496   9 -> 43   (+34)     497   7 -> 20   (+13)
+    498  13 -> 15   (+2)      491 332 -> 333  (+1)
+
+The three archived April campaigns (262, 263, 264) are unchanged at 591, 329
+and 403. Quoting 2,081 today would be quoting last night's denominator. All
+fifty are excluded: 33 `too_recent`, 16 `never_sent`, 1 `live_sequence` —
+they are the leads attached to 496/497/498 last night, and a lead attached
+last night is the opposite of a re-engagement candidate.
+
+### 3.1 The cohort by the campaign it was read in
+
+    262  archived   499   PRODUCTIVE - MARKETING AGENCY - AUSTRALIA - APRIL
+    263  archived   208   v2 PRODUCTIVE - MARKETING AGENCY - AUSTRALIA - APRIL
+    264  archived   335   PRODUCTIVE - MARKETING AGENCY - USA - APRIL 4TH
+    481  active       4   RESONATE - PRODUCTIVE - EMAIL - ZAGREB-HOURS - BUYER
+    ---------------------
+               1,046 memberships over 1,031 leads (15 appear in two)
+
+**No cohort member is now read in 491, 492 or 495.** Yesterday's cohort had
+nine there; all nine are the leads the LinkedIn gate removed (§5.3), which is
+a coincidence of who our store happens to know rather than a pattern.
+
+**Geography comes from the campaign's name at the provider, not from the lead** —
+no lead payload carries a country field. 264 is the April USA campaign, 262
+and 263 its Australian siblings. That gives **335 US on 162 accounts** and
+**694 AU on 600 accounts**, and it is the like-for-like successor to "the
+289" and to yesterday's 335.
+
+### 3.2 The three denominators that are NOT the same question
 
 1. **2,131 is what was read, not what exists.** 16 of the workspace's 36
    campaigns were walked. The other 20 hold roughly 63,000 leads and this
@@ -149,7 +176,7 @@ from 13 to 15, and the archived April campaigns each read higher. Quoting
    been applied to the number above, deliberately — they are different
    questions and folding them in would hide which one bit.
 
-### 3.2 Every clause counted separately
+### 3.3 Every clause counted separately
 
 A lead may trip several; these do not sum.
 
@@ -179,7 +206,7 @@ an earlier clause. Its funnel contribution is 0 and that is correct, not an
 oversight — the clause exists so that a future run which reuses a stale
 send file cannot pass a lead that a moved campaign might have mailed.
 
-### 3.3 The exclusions, with the provider's own words
+### 3.4 The exclusions, with the provider's own words
 
 Every excluded lead is written to `work/stage/ri-cohort.json` under
 `excluded`, carrying its clause, the provider's own phrasing, every other
@@ -204,7 +231,7 @@ from a cached last-touch field would have put them in a re-engagement
 campaign, and the 2026-09-24 handoff measured that field reading 111 days
 stale on a lead sent two days earlier.
 
-### 3.4 Both directions were checked against routes the build never used
+### 3.5 Both directions were checked against routes the build never used
 
 The cohort was built from `GET /campaigns/{id}/leads` and
 `GET /leads/{id}/scheduled-emails`. The check used `GET /leads/{id}` and
@@ -220,7 +247,7 @@ visible in one line each — lead 132936 reads `stopped` in campaign 263 and
 `replied` in 352; 132913 reads `stopped` in 263 and `replied` in 328. A lane
 reading the April campaign's membership string alone would mail both.
 
-### 3.5 `GET /leads/{id}/replies` IS NOT A REPLY FEED, and the 2026-09-24 document leans on it
+### 3.6 `GET /leads/{id}/replies` IS NOT A REPLY FEED, and the 2026-09-24 document leans on it
 
 The exclusion check turned up a bounced lead whose `/replies` total was 1
 while `overall_stats.replies` was 0. Measured properly:
@@ -252,7 +279,7 @@ every `lead_campaign_data[].replies`, the `interested` flag and the queue
 rows' own reply counts. The 30 cohort members sampled return 0 on both. The
 finding is a correction to the earlier lane's evidence, not to this cohort.
 
-### 3.6 The test identity
+### 3.7 The test identity
 
 `src/testidentity.py` names leads **204966 and 204967**. The lane briefing
 also names **205079 and 205081**. I treated all four as excluded — a lead id
@@ -432,12 +459,47 @@ Projected onto 762 accounts at the same measured rate (2.18 s/account):
 
 **Yes, this cohort needs one, and it should run before any copy is written
 for it.** Twenty-eight minutes and no money against 735 accounts we currently
-know nothing about is the cheapest thing on this page. It is not mine to run
-— the crawler and its wiring belong to other lanes — but nothing about this
-cohort blocks it, and no Apify call is wanted or needed: the operator has
-already ruled site content comes from our own free crawler.
+know nothing about is the cheapest thing on this page. No Apify call is
+wanted or needed: the operator has already ruled that site content comes
+from our own free crawler.
 
-### 6.2 The evidence gap is wider than packs
+### 6.2 BUT IT CANNOT BE AIMED AT THIS COHORT YET, AND THAT IS THE REAL BLOCKER
+
+I checked before recommending it, and the recommendation does not survive
+contact with the wiring.
+
+`scripts/researchpack_cohort.py` (lane C's worktree
+`agent-aea4a82ef07084898`, not on master) selects accounts in
+`selection()` by reading **`work/stage/s7-copy.jsonl` for rendered copy rows
+and `work/stage/s3-icp.jsonl` for the country**, then grouping by cohort
+label. The underlying primitive, `research.run(rec, ...)`, takes a **record**.
+
+**This cohort has no rendered copy, no ICP row, and — for 1,018 of its 1,031
+members — no record at all.** There is nothing for either entry point to
+select. Pointing the free crawl at these 762 domains needs a domain-list
+entry point that does not exist today.
+
+And that is the general shape of it, not a detail about one script:
+
+> **Every downstream gate in this system is store-driven, and this cohort is
+> not in the store.** Pack facts are keyed by a record's domain. The ICP
+> verdict is a record field. Copy renders from `s7-copy.jsonl`, which is
+> built from records. The account rule, the collision gate, suppression and
+> DNC all read records. The cohort is 1,031 EmailBison lead ids and an email
+> address each, and nothing else.
+
+So the first thing this cohort needs is not a crawl and not copy. **It needs
+to exist in `work/queue.jsonl` as 762 records carrying the domain and the
+`bison_lead_id` of each contact.** That is the link between "provider-
+confirmed" and every gate that would otherwise have to be bypassed — and
+bypassing them is how ISSUE-019, ISSUE-023 and the 76 blank emails of
+ISSUE-025 happened.
+
+I did not create those records. Writing 762 records into the canonical
+store is not a read, this lane is read-only, and the adoption path already
+has a register row against it.
+
+### 6.3 The evidence gap is wider than packs
 
     cohort leads whose EmailBison record reads `unverified`   1,031  (all of them)
     cohort leads on an account with a known_allowed MX          533  on 335 accounts
@@ -475,7 +537,31 @@ at one company into the same campaign on the same day. The account rule and
 the collision gate are lane G's and are not merged; **this cohort must not be
 pushed before they are, and the 132 accounts are the reason.**
 
-### 7.1 The collision count over the wrong denominator is 1. Over the right one it is <FILL-COLLIDE-ACC>.
+### 7.1 940 of the 1,031 are ALREADY LEADS IN A CAMPAIGN THAT IS RUNNING RIGHT NOW
+
+This is not the account question and it is not a clause violation. It is the
+one number on this page I would want a person to look at before approving a
+push, and no stage of the funnel asks it.
+
+    cohort members holding a membership in a CURRENTLY-LIVE campaign   940 of 1,031
+      their membership status there:  sequence_finished 1,127   stopped 70
+      by campaign:   352 x 939     327 x 253     481 x 4     328 x 1
+
+They pass clause 4 correctly — `sequence_finished` and `stopped` are not live
+memberships, so nobody is mid-sequence. But 939 of them are enrolled leads
+inside the client's campaign 352, which is ACTIVE, has 21,530 leads, and sent
+nineteen emails between last night's snapshot and this morning's read. 253
+are enrolled in 327, also active, which sent sixty-four in the same window.
+
+**Pushing these people creates a person who is a live lead in two campaigns
+at the same provider simultaneously**, one of them the client's own and not
+ours to pause. ISSUE-025 is the same shape from the other end (adoption by
+email carries the CLIENT's lead into our campaign) and ISSUE-014 is what
+makes it hard to undo. Whether 352's scheduler can re-engage a
+`sequence_finished` lead is **not something I verified**, and it is the
+question that decides whether this is a footnote or a blocker.
+
+### 7.2 The collision count over the wrong denominator is 1. Over the right one it is <FILL-COLLIDE-ACC>.
 
 The first number this lane computed was **1 cohort account with a colleague
 live in a current campaign**. It was computed over the 16 estate campaigns,
@@ -483,14 +569,14 @@ and it is the exact shape of the failure the handoff catalogues — 1,508
 exportable that was 114, 330 selected of which 212 were spoken for. The
 account rule is about a **colleague**, and a colleague at a cohort account
 who sits in the client's live campaign 352 and was never in one of our 16 is
-invisible to the estate read. 947 of this cohort have been mailed by 352, and
+invisible to the estate read. 939 of this cohort have dated sends from 352, and
 352 is running right now with 21,530 leads.
 
 So the live campaigns outside the estate were walked.
 
 <FILL-COLLISION-BLOCK>
 
-### 7.2 What the campaign-level counters are worth
+### 7.3 What the campaign-level counters are worth
 
 Two of them are demonstrably wrong and neither should be trusted as a
 denominator:
@@ -537,7 +623,8 @@ that gate a push are not in place, and three of them belong to other lanes.
 |---|---|---|
 | the cadence is HALF-APPLIED: `productive.yaml` still declares em1..em3, `thread_reply_pattern` has 3 entries and needs 4, `CADENCE_STEPS` in `batch1_build.py` must match, final step `wait_in_days` must be 1 | lane B | not landed. `bisonfactory` REFUSES when provider sequence keys and cadence keys disagree, and it refuses in a place that does not name the cause |
 | the account rule and the collision gate | lane G | TASK-275's tests are written and RED, not merged. 132 cohort accounts carry more than one member, one of them 27 |
-| pack coverage is 0 of 762 accounts | free crawl, ~28 min, $0.00 | not run for this cohort. The standing rule is packs on every push with coverage reported |
+| **the cohort does not exist in `work/queue.jsonl`** — 1,018 of 1,031 have no record, so every store-driven gate has nothing to read | unassigned | §6.2. This is the one I would put first, because the other three are all downstream of it |
+| pack coverage is 0 of 762 accounts | free crawl, ~28 min, $0.00 | cannot be aimed at this cohort yet: both entry points select from stage files or records, and this cohort has neither. §6.2 |
 | the unsubscribe reply patterns are 14 English-only strings with no bare "stop", and the unsubscribe LINK has been removed so the reply is the only opt-out | the a229ee3c worktree | nothing committed |
 
 **And one that is mine to state rather than to fix:** these 1,031 people are
@@ -549,17 +636,23 @@ on them.
 
 ### 9.1 What I would do instead, in order
 
-1. **Run the free crawl over the 762 accounts.** 28 minutes, $0.00, no
-   dependency on anything above. It converts 735 accounts we know nothing
-   about into ~578 with site content.
-2. **Finish the cadence, then S7, then the account rule.** Nothing about this
+1. **Land the cohort in the store as 762 records** carrying the domain and
+   each contact's `bison_lead_id`, sourced from `work/stage/ri-cohort.json`.
+   Nothing else on this list can start until this does, and it is the piece
+   nobody currently owns.
+2. **Then run the free crawl over those 762 accounts.** 28 minutes, $0.00.
+   It converts 735 accounts we know nothing about into ~578 with site
+   content. Needs either the records from step 1 or a `--domains` entry
+   point on `researchpack_cohort.py`; the records are the better answer
+   because the ICP verdict and the account rule need them anyway.
+3. **Finish the cadence, then S7, then the account rule.** Nothing about this
    cohort changes those and they gate every push, not just this one.
-3. **Then a canary of 3, from the US subset (340 leads / 162 accounts), one
+4. **Then a canary of 3, from the US subset (335 leads / 162 accounts), one
    lead per account, every one on a `known_allowed` MX domain, none on an
    account that collides with a live campaign.** That is the operator's own
    3 → 10 → 25 → 50 progression, and this cohort has no readback history to
    justify starting anywhere higher.
-4. **Size the batch against the forward book, not the mailbox count.** The
+5. **Size the batch against the forward book, not the mailbox count.** The
    book was walked 2026-09-24T18:03Z, is COMPLETE across 14 campaigns and
    14.8 hours old. Today it shows 1,356 sends already committed. The
    attested cap is 154 mailboxes × 15 = 2,310. **Re-walk it before sizing
@@ -568,13 +661,14 @@ on them.
 ### 9.2 The fatigue question, which is not an eligibility question
 
     emails already sent to cohort members, per member:
-      min 1   median 6   max 23      total 10,403
-    members who have had 10 or more                265
-    members who have had 20 or more                245
+      min 1   median 6   max 23      total 10,214
+    members who have had 10 or more                256
+    members who have had 20 or more                236
 
+    last-send age: min 90d  median 111d  max 173d
     at exactly 90 days today                         3   (it was 42 yesterday)
 
-245 of the 1,031 have already received twenty or more emails, and 947 were
+236 of the 1,031 have already received twenty or more emails, and 939 were
 mailed by the client's own campaign 352. They are 90+ days clear, which is
 what the rule asks. Whether a twenty-first email is a good idea is a
 different question and it is the operator's.
@@ -592,7 +686,7 @@ different question and it is the operator's.
    it means running `provider_truth.py`, which the handoff forbids until
    `inbound.OWNED_CAMPAIGNS` resolves per provider.
 3. **Whether `GET /leads/{id}/replies` can be repaired into a reply witness.**
-   §3.5 shows what it returns; I did not work out whether filtering its rows
+   §3.6 shows what it returns; I did not work out whether filtering its rows
    by `type == "Tracked Reply"` would reconcile it with `overall_stats`. It
    was not needed here and it is needed by §5 of the 2026-09-24 document.
 4. **Lead 140769.** `/campaign/GetCampaignsForLead` answered 404. Excluded
@@ -601,7 +695,7 @@ different question and it is the operator's.
    not in the base and this document claims nothing about it.
 6. **Whether `emails_sent` is a reliable change detector.** It was used as
    one. Two campaign-level counters in the same response are demonstrably
-   wrong (§7.2), so this is an assumption, mitigated by the fact that every
+   wrong (§7.3), so this is an assumption, mitigated by the fact that every
    flagged lead got a fresh per-lead read regardless.
 7. **`docs/DECISIONS-2026-09-25-OPTION-A-AND-THE-FREE-CRAWL.md` does not
    exist.** The lane briefing names it as required reading. Nothing matching
@@ -616,7 +710,7 @@ different question and it is the operator's.
    for whoever holds it:
 
    - `GET /leads/{id}/replies` returns bounces and outgoing mail as rows and
-     under-reports real replies (§3.5). **HIGH** — a merged document uses it
+     under-reports real replies (§3.6). **HIGH** — a merged document uses it
      as a reply witness.
    - Exactly one contact in 1,065 carries a `heyreach_lead_id`, so LinkedIn
      reply state is unrecordable for the estate (§5.3). **HIGH.**
@@ -624,7 +718,7 @@ different question and it is the operator's.
      a live clock, so re-running it can only ever ADMIT leads (§1).
      **MEDIUM** — it is the documented reproduction command.
    - `total_leads` is wrong on at least two campaigns, by 588 and by 332
-     (§7.2). **LOW**, but it is a denominator people quote.
+     (§7.3). **LOW**, but it is a denominator people quote.
 
 ---
 
