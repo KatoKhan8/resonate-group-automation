@@ -63,7 +63,7 @@ and a test proving a pair is written on approval and NOT written without one.
 
 **STATUS**: DONE
 
-**COMMIT SHA**: (to be filled after commit)
+**COMMIT SHA**: 3125da45
 
 **TESTS**: 
 - `tests.test_training_pair_written_on_approval` - 5 tests, all pass
