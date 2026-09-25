@@ -1401,6 +1401,44 @@ def _attach_refusal(campaign_id, lead_ids, status, data):
         f"was attached: this route is all-or-nothing.")
 
 
+#: Campaign states in which the campaign is REACHING PEOPLE. Attaching a lead
+#: to one of these is a top-up: it puts a person in front of copy that is
+#: already sending, so it needs the same approval an activation needs.
+#:
+#: Everything else - paused, draft, completed, archived - is staging, and
+#: staging must stay possible without approval or no campaign could ever be
+#: BUILT to be approved. The gate is on reaching people, not on writing rows.
+LIVE_CAMPAIGN_STATES = ("active", "running", "sending", "in_progress")
+
+
+def _require_approval_for_topup(campaign_id):
+    """Refuse a top-up into a live campaign without the operator's approval.
+
+    OPERATOR DIRECTIVE, standing: "no campaign is activated and NO LEAD IS
+    ATTACHED TO AN ACTIVE CAMPAIGN without a review file approved by me", and
+    later "every campaign gets a review file before activation OR TOP-UP".
+
+    `resume_campaign` was gated and this was not, so the whole directive could
+    be satisfied on paper while a script attached two hundred people to a
+    campaign that was already sending - never calling resume, never asking.
+    Campaign 493 is active right now, which is exactly that shape.
+
+    FAILS CLOSED ON AN UNREADABLE STATUS. A gate that opens when it cannot
+    tell what it is looking at is the defect this repository keeps finding:
+    a check that passes because the thing it checks is absent.
+    """
+    from .. import reviewapproval
+    try:
+        state = str(campaign(campaign_id).get("status") or "").lower()
+    except Exception as e:                                      # noqa: BLE001
+        raise reviewapproval.NotApproved(
+            f"campaign {campaign_id}: its status could not be read "
+            f"({type(e).__name__}), so whether this attach is a top-up into a "
+            f"sending campaign is unknown. Refusing rather than guessing") from None
+    if state in LIVE_CAMPAIGN_STATES:
+        reviewapproval.require(campaign_id)
+
+
 def attach_leads(campaign_id, lead_ids):
     """Put existing leads into a campaign, and prove they arrived.
 
@@ -1429,6 +1467,7 @@ def attach_leads(campaign_id, lead_ids):
     wanted = [i for i in (lead_ids or []) if i is not None]
     if not wanted:
         raise ProviderError("emailbison attach_leads: no lead ids given")
+    _require_approval_for_topup(campaign_id)
     before = set(membership(campaign_id, wanted))
     missing = [i for i in wanted if int(i) not in before]
     if not missing:
