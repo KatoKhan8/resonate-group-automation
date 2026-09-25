@@ -22,6 +22,46 @@ credential read. Nothing was merged and nothing was pushed.
 
 ---
 
+## THE ONE CORRECTION THAT HAS TO TRAVEL FURTHER THAN THIS BRANCH
+
+**There is no `SUBJECT_2`, and no step in this cadence opens a second thread.
+Any document that says otherwise describes a shape `bisonfactory` refuses.**
+
+    thread_reply_pattern   [false, true, true, true]
+    every step's subject   {SUBJECT_1}
+
+em1 opens the thread and owns the only subject. em2, em4 and em5 are thread
+replies into it and the provider prepends `Re:` itself. Measured, not read -
+the refusal text and the second latent defect behind it are in §2.1.
+
+**At least three documents currently say the opposite**, which is why this is
+restated here rather than left in §2.1:
+
+1. `docs/STEPS-4-5-DRAFTS-2026-09-24.md` §2 - `[false, true, true, false,
+   true]`, em4 on `SUBJECT_2`. **Corrected on this branch** with a header
+   pointing here.
+2. **Lane D's** `docs/MERGE-REQUEST-2026-09-24-COPY-AND-COPYLINT.md` §1, on
+   branch `worktree-agent-a63bd2d9102384dba`, verbatim: *"the thread-reply
+   pattern becomes `[false, true, true, false, true]` - em1 opens, em2 and em3
+   reply into it, em4 opens a new thread with `SUBJECT_2`, em5 replies into
+   that."* **Not corrected - it is lane D's file and I did not edit it.**
+   Rung 3 itself is unaffected: it is a thread reply on `SUBJECT_1` either
+   way. Only the accompanying claim about em4 is wrong.
+3. **TASK-283 on master**, which the coordinator reports encoded the same
+   mapping from the handoff and says has already been corrected there. **I
+   did not read it** - it postdates this branch's base `24acafff` - so that
+   is reported, not verified by me.
+
+**Whoever merges lane B and lane D must reconcile 2 before the merge**, or
+master ends up carrying an approved copy document specifying a cadence the
+factory will not build.
+
+And when this cadence is later extended to five steps with rung 3, the pattern
+is `[false, true, true, true, true]` - five entries, one per declared step,
+still one subject throughout. The same invariant, one step longer.
+
+---
+
 ## 0. THE HEADLINE, AND WHAT EACH NUMBER IS THE ANSWER TO
 
       927   rows in `work/stage/s7-copy.jsonl`
