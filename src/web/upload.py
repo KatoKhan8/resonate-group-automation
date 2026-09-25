@@ -105,6 +105,73 @@ CONTACT_COLUMNS = ("email", "linkedin", "name", "first_name", "last_name",
 # one belonging to somebody else.
 IDENTITY_COLUMNS = ("email", "linkedin")
 
+# Company-level operational columns that travel with the domain, not the
+# contact. These are unmapped by `columns` (it has no opinion about them)
+# and would otherwise sit in `contact["source"]` as provenance nobody reads.
+# Carried through to `rec["company_facts"]` so the pack and the copy path
+# can use them. Each entry: source column normalised -> company_facts key.
+#
+# TASK-311: headcount growth is the operational signal the homepage lacks -
+# an agency that grew 40% in twelve months has a resourcing problem it can
+# be written to about. The three columns come from a 51,741-row universe
+# that overlaps the packs by only 1,693 of 17,467 domains.
+OPERATIONAL_COLUMN_MAP = {
+    "companytotalheadcountgrowth12months": "headcount_growth_12m",
+    "companyproductandservices": "products_and_services",
+    "companyemployee count": "employees",
+    "companyemployeecount": "employees",
+    "companycompanysize": "company_size",
+    "companycompanysizebands": "company_size",
+    "companyindustrytags": "industry_tags",
+}
+
+
+def _promote_linkedin_from_source(contact, source):
+    """A column called 'Url' that holds a LinkedIn profile is a LinkedIn URL.
+
+    `columns` deliberately refuses to map the header "url" to any canonical
+    field - it is too vague to mean one thing, and a company page in the
+    LinkedIn slot would merge every employee into one contact. But an
+    AI-ARK / ContactOut people-search export puts the profile URL in a
+    column called exactly `Url`, and 100% of its rows are LinkedIn profiles.
+
+    The value is checked, not trusted: only a string that
+    `linkedin.canonical` accepts as a profile is promoted. A company page,
+    a search URL or a truncated share link stays in source provenance where
+    it belongs.
+    """
+    if contact.get("linkedin"):
+        return
+    for key in ("Url", "URL", "url"):
+        candidate = (source or {}).get(key) or ""
+        candidate = candidate.strip()
+        if not candidate:
+            continue
+        profile = linkedin.canonical(candidate)
+        if profile:
+            contact["linkedin"] = profile
+            source.pop(key, None)
+            return
+
+
+def _extract_operational_facts(source):
+    """Company-level facts from unmapped columns, removed from source.
+
+    Returns a dict of company_facts entries. The keys are removed from
+    `source` in place so they do not appear as provenance alongside the
+    canonical facts they became.
+    """
+    if not source:
+        return {}
+    out = {}
+    for normalised, fact_key in OPERATIONAL_COLUMN_MAP.items():
+        for src_key in list(source):
+            if re.sub(r"[^a-z0-9]+", "", src_key.lower()) == normalised:
+                value = (source.pop(src_key) or "").strip()
+                if value and fact_key not in out:
+                    out[fact_key] = value[:MAX_CELL]
+    return out
+
 
 def contact_identity(contact):
     """The strong identity a row carries, or None.
@@ -393,6 +460,13 @@ def parse(data, existing_domains=(), suppress=None, batch=None, client=None,
                     continue
                 contact[column] = value[:MAX_CELL]
 
+        # A column called "Url" that holds a LinkedIn profile is promoted
+        # to the contact's linkedin field. The value is checked, not trusted.
+        _promote_linkedin_from_source(contact, source)
+        # Company-level operational facts (headcount growth, products, etc.)
+        # are extracted from source provenance and travel with the domain.
+        op_facts = _extract_operational_facts(source)
+
         # A domain is a company; a row is a person at one. Five rows at
         # `acme.test` are five contacts on one account, not one account and
         # four discarded duplicates - which is what this used to do, and
@@ -429,6 +503,13 @@ def parse(data, existing_domains=(), suppress=None, batch=None, client=None,
                                          or contact.get("email") or domain),
                                  "verdict": verdict})
             first["contacts"].append(joined)
+            # Operational facts from a later row at the same domain fill in
+            # fields the first row did not carry. First writer wins for each
+            # key, matching the contact merge semantics.
+            if op_facts:
+                existing_facts = first.setdefault("company_facts", {})
+                for k, v in op_facts.items():
+                    existing_facts.setdefault(k, v)
             attached.append({"row": number, "domain": domain,
                              "reason": "another person at a company already "
                                        "in this file"})
@@ -438,6 +519,8 @@ def parse(data, existing_domains=(), suppress=None, batch=None, client=None,
                  "client": client, "batch": batch, "row": number,
                  "contacts": [dict(contact, row=number)] if person else [],
                  "identities": {person} if person else set()}
+        if op_facts:
+            entry["company_facts"] = op_facts
         seen[domain] = entry
 
         # The hygiene verdict travels with the row rather than removing it.
@@ -613,6 +696,13 @@ def commit(repo, parsed, lane="domains"):
                 if added:
                     held["contacts"] = identity.assign_keys(
                         list(held.get("contacts") or []) + added)
+            # Operational facts from the import fill in company_facts fields
+            # the existing record did not have. First writer wins per key.
+            row_facts = row.get("company_facts") or {}
+            if row_facts:
+                existing_facts = held.setdefault("company_facts", {})
+                for k, v in row_facts.items():
+                    existing_facts.setdefault(k, v)
             records.append(held)
             continue
 
@@ -632,6 +722,11 @@ def commit(repo, parsed, lane="domains"):
         # and handles collisions.
         if people:
             rec["contacts"] = identity.assign_keys(people)
+        # Company-level operational facts from the import (headcount growth,
+        # products and services, employee count). TASK-311.
+        row_facts = row.get("company_facts") or {}
+        if row_facts:
+            rec["company_facts"].update(row_facts)
         records.append(rec)
     repo.save_records(records)
     # Audited like every other durable write. This was the one that was
