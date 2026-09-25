@@ -592,7 +592,7 @@ def report(emit=print):
 
     funnel = collections.Counter()
     tally = collections.Counter()
-    cohort, ages, reasons = [], [], {}
+    cohort, ages, reasons, excluded = [], [], {}, {}
     for lead_id, lead in sorted(leads.items()):
         rows = sends_by_lead.get(lead_id, [])
         clauses, age, n_sent = _assess(lead, rows, known, now=now,
@@ -603,6 +603,18 @@ def report(emit=print):
         first = next((n for n in CLAUSES if clauses[n]), None)
         if first:
             funnel[first] += 1
+            # EVERY EXCLUSION IS TRACEABLE OR IT IS NOT AN EXCLUSION. The
+            # clause, the provider's own words for it, every other clause it
+            # also trips, and the instant the read that says so was taken.
+            excluded[lead_id] = {
+                "clause": first,
+                "detail": clauses[first],
+                "also": {n: clauses[n] for n in CLAUSES
+                         if clauses[n] and n != first},
+                "read_at": known["_read_at"],
+                "queue_read": bool(lead.get("queue_complete")),
+                "seen_in": sorted(set(lead.get("seen_in") or [])),
+            }
         else:
             cohort.append(lead_id)
             ages.append(age)
@@ -639,6 +651,48 @@ def report(emit=print):
         emit("")
         emit(f"  cohort last-send age: min {min(ages)}d  max {max(ages)}d")
 
+    # ------------------------------------------------- the LinkedIn gate
+    #
+    # EmailBison's reply history is PER CHANNEL and it cannot answer "no reply
+    # EVER" on its own. The HeyReach read is applied here as an EXTRA gate: it
+    # may only ever REMOVE a lead the EmailBison clauses admitted, never add
+    # one. Unreadable removes too - `/campaign/GetCampaignsForLead` answering
+    # 404 is not a statement that this person is in no LinkedIn campaign.
+    li_removed = {}
+    if os.path.exists(RI_LINKEDIN):
+        with open(RI_LINKEDIN, encoding="utf-8") as handle:
+            li = json.load(handle)
+        for lead_id in li.get("linkedin_replied") or []:
+            li_removed[int(lead_id)] = "HeyReach reads REPLIED on LinkedIn"
+        for lead_id in li.get("linkedin_live") or []:
+            li_removed.setdefault(int(lead_id),
+                                  "in a LIVE LinkedIn sequence at HeyReach")
+        for lead_id in li.get("linkedin_unreadable") or []:
+            li_removed.setdefault(
+                int(lead_id),
+                "HeyReach could not answer for this person; unreadable is "
+                "not clean")
+        hit = [i for i in cohort if i in li_removed]
+        cohort = [i for i in cohort if i not in li_removed]
+        emit("")
+        emit(f"  THE LINKEDIN GATE (HeyReach, read {li.get('read_at')})")
+        emit(f"      cohort members we could ASK about             "
+             f"{len(li.get('joined_with_linkedin_url') or []):>6}")
+        emit(f"      STRUCTURALLY UNANSWERABLE - no LinkedIn identity "
+             f"{li.get('structurally_unanswerable'):>4}")
+        emit(f"      removed by this gate                          {len(hit):>6}")
+        for lead_id in hit:
+            emit(f"        {lead_id}  {li_removed[lead_id]}")
+            excluded[lead_id] = {"clause": "linkedin_gate",
+                                 "detail": li_removed[lead_id],
+                                 "also": {}, "read_at": li.get("read_at"),
+                                 "queue_read": True,
+                                 "seen_in": reasons[lead_id]["seen_in"]}
+            reasons.pop(lead_id, None)
+        funnel["linkedin_gate"] = len(hit)
+        emit(f"  COHORT AFTER THE LINKEDIN GATE                    "
+             f"{len(cohort):>6}")
+
     # ------------------------------------------------------------- accounts
     by_domain = collections.defaultdict(list)
     for lead_id in cohort:
@@ -671,9 +725,34 @@ def report(emit=print):
             if str(m.get("status") or "").lower() in LIVE_MEMBERSHIP and \
                     str(meta.get("status") or "").lower() in LIVE_CAMPAIGN:
                 live_domains.setdefault(dom, set()).add(cid)
+    # ... and the live campaigns OUTSIDE the estate, which is where almost all
+    # of the risk is: 947 of the cohort have been mailed by the client's own
+    # campaign 352, and 352 is running right now with 21,530 leads. A
+    # collision count taken over the 16 estate campaigns alone is a count from
+    # a stage that has not asked the next stage's question.
+    livebook_campaigns = set()
+    if os.path.exists(RI_LIVEBOOK):
+        with open(RI_LIVEBOOK, encoding="utf-8") as handle:
+            for line in handle:
+                row = json.loads(line)
+                livebook_campaigns.add(int(row["campaign_id"]))
+                if row.get("live_membership") and row.get("domain"):
+                    live_domains.setdefault(row["domain"], set()).add(
+                        int(row["campaign_id"]))
+    want_live = {cid for cid, meta in known.items()
+                 if isinstance(meta, dict)
+                 and str(meta.get("status") or "").lower() in LIVE_CAMPAIGN
+                 and cid not in ESTATE}
+    missing_live = sorted(want_live - livebook_campaigns)
+
     collided = {d: sorted(live_domains[d]) for d in by_domain if d in live_domains}
     emit("")
     emit("  COLLISION WITH A LIVE CAMPAIGN, AT THE ACCOUNT")
+    emit(f"      live campaigns outside the estate, walked     "
+         f"{len(livebook_campaigns & want_live):>6} of {len(want_live)}")
+    if missing_live:
+        emit(f"      NOT WALKED, so their accounts are UNKNOWN:    "
+             f"{missing_live}")
     emit(f"      cohort accounts with a colleague live now     {len(collided):>6}")
     emit(f"      cohort leads on those accounts                "
          f"{sum(len(by_domain[d]) for d in collided):>6}")
@@ -693,8 +772,12 @@ def report(emit=print):
         "tally": {name: tally[name] for name in CLAUSES},
         "cohort": sorted(cohort),
         "per_lead": reasons,
+        "excluded": excluded,
         "accounts": {d: sorted(v) for d, v in by_domain.items()},
         "collided_accounts": collided,
+        "live_campaigns_walked": sorted(livebook_campaigns & want_live),
+        "live_campaigns_not_walked": missing_live,
+        "linkedin_removed": {str(k): v for k, v in li_removed.items()},
     }
     with open(RI_COHORT, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=1, sort_keys=True)
