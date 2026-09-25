@@ -4,7 +4,7 @@
 transport was sealed before the first read and the seal was EXERCISED, not
 merely installed: every run begins by calling `StopLeadInCampaign` and
 `AddLeadsToCampaignV2` through the real transport and aborting unless both
-are refused. 466 provider requests in total, itemised in section 9.
+are refused. 400 provider requests in total, itemised in section 9.
 
 **This worktree was branched from `24acafff`, 37 commits behind master, and
 was fast-forwarded to `76f29779` before any work was done.** The brief said
@@ -344,15 +344,19 @@ scheduled for tonight instead.
 
 | read | requests |
 |---|---|
-| HeyReach seats | 1 |
+| HeyReach `/li_account/GetAll` | 1 |
 | EmailBison campaign state, 491-498 | 8 |
-| EmailBison per-lead email state (two samples) | 90 |
-| HeyReach `GetCampaignsForLead` | 223 |
-| HeyReach `GetLead` | 66 |
-| HeyReach `GetLeadsFromCampaign` (member-id shapes, our 39 campaigns) | 50 |
-| HeyReach `GetOverallStats` (the eight blanket campaigns) | 8 |
-| `collision.check_account` | 17 |
-| **total** | **466** |
+| EmailBison `GET /leads/{id}` - the X1 gate | 93 |
+| HeyReach `GetCampaignsForLead` - the H1 gate | 222 |
+| HeyReach `GetLead` - the M1 gate | 16 |
+| HeyReach `GetLeadsFromCampaign` - member-id shapes, our 39 campaigns | 50 |
+| HeyReach `GetOverallStats` - the eight blanket campaigns | 8 |
+| `collision.check_account` | 2 |
+| **total** | **400** |
+
+Summed from each run's own per-route counter rather than estimated. The first
+draft of this table said 466; the counters say 400, and the counters are what
+the transport recorded.
 
 Against the 5,079 a lane ran in business hours this morning and was flagged
 for. The remaining 627 people are **~1,000 requests** and belong after hours;
