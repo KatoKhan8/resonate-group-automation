@@ -114,7 +114,7 @@ addresses, no names).
 ## Result block
 
     BRANCH: qwen-worker-4-r9-task280
-    COMMIT: 424cda40
+    COMMIT: 4035952e
     CAMPAIGNS WALKED / UNREADABLE: 0 / 0 (no work/campaigns.jsonl in this worktree)
     PROVIDER ROWS READ: 0 (no campaign bindings to sweep)
     MATCHED / UNRECORDED / STATE_MISMATCH / NOT_OURS / UNKNOWN: 0/0/0/0/0
