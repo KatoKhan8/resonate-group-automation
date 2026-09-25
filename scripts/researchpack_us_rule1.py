@@ -84,6 +84,31 @@ CATEGORY_WORDS = {
 }
 
 
+#: THE SNIPPET IS THE FIRST 400 CHARACTERS OF THE PAGE, AND ON A MODERN SITE
+#: THAT IS THE NAVIGATION BAR. `webfetch.readable_text` returns the document
+#: in reading order and `facts.SNIPPET_CHARS` cuts at 400, so a site whose
+#: header carries a menu, a language switcher and a cookie line spends its
+#: whole snippet on them before the prose begins. `copylint.pack_text` then
+#: matches rule 1 against that, which is how `software`, `development` and
+#: `teams` come to be the words doing the work.
+#:
+#: Measured rather than asserted: a snippet carrying three or more of these
+#: is counted as navigation-led. The list is menu furniture only - no word
+#: here is something a company says ABOUT ITSELF.
+NAV_WORDS = ("home", "about", "about us", "contact", "contact us", "menu",
+             "careers", "blog", "news", "pricing", "login", "log in",
+             "sign in", "sign up", "privacy", "terms", "cookie", "search",
+             "resources", "support", "faq", "newsletter", "subscribe",
+             "book a demo", "get started", "request a demo", "our work",
+             "case studies", "portfolio", "services", "products",
+             "skip to content", "toggle", "english", "language")
+
+
+def navigation_led(snippet):
+    low = " %s " % str(snippet or "").lower()
+    return sum(1 for w in NAV_WORDS if " %s " % w in low) >= 3
+
+
 def read_log(path):
     rows = {}
     with open(path, encoding="utf-8") as handle:
@@ -162,6 +187,8 @@ def analyse(rows, config, s7_openers=None):
     all_words = collections.Counter()
     single_word_passes = single_word_best_case = 0
     category_only = category_only_best_case = 0
+    facts_total = facts_no_source = facts_no_snippet = 0
+    facts_no_published_at = facts_nav = nav_only_domains = 0
     passing = []
 
     for domain, row in rows.items():
@@ -174,6 +201,18 @@ def analyse(rows, config, s7_openers=None):
         if not facts:
             continue
         fact += 1
+        for one in facts:
+            facts_total += 1
+            if not one.get("source_url"):
+                facts_no_source += 1
+            if not one.get("snippet"):
+                facts_no_snippet += 1
+            if not one.get("published_at"):
+                facts_no_published_at += 1
+            if navigation_led(one.get("snippet")):
+                facts_nav += 1
+        if all(navigation_led(one.get("snippet")) for one in facts):
+            nav_only_domains += 1
 
         supported = copylint.pack_text(pack_of(row))
         openers = openers_for(row, config)
@@ -189,7 +228,16 @@ def analyse(rows, config, s7_openers=None):
         passed = [h for h in hits if h]
         if passed:
             pass_any += 1
-            passing.append((domain, min(passed, key=len)))
+            passing.append({
+                "domain": domain,
+                "mx_status": row.get("mx_status"),
+                "slice": row.get("slice"),
+                "facts": len(facts),
+                "thinnest_grounding": min(passed, key=len),
+                "richest_grounding": max(passed, key=len),
+                "angles_passing": len(passed),
+                "angles_tried": len(hits),
+            })
             # WHICH ANGLE A DOMAIN GETS IS NOT KNOWN TODAY - it follows from
             # a contact's title and no contacts are sourced yet. So the
             # single-word statistic is BRACKETED rather than asserted: the
@@ -228,7 +276,14 @@ def analyse(rows, config, s7_openers=None):
         "single_word_top": single_word.most_common(12),
         "words_top": all_words.most_common(20),
         "outcomes": outcomes.most_common(),
+        "facts_total": facts_total,
+        "facts_without_source_url": facts_no_source,
+        "facts_without_snippet": facts_no_snippet,
+        "facts_without_published_at": facts_no_published_at,
+        "facts_navigation_led": facts_nav,
+        "domains_whose_every_fact_is_navigation": nav_only_domains,
         "s7_measured": measure_s7(rows, s7_openers),
+        "passing": passing,
     }
 
 
@@ -293,6 +348,9 @@ def main(argv=None):
     ap.add_argument("--client", default="productive")
     ap.add_argument("--s7", default="")
     ap.add_argument("--json", default="")
+    ap.add_argument("--cohort-out", default="",
+                    help="JSONL of the domains a push could carry today: "
+                         "known_allowed first, then the largest slices")
     args = ap.parse_args(argv)
 
     rows = read_log(args.log)
@@ -331,11 +389,45 @@ def main(argv=None):
              100.0 * report["category_words_only_best_case"] / passes))
     print("  the single words:           %s" % report["single_word_top"])
     print("  commonest matching words:   %s" % report["words_top"][:10])
+    facts_n = report["facts_total"] or 1
+    print("facts written                 %6d" % report["facts_total"])
+    print("  with no source url          %6d" % report["facts_without_source_url"])
+    print("  with no snippet             %6d" % report["facts_without_snippet"])
+    print("  with no published_at        %6d  %5.1f%%  (see the doc: a crawled"
+          " page carries no date worth trusting; retrieved_at is pack-level)"
+          % (report["facts_without_published_at"],
+             100.0 * report["facts_without_published_at"] / facts_n))
+    print("  NAVIGATION-LED snippet      %6d  %5.1f%%"
+          % (report["facts_navigation_led"],
+             100.0 * report["facts_navigation_led"] / facts_n))
+    print("  domains where EVERY fact is navigation  %6d"
+          % report["domains_whose_every_fact_is_navigation"])
     print("crawler outcomes:             %s" % report["outcomes"])
     print("MEASURED on the leads that have rendered copy: %s"
           % json.dumps(report["s7_measured"]))
 
+    if args.cohort_out:
+        # The order the brief asked for: only ~2,500 addresses can be
+        # verified today, so known_allowed outranks unknown_provider and
+        # the largest slices come first. Nothing here is a permission to
+        # send; it is the join key the push needs.
+        sizes = collections.Counter(r["slice"] for r in report["passing"])
+        ranked = sorted(report["passing"],
+                        key=lambda r: ({"known_allowed": 0,
+                                        "unknown_provider": 1}.get(
+                                           r["mx_status"], 9),
+                                       -sizes[r["slice"]],
+                                       str(r["slice"]), r["domain"]))
+        with open(args.cohort_out, "w", encoding="utf-8") as handle:
+            for i, row in enumerate(ranked, 1):
+                row = dict(row, rank=i)
+                handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        print("cohort written to %s (%d domain(s), ranked)"
+              % (args.cohort_out, len(ranked)))
+
     if args.json:
+        report = dict(report)
+        report.pop("passing", None)      # the list is the cohort file's job
         with open(args.json, "w", encoding="utf-8") as handle:
             json.dump(report, handle, indent=1, default=str)
         print("written to %s" % args.json)
